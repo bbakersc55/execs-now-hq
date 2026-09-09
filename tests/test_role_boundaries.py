@@ -102,3 +102,84 @@ def test_tenant_secret_ciphertext_is_never_serialised(tenant_a):
         # Nothing in the codebase may expose the field; enforced by review plus
         # this assertion once a serializer exists in Phase 1.
         assert TenantSecret._meta.get_field("ciphertext") is not None
+
+
+# =========================================================== Module 1 (§4, §5)
+# Matrix rows 3.12-3.19, 4.1-4.18, 5.1-5.9. Every denied-send case also asserts
+# the dev outbox is empty and no OutboxMessage reached `sent` (matrix §14.3).
+
+MODULE1_ENDPOINTS = [
+    ("/api/contacts/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/companies/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/outbox/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/imports/", {"FF": 200, "CF": 403, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/pipeline-stages/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/contact-types/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/service-categories/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/stage-automations/", {"FF": 200, "CF": 403, "VA": 403, "FCC": 403, "ECC": 403}),
+    ("/api/tasks/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,expected", MODULE1_ENDPOINTS, ids=[u for u, _ in MODULE1_ENDPOINTS])
+@pytest.mark.parametrize("role", ["FF", "CF", "VA", "FCC", "ECC"])
+def test_module1_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
+    """Every Module 1 endpoint x every role, straight from `03_access_matrix.md`."""
+    from .factories import ClientCompanyFactory
+
+    company = ClientCompanyFactory(tenant=seeded_tenant) if role in ("FCC", "ECC") else None
+    membership = MembershipFactory(tenant=seeded_tenant, role=role, client_company=company)
+    response = api.as_(membership).get(url)
+    assert response.status_code == expected[role], (
+        f"{url} as {role}: expected {expected[role]}, got {response.status_code}"
+    )
+
+
+@pytest.mark.django_db
+def test_va_denied_send_leaves_the_outbox_untouched(seeded_tenant, va, api, dev_outbox):
+    """Matrix §14.3 — a 403 alone is not a sufficient assertion."""
+    from apps.crm.models import OutboxMessage
+    from apps.crm.services import outbox as outbox_service
+    from apps.tenancy.context import tenant_context
+
+    from .factories import ContactEmailFactory, ContactFactory
+
+    with tenant_context(seeded_tenant.pk):
+        contact = ContactFactory(tenant=seeded_tenant)
+        ContactEmailFactory(tenant=seeded_tenant, contact=contact)
+        message = outbox_service.create_message(
+            tenant=seeded_tenant, producer="referral_touch", to_contact=contact,
+            to_address=contact.primary_email, subject="s", body_text="b",
+        )
+
+    assert api.as_(va).post(f"/api/outbox/{message.pk}/approve/").status_code == 403
+
+    message.refresh_from_db()
+    assert message.state != OutboxMessage.State.SENT
+    assert message.sent_at is None
+    assert dev_outbox == [], "A denied send still delivered mail."
+
+
+@pytest.mark.django_db
+def test_cf_cannot_approve_for_an_unassigned_company(seeded_tenant, ff, cf, api, dev_outbox):
+    """Matrix 8.6 / 5.3 — CF approval is bounded by assignment."""
+    from apps.crm.services import outbox as outbox_service
+    from apps.tenancy.context import tenant_context
+
+    from .factories import ClientCompanyFactory, ContactEmailFactory, ContactFactory
+
+    unassigned = ClientCompanyFactory(tenant=seeded_tenant)
+    with tenant_context(seeded_tenant.pk):
+        contact = ContactFactory(tenant=seeded_tenant, company=unassigned)
+        ContactEmailFactory(tenant=seeded_tenant, contact=contact)
+        message = outbox_service.create_message(
+            tenant=seeded_tenant, producer="referral_touch", to_contact=contact,
+            to_address=contact.primary_email, subject="s", body_text="b",
+        )
+
+    # 404, not 403: a 403 would confirm the row exists (matrix §1 rule 1).
+    assert api.as_(cf).post(f"/api/outbox/{message.pk}/approve/").status_code == 404
+    message.refresh_from_db()
+    assert message.state != "sent"
+    assert dev_outbox == []

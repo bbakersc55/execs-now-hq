@@ -243,6 +243,24 @@ def test_signup_is_closed_by_configuration_too(client):
 
 
 @pytest.mark.django_db
+def test_successful_login_redirects_to_the_app_root(tenant_a, client):
+    """Django's default LOGIN_REDIRECT_URL is /accounts/profile/, which this
+    app does not serve. A successful sign-in previously ended on a 404."""
+    from django.conf import settings
+
+    membership = MembershipFactory(tenant=tenant_a)
+    response = _callback(client, _google_claims(membership.user.email))
+
+    assert response.status_code == 302
+    assert response["Location"] != "/accounts/profile/", (
+        "Signed in, then redirected to Django's default profile URL, which "
+        "this app does not serve."
+    )
+    assert response["Location"] == settings.LOGIN_REDIRECT_URL
+    assert settings.LOGIN_REDIRECT_URL == settings.APP_ROOT_URL
+
+
+@pytest.mark.django_db
 def test_tenant_binding_after_google_sign_in(tenant_a, client):
     """The signed-in user is bound to their tenant by the middleware."""
     membership = MembershipFactory(tenant=tenant_a)

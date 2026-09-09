@@ -14,6 +14,7 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("api/branding", account_views.branding, name="branding"),
     path("api/me", account_views.me, name="me"),
+    path("api/", include("apps.crm.urls")),
     path("accounts/refused", account_views.login_refused, name="login-refused"),
     path("auth/magic/request", account_views.request_magic_link, name="magic-request"),
     # C3.3: GET renders a confirmation page; only POST consumes the token.

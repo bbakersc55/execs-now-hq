@@ -227,9 +227,11 @@ Ordered list. Feeds `{Location A}` / `{Location B}` (FR-1.3, FR-4.9a).
 | `stage_id` | FK→`pipeline_stage` | **authoritative for "is a client" (FR-1.6a)** |
 | `source` | text? | |
 | `background` | text? | short "who this is / how we met". **Renamed from `notes`** — one concept in this product is called a note, and it is the `note` table (§12.2) |
-| `tags` | text[] | |
+| `tags` | text[] (ArrayField, GIN-indexed) | |
 | `referral_fee_terms` | text? | FR-1.20a |
 | `referral_cadence` | text? | `monthly` (default) · `bimonthly` · `quarterly` |
+| `referral_touch_mode` | text | `ai` (default) · `template` — FR-1.22's per-contact choice, which had no column in the first draft |
+| `referral_template_id` | FK→`email_template`? | used when mode is `template` |
 | `referral_next_touch_at` | timestamptz? | clock starts at onboarding (FR-1.23c) |
 | `referral_onboarded_at` | timestamptz? | **presence prevents re-triggering (FR-1.23d)** |
 | `search_vector` | tsvector IX(GIN) | FR-1.33 |
@@ -351,6 +353,15 @@ Everything else enters at `pending_approval`.
 
 ### `note`
 
+> **Created across two phases — deliberate, and recorded here so the split is not mistaken for drift.**
+>
+> FR-1.1a makes a CSV notes column create a real `note` row rather than a blob on the contact (§12.2), so **Module 1's import depends on this table**. Phase 1 therefore creates `note` with six columns only: `title`, `title_is_auto`, `body`, `contact`, `company`, `source`, plus `import_batch` (so a rollback removes the notes it created) and `deleted_at`.
+>
+> **Phase 2 adds the rest:** `pin_hash`, `pin_set_at`, `failed_pin_attempts`, `pin_locked_until`, `transcript`, `summary`, `proposed_summary`, `summary_state`, `audio_file`, `transcription_state`, and `search_vector`. The `task` FK arrives with Module 3.
+>
+> The alternative — deferring the notes-column mapping to Phase 2 — would keep the module boundary clean but leave FR-1.1a untestable in Phase 1. Owner ruling: create it early.
+
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
@@ -418,6 +429,13 @@ Same shape — including `owner_id`, `client_owner_contact_id`, and `status_over
 The unresolved case is deliberately preserved rather than dropped: "Maria in dispatch" is useful on a Goal even when no Contact matches it.
 
 ### `task`
+
+> **Created across two phases, on the same precedent as `note`.**
+>
+> FR-1.11 says a `create_task` stage rule "fires immediately, no approval", so **Module 1 depends on this table**. Phase 1 creates it with only the columns a stage rule needs: `title`, `description`, `status`, `due_date`, `owner`, `contact`, `source_automation`, `deleted_at`. The **full FR-3.7 status set is declared from the start**, so Phase 3 extends the table rather than migrating its values.
+>
+> **Phase 3 adds:** `project`, `goal`, `client_company`, `assignee`, `is_client_visible`, `created_by_client`, `client_owner_contact`, `status_override` semantics on parents, `source_map_row`, `source_proposal_item`, plus `task_checklist_item`, `comment`, `task_update`, and `stakeholder`.
+
 
 | Column | Type | Notes |
 |---|---|---|

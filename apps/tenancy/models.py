@@ -143,10 +143,13 @@ class Membership(TenantScopedModel):
         "crm.Company", null=True, blank=True,
         on_delete=models.PROTECT, related_name="memberships",
     )
-    # `contact` (FK -> crm.Contact, assumption F1: every human is a Contact and a
-    # login attaches to it) is added in Phase 1. Data model §11 fixes the
-    # migration order as company -> contact -> the FKs that point at contact,
-    # and Contact is a Module 1 table.
+    # Assumption F1 — every human is a Contact; a login attaches to one.
+    # Deferred from Phase 0.5 because §11 fixes the order as company ->
+    # contact -> the FKs pointing at contact. Contact now exists.
+    contact = models.ForeignKey(
+        "crm.Contact", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="memberships",
+    )
     invited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="invitations_sent",

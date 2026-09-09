@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "apps.tenancy",
     "apps.accounts",
     "apps.crm",
+    "apps.notes",
 ]
 
 MIDDLEWARE = [
@@ -114,6 +115,21 @@ SOCIALACCOUNT_PROVIDERS = {
         "AUTH_PARAMS": {"access_type": "online"},
     }
 }
+
+# Where a successful sign-in lands. Without this, Django's default
+# LOGIN_REDIRECT_URL is "/accounts/profile/", which this app does not serve —
+# a successful Google sign-in ended on a 404.
+#
+# In development the app root is the Vite dev server on 5200; in production
+# Django serves the built bundle at "/". Overridable per environment.
+APP_ROOT_URL = env(
+    "APP_ROOT_URL", default="http://localhost:5200/" if IS_LOCAL else "/"
+)
+LOGIN_REDIRECT_URL = APP_ROOT_URL
+LOGOUT_REDIRECT_URL = APP_ROOT_URL
+ACCOUNT_LOGOUT_REDIRECT_URL = APP_ROOT_URL
+ACCOUNT_SIGNUP_REDIRECT_URL = APP_ROOT_URL
+LOGIN_URL = "/accounts/google/login/"
 
 # C3.5: 12-hour idle for tenant users; client sessions are extended on login.
 SESSION_COOKIE_AGE = 60 * 60 * 12
