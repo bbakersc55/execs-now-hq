@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from apps.crm.models import (
     Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
+    EmailTemplate,
     ContactType, ImportBatch, ImportRow, OutboxMessage, PipelineStage,
     ServiceCategory, StageAutomation, StageChange, Task,
 )
@@ -126,6 +127,12 @@ class StageAutomationSerializer(serializers.ModelSerializer):
             f"{trigger}, draft an email into the Outbox for approval "
             f"(expires after {obj.send_by_offset_days} days)."
         )
+
+
+class EmailTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailTemplate
+        fields = ["id", "name", "kind", "subject", "body"]
 
 
 class OutboxMessageSerializer(serializers.ModelSerializer):

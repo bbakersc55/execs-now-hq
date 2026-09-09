@@ -1,0 +1,68 @@
+"""Activity timeline (FR-1.5).
+
+Aggregates stage changes, notes, emails, and tasks into one reverse-
+chronological view. Meetings join in Module 5.
+"""
+
+from __future__ import annotations
+
+from apps.crm.models import EmailMessage, OutboxMessage, StageChange, Task
+from apps.notes.models import Note
+
+
+def _entry(kind, when, text):
+    return {"kind": kind, "when": when.isoformat() if when else None, "text": text}
+
+
+def for_contact(contact, limit=100):
+    entries = []
+
+    for change in StageChange.objects.filter(contact=contact).select_related(
+        "from_stage", "to_stage"
+    ):
+        origin = change.from_stage.label if change.from_stage else "no stage"
+        text = f"Stage moved from {origin} to {change.to_stage.label}"
+        if change.reason:
+            text += f" — {change.reason}"
+        entries.append(_entry("stage", change.created_at, text))
+
+    for note in Note.objects.filter(contact=contact, deleted_at__isnull=True):
+        label = note.title or (note.body[:60] + ("…" if len(note.body) > 60 else ""))
+        suffix = " (imported)" if note.source == Note.Source.IMPORT else ""
+        entries.append(_entry("note", note.created_at, f"Note: {label}{suffix}"))
+
+    for task in Task.objects.filter(contact=contact, deleted_at__isnull=True):
+        due = f", due {task.due_date}" if task.due_date else ""
+        entries.append(_entry("task", task.created_at, f"Task: {task.title}{due}"))
+
+    for message in OutboxMessage.objects.filter(to_contact=contact):
+        verb = {
+            "sent": "Sent", "pending_approval": "Drafted (awaiting approval)",
+            "expired": "Draft expired unsent", "rejected": "Draft rejected",
+        }.get(message.state, message.state)
+        entries.append(_entry("email", message.sent_at or message.created_at,
+                              f"{verb}: {message.subject}"))
+
+    for message in EmailMessage.objects.filter(contact=contact, direction="inbound"):
+        entries.append(_entry("email", message.received_at, f"Reply received: {message.subject}"))
+
+    entries.sort(key=lambda e: e["when"] or "", reverse=True)
+    return entries[:limit]
+
+
+def for_company(company, limit=100):
+    from apps.crm.models import Contact
+
+    entries = []
+    for note in Note.objects.filter(company=company, deleted_at__isnull=True):
+        entries.append(_entry("note", note.created_at, f"Note: {note.title or note.body[:60]}"))
+
+    for contact in Contact.objects.filter(company=company, deleted_at__isnull=True):
+        for change in StageChange.objects.filter(contact=contact).select_related("to_stage"):
+            entries.append(_entry(
+                "stage", change.created_at,
+                f"{contact.first_name} {contact.last_name} moved to {change.to_stage.label}",
+            ))
+
+    entries.sort(key=lambda e: e["when"] or "", reverse=True)
+    return entries[:limit]

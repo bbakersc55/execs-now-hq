@@ -83,3 +83,34 @@ def test_request_response_is_identical_for_unknown_addresses(client, tenant_a):
     miss = client.post("/auth/magic/request", {"email": "nobody@example.invalid"})
     assert hit.status_code == miss.status_code == 200
     assert hit.json() == miss.json()
+
+
+@pytest.mark.django_db
+def test_post_completes_login_end_to_end(client, tenant_a, client_membership):
+    """The POST half of C3.3, which nothing previously exercised.
+
+    `User.membership` runs here BEFORE any tenant is bound — it is what
+    determines the tenant — so a fail-closed reverse manager raised. Found by
+    the Phase 1 property audit.
+    """
+    _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user)
+
+    landing = client.get(f"/auth/magic/{raw}")
+    assert landing.status_code == 200
+
+    response = client.post(f"/auth/magic/{raw}")
+    assert response.status_code == 200, response.content[:300]
+    assert response.json()["ok"] is True
+
+    me = client.get("/api/me")
+    assert me.status_code == 200
+    assert me.json()["role"] == "FCC"
+    assert me.json()["client_company"] is not None
+
+
+@pytest.mark.django_db
+def test_client_session_is_thirty_days(client, tenant_a, client_membership, settings):
+    """C3.5 — client users get a 30-day rolling session."""
+    _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user)
+    client.post(f"/auth/magic/{raw}")
+    assert client.session.get_expiry_age() > 60 * 60 * 24 * 29

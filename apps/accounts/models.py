@@ -61,7 +61,24 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def membership(self):
-        return self.memberships.filter(revoked_at__isnull=True).first()
+        """The user's live membership, or None.
+
+        Uses `all_objects` deliberately: a User is NOT tenant-scoped, and this
+        property is what DETERMINES the tenant — so it necessarily runs before a
+        tenant is bound. Going through the fail-closed reverse manager raised
+        TenantContextMissing during magic-link login, which is exactly the
+        moment nothing is bound yet.
+
+        Third instance of this defect class (after Company.seats_in_use and
+        Contact.primary_email); found by the property audit in Phase 1.
+        """
+        from apps.tenancy.models import Membership
+
+        return (
+            Membership.all_objects.select_related("tenant")
+            .filter(user=self, revoked_at__isnull=True)
+            .first()
+        )
 
 
 def _hash_token(raw: str) -> str:

@@ -15,7 +15,7 @@ from apps.crm.models import (
     Company, Contact, ContactType, ImportBatch, OutboxMessage, PipelineStage,
     ServiceCategory, StageAutomation, StageChange, Task,
 )
-from apps.crm.services import importer, merge, outbox, pipeline, referral, search
+from apps.crm.services import importer, merge, outbox, pipeline, referral, search, timeline
 from apps.tenancy.models import AuditEvent, Role
 
 
@@ -62,6 +62,11 @@ class ContactViewSet(TenantStaffViewSet):
         contact.deleted_at = None
         contact.save(update_fields=["deleted_at", "updated_at"])
         return Response(self.get_serializer(contact).data)
+
+    @action(detail=True, methods=["get"])
+    def timeline(self, request, pk=None):
+        """FR-1.5 — stage changes, notes, emails, and tasks in one view."""
+        return Response(timeline.for_contact(self.get_object()))
 
     @action(detail=True, methods=["post"], url_path="change-stage")
     def change_stage(self, request, pk=None):
@@ -146,6 +151,10 @@ class CompanyViewSet(TenantStaffViewSet):
 
         instance.deleted_at = timezone.now()
         instance.save(update_fields=["deleted_at", "updated_at"])
+
+    @action(detail=True, methods=["get"])
+    def timeline(self, request, pk=None):
+        return Response(timeline.for_company(self.get_object()))
 
     def get_permissions(self):
         # Matrix 4.12 — seat_count is FF-only.
@@ -272,6 +281,80 @@ class ImportViewSet(viewsets.ReadOnlyModelViewSet):
         batch = self.get_object()
         report = importer.rollback(batch, actor=request.user)
         return Response({"batch": self.get_serializer(batch).data, "report": report})
+
+
+class EmailTemplateViewSet(TenantStaffViewSet):
+    """Matrix 3.13 — a VA may edit body copy; the FF creates and deletes."""
+
+    serializer_class = crm_serializers.EmailTemplateSerializer
+
+    def get_queryset(self):
+        from apps.crm.models import EmailTemplate
+
+        return EmailTemplate.objects.all()
+
+    def get_permissions(self):
+        if self.request.method in ("POST", "DELETE"):
+            return [crm_perms.IsTenantStaff(), crm_perms.IsFF()]
+        return [crm_perms.IsTenantStaff()]
+
+
+class ReferralSettingsView(viewsets.ViewSet):
+    """FR-1.21a / FR-1.23b — the blurb and the flyer. FF only (matrix 3.6, 3.7)."""
+
+    permission_classes = [crm_perms.IsTenantStaff, crm_perms.IsFF]
+
+    def list(self, request):
+        tenant = request.tenant
+        age = None
+        if tenant.referral_blurb_updated_at:
+            from django.utils import timezone
+
+            age = (timezone.now() - tenant.referral_blurb_updated_at).days
+        return Response({
+            "referral_blurb": tenant.referral_blurb,
+            "referral_blurb_updated_at": tenant.referral_blurb_updated_at,
+            "blurb_age_days": age,
+            "marketing_flyer": str(tenant.marketing_flyer_id) if tenant.marketing_flyer_id else None,
+            "marketing_flyer_name": (
+                tenant.marketing_flyer.object_key.rsplit("/", 1)[-1]
+                if tenant.marketing_flyer_id else ""
+            ),
+        })
+
+    def create(self, request):
+        from django.utils import timezone
+
+        tenant = request.tenant
+        tenant.referral_blurb = request.data.get("referral_blurb", "")
+        tenant.referral_blurb_updated_at = timezone.now()
+        tenant.save(update_fields=[
+            "referral_blurb", "referral_blurb_updated_at", "updated_at"
+        ])
+        AuditEvent.all_objects.create(
+            tenant=tenant, actor=request.user, verb="referral.blurb_updated",
+            target_type="tenant", target_id=tenant.pk, payload={},
+        )
+        return self.list(request)
+
+    @action(detail=False, methods=["post"])
+    def flyer(self, request):
+        from django.conf import settings as dj_settings
+
+        from apps.tenancy.models import StoredFile
+
+        upload = request.FILES.get("flyer")
+        if upload is None:
+            return Response({"detail": "No file supplied."}, status=400)
+        stored = StoredFile.all_objects.create(
+            tenant=request.tenant, bucket=dj_settings.GCS_BUCKET_MEDIA,
+            object_key=f"flyers/{request.tenant.slug}/{upload.name}",
+            content_type=upload.content_type or "application/pdf",
+            byte_size=upload.size, purpose="marketing_flyer",
+        )
+        request.tenant.marketing_flyer = stored
+        request.tenant.save(update_fields=["marketing_flyer", "updated_at"])
+        return self.list(request)
 
 
 class TaskViewSet(TenantStaffViewSet):

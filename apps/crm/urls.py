@@ -11,6 +11,8 @@ router.register("service-categories", views.ServiceCategoryViewSet, basename="se
 router.register("stage-automations", views.StageAutomationViewSet, basename="stage-automation")
 router.register("outbox", views.OutboxViewSet, basename="outbox")
 router.register("imports", views.ImportViewSet, basename="import")
+router.register("email-templates", views.EmailTemplateViewSet, basename="email-template")
+router.register("referral-settings", views.ReferralSettingsView, basename="referral-settings")
 router.register("tasks", views.TaskViewSet, basename="task")
 
 urlpatterns = router.urls

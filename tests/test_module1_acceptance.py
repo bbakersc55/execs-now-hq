@@ -683,3 +683,175 @@ def test_ac_1_6_referral_touch_delivered_for_real():
 )
 def test_ac_1_20_onboarding_delivered_for_real():
     raise AssertionError("not exercised")
+
+
+# ============================================ AC-1.24 / AC-1.25 (cross-cutting)
+
+@pytest.mark.django_db
+def test_ac_1_24_staff_removal_cascades(seeded_tenant, ff, api):
+    """AC-1.24 / FR-0.8c — sessions die, assignments close, Gmail goes.
+    Nothing the member authored is removed."""
+    from apps.crm.models import GmailConnection
+    from apps.tenancy.models import Membership, TenantSecret
+
+    from .factories import (
+        ClientCompanyFactory, GmailConnectionFactory, MembershipFactory,
+        TenantSecretFactory,
+    )
+
+    cf_member = MembershipFactory(tenant=seeded_tenant, role="CF")
+    company_a = ClientCompanyFactory(tenant=seeded_tenant)
+    company_b = ClientCompanyFactory(tenant=seeded_tenant)
+    for company in (company_a, company_b):
+        ClientAssignment.all_objects.create(
+            tenant=seeded_tenant, user=cf_member.user, company=company, assigned_by=ff.user
+        )
+    secret = TenantSecretFactory(tenant=seeded_tenant, kind="gmail_refresh", user=cf_member.user)
+    GmailConnectionFactory(tenant=seeded_tenant, user=cf_member.user, secret=secret)
+
+    with tenant_context(seeded_tenant.pk):
+        authored_contact = _contact(seeded_tenant, owner=cf_member.user)
+        authored_task = Task.all_objects.create(
+            tenant=seeded_tenant, title="Left behind", owner=cf_member.user
+        )
+
+    # The CF has a live session.
+    cf_client = api.as_(cf_member)
+    assert cf_client.get("/api/me").status_code == 200
+
+    response = api.as_(ff).post(f"/api/staff/{cf_member.pk}/remove/")
+    assert response.status_code == 200
+    cascade = response.json()["cascade"]
+    assert cascade["assignments_closed"] == 2
+    assert cascade["gmail_connections_removed"] == 1
+    assert cascade["sessions_invalidated"] >= 1
+
+    cf_member.refresh_from_db()
+    assert cf_member.revoked_at is not None
+    assert ClientAssignment.all_objects.filter(
+        user=cf_member.user, removed_at__isnull=True
+    ).count() == 0
+    assert GmailConnection.all_objects.filter(user=cf_member.user).count() == 0
+    assert TenantSecret.all_objects.filter(pk=secret.pk).count() == 0
+
+    # Nothing they authored is gone.
+    assert Contact.all_objects.filter(pk=authored_contact.pk).exists()
+    assert Task.all_objects.filter(pk=authored_task.pk).exists()
+
+    # And their own session no longer authenticates.
+    assert cf_client.get("/api/me").status_code == 401, (
+        "The removed member's session still works."
+    )
+
+
+@pytest.mark.django_db
+def test_ac_1_24_invite_and_role_change_are_ff_only(seeded_tenant, ff, cf, va, api):
+    """Matrix 3.16-3.18."""
+    response = api.as_(ff).post(
+        "/api/staff/", {"email": "newva@example.invalid", "role": "VA"}
+    )
+    assert response.status_code == 201
+    member_id = response.json()["id"]
+
+    assert api.as_(ff).post(
+        f"/api/staff/{member_id}/change-role/", {"role": "CF"}
+    ).status_code == 200
+
+    for membership in (cf, va):
+        c = api.as_(membership)
+        assert c.get("/api/staff/").status_code == 403
+        assert c.post("/api/staff/", {"email": "x@example.invalid", "role": "VA"}).status_code == 403
+        assert c.post(f"/api/staff/{member_id}/remove/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_ac_1_24_client_roles_cannot_be_invited_as_staff(seeded_tenant, ff, api):
+    """Client users are granted portal access on a contact, not invited."""
+    response = api.as_(ff).post(
+        "/api/staff/", {"email": "founder@acme.invalid", "role": "FCC"}
+    )
+    assert response.status_code == 400
+    assert "portal access" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_ac_1_25_ai_spend_is_ff_only(seeded_tenant, ff, cf, va, fcc, api):
+    """AC-1.25 / FR-0.9 — spend is financial."""
+    from .factories import AiCallFactory
+
+    AiCallFactory(tenant=seeded_tenant, purpose="digest_prose", cost_usd="0.12")
+    AiCallFactory(tenant=seeded_tenant, purpose="referral_touch", cost_usd="0.03")
+
+    c = api.as_(ff)
+    listing = c.get("/api/ai-usage/")
+    assert listing.status_code == 200
+    assert len(listing.json()) == 2
+
+    summary = c.get("/api/ai-usage/summary/").json()
+    assert summary["total"]["calls"] == 2
+    assert float(summary["total"]["cost"]) == pytest.approx(0.15)
+
+    for membership in (cf, va, fcc):
+        assert api.as_(membership).get("/api/ai-usage/").status_code == 403
+        assert api.as_(membership).get("/api/ai-usage/summary/").status_code == 403
+
+
+# ============================================== UI-backing endpoints (smoke)
+
+@pytest.mark.django_db
+def test_every_ui_screen_has_a_working_endpoint(seeded_tenant, ff, api):
+    """The UI is only as real as the endpoints behind it. One call per screen."""
+    c = api.as_(ff)
+    for url in [
+        "/api/me",
+        "/api/contacts/",              # Contacts
+        "/api/contacts/search/?q=a",   # Contacts search
+        "/api/pipeline-stages/",       # Pipeline
+        "/api/companies/",             # Companies
+        "/api/service-categories/",    # Vendors
+        "/api/contacts/by-category/?category=x",
+        "/api/outbox/",                # Outbox
+        "/api/imports/",               # Import wizard
+        "/api/referral-settings/",     # Referral settings
+        "/api/email-templates/",       # Stage rules
+        "/api/stage-automations/",     # Stage rules
+        "/api/staff/",                 # Staff
+        "/api/ai-usage/",              # AI usage
+        "/api/ai-usage/summary/",
+    ]:
+        assert c.get(url).status_code == 200, f"{url} is broken"
+
+
+@pytest.mark.django_db
+def test_contact_and_company_timelines(seeded_tenant, stages, ff, api):
+    """FR-1.5 — the timeline the detail screens render."""
+    with tenant_context(seeded_tenant.pk):
+        company = CompanyFactory(tenant=seeded_tenant)
+        contact = _contact(seeded_tenant, stage=stages["contact"], company=company)
+        pipeline.change_stage(contact, stages["lead"], actor=ff.user)
+        Note.all_objects.create(
+            tenant=seeded_tenant, contact=contact, body="Met at the roundtable"
+        )
+        Task.all_objects.create(tenant=seeded_tenant, contact=contact, title="Send packet")
+
+    c = api.as_(ff)
+    entries = c.get(f"/api/contacts/{contact.pk}/timeline/").json()
+    kinds = {e["kind"] for e in entries}
+    assert {"stage", "note", "task"} <= kinds
+    assert any("moved from" in e["text"].lower() or "moved" in e["text"].lower() for e in entries)
+
+    company_entries = c.get(f"/api/companies/{company.pk}/timeline/").json()
+    assert any(e["kind"] == "stage" for e in company_entries)
+
+
+@pytest.mark.django_db
+def test_referral_settings_round_trip(seeded_tenant, ff, va, api):
+    """The Referral settings screen: save a blurb, see its age, VA is 403."""
+    c = api.as_(ff)
+    assert c.post("/api/referral-settings/", {"referral_blurb": "Rebuilt two programmes."}).status_code == 200
+
+    payload = c.get("/api/referral-settings/").json()
+    assert payload["referral_blurb"] == "Rebuilt two programmes."
+    assert payload["blurb_age_days"] == 0
+
+    assert api.as_(va).get("/api/referral-settings/").status_code == 403

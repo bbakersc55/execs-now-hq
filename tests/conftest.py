@@ -82,13 +82,26 @@ def fcc(seeded_tenant):
 
 
 @pytest.fixture
-def api(client):
-    """Returns a helper that logs in as a membership and issues API calls."""
+def api():
+    """Logs in as a membership and returns a client.
+
+    Each membership gets its OWN client, so sessions are independent. Sharing
+    one client makes session-invalidation tests silently vacuous: logging in as
+    a second user would replace the first user's session before the code under
+    test ever ran.
+    """
+    from django.test import Client as DjangoClient
 
     class Api:
+        def __init__(self):
+            self._clients = {}
+
         def as_(self, membership):
-            client.force_login(membership.user)
-            return client
+            key = str(membership.pk)
+            if key not in self._clients:
+                self._clients[key] = DjangoClient()
+                self._clients[key].force_login(membership.user)
+            return self._clients[key]
 
     return Api()
 
