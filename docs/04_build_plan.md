@@ -1,0 +1,406 @@
+# 04 — Build Plan: Beta
+
+**Phase 0 · Execs NOW HQ · for owner review**
+**Built on:** `CLAUDE.md`, `00_assumptions.md`, `01_prd.md`, `02_data_model.md`, `03_access_matrix.md`.
+
+---
+
+## 0. How this plan works
+
+**One module at a time, to done-and-tested, before the next starts** (`CLAUDE.md`). Each phase below has four parts:
+
+1. **What "done" means** — the gate. Not "the code exists"; the observable state that ends the phase.
+2. **Tests that must pass** — always including the two non-negotiable families, plus the phase's own acceptance criteria from `01_prd.md`.
+3. **Manual checks you do yourself** — the ones I cannot honestly run for you, either because they need your judgement or because they need your real data.
+4. **What I will report** — stated as `CLAUDE.md` requires: proven versus assumed, never a scoped subset presented as a total.
+
+**Reporting discipline.** At the end of every phase I give you a table of acceptance criteria with three possible values: **tested end to end**, **written but not exercised**, **not implemented**. A criterion I could not run — because it needs a real Postmark send, a real Drive folder, or the Railway host — is marked as such rather than quietly counted as passing. No phase is reported complete on a partial run.
+
+**Bugs get fixed in the current module, not carried forward** (`CLAUDE.md`). A defect found in Phase 3 that belongs to Phase 1 stops Phase 3.
+
+**Every migration is shown to you before it is applied.** Destructive migrations get a dry-run report first.
+
+### Execution order
+
+Module numbers follow `CLAUDE.md`. **Build order is not module order**, in one place:
+
+`0.5 foundation → 1 → 2 → 3 → 4 → 5 → `**`7 (Railway move)`**` → `**`6 (unified client communication)`**
+
+Module 6's inbound half needs a public webhook, so the whole module now waits for Railway (ruling 9.3). What could not wait — outbound threading and Gmail sending — has been **carved back into Phase 1**, because Module 1 already promises a CF "send from my own address" and a `manual` direct-to-`sent` producer. A Module 1 that cannot send from Gmail is not done.
+
+---
+
+## Phase 0.5 — Foundation (before Module 1)
+
+`CLAUDE.md` numbers six modules, but the tenancy, auth, and test scaffolding they all inherit cannot belong to Module 1 without making Module 1 dishonest about what it delivers. This is a short, separately-gated phase.
+
+### Done means
+
+1. Django 5 + DRF + Postgres `execsnowhq_dev` on port **8100**; Vite + React + TypeScript on **5200**, proxying `/api`.
+2. Django-Q2 on the **ORM broker**, `qcluster` running with **≥4 workers** (A2).
+3. `TenantScopedModel`, the `current_tenant` contextvar, `TenantMiddleware`, and the **fail-closed `TenantManager`** (B1) — an unscoped query **raises**.
+4. `tenant`, `user`, `membership`, `client_assignment`, `audit_event`, `stored_file`, `tenant_secret`, `ai_call` migrated.
+5. Google OAuth sign-in (invite-only) and magic-link sign-in both working end to end.
+6. **The two test registries exist and run**, with the foundation models registered.
+7. `.env.example` current; `scripts/backup_db.sh` written and **restored once into a scratch database**.
+
+### Tests that must pass
+
+- **Tenant isolation (registry).** Foundation models registered; the **meta-test fails on an unregistered model** — verified by deliberately adding a model and watching the suite go red.
+- **Role boundaries (registry).** Matrix §2 and §3 rows: 2.1 cross-tenant 404, 2.4 one membership, 3.3/3.4 API key unreadable **by every role including FF**, 3.16–3.19 FF-only.
+- `TenantContextMissing` raises when a query runs with no tenant bound — the single most important negative test in the codebase.
+- Magic link: single-use, 20-minute expiry, hashed at rest, **GET does not consume** (C3.3), rate limit holds, enumeration response is constant.
+
+### Manual checks
+
+1. Start everything with the commands in `05_dev_environment.md`. Confirm 8100 and 5200, and that nothing else on your machine is on those ports.
+2. Sign in with your Google account. Then try a Google account with no membership — confirm it is refused.
+3. Request a magic link for a test client user. Confirm the email lands, the link shows a **Sign in button** rather than logging you in on click, and that clicking it twice fails the second time.
+4. Run `scripts/backup_db.sh`, then restore that dump into a scratch database. **A backup you have never restored is a hypothesis.**
+
+### Report
+
+Every criterion above as tested / written-not-exercised / not-implemented, plus the schema for your approval **before the first migration is applied**.
+
+---
+
+## Phase 1 — Contacts & pipeline
+
+### Done means
+
+1. Contacts, companies, domains, locations, types, stages, service categories — all CRUD, with soft delete and restore.
+2. **The client invariant** (FR-1.6a) derives forward and does not reverse.
+3. `client_assignment` in place and **actually governing CF visibility** (FR-1.9c).
+4. CSV import: mapping profiles, dry run, commit, **rollback**, ambiguous-match listing, notes column → real `note` rows.
+5. Merge, with audit.
+6. Stage automations: `create_task` fires; `draft_email` queues.
+7. **The Outbox** as both approval queue and complete send log, including direct-to-`sent` routing.
+8. Referral: fee terms, tenant blurb, three-part touch composition, staleness warning, onboarding draft with flyer.
+9. Global search over contacts, companies, notes.
+
+**Carved back from Module 6 (ruling 9.3)** — required for FR-1.19a and the CF "send from my own address" story:
+
+10. **`email_thread` created for every outbound message**, carrying a `thread_token`.
+11. **`Reply-To` carries the token on both transports** — Postmark app mail *and* Gmail personal sends (Tier 1, FR-6.3b).
+12. **Tier 1 Gmail connect** (`gmail.send` only) for FF and CF; **not offered to VAs** (H7).
+13. The `manual` producer routing by role: FF/CF direct-to-`sent` via their own Gmail, VA to `pending_approval`.
+
+> Not in Phase 1: the inbound webhook, replay fixtures, the unmatched queue, and Tier 2. Those are Module 6, after Railway.
+
+### Tests that must pass
+
+- **Tenant isolation:** every Module 1 model registered.
+- **Role boundaries:** matrix §4 and §5 in full — with 5.3 (VA cannot approve), 5.5 (VA *may* send `precall_invite`), 5.6 (VA `manual` becomes a draft), 4.5 (VA may merge), 4.11 (FF-only assignment), 3.15 (FF-only stages) called out individually.
+- **Acceptance criteria AC-1.1 through AC-1.25.**
+- **Every denied-send test also asserts the dev outbox is empty** and that no `outbox_message` reached `sent` (matrix §14.3).
+- **AC-6.1 and AC-6.13** (carved back): one `email_thread` per contact conversation with a consistent token; a Gmail send whose `From` is the fractional and whose `Reply-To` is the inbound address; no scope beyond `gmail.send` requested.
+
+### Manual checks
+
+1. **Import your real book of business** — the highest-consequence data event in Beta. Read the dry run before committing. Then **roll it back**, confirm the count returns, and import again.
+2. Confirm the ambiguous-match list contains the duplicates you already know about.
+3. Move a real prospect through the pipeline and watch the follow-up task appear and the email draft queue.
+4. Read a generated referral touch. **This is a judgement call I cannot make for you:** does it sound like you, and would you send it to a real partner? If not, the template or the prompt is wrong and it is a Phase 1 bug.
+5. Confirm the flyer attaches and that an onboarding draft appeared the moment you tagged a referral partner.
+6. **Connect your own Gmail and send a real email to yourself from the app.** Confirm it arrives showing your own address as sender and the inbound address as reply-to. Replies will not thread until Module 6 — expected, and said here so it is not later read as a bug.
+
+### Report
+
+AC-1.1–1.25 with status. **AC-1.6 and AC-1.20 depend on Postmark**, so if mail is not yet configured they are reported as written-not-exercised, not as passing.
+
+---
+
+## Phase 2 — Notes
+
+### Done means
+
+1. One-action capture; optional dual linking (Contact *or* Company, **and** Task).
+2. PIN: set, unlock, lockout, **FF-only reset that clears rather than reveals**.
+3. **The title-leak defence** — explicit title required before PIN, and `"Locked note"` for any auto-derived title on a stub.
+4. Locked notes excluded **at index time**, not filtered at query time.
+5. Recording → GCS → Speech-to-Text → Claude summary, with the summary **proposed, never auto-attached**.
+6. Consent reminder; 120-minute cap; per-tenant audio retention with the deletion job running.
+
+### Tests that must pass
+
+- **Tenant isolation** and **role boundaries** (matrix §6), including **6.4 — PIN gating is not a role**: the FF without the PIN gets no body.
+- **AC-2.1 through AC-2.10**, with AC-2.3's title-leak case run **both** through the UI and **directly against the API**, since FR-2.11b exists precisely for the path that bypasses the dialog.
+- Search returns no body text for a locked note, asserted against the raw API response and rendered HTML, not the UI.
+
+### Manual checks
+
+1. Record a real 20-minute call. Read the transcript for usability and the summary for accuracy. **Would you keep this summary?** If not, the prompt needs work now.
+2. PIN a genuinely sensitive note. Sign in as a VA and try to find it — search for a phrase from its body.
+3. Ask for a PIN reset and confirm the email clears rather than reveals.
+4. Confirm the consent reminder is worded in a way you are comfortable relying on.
+
+### Report
+
+AC-2.1–2.10. Speech-to-Text and Claude quality are reported as **observed on N real recordings**, with the count — not as a pass.
+
+---
+
+## Phase 3 — Task engine + client portal
+
+> **The largest phase, and the one `CLAUDE.md` names as most important to the customer.** I expect it to take longer than Phases 1 and 2 together, and I would rather tell you that now than discover it at the end.
+
+### Done means
+
+1. Goal → Project → Task, three levels, `project` and `goal` nullable, **no `parent_task_id`**.
+2. Six statuses including **Waiting on client**, rendered distinctly.
+3. `client_owner_contact_id` on all three levels.
+4. Comments with visibility, **defaulting to internal**.
+5. `task_update` events with the prompted **client-facing line**.
+6. Stakeholders at any level, most-specific-wins, **pointing at Contacts not Users**.
+7. **`digest_item`** driving per-recipient consumption; digests keyed `(contact, cadence, period_start)`.
+8. Generation Thursday 08:00 / send Friday 08:00; `every_update` on quiet-window close.
+9. **`hold_all_digests` ON**, the approval screen, stale flagging with regenerate, expiry-releases-claims.
+10. Portal: scoped by tenant **and** company; client task and **project** creation; FR-3.9a edit rule; on-demand report; cadence self-service by signed token.
+11. Portal access grant, seats counted from live memberships, revoke.
+
+### Mid-phase checkpoint — a report, not a gate
+
+**After done-items 1–5** (hierarchy, statuses, client owner, comments, `task_update` events) and **before digests and the portal begin**, I send a status report in the same three-value format. It is **visibility into a long phase, not a second sign-off** — I continue into digests without waiting for a reply unless you tell me to stop.
+
+It reports the hierarchy and its three-level cap, the six statuses, `client_owner_contact_id`, comment visibility defaulting to internal, and — most importantly — **whether `task_update` is capturing the prompted client-facing line in practice**, since every digest downstream is only as good as that field.
+
+### Tests that must pass
+
+- **Tenant isolation**, plus **client-company isolation as a separate family** (FR-0.2) — two companies in the *same* tenant, expecting **404** both ways.
+- **Role boundaries:** matrix §7, §8, §9 in full. **8.3 (VA cannot approve a digest) is the single most important role test in the product.**
+- **AC-3.1 through AC-3.39.** The ones I will not let slide:
+  - **AC-3.5** — the AI narrative asserts no fact absent from its inputs.
+  - **AC-3.6** — nothing sends while held; dev outbox empty after the send window.
+  - **AC-3.9** — a silent week produces no email at all.
+  - **AC-3.10** — four changes in five minutes produce exactly one email.
+  - **AC-3.20/3.21** — stale flagging, and an approved digest **byte-for-byte unchanged** by a late update.
+  - **AC-3.33/3.34** — one update claimed independently by two recipients; expiry releases one claim without touching the other.
+  - **AC-3.35** — one person, one Friday email, despite stakeholder rows at two levels.
+  - **AC-3.37** — the client-edit rule at all four boundaries.
+- A **DST test** (AC-3.22): generation and send hold across a `America/Denver` boundary.
+
+### Manual checks
+
+1. **Read a real digest as your client would.** Does it read as *value delivered* or as a changelog? This is the product's central promise and the only person who can judge it is you.
+2. Run one full weekly cycle on a real engagement: Thursday generation, Friday approval.
+   **What "real" means during laptop Beta:** the client's tasks, updates, and narrative are real, but **delivery is observed in Mailpit** — any stakeholder not in `DEV_REAL_SEND_ALLOWLIST` lands in the dev outbox, not their inbox (FR-0.7). **Add your own address as a stakeholder** on the engagement so at least one digest is genuinely delivered and read in a real mail client. Links in it point at `localhost` and work only on your machine (H6).
+3. Deliberately leave a digest unapproved. Confirm nothing arrives and that next week's contains the deferred content.
+4. Set yourself as an `every_update` stakeholder and edit for ten minutes. Confirm one email, not six.
+5. Sign in to the portal as a real client user on a second device. Create a task, create a project, comment. Confirm you cannot see anything internal.
+6. Grant a third seat with only two available and read the error message.
+
+### Report
+
+AC-3.1–3.39 with status, and a **plain statement of digest behaviour under each of the four combinations** of `hold_all_digests` × AI prose — since that matrix is where an unintended send would hide.
+
+---
+
+## Phase 4 — Strategy session
+
+### Done means
+
+1. The Operations template seeded **verbatim** from `strategy_session_seed.md`, all nine sections, with `ask_when`, `must_ask`, `area`, `is_financial`, and stable `key`s.
+2. Public tokenised pre-call form; autosave; resume; merge fields with graceful degradation.
+3. Six Key Components computed average and lowest-score flag.
+4. Live view: section budgets, must-ask counter, three-field diagnostic capture.
+5. Claude drafting on **two triggers only**, each writing an `ai_call`; accept / edit / discard tray.
+6. **Template snapshot** so template edits cannot touch completed sessions.
+7. PDF via WeasyPrint with **all five exclusions defaulted off** and a true preview.
+8. Conversion: per-row Goal or Project, `owner_text` → `client_owner_contact_id` where it resolves, back-links preserved, client invariant fired.
+
+### Tests that must pass
+
+- **Tenant isolation** (including the pre-call token) and **role boundaries** (matrix §10) — with **10.8 (VA cannot see §9 investment fields)** asserted against the API response body, not the UI.
+- **AC-4.1 through AC-4.19.** Especially:
+  - **AC-4.9** — all five exclusion markers absent from the generated PDF's text, then one toggled on and only that one appearing.
+  - **AC-4.12 / AC-4.19** — heavy template edits leave a completed session byte-identical.
+  - **AC-4.16** — no Claude call on answer save; exactly two triggers.
+  - **AC-4.11** — nothing created until conversion is confirmed.
+
+### Manual checks
+
+1. **Run a real strategy session with a real prospect.** Nothing else tests this module honestly.
+2. Before that, send yourself the pre-call form and fill it in as a prospect would. Is it too long? The seed has 13 pre-call items and that is a real completion risk.
+3. During the call, watch whether the drafted map rows are usable or noise. **If you find yourself ignoring the tray, tell me — that is a prompt problem and it is a Phase 4 bug.**
+4. Generate the PDF and read every page **as the prospect**. Confirm none of your private notes, mechanics, or the investment range are present.
+5. Convert the session and check the resulting Goals and Projects before the engagement starts.
+
+### Report
+
+AC-4.1–4.19. The quality of Claude's map rows and mirror is reported as **your judgement on N real sessions**, with N — not as a pass. I will not claim the AI output is good; I will report what you said about it.
+
+---
+
+## Phase 5 — Meeting ingestion
+
+### Done means
+
+1. `DriveWatch` cursor polling every 10 minutes, "Sync now", health screen, `drive_file_owner_email` captured.
+2. `MeetingSourceFile` idempotent on `(tenant, file, version)`; two-step commit; cursor never advances past unprocessed work.
+3. Claude parse producing participants, action items, deliverables, and a **drafted summary**.
+4. Matching in the order **email → email domain + name → name alone**, ranked, with the reason shown and both paths always offered.
+5. Proposed contact type per participant, with **referral → queued onboarding** and **vendor → inline categories**.
+6. **Partial approval**; rejection persists; re-parse supersedes.
+7. `Meeting` record on every approved participant's timeline.
+8. CF `proposal-scope` with both limbs.
+
+### Tests that must pass
+
+- **Tenant isolation**, **role boundaries** (matrix §11), including **AC-5.16 — the CF two-limb scope**, with the FF's unmatched prospect meeting returning **404** to a CF.
+- **AC-5.1 through AC-5.16.** Especially:
+  - **AC-5.1** — three days of downtime loses nothing.
+  - **AC-5.2** — three polls, no duplicates.
+  - **AC-5.3** — nothing created before approval.
+  - **AC-5.8** — approving a deliverable creates records and **sends nothing**.
+  - **AC-5.10** — a parse failure does not advance the cursor.
+
+### Manual checks
+
+1. Point it at your **real** Gemini notes folder and let a week of real meetings accumulate.
+2. Close the laptop for two days. Confirm nothing is lost.
+3. Review a queue of real proposals. **Are the extracted action items ones you would actually have written down?** If precision is poor, the prompt is a Phase 5 bug.
+4. Confirm a meeting you attended now appears on the right people's timelines.
+5. Confirm no contact was created that you did not approve.
+
+### Report
+
+AC-5.1–5.16, plus **extraction quality on N real meetings** with a count of proposals approved versus rejected — a rejection rate is the honest measure here, and I will report it whatever it is.
+
+---
+
+## Phase 7 — The Railway move *(runs before Module 6 — see Execution order)*
+
+### The trigger
+
+**The first client portal user.** Not a date, not a module count. Until a client needs to sign in, the laptop is sufficient and Railway is unnecessary cost and complexity. The moment you grant portal access to a real client (matrix row 9.1), the move must already have happened — a magic link pointing at `localhost` is useless to them.
+
+**So the practical trigger is one step earlier: when you decide the next client gets portal access, the move starts.** Phase 6b and Tier 2 also wait behind it.
+
+### What the migration involves
+
+**1. Provision**
+- **The GitHub repo exists and Railway is connected to it.** Deployment is **git push to `main` → Railway builds and deploys** — the pattern you already run. There is no manual upload step and no separate deploy command.
+- Railway project, Postgres, and the app service. **No Redis** — Django-Q2 is on the ORM broker (A2).
+- The `qcluster` runs as a **second Railway service against the same database**, not as a thread in the web process, so a web restart cannot kill a running transcription.
+- `CONN_MAX_AGE=0` on the cluster (A2 consequence 3).
+
+**2. DNS and mail** — *start this first; it has the longest lead time*
+- `app.getexecutivesnow.com` → Railway.
+- Postmark **DKIM `TXT`** and **Return-Path `CNAME`** for `getexecutivesnow.com`.
+- **Inbound `MX`** for `inbound.getexecutivesnow.com`.
+- Postmark inbound webhook → the public endpoint.
+
+**3. Data — with an explicit freeze**
+
+The cutover is a window, not a gradual migration. **No writes happen on the laptop between the final dump and go-live**, because any that did would be silently lost.
+
+1. **Stop `qcluster`** on the laptop. Confirm no job is mid-flight.
+2. **Stop the web process.** The freeze starts here.
+3. Take the **final `pg_dump`**.
+4. Restore to Railway Postgres.
+5. **Verify row counts per table**, dump against restore. A mismatch stops the cutover.
+6. Flip DNS and configuration (steps 2 and 4).
+7. **Start the Railway services** — web first, then `qcluster` (see step 6 verification, which must happen between them).
+
+- A **rehearsal restore into a scratch Railway database** happens days earlier, so the real window is short and already practised.
+- **Flush the Django-Q2 queue tables before starting `qcluster`** (A2 consequence 2) — a restored database replays stale jobs otherwise, which after a migration could mean re-sending a week of digests.
+- Re-key: `FIELD_ENCRYPTION_KEY` moves as a Railway secret. **The Anthropic key and OAuth tokens do not survive without it** — verify decryption on Railway before decommissioning the laptop copy.
+
+**4. Configuration**
+- `PUBLIC_BASE_URL` → `https://app.getexecutivesnow.com`. This alone flips outbound mail from the dev outbox to real delivery (FR-0.7), so **it is the single most consequential variable in the move.**
+- `DEV_REAL_SEND_ALLOWLIST` **removed** — it is a localhost-only mechanism and must not exist in production.
+- Sentry enabled (A5).
+- Google OAuth redirect URIs updated for the new origin.
+
+**5. Backups move**
+- The laptop's `scripts/backup_db.sh` used **gcloud ADC** (§I). Railway has no interactive login, so the nightly job authenticates with a **dedicated service-account key** stored as a Railway secret, writing to the same `gs://execs-now-hq-db-backups` bucket with the same 30-day retention.
+- Run as a **Railway cron service**, not on the laptop.
+- **Restore once from a Railway-produced dump before the laptop copy is deleted.** The laptop database stays untouched as a fallback for at least two weeks.
+
+**6. Verification before you call it done**
+
+> **The consequence to internalise before anything starts:** on Railway there is **no `DEV_REAL_SEND_ALLOWLIST`**. It is a localhost-only mechanism and it is removed. From the moment the app runs on Railway, **every stakeholder email is real mail to a real client.** Every safeguard that was previously provided by the environment is now provided only by `hold_all_digests`.
+
+1. **Confirm `hold_all_digests` is ON *before* the first `qcluster` start on Railway — not after.** Once the cluster runs, generation begins; verifying the switch afterwards is verifying it too late. This is the one check whose order matters.
+2. Sign in with Google on the new host.
+3. Send yourself a magic link and confirm the URL is `app.getexecutivesnow.com`.
+4. Confirm the app's own send path: one test message to yourself, delivered, appearing in the Outbox as `sent`.
+5. Approve one real digest and confirm delivery to a real stakeholder.
+6. Confirm the nightly backup ran, **and restore it**.
+
+### Order
+
+DNS first (propagation), then provision, then a **rehearsal restore into a scratch Railway database**, then the real cutover, then the backup cron, then Phase 6b.
+
+**7. After cutover, the laptop is development-only**
+
+- **Live data never returns to the laptop.** Local development runs against a **separate dev database** — seeded fixtures, or a periodically restored production copy **with client email addresses scrubbed** so a stray send can never reach a real person.
+- Changes ship by **git push → Railway deploy**. Nothing is edited on the production host.
+- The laptop's production database is kept untouched as a fallback for **at least two weeks**, then deleted.
+- The post-move daily workflow is documented alongside the pre-move one in `05_dev_environment.md`.
+
+### What does not change
+
+The polling architecture (A6 and F19 Tier 2 both stay pull-based), `hold_all_digests`, and every review queue. Railway changes where the app runs and who can reach it. It changes nothing about what the app is allowed to send.
+
+---
+
+## Phase 6 — Unified client communication *(Module 6 — built last, after the Railway move)*
+
+> **This is `CLAUDE.md`'s Module 6, and it runs last** (ruling 9.3). Its outbound half — threading, tokens, Tier 1 Gmail sending — was **carved back into Phase 1**, because Module 1 could not honestly be called done without it. What remains here is everything that needs a publicly reachable webhook, which means everything here needs Railway.
+
+### Done means
+
+1. The **inbound webhook view**, with authenticity verification and idempotency on the provider message id.
+2. `manage.py replay_inbound` and the **seven fixtures** — token match, sender fallback, no match, quoted-history, multi-recipient, attachment, redelivery — which are the module's regression suite.
+3. Matching in order: `thread_token` → `gmail_thread_id` → sender email → no match.
+4. The **unmatched queue**, with filing to a contact. Nothing is ever dropped.
+5. Quoted-history trimming for display with the raw message retained; attachments stored.
+6. **Tier 2 thread polling** as an opt-in per user, with its `gmail.readonly` consent stated plainly at the point of connection.
+7. Live inbound MX receiving real replies.
+
+### Tests that must pass
+
+- **Tenant isolation** and **role boundaries** (matrix §12), including **12.4 — a VA cannot send a reply** and **12.5 — client users reach no communication surface at all**, since these threads include internal correspondence *about* them.
+- **AC-6.2 through AC-6.11** by replay — reported as **fixture-driven**, never as live transport.
+- **AC-6.12** — a real reply on a real digest appears on the timeline within a minute. **This is the only acceptance criterion in the whole PRD that cannot run on your laptop**, and it is the one that proves the module.
+- **AC-6.15 / AC-6.16** — Tier 2 opt-in, scope disclosure, and downtime tolerance.
+
+### Manual checks
+
+1. Reply from a real client address to a real digest. Confirm it threads onto the contact.
+2. Reply from an address the app has never seen. **Confirm it lands in the unmatched queue rather than vanishing** — the failure mode that matters here is silence, not error.
+3. Decide whether you want Tier 2 at all. It reads your entire mailbox to catch replies you typed in Gmail rather than in the app. **Tier 1 already captures the client's reply**; Tier 2 only closes the gap on your own out-of-app messages. If that is not worth a full-mailbox read scope to you, do not connect it — nothing else depends on it.
+
+### Report
+
+Fixture results and live results **reported separately and labelled**. A replay pass is not evidence that mail is being delivered.
+
+---
+
+## Phase 8+ — after Beta
+
+In `CLAUDE.md`'s order, not started until Beta has run on your real practice for a full digest cycle: invoicing → basic financials → contract e-signature → simple HRIS → connectors → product billing and self-serve onboarding.
+
+**Three things that should happen early in that sequence regardless:**
+
+0. **A staging environment, before public launch.** `demo.getexecutivesnow.com` on Railway, its own database, a seeded demo tenant with fictional clients and no real data. It serves two purposes that both arrive with V1: **demonstrating the product to prospective fractionals** without exposing your practice's real client data, and **testing a release before it reaches production**. Once other people's practices depend on the app, shipping straight from `main` to production with no intermediate host stops being acceptable. Staging deploys from a `staging` branch; production continues to deploy from `main`.
+
+1. **The V1 Google verification track.** Beta runs on an **Internal** OAuth consent screen (assumption C1), which needs no verification and has no refresh-token expiry — but Internal means *only Workspace accounts can sign in*. The moment a second fractional's practice needs access, the app must move to **External**, and `gmail.send` plus `gmail.readonly` then require **Google verification with a CASA security assessment**. It is slow, expensive, and **the longest lead time in the entire V1 plan.** Start it before it is needed, not when it blocks launch.
+2. **Postgres row-level security** (B2), deferred from Beta as defence in depth once the schema stops moving.
+
+---
+
+## 9. Review outcome
+
+**Rulings:**
+
+- **9.1 — Phase 0.5 stays a separate gated phase.**
+- **9.2 — Phase 3 is not split.** A **mid-phase checkpoint** is added after done-items 1–5: a status report in the three-value format before digests and the portal begin. **It is a report, not a gate** — I continue unless you say otherwise.
+- **9.3 — Module 6 moves entirely after the Railway move**, with the outbound half carved back into Phase 1: `email_thread` and `thread_token` on every outbound message, `Reply-To` carrying the token on **both** Postmark and Gmail, and Tier 1 Gmail connect. You were right that a Module 1 which cannot send from Gmail is not done — the CF story and the `manual` producer both live in Module 1 and both need it.
+
+**Phase 7 additions applied:** deployment is **git push to `main` → Railway** with repo connection added to provisioning; an explicit **freeze** with a seven-step cutover sequence and per-table row-count verification; the laptop becomes **development-only** afterwards with a scrubbed dev database and no path for live data to return; and the verification list now **leads** with confirming `hold_all_digests` is ON **before the first `qcluster` start**, because `DEV_REAL_SEND_ALLOWLIST` no longer exists and every stakeholder email becomes real at that moment.
+
+**Also applied:** the Phase 3 manual check now states that laptop-Beta delivery is observed in Mailpit and that you should add your own address as a stakeholder to see one genuinely delivered digest; Beta exit criterion 7 is made concrete in `01_prd.md` (5 digests, 2 strategy sessions with PDFs sent, 10 meeting proposals with the approve/reject rate reported); and a **staging environment** (`demo.getexecutivesnow.com`, separate database, seeded demo tenant) is added to Phase 8+ as a pre-launch requirement.
+
+**Status:** `04_build_plan.md` is complete. Proceeding to `05_dev_environment.md`, the last Phase 0 document.
