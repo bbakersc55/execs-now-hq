@@ -1,17 +1,40 @@
-# --- Core ---
-Django>=5.1,<6.0
-djangorestframework>=3.15
-django-environ>=0.11
-psycopg[binary]>=3.2
+# Execs NOW HQ — runtime dependencies, fully pinned.
+#
+# Every version, including transitive ones, is pinned so a fresh checkout
+# reproduces this environment exactly:
+#
+#     python3.12 -m venv .venv
+#     .venv/bin/pip install -r requirements.txt
+#
+# Direct dependencies and why they are here:
+#   Django, djangorestframework  — CLAUDE.md stack
+#   psycopg[binary]              — Postgres from day one, no SQLite ever
+#   django-q2                    — background jobs on the ORM broker (A2, no Redis)
+#   django-allauth               — Google sign-in, invite-only (C1)
+#   cryptography                 — Fernet for tenant_secret (E1)
+#   django-environ               — .env only (E2)
+#   whitenoise                   — serves the built Vite bundle in production
+# Everything else below is a transitive dependency of those.
 
-# --- Background jobs (ORM broker, no Redis — assumption A2) ---
-django-q2>=1.7
-
-# --- Auth ---
-django-allauth[socialaccount]>=65.0
-
-# --- Secrets (assumption E1) ---
-cryptography>=43.0
-
-# --- Static files in production ---
-whitenoise>=6.7
+asgiref==3.12.1
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+cryptography==50.0.1
+Django==5.2.17
+django-allauth==65.19.2
+django-environ==0.14.0
+django-picklefield==3.4.0
+django-q2==1.11.1
+djangorestframework==3.18.1
+idna==3.19
+oauthlib==3.3.1
+psycopg==3.3.5
+psycopg-binary==3.3.5
+pycparser==3.0
+PyJWT==2.13.0
+requests==2.34.2
+sqlparse==0.6.0
+typing_extensions==4.16.0
+urllib3==2.7.0
+whitenoise==6.12.0

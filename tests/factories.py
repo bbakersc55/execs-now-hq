@@ -13,6 +13,26 @@ from apps.tenancy.models import (
 )
 
 
+class TenantScopedFactory(factory.django.DjangoModelFactory):
+    """Base for tenant-scoped factories.
+
+    `objects` is fail-closed (assumption B1), so it raises during factory
+    creation — correctly: a factory building rows in two tenants at once has no
+    single tenant to bind. Test setup is one of the legitimate uses of the
+    explicit `all_objects` escape hatch, so factories use it deliberately.
+
+    Note what this does NOT do: the tests themselves still query through
+    `objects`, so the scoping under test is never bypassed.
+    """
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        return model_class.all_objects.create(*args, **kwargs)
+
+
 class TenantFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Tenant
@@ -29,7 +49,7 @@ class UserFactory(factory.django.DjangoModelFactory):
     full_name = factory.Sequence(lambda n: f"User {n}")
 
 
-class CompanyFactory(factory.django.DjangoModelFactory):
+class CompanyFactory(TenantScopedFactory):
     class Meta:
         model = Company
 
@@ -42,7 +62,7 @@ class ClientCompanyFactory(CompanyFactory):
     seat_count = 3
 
 
-class MembershipFactory(factory.django.DjangoModelFactory):
+class MembershipFactory(TenantScopedFactory):
     class Meta:
         model = Membership
 
@@ -51,7 +71,7 @@ class MembershipFactory(factory.django.DjangoModelFactory):
     role = Role.FF
 
 
-class ClientAssignmentFactory(factory.django.DjangoModelFactory):
+class ClientAssignmentFactory(TenantScopedFactory):
     class Meta:
         model = ClientAssignment
 
@@ -60,7 +80,7 @@ class ClientAssignmentFactory(factory.django.DjangoModelFactory):
     company = factory.SubFactory(ClientCompanyFactory)
 
 
-class TenantSecretFactory(factory.django.DjangoModelFactory):
+class TenantSecretFactory(TenantScopedFactory):
     class Meta:
         model = TenantSecret
 
@@ -70,7 +90,7 @@ class TenantSecretFactory(factory.django.DjangoModelFactory):
     last4 = "abcd"
 
 
-class AuditEventFactory(factory.django.DjangoModelFactory):
+class AuditEventFactory(TenantScopedFactory):
     class Meta:
         model = AuditEvent
 
@@ -78,7 +98,7 @@ class AuditEventFactory(factory.django.DjangoModelFactory):
     verb = "test.event"
 
 
-class StoredFileFactory(factory.django.DjangoModelFactory):
+class StoredFileFactory(TenantScopedFactory):
     class Meta:
         model = StoredFile
 
@@ -88,7 +108,7 @@ class StoredFileFactory(factory.django.DjangoModelFactory):
     purpose = "recording_audio"
 
 
-class AiCallFactory(factory.django.DjangoModelFactory):
+class AiCallFactory(TenantScopedFactory):
     class Meta:
         model = AiCall
 
@@ -97,7 +117,7 @@ class AiCallFactory(factory.django.DjangoModelFactory):
     model = "claude-opus-5"
 
 
-class MagicLinkTokenFactory(factory.django.DjangoModelFactory):
+class MagicLinkTokenFactory(TenantScopedFactory):
     class Meta:
         model = MagicLinkToken
 

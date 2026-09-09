@@ -41,7 +41,22 @@ class Company(TenantScopedModel):
 
     @property
     def seats_in_use(self):
-        return self.memberships.filter(revoked_at__isnull=True).count()
+        """Counted, never stored (data model §12.3) — a counter would drift.
+
+        Scoped explicitly by this row's own tenant rather than through the
+        reverse manager. The reverse manager is fail-closed (B1) and so needs
+        ambient tenant context, but a Company already knows its tenant: making
+        the property depend on ambient state would break it in management
+        commands and background jobs for no benefit. `all_objects` here is
+        narrowed by an explicit tenant filter, so nothing is unscoped.
+        """
+        from apps.tenancy.models import Membership
+
+        return Membership.all_objects.filter(
+            tenant_id=self.tenant_id,
+            client_company_id=self.pk,
+            revoked_at__isnull=True,
+        ).count()
 
     @property
     def seats_available(self):

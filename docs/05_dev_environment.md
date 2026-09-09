@@ -82,7 +82,10 @@ PUBLIC_BASE_URL=http://localhost:8100
 #   goes to Mailpit unless the recipient is in DEV_REAL_SEND_ALLOWLIST.
 
 # ---------- Database ----------
-DATABASE_URL=postgres://bbakersc@localhost:5432/execsnowhq_dev
+# Empty host = connect over the local Unix socket using peer auth, which needs
+# no password. A TCP form (postgres://user@localhost:5432/db) requires a
+# password to be configured in Postgres first.
+DATABASE_URL=postgres:///execsnowhq_dev
 
 # ---------- Encryption ----------
 # Fernet key protecting tenant_secret.ciphertext (Anthropic key, OAuth tokens).
