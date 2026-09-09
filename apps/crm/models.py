@@ -609,6 +609,10 @@ class ImportRow(TenantScopedModel):
     # FR-1.31 — what makes rollback real: the pre-import value of every field
     # the import changed, so an update can be reversed field by field.
     previous_values = models.JSONField(null=True, blank=True)
+    # FR-1.29 — the ranked candidates behind an `ambiguous` outcome, persisted
+    # so the reviewer resolves the SAME set the dry run reported rather than a
+    # recomputed one that may have drifted.
+    candidate_ids = models.JSONField(default=list, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "import_row"

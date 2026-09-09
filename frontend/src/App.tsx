@@ -7,6 +7,7 @@ import { Contacts } from "./screens/Contacts";
 import { CompanyDetail } from "./screens/CompanyDetail";
 import { Companies } from "./screens/Companies";
 import { ImportWizard } from "./screens/ImportWizard";
+import { Merge } from "./screens/Merge";
 import { Outbox } from "./screens/Outbox";
 import { Pipeline } from "./screens/Pipeline";
 import { ReferralSettings } from "./screens/ReferralSettings";
@@ -71,6 +72,7 @@ export function App() {
           <Route path="/" element={<Contacts />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/contacts/:id" element={<ContactDetail />} />
+          <Route path="/merge/:aId/:bId" element={<Merge />} />
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/companies/:id" element={<CompanyDetail />} />

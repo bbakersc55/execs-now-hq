@@ -157,7 +157,8 @@ class TaskSerializer(serializers.ModelSerializer):
 class ImportRowSerializer(serializers.ModelSerializer):
     class Meta:
         model = ImportRow
-        fields = ["id", "row_number", "raw", "outcome", "error_text", "contact"]
+        fields = ["id", "row_number", "raw", "outcome", "error_text", "contact",
+                  "candidate_ids"]
 
 
 class ImportBatchSerializer(serializers.ModelSerializer):

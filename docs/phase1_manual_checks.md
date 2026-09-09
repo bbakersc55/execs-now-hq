@@ -68,11 +68,27 @@ Then open **http://localhost:5200** and sign in with Google.
 
 > *Build plan: "Confirm the ambiguous-match list contains the duplicates you already know about."*
 
-**2.1** On the dry run from Check 1, look at **Rows needing attention** and filter your eye to outcome **ambiguous**.
+**2.1** On the dry run from Check 1, look for the **Duplicates to resolve** panel. It appears above *Rows needing attention* whenever the dry run's *needs-a-decision* count is greater than zero.
 
-**2.2** For each one, ask: *do I already know these two people are the same person?*
+**2.2** Each entry shows the CSV row that could not be placed, and underneath it every existing contact that matched. The import will not guess between them.
 
-**2.3** If they are the same, go to **Contacts**, open one, note their name, then use the merge path in Check 5 below.
+**2.3** For each one, ask: *do I already know these two people are the same person?*
+
+**2.4 — If they are the same, merge them here.** Click **Merge these two…** on the entry.
+
+**2.5** The merge screen opens with both records side by side.
+
+- **Step 1 — Which record survives?** Two cards, each showing emails, title, type count, stage, and creation date. The **older record is pre-selected**, since it usually carries more history — click the other card to switch. The cards relabel live: **survives** / **merged away**.
+- **Step 2 — Resolve field conflicts.** Only fields where the two records actually *disagree* are listed. Each row shows the survivor's value beside the merged-away record's; click either cell to keep it. Everything defaults to the survivor's own value, and changing the survivor in step 1 resets the defaults. If the records agree on everything, this step says so and there is nothing to do.
+- **Step 3 — What will happen.** Read it before clicking. It states plainly that notes, tasks, emails, stage history, types, and categories all move; that both email addresses keep working with only one marked primary; that the merged-away record is **soft-deleted, not destroyed**, and its link still resolves to the survivor; and that the merge is audited with your name on it.
+
+**2.6** Click **Merge into <name>**. → You land on the **survivor's contact page** with a green banner confirming the merge.
+
+**2.7 — Confirm the history actually moved.** On that page, look at the **Timeline** panel. Notes and tasks that belonged to the merged-away record are now listed there. Check the **Details** panel: both email addresses are present, one marked primary.
+
+**2.8** Re-run the dry run for the same CSV. → The row that was *needs-a-decision* now resolves to a single contact and counts as an **update**.
+
+**Merging outside an import.** You do not need a CSV to merge. Open any contact, and in the **Possible duplicates** panel click **Find duplicates**. It looks for contacts sharing an email address, then the same name at the same company, then the same name anywhere — each result shows *why* it matched, ranked with the strongest first. Click **Merge…** on any of them to open the same screen.
 
 **What you are checking:** that the matching rules — exact email, then name + company — catch the duplicates you already know about, and that they refused to guess on the rest. **A short ambiguous list is only good news if it matches your own knowledge of your data.** If you know of duplicates that did not appear here, tell me: the matching order needs work.
 
@@ -154,14 +170,7 @@ Then open **http://localhost:5200** and sign in with Google.
 
 **5.4 — Confirm the no-flyer path.** Delete the flyer in **Referral settings**, tag a different contact as a referral partner, and open the draft. → It still exists, has no attachment, and carries the warning **"No marketing flyer is uploaded, so this draft has no attachment."** The draft is never suppressed for a missing flyer.
 
-**Bonus — merge the duplicates from Check 2.** Contacts → open the survivor → note their id. There is no merge button in the Phase 1 UI; use the API for now and tell me if you want a merge screen:
-
-```bash
-curl -X POST http://localhost:8100/api/contacts/merge/ \
-  -H "Content-Type: application/json" \
-  -b "sessionid=<from your browser>" \
-  -d '{"survivor":"<id>","absorbed":"<id>"}'
-```
+**Merging duplicates** is Check 2 above — it has its own screen now, reachable from both the import wizard and any contact's **Possible duplicates** panel.
 
 ---
 
@@ -182,6 +191,6 @@ These are not in the build plan, but they exercise the parts most likely to bite
 1. **Anything in Check 4 that did not sound like you.** Highest priority — it is the only judgement I cannot make.
 2. **Duplicates from Check 2 that the ambiguous list missed.**
 3. **Any count in Check 1's dry run that surprised you**, especially a high `update`.
-4. **Anything that needed a `curl` command** — that is a gap in the UI, not in the API.
+4. **Anything that sent you to a terminal.** Every step in this document should be clickable; if one is not, that is a gap in the UI, not in the API.
 
 Anything found here is a **Phase 1 bug and gets fixed before Phase 2 starts** (`CLAUDE.md`: bugs get fixed in the current module, not carried forward).

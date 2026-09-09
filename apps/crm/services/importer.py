@@ -97,11 +97,12 @@ def dry_run(*, tenant, filename, file_bytes, mapping, actor=None):
     for parsed in parse(file_bytes, mapping):
         values = {mapping.get(k, k): v for k, v in parsed["raw"].items()}
         errors = _validate(values)
+        candidates = []
         if errors:
             outcome, contact = O.ERROR, None
             error_text = "; ".join(errors)
         else:
-            outcome, contact, _candidates = _match(tenant, values)
+            outcome, contact, candidates = _match(tenant, values)
             error_text = ""
             if outcome == O.AMBIGUOUS:
                 error_text = (
@@ -112,6 +113,7 @@ def dry_run(*, tenant, filename, file_bytes, mapping, actor=None):
         ImportRow.all_objects.create(
             tenant=tenant, import_batch=batch, row_number=parsed["row_number"],
             raw=parsed["raw"], outcome=outcome, error_text=error_text, contact=contact,
+            candidate_ids=[str(c.pk) for c in candidates],
         )
 
     batch.counts = counts

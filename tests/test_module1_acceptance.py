@@ -855,3 +855,141 @@ def test_referral_settings_round_trip(seeded_tenant, ff, va, api):
     assert payload["blurb_age_days"] == 0
 
     assert api.as_(va).get("/api/referral-settings/").status_code == 403
+
+
+# =================================================================== merge UI
+
+@pytest.mark.django_db
+def test_duplicate_finder_ranks_by_reason(seeded_tenant, ff, api):
+    """The 'Find duplicates' panel on contact detail. Ranked, reasons shown,
+    and nothing merged without a choice (FR-1.29 rules)."""
+    company = CompanyFactory(tenant=seeded_tenant, name="Acme")
+    with tenant_context(seeded_tenant.pk):
+        target = ContactFactory(
+            tenant=seeded_tenant, first_name="Dana", last_name="Reyes", company=company
+        )
+        ContactEmailFactory(tenant=seeded_tenant, contact=target, address="dana@acme.invalid")
+
+        shares_email = ContactFactory(tenant=seeded_tenant, first_name="D", last_name="R")
+        ContactEmailFactory(
+            tenant=seeded_tenant, contact=shares_email, address="dana@acme.invalid"
+        )
+        same_name_same_company = ContactFactory(
+            tenant=seeded_tenant, first_name="Dana", last_name="Reyes", company=company
+        )
+        same_name_elsewhere = ContactFactory(
+            tenant=seeded_tenant, first_name="Dana", last_name="Reyes"
+        )
+        unrelated = ContactFactory(tenant=seeded_tenant)
+
+    payload = api.as_(ff).get(f"/api/contacts/{target.pk}/duplicates/").json()
+    ids = [row["contact"]["id"] for row in payload]
+
+    assert str(shares_email.pk) == ids[0]
+    assert payload[0]["match_reason"] == "shares an email address"
+    assert str(same_name_same_company.pk) in ids
+    assert str(same_name_elsewhere.pk) in ids
+    assert str(unrelated.pk) not in ids
+    assert str(target.pk) not in ids
+
+    # Nothing was merged by looking.
+    for contact in (target, shares_email, same_name_same_company):
+        contact.refresh_from_db()
+        assert contact.merged_into_id is None
+        assert contact.deleted_at is None
+
+
+@pytest.mark.django_db
+def test_ambiguous_rows_expose_their_candidates(seeded_tenant, ff, api):
+    """The import wizard's 'Duplicates to resolve' panel.
+
+    Candidates are PERSISTED at dry-run time, so the reviewer resolves the same
+    set the dry run reported rather than a recomputed one that may have drifted.
+    """
+    company = CompanyFactory(tenant=seeded_tenant, name="Acme")
+    with tenant_context(seeded_tenant.pk):
+        for _ in range(2):
+            ContactFactory(
+                tenant=seeded_tenant, company=company, first_name="Dana", last_name="Reyes"
+            )
+        batch = importer.dry_run(
+            tenant=seeded_tenant, filename="c.csv",
+            file_bytes=_csv(["Dana,Reyes,,Acme,COO,\n"]), mapping={}, actor=ff.user,
+        )
+        row = batch.rows.filter(outcome="ambiguous").first()
+        assert len(row.candidate_ids) == 2
+
+    payload = api.as_(ff).get(f"/api/imports/{batch.pk}/ambiguous/").json()
+    assert len(payload) == 1
+    assert len(payload[0]["candidates"]) == 2
+    assert payload[0]["row"]["row_number"] == 2
+
+
+@pytest.mark.django_db
+def test_merge_with_field_choices_from_the_screen(seeded_tenant, va, api):
+    """The full path the merge screen drives: choose a survivor, resolve field
+    conflicts, confirm, and land on the survivor with history attached."""
+    with tenant_context(seeded_tenant.pk):
+        survivor = ContactFactory(
+            tenant=seeded_tenant, first_name="Dana", last_name="Reyes",
+            title="COO", background="Met at the roundtable",
+        )
+        ContactEmailFactory(tenant=seeded_tenant, contact=survivor, address="dana@acme.invalid")
+        Note.all_objects.create(tenant=seeded_tenant, contact=survivor, body="note on survivor")
+
+        absorbed = ContactFactory(
+            tenant=seeded_tenant, first_name="Dana", last_name="Reyes",
+            title="Chief Operating Officer", background="",
+        )
+        ContactEmailFactory(
+            tenant=seeded_tenant, contact=absorbed, address="d.reyes@acme.invalid"
+        )
+        Note.all_objects.create(tenant=seeded_tenant, contact=absorbed, body="note on absorbed")
+        Task.all_objects.create(tenant=seeded_tenant, contact=absorbed, title="task on absorbed")
+
+    response = api.as_(va).post("/api/contacts/merge/", {
+        "survivor": str(survivor.pk),
+        "absorbed": str(absorbed.pk),
+        # The reviewer kept the absorbed record's fuller title.
+        "fields": {"title": "Chief Operating Officer"},
+    }, content_type="application/json")
+    assert response.status_code == 200
+    assert response.json()["id"] == str(survivor.pk)
+    assert response.json()["title"] == "Chief Operating Officer"
+
+    survivor.refresh_from_db()
+    assert survivor.title == "Chief Operating Officer"
+    assert survivor.background == "Met at the roundtable"
+
+    # Both email addresses survive, exactly one primary.
+    with tenant_context(seeded_tenant.pk):
+        emails = ContactEmail.objects.filter(contact=survivor)
+        assert emails.count() == 2
+        assert emails.filter(is_primary=True).count() == 1
+
+        # The merged history is what the survivor's timeline will render.
+        assert Note.objects.filter(contact=survivor).count() == 2
+        assert Task.objects.filter(contact=survivor).count() == 1
+
+    entries = api.as_(va).get(f"/api/contacts/{survivor.pk}/timeline/").json()
+    texts = " ".join(e["text"] for e in entries)
+    assert "note on absorbed" in texts
+    assert "task on absorbed" in texts
+
+    absorbed.refresh_from_db()
+    assert absorbed.merged_into_id == survivor.pk
+    assert absorbed.deleted_at is not None
+
+
+@pytest.mark.django_db
+def test_merge_screen_endpoints_respect_roles(seeded_tenant, cf, fcc, api):
+    """Matrix 4.5 — CF cannot merge; client users cannot reach any of it."""
+    with tenant_context(seeded_tenant.pk):
+        a = ContactFactory(tenant=seeded_tenant)
+        b = ContactFactory(tenant=seeded_tenant)
+
+    assert api.as_(cf).post("/api/contacts/merge/", {
+        "survivor": str(a.pk), "absorbed": str(b.pk),
+    }, content_type="application/json").status_code == 403
+
+    assert api.as_(fcc).get(f"/api/contacts/{a.pk}/duplicates/").status_code == 403

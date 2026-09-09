@@ -94,6 +94,47 @@ class ContactViewSet(TenantStaffViewSet):
         contact.refresh_from_db()
         return Response(self.get_serializer(contact).data)
 
+    @action(detail=True, methods=["get"])
+    def duplicates(self, request, pk=None):
+        """Likely duplicates of this contact, using the same rules as import
+        matching (FR-1.29): shared email, then same name at the same company,
+        then same name anywhere. Ranked, with the reason shown — the reviewer
+        chooses; the app never merges on its own."""
+        contact = self.get_object()
+        qs = self.get_queryset().exclude(pk=contact.pk)
+
+        seen, ranked = set(), []
+
+        addresses = [e.address.lower() for e in contact.emails.all()]
+        if addresses:
+            for other in qs.filter(emails__address__in=addresses).distinct():
+                if other.pk not in seen:
+                    seen.add(other.pk)
+                    ranked.append((other, "shares an email address", 1))
+
+        same_name = qs.filter(
+            first_name__iexact=contact.first_name, last_name__iexact=contact.last_name
+        )
+        if contact.company_id:
+            for other in same_name.filter(company_id=contact.company_id):
+                if other.pk not in seen:
+                    seen.add(other.pk)
+                    ranked.append((other, "same name at the same company", 2))
+        for other in same_name:
+            if other.pk not in seen:
+                seen.add(other.pk)
+                ranked.append((other, "same name", 3))
+
+        ranked.sort(key=lambda row: row[2])
+        return Response([
+            {
+                "contact": self.get_serializer(other).data,
+                "match_reason": reason,
+                "rank": rank,
+            }
+            for other, reason, rank in ranked
+        ])
+
     @action(detail=False, methods=["post"], permission_classes=[crm_perms.IsFFOrVA])
     def merge(self, request):
         """Matrix 4.5 — FF and VA, audited. CF gets 403."""
@@ -269,6 +310,22 @@ class ImportViewSet(viewsets.ReadOnlyModelViewSet):
                 batch.rows.filter(outcome__in=["error", "ambiguous"]), many=True
             ).data,
         })
+
+    @action(detail=True, methods=["get"])
+    def ambiguous(self, request, pk=None):
+        """The rows a human must resolve, each with its persisted candidates."""
+        batch = self.get_object()
+        rows = batch.rows.filter(outcome="ambiguous").order_by("row_number")
+        payload = []
+        for row in rows:
+            candidates = Contact.objects.filter(
+                pk__in=row.candidate_ids, deleted_at__isnull=True
+            )
+            payload.append({
+                "row": crm_serializers.ImportRowSerializer(row).data,
+                "candidates": crm_serializers.ContactSerializer(candidates, many=True).data,
+            })
+        return Response(payload)
 
     @action(detail=True, methods=["post"])
     def commit(self, request, pk=None):

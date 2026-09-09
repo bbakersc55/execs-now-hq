@@ -1,16 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { api, Contact, OutboxMessage } from "../lib/api";
 
 interface TimelineEntry { kind: string; when: string; text: string; }
+interface Duplicate { contact: Contact; match_reason: string; rank: number; }
 
 export function ContactDetail() {
   const { id } = useParams();
+  const [params] = useSearchParams();
   const qc = useQueryClient();
   const [note, setNote] = useState("");
+  const [lookingForDupes, setLookingForDupes] = useState(false);
 
   const contact = useQuery<Contact>({
     queryKey: ["contact", id], queryFn: () => api.get<Contact>(`/api/contacts/${id}/`),
@@ -20,6 +23,11 @@ export function ContactDetail() {
   });
   const outbox = useQuery<OutboxMessage[]>({
     queryKey: ["outbox"], queryFn: () => api.get<OutboxMessage[]>("/api/outbox/"),
+  });
+  const duplicates = useQuery<Duplicate[]>({
+    queryKey: ["duplicates", id],
+    queryFn: () => api.get<Duplicate[]>(`/api/contacts/${id}/duplicates/`),
+    enabled: lookingForDupes,
   });
 
   const addType = useMutation({
@@ -56,6 +64,12 @@ export function ContactDetail() {
         {c.type_codes.map((t) => <span key={t}> · <Pill>{t.replace(/_/g, " ")}</Pill></span>)}
       </p>
 
+      {params.get("merged") === "1" && (
+        <Banner kind="ok">
+          Merged. Everything from the other record — notes, tasks, emails, stage history,
+          types, categories — now appears on this contact's timeline below.
+        </Banner>
+      )}
       {note && <Banner kind="ok">{note}</Banner>}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1.15rem" }}>
@@ -78,6 +92,48 @@ export function ContactDetail() {
                 <tr><th>Tags</th><td>{c.tags.length ? c.tags.map((t) => <Pill key={t}>{t}</Pill>) : "—"}</td></tr>
               </tbody>
             </table>
+          </Card>
+
+          <Card
+            title="Possible duplicates"
+            actions={
+              <button onClick={() => setLookingForDupes(true)} disabled={lookingForDupes}>
+                {lookingForDupes ? "Searching…" : "Find duplicates"}
+              </button>
+            }
+          >
+            {!lookingForDupes ? (
+              <p className="muted small" style={{ marginBottom: 0 }}>
+                Looks for contacts sharing an email address, or the same name at the same
+                company. Nothing is merged without you choosing.
+              </p>
+            ) : (duplicates.data ?? []).length === 0 ? (
+              <Empty>No likely duplicates of this contact.</Empty>
+            ) : (
+              <table>
+                <thead><tr><th>Contact</th><th>Why it matched</th><th></th></tr></thead>
+                <tbody>
+                  {duplicates.data!.map((d) => (
+                    <tr key={d.contact.id}>
+                      <td>
+                        <Link to={`/contacts/${d.contact.id}`}>
+                          {d.contact.first_name} {d.contact.last_name}
+                        </Link>
+                        <div className="muted mono small">
+                          {d.contact.emails[0]?.address ?? "no email"}
+                        </div>
+                      </td>
+                      <td><Pill>{d.match_reason}</Pill></td>
+                      <td className="right">
+                        <Link className="btn" to={`/merge/${c.id}/${d.contact.id}`}>
+                          Merge…
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Card>
 
           <Card title="Background">

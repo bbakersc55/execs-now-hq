@@ -62,6 +62,8 @@ export interface Contact {
   referral_touch_mode: string;
   referral_next_touch_at: string | null;
   referral_onboarded_at: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Company {

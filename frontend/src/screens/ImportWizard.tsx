@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
-import { api, ImportBatch, ImportRow } from "../lib/api";
+import { api, Contact, ImportBatch, ImportRow } from "../lib/api";
 
 type Step = "upload" | "map" | "review" | "done";
 
@@ -12,6 +13,7 @@ const TARGETS = [
 ];
 
 interface DryRun { batch: ImportBatch; rows: ImportRow[]; errors: ImportRow[]; }
+interface Ambiguous { row: ImportRow; candidates: Contact[]; }
 
 export function ImportWizard() {
   const qc = useQueryClient();
@@ -24,6 +26,11 @@ export function ImportWizard() {
 
   const batches = useQuery<ImportBatch[]>({
     queryKey: ["imports"], queryFn: () => api.get<ImportBatch[]>("/api/imports/"),
+  });
+  const ambiguous = useQuery<Ambiguous[]>({
+    queryKey: ["ambiguous", result?.batch.id],
+    queryFn: () => api.get<Ambiguous[]>(`/api/imports/${result!.batch.id}/ambiguous/`),
+    enabled: !!result && (result.batch.counts.ambiguous ?? 0) > 0,
   });
 
   async function readHeaders(f: File) {
@@ -169,6 +176,56 @@ export function ImportWizard() {
               </div>
             </div>
           </Card>
+
+          {(ambiguous.data ?? []).length > 0 && (
+            <Card title={`Duplicates to resolve (${ambiguous.data!.length})`}>
+              <p className="muted small">
+                More than one existing contact matched these rows. The import will not
+                guess — resolve each one by merging the duplicates, then re-run the dry
+                run so the row matches a single contact.
+              </p>
+              {ambiguous.data!.map((a) => (
+                <div key={a.row.id} className="card" style={{ marginBottom: ".7rem" }}>
+                  <div className="spread">
+                    <strong className="small">
+                      Row {a.row.row_number}:{" "}
+                      <span className="mono">
+                        {Object.entries(a.row.raw).filter(([, v]) => v)
+                          .map(([k, v]) => `${k}=${v}`).join("  ")}
+                      </span>
+                    </strong>
+                    <Pill kind="warn">needs a decision</Pill>
+                  </div>
+                  <table style={{ marginTop: ".5rem" }}>
+                    <thead><tr><th>Existing contact</th><th>Email</th><th></th></tr></thead>
+                    <tbody>
+                      {a.candidates.map((cand, i) => (
+                        <tr key={cand.id}>
+                          <td>
+                            <Link to={`/contacts/${cand.id}`}>
+                              {cand.first_name} {cand.last_name}
+                            </Link>
+                            {cand.title && <span className="muted"> · {cand.title}</span>}
+                          </td>
+                          <td className="mono small">{cand.emails[0]?.address ?? "—"}</td>
+                          <td className="right">
+                            {i === 0 && a.candidates.length > 1 && (
+                              <Link
+                                className="btn"
+                                to={`/merge/${a.candidates[0].id}/${a.candidates[1].id}`}
+                              >
+                                Merge these two…
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </Card>
+          )}
 
           {result.errors.length > 0 && (
             <Card title="Rows needing attention">
