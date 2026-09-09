@@ -1,0 +1,9 @@
+/* Executives Now palette (CLAUDE.md). Tokens only — V1 per-tenant overrides
+   replace these values from the /api/branding payload, not from code. */
+:root {
+  --brand-dark-blue: #0a3a65;
+  --brand-orange: #f58220;
+  --brand-gray-dark: #6d6e71;
+  --brand-gray-light: #939598;
+}
+body { margin: 0; font-family: system-ui, sans-serif; color: var(--brand-dark-blue); }

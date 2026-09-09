@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — {{ product_name }}</title>
+<style>
+  :root { --blue:#0A3A65; --orange:#F58220; --gray:#6D6E71; }
+  body { font-family: system-ui, sans-serif; display:grid; place-items:center;
+         min-height:100vh; margin:0; background:#f7f8fa; color:var(--blue); }
+  .card { background:#fff; padding:2.5rem; border-radius:10px; max-width:26rem;
+          box-shadow:0 1px 3px rgba(0,0,0,.12); text-align:center; }
+  button { background:var(--orange); color:#fff; border:0; border-radius:6px;
+           padding:.85rem 2rem; font-size:1rem; cursor:pointer; }
+  p { color:var(--gray); line-height:1.5; }
+</style>
+<div class="card">
+  <h1>{{ product_name }}</h1>
+  {% if valid %}
+    <p>Click below to finish signing in.</p>
+    <form method="post">{% csrf_token %}<button type="submit">Sign in</button></form>
+  {% else %}
+    <p>This link has expired or has already been used. Magic links last
+       20 minutes and work once. Please request a new one.</p>
+  {% endif %}
+</div>

@@ -10,14 +10,26 @@ This is a runbook, not an explanation. Commands to paste, in order, with just en
 
 ## 1. One-time setup
 
-Already done (per the kickoff): repo, `git init`, `CLAUDE.md`, `.claude/settings.json`, `createdb execsnowhq_dev`, GCP project `execs-now-hq`, bucket `gs://execs-now-hq-db-backups`, gcloud ADC.
+Already done (per the kickoff): repo, `git init`, `CLAUDE.md`, `.claude/settings.json`, GCP project `execs-now-hq`, bucket `gs://execs-now-hq-db-backups`, gcloud ADC.
 
 What remains:
 
 ```bash
 # System packages (Debian/Ubuntu)
-sudo apt install -y python3.12 python3.12-venv postgresql-client build-essential \
+# NOTE: postgresql (the SERVER), not just postgresql-client. CLAUDE.md requires
+# Postgres locally from day one; the client alone gives you psql with nothing to
+# connect to.
+sudo apt install -y python3.12 python3.12-venv build-essential \
+                    postgresql postgresql-client libpq-dev \
                     libpango-1.0-0 libpangoft2-1.0-0 libcairo2   # WeasyPrint needs these
+
+# Start the server and create your role + database
+sudo systemctl enable --now postgresql
+sudo -u postgres createuser --superuser "$USER"      # peer auth for your own account
+createdb execsnowhq_dev
+
+# Verify: this must print the database name
+psql -lqt | cut -d'|' -f1 | grep execsnowhq_dev
 
 # Python
 python3.12 -m venv .venv

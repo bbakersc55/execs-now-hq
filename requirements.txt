@@ -1,0 +1,17 @@
+# --- Core ---
+Django>=5.1,<6.0
+djangorestframework>=3.15
+django-environ>=0.11
+psycopg[binary]>=3.2
+
+# --- Background jobs (ORM broker, no Redis — assumption A2) ---
+django-q2>=1.7
+
+# --- Auth ---
+django-allauth[socialaccount]>=65.0
+
+# --- Secrets (assumption E1) ---
+cryptography>=43.0
+
+# --- Static files in production ---
+whitenoise>=6.7
