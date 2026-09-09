@@ -82,13 +82,27 @@ AUTHENTICATION_BACKENDS = [
 ]
 SITE_ID = 1
 
-# C1: invite-only. Sign-in fails without a pre-existing membership.
+# C1: invite-only. AUTO_SIGNUP=False alone only redirects to a signup FORM —
+# the adapters below are what actually refuse an uninvited account.
 SOCIALACCOUNT_AUTO_SIGNUP = False
+ACCOUNT_ADAPTER = "apps.accounts.adapters.NoSignupAccountAdapter"
+SOCIALACCOUNT_ADAPTER = "apps.accounts.adapters.InviteOnlySocialAdapter"
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*"]
+GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
+GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
+        # Credentials come from .env, not a SocialApp database row (E2:
+        # secrets in .env only, nothing secret committed — and nothing secret
+        # in the nightly pg_dump either).
+        "APP": {
+            "client_id": GOOGLE_OAUTH_CLIENT_ID,
+            "secret": GOOGLE_OAUTH_CLIENT_SECRET,
+            "key": "",
+        },
         # 5a: identity only. `gmail.send` is a separate consent flow (C2).
         "SCOPE": ["openid", "email", "profile"],
         "AUTH_PARAMS": {"access_type": "online"},

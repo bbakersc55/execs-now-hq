@@ -227,19 +227,24 @@ Four terminals, or a `tmux` session. This is what you run each time you sit down
 ```bash
 cd ~/projects/execs-now-hq
 
-# 0. Back up first. Cheap, and it means an experiment is never irreversible.
+# 0. Select this project's gcloud configuration. The owner keeps one named
+#    configuration per project; without this, backups and the app's Google
+#    calls can run against whichever project was last active.
+gcloud config configurations activate execs-now-hq
+
+# 1. Back up first. Cheap, and it means an experiment is never irreversible.
 ./scripts/backup_db.sh
 
-# 1. Django                                   [terminal 1]
+# 2. Django                                   [terminal 1]
 .venv/bin/python manage.py runserver 8100
 
-# 2. Background jobs                          [terminal 2]
+# 3. Background jobs                          [terminal 2]
 .venv/bin/python manage.py qcluster
 
-# 3. Frontend                                 [terminal 3]
+# 4. Frontend                                 [terminal 3]
 npm run dev            # Vite on 5200
 
-# 4. Dev outbox                               [terminal 4]
+# 5. Dev outbox                               [terminal 4]
 mailpit --smtp-bind-addr localhost:1025 --listen localhost:8125
 ```
 

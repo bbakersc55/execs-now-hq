@@ -45,6 +45,13 @@ def me(request):
     })
 
 
+def login_refused(request):
+    """C1 — where an uninvited Google account lands. No account was created."""
+    return render(request, "accounts/login_refused.html", {
+        "product_name": PRODUCT_NAME,
+    }, status=403)
+
+
 @csrf_protect
 @require_http_methods(["POST"])
 def request_magic_link(request):

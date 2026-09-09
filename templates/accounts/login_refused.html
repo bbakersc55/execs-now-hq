@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No access — {{ product_name }}</title>
+<style>
+  body { font-family: system-ui, sans-serif; display:grid; place-items:center;
+         min-height:100vh; margin:0; background:#f7f8fa; color:#0A3A65; }
+  .card { background:#fff; padding:2.5rem; border-radius:10px; max-width:28rem;
+          box-shadow:0 1px 3px rgba(0,0,0,.12); text-align:center; }
+  p { color:#6D6E71; line-height:1.5; }
+</style>
+<div class="card">
+  <h1>No access to this workspace</h1>
+  <p>{{ product_name }} is invite-only. No account was created for you.
+     Ask the practice owner to invite your address, then sign in again.</p>
+</div>
