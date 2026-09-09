@@ -90,6 +90,12 @@ SOCIALACCOUNT_ADAPTER = "apps.accounts.adapters.InviteOnlySocialAdapter"
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*"]
+# Our User has no `username` field (C4: email is the identifier). Without this,
+# allauth's user_display() raises AttributeError while rendering any template
+# that shows a user — including the account-connected notification sent during
+# a successful Google sign-in.
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_USER_MODEL_EMAIL_FIELD = "email"
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
 

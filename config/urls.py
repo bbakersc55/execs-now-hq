@@ -5,6 +5,12 @@ from apps.accounts import views as account_views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # There is no signup in Beta. These two overrides come BEFORE the allauth
+    # include so allauth's signup routes and its "Sign Up Closed" template are
+    # unreachable: a refused visitor always lands on our own 403 page.
+    path("accounts/signup/", account_views.login_refused, name="account_signup"),
+    path("accounts/3rdparty/signup/", account_views.login_refused,
+         name="socialaccount_signup"),
     path("accounts/", include("allauth.urls")),
     path("api/branding", account_views.branding, name="branding"),
     path("api/me", account_views.me, name="me"),
