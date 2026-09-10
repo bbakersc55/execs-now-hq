@@ -8,7 +8,6 @@ are written directly as `sent` (FR-1.15b); everything else enters at
 from __future__ import annotations
 
 from django.conf import settings
-from django.core.mail import EmailMessage as DjangoEmailMessage
 from django.db import transaction
 from django.utils import timezone
 
@@ -38,13 +37,35 @@ def thread_for(tenant, contact=None, subject="", client_company=None):
     return thread
 
 
-def reply_to_for(tenant, thread):
-    """FR-6.3b — the same token on BOTH transports.
+def thread_headers_for(tenant, thread):
+    """FR-6.2 — how a reply finds its way home in Beta.
 
-    Postmark app mail and Gmail personal sends carry an identical Reply-To, so a
-    client's reply threads whichever way the message went out.
+    There is no `reply+<token>@inbound` address: Beta has no inbound domain,
+    because all app mail goes through the tenant's Gmail (transport change,
+    owner decision). The token instead rides in the Message-ID and in a custom
+    header, and a reply is recovered from its Gmail thread id or from
+    In-Reply-To / References quoting a Message-ID we issued.
     """
-    return f"reply+{thread.thread_token}@{tenant.inbound_domain}"
+    from apps.crm.services.transport import THREAD_HEADER, message_id_for
+
+    return {
+        "Message-ID": message_id_for(tenant, thread),
+        THREAD_HEADER: thread.thread_token,
+    }
+
+
+def last_message_id_for(thread):
+    """The Message-ID to reply to, so a follow-up threads in the client's
+    mail client rather than starting a new conversation."""
+    last = (
+        EmailMessage.all_objects.filter(
+            tenant_id=thread.tenant_id, thread_id=thread.pk,
+        )
+        .exclude(message_id_header="")
+        .order_by("-created_at")
+        .first()
+    )
+    return last.message_id_header if last else ""
 
 
 # ---------------------------------------------------------------- creation
@@ -161,45 +182,79 @@ def expire_due(tenant, *, now=None):
 # --------------------------------------------------------------- delivery
 
 def _deliver(message, *, actor=None):
-    """FR-0.7 / H6 — the dev-outbox guard lives here, on the one path out."""
+    """The one path out of the app.
+
+    FR-0.7 / H6 — the dev-outbox guard lives here and is unchanged by the
+    transport switch: it governs WHO may receive real mail, not which service
+    carries it. On a localhost build everything goes to the dev outbox unless
+    the recipient is an exact match in DEV_REAL_SEND_ALLOWLIST.
+    """
     from apps.accounts.mailer import is_real_send_allowed
+    from apps.crm.services.transport import DevOutboxTransport, get_transport
 
     dev_real = settings.IS_LOCAL and is_real_send_allowed(message.to_address)
+    use_real_transport = (not settings.IS_LOCAL) or dev_real
+    transport = get_transport() if use_real_transport else DevOutboxTransport()
 
-    email = DjangoEmailMessage(
+    thread = message.thread
+    in_reply_to = last_message_id_for(thread) if thread else ""
+
+    attachments = [
+        (a.filename, b"", a.stored_file.content_type or "application/pdf")
+        for a in message.attachments.select_related("stored_file")
+    ]
+
+    result = transport.send(
+        tenant=message.tenant,
+        to_address=message.to_address,
         subject=message.subject,
-        body=message.body_text,
-        from_email=message.from_address,
-        to=[message.to_address],
-        headers={"Reply-To": reply_to_for(message.tenant, message.thread)}
-        if message.thread else {},
+        body_text=message.body_text,
+        thread=thread,
+        in_reply_to=in_reply_to,
+        attachments=attachments,
     )
-    for attachment in message.attachments.all():
-        email.attach(attachment.filename, b"", "application/pdf")
-    email.send(fail_silently=False)
 
     message.state = S.SENT
     message.sent_at = timezone.now()
     message.dev_real_send = dev_real
-    message.save(update_fields=["state", "sent_at", "dev_real_send", "updated_at"])
+    message.sent_via = result["provider"]
+    message.provider_message_id = result.get("provider_message_id", "")
+    if result.get("from_address"):
+        message.from_address = result["from_address"]
+    message.save(update_fields=[
+        "state", "sent_at", "dev_real_send", "sent_via",
+        "provider_message_id", "from_address", "updated_at",
+    ])
 
-    if message.thread is not None:
+    if thread is not None:
         EmailMessage.all_objects.create(
-            tenant=message.tenant, thread=message.thread, direction="outbound",
-            provider=message.sent_via, from_address=message.from_address,
+            tenant=message.tenant, thread=thread, direction="outbound",
+            provider=result["provider"],
+            provider_message_id=result.get("provider_message_id", ""),
+            from_address=message.from_address,
             to_addresses=[message.to_address], subject=message.subject,
             body_text=message.body_text, contact=message.to_contact,
             sent_at=message.sent_at,
+            message_id_header=result.get("message_id_header", ""),
+            in_reply_to=in_reply_to,
+            gmail_message_id=result.get("gmail_message_id", ""),
+            gmail_thread_id=result.get("gmail_thread_id", ""),
         )
-        message.thread.last_message_at = message.sent_at
-        message.thread.save(update_fields=["last_message_at", "updated_at"])
+        updates = ["last_message_at", "updated_at"]
+        thread.last_message_at = message.sent_at
+        # Gmail assigns the thread id on the first send; remembering it is what
+        # lets Tier 2 polling recognise the reply later.
+        if result.get("gmail_thread_id") and not thread.gmail_thread_id:
+            thread.gmail_thread_id = result["gmail_thread_id"]
+            updates.insert(0, "gmail_thread_id")
+        thread.save(update_fields=updates)
 
     AuditEvent.all_objects.create(
         tenant=message.tenant, actor=actor, verb="email.sent",
         target_type="outbox_message", target_id=message.pk,
         payload={
             "producer": message.producer, "to": message.to_address,
-            "dev_real_send": dev_real, "via": message.sent_via,
+            "dev_real_send": dev_real, "via": result["provider"],
         },
     )
     return message

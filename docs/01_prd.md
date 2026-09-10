@@ -70,7 +70,7 @@ There are **two review surfaces**, not one, and keeping them distinct matters be
 | R11 | Meeting ingestion — action items | 5 | Meeting review queue | Extracted tasks with dates | Tasks created | Nothing created |
 | R11a | Claude-drafted meeting summary | 5 | Meeting review queue | Summary text | Stored on the Meeting record | Meeting created with no summary |
 | R12 | Meeting ingestion — deliverables | 5 | Meeting review queue | Tasks + stakeholder notifications | Tasks created, stakeholders attached | Nothing created |
-| R13 | Inbound email, unmatched | 6 | Unmatched queue | Email needing a human to file | Threaded to a contact | Stays queued, never dropped |
+| R13 | Inbound reply, unmatched | 6 | Unmatched queue | Reply needing a human to file | Threaded to a contact | Stays queued, never dropped |
 
 ### What is deliberately *not* a review queue
 
@@ -895,39 +895,43 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 **Outbound and threading**
 
 1. Every app-originated email belongs to an **`EmailThread`** carrying a `thread_token`, the tenant, and the linked Contact and/or client company.
-2. Outbound mail sets the reply address to `reply+<thread_token>@inbound.getexecutivesnow.com`.
+2. **Outbound mail carries the thread token in its headers, not in a reply address.** Beta has no inbound domain (assumption A3 — Gmail is the transport), so there is no `reply+<token>@` address. Instead:
+    1. `Message-ID: <{thread_token}.{random}@{tenant-domain}>` — the token is recoverable from the Message-ID alone;
+    2. `X-ExecsNowHQ-Thread: {thread_token}` as a custom header;
+    3. `In-Reply-To` / `References` set to the last Message-ID we issued on that thread, so a follow-up threads in the client's mail client rather than starting a new conversation;
+    4. Gmail's own `threadId`, stored on the thread at first send and reused on every later send.
+2a. **`From` is the tenant's send-as alias**, verified against Gmail's `settings.sendAs` before any send. An unverified alias is a hard error naming the exact step to fix it — never a silent fallback to the fractional's personal address (FR-6.2b).
 3. Personal sends via the Gmail API (FF, and CF on assigned accounts) are recorded to the same thread structure, so a personal reply and an app digest sit in one history.
 
-**Capturing replies to personal Gmail sends**
+**Personal sends, and how their replies come back**
 
-3a. **The problem this solves.** FR-6.2 puts the threadable reply address only on app-originated mail. A personal Gmail send carries the fractional's own address, so the client's reply lands in Gmail and the app never sees it — losing precisely the correspondence that matters most, and defeating the module's purpose. **This is in scope for Beta.** Two mechanisms, layered:
+3a. **The problem this used to solve is now mostly gone.** In the Postmark design, app mail and personal mail travelled by different routes and only the former was threadable. With Gmail as the transport (assumption A3), **everything goes out through Gmail**, so there is one route and one recovery mechanism.
 
-3b. **Tier 1 — Reply-To rewriting. Default, no additional OAuth scope, ships in Phase 6.** The app sends personal mail *through the Gmail API*, so it controls the headers: it sets `Reply-To: reply+<thread_token>@inbound.getexecutivesnow.com` while `From` remains the fractional's own address. The client sees a normal email from a person; their reply is routed to the inbound webhook and threaded by FR-6.6. **`gmail.send` already covers this — no new scope, no Google verification exposure.**
-3c. Because a Tier 1 reply arrives at the app rather than in Gmail, **the app forwards it to the sender's own mailbox**, so the fractional still sees replies where they expect them *and* the app holds the thread. The forward is a notification, not a new thread.
-3d. **Tier 1's blind spot, stated plainly:** it captures the client's reply, but not a subsequent reply the fractional types **natively in Gmail** rather than in the app. That message exists only in Gmail.
+3b. **App mail** is sent by the FF's connection as the tenant alias (FR-6.2a). **Personal mail** is sent by an FF or CF as themselves — a CF only to contacts on client companies they are assigned to (H7). Both are recorded on the same `EmailThread` and carry the same threading headers.
 
-3e. **Tier 2 — Thread polling. Opt-in per user, closes the blind spot, requires a restricted scope.** For a user who connects it, the app stores the `gmail_thread_id` returned by every send and polls **`users.threads.get` for its own known threads** on a 15-minute schedule, ingesting messages it did not send. Cursor-based like Drive (assumption A6) and equally tolerant of a laptop being closed.
-3f. **Deliberately polling known thread IDs rather than diffing the mailbox with `users.history.list`.** History has a limited retention window, so a laptop closed for ten days can return `404 historyId not found` and force a full resync — whereas the set of threads the app itself started is always known, bounded, and directly fetchable. Simpler, and it has no expiry failure mode.
-3g. **The cost, which is the reason Tier 2 is opt-in and not the default:** reading a thread requires **`gmail.readonly`**, a **restricted** scope granting read access to the user's *entire* mailbox. There is no narrower Gmail scope that reads only chosen threads. Beta can carry this because the OAuth app stays in testing mode with the owner as the sole test user (assumption C2). **For V1 it is a hard gate:** offering Tier 2 to other fractionals means a CASA security assessment, which is slow and expensive. Tier 1 exists so that the product is not architecturally dependent on clearing it.
-3h. **VAs are offered neither tier** — they cannot connect Gmail at all (assumption H7).
-4. **VAs cannot connect Gmail and are offered no send control** — the connect action is absent, and the endpoints return 403.
+3c. **Replies are recovered by polling** the threads the app started (FR-6.5), which also captures a reply the fractional types **natively in Gmail** rather than in the app. The old Tier 1 blind spot no longer exists: it was a consequence of not reading the mailbox, and Beta now reads the threads it created.
+
+3d. **VAs get neither** — they cannot connect Gmail at all, and app mail never picks up a VA's connection even if a row existed (H7).
+
+3e. **Scopes:** `gmail.send` to send, `gmail.settings.basic` to verify the send-as alias, `gmail.readonly` to poll threads. All three are restricted scopes and all three are **free under the Internal consent screen** (C1) — no verification, no CASA assessment, no refresh-token expiry. **The bill arrives at V1**, and the Postmark transport option is what keeps a security assessment from being the only road to launch.
 
 **Inbound**
 
-5. An inbound webhook receives Postmark's parsed payload.
-6. **Matching order:** `thread_token` from the recipient address (covering app mail and Tier 1 personal sends alike) → **`gmail_thread_id`, for Tier 2 ingested messages** → sender email matched to a Contact → no match.
+5. **Inbound arrives by polling, not by webhook.** `users.threads.get` over the threads the app started, on a 15-minute schedule, cursor-based and tolerant of the laptop being closed (assumption F19). No public endpoint is required, which is why Module 6 no longer waits for Railway.
+6. **Matching order:** Gmail `threadId` → `In-Reply-To` / `References` quoting a Message-ID we issued → the `X-ExecsNowHQ-Thread` header → sender email matched to a Contact → no match.
 7. A matched message is appended to its thread and appears on the contact's timeline and the shared history.
 8. ⛔ **REVIEW QUEUE (R13):** an unmatched message enters the **unmatched queue** and is **never dropped**. A human files it to a contact or thread, which optionally adds the sending address to that contact.
 9. Quoted history and signatures are trimmed for display, with the full raw message retained and viewable.
 10. Attachments are stored and downloadable, with size limits enforced.
-11. The webhook endpoint verifies the request's authenticity before processing.
-12. Inbound processing is idempotent on the provider's message id — a redelivered webhook does not duplicate a message.
+11. **Authenticity comes from the transport, not from a shared secret.** With polling there is no webhook to forge: messages are read from the tenant's own mailbox over an authenticated Google API call. The Postmark webhook and its `POSTMARK_INBOUND_WEBHOOK_SECRET` verification are **V1**, arriving with the Postmark transport option.
+12. Inbound processing is idempotent on the provider's message id — **a re-poll of the same thread does not duplicate a message**, which matters more with polling than with webhooks because every poll re-reads the whole thread.
 
-**Local development (per assumption F16)**
+**Local development**
 
-13. The webhook handler is written as a plain view over a parsed payload, so it can be exercised without a public URL.
-14. A `manage.py replay_inbound <fixture.json>` command replays captured Postmark payloads against it.
-15. Fixtures cover, at minimum: token match, sender-email fallback, no match, reply-with-quoted-history, multi-recipient, attachment, and redelivery. **These fixtures are the module's regression suite**, so the Railway cutover verifies transport rather than logic.
+13. The poller is written as a plain function over a parsed Gmail thread payload, so it can be exercised without a live mailbox.
+14. A `manage.py replay_inbound <fixture.json>` command replays captured Gmail thread payloads against it.
+15. Fixtures cover, at minimum: `threadId` match, `In-Reply-To` match, custom-header match, sender-email fallback, no match, reply-with-quoted-history, attachment, and re-poll of an already-ingested message. **These fixtures are the module's regression suite.**
+16. **Module 6 runs on the laptop.** Polling needs no public endpoint, so the module completes locally and the Railway move (Phase 7) verifies nothing about it beyond continuing to work.
 
 **Visibility**
 
@@ -936,7 +940,9 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 
 ### Out of scope for Beta
 
-1. **Two-way Gmail mailbox sync** — pulling the fractional's entire mailbox, including correspondence the app never initiated. FR-6.3e's Tier 2 reads *only threads the app started*, and that boundary is deliberate: it is the difference between a tool that completes its own conversations and one that ingests the owner's private mail.
+1. **Two-way Gmail mailbox sync** — pulling the fractional's entire mailbox, including correspondence the app never initiated. Polling reads *only threads the app started*, and that boundary is deliberate: it is the difference between a tool that completes its own conversations and one that ingests the owner's private mail.
+1a. **The Postmark transport and its inbound webhook.** Both are **V1**, reachable by setting `APP_MAIL_TRANSPORT=postmark`. The seam exists in Beta and is tested; the implementation does not.
+1b. **A third-party delivery log.** Postmark's per-message activity trail does not exist in Beta. The Outbox is the only send log, and bounces are visible only in the fractional's Gmail. This is one of three trade-offs the owner accepted in choosing the Gmail transport (assumption A3).
 2. IMAP or Outlook/O365 connection.
 3. Shared-inbox workflow: assignment, SLA timers, canned replies, read receipts.
 4. Sending from a tenant alias other than the configured `info@` address.
@@ -968,15 +974,17 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 
 **AC-6.11 — Tenant isolation.** Threads, messages, and unmatched items from tenant B are unreachable from tenant A, including by direct URL.
 
-**AC-6.13 — Tier 1 rewrites Reply-To without changing From. (FR-6.3b.)** Send a personal email through the app from a connected Gmail account. Inspect the delivered message: `From` is the fractional's own address; `Reply-To` is `reply+<token>@inbound.getexecutivesnow.com`; the token matches the thread. Confirm no scope beyond `gmail.send` was requested.
+**AC-6.13 — Outbound carries the token in its headers, and From is the alias. (FR-6.2, 6.2a.)** Send an app email to an allow-listed address. Inspect the delivered message: `From` is the **tenant alias**, not the fractional's personal address; `Message-ID` contains the thread token; `X-ExecsNowHQ-Thread` carries the same token. Send a second message on the same thread and confirm `In-Reply-To` quotes the first.
 
-**AC-6.14 — A Tier 1 reply threads and is forwarded. (FR-6.3c.)** Replay the inbound fixture for a reply to that message. It threads onto the correct `EmailThread`, appears on the contact's timeline, **and is forwarded to the sending fractional's mailbox** as a notification without creating a second thread.
+**AC-6.14 — An unverified send-as alias is a hard error. (FR-6.2a.)** Point the tenant's `from_address` at an alias that is not a confirmed "Send mail as" address on the connected account. Attempt any send. It **fails with a message naming the alias, the Gmail settings path to fix it, and which addresses are available** — and **nothing is delivered from the fractional's personal address instead.**
 
-**AC-6.15 — Tier 2 captures a Gmail-native reply, and is opt-in. (FR-6.3e–3h.)** With Tier 2 **not** connected, reply to a thread natively in Gmail and poll: confirm the message is **not** captured, and that this is surfaced as a known limitation rather than a silent gap. Connect Tier 2, repeat, and confirm the message is ingested and threaded. Confirm connecting Tier 2 requested `gmail.readonly` and that the consent screen said so. As a VA, confirm neither tier can be connected and both endpoints return 403.
+**AC-6.15 — Polling captures a Gmail-native reply. (FR-6.5.)** Reply to an app-sent message from the client's mailbox, and separately type a reply into Gmail as the fractional. Poll. Both appear on the thread and on the contact's timeline. Confirm a second poll of the same thread creates no duplicates (FR-6.12).
 
-**AC-6.16 — Tier 2 tolerates downtime. (FR-6.3f.)** With Tier 2 connected, stop the app. Reply to two known threads from Gmail. Wait past several poll intervals. Start the app: both messages are ingested exactly once, with no full-mailbox resync and no `historyId` error.
+**AC-6.16 — Polling tolerates downtime. (FR-6.5.)** Stop the app. Reply to two known threads. Wait past several poll intervals. Start the app: both are ingested exactly once, with no full-mailbox resync.
 
-**AC-6.12 — Post-Railway live check.** After the Railway move, send a real digest to a live address and reply to it. The reply appears on the contact's timeline within a minute. *(This is the only acceptance criterion in the document that cannot be performed on the laptop.)*
+**AC-6.17 — A revoked Gmail token names its consequence. (Assumption A3, trade-off 1.)** Revoke the FF's Gmail credential and request a magic link. The failure message states that app mail — **including client sign-in** — cannot be sent until Gmail is reconnected. It does not surface as a generic 500, and no token is silently used from another account.
+
+**AC-6.12 — Live round trip.** Send a real digest to an allow-listed address and reply to it. The reply appears on the contact's timeline within one poll interval. **This now runs on the laptop** — polling needs no public endpoint, which is why Module 6 no longer waits for the Railway move.
 
 ---
 

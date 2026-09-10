@@ -168,6 +168,16 @@ Q_CLUSTER = {
 # --- Email ---
 DEFAULT_FROM_ADDRESS = env("DEFAULT_FROM_ADDRESS", default="info@getexecutivesnow.com")
 INBOUND_DOMAIN = env("INBOUND_DOMAIN", default="inbound.getexecutivesnow.com")
+# Beta sends ALL app-originated mail through the tenant's connected Gmail with
+# From set to their send-as alias. Postmark becomes a per-tenant transport
+# option in V1, not a Beta dependency (owner decision).
+APP_MAIL_TRANSPORT = env("APP_MAIL_TRANSPORT", default="gmail")
+if APP_MAIL_TRANSPORT not in ("gmail", "postmark"):
+    raise RuntimeError(
+        f"APP_MAIL_TRANSPORT must be 'gmail' or 'postmark', got {APP_MAIL_TRANSPORT!r}."
+    )
+
+# Optional in Beta — only needed if APP_MAIL_TRANSPORT=postmark.
 POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default="")
 POSTMARK_INBOUND_WEBHOOK_SECRET = env("POSTMARK_INBOUND_WEBHOOK_SECRET", default="")
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

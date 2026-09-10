@@ -100,6 +100,12 @@ Q_CLUSTER_WORKERS=4
 # ---------- Email ----------
 EMAIL_HOST=localhost
 EMAIL_PORT=1025
+
+# Beta: all app mail goes through the tenant's connected Gmail, From = their
+# send-as alias. Postmark is a per-tenant transport option in V1.
+APP_MAIL_TRANSPORT=gmail
+
+# --- Postmark: OPTIONAL in Beta. Leave blank unless APP_MAIL_TRANSPORT=postmark ---
 POSTMARK_SERVER_TOKEN=
 POSTMARK_TRANSACTIONAL_STREAM=outbound
 POSTMARK_BROADCAST_STREAM=broadcast
@@ -142,27 +148,21 @@ SENTRY_DSN=
 
 ---
 
-## 4. DNS records to add — do this early
+## 4. DNS — **nothing to add for Beta**
 
-**These have propagation lead time and Phase 1 mail does not work without the first two.** Add them in your DNS provider for `getexecutivesnow.com`. Postmark shows you the exact values when you add the domain and the inbound stream; the shapes are below.
+**Beta needs no DNS records at all.** All app-originated mail goes out through the tenant's connected Gmail with `From` set to a send-as alias (assumption A3), and replies come back by polling that same mailbox. There is no sending domain to authenticate and no inbound domain to receive on.
+
+What you need instead is a **Gmail "Send mail as" alias**, which is §5c below.
+
+**These records return in V1**, when Postmark becomes a per-tenant transport option. Recorded here so the requirement is not rediscovered from scratch:
 
 | # | Purpose | Type | Host | Value |
 |---|---|---|---|---|
-| 1 | **DKIM** — signs outbound so it is not spam | `TXT` | `20260909pm._domainkey` | *(long key from Postmark)* |
-| 2 | **Return-Path** — custom bounce domain | `CNAME` | `pm-bounces` | `pm.mtasv.net` |
-| 3 | **Inbound MX** — receives client replies | `MX` | `inbound` | `inbound.postmarkapp.com` (priority `10`) |
+| 1 | DKIM — signs outbound | `TXT` | `<selector>._domainkey` | *(from Postmark)* |
+| 2 | Return-Path — custom bounce domain | `CNAME` | `pm-bounces` | `pm.mtasv.net` |
+| 3 | Inbound MX — receives client replies | `MX` | `inbound` | `inbound.postmarkapp.com` (priority `10`) |
 
-**Record 3 is only needed for Module 6**, which now runs after the Railway move — but add it at the same time as 1 and 2, because discovering a propagation delay on cutover day is avoidable.
-
-Verify:
-
-```bash
-dig +short TXT 20260909pm._domainkey.getexecutivesnow.com
-dig +short CNAME pm-bounces.getexecutivesnow.com
-dig +short MX inbound.getexecutivesnow.com
-```
-
----
+**The one DNS record Beta eventually needs** is `app.getexecutivesnow.com` → Railway, at the Phase 7 move. It is a single A/CNAME, so DNS is no longer the long pole it was under the Postmark plan.
 
 ## 5. Google setup
 
@@ -216,7 +216,25 @@ chmod 600 ~/.config/execs-now-hq/sa-app.json
 
 **`scripts/backup_db.sh` continues to use the gcloud CLI and your ADC.** It is the one thing that does.
 
-Enable in the same project: **Google Drive API**, **Cloud Speech-to-Text API**, **Cloud Storage**.
+### 5c. The Gmail send-as alias — **required before any app mail sends**
+
+Beta routes **every** app-originated message — magic links, digests, referral touches, strategy PDFs, pre-call invites — through your connected Gmail, with `From` set to `info@getexecutivesnow.com`. Gmail will only let you do that if the address is a confirmed alias on your account.
+
+1. In Gmail: **Settings → See all settings → Accounts and Import → "Send mail as" → Add another email address**.
+2. Enter `info@getexecutivesnow.com`. Leave **"Treat as an alias"** ticked.
+3. Gmail sends a confirmation email to that address. **Open it and click the link** — an alias that is listed but unconfirmed will not work.
+4. In Execs NOW HQ, connect Gmail and click **Verify alias**. The app reads your `settings.sendAs` list and confirms the address is present *and* accepted.
+
+**If it is not verified, the app refuses to send** and tells you which addresses *are* available. There is deliberately no fallback to your personal address: a client digest arriving from `bryan@…` instead of `info@…` is worse than a visible failure.
+
+**Scopes this needs:** `gmail.send` to send, `gmail.settings.basic` to read the alias list, and `gmail.readonly` for Module 6's reply polling. All three are restricted scopes; all three are **free under the Internal consent screen** — no verification, no CASA assessment, no 7-day token expiry.
+
+**Three trade-offs you accepted** in choosing this over Postmark:
+1. **Magic links depend on this token.** If the Gmail connection breaks, client sign-in stops until you reconnect. The app says so explicitly rather than failing generically.
+2. **App mail lands in your Sent folder.** Every digest and touch is sent by your account.
+3. **No third-party delivery log.** The Outbox is the only send log; bounces show up in Gmail.
+
+Enable in the same project: **Gmail API**, **Google Drive API**, **Cloud Speech-to-Text API**, **Cloud Storage**.
 
 ---
 
@@ -490,6 +508,9 @@ Done. No address in this database can receive mail.
 | Digests never generate | `qcluster` not running | Terminal 2 |
 | Nothing in Mailpit | Mailpit not running, or wrong port | `EMAIL_PORT=1025`, check terminal 4 |
 | A real client got dev mail | An address is in `DEV_REAL_SEND_ALLOWLIST` | Remove it. Exact addresses only; wildcards are rejected at startup |
+| Nothing sends; error names an alias | `info@` is not a confirmed Gmail send-as address | §5c — add it in Gmail, click the confirmation link, then Verify alias in the app |
+| Nothing sends; error says reconnect Gmail | The stored refresh token was revoked or expired | Reconnect Gmail in Settings. **Client magic links are blocked until you do** |
+| Mail sends from the wrong address | The alias is unverified and you expected a fallback | There is no fallback by design — verify the alias (§5c) |
 | Restored DB replays old jobs | Queue tables came along in the dump | Flush the Django-Q2 queue tables before starting `qcluster` (A2) |
 | Every stored secret unreadable | `FIELD_ENCRYPTION_KEY` changed or lost | No recovery. Re-enter the Anthropic key and reconnect Google |
 | WeasyPrint import error | Missing Pango/Cairo | The `apt install` line in §1 |

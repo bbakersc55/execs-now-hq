@@ -424,6 +424,17 @@ class GmailConnection(TenantScopedModel):
     scopes = models.JSONField(default=list)
     tier2_enabled = models.BooleanField(default=False)
     last_polled_at = models.DateTimeField(null=True, blank=True)
+
+    # The tenant's send-as alias (e.g. info@getexecutivesnow.com) and whether
+    # Gmail has confirmed this account may send as it. Beta sends ALL
+    # app-originated mail through this connection, so an unverified alias is a
+    # hard error rather than a silent fallback to the personal address.
+    send_as_address = models.EmailField(blank=True, default="")
+    send_as_verified_at = models.DateTimeField(null=True, blank=True)
+    send_as_error = models.TextField(blank=True, default="")
+    # Tier 2 inbound: the history cursor, and the last poll's outcome.
+    history_id = models.CharField(max_length=40, blank=True, default="")
+    last_poll_error = models.TextField(blank=True, default="")
     secret = models.ForeignKey(
         "tenancy.TenantSecret", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
@@ -458,6 +469,16 @@ class EmailMessage(TenantScopedModel):
     matched_by = models.CharField(max_length=24, blank=True, default="")
     received_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+
+    # RFC 5322 threading. With no inbound domain in Beta there is no
+    # reply+<token>@ address, so the thread token rides in the Message-ID and a
+    # custom header instead, and replies are matched by Gmail thread id or by
+    # In-Reply-To / References pointing at a Message-ID we issued.
+    message_id_header = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    in_reply_to = models.CharField(max_length=255, blank=True, default="")
+    references = models.TextField(blank=True, default="")
+    gmail_message_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    gmail_thread_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "email_message"

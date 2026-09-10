@@ -551,9 +551,15 @@ def test_ac_1_23_pipeline_stages_are_ff_only(seeded_tenant, va, ff, api):
 # ============================================================ carve-back items
 
 @pytest.mark.django_db
-def test_ac_6_1_every_outbound_has_a_thread_and_token(seeded_tenant, ff):
-    """AC-6.1 (carved back) — one thread per contact conversation, consistent
-    token, and Reply-To carries it on both transports."""
+def test_ac_6_1_every_outbound_has_a_thread_and_a_carried_token(seeded_tenant, ff):
+    """AC-6.1 (carved back, revised for the Gmail transport).
+
+    Beta has no inbound domain, so there is no reply+<token>@ address. The token
+    rides in the Message-ID and a custom header instead, and both must carry the
+    SAME token for messages in one conversation.
+    """
+    from apps.crm.services.transport import THREAD_HEADER, token_from_message_id
+
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant)
         first = outbox.create_message(
@@ -563,17 +569,38 @@ def test_ac_6_1_every_outbound_has_a_thread_and_token(seeded_tenant, ff):
         second = outbox.create_message(
             tenant=seeded_tenant, producer=P.MANUAL, to_contact=contact,
             to_address=contact.primary_email, subject="Two", body_text="b",
-            role="FF", actor=ff.user, sent_via="gmail",
+            role="FF", actor=ff.user,
         )
         assert first.thread_id == second.thread_id
         assert EmailThread.objects.count() == 1
 
-        reply_to = outbox.reply_to_for(seeded_tenant, first.thread)
-        assert reply_to == (
-            f"reply+{first.thread.thread_token}@{seeded_tenant.inbound_domain}"
+        headers = outbox.thread_headers_for(seeded_tenant, first.thread)
+        assert headers[THREAD_HEADER] == first.thread.thread_token
+        # The token is recoverable from the Message-ID alone, which is what makes
+        # a reply threadable with no inbound address.
+        assert token_from_message_id(headers["Message-ID"]) == first.thread.thread_token
+
+
+@pytest.mark.django_db
+def test_second_message_quotes_the_first_for_threading(seeded_tenant, ff):
+    """A follow-up must carry In-Reply-To so it threads in the client's mail
+    client rather than starting a new conversation."""
+    from apps.crm.models import EmailMessage
+
+    with tenant_context(seeded_tenant.pk):
+        contact = _contact(seeded_tenant)
+        outbox.create_message(
+            tenant=seeded_tenant, producer=P.STRATEGY_PDF, to_contact=contact,
+            to_address=contact.primary_email, subject="One", body_text="a", actor=ff.user,
         )
-        # Same token on both transports (FR-6.3b).
-        assert outbox.reply_to_for(seeded_tenant, second.thread) == reply_to
+        outbox.create_message(
+            tenant=seeded_tenant, producer=P.STRATEGY_PDF, to_contact=contact,
+            to_address=contact.primary_email, subject="Two", body_text="b", actor=ff.user,
+        )
+        messages = list(EmailMessage.objects.order_by("created_at"))
+        assert len(messages) == 2
+        assert messages[0].message_id_header
+        assert messages[1].in_reply_to == messages[0].message_id_header
 
 
 @pytest.mark.django_db
@@ -667,7 +694,9 @@ def test_search_finds_contacts_and_respects_tenancy(seeded_tenant, tenant_b):
 
 @pytest.mark.django_db
 @pytest.mark.xfail(
-    reason="AC-1.6 requires a real Postmark send; POSTMARK_SERVER_TOKEN is unset.",
+    reason="AC-1.6 requires a real delivered send. No longer blocked on Postmark — "
+           "exercisable once the owner connects Gmail and verifies the send-as alias, "
+           "sending to an address in DEV_REAL_SEND_ALLOWLIST.",
     strict=False, run=False,
 )
 def test_ac_1_6_referral_touch_delivered_for_real():
@@ -677,8 +706,9 @@ def test_ac_1_6_referral_touch_delivered_for_real():
 
 @pytest.mark.django_db
 @pytest.mark.xfail(
-    reason="AC-1.20 real-delivery half requires Postmark; the queue half is "
-           "covered by test_ac_1_20_referral_onboarding.",
+    reason="AC-1.20's real-delivery half needs a connected Gmail with a verified "
+           "send-as alias; the queue half is covered by "
+           "test_ac_1_20_referral_onboarding.",
     strict=False, run=False,
 )
 def test_ac_1_20_onboarding_delivered_for_real():

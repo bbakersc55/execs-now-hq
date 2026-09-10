@@ -65,17 +65,31 @@ Three consequences follow from it. None is a reason to reconsider; all three nee
 
 `Approved.`
 
-### A3. Transactional email provider: **Postmark** (not Resend) **[BLOCKING]**
+### A3. Mail transport: **the tenant's Gmail in Beta; Postmark is a V1 option**  ·  **[SUPERSEDED — owner decision, Phase 1 review]**
 
-**Choice:** Postmark for all app-originated mail (digests, magic links, referral touches, strategy-session PDFs).
+**Original choice (superseded):** Postmark for all app-originated mail, chosen for its inbound webhook and activity log.
 
-**Why:** Module 6 (unified client communication) needs **inbound** email parsing, and Postmark's inbound webhook with per-address routing is more mature and better documented than Resend's; its 45-day searchable per-message activity log is also the cheapest possible answer to "did the client actually get the digest?"
+**Current choice:** **all** app-originated mail — magic links, digests, referral touches, strategy PDFs, pre-call invites — sends through the **tenant's connected Gmail (Tier 1)**, with `From` set to their **send-as alias** (`info@getexecutivesnow.com`). **Postmark becomes a per-tenant transport option in V1, not a Beta dependency.**
 
-**Detail:** separate Message Streams for transactional (magic links, digest sends) and broadcast (referral touches) so a referral-touch complaint can never damage magic-link deliverability. Sender identity is a per-tenant `from_address` + `reply_to`, verified by DKIM/Return-Path on the tenant's domain.
+**Implemented as a transport setting**, so the seam is real rather than hypothetical:
 
-**Carried to `05_dev_environment.md`:** the exact DNS records to add — DKIM `TXT`, Return-Path `CNAME`, and the inbound `MX` for `inbound.getexecutivesnow.com`. These have propagation lead time, so they are listed as a pre-Phase-1 action.
+```
+APP_MAIL_TRANSPORT = gmail | postmark     # gmail in Beta
+```
 
-`Approved.`
+The **Outbox remains the single queue and the complete send log** (FR-1.15). Only the delivery mechanism changes. The dev-outbox guard and `DEV_REAL_SEND_ALLOWLIST` (A4, H6) are untouched — they govern *who* may receive real mail, not which service carries it.
+
+**Send-as verification is mandatory and up front.** The Gmail transport reads `settings.sendAs` and refuses to send unless the alias is listed *and* Gmail has confirmed it. The error names the alias, tells the owner to add it under Gmail → Settings → Accounts → "Send mail as", and lists which addresses *are* available. **There is deliberately no fallback to the fractional's personal address**: silently sending a client digest from `bryan@…` instead of `info@…` is worse than a visible failure.
+
+**Three trade-offs the owner accepted in making this change**, recorded so they are not rediscovered as surprises:
+
+1. **Magic links depend on the FF's Gmail token.** Sign-in mail is sent synchronously in-request (A2a) and now rides on one OAuth credential. If it is revoked or expires, **client sign-in stops** until it is reconnected. The failure message says exactly that rather than surfacing as a generic error.
+2. **App mail appears in the FF's Sent folder.** Digests, touches, and magic links are all sent by that account.
+3. **No third-party delivery log in Beta.** Postmark's per-message activity trail does not exist; the Outbox is the only send log, and bounces are visible only in Gmail.
+
+**What this removes from Beta:** the DKIM, Return-Path, and inbound MX records (A3's old detail); the Postmark inbound webhook; and the public-endpoint dependency that forced Module 6 to wait for Railway (F16).
+
+`Applied.`
 
 ### A4. Local email never reaches a real person
 
@@ -514,19 +528,20 @@ Three consequences follow from it. None is a reason to reconsider; all three nee
 
 `Approved.`
 
-### F16. Module 6 inbound email: Postmark inbound with a per-thread reply address  ·  **[C applied]**
+### F16. Module 6 inbound: **Tier 2 Gmail polling in Beta; the Postmark webhook is V1**  ·  **[REVISED — follows A3]**
 
-**Choice (design unchanged, sequencing corrected):** app-originated client email uses a reply address of the form `reply+<thread_token>@inbound.getexecutivesnow.com`. The inbound webhook matches on the token first, then falls back to sender email → Contact. Unmatched inbound lands in an **unmatched queue** for a human to file, never a silent drop.
+**Superseded:** the `reply+<thread_token>@inbound.getexecutivesnow.com` address, and the ruling that Phase 6 must wait for Railway because a webhook cannot reach a laptop.
 
-**Why:** a token in the reply address is the only threading method that survives clients replying from a different address than the one we mailed; the fallback and the queue cover the rest.
+**Current design.** With no Postmark there is no inbound domain, so **the reply address does not exist**. Threading works from headers instead:
 
-**Your correction, accepted and carried into `04_build_plan.md`:** a webhook cannot reach a laptop, so **the inbound half of Module 6 only functions after the Railway move.** Phase 6 is therefore built **after or alongside the Railway migration**, and Phase 6's completion criteria distinguish the outbound half (works locally) from the inbound half (needs a public URL).
+1. **Outbound carries the thread token in the `Message-ID`** — `<{token}.{random}@{tenant-domain}>` — and in a custom `X-ExecsNowHQ-Thread` header. The token is recoverable from the Message-ID alone.
+2. **A follow-up sets `In-Reply-To` / `References`** to the previous message we issued, so the conversation threads in the client's mail client rather than fragmenting.
+3. **Gmail's own `threadId` is stored on the thread** at first send and reused on every later send.
+4. **Inbound matching order:** Gmail `threadId` → `In-Reply-To`/`References` quoting a Message-ID we issued → `X-ExecsNowHQ-Thread` → sender email matched to a Contact → **unmatched queue** (unchanged: never a silent drop).
 
-**How inbound is developed locally without a public endpoint:** the webhook handler is written as an ordinary view over a parsed payload, and developed by **replaying captured Postmark inbound JSON** against it — a `manage.py replay_inbound <fixture.json>` command plus a fixture set covering the cases that matter: token match, sender-email fallback, no match, reply-with-quoted-history, multi-recipient, and an attachment. Those fixtures become the module's regression suite, so the Railway cutover is verifying transport, not logic.
+**Tier 2 polling becomes the Beta inbound path.** It needs `gmail.readonly`, which under the **Internal** consent screen (C1) requires **no Google verification at all** — so the thing that made Tier 2 an opt-in liability in the old design is free here.
 
-**Deliberately not doing:** tunnelling a public URL to the laptop (ngrok/Cloudflare Tunnel). It would put a live internet endpoint on your machine to save writing fixtures that are worth having anyway.
-
-**Scope note:** two-way Gmail sync (pulling the fractional's whole mailbox) is **not** in Beta. Beta threads replies to mail the app sent.
+**Consequence for sequencing: Module 6 no longer needs a public webhook, so it returns to its original position — before the Railway move.** Ruling 9.3 is reversed on that point; the Phase 1 carve-back (threads, tokens, Gmail connect) stays where it is.
 
 `Applied.`
 
@@ -550,21 +565,22 @@ Three consequences follow from it. None is a reason to reconsider; all three nee
 
 `Approved (PRD review item 11).`
 
-### F19. Capturing replies to personal Gmail sends: two tiers  ·  **[ADDED in PRD review]**
+### F19. Gmail is the transport, and Tier 2 is the inbound path  ·  **[REVISED — follows A3]**
 
-**Choice:**
+**Superseded:** the two-tier framing in which Tier 1 (Reply-To rewriting) was the default and Tier 2 (`gmail.readonly` polling) an opt-in whose cost was a CASA assessment.
 
-**Tier 1 — Reply-To rewriting. Beta default, no new scope.** Personal mail sent through the Gmail API keeps the fractional's `From` but carries `Reply-To: reply+<thread_token>@inbound.getexecutivesnow.com`. The client's reply reaches the inbound webhook and threads normally; the app forwards it to the fractional's own mailbox so nothing disappears from where they expect it. **Covered by the `gmail.send` scope already granted.**
+**Current design.** Gmail is not a fallback for personal sends any more — it is **the transport for everything** (A3). That collapses the two tiers into one path:
 
-**Tier 2 — Polling known thread IDs. Opt-in, restricted scope.** The app stores each `gmail_thread_id` it creates and polls `users.threads.get` for those threads every 15 minutes, ingesting messages it did not send. This closes Tier 1's blind spot: a reply the fractional types natively in Gmail.
+- **Outbound:** the FF's connection sends all app mail as the tenant alias. A CF may still connect their own Gmail to send as themselves to contacts on assigned companies (H7); those sends are recorded on the same threads.
+- **Inbound:** `users.threads.get` polling over the threads the app started, on a 15-minute schedule. Cursor-based like Drive (A6) and equally tolerant of a laptop being closed.
 
-**Why polling known threads rather than `users.history.list`:** Gmail's history has a limited retention window, so a laptop closed for ten days can return `404 historyId not found` and force a full resync. The set of threads the app started is always known and bounded, so fetching them directly is both simpler and free of that failure mode.
+**Why polling known thread ids rather than `users.history.list`** — unchanged, and now load-bearing rather than an optimisation: Gmail's history has a limited retention window, so a laptop closed for ten days can return `404 historyId not found` and force a full resync. The set of threads the app started is always known and bounded.
 
-**The cost, stated plainly:** Tier 2 needs **`gmail.readonly`** — a **restricted** scope granting read access to the entire mailbox. No narrower Gmail scope reads only chosen threads. Beta absorbs this because the OAuth app is in testing mode with one test user (C2). **For V1 it is a hard gate: a CASA security assessment.** Tier 1 exists precisely so the product does not depend on clearing it.
+**The scope cost, restated.** Reading a thread still needs **`gmail.readonly`**, a restricted scope over the whole mailbox, and sending as an alias needs **`gmail.settings.basic`** to verify it. Under the **Internal** consent screen both are free — no verification, no CASA, no refresh-token expiry (C1). **The bill arrives at V1**, when going External to serve a second practice means a security assessment covering `gmail.send`, `gmail.readonly`, and `gmail.settings.basic`. Postmark existing as a V1 transport option is what keeps that from being the only road.
 
-**Not chosen:** full two-way mailbox sync. Tier 2 reads only threads the app started, and that boundary is the difference between completing the app's own conversations and ingesting the owner's private mail.
+**Still not doing:** full two-way mailbox sync. Polling covers only threads the app started — the difference between completing the app's own conversations and ingesting the owner's private mail.
 
-`Approved (PRD review item 17).`
+`Applied.`
 
 ### G1. React 19 + Vite + TypeScript, TanStack Query, React Router, Tailwind, shadcn/ui
 
@@ -610,7 +626,13 @@ Three consequences follow from it. None is a reason to reconsider; all three nee
 
 **H1. Strategy session template — ANSWERED.** Resolved by `strategy_session_seed.md`. Six Key Components: **Vision, People, Data, Issues, Process, Traction**, self-rated 1–10. The full nine-section Operations template is seeded verbatim, including `ask_when`, `must_ask` ★ flags, merge fields, section timings, and the worked example row. Assumptions **F13, F13a–F13f, F14, F14a** were rewritten against it.
 
-**H2. Mail addressing — ANSWERED.** App-originated mail from **`info@getexecutivesnow.com`**. Reply threading via **`reply+<token>@inbound.getexecutivesnow.com`**. Per-tenant sending domains are a **V1** concern; Beta hard-codes the Executives Now tenant's addresses as configuration, not as a data model gap — `Tenant.from_address` and `Tenant.inbound_domain` still exist as fields from migration 1.
+**H2. Mail addressing — ANSWERED, then REVISED by the transport change.**
+
+**Still true:** app-originated mail is `From: info@getexecutivesnow.com`. Per-tenant sending domains remain a V1 concern, and `Tenant.from_address` exists as a field from migration 1.
+
+**No longer true:** `reply+<token>@inbound.getexecutivesnow.com`. With Gmail as the transport there is **no inbound domain and no inbound MX record in Beta** — replies come back through Tier 2 polling of the tenant's own mailbox (F16). `Tenant.inbound_domain` stays on the model for the V1 Postmark transport, unused in Beta.
+
+**`info@getexecutivesnow.com` must be added as a Gmail "Send mail as" address** on the FF's account and confirmed, or the app refuses to send with an error naming that exact step (A3).
 
 **H3. Timezone — ANSWERED.** Tenant default **`America/Denver`**. Applied to D4.
 
@@ -618,13 +640,17 @@ Three consequences follow from it. None is a reason to reconsider; all three nee
 
 **H5. Referral touch default cadence — ANSWERED.** **Monthly**, when the FF has not set one per contact.
 
-**H6. Real outbound mail from the laptop — ANSWERED (middle path).** A4 stands, plus a **`DEV_REAL_SEND_ALLOWLIST`** environment variable holding addresses that receive genuinely delivered mail from the laptop build. Everything to any other address goes to the dev outbox. You have accepted that links in those real sends point at `localhost` and are useful only on the machine that sent them.
+**H6. Real outbound mail from the laptop — ANSWERED (middle path), UNCHANGED by the transport switch.**
 
-*Two guardrails I am adding to that, because the whole point of A4 was to make a mis-send structurally impossible and an allow-list reopens the door a crack:*
-- The allow-list is **exact-address match only** — no domain wildcards. `@getexecutivesnow.com` as an entry is rejected at startup with an explanatory error, because one wildcard entry would put every colleague and every client at that domain back in range.
-- Every real send from a localhost build is **logged as an `AuditEvent` and shown in the UI with a "sent for real, from dev" marker**, so a message you did not expect to leave the machine is visible after the fact rather than invisible.
+A4 stands, plus a **`DEV_REAL_SEND_ALLOWLIST`** of exact addresses that receive genuinely delivered mail from the laptop build. Everything to any other address goes to the dev outbox. Links in those real sends point at `localhost` and are useful only on the sending machine.
 
-**H7a. Pre-call invites are the one send a VA may make directly — refinement, added during data-model review.** The Module 4 VA story ("I schedule sessions and send pre-call form links") and H7 ("VAs draft into the Outbox") contradicted each other. Resolution: a **`precall_invite` is a template-only, non-AI email from the tenant address** containing a tokenised form link and no free prose. **VAs may send it directly** (`direct-to-sent`). Every other VA send remains a `pending_approval` draft. The distinction that makes this safe is the same one behind assumption F3: there is no AI output and no discretionary content, so there is nothing for a reviewer to catch.
+**The guard is transport-independent, and deliberately so.** It decides *who* may receive real mail; the transport decides *how* it travels. On a localhost build a non-allow-listed recipient never reaches the Gmail API at all — the send is routed to the dev outbox before any credential is used. A test asserts `requests.post` is never called in that case, because "the guard held" and "the guard held for the right reason" are different claims.
+
+*Two guardrails, unchanged:*
+- The allow-list is **exact-address match only** — a bare domain or wildcard is rejected at startup, because one wildcard entry would put every colleague and client at that domain back in range.
+- Every real send from a localhost build is **logged as an `AuditEvent` and badged in the UI**, so a message you did not expect to leave the machine is visible after the fact.
+
+**What the transport change adds:** a real send from the laptop now goes out through the FF's actual Gmail and lands in their Sent folder. That is a feature for the manual checks — AC-1.6 and AC-1.20 become exercisable to an allow-listed address without any third-party account.
 
 **H7. Gmail send authority — ANSWERED.** **VAs** draft into the Outbox for FF approval and **cannot connect Gmail send at all** (the connect action is not offered to them). **CFs** can connect their own Gmail and send from their own address, but only to contacts on client companies they are **assigned to**. **FF** unrestricted. Carried into `03_access_matrix.md` as three distinct rows: *connect Gmail*, *send from own address*, and *draft into Outbox*.
 

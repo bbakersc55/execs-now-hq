@@ -26,7 +26,9 @@ Then open **http://localhost:5200** and sign in with Google.
 
 **Nothing you do here can email a real person.** `PUBLIC_BASE_URL` is localhost, so every message goes to Mailpit at **http://localhost:8125** unless the address is an exact match in `DEV_REAL_SEND_ALLOWLIST`. Keep Mailpit open in a second tab — several checks below are only meaningful if you look at it.
 
-**Postmark is not configured**, so AC-1.6 and AC-1.20's delivery half cannot be checked yet. Where a step says *"nothing arrives"*, that is the thing being verified — not a limitation.
+**Mail goes out through your own Gmail.** Beta has no Postmark: every app-originated message is sent by your connected Gmail account with `From` set to `info@getexecutivesnow.com`. Before Check 4 you will connect it and verify the alias — `docs/05_dev_environment.md` §5c has the Gmail-side steps. Until then, everything still lands in Mailpit and nothing is blocked.
+
+Where a step says *"nothing arrives"*, **that is the thing being verified** — not a limitation.
 
 ---
 

@@ -24,9 +24,11 @@
 
 Module numbers follow `CLAUDE.md`. **Build order is not module order**, in one place:
 
-`0.5 foundation → 1 → 2 → 3 → 4 → 5 → `**`7 (Railway move)`**` → `**`6 (unified client communication)`**
+`0.5 foundation → 1 → 2 → 3 → 4 → 5 → 6 → 7 (Railway move)`
 
-Module 6's inbound half needs a public webhook, so the whole module now waits for Railway (ruling 9.3). What could not wait — outbound threading and Gmail sending — has been **carved back into Phase 1**, because Module 1 already promises a CF "send from my own address" and a `manual` direct-to-`sent` producer. A Module 1 that cannot send from Gmail is not done.
+**Build order is module order again.** Ruling 9.3 moved Module 6 after Railway because its inbound half needed a public webhook. The transport change removes that dependency: with Gmail as the transport (assumption A3), inbound arrives by **polling the tenant's own mailbox**, which needs no public endpoint and runs on the laptop. **Module 6 returns to its original position, before the Railway move.**
+
+The Phase 1 carve-back stays where it is — `email_thread`, `thread_token`, threading headers, and Gmail connect are all in Module 1, because Module 1 promises a CF "send from my own address" and a `manual` direct-to-`sent` producer.
 
 ---
 
@@ -81,11 +83,12 @@ Every criterion above as tested / written-not-exercised / not-implemented, plus 
 **Carved back from Module 6 (ruling 9.3)** — required for FR-1.19a and the CF "send from my own address" story:
 
 10. **`email_thread` created for every outbound message**, carrying a `thread_token`.
-11. **`Reply-To` carries the token on both transports** — Postmark app mail *and* Gmail personal sends (Tier 1, FR-6.3b).
-12. **Tier 1 Gmail connect** (`gmail.send` only) for FF and CF; **not offered to VAs** (H7).
+11. **Threading headers on every send** — the token in the `Message-ID` and in `X-ExecsNowHQ-Thread`, `In-Reply-To` quoting the previous message, and Gmail's `threadId` stored on the thread (FR-6.2).
+12. **Gmail connect** for FF and CF, with **send-as verification** against `settings.sendAs`; **not offered to VAs** (H7).
 13. The `manual` producer routing by role: FF/CF direct-to-`sent` via their own Gmail, VA to `pending_approval`.
+14. **The `APP_MAIL_TRANSPORT` seam**, with the Gmail transport implemented and Postmark raising a clear "V1 option" error.
 
-> Not in Phase 1: the inbound webhook, replay fixtures, the unmatched queue, and Tier 2. Those are Module 6, after Railway.
+> Not in Phase 1: inbound polling, replay fixtures, and the unmatched queue. Those are Module 6.
 
 ### Tests that must pass
 
@@ -93,7 +96,9 @@ Every criterion above as tested / written-not-exercised / not-implemented, plus 
 - **Role boundaries:** matrix §4 and §5 in full — with 5.3 (VA cannot approve), 5.5 (VA *may* send `precall_invite`), 5.6 (VA `manual` becomes a draft), 4.5 (VA may merge), 4.11 (FF-only assignment), 3.15 (FF-only stages) called out individually.
 - **Acceptance criteria AC-1.1 through AC-1.25.**
 - **Every denied-send test also asserts the dev outbox is empty** and that no `outbox_message` reached `sent` (matrix §14.3).
-- **AC-6.1 and AC-6.13** (carved back): one `email_thread` per contact conversation with a consistent token; a Gmail send whose `From` is the fractional and whose `Reply-To` is the inbound address; no scope beyond `gmail.send` requested.
+- **AC-6.1 and AC-6.13** (carved back): one `email_thread` per contact conversation with a consistent token, recoverable from the `Message-ID`; `From` set to the verified tenant alias; `In-Reply-To` quoting the previous message on a follow-up.
+- **AC-6.14** (carved back): an unverified send-as alias fails with an actionable message and does **not** fall back to the fractional's personal address.
+- **The dev-outbox guard is transport-independent**: a non-allow-listed recipient on a localhost build never reaches the Gmail API at all — asserted by confirming the HTTP call is never made, not merely that the message did not arrive.
 
 ### Manual checks
 
@@ -102,11 +107,12 @@ Every criterion above as tested / written-not-exercised / not-implemented, plus 
 3. Move a real prospect through the pipeline and watch the follow-up task appear and the email draft queue.
 4. Read a generated referral touch. **This is a judgement call I cannot make for you:** does it sound like you, and would you send it to a real partner? If not, the template or the prompt is wrong and it is a Phase 1 bug.
 5. Confirm the flyer attaches and that an onboarding draft appeared the moment you tagged a referral partner.
-6. **Connect your own Gmail and send a real email to yourself from the app.** Confirm it arrives showing your own address as sender and the inbound address as reply-to. Replies will not thread until Module 6 — expected, and said here so it is not later read as a bug.
+6. **Connect your own Gmail, verify the `info@` send-as alias, and send a real email to an allow-listed address.** Confirm it arrives showing **`info@getexecutivesnow.com`** as the sender, and that it is in your Gmail Sent folder — that is trade-off 2 of the transport change, working as intended. Replies will not be ingested until Module 6; expected, and said here so it is not later read as a bug.
+7. **Deliberately break the alias.** Point `from_address` at an address that is not a confirmed "Send mail as" on your account and try to send. The error should tell you exactly what to add in Gmail. **Nothing should go out from your personal address instead.**
 
 ### Report
 
-AC-1.1–1.25 with status. **AC-1.6 and AC-1.20 depend on Postmark**, so if mail is not yet configured they are reported as written-not-exercised, not as passing.
+AC-1.1–1.25 with status. **AC-1.6 and AC-1.20 no longer wait on a third-party account** — with Gmail connected and the alias verified, a send to an allow-listed address goes out for real and both become exercisable.
 
 ---
 
@@ -268,7 +274,40 @@ AC-5.1–5.16, plus **extraction quality on N real meetings** with a count of pr
 
 ---
 
-## Phase 7 — The Railway move *(runs before Module 6 — see Execution order)*
+## Phase 6 — Unified client communication
+
+> **Back in module order.** Its outbound half — threading, tokens, Gmail sending — was **carved back into Phase 1**, because Module 1 could not honestly be called done without it. What remains is the inbound half, which the transport change makes laptop-friendly: polling the tenant's own mailbox needs no public endpoint.
+
+### Done means
+
+1. The **thread poller**, cursor-based over the threads the app started, idempotent on the provider message id — which matters more with polling than with webhooks, because every poll re-reads the whole thread.
+2. `manage.py replay_inbound` and the **eight fixtures** — `threadId` match, `In-Reply-To` match, custom-header match, sender fallback, no match, quoted-history, attachment, re-poll — which are the module's regression suite.
+3. Matching in order: Gmail `threadId` → `In-Reply-To`/`References` → `X-ExecsNowHQ-Thread` → sender email → no match.
+4. The **unmatched queue**, with filing to a contact. Nothing is ever dropped.
+5. Quoted-history trimming for display with the raw message retained; attachments stored.
+6. `gmail.readonly` requested at connect time, with what it grants stated plainly at the point of consent.
+7. Real replies ingested from the tenant's mailbox — **on the laptop**, no public endpoint.
+
+### Tests that must pass
+
+- **Tenant isolation** and **role boundaries** (matrix §12), including **12.4 — a VA cannot send a reply** and **12.5 — client users reach no communication surface at all**, since these threads include internal correspondence *about* them.
+- **AC-6.2 through AC-6.11** by replay — reported as **fixture-driven**, never as live transport.
+- **AC-6.12** — a real reply on a real digest appears on the timeline within one poll interval. **This now runs on your laptop**, which is the point of the transport change.
+- **AC-6.15 / AC-6.16 / AC-6.17** — Gmail-native replies captured, downtime tolerated, and a revoked token naming its consequence.
+
+### Manual checks
+
+1. Reply from a real client address to a real digest. Confirm it threads onto the contact.
+2. Reply from an address the app has never seen. **Confirm it lands in the unmatched queue rather than vanishing** — the failure mode that matters here is silence, not error.
+3. Confirm you are comfortable with what `gmail.readonly` grants. It is a read scope over your whole mailbox, even though the app reads only threads it started. Under the Internal consent screen it costs nothing in verification — but it is still your mailbox, and the boundary is enforced by the app's code rather than by Google.
+
+### Report
+
+Fixture results and live results **reported separately and labelled**. A replay pass is not evidence that mail is being delivered or ingested.
+
+---
+
+## Phase 7 — The Railway move
 
 ### The trigger
 
@@ -284,11 +323,10 @@ AC-5.1–5.16, plus **extraction quality on N real meetings** with a count of pr
 - The `qcluster` runs as a **second Railway service against the same database**, not as a thread in the web process, so a web restart cannot kill a running transcription.
 - `CONN_MAX_AGE=0` on the cluster (A2 consequence 3).
 
-**2. DNS and mail** — *start this first; it has the longest lead time*
-- `app.getexecutivesnow.com` → Railway.
-- Postmark **DKIM `TXT`** and **Return-Path `CNAME`** for `getexecutivesnow.com`.
-- **Inbound `MX`** for `inbound.getexecutivesnow.com`.
-- Postmark inbound webhook → the public endpoint.
+**2. DNS**
+- `app.getexecutivesnow.com` → Railway. **That is the whole list.**
+- **No Postmark records are needed.** DKIM, Return-Path, and the inbound MX belonged to a transport Beta no longer uses (assumption A3); mail goes out through the tenant's Gmail and comes back by polling their mailbox. Those records return with the Postmark transport option in V1.
+- **Consequence for sequencing:** DNS is no longer the long pole. Under the old plan it had to start days early; now it is a single A/CNAME record.
 
 **3. Data — with an explicit freeze**
 
@@ -310,7 +348,7 @@ The cutover is a window, not a gradual migration. **No writes happen on the lapt
 - `PUBLIC_BASE_URL` → `https://app.getexecutivesnow.com`. This alone flips outbound mail from the dev outbox to real delivery (FR-0.7), so **it is the single most consequential variable in the move.**
 - `DEV_REAL_SEND_ALLOWLIST` **removed** — it is a localhost-only mechanism and must not exist in production.
 - Sentry enabled (A5).
-- Google OAuth redirect URIs updated for the new origin.
+- Google OAuth redirect URIs updated for the new origin. **This is now load-bearing for mail, not just for sign-in** — the Gmail transport rides on the same OAuth client.
 
 **5. Backups move**
 - The laptop's `scripts/backup_db.sh` used **gcloud ADC** (§I). Railway has no interactive login, so the nightly job authenticates with a **dedicated service-account key** stored as a Railway secret, writing to the same `gs://execs-now-hq-db-backups` bucket with the same 30-day retention.
@@ -324,7 +362,7 @@ The cutover is a window, not a gradual migration. **No writes happen on the lapt
 1. **Confirm `hold_all_digests` is ON *before* the first `qcluster` start on Railway — not after.** Once the cluster runs, generation begins; verifying the switch afterwards is verifying it too late. This is the one check whose order matters.
 2. Sign in with Google on the new host.
 3. Send yourself a magic link and confirm the URL is `app.getexecutivesnow.com`.
-4. Confirm the app's own send path: one test message to yourself, delivered, appearing in the Outbox as `sent`.
+4. **Reconnect Gmail on the new host and re-verify the send-as alias.** OAuth tokens are per-origin and the redirect URI has changed; until this is done, **no app mail sends at all — including client magic links** (assumption A3, trade-off 1). Confirm with one test message, delivered, appearing in the Outbox as `sent` with `From` set to the alias.
 5. Approve one real digest and confirm delivery to a real stakeholder.
 6. Confirm the nightly backup ran, **and restore it**.
 
@@ -342,39 +380,6 @@ DNS first (propagation), then provision, then a **rehearsal restore into a scrat
 ### What does not change
 
 The polling architecture (A6 and F19 Tier 2 both stay pull-based), `hold_all_digests`, and every review queue. Railway changes where the app runs and who can reach it. It changes nothing about what the app is allowed to send.
-
----
-
-## Phase 6 — Unified client communication *(Module 6 — built last, after the Railway move)*
-
-> **This is `CLAUDE.md`'s Module 6, and it runs last** (ruling 9.3). Its outbound half — threading, tokens, Tier 1 Gmail sending — was **carved back into Phase 1**, because Module 1 could not honestly be called done without it. What remains here is everything that needs a publicly reachable webhook, which means everything here needs Railway.
-
-### Done means
-
-1. The **inbound webhook view**, with authenticity verification and idempotency on the provider message id.
-2. `manage.py replay_inbound` and the **seven fixtures** — token match, sender fallback, no match, quoted-history, multi-recipient, attachment, redelivery — which are the module's regression suite.
-3. Matching in order: `thread_token` → `gmail_thread_id` → sender email → no match.
-4. The **unmatched queue**, with filing to a contact. Nothing is ever dropped.
-5. Quoted-history trimming for display with the raw message retained; attachments stored.
-6. **Tier 2 thread polling** as an opt-in per user, with its `gmail.readonly` consent stated plainly at the point of connection.
-7. Live inbound MX receiving real replies.
-
-### Tests that must pass
-
-- **Tenant isolation** and **role boundaries** (matrix §12), including **12.4 — a VA cannot send a reply** and **12.5 — client users reach no communication surface at all**, since these threads include internal correspondence *about* them.
-- **AC-6.2 through AC-6.11** by replay — reported as **fixture-driven**, never as live transport.
-- **AC-6.12** — a real reply on a real digest appears on the timeline within a minute. **This is the only acceptance criterion in the whole PRD that cannot run on your laptop**, and it is the one that proves the module.
-- **AC-6.15 / AC-6.16** — Tier 2 opt-in, scope disclosure, and downtime tolerance.
-
-### Manual checks
-
-1. Reply from a real client address to a real digest. Confirm it threads onto the contact.
-2. Reply from an address the app has never seen. **Confirm it lands in the unmatched queue rather than vanishing** — the failure mode that matters here is silence, not error.
-3. Decide whether you want Tier 2 at all. It reads your entire mailbox to catch replies you typed in Gmail rather than in the app. **Tier 1 already captures the client's reply**; Tier 2 only closes the gap on your own out-of-app messages. If that is not worth a full-mailbox read scope to you, do not connect it — nothing else depends on it.
-
-### Report
-
-Fixture results and live results **reported separately and labelled**. A replay pass is not evidence that mail is being delivered.
 
 ---
 
