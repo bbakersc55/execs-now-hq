@@ -292,13 +292,38 @@ Common commands:
 
 `scripts/backup_db.sh` — uses **gcloud ADC**, not a service-account key file (kickoff §I).
 
+**It backs up two things, because the database alone is not a restorable system.**
+A `stored_file` row records a bucket, an object key and a size; the bytes live under
+`MEDIA_ROOT`. Restoring the dump without the blobs gives you rows describing files that
+do not exist — which is precisely the 0-byte-attachment failure from Check 5,
+reintroduced by the backup itself.
+
+> **Why the media sync runs AFTER the dump, and not before.** A file uploaded in the
+> window between the two ends up in the backup as bytes with no row: a harmless orphan
+> blob. Reverse the order and the same window produces a row with no bytes, which
+> restores as a file that opens empty. One direction wastes a little space; the other
+> loses data silently.
+
+> **The media mirror is never pruned.** Retention matches `*.sql.gz` only. A flyer from
+> last year is still the flyer attached to live drafts, and `rsync` runs without
+> `--delete-unmatched-destination-objects` on purpose — this is a backup, not a mirror,
+> so a file deleted locally by accident stays recoverable.
+
 ```bash
 #!/usr/bin/env bash
 # Nightly + on-demand backup of execsnowhq_dev to GCS. 30-day retention.
+#
+# Backs up TWO things, because the database alone is not a restorable system:
+# the Postgres dump, and the media/ tree that `stored_file` rows point at
+# (marketing flyer, Outbox attachments, and from Module 2 the recordings).
+# A dump without the blobs restores rows describing files that do not exist —
+# which is exactly the 0-byte-attachment failure, reintroduced by the backup.
 set -euo pipefail
 
 DB_NAME="execsnowhq_dev"
 BUCKET="gs://execs-now-hq-db-backups"
+MEDIA_DIR="${MEDIA_ROOT:-$(cd "$(dirname "$0")/.." && pwd)/media}"
+MEDIA_DEST="${BUCKET}/media"
 RETENTION_DAYS=30
 STAMP="$(date +%Y%m%d_%H%M%S)"
 TMP="$(mktemp -d)"
@@ -319,8 +344,34 @@ echo "==> Dump OK (${SIZE} bytes)"
 echo "==> Uploading to ${BUCKET}"
 gcloud storage cp "${FILE}" "${BUCKET}/"
 
+# --------------------------------------------------------------------------
+# Media, AFTER the dump. The order is not arbitrary.
+#
+# Anything uploaded BETWEEN the dump and the rsync ends up in the backup as
+# bytes with no row — a harmless orphan blob. Run the rsync first and the same
+# window produces the opposite: a row with no bytes, which restores as a file
+# that opens empty. One direction wastes a little space; the other loses data
+# silently. So: dump, then media.
+# --------------------------------------------------------------------------
+if [ -d "${MEDIA_DIR}" ]; then
+  MEDIA_FILES=$(find "${MEDIA_DIR}" -type f | wc -l)
+  MEDIA_BYTES=$(du -sb "${MEDIA_DIR}" | cut -f1)
+  echo "==> Syncing media (${MEDIA_FILES} files, ${MEDIA_BYTES} bytes) to ${MEDIA_DEST}"
+  # No --delete-unmatched-destination-objects on purpose: this is a backup, not
+  # a mirror. A file deleted locally by accident stays recoverable here, which
+  # is the entire reason the copy exists.
+  gcloud storage rsync --recursive "${MEDIA_DIR}" "${MEDIA_DEST}"
+  echo "==> Media sync OK"
+else
+  # Not an error: a fresh clone has no media until the first upload. Say so
+  # rather than passing silently, so "no media backed up" is never a surprise.
+  echo "==> No media directory at ${MEDIA_DIR} — nothing to sync"
+fi
+
 echo "==> Pruning backups older than ${RETENTION_DAYS} days"
 CUTOFF=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
+# Only ever matches *.sql.gz, so the media mirror is never pruned by age — a
+# flyer from last year is still the flyer that is attached to live drafts.
 gcloud storage ls --long "${BUCKET}/**" 2>/dev/null \
   | awk -v c="${CUTOFF}" '$2 < c && $3 ~ /\.sql\.gz$/ {print $3}' \
   | while read -r old; do
@@ -328,7 +379,7 @@ gcloud storage ls --long "${BUCKET}/**" 2>/dev/null \
       gcloud storage rm "${old}"
     done
 
-echo "==> Done: $(basename "${FILE}")"
+echo "==> Done: $(basename "${FILE}") + media"
 ```
 
 ```bash
@@ -392,17 +443,67 @@ journalctl --user -u execsnowhq-backup.service -n 30
 
 ### Restoring — do this at least once before you trust it
 
+**Both halves, in one drill.** Restoring the database and declaring victory is how you
+discover at the worst moment that the attachments were never in the backup.
+
 ```bash
-# Verify a backup by restoring it into a scratch database. Never into execsnowhq_dev.
+# 1. The database, into a SCRATCH database. Never into execsnowhq_dev.
 createdb execsnowhq_verify
 gcloud storage cp gs://execs-now-hq-db-backups/execsnowhq_dev_20260909_023000.sql.gz /tmp/
 gunzip -c /tmp/execsnowhq_dev_20260909_023000.sql.gz | psql execsnowhq_verify
 
 psql execsnowhq_verify -c "SELECT count(*) FROM contact;"
-dropdb execsnowhq_verify
+psql execsnowhq_verify -c "SELECT purpose, count(*), sum(byte_size) FROM stored_file GROUP BY purpose;"
 ```
 
-> **A backup you have never restored is a hypothesis.** This is a Phase 0.5 gate, not a suggestion.
+```bash
+# 2. The media, into a scratch directory.
+mkdir -p /tmp/media_verify
+gcloud storage rsync --recursive gs://execs-now-hq-db-backups/media /tmp/media_verify
+find /tmp/media_verify -type f | wc -l      # compare with the count above
+```
+
+```bash
+# 3. Reconcile the two. THIS is the check that matters: not "are there files",
+#    but "does every row the database references have content behind it".
+DATABASE_URL=postgres://localhost/execsnowhq_verify \
+MEDIA_ROOT=/tmp/media_verify \
+  .venv/bin/python manage.py check_media --strict
+```
+
+→ `Every stored_file row has its content.` and exit code 0. Anything else names the
+missing files, and `--strict` fails the drill rather than letting it pass quietly.
+
+```bash
+# 4. Clean up.
+dropdb execsnowhq_verify && rm -rf /tmp/media_verify
+```
+
+> **A backup you have never restored is a hypothesis.** This is a Phase 0.5 gate, not a
+> suggestion — and after Check 5 it is a two-part gate, because a restore that brings
+> back rows without blobs is not a restore.
+
+### Why media is still on the laptop, and when that has to change
+
+The alternative to syncing `media/` is to put `stored_file` content in
+`gs://execs-now-hq-media` now rather than at the Railway move. **Not yet — but sooner
+than Phase 7.** The reasoning, so it can be re-argued rather than re-derived:
+
+**Why not now.** Beta's premise is that the app runs on the laptop while the owner uses
+it live. Moving blobs to GCS puts a network round-trip and a working credential in the
+path of every flyer upload and every send that reads an attachment — so an offline
+laptop, an expired key or a slow connection becomes a failed send. That is a new class
+of failure introduced into the exact code path that was just found silently broken,
+which is the worst possible moment to make it more complicated. The `rsync` closes the
+durability gap today with the tooling this script already uses, and object keys already
+mirror the GCS layout (`<bucket>/<object_key>`), so the switch stays a backend swap.
+
+**Why not Phase 7 either.** A nightly sync means up to 24 hours of unprotected writes.
+For a flyer that is tolerable — it can be re-uploaded from the original. **For a meeting
+recording it is not**: the audio exists nowhere else, and "we lost this morning's client
+call" is not a recoverable event. **So the GCS switch is a Module 2 prerequisite, not a
+Phase 7 task** — it must land before recordings become real, not before Railway does.
+Until then, `media/` holds only re-creatable files and a nightly sync is proportionate.
 
 ---
 

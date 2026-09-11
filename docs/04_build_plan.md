@@ -195,6 +195,17 @@ per `CLAUDE.md`.
 
 ## Phase 2 — Notes
 
+> **Prerequisite, added after Phase 1.** `stored_file` content lives on the laptop under
+> `MEDIA_ROOT`, backed up by a nightly `rsync` to `gs://execs-now-hq-db-backups/media`.
+> That is proportionate for a flyer, which can be re-uploaded from the original. It is
+> **not** proportionate for a recording: the audio exists nowhere else, and a nightly
+> sync leaves up to 24 hours of client calls unprotected. **Move `stored_file` content to
+> `gs://execs-now-hq-media` before the first recording is captured** — not at the Railway
+> move. The object keys already mirror the GCS layout, so this is a backend swap in
+> `apps/tenancy/storage.py`, plus creating the bucket (it does not exist yet) and the
+> service account in `05_dev_environment.md` §5b.
+
+
 ### Done means
 
 1. One-action capture; optional dual linking (Contact *or* Company, **and** Task).
