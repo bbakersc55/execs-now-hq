@@ -127,3 +127,25 @@ label { display: block; font-size: .82rem; color: var(--gray-dark); margin-botto
 }
 .stepper .step.on { background: var(--blue); color: #fff; border-color: var(--blue); }
 .stepper .step.done { background: #e7f5ec; color: var(--ok); border-color: #bfe3cc; }
+
+/* Board drag-and-drop. The move panel remains the keyboard path. */
+.board .col.drop-target {
+  border-color: var(--blue);
+  background: #eef3f9;
+}
+.board .item[draggable="true"] { cursor: grab; }
+.board .item.dragging { opacity: .45; }
+.board .item button.ghost.small {
+  font-size: .72rem; padding: .1rem .4rem; margin-top: .3rem;
+}
+
+.richtext {
+  min-height: 9rem; padding: .55rem .7rem; border: 1px solid var(--border);
+  border-radius: 6px; background: #fff; font-size: .9rem; line-height: 1.5;
+  overflow-y: auto; max-height: 24rem;
+}
+.richtext:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+.richtext p { margin: 0 0 .6rem; }
+button.ghost.small { font-size: .74rem; padding: .12rem .45rem; }
+.attachments { margin: .5rem 0; }
+.attachments li { font-size: .8rem; }

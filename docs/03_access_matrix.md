@@ -67,7 +67,9 @@
 | 3.12 | Manage stage automation rules | ✅ | ❌ | ❌ | — | — | |
 | 3.13 | Manage email templates | ✅ | ❌ | 🔸 | — | — | VA may edit body copy, not create or delete rules |
 | 3.14 | Manage contact types and service categories | ✅ | ❌ | ✅ | — | — | CRM hygiene is the VA's job (FR-1.9d) |
-| 3.15 | **Manage pipeline stages** | ✅ | ❌ | ❌ | — | — | **FF only.** Stage codes are wired to automations and to the client invariant (FR-1.6a) — renaming or reordering them is a workflow change, not hygiene |
+| 3.14a | **Manage pipelines** (create, rename, remove) | ✅ | ❌ | ❌ | — | — | **FF only, per pipeline.** A practice runs several — a sales pipeline and a nurture pipeline for referral partners (FR-1.6). Adding or removing one changes how the practice works |
+| 3.15 | **Manage the stages within a pipeline** (rename, reorder, add, remove) | ✅ | ❌ | ❌ | — | — | **FF only, per pipeline.** Renaming is safe by design — behaviour keys on the stage's `semantic`, never its label — but adding and removing stages is a workflow change. A sales-kind pipeline must keep **exactly one `won` stage**; removing the last one is refused, because without it nothing can become a client (FR-1.6a) |
+| 3.15a | **Read pipelines and their stages** | ✅ | ✅ | ✅ | ❌ | ❌ | Every tenant user works the board daily. Client users have no CRM surface at all (4.18) |
 | 3.16 | Invite a CF or VA | ✅ | ❌ | ❌ | — | — | No self-serve signup (C1) |
 | 3.17 | Change a member's role | ✅ | ❌ | ❌ | — | — | |
 | 3.18 | Remove / revoke a tenant staff member | ✅ | ❌ | ❌ | — | — | Kills sessions; **for a CF also ends every `client_assignment` and disconnects Gmail** (FR-0.8c) |
@@ -281,6 +283,7 @@ All four flagged rows ruled on; seven changes applied.
 | # | Change | Rows |
 |---|---|---|
 | 1 | Pipeline stages split out as FF-only; contact types and service categories stay VA ✅ | 3.14, 3.15 |
+| 1a | **Pipeline management became per pipeline** once the owner's real CRM turned out to run two (sales, and a nurture pipeline for referral partners). FF-only to change, readable by all tenant staff | 3.14a, 3.15, 3.15a |
 | 2 | VA soft-deletes contacts and companies; restore row added | 4.4, 4.4a |
 | 3 | Tenant staff management rows added, FF-only | 3.16, 3.17, 3.18 |
 | 4 | AI usage and cost visibility, FF-only — spend is financial | 3.19 |

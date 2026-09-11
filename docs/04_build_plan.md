@@ -110,9 +110,86 @@ Every criterion above as tested / written-not-exercised / not-implemented, plus 
 6. **Connect your own Gmail, verify the `info@` send-as alias, and send a real email to an allow-listed address.** Confirm it arrives showing **`info@getexecutivesnow.com`** as the sender, and that it is in your Gmail Sent folder — that is trade-off 2 of the transport change, working as intended. Replies will not be ingested until Module 6; expected, and said here so it is not later read as a bug.
 7. **Deliberately break the alias.** Point `from_address` at an address that is not a confirmed "Send mail as" on your account and try to send. The error should tell you exactly what to add in Gmail. **Nothing should go out from your personal address instead.**
 
-### Report
+### Report — Phase 1 status (2026-09-11)
 
-AC-1.1–1.25 with status. **AC-1.6 and AC-1.20 no longer wait on a third-party account** — with Gmail connected and the alias verified, a send to an allow-listed address goes out for real and both become exercisable.
+**Phase 1 is complete. All 29 acceptance criteria pass and all five manual checks pass.**
+
+| | |
+|---|---|
+| Automated tests | **487 passed**, 2 xfailed |
+| — of which the two mandatory families | **236** (tenant isolation + role boundaries) |
+| — Module 1 acceptance | **41** |
+| Frontend tests | **53 passed** |
+| Manual checks | **5 of 5 passed** |
+| Live deliveries to a real inbox | **2** (AC-1.6, AC-1.20) |
+
+**Legend.** **Live** = exercised by the owner against a real Gmail delivery, not the dev
+outbox. **Walked** = automated *and* stepped through by hand in the named manual check.
+**Automated** = covered by the test suite; correct in code and in CI, but not separately
+exercised by hand. Nothing below is "written but not exercised" — that column is empty,
+which is the point of reporting it.
+
+| AC | What it covers | Status |
+|---|---|---|
+| AC-1.1 | Import dry run is honest | ✅ Walked (Check 1) |
+| AC-1.1b | Phone, tags and status columns have mapping targets | ✅ Walked (Check 1) |
+| AC-1.1c | Status/Stage values mapped by hand, per pipeline | ✅ Walked (Check 1) |
+| AC-1.2 | Commit and roll back | ✅ Walked (Check 1) |
+| AC-1.3 | Ambiguity surfaced, never guessed | ✅ Walked (Check 2) |
+| AC-1.4 | Stage automation fires task, queues email, per pipeline | ✅ Walked (Check 3) |
+| AC-1.5 | An unapproved draft expires rather than sending | ✅ Automated |
+| AC-1.6 | **Referral touch drafted 3 days early, approved, delivered** | ✅ **Live** (Check 4) |
+| AC-1.7 | VA cannot approve or send | ✅ Automated |
+| AC-1.8 | Vendor search by service category | ✅ Walked (extras) |
+| AC-1.9 | Merge preserves history and is audited | ✅ Walked (Check 2) |
+| AC-1.10 | Out-of-scope reads 404, never 403 | ✅ Automated |
+| AC-1.11 | Client users have no CRM surface | ✅ Automated |
+| AC-1.12 | Client invariant derives forward only | ✅ Walked (Check 3) |
+| AC-1.12a | A contact holds a position in two pipelines at once | ✅ Walked (Check 3) |
+| AC-1.12b | A sales pipeline cannot lose its only `won` stage | ✅ Automated |
+| AC-1.13 | Assignment governs CF visibility | ✅ Automated |
+| AC-1.14 | Assignment endpoints reject CF and VA | ✅ Automated |
+| AC-1.15 | VA sees the whole CRM | ✅ Automated |
+| AC-1.16 | Send-by default, configurable, expiry sends nothing | ✅ Automated |
+| AC-1.17 | Outbox is the complete send log | ✅ Walked (Check 4) |
+| AC-1.18 | Touch composition has all three parts | ✅ Walked (Check 4) |
+| AC-1.19 | Stale blurb warns but does not block | ✅ Automated |
+| AC-1.20 | **Onboarding fires once, attaches the flyer, delivered intact** | ✅ **Live** (Check 5) |
+| AC-1.21 | VA may merge; CF may not | ✅ Walked (Check 2) |
+| AC-1.22 | Delete and restore are delegable | ✅ Automated |
+| AC-1.23 | Pipelines and stages FF-only; types and categories not | ✅ Walked (Check 3) |
+| AC-1.24 | Staff removal cascades | ✅ Walked (extras) |
+| AC-1.25 | AI spend is FF-only | ✅ Walked (extras) |
+
+**The two live deliveries are the ones that matter**, because they are the only points
+where the app's behaviour left the machine:
+
+- **AC-1.6** — a referral touch drafted, approved, and received in Gmail **from
+  `info@getexecutivesnow.com`**. Proves the Gmail transport, the verified send-as alias,
+  the dev allow-list and the approval gate together.
+- **AC-1.20** — an onboarding email delivered **with the flyer attached and the PDF
+  opening with content**. This one failed twice before passing: the attachment arrived
+  at 0 bytes because `stored_file` content was never written to storage *and* the
+  transport was handed a literal `b""`. Both are fixed, and a test now asserts a
+  delivered attachment's size equals the stored file's.
+
+**What Phase 1 corrected that the plan did not anticipate.** Five findings came out of
+the manual checks rather than the test suite, and all five were design errors rather
+than coding slips:
+
+1. **One fixed pipeline was wrong.** The practice runs two (sales, and a nurture track
+   for referral partners) and the owner's CRM carries both a Status and a Stage column.
+   Modelled as `pipeline` + `contact_pipeline_position`, with stage behaviour keyed on a
+   `semantic` independent of the label.
+2. **No way to add a contact or company by hand** — everything had arrived by CSV.
+3. **Imported referral partners were invisible to the scheduler** (no cadence, no next
+   touch), so no touch would ever have been drafted for any of the 40.
+4. **Attachments were never stored**, only their metadata.
+5. **Real-delivery visibility** — the Outbox did not say, before approval, whether
+   approving would reach a real person.
+
+**Not carried into Phase 2:** nothing. Every bug found in Checks 1–5 was fixed in Phase 1,
+per `CLAUDE.md`.
 
 ---
 

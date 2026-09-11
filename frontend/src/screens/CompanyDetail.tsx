@@ -1,13 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { Banner, Card, Empty, Pill, when } from "../components/ui";
-import { api, Company, Contact } from "../lib/api";
+import { Banner, Card, Empty, Pill, when, positionsLabel } from "../components/ui";
+import { AddCompany } from "./AddCompany";
+import { Company, Contact, Me, api } from "../lib/api";
 
 interface TimelineEntry { kind: string; when: string; text: string; }
 
-export function CompanyDetail() {
+export function CompanyDetail({ me }: { me: Me }) {
   const { id } = useParams();
+  const [editing, setEditing] = useState(false);
+  const [note, setNote] = useState("");
+  const qc = useQueryClient();
   const company = useQuery<Company>({
     queryKey: ["company", id], queryFn: () => api.get<Company>(`/api/companies/${id}/`),
   });
@@ -24,9 +29,30 @@ export function CompanyDetail() {
   const c = company.data;
   const theirs = (contacts.data ?? []).filter((x) => x.company === c.id);
 
+  if (editing) {
+    return (
+      <AddCompany
+        me={me}
+        existing={c}
+        onDone={(updated) => {
+          setEditing(false);
+          if (updated) {
+            setNote("Company updated.");
+            qc.invalidateQueries({ queryKey: ["company", id] });
+            qc.invalidateQueries({ queryKey: ["companies"] });
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <>
-      <h2>{c.name}</h2>
+      <div className="spread">
+        <h2>{c.name}</h2>
+        <button onClick={() => setEditing(true)}>Edit company</button>
+      </div>
+      {note && <Banner kind="ok">{note}</Banner>}
       <p className="sub">
         {c.industry || "No industry"}
         {c.is_client_company && <> · <Pill kind="ok">client company</Pill></>}
@@ -43,7 +69,7 @@ export function CompanyDetail() {
                   <tr key={p.id}>
                     <td><Link to={`/contacts/${p.id}`}>{p.first_name} {p.last_name}</Link></td>
                     <td className="muted">{p.title || "—"}</td>
-                    <td>{p.stage_code?.replace(/_/g, " ") || "—"}</td>
+                    <td className="small">{positionsLabel(p.pipeline_positions)}</td>
                   </tr>
                 ))}
               </tbody>

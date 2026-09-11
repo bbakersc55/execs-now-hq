@@ -73,6 +73,21 @@ class CanSend(permissions.BasePermission):
         return role_of(request) in (Role.FF, Role.CF)
 
 
+class CanConnectMailbox(permissions.BasePermission):
+    """H7 — a VA gets no mailbox of their own in the app.
+
+    Distinct from `CanSend` on purpose. `CanSend` is about approving somebody
+    else's draft; this is about granting the app a credential that can send as
+    you. Same two roles today, different reasons — and Tier 2 (FR-6.3g) widens
+    only this one.
+    """
+
+    message = "A VA does not connect a mailbox. Ask the founder fractional."
+
+    def has_permission(self, request, view):
+        return role_of(request) in (Role.FF, Role.CF)
+
+
 def contact_queryset_for(request, queryset):
     """FR-1.9c — a CF's visible universe is EXACTLY:
       assigned client companies + prospects they own + their own no-company

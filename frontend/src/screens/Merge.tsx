@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Banner, Card, Pill } from "../components/ui";
+import { Banner, Card, Pill, positionsLabel } from "../components/ui";
 import { api, Contact } from "../lib/api";
 
 /** Fields the reviewer resolves by hand. Everything else — emails, phones,
@@ -120,7 +120,7 @@ export function Merge() {
                 {c.title && <div>{c.title}</div>}
                 <div>
                   {c.type_codes.length} type{c.type_codes.length === 1 ? "" : "s"} ·{" "}
-                  stage {c.stage_code?.replace(/_/g, " ") || "none"}
+                  {positionsLabel(c.pipeline_positions)}
                 </div>
                 <div>Created {new Date(c.created_at!).toLocaleDateString()}</div>
               </div>

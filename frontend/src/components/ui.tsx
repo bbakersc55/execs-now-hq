@@ -37,6 +37,14 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="muted small" style={{ padding: ".5rem 0" }}>{children}</p>;
 }
 
+/** One line naming where a contact stands in every pipeline they are in. */
+export function positionsLabel(
+  positions: { pipeline_name: string; stage_label: string }[] | undefined,
+) {
+  if (!positions || positions.length === 0) return "no pipeline";
+  return positions.map((p) => `${p.pipeline_name}: ${p.stage_label}`).join(" · ");
+}
+
 export function when(value: string | null | undefined) {
   if (!value) return "—";
   return new Date(value).toLocaleString();

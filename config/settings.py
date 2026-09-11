@@ -216,6 +216,12 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="execs-now-hq")
 GCS_BUCKET_MEDIA = env("GCS_BUCKET_MEDIA", default="execs-now-hq-media")
 
+# Where `stored_file` content actually lives. Beta runs on the laptop, so this
+# is the local filesystem, laid out as <bucket>/<object_key> — the same shape as
+# the GCS object path, so the Phase 7 move is a backend swap, not a re-keying.
+MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
+MEDIA_URL = "/media/"
+
 # --- Errors: production only (assumption A5) ---
 SENTRY_DSN = env("SENTRY_DSN", default="")
 

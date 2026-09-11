@@ -21,7 +21,8 @@ from apps.tenancy.models import AuditEvent, ClientAssignment
 from . import registry_config  # noqa: F401
 from .factories import (
     ClientCompanyFactory, CompanyFactory, ContactEmailFactory, ContactFactory,
-    EmailTemplateFactory, ServiceCategoryFactory, StoredFileFactory,
+    ContactPipelinePositionFactory, EmailTemplateFactory, ServiceCategoryFactory,
+    StoredFileFactory,
 )
 
 S = OutboxMessage.State
@@ -35,8 +36,17 @@ def _csv(rows):
 
 
 def _contact(tenant, stage=None, **kw):
-    contact = ContactFactory(tenant=tenant, stage=stage, **kw)
+    """A contact, optionally placed at `stage` in that stage's own pipeline.
+
+    Position is per pipeline now (FR-1.6), so "which stage" no longer implies a
+    single column on the contact.
+    """
+    contact = ContactFactory(tenant=tenant, **kw)
     ContactEmailFactory(tenant=tenant, contact=contact)
+    if stage is not None:
+        ContactPipelinePositionFactory(
+            tenant=tenant, contact=contact, pipeline=stage.pipeline, stage=stage,
+        )
     return contact
 
 
@@ -143,41 +153,79 @@ def test_ac_1_1a_notes_column_becomes_a_real_note(seeded_tenant, ff):
 # ============================================================ client invariant
 
 @pytest.mark.django_db
-def test_ac_1_12_client_invariant_derives_forward_only(seeded_tenant, stages, types, ff):
-    """AC-1.12 — all four clauses of FR-1.6a."""
+def test_ac_1_12_client_invariant_derives_forward_only(
+    seeded_tenant, sales, stages, referrals, referral_stages, types, ff
+):
+    """AC-1.12 — all five clauses of FR-1.6a, now keyed on stage SEMANTIC."""
+    def stage_of(contact, pipeline_row):
+        position = pipeline.position_for(contact, pipeline_row)
+        return position.stage.code if position else None
+
     with tenant_context(seeded_tenant.pk):
         company = CompanyFactory(tenant=seeded_tenant, is_client_company=False)
-        contact = _contact(seeded_tenant, stage=stages["qualified_lead"], company=company)
+        contact = _contact(seeded_tenant, stage=stages["qualified"], company=company)
 
-        pipeline.change_stage(contact, stages["client"], actor=ff.user)
+        pipeline.change_stage(contact, stages["closed_won"], actor=ff.user)
         contact.refresh_from_db(); company.refresh_from_db()
 
-        # 1. type added, company flagged
+        # 1. `won` in a SALES pipeline: type added, company flagged
         assert contact.type_links.filter(contact_type__code="client").exists()
         assert company.is_client_company is True
 
         # 2. moving to lost removes NEITHER
-        pipeline.change_stage(contact, stages["lost"], actor=ff.user)
+        pipeline.change_stage(contact, stages["closed_lost"], actor=ff.user)
         contact.refresh_from_db(); company.refresh_from_db()
         assert contact.type_links.filter(contact_type__code="client").exists()
         assert company.is_client_company is True
 
-        # 3. adding the type by hand never changes the stage
-        other = _contact(seeded_tenant, stage=stages["lead"])
+        # 3. adding the type by hand never changes any stage
+        other = _contact(seeded_tenant, stage=stages["prospecting"])
         ContactTypeLink.all_objects.create(
             tenant=seeded_tenant, contact=other, contact_type=types["client"]
         )
         other.refresh_from_db()
-        assert other.stage.code == "lead"
+        assert stage_of(other, sales) == "prospecting"
 
-        # 4. a contact with no company reaches client with no company invented
+        # 4. a contact with no company reaches `won` with no company invented
         before = Company.objects.count()
-        orphan = _contact(seeded_tenant, stage=stages["qualified_lead"], company=None)
-        pipeline.change_stage(orphan, stages["client"], actor=ff.user)
+        orphan = _contact(seeded_tenant, stage=stages["qualified"], company=None)
+        pipeline.change_stage(orphan, stages["closed_won"], actor=ff.user)
         orphan.refresh_from_db()
-        assert orphan.stage.code == "client"
+        assert stage_of(orphan, sales) == "closed_won"
         assert orphan.company is None
         assert Company.objects.count() == before
+
+        # 5. the REFERRAL pipeline's own end state is not a sale. Reaching
+        #    "Active Referrer" must never flag a company as a client company.
+        partner_company = CompanyFactory(tenant=seeded_tenant, is_client_company=False)
+        partner = _contact(seeded_tenant, company=partner_company)
+        pipeline.change_stage(partner, referral_stages["active_referrer"], actor=ff.user)
+        partner.refresh_from_db(); partner_company.refresh_from_db()
+        assert not partner.type_links.filter(contact_type__code="client").exists()
+        assert partner_company.is_client_company is False
+
+
+@pytest.mark.django_db
+def test_a_contact_holds_a_position_in_two_pipelines_at_once(
+    seeded_tenant, sales, stages, referrals, referral_stages, ff
+):
+    """FR-1.6 — the reason positions moved off the contact row.
+
+    A referral partner who becomes a prospect is genuinely in both pipelines;
+    one nullable FK forced a choice and lost one of the two facts.
+    """
+    with tenant_context(seeded_tenant.pk):
+        contact = _contact(seeded_tenant)
+        pipeline.change_stage(contact, referral_stages["active_referrer"], actor=ff.user)
+        pipeline.change_stage(contact, stages["qualified"], actor=ff.user)
+
+        positions = {p.pipeline.name: p.stage.code for p in pipeline.positions_of(contact)}
+        assert positions == {"Sales": "qualified", "Referral partners": "active_referrer"}
+
+        # Moving in one does not disturb the other.
+        pipeline.change_stage(contact, stages["closed_lost"], actor=ff.user)
+        positions = {p.pipeline.name: p.stage.code for p in pipeline.positions_of(contact)}
+        assert positions == {"Sales": "closed_lost", "Referral partners": "active_referrer"}
 
 
 # ================================================================ assignment
@@ -236,24 +284,24 @@ def test_ac_1_14_only_ff_assigns(seeded_tenant, cf, va, api):
 
 @pytest.mark.django_db
 def test_ac_1_4_stage_automation_fires_task_and_queues_email(
-    seeded_tenant, stages, ff, dev_outbox
+    seeded_tenant, sales, stages, ff, dev_outbox
 ):
     """AC-1.4 — the task exists immediately; the email is pending_approval;
     NOTHING has been sent."""
     template = EmailTemplateFactory(tenant=seeded_tenant)
     StageAutomation.all_objects.create(
-        tenant=seeded_tenant, to_stage=stages["qualified_lead"],
+        tenant=seeded_tenant, pipeline=sales, to_stage=stages["qualified"],
         action_type="create_task", task_title_template="Book strategy session",
         task_due_offset_days=3,
     )
     StageAutomation.all_objects.create(
-        tenant=seeded_tenant, to_stage=stages["qualified_lead"],
+        tenant=seeded_tenant, pipeline=sales, to_stage=stages["qualified"],
         action_type="draft_email", email_template=template,
     )
 
     with tenant_context(seeded_tenant.pk):
-        contact = _contact(seeded_tenant, stage=stages["lead"], owner=ff.user)
-        pipeline.change_stage(contact, stages["qualified_lead"], actor=ff.user)
+        contact = _contact(seeded_tenant, stage=stages["prospecting"], owner=ff.user)
+        pipeline.change_stage(contact, stages["qualified"], actor=ff.user)
 
         task = Task.objects.get(contact=contact)
         assert task.title == "Book strategy session"
@@ -267,27 +315,27 @@ def test_ac_1_4_stage_automation_fires_task_and_queues_email(
 
 @pytest.mark.django_db
 def test_ac_1_16_stage_draft_send_by_default_and_expiry(
-    seeded_tenant, stages, ff, dev_outbox
+    seeded_tenant, sales, stages, ff, dev_outbox
 ):
     """AC-1.16 — 7 days by default, configurable, and expiry sends nothing."""
     template = EmailTemplateFactory(tenant=seeded_tenant)
     rule = StageAutomation.all_objects.create(
-        tenant=seeded_tenant, to_stage=stages["lead"],
+        tenant=seeded_tenant, pipeline=sales, to_stage=stages["prospecting"],
         action_type="draft_email", email_template=template,
     )
     assert rule.send_by_offset_days == 7
 
     with tenant_context(seeded_tenant.pk):
-        contact = _contact(seeded_tenant, stage=stages["contact"])
-        pipeline.change_stage(contact, stages["lead"], actor=ff.user)
+        contact = _contact(seeded_tenant, stage=stages["initial_contact_made"])
+        pipeline.change_stage(contact, stages["prospecting"], actor=ff.user)
         message = OutboxMessage.objects.get(producer=P.STAGE_RULE)
         delta = (message.send_by - timezone.now()).days
         assert 6 <= delta <= 7
 
         rule.send_by_offset_days = 2
         rule.save()
-        contact2 = _contact(seeded_tenant, stage=stages["contact"])
-        pipeline.change_stage(contact2, stages["lead"], actor=ff.user)
+        contact2 = _contact(seeded_tenant, stage=stages["initial_contact_made"])
+        pipeline.change_stage(contact2, stages["prospecting"], actor=ff.user)
         second = OutboxMessage.objects.filter(to_contact=contact2).first()
         assert (second.send_by - timezone.now()).days <= 2
 
@@ -533,19 +581,23 @@ def test_ac_1_22_delete_and_restore_are_delegable(seeded_tenant, va, api):
 
 
 @pytest.mark.django_db
-def test_ac_1_23_pipeline_stages_are_ff_only(seeded_tenant, va, ff, api):
-    """AC-1.23 — types and categories are VA work; stages are a workflow change."""
+def test_ac_1_23_pipeline_stages_are_ff_only(seeded_tenant, sales, va, ff, api):
+    """AC-1.23 / matrix 3.14a — types and categories are VA work; pipelines and
+    their stages are a workflow change and stay FF-only."""
+    stage_body = {"pipeline": str(sales.pk), "code": "x", "label": "X",
+                  "semantic": "working", "position": 9}
+
     c = api.as_(va)
     assert c.post("/api/contact-types/", {"code": "partner", "label": "Partner"}).status_code == 201
     assert c.post("/api/service-categories/", {"name": "Plumbing"}).status_code == 201
-    assert c.post(
-        "/api/pipeline-stages/", {"code": "x", "label": "X", "position": 9}
-    ).status_code == 403
+    assert c.post("/api/pipeline-stages/", stage_body).status_code == 403
+    assert c.post("/api/pipelines/", {"name": "Mine", "kind": "custom"}).status_code == 403
+    # A VA still READS them — they work the board every day.
+    assert c.get("/api/pipelines/").status_code == 200
 
     c = api.as_(ff)
-    assert c.post(
-        "/api/pipeline-stages/", {"code": "x", "label": "X", "position": 9}
-    ).status_code == 201
+    assert c.post("/api/pipeline-stages/", stage_body).status_code == 201
+    assert c.post("/api/pipelines/", {"name": "Mine", "kind": "custom"}).status_code == 201
 
 
 # ============================================================ carve-back items
@@ -857,8 +909,9 @@ def test_contact_and_company_timelines(seeded_tenant, stages, ff, api):
     """FR-1.5 — the timeline the detail screens render."""
     with tenant_context(seeded_tenant.pk):
         company = CompanyFactory(tenant=seeded_tenant)
-        contact = _contact(seeded_tenant, stage=stages["contact"], company=company)
-        pipeline.change_stage(contact, stages["lead"], actor=ff.user)
+        contact = _contact(seeded_tenant, stage=stages["initial_contact_made"],
+                           company=company)
+        pipeline.change_stage(contact, stages["prospecting"], actor=ff.user)
         Note.all_objects.create(
             tenant=seeded_tenant, contact=contact, body="Met at the roundtable"
         )
@@ -868,7 +921,9 @@ def test_contact_and_company_timelines(seeded_tenant, stages, ff, api):
     entries = c.get(f"/api/contacts/{contact.pk}/timeline/").json()
     kinds = {e["kind"] for e in entries}
     assert {"stage", "note", "task"} <= kinds
-    assert any("moved from" in e["text"].lower() or "moved" in e["text"].lower() for e in entries)
+    # The entry now names the pipeline, because "moved to Qualified" is
+    # ambiguous once a practice runs more than one.
+    assert any("sales" in e["text"].lower() for e in entries if e["kind"] == "stage")
 
     company_entries = c.get(f"/api/companies/{company.pk}/timeline/").json()
     assert any(e["kind"] == "stage" for e in company_entries)

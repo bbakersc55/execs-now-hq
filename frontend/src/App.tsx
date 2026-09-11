@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes } from "react-router-dom";
 
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { api, Me } from "./lib/api";
 import { ContactDetail } from "./screens/ContactDetail";
+import { EmailSettings } from "./screens/EmailSettings";
 import { Contacts } from "./screens/Contacts";
 import { CompanyDetail } from "./screens/CompanyDetail";
 import { Companies } from "./screens/Companies";
@@ -16,13 +18,18 @@ import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { AiUsage } from "./screens/AiUsage";
 
+const TENANT = ["FF", "CF", "VA"];
+
 const NAV: { to: string; label: string; roles?: string[] }[] = [
-  { to: "/contacts", label: "Contacts" },
-  { to: "/pipeline", label: "Pipeline" },
-  { to: "/companies", label: "Companies" },
-  { to: "/vendors", label: "Vendors" },
-  { to: "/outbox", label: "Outbox" },
+  // Matrix 4.18 — Module 1 has no client-facing surface, so every CRM entry is
+  // scoped to tenant staff. Without this, an FCC saw the whole sidebar.
+  { to: "/contacts", label: "Contacts", roles: TENANT },
+  { to: "/pipeline", label: "Pipeline", roles: TENANT },
+  { to: "/companies", label: "Companies", roles: TENANT },
+  { to: "/vendors", label: "Vendors", roles: TENANT },
+  { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },
+  { to: "/settings/email", label: "Email settings", roles: ["FF", "CF"] },
   { to: "/referrals", label: "Referral settings", roles: ["FF"] },
   { to: "/rules", label: "Stage automations", roles: ["FF"] },
   { to: "/staff", label: "Staff", roles: ["FF"] },
@@ -68,22 +75,25 @@ export function App() {
         </div>
       </aside>
       <main>
-        <Routes>
-          <Route path="/" element={<Contacts />} />
-          <Route path="/contacts" element={<Contacts />} />
-          <Route path="/contacts/:id" element={<ContactDetail />} />
-          <Route path="/merge/:aId/:bId" element={<Merge />} />
-          <Route path="/pipeline" element={<Pipeline />} />
-          <Route path="/companies" element={<Companies />} />
-          <Route path="/companies/:id" element={<CompanyDetail />} />
-          <Route path="/vendors" element={<Vendors />} />
-          <Route path="/outbox" element={<Outbox />} />
-          <Route path="/import" element={<ImportWizard />} />
-          <Route path="/referrals" element={<ReferralSettings />} />
-          <Route path="/rules" element={<StageRules />} />
-          <Route path="/staff" element={<Staff />} />
-          <Route path="/ai-usage" element={<AiUsage />} />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<Contacts me={me} />} />
+            <Route path="/contacts" element={<Contacts me={me} />} />
+            <Route path="/contacts/:id" element={<ContactDetail me={me} />} />
+            <Route path="/merge/:aId/:bId" element={<Merge />} />
+            <Route path="/pipeline" element={<Pipeline />} />
+            <Route path="/companies" element={<Companies me={me} />} />
+            <Route path="/companies/:id" element={<CompanyDetail me={me} />} />
+            <Route path="/vendors" element={<Vendors />} />
+            <Route path="/outbox" element={<Outbox />} />
+            <Route path="/import" element={<ImportWizard />} />
+            <Route path="/settings/email" element={<EmailSettings me={me} />} />
+            <Route path="/referrals" element={<ReferralSettings />} />
+            <Route path="/rules" element={<StageRules />} />
+            <Route path="/staff" element={<Staff />} />
+            <Route path="/ai-usage" element={<AiUsage />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );

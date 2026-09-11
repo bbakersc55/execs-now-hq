@@ -95,13 +95,20 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
         thread = thread_for(tenant, contact=to_contact, subject=subject)
 
     direct = _direct_to_sent(producer, role)
+    if not from_address:
+        # FR-1.15c — the per-producer sender default. Resolved once, HERE, and
+        # recorded on the row, so the log says what actually went out even if
+        # the preference changes afterwards.
+        from apps.crm.services import sender as sender_service
+
+        from_address = sender_service.resolve_from(tenant, actor, producer)
     message = OutboxMessage.all_objects.create(
         tenant=tenant,
         state=S.SENT if direct else S.PENDING_APPROVAL,
         producer=producer,
         to_contact=to_contact,
         to_address=to_address,
-        from_address=from_address or tenant.from_address,
+        from_address=from_address,
         subject=subject,
         body_text=body_text,
         body_html=body_html,
@@ -190,19 +197,48 @@ def _deliver(message, *, actor=None):
     the recipient is an exact match in DEV_REAL_SEND_ALLOWLIST.
     """
     from apps.accounts.mailer import is_real_send_allowed
-    from apps.crm.services.transport import DevOutboxTransport, get_transport
+    from apps.crm.services.transport import (
+        DevOutboxTransport, TransportUnavailable, get_transport,
+    )
 
-    dev_real = settings.IS_LOCAL and is_real_send_allowed(message.to_address)
+    dev_real = settings.IS_LOCAL and is_real_send_allowed(
+        message.to_address, message.tenant
+    )
     use_real_transport = (not settings.IS_LOCAL) or dev_real
     transport = get_transport() if use_real_transport else DevOutboxTransport()
 
     thread = message.thread
+    if thread is None:
+        # `thread` is SET_NULL, so a deleted thread would otherwise reach the
+        # transport as None and crash the send. Every outbound message needs a
+        # thread token (AC-6.1), so make one rather than fail the delivery.
+        thread = thread_for(message.tenant, contact=message.to_contact,
+                            subject=message.subject)
+        message.thread = thread
+        message.save(update_fields=["thread", "updated_at"])
     in_reply_to = last_message_id_for(thread) if thread else ""
 
-    attachments = [
-        (a.filename, b"", a.stored_file.content_type or "application/pdf")
-        for a in message.attachments.select_related("stored_file")
-    ]
+    # The bytes, not a placeholder. This read used to be a literal `b""`, so
+    # every attachment the app has ever delivered was an empty file with the
+    # right name — visible in the Outbox, visible in Gmail, and broken only once
+    # the recipient opened it.
+    from apps.tenancy import storage
+
+    attachments = []
+    for attachment in message.attachments.select_related("stored_file"):
+        try:
+            content = storage.read(attachment.stored_file)
+        except storage.MissingContent as exc:
+            # Fail the send. Delivering the message without the file it says is
+            # attached is worse than not delivering it: the recipient cannot
+            # tell, and neither can the sender.
+            raise TransportUnavailable(
+                f"{message.subject!r} could not be sent: {exc}"
+            ) from exc
+        attachments.append((
+            attachment.filename, content,
+            attachment.stored_file.content_type or "application/pdf",
+        ))
 
     result = transport.send(
         tenant=message.tenant,
@@ -261,6 +297,29 @@ def _deliver(message, *, actor=None):
 
 
 # ------------------------------------------------------------- producers
+
+def create_manual_draft(contact, *, subject, body_text, actor=None):
+    """A one-off email to one contact, queued for approval.
+
+    Deliberately NOT a direct-to-`sent` producer even though a human typed it:
+    the bulk path composes many of these at once from a template, and "the click
+    is the approval" stops being true when one click produced forty messages.
+    """
+    from apps.crm.services import sender as sender_service
+
+    signature_text, _ = sender_service.signature(contact.tenant, actor)
+    body = body_text.replace("{first_name}", contact.first_name or "")
+    if signature_text and signature_text not in body:
+        body = f"{body.rstrip()}\n\n{signature_text}"
+    return create_message(
+        tenant=contact.tenant, producer=P.MANUAL,
+        to_contact=contact, to_address=contact.primary_email or "",
+        subject=subject or f"A note from {contact.tenant.name}",
+        body_text=body, actor=actor,
+        send_by=timezone.now() + timezone.timedelta(days=7),
+        source_type="contact", source_id=contact.pk,
+    )
+
 
 def queue_stage_email(contact, rule, *, actor=None):
     """FR-1.12 — a stage rule NEVER sends. Send-by defaults to 7 days."""

@@ -8,10 +8,11 @@ from django.utils import timezone
 from apps.accounts.models import MagicLinkToken, User
 from apps.crm.models import (
     Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
-    ContactType, ContactTypeLink, ContactServiceCategory, EmailMessage,
-    EmailTemplate, EmailThread, GmailConnection, ImportBatch, ImportMappingProfile,
-    ImportRow, OutboxAttachment, OutboxMessage, PipelineStage, ServiceCategory,
-    StageAutomation, StageChange, Task,
+    ContactPipelinePosition, ContactType, ContactTypeLink, ContactServiceCategory,
+    DevSendAllowlistEntry, MailPreference,
+    EmailMessage, EmailTemplate, EmailThread, GmailConnection, ImportBatch,
+    ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
+    PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.notes.models import Note
 from apps.tenancy.models import (
@@ -106,6 +107,13 @@ class AuditEventFactory(TenantScopedFactory):
 
 
 class StoredFileFactory(TenantScopedFactory):
+    """Writes real bytes, like the real upload path does.
+
+    A factory that produced metadata with no content behind it would reproduce
+    the exact bug this class of test exists to catch, and every attachment test
+    would pass against an empty file.
+    """
+
     class Meta:
         model = StoredFile
 
@@ -113,6 +121,17 @@ class StoredFileFactory(TenantScopedFactory):
     bucket = "execs-now-hq-media"
     object_key = factory.Sequence(lambda n: f"object-{n}")
     purpose = "recording_audio"
+    content_type = "application/pdf"
+
+    @factory.post_generation
+    def content(obj, create, extracted, **kwargs):
+        if not create:
+            return
+        from apps.tenancy import storage
+
+        body = extracted if extracted is not None else b"%PDF-1.4 test content"
+        obj.byte_size = storage.write_content(obj, body)
+        obj.save(update_fields=["byte_size", "updated_at"])
 
 
 class AiCallFactory(TenantScopedFactory):
@@ -138,13 +157,24 @@ class MagicLinkTokenFactory(TenantScopedFactory):
 
 # --------------------------------------------------------------- Module 1
 
+class PipelineFactory(TenantScopedFactory):
+    class Meta:
+        model = Pipeline
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Pipeline {n}")
+    kind = "custom"
+
+
 class PipelineStageFactory(TenantScopedFactory):
     class Meta:
         model = PipelineStage
 
     tenant = factory.SubFactory(TenantFactory)
+    pipeline = factory.SubFactory(PipelineFactory)
     code = factory.Sequence(lambda n: f"stage{n}")
     label = factory.Sequence(lambda n: f"Stage {n}")
+    semantic = "none"
 
 
 class ContactTypeFactory(TenantScopedFactory):
@@ -171,6 +201,16 @@ class ContactFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     first_name = factory.Sequence(lambda n: f"First{n}")
     last_name = factory.Sequence(lambda n: f"Last{n}")
+
+
+class ContactPipelinePositionFactory(TenantScopedFactory):
+    class Meta:
+        model = ContactPipelinePosition
+
+    tenant = factory.SubFactory(TenantFactory)
+    contact = factory.SubFactory(ContactFactory)
+    pipeline = factory.SubFactory(PipelineFactory)
+    stage = factory.SubFactory(PipelineStageFactory)
 
 
 class ContactEmailFactory(TenantScopedFactory):
@@ -235,6 +275,7 @@ class StageChangeFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     contact = factory.SubFactory(ContactFactory)
+    pipeline = factory.SubFactory(PipelineFactory)
     to_stage = factory.SubFactory(PipelineStageFactory)
 
 
@@ -254,6 +295,7 @@ class StageAutomationFactory(TenantScopedFactory):
         model = StageAutomation
 
     tenant = factory.SubFactory(TenantFactory)
+    pipeline = factory.SubFactory(PipelineFactory)
     to_stage = factory.SubFactory(PipelineStageFactory)
     action_type = "create_task"
 
@@ -275,6 +317,22 @@ class EmailMessageFactory(TenantScopedFactory):
     direction = "outbound"
     provider = "postmark"
     from_address = "info@example.invalid"
+
+
+class MailPreferenceFactory(TenantScopedFactory):
+    class Meta:
+        model = MailPreference
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+
+
+class DevSendAllowlistEntryFactory(TenantScopedFactory):
+    class Meta:
+        model = DevSendAllowlistEntry
+
+    tenant = factory.SubFactory(TenantFactory)
+    address = factory.Sequence(lambda n: f"allowed{n}@example.invalid")
 
 
 class GmailConnectionFactory(TenantScopedFactory):

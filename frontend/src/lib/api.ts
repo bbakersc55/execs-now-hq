@@ -49,8 +49,7 @@ export interface Contact {
   title: string;
   company: string | null;
   owner: string | null;
-  stage: string | null;
-  stage_code: string | null;
+  pipeline_positions: PipelinePosition[];
   source: string;
   background: string;
   tags: string[];
@@ -70,6 +69,8 @@ export interface Company {
   id: string;
   name: string;
   industry: string;
+  domains?: string[];
+  address?: { lines?: string[] } | null;
   is_client_company: boolean;
   seat_count: number | null;
   seats_in_use: number;
@@ -77,12 +78,57 @@ export interface Company {
   primary_contact: string | null;
 }
 
+export type StageSemantic =
+  | "entry" | "working" | "qualified" | "won" | "lost" | "parked" | "none";
+
 export interface Stage {
+  id: string;
+  pipeline: string;
+  code: string;
+  label: string;
+  /** What the stage MEANS. Behaviour keys on this, never on the label. */
+  semantic: StageSemantic;
+  position: number;
+  is_terminal: boolean;
+}
+
+export interface ContactType {
   id: string;
   code: string;
   label: string;
   position: number;
-  is_terminal: boolean;
+}
+
+export interface Pipeline {
+  id: string;
+  name: string;
+  kind: "sales" | "referral" | "custom";
+  position: number;
+  stages: Stage[];
+  contact_count: number;
+}
+
+export interface BoardColumn {
+  stage: Stage;
+  count: number;
+  contacts: Contact[];
+}
+
+export interface Board {
+  pipeline: Pipeline;
+  columns: BoardColumn[];
+}
+
+/** Where a contact sits in ONE pipeline. A contact may have several. */
+export interface PipelinePosition {
+  pipeline: string;
+  pipeline_name: string;
+  pipeline_kind: string;
+  stage: string;
+  stage_code: string;
+  stage_label: string;
+  semantic: StageSemantic;
+  entered_at: string;
 }
 
 export interface OutboxMessage {
@@ -99,6 +145,24 @@ export interface OutboxMessage {
   send_by: string | null;
   sent_at: string | null;
   dev_real_send: boolean;
+  body_html: string;
+  attachments: {
+    id: string;
+    filename: string;
+    byte_size: number;
+    content_type: string;
+    /** False when the row exists but its bytes do not (FR-1.23b). */
+    content_present: boolean;
+  }[];
+  /** Verified send-as addresses this draft may go from (FR-1.15c). */
+  sender_options: { value: string; address: string; label: string }[];
+  /** Where this WILL go, decided before approval (FR-0.7). */
+  delivery: {
+    target: "real" | "dev";
+    label: string;
+    is_local_build: boolean;
+    detail?: string;
+  };
   created_at: string;
 }
 
@@ -111,12 +175,75 @@ export interface ImportBatch {
   created_at: string;
 }
 
+export interface ImportPreview {
+  first_name: string;
+  last_name: string;
+  email: string;
+  company: string;
+  title: string;
+  phones: { number: string; is_primary: boolean }[];
+  tags: string[];
+  type_value: string;
+  stage_value: string;
+  contact_type: string;
+  contact_type_label: string;
+  /** One entry per pipeline this row will be placed in — there may be two. */
+  placements: {
+    pipeline: string;
+    stage: string;
+    stage_code: string;
+    semantic: StageSemantic;
+    from_column: string;
+    fires_client_invariant: boolean;
+  }[];
+  value_ignored: boolean;
+  /** FR-1.6a — this row will also add the client type and flag the company. */
+  fires_client_invariant: boolean;
+  note: string;
+}
+
 export interface ImportRow {
   id: string;
   row_number: number;
   raw: Record<string, string>;
   outcome: string;
   error_text: string;
+  preview?: ImportPreview;
+}
+
+/** One rule in the value-mapping sub-step. */
+export interface ValueRule {
+  contact_type?: string;
+  /** Pipeline id. A pipeline_stage block names it once for the whole column. */
+  pipeline?: string;
+  /** Stage code within that pipeline. */
+  stage?: string;
+  ignore?: boolean;
+}
+
+/** One value-mapped column: contact_type or pipeline_stage. */
+export interface ValueBlock {
+  column: string;
+  pipeline?: string;
+  values: Record<string, ValueRule>;
+}
+
+export interface ValueScan {
+  targets: {
+    target: "contact_type" | "pipeline_stage";
+    column: string;
+    values: { value: string; count: number }[];
+  }[];
+  contact_types: { code: string; label: string }[];
+  pipelines: Pipeline[];
+}
+
+export interface MappingProfile {
+  id: string;
+  name: string;
+  mapping: Record<string, string>;
+  value_mapping: Record<string, ValueBlock>;
+  updated_at: string;
 }
 
 export interface StaffMember {
@@ -127,4 +254,35 @@ export interface StaffMember {
   invited_at: string | null;
   revoked_at: string | null;
   is_active: boolean;
+}
+
+export interface SendAsEntry {
+  address: string;
+  verification_status: string;
+  is_primary: boolean;
+  is_default: boolean;
+  is_alias: boolean;
+}
+
+export interface GmailStatus {
+  connected: boolean;
+  email_address: string;
+  scopes: string[];
+  connected_at: string | null;
+  tier2_enabled: boolean;
+  /** The tenant's send-as alias — what every app message must come From. */
+  alias: string;
+  alias_verified: boolean;
+  alias_verified_at: string | null;
+  alias_listed: boolean;
+  send_as: SendAsEntry[];
+  send_as_error: string;
+  is_sending_connection: boolean;
+  transport: string;
+  transport_label: string;
+  practice_sending: { ok: boolean; detail: string; account: string };
+  oauth_configured: boolean;
+  /** FR-0.7 — gates the dev-only allow-list section. */
+  is_local_build: boolean;
+  verify_error?: string;
 }

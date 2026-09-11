@@ -179,7 +179,12 @@ Two separate credentials, for two separate purposes. Keeping them apart is delib
 In the **`execs-now-hq`** GCP project, configure the OAuth consent screen with **User type: Internal**, then create an OAuth client (Web application):
 
 - Authorised origins: `http://localhost:5200`, `http://localhost:8100`
-- Redirect URI: `http://localhost:8100/accounts/google/login/callback/`
+- Redirect URIs — **both are required**, they are two different consents (C2):
+  - `http://localhost:8100/accounts/google/login/callback/` — signing in
+  - `http://localhost:8100/accounts/gmail/callback` — connecting Gmail to send
+
+**A missing second URI fails at the consent screen**, not in the app: Google returns
+`redirect_uri_mismatch` before the user ever sees a permission list.
 
 **Internal, not External/Testing** — you are on Google Workspace at `getexecutivesnow.com`, which makes Internal available, and it is strictly better here for two reasons:
 
@@ -223,7 +228,7 @@ Beta routes **every** app-originated message — magic links, digests, referral 
 1. In Gmail: **Settings → See all settings → Accounts and Import → "Send mail as" → Add another email address**.
 2. Enter `info@getexecutivesnow.com`. Leave **"Treat as an alias"** ticked.
 3. Gmail sends a confirmation email to that address. **Open it and click the link** — an alias that is listed but unconfirmed will not work.
-4. In Execs NOW HQ, connect Gmail and click **Verify alias**. The app reads your `settings.sendAs` list and confirms the address is present *and* accepted.
+4. In Execs NOW HQ, go to **Email settings** in the sidebar, click **Connect Gmail**, then **Verify alias**. The app reads your `settings.sendAs` list, shows you every address on it, and confirms the alias is present *and* accepted. `docs/phase1_manual_checks.md` Step 0 is the click path.
 
 **If it is not verified, the app refuses to send** and tells you which addresses *are* available. There is deliberately no fallback to your personal address: a client digest arriving from `bryan@…` instead of `info@…` is worse than a visible failure.
 
@@ -263,7 +268,7 @@ gcloud config configurations activate execs-now-hq
 npm run dev            # Vite on 5200
 
 # 5. Dev outbox                               [terminal 4]
-mailpit --smtp-bind-addr localhost:1025 --listen localhost:8125
+mailpit --smtp localhost:1025 --listen localhost:8125
 ```
 
 Then open **http://localhost:5200** for the app and **http://localhost:8125** for mail.

@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from apps.accounts import views as account_views
+from apps.crm import views_gmail
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -11,6 +12,11 @@ urlpatterns = [
     path("accounts/signup/", account_views.login_refused, name="account_signup"),
     path("accounts/3rdparty/signup/", account_views.login_refused,
          name="socialaccount_signup"),
+    # Tier 1 Gmail connect (FR-6.3b). A separate consent from sign-in (C2),
+    # so a separate callback — registered on the OAuth client alongside
+    # allauth's. Declared BEFORE the allauth include so the path is ours.
+    path("accounts/gmail/callback", views_gmail.gmail_callback,
+         name="gmail-callback"),
     path("accounts/", include("allauth.urls")),
     path("api/branding", account_views.branding, name="branding"),
     path("api/me", account_views.me, name="me"),

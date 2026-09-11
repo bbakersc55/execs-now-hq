@@ -115,22 +115,93 @@ class ContactType(TenantScopedModel):
         return self.label
 
 
-class PipelineStage(TenantScopedModel):
-    """FR-1.6. Seeded contact -> lead -> qualified_lead -> client, plus the two
-    non-linear states without which every lost prospect stays in the pipeline
-    forever (FR-1.6, assumption F2)."""
+class Pipeline(TenantScopedModel):
+    """FR-1.6 — a practice runs more than one (owner, Check 1).
 
+    A sales pipeline for prospects and a nurture pipeline for referral partners
+    are different processes with different stages, and collapsing them into one
+    made every referral partner look like a stalled prospect. `kind` is what
+    behaviour keys on; `name` is the FF's to change.
+    """
+
+    class Kind(models.TextChoices):
+        SALES = "sales", "Sales"
+        REFERRAL = "referral", "Referral partners"
+        CUSTOM = "custom", "Custom"
+
+    name = models.CharField(max_length=120)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.CUSTOM)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "pipeline"
+        ordering = ["position", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "name"], name="pipeline_name_unique"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def won_stage(self):
+        return self.stages.filter(semantic=StageSemantic.WON).first()
+
+
+class StageSemantic(models.TextChoices):
+    """What a stage MEANS, independent of what it is called.
+
+    The labels are the owner's ("Consult Given", "Proposal Given") and the FF
+    renames them freely. Behaviour cannot key on a label that changes, so every
+    rule in the app keys on this instead: the client invariant on `won` in a
+    sales pipeline, the non-linear states on `lost` and `parked`.
+    """
+
+    ENTRY = "entry", "Entry"
+    WORKING = "working", "Working"
+    QUALIFIED = "qualified", "Qualified"
+    WON = "won", "Won"
+    LOST = "lost", "Lost"
+    PARKED = "parked", "Parked"
+    NONE = "none", "No semantic"
+
+
+class PipelineStage(TenantScopedModel):
+    """A stage within one pipeline. FF may rename, reorder, add and remove."""
+
+    pipeline = models.ForeignKey(
+        Pipeline, on_delete=models.CASCADE, related_name="stages"
+    )
     code = models.CharField(max_length=32)
     label = models.CharField(max_length=64)
+    semantic = models.CharField(
+        max_length=12, choices=StageSemantic.choices, default=StageSemantic.NONE
+    )
     position = models.PositiveSmallIntegerField(default=0)
-    is_terminal = models.BooleanField(default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "pipeline_stage"
         ordering = ["position"]
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "code"], name="pipeline_stage_code_unique")
+            # Per pipeline now: "Qualified" may legitimately exist in two.
+            models.UniqueConstraint(
+                fields=["tenant", "pipeline", "code"], name="pipeline_stage_code_unique"
+            ),
+            # At most one `won` per pipeline, in the database. "At least one for
+            # a sales pipeline" is a cross-row rule and lives in the service.
+            models.UniqueConstraint(
+                fields=["tenant", "pipeline"], condition=models.Q(semantic="won"),
+                name="pipeline_stage_one_won",
+            ),
         ]
+
+    def __str__(self):
+        return self.label
+
+    @property
+    def is_terminal(self):
+        """Derived, not stored: a second column would drift from the semantic."""
+        return self.semantic in (StageSemantic.LOST, StageSemantic.PARKED)
 
     def __str__(self):
         return self.label
@@ -168,11 +239,9 @@ class Contact(TenantScopedModel):
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="owned_contacts",
     )
-    # FR-1.6a — AUTHORITATIVE for "is a client". Type and the company flag are
-    # derived from this, one way only.
-    stage = models.ForeignKey(
-        PipelineStage, null=True, blank=True, on_delete=models.PROTECT, related_name="contacts"
-    )
+    # FR-1.6a — a contact's position is now per pipeline, in
+    # `contact_pipeline_position`. A referral partner who becomes a prospect is
+    # in both at once, which one nullable FK could not express.
     source = models.CharField(max_length=120, blank=True, default="")
 
     # §12.2 — renamed from `notes`. One thing in this product is called a note
@@ -223,7 +292,6 @@ class Contact(TenantScopedModel):
         indexes = [
             GinIndex(fields=["search_vector"], name="contact_search_gin"),
             GinIndex(fields=["tags"], name="contact_tags_gin"),
-            models.Index(fields=["tenant", "stage"]),
             models.Index(fields=["tenant", "owner"]),
         ]
 
@@ -298,6 +366,40 @@ class ContactTypeLink(TenantScopedModel):
         ]
 
 
+class ContactPipelinePosition(TenantScopedModel):
+    """Where a contact sits in ONE pipeline (FR-1.6).
+
+    Replaces `contact.stage_id`. A contact may hold a position in several
+    pipelines at once — a referral partner who becomes a prospect is genuinely
+    in both, and the old single FK forced a choice that lost one of them.
+
+    Contact **type does not gate membership**: being in the referral pipeline is
+    not the same fact as carrying the referral_partner type, and conflating them
+    made one of the two invisible.
+    """
+
+    contact = models.ForeignKey(
+        Contact, on_delete=models.CASCADE, related_name="pipeline_positions"
+    )
+    pipeline = models.ForeignKey(
+        Pipeline, on_delete=models.PROTECT, related_name="positions"
+    )
+    stage = models.ForeignKey(
+        PipelineStage, on_delete=models.PROTECT, related_name="positions"
+    )
+    entered_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "contact_pipeline_position"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "contact", "pipeline"],
+                name="contact_pipeline_position_unique",
+            )
+        ]
+        indexes = [models.Index(fields=["tenant", "pipeline", "stage"])]
+
+
 class ContactServiceCategory(TenantScopedModel):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="category_links")
     service_category = models.ForeignKey(
@@ -318,6 +420,11 @@ class StageChange(TenantScopedModel):
     """FR-1.7 — actor, timestamp, from/to, optional reason."""
 
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="stage_changes")
+    # Denormalised from to_stage: `from_stage` is null on a first entry, so the
+    # pipeline a change belongs to cannot always be read off the other end.
+    pipeline = models.ForeignKey(
+        Pipeline, on_delete=models.PROTECT, related_name="stage_changes"
+    )
     from_stage = models.ForeignKey(
         PipelineStage, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
@@ -358,6 +465,11 @@ class StageAutomation(TenantScopedModel):
         CREATE_TASK = "create_task", "Create a task"
         DRAFT_EMAIL = "draft_email", "Draft an email into the Outbox"
 
+    # FR-1.10 — rules are per pipeline. A "becomes Qualified" rule on the sales
+    # pipeline must not fire for the referral pipeline's own Qualified stage.
+    pipeline = models.ForeignKey(
+        Pipeline, on_delete=models.CASCADE, related_name="automations"
+    )
     from_stage = models.ForeignKey(
         PipelineStage, null=True, blank=True, on_delete=models.CASCADE, related_name="+"
     )  # null = any
@@ -408,6 +520,86 @@ class EmailThread(TenantScopedModel):
         import secrets
 
         return secrets.token_urlsafe(18)
+
+
+class MailPreference(TenantScopedModel):
+    """Per-user sender defaults and signature (FR-1.15c).
+
+    Everything went out from the practice alias, which is right for a digest and
+    wrong for a referral touch: a partner being asked for introductions should
+    hear from a person, not from `info@`. The default below encodes exactly
+    that split, and the FF can change it per producer.
+
+    Both choices are restricted to **verified** send-as addresses, because Gmail
+    refuses anything else and a silent rejection at send time would be worse
+    than not offering the option.
+    """
+
+    class Sender(models.TextChoices):
+        ALIAS = "alias", "The practice alias"
+        SELF = "self", "My own address"
+
+    #: Producer -> Sender. Defaults are applied in `sender_for`, not stored, so
+    #: an unset producer follows the product default rather than a stale copy.
+    DEFAULTS = {
+        "referral_touch": Sender.SELF,
+        "referral_onboarding": Sender.SELF,
+        "stage_rule": Sender.ALIAS,
+        "manual": Sender.ALIAS,
+    }
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="mail_preference"
+    )
+    #: {producer: "alias" | "self"} — only the ones deliberately overridden.
+    sender_by_producer = models.JSONField(default=dict, blank=True)
+    #: FR-1.15d — replaces the bare practice name as a sign-off.
+    signature_text = models.TextField(blank=True, default="")
+    signature_html = models.TextField(blank=True, default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "mail_preference"
+
+    def sender_for(self, producer):
+        choice = (self.sender_by_producer or {}).get(producer)
+        if choice in (self.Sender.ALIAS, self.Sender.SELF):
+            return choice
+        return self.DEFAULTS.get(producer, self.Sender.ALIAS)
+
+
+class DevSendAllowlistEntry(TenantScopedModel):
+    """FR-0.7 / H6 — an exact address that may receive REAL mail from a
+    localhost build.
+
+    `DEV_REAL_SEND_ALLOWLIST` in `.env` already does this, but editing it means
+    a file edit and a server restart mid-check. These rows are the same
+    mechanism made changeable from the UI, and the two are unioned — `.env`
+    entries can never be removed from the app, so the environment stays the
+    floor rather than something the UI can quietly lower.
+
+    Exact addresses only. A bare domain or a wildcard would put every colleague
+    and client at that domain back in range, which is the whole thing H6 exists
+    to prevent.
+    """
+
+    address = models.EmailField()
+    note = models.CharField(max_length=200, blank=True, default="")
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "dev_send_allowlist_entry"
+        verbose_name_plural = "dev send allowlist entries"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "address"], name="dev_send_allowlist_unique"
+            )
+        ]
+
+    def __str__(self):
+        return self.address
 
 
 class GmailConnection(TenantScopedModel):
@@ -581,8 +773,17 @@ class OutboxAttachment(TenantScopedModel):
 # ------------------------------------------------------------------- import
 
 class ImportMappingProfile(TenantScopedModel):
+    """A remembered column mapping, and the value mapping that goes with it.
+
+    The two are saved together deliberately: a value mapping is meaningless
+    without knowing which column produced those values, so splitting them
+    across two profiles would let them drift apart.
+    """
+
     name = models.CharField(max_length=120)
     mapping = models.JSONField(default=dict)
+    # {raw CSV value: {"contact_type": code, "stage": code, "ignore": bool}}
+    value_mapping = models.JSONField(default=dict, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "import_mapping_profile"
@@ -602,6 +803,11 @@ class ImportBatch(TenantScopedModel):
     )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRY_RUN)
     counts = models.JSONField(default=dict)
+    # What the dry run was computed with. Persisted so the commit writes what
+    # the preview showed: re-sending the mapping from the browser let the two
+    # drift, which is the one thing a dry run exists to prevent.
+    mapping = models.JSONField(default=dict, blank=True)
+    value_mapping = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
@@ -634,6 +840,15 @@ class ImportRow(TenantScopedModel):
     # so the reviewer resolves the SAME set the dry run reported rather than a
     # recomputed one that may have drifted.
     candidate_ids = models.JSONField(default=list, blank=True)
+    # FR-1.28 — the row as it WILL be written: phones, tags, types, stage.
+    # Computed by the dry run with the same code the commit uses, so the
+    # preview cannot disagree with the result.
+    preview = models.JSONField(default=dict, blank=True)
+    # Rollback needs more than scalar fields once an import can write phones
+    # and type links: these are the rows it created, to be removed again.
+    created_related = models.JSONField(default=dict, blank=True)
+    # ...and the pre-import stage and tags, which are not plain CONTACT_FIELDS.
+    previous_related = models.JSONField(default=dict, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "import_row"

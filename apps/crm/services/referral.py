@@ -12,7 +12,7 @@ CADENCE_DAYS = {"monthly": 30, "bimonthly": 60, "quarterly": 90}
 DRAFT_LEAD_DAYS = 3  # FR-1.21 — drafted 3 days BEFORE the due date.
 
 
-def compose_touch(contact) -> tuple[str, bool, str]:
+def compose_touch(contact, *, actor=None) -> tuple[str, bool, str]:
     """FR-1.22 — three parts, 3-5 lines.
 
     Returns (body, is_ai_generated, warning).
@@ -42,7 +42,12 @@ def compose_touch(contact) -> tuple[str, bool, str]:
         "If there's a type of introduction that would help you right now, "
         "tell me and I'll keep an eye out."
     )
-    lines += ["", tenant.name]
+    # FR-1.15d — sign off as a person. A bare practice name under a message
+    # asking a partner for introductions reads as a form letter.
+    from apps.crm.services import sender as sender_service
+
+    signature_text, _ = sender_service.signature(tenant, actor)
+    lines += ["", signature_text]
     return "\n".join(lines), True, warning
 
 
@@ -86,8 +91,12 @@ def draft_due_touches(tenant, *, now=None):
 
     drafted = []
     for contact in due:
-        body, is_ai, warning = compose_touch(contact)
+        # No human triggered this run, so the touch signs off as the person
+        # whose relationship it is — the contact's owner — not as nobody.
+        actor = contact.owner
+        body, is_ai, warning = compose_touch(contact, actor=actor)
         message = create_message(
+            actor=actor,
             tenant=tenant, producer=P.REFERRAL_TOUCH,
             to_contact=contact, to_address=contact.primary_email or "",
             subject=f"Checking in from {tenant.name}",
@@ -130,13 +139,21 @@ def onboard_referral_partner(contact, *, actor=None):
         # draft.
         warning = "No marketing flyer is uploaded, so this draft has no attachment."
 
+    # FR-1.23b — the sentence has to match reality. Claiming an attachment that
+    # is not there is worse than not mentioning one: the partner looks for a
+    # file, finds none, and the first impression is of a broken email.
+    opening = (
+        "Great to meet you. I've attached a short overview of what we do, "
+        "so you know what to look out for."
+        if attachments else
+        "Great to meet you — good to know what you're working on."
+    )
     body = template.body if template else (
         f"Hi {contact.first_name},\n\n"
-        "Great to meet you. I've attached a short overview of what we do, "
-        "so you know what to look out for.\n\n"
+        f"{opening}\n\n"
         "If there's a type of introduction that would help you, tell me and "
         "I'll keep an eye out.\n\n"
-        f"{tenant.name}"
+        f"{_signature_for(tenant, actor)}"
     )
 
     message = create_message(
@@ -148,6 +165,12 @@ def onboard_referral_partner(contact, *, actor=None):
         attachments=attachments,
         source_type="contact", source_id=contact.pk,
     )
+
+    # FR-1.23 — a new referral partner enters the referral pipeline at its entry
+    # stage. Placed here, not inferred from the type: pipeline membership and
+    # contact type are separate facts (the partner may also be a live prospect
+    # in the sales pipeline, and neither position should disturb the other).
+    _place_in_referral_pipeline(contact, actor=actor)
 
     now = timezone.now()
     contact.referral_onboarded_at = now
@@ -165,8 +188,69 @@ def onboard_referral_partner(contact, *, actor=None):
     return message
 
 
-def add_type(contact, code, *, actor=None):
-    """Adding `referral_partner` triggers onboarding (FR-1.23a, FR-5.9b)."""
+def _signature_for(tenant, actor):
+    from apps.crm.services import sender as sender_service
+
+    text, _ = sender_service.signature(tenant, actor)
+    return text
+
+
+def _place_in_referral_pipeline(contact, *, actor=None):
+    """Entry stage of the referral pipeline, if the tenant has one.
+
+    Uses the ordinary `change_stage`, so the move produces an ordinary
+    `stage_change` row and shows on the timeline like any other — there is no
+    second, invisible way for a contact to move.
+    """
+    from apps.crm.services import pipeline as pipeline_service
+
+    pipeline = pipeline_service.referral_pipeline(contact.tenant)
+    if pipeline is None:
+        return None
+    if pipeline_service.position_for(contact, pipeline) is not None:
+        return None  # already in it; onboarding must not reset their progress
+    stage = pipeline_service.entry_stage(pipeline)
+    if stage is None:
+        return None
+    return pipeline_service.change_stage(
+        contact, stage, actor=actor, reason="became a referral partner",
+    )
+
+
+DEFAULT_CADENCE = "monthly"
+
+
+def ensure_touch_schedule(contact, *, from_when=None):
+    """FR-1.20/1.21 — a referral partner without a cadence is invisible to the
+    scheduler, so it never drafts for them.
+
+    That is exactly what happened to the imported book: 40 partners arrived with
+    the type set and no cadence and no `next_touch_at`, so the due-touch job had
+    nothing to find. Setting both is what makes a partner real to the scheduler.
+
+    Only fills what is missing — it never moves a date somebody already has.
+    """
+    updates = []
+    if not contact.referral_cadence:
+        contact.referral_cadence = DEFAULT_CADENCE
+        updates.append("referral_cadence")
+    if contact.referral_next_touch_at is None:
+        contact.referral_next_touch_at = _next_touch(contact, from_when or timezone.now())
+        updates.append("referral_next_touch_at")
+    if updates:
+        contact.save(update_fields=[*updates, "updated_at"])
+    return updates
+
+
+def add_type(contact, code, *, actor=None, onboard=True):
+    """Adding `referral_partner` puts them on the touch cadence, and (unless
+    `onboard=False`) triggers onboarding (FR-1.23a, FR-5.9b).
+
+    `onboard=False` is the CSV import's path: a backfill is a statement about
+    history, so it must not queue a first-touch email to forty partners the
+    fractional met years ago. It still sets the cadence, because a partner the
+    scheduler cannot see is the bug this fixes.
+    """
     contact_type = ContactType.all_objects.filter(tenant=contact.tenant, code=code).first()
     if contact_type is None:
         return None
@@ -174,5 +258,36 @@ def add_type(contact, code, *, actor=None):
         tenant=contact.tenant, contact=contact, contact_type=contact_type
     )
     if created and code == "referral_partner":
-        onboard_referral_partner(contact, actor=actor)
+        if onboard:
+            # FR-1.23c — onboarding sets the clock from the draft date, so it
+            # owns the schedule when it runs. Clock rules unchanged.
+            onboard_referral_partner(contact, actor=actor)
+        ensure_touch_schedule(contact)
     return link
+
+
+def draft_touch_now(contact, *, actor=None):
+    """FR-1.21/1.22 — draft this partner's touch on demand.
+
+    The same composer the scheduled job uses, landing in the same
+    `pending_approval` state. A manual trigger that took a different path could
+    produce a different email, which would make the scheduled one untestable.
+
+    It does NOT move `referral_next_touch_at`: drafting one now is an extra
+    touch, not a replacement for the one already due.
+    """
+    body, is_ai, warning = compose_touch(contact, actor=actor)
+    message = create_message(
+        tenant=contact.tenant, producer=P.REFERRAL_TOUCH,
+        to_contact=contact, to_address=contact.primary_email or "",
+        subject=f"Checking in — {contact.tenant.name}",
+        body_text=body, is_ai_generated=is_ai, warning=warning, actor=actor,
+        send_by=timezone.now() + timezone.timedelta(days=DRAFT_LEAD_DAYS),
+        source_type="contact", source_id=contact.pk,
+    )
+    AuditEvent.all_objects.create(
+        tenant=contact.tenant, actor=actor, verb="referral.touch_drafted",
+        target_type="contact", target_id=contact.pk,
+        payload={"outbox_id": str(message.pk), "on_demand": True},
+    )
+    return message

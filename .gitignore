@@ -8,3 +8,5 @@ staticfiles/
 frontend/dist/
 frontend/node_modules/
 .pytest_cache/
+frontend/tsconfig.tsbuildinfo
+media/

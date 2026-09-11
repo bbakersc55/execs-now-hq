@@ -114,6 +114,36 @@ def access_token_for(connection):
     return response.json()["access_token"]
 
 
+def list_send_as(connection):
+    """Every address Gmail says this account may send as.
+
+    What `verify_send_as` checks one address against, returned whole so the
+    Email settings screen can show the alias in the context of the list — "not
+    there" and "there but unconfirmed" are different problems with different
+    fixes, and both are invisible if you only ever see a pass/fail on one row.
+    """
+    token = access_token_for(connection)
+    response = requests.get(
+        f"{GMAIL_API}/settings/sendAs",
+        headers={"Authorization": f"Bearer {token}"}, timeout=20,
+    )
+    if not response.ok:
+        raise SendAsNotVerified(
+            f"Could not read the send-as settings for {connection.email_address} "
+            f"({response.status_code}). The connection needs the "
+            "gmail.settings.basic scope — reconnect Gmail to grant it."
+        )
+    return [
+        {
+            "address": entry.get("sendAsEmail", ""),
+            "verification_status": entry.get("verificationStatus", "accepted") or "accepted",
+            "is_primary": bool(entry.get("isPrimary")),
+            "is_default": bool(entry.get("isDefault")),
+        }
+        for entry in response.json().get("sendAs", [])
+    ]
+
+
 def verify_send_as(connection, alias, *, save=True):
     """Confirm this Gmail account may send as the tenant's alias.
 

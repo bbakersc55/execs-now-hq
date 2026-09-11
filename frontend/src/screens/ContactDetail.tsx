@@ -3,16 +3,18 @@ import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { api, Contact, OutboxMessage } from "../lib/api";
+import { AddContact } from "./AddContact";
+import { Contact, Me, OutboxMessage, api } from "../lib/api";
 
 interface TimelineEntry { kind: string; when: string; text: string; }
 interface Duplicate { contact: Contact; match_reason: string; rank: number; }
 
-export function ContactDetail() {
+export function ContactDetail({ me }: { me: Me }) {
   const { id } = useParams();
   const [params] = useSearchParams();
   const qc = useQueryClient();
   const [note, setNote] = useState("");
+  const [editing, setEditing] = useState(false);
   const [lookingForDupes, setLookingForDupes] = useState(false);
 
   const contact = useQuery<Contact>({
@@ -28,6 +30,15 @@ export function ContactDetail() {
     queryKey: ["duplicates", id],
     queryFn: () => api.get<Duplicate[]>(`/api/contacts/${id}/duplicates/`),
     enabled: lookingForDupes,
+  });
+
+  const draftTouch = useMutation({
+    mutationFn: () => api.post<{ id: string }>(`/api/contacts/${id}/draft-touch/`),
+    onSuccess: () => {
+      setNote("Touch drafted into the Outbox, pending approval. Nothing was sent.");
+      qc.invalidateQueries({ queryKey: ["outbox"] });
+    },
+    onError: (e: Error) => setNote(e.message),
   });
 
   const addType = useMutation({
@@ -56,11 +67,31 @@ export function ContactDetail() {
   const c = contact.data!;
   const theirs = (outbox.data ?? []).filter((m) => m.to_contact === c.id);
 
+  if (editing) {
+    return (
+      <AddContact
+        me={me}
+        existing={c}
+        onDone={(updated) => {
+          setEditing(false);
+          if (updated) {
+            setNote("Contact updated.");
+            qc.invalidateQueries({ queryKey: ["contact", id] });
+            qc.invalidateQueries({ queryKey: ["contacts"] });
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <>
-      <h2>{c.first_name} {c.last_name}</h2>
+      <div className="spread">
+        <h2>{c.first_name} {c.last_name}</h2>
+        <button onClick={() => setEditing(true)}>Edit contact</button>
+      </div>
       <p className="sub">
-        {c.title || "No title"} · {c.stage_code ? c.stage_code.replace(/_/g, " ") : "no stage"}
+        {c.title || "No title"}
         {c.type_codes.map((t) => <span key={t}> · <Pill>{t.replace(/_/g, " ")}</Pill></span>)}
       </p>
 
@@ -74,6 +105,35 @@ export function ContactDetail() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1.15rem" }}>
         <div>
+          <Card title="Pipelines">
+            <p className="muted small">
+              A contact holds an independent position in each pipeline they belong to.
+              Being a referral partner and a live prospect at the same time is normal.
+            </p>
+            {(c.pipeline_positions ?? []).length === 0 ? (
+              <Empty>Not in any pipeline. Add them from the Pipeline board.</Empty>
+            ) : (
+              <table>
+                <thead><tr><th>Pipeline</th><th>Stage</th><th>Since</th></tr></thead>
+                <tbody>
+                  {(c.pipeline_positions ?? []).map((p) => (
+                    <tr key={p.pipeline}>
+                      <td>{p.pipeline_name}</td>
+                      <td>
+                        <Pill kind={p.semantic === "won" ? "ok"
+                          : p.semantic === "lost" ? "bad"
+                          : p.semantic === "parked" ? "warn" : ""}>
+                          {p.stage_label}
+                        </Pill>
+                      </td>
+                      <td className="muted small">{when(p.entered_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+
           <Card title="Details">
             <table>
               <tbody>
@@ -189,8 +249,18 @@ export function ContactDetail() {
                     onBlur={(e) => save.mutate({ referral_fee_terms: e.target.value })}
                   />
                 </Field>
-                <p className="muted small" style={{ marginBottom: 0 }}>
+                <p className="muted small">
                   Onboarded {when(c.referral_onboarded_at)} · next touch {when(c.referral_next_touch_at)}
+                </p>
+                <button className="primary" disabled={draftTouch.isPending}
+                  onClick={() => draftTouch.mutate()}>
+                  {draftTouch.isPending ? "Drafting…" : "Draft touch now"}
+                </button>
+                <p className="muted small" style={{ marginTop: ".5rem", marginBottom: 0 }}>
+                  Drafts this partner's touch into the Outbox for approval, using the same
+                  composer the scheduled job uses. It does not send, and it does not move
+                  their next touch date — an extra touch now is not a replacement for the
+                  one already due.
                 </p>
               </>
             )}

@@ -38,13 +38,20 @@ def merge_contacts(survivor, absorbed, *, actor=None, role=None, field_choices=N
     for field, value in (field_choices or {}).items():
         setattr(survivor, field, value)
 
-    # History moves. Emails/phones lose their primary flag so the partial
-    # unique constraint (one primary per contact) is not violated.
-    ContactEmail.all_objects.filter(tenant=tenant, contact=absorbed).update(
-        contact=survivor, is_primary=False
+    # FR-1.34 — emails and phones move, DE-DUPLICATED. Two records for the same
+    # person usually hold the same mobile number, and a bulk move produced a
+    # survivor carrying it twice: the merge screen exists to clean duplicates
+    # up, so it must not manufacture new ones.
+    #
+    # Matching mirrors the rules used elsewhere: addresses case-insensitively,
+    # numbers on their digits, so "+1 555-0100" and "15550100" are one number.
+    _merge_child_values(
+        ContactEmail, tenant, survivor, absorbed,
+        value_field="address", key=lambda v: v.strip().lower(),
     )
-    ContactPhone.all_objects.filter(tenant=tenant, contact=absorbed).update(
-        contact=survivor, is_primary=False
+    _merge_child_values(
+        ContactPhone, tenant, survivor, absorbed,
+        value_field="number", key=lambda v: "".join(c for c in v if c.isdigit()) or v.strip(),
     )
 
     for link in ContactTypeLink.all_objects.filter(tenant=tenant, contact=absorbed):
@@ -87,6 +94,33 @@ def merge_contacts(survivor, absorbed, *, actor=None, role=None, field_choices=N
         },
     )
     return survivor
+
+
+def _merge_child_values(model, tenant, survivor, absorbed, *, value_field, key):
+    """Move the absorbed record's rows onto the survivor, skipping duplicates.
+
+    The survivor keeps exactly one primary: its own if it had one, otherwise the
+    first row promoted from the absorbed record. The partial unique index allows
+    only one, so this is enforcement, not tidiness.
+    """
+    existing = list(model.all_objects.filter(tenant=tenant, contact=survivor))
+    seen = {key(getattr(row, value_field)) for row in existing}
+    survivor_has_primary = any(row.is_primary for row in existing)
+
+    for row in model.all_objects.filter(tenant=tenant, contact=absorbed).order_by(
+        "-is_primary", "created_at"
+    ):
+        fingerprint = key(getattr(row, value_field))
+        if fingerprint in seen:
+            # The survivor already holds this value. Dropping the duplicate row
+            # loses nothing: the value itself is preserved on the survivor.
+            row.delete()
+            continue
+        seen.add(fingerprint)
+        row.contact = survivor
+        row.is_primary = not survivor_has_primary
+        survivor_has_primary = True
+        row.save(update_fields=["contact", "is_primary", "updated_at"])
 
 
 def resolve(contact):

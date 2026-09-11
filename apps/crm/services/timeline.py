@@ -18,10 +18,14 @@ def for_contact(contact, limit=100):
     entries = []
 
     for change in StageChange.objects.filter(contact=contact).select_related(
-        "from_stage", "to_stage"
+        "from_stage", "to_stage", "pipeline"
     ):
-        origin = change.from_stage.label if change.from_stage else "no stage"
-        text = f"Stage moved from {origin} to {change.to_stage.label}"
+        origin = change.from_stage.label if change.from_stage else "entered"
+        text = (
+            f"{change.pipeline.name}: {origin} → {change.to_stage.label}"
+            if change.from_stage
+            else f"{change.pipeline.name}: entered at {change.to_stage.label}"
+        )
         if change.reason:
             text += f" — {change.reason}"
         entries.append(_entry("stage", change.created_at, text))
@@ -58,10 +62,13 @@ def for_company(company, limit=100):
         entries.append(_entry("note", note.created_at, f"Note: {note.title or note.body[:60]}"))
 
     for contact in Contact.objects.filter(company=company, deleted_at__isnull=True):
-        for change in StageChange.objects.filter(contact=contact).select_related("to_stage"):
+        for change in StageChange.objects.filter(contact=contact).select_related(
+            "to_stage", "pipeline"
+        ):
             entries.append(_entry(
                 "stage", change.created_at,
-                f"{contact.first_name} {contact.last_name} moved to {change.to_stage.label}",
+                f"{contact.first_name} {contact.last_name} moved to "
+                f"{change.to_stage.label} ({change.pipeline.name})",
             ))
 
     entries.sort(key=lambda e: e["when"] or "", reverse=True)

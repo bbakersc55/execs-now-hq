@@ -224,7 +224,6 @@ Ordered list. Feeds `{Location A}` / `{Location B}` (FR-1.3, FR-4.9a).
 | `title` | text? | |
 | `company_id` | FK→`company`? | |
 | `owner_id` | FK→`user` | drives CF visibility (FR-1.9c) |
-| `stage_id` | FK→`pipeline_stage` | **authoritative for "is a client" (FR-1.6a)** |
 | `source` | text? | |
 | `background` | text? | short "who this is / how we met". **Renamed from `notes`** — one concept in this product is called a note, and it is the `note` table (§12.2) |
 | `tags` | text[] (ArrayField, GIN-indexed) | |
@@ -254,23 +253,77 @@ Per-tenant list (D5); many-to-many (FR-1.2).
 `contact_type`: `id · tenant_id · code · label · position` — seeded `prospect, client, referral_partner, vendor, coworker`.
 `contact_type_link`: `id · tenant_id · contact_id · contact_type_id · is_primary` — `U(tenant_id, contact_id, contact_type_id)`.
 
-### `pipeline_stage`
-Per-tenant rows (D5, FR-1.6).
+### `pipeline`
+Per-tenant rows (D5, FR-1.6). **A practice runs more than one.** The owner's real
+CRM has a sales pipeline for prospects and a nurture pipeline for referral
+partners; the first draft collapsed both into one fixed funnel, which made every
+referral partner look like a stalled prospect.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
-| `code` / `label` | text / text | `contact, lead, qualified_lead, client, lost, dormant` |
+| `name` | text | `U(tenant_id, name)` — the FF's to change |
+| `kind` | text | `sales` · `referral` · `custom`. **Behaviour keys on this**, not on the name |
+| `position` | smallint | order of the board selector |
+
+Seeded per tenant: **"Sales"** (`sales`) and **"Referral partners"** (`referral`).
+
+### `pipeline_stage`
+Per-tenant, **per pipeline**. The FF may rename, reorder, add and remove.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` | |
+| `pipeline_id` | FK→`pipeline` | CASCADE |
+| `code` / `label` | text / text | `U(tenant_id, pipeline_id, code)` — "Qualified" may legitimately exist in two pipelines |
+| `semantic` | text | `entry · working · qualified · won · lost · parked · none`. **Independent of the label**: the FF renames "Closed Won" to "Signed" and every rule still works |
 | `position` | smallint | |
-| `is_terminal` | bool | true for `lost`, `dormant` |
+
+`is_terminal` is **derived** (`semantic ∈ {lost, parked}`), not stored — a second
+column would drift from the semantic.
+
+**Constraint:** `U(tenant_id, pipeline_id) WHERE semantic = 'won'` gives *at most*
+one `won` stage per pipeline in the database. *Exactly* one for a `sales`-kind
+pipeline is a cross-row rule enforced in the service and on the API, because
+without it nothing can ever become a client (FR-1.6a).
+
+**Seeded stages** — the owner's actual stages, not a generic funnel:
+
+*Sales:* Initial Contact Made (`entry`), Prospecting (`working`), Follow Up Needed
+(`working`), Qualified (`qualified`), Consult Given (`qualified`), Proposal Given
+(`qualified`), Decision Making (`qualified`), Negotiation (`qualified`), Closed Won
+(**`won`**), Closed Lost (`lost`), Nurture (`parked`).
+
+*Referral partners:* New Partner (`entry`), Follow-up Sent (`working`), Flyer Sent
+(`working`), Nurturing (`working`), Active Referrer (`qualified`), Dormant (`parked`).
+
+### `contact_pipeline_position`
+**Replaces `contact.stage_id`.** A contact holds an independent position in each
+pipeline they belong to — a referral partner who becomes a prospect is genuinely
+in both, and one nullable FK forced a choice that lost one of the two facts.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` · `contact_id` | |
+| `pipeline_id` | FK→`pipeline` | PROTECT |
+| `stage_id` | FK→`pipeline_stage` | PROTECT — a stage holding contacts cannot be deleted |
+| `entered_at` | timestamptz | |
+
+`U(tenant_id, contact_id, pipeline_id)` — one position per contact per pipeline.
+IX on `(tenant_id, pipeline_id, stage_id)` for the board.
+
+**Contact type does not gate membership.** Sitting in the referral pipeline and
+carrying the `referral_partner` type are two different facts; conflating them
+made one of them invisible.
 
 ### `stage_change`
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` · `contact_id` | |
+| `pipeline_id` | FK→`pipeline` | denormalised: `from_stage_id` is null on first entry, so the pipeline cannot always be read off the other end |
 | `from_stage_id` / `to_stage_id` | FK→`pipeline_stage`? / FK | |
-| `reason` | text? | prompted on `lost` |
+| `reason` | text? | prompted on a `lost` stage |
 | `actor_id` / `created_at` | FK→`user`? / timestamptz | |
 
 ### `service_category` / `contact_service_category`
@@ -281,6 +334,7 @@ Vendor search (FR-1.24–25). `service_category`: `id · tenant_id · name` with
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
+| `pipeline_id` | FK→`pipeline` | **rules are per pipeline** — a "becomes Qualified" rule on Sales must not fire for the referral pipeline's own Qualified stage |
 | `from_stage_id` | FK? | null = any |
 | `to_stage_id` | FK | |
 | `action_type` | text | `create_task` · `draft_email` |
@@ -796,7 +850,7 @@ You upload `contacts_2026.csv` and map the columns.
 - `import_batch.status → committed`
 - `company` — 1 row, *Acme Facilities*, `is_client_company = false`.
 - `company_domain` — 1 row, `acme.com`.
-- `contact` — 1 row, *Dana Reyes*, `stage_id → contact`, `owner_id → you`.
+- `contact` — 1 row, *Dana Reyes*, `owner_id → you`, plus one `contact_pipeline_position` at Sales → *Initial Contact Made*.
 - `contact_email` — 1 row, `dana@acme.com`, `is_primary = true`.
 - `contact_type_link` — 1 row → `prospect`.
 - `note` — 1 row, from the CSV's notes column: `source = 'import'`, `contact_id → Dana` (§12.2). Her `contact.background` holds the one-line "met at the facilities roundtable" instead.
@@ -809,7 +863,7 @@ You upload `contacts_2026.csv` and map the columns.
 
 You move her to `lead`.
 
-- `stage_change` — 1 row, `contact → lead`.
+- `stage_change` — 1 row, Sales: *Initial Contact Made → Prospecting*.
 - `stage_automation` matching `to_stage = lead` fires `create_task`:
   - `task` — 1 row, *"Send intro packet"*, `client_company_id = null` (not a client yet), due in 3 days.
   - `task_update` — 1 row, `kind = created`.
@@ -896,7 +950,7 @@ You choose per row: 2 rows → Goal, 1 row → Project.
 
 The client invariant fires (FR-1.6a.1):
 
-- `stage_change` — 1 row, `qualified_lead → client`.
+- `stage_change` — 1 row, Sales: *Negotiation → Closed Won* (`won`, which is what fires FR-1.6a).
 - `contact_type_link` — **1 new row** → `client`. The existing `prospect` link **remains** (FR-1.6a.2).
 - `company.is_client_company → true`.
 - `audit_event` — 3 rows: `stage.changed`, `contact_type.derived`, `company.flagged`.
@@ -1015,7 +1069,7 @@ She creates a task for her site manager, whom you granted ECC access earlier.
 ## 11. Notes for the migration
 
 1. **Migration order** is: `tenant` → `user`/`membership` → `company` (no `primary_contact_id`) → `contact` → add `company.primary_contact_id` → everything else. The one FK cycle in the schema is broken by adding that column last.
-2. **Seed data** in a separate data migration: `pipeline_stage` (6), `contact_type` (5), the Operations `strategy_template` from `strategy_session_seed.md`, and the worked example map row (FR-4.21).
+2. **Seed data** in a separate data migration: `pipeline` (2) with `pipeline_stage` (11 + 6), `contact_type` (5), the Operations `strategy_template` from `strategy_session_seed.md`, and the worked example map row (FR-4.21).
 3. **`search_vector` columns** are maintained by triggers, with GIN indexes, and Dana's PIN'd notes are excluded at index time, not filtered at query time (FR-2.11) — a filter someone can forget is not an access control.
 4. **Every table in §1–§8 registers in the tenant-isolation registry** (B3). The meta-test fails on an unregistered model, which is what keeps this document and the code from drifting apart.
 

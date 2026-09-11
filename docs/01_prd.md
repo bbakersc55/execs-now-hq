@@ -127,15 +127,19 @@ The record of every person and company the practice deals with, and the spine ev
 
 **Pipeline**
 
-6. Pipeline stages are per-tenant rows, seeded as: **contact → lead → qualified lead → client**, plus **lost** and **dormant** as non-linear states reachable from and returnable to any stage.
-6a. **The client invariant. Pipeline stage is the single source of truth for who is a client.** Three things can each say "client" — the contact's pipeline stage, the contact's type, and the company's `is_client_company` flag — so exactly one is authoritative and the other two are derived from it:
-    1. **Moving a contact to stage `client`** (by hand, or by Module 4 conversion) **adds contact type `client`** to that contact and **sets `is_client_company = true`** on their company. Both derivations are idempotent and audited.
-    2. **Moving a contact from `client` to `lost` or `dormant` removes neither.** A lost client is still historically a client, and the company may have other active contacts. Unsetting the type or the company flag is a deliberate manual act.
-    3. The derivation runs in one direction only. Adding the type `client` by hand does **not** change the stage, and nothing in the app infers a stage from a type or a flag.
-    4. A contact with no company can reach stage `client`; the company derivation is simply skipped, and no placeholder company is invented.
-7. A stage change records actor, timestamp, from-stage, to-stage, and an optional reason. Moving to `lost` prompts for a reason; the prompt may be skipped.
-8. A contact's stage history is visible on the timeline.
-9. Pipeline view: contacts grouped by stage, filterable by owner, type, and company, with counts per stage.
+6. **A practice runs more than one pipeline.** A `pipeline` is a per-tenant row with a `name`, a `kind` ∈ {`sales`, `referral`, `custom`}, and a position. Two are seeded: **"Sales"** (`sales`) and **"Referral partners"** (`referral`) — a sales funnel and a nurture track are different processes, and collapsing them made every referral partner look like a stalled prospect.
+6b. **A stage belongs to one pipeline and carries a `semantic` independent of its label**: `entry · working · qualified · won · lost · parked · none`. The FF renames, reorders, adds and removes stages freely; **every rule in the app keys on the semantic, never on the label**, so renaming "Closed Won" to "Signed" changes nothing behavioural. Stage codes are unique *per pipeline*, so "Qualified" may legitimately exist in two. A `sales`-kind pipeline must have **exactly one `won` stage**; removing the last one is refused, because without it nothing can ever become a client.
+6c. **Seeded stages are the owner's own**, not a generic funnel. *Sales:* Initial Contact Made (`entry`) → Prospecting (`working`) → Follow Up Needed (`working`) → Qualified (`qualified`) → Consult Given (`qualified`) → Proposal Given (`qualified`) → Decision Making (`qualified`) → Negotiation (`qualified`) → **Closed Won (`won`)** → Closed Lost (`lost`) → Nurture (`parked`). *Referral partners:* New Partner (`entry`) → Follow-up Sent (`working`) → Flyer Sent (`working`) → Nurturing (`working`) → Active Referrer (`qualified`) → Dormant (`parked`). The FF edits these after import.
+6d. **A contact holds an independent position in each pipeline they belong to** (`contact_pipeline_position`, unique per contact per pipeline). A referral partner who becomes a prospect is genuinely in both; the single `contact.stage_id` this replaces forced a choice that lost one of the two facts. **Contact type does not gate pipeline membership** — being in the referral pipeline and carrying the `referral_partner` type are separate facts.
+6a. **The client invariant. A `won` stage in a `sales` pipeline is the single source of truth for who is a client.** Three things can each say "client" — the contact's position, the contact's type, and the company's `is_client_company` flag — so exactly one is authoritative and the other two are derived from it:
+    1. **Moving a contact to a `won` stage in a `sales` pipeline** (by hand, by CSV import, or by Module 4 conversion) **adds contact type `client`** to that contact and **sets `is_client_company = true`** on their company. Both derivations are idempotent and audited.
+    2. **Moving them on to a `lost` or `parked` stage removes neither.** A lost client is still historically a client, and the company may have other active contacts. Unsetting the type or the company flag is a deliberate manual act.
+    3. The derivation runs in one direction only. Adding the type `client` by hand does **not** change any position, and nothing in the app infers a stage from a type or a flag.
+    4. A contact with no company can reach a `won` stage; the company derivation is simply skipped, and no placeholder company is invented.
+    5. **A `won` stage in a `referral` or `custom` pipeline is not a sale.** Reaching "Active Referrer" must never flag a company as a client company. The invariant checks the pipeline's `kind`, not just the stage's semantic.
+7. A stage change records actor, timestamp, **pipeline**, from-stage, to-stage, and an optional reason. Moving to a `lost` stage prompts for a reason; the prompt may be skipped.
+8. A contact's stage history is visible on the timeline, **naming the pipeline** — "moved to Qualified" is ambiguous once a practice runs more than one.
+9. **Pipeline view: one board per pipeline, with a selector.** Contacts grouped by stage with counts, filterable by owner, type, and company. A contact who appears on two boards is marked as such. The **contact detail screen shows their position in every pipeline they belong to.**
 
 **Assignment**
 
@@ -147,10 +151,10 @@ The record of every person and company the practice deals with, and the spine ev
 
 **Automations**
 
-10. A **stage automation rule** is a per-tenant row: `from_stage` (or any), `to_stage`, and an action.
+10. A **stage automation rule** is a per-tenant row **scoped to one pipeline**: `pipeline`, `from_stage` (or any), `to_stage`, and an action. A "becomes Qualified" rule on Sales does **not** fire for the referral pipeline's own Qualified stage.
 11. Action type **create_task**: creates a task from a template (title, offset-based due date, owner defaulting to the contact's owner). Fires immediately, no approval.
 12. Action type **draft_email**: renders a template into an Outbox draft in `pending_approval` with a **send-by date defaulting to 7 days out, configurable per rule**. **⛔ REVIEW QUEUE (R2).** Never sends itself; on the send-by date it expires (FR-1.18).
-13. Rules are listed in one settings screen with a plain-English summary of each ("When a contact becomes *qualified lead*, create task 'Book strategy session' due in 3 days").
+13. Rules are listed per pipeline in one settings screen with a plain-English summary of each, **naming the pipeline** ("When a contact reaches *Qualified* in Sales, create task 'Book strategy session' due in 3 days").
 14. **Task creation from a rule is not gated by a review queue** and this is intentional — it is deterministic, configured by the tenant, and has no effect outside the app (assumption F3).
 
 **Outbox**
@@ -181,7 +185,9 @@ The record of every person and company the practice deals with, and the spine ev
 
 **Referral partner onboarding**
 
-23a. **When a contact first becomes a referral partner** — by hand, or by a reviewer confirming that type on a Module 5 meeting proposal — a **"post-meeting follow-up" Outbox draft is created immediately** in `pending_approval` (the R2 path). It is the first touch, sent while the meeting is fresh, not on the next cadence date.
+23a. **When a contact first becomes a referral partner** — by hand, or by a reviewer confirming that type on a Module 5 meeting proposal — two things happen: they are **placed at the referral pipeline's `entry` stage** ("New Partner"), and a **"post-meeting follow-up" Outbox draft is created immediately** in `pending_approval` (the R2 path). It is the first touch, sent while the meeting is fresh, not on the next cadence date.
+23a.i. **The placement is an ordinary stage change.** It writes a normal `stage_change` row and appears on the timeline like any other move — there is no second, invisible way for a contact to enter a pipeline. If they are **already** in the referral pipeline, onboarding does not reset their progress, and **it never disturbs their position in any other pipeline**: a live prospect who becomes a referral partner keeps their sales stage.
+23a.ii. Movement within the referral pipeline afterwards ("Follow-up Sent", "Flyer Sent", "Nurturing", "Active Referrer", "Dormant") is ordinary stage-change behaviour, with its own per-pipeline automations.
 23b. The onboarding draft **attaches the tenant's marketing flyer** — a single tenant-uploaded PDF held in settings. The flyer is **optional**: if none is uploaded, the draft is created without it and says so in the Outbox, rather than being suppressed.
 23c. **The touch cadence clock starts from the date the onboarding draft is created**, not from the contact's creation date — so a partner onboarded on the 3rd is next touched a month after the 3rd.
 23d. Becoming a referral partner a second time (type removed and re-added) does **not** re-trigger onboarding.
@@ -224,15 +230,23 @@ The record of every person and company the practice deals with, and the spine ev
 
 **AC-1.1 — Import dry run is honest.** Prepare a 200-row CSV containing 3 rows that duplicate existing contacts by email and 1 row with a malformed email address. Run the import. The dry run reports **196 create, 3 update, 1 error**, names the error's row number and column, and shows 20 sample records. No contact count has changed at this point.
 
+**AC-1.1b — Phone, tags, and status columns all have somewhere to go.** The same file carries two phone columns, a comma-or-semicolon separated `tags` column, and a `status` column. Map both phone columns to **phone**, `tags` to **tags**, `status` to **contact_type**, and `stage` to **pipeline_stage**. The dry run's 20 sample rows show, per row: both numbers with the **first column's number marked primary**, the tags split, trimmed and de-duplicated, the contact type, and **every pipeline placement with its stage**. A tag longer than 64 characters is reported as a row error naming the column — it does not fail the import.
+
+**AC-1.1c — Status and Stage values are mapped by hand, not guessed.** The owner's real file has **both** a `status` (type) column and a separate `stage` column; they map to **contact_type** and **pipeline_stage** and are kept as different facts. After column mapping, the wizard lists, **per mapped column**, every distinct value with **how many rows carry it**, matching trimmed and case-insensitively so `Client` and `client ` are one row. A **`pipeline_stage` column asks which pipeline it belongs to first**, once, for the whole column. A `contact_type` value may *additionally* place the contact at a stage in a pipeline of its own choosing. Each value is mapped, or ignored. **A value left unmapped is a row error in the dry run**, never a silent drop; so is a stage mapping with no pipeline named.
+
+Mapping a value to a **`won` stage in a `sales` pipeline** fires FR-1.6a exactly as a manual stage change does — the client contact type is added and the company is flagged — and the dry run says so before you commit. A `won` stage in the referral pipeline does neither. It does **not** replay stage automations: an import is a statement about history, not a transition happening today, so no follow-up task is created and no client-facing draft is queued. **One row may land in both pipelines at once**, and the dry-run preview lists every placement. Saving the mapping remembers the column mapping **and** every value mapping together. Rollback removes the type links, phones and **pipeline positions the import created**, and restores the previous stage and tags for contacts that already existed.
+
 **AC-1.2 — Commit and roll back.** Commit the import from AC-1.1. The contact count rises by exactly 196. Open the ImportBatch and roll it back. The count returns to its pre-import value and the 3 updated contacts show their original field values.
 
 **AC-1.3 — Ambiguity is surfaced, not guessed.** Include in a CSV two rows with the same person's name at the same company but different email addresses. The dry run lists it as an ambiguous match requiring a decision, and offers merge-or-create. Nothing is auto-merged.
 
-**AC-1.4 — Stage automation fires the task, queues the email.** Configure two rules on "becomes qualified lead": create a task, and draft an email. Move a contact to qualified lead. The task exists immediately and is assigned to the contact's owner. The email is in the Outbox as `pending_approval`. **Check the dev outbox: nothing has been sent.**
+**AC-1.4 — Stage automation fires the task, queues the email, and only in its own pipeline.** Configure two rules on the Sales pipeline's *Qualified* stage: create a task, and draft an email. Move a contact to *Qualified* in Sales. Then move a different contact to *Active Referrer* in the referral pipeline and confirm **neither rule fires** — rules are per pipeline. The task exists immediately and is assigned to the contact's owner. The email is in the Outbox as `pending_approval`. **Check the dev outbox: nothing has been sent.**
 
 **AC-1.5 — An unapproved draft expires rather than sending.** Leave the AC-1.4 draft unapproved past its send-by date. It moves to `expired`. Nothing was delivered.
 
-**AC-1.6 — Referral touch arrives as a draft, three days early.** Set a referral partner to monthly with a due date three days out. Run the scheduler. A 3–5 line draft appears in the Outbox labelled as AI-drafted, addressed to that partner. Nothing is sent. Approve it; it sends, and the send appears on the contact's timeline.
+**AC-1.6 — Referral touch arrives as a draft, three days early.** ✅ **TESTED END TO END (Check 4).** Set a referral partner to monthly with a due date three days out. Run the scheduler. A 3–5 line draft appears in the Outbox labelled as AI-drafted, addressed to that partner. Nothing is sent. Approve it; it sends, and the send appears on the contact's timeline.
+
+> **Exercised live on 2026-09-11:** the owner drafted a touch to his own allow-listed address, approved it, and **received it in Gmail from `info@getexecutivesnow.com`** — a real send, through the real Gmail transport, with the verified send-as alias on the From line. This is the first acceptance criterion in Module 1 proven against real delivery rather than against the dev outbox.
 
 **AC-1.7 — VA cannot send.** Signed in as a VA, open the Outbox. Drafts are visible and editable; the approve and send controls are absent, and calling the approve endpoint directly returns 403.
 
@@ -248,13 +262,17 @@ The record of every person and company the practice deals with, and the spine ev
 
 **AC-1.22 — Delete and restore are delegable. (FR-1.34b, matrix 4.4/4.4a.)** As a VA, soft-delete a contact and a company: both succeed and disappear from search. Restore both: they return with their timelines intact.
 
-**AC-1.23 — Pipeline stages are FF-only; types and categories are not. (Matrix 3.14/3.15.)** As a VA, create a contact type and a service category: both succeed. Attempt to rename, reorder, or delete a pipeline stage: **403**.
+**AC-1.23 — Pipelines and their stages are FF-only; types and categories are not. (Matrix 3.14/3.14a/3.15/3.15a.)** As a VA, create a contact type and a service category: both succeed. Attempt to create a pipeline, or to rename, reorder, add or delete a pipeline stage: **403** for each. Confirm a VA can still **read** pipelines and stages — they work the board every day.
 
 **AC-1.24 — Staff removal cascades. (FR-0.8c.)** As FF, remove a CF who holds two client assignments and a Gmail connection. Confirm: their session no longer authenticates, both `client_assignment` rows are closed, the Gmail connection and its stored token are gone, and every task, note, and sent message they authored still exists.
 
 **AC-1.25 — AI spend is FF-only. (FR-0.9, matrix 3.19.)** As FF, open the AI usage view and confirm it shows `ai_call` totals. As CF and as VA, confirm no navigation exists and the endpoint returns 403.
 
-**AC-1.12 — The client invariant derives forward and does not reverse. (FR-1.6a.)** Take a prospect at a company with `is_client_company = false` and no `client` type. Move them to stage `client`. Confirm the contact now carries type `client` **and** the company is flagged. Now move them to `lost`: **confirm the type is still present and the company is still flagged.** Separately, add type `client` by hand to a different contact and confirm their stage is unchanged. Finally, move a contact with no company to stage `client` and confirm it succeeds with no company row invented.
+**AC-1.12 — The client invariant derives forward and does not reverse. (FR-1.6a.)** Take a prospect at a company with `is_client_company = false` and no `client` type. Move them to the sales pipeline's **`won`** stage (*Closed Won*). Confirm the contact now carries type `client` **and** the company is flagged. Now move them to *Closed Lost* (`lost`): **confirm the type is still present and the company is still flagged.** Separately, add type `client` by hand to a different contact and confirm no position changes. Move a contact with no company to `won` and confirm it succeeds with no company row invented. **Then rename the `won` stage** to "Signed" and repeat with a third contact: the invariant still fires, because it keys on the semantic and not the label. **Finally, move a contact to "Active Referrer" in the referral pipeline** and confirm their company is **not** flagged and no `client` type is added — a nurture pipeline's end state is not a sale.
+
+**AC-1.12a — A contact holds a position in two pipelines at once. (FR-1.6d.)** Place one contact at *Negotiation* in Sales and at *Active Referrer* in Referral partners. Confirm both boards show them, the contact detail screen lists both positions, and moving them in Sales leaves the referral position untouched. Confirm that removing their `referral_partner` type does not remove them from the referral pipeline — type does not gate membership.
+
+**AC-1.12b — A sales pipeline cannot lose its only `won` stage. (FR-1.6b.)** As the FF, delete *Closed Won* from the Sales pipeline: **refused with a message naming the reason**, and the stage is still there afterwards. Mark another stage `won` first, and the delete then succeeds. Attempt to delete a stage that still holds contacts: refused, naming the count.
 
 **AC-1.13 — Assignment governs CF visibility. (FR-1.9a–9e.)** Assign a CF to client company A only. As that CF: contacts at A are visible; a prospect the CF owns is visible; a contact at unassigned client company B returns 404; another CF's prospect returns 404. As FF, remove the assignment; the CF's next request for a company-A contact returns 404, and any contact the CF created still exists.
 
@@ -270,7 +288,9 @@ The record of every person and company the practice deals with, and the spine ev
 
 **AC-1.19 — Stale blurb warns but does not block. (FR-1.22a.)** Set the blurb's `last_updated_at` to 40 days ago and generate a monthly touch. The Outbox item shows a warning naming the blurb's age. Confirm the item can still be approved and sent.
 
-**AC-1.20 — Referral onboarding fires once, attaches the flyer, and sends nothing. (FR-1.23a–23d.)** Upload a flyer PDF in settings. Add type `referral partner` to a contact. **Immediately** an Outbox draft titled as a post-meeting follow-up exists in `pending_approval` with the flyer attached; **the dev outbox is empty.** Confirm the contact's next touch date is one cadence period from today. Remove and re-add the type: **no second onboarding draft is created.** Delete the flyer from settings, onboard a different partner, and confirm the draft is still created and states that no flyer is attached.
+**AC-1.20 — Referral onboarding fires once, attaches the flyer, and sends nothing. (FR-1.23a–23d.)** ✅ **TESTED END TO END (Check 5).**
+
+> **Exercised live on 2026-09-11:** an onboarding/touch email was delivered to the owner's own allow-listed address **with the flyer attached, and the PDF opens with content**. It took two failed attempts to get here: the attachment first arrived at 0 bytes because `stored_file` content was never written to storage *and* `_deliver` handed the transport a literal `b""`. Both are fixed; a test now asserts that a delivered attachment's size equals the stored file's, and a send whose attachment content is missing is refused rather than delivering an empty document. Upload a flyer PDF in settings. Add type `referral partner` to a contact. **Immediately** an Outbox draft titled as a post-meeting follow-up exists in `pending_approval` with the flyer attached; **the dev outbox is empty.** Confirm the contact's next touch date is one cadence period from today. Remove and re-add the type: **no second onboarding draft is created.** Delete the flyer from settings, onboard a different partner, and confirm the draft is still created and states that no flyer is attached.
 
 ---
 
@@ -1018,7 +1038,7 @@ Beta is complete when all six modules pass their acceptance criteria and the fol
 
 | # | Change | Where |
 |---|---|---|
-| 1 | Client invariant, stage authoritative, one-directional | FR-1.6a · AC-1.12 |
+| 1 | Client invariant: a `won` stage in a `sales` pipeline is authoritative, one-directional | FR-1.6a · AC-1.12 |
 | 2 | `ClientAssignment` + CF visible universe | FR-1.9a–9e · AC-1.13–1.15 |
 | 3 | `Company.primary_contact` | FR-1.3, 1.3a |
 | 4 | Referral fee terms, tenant blurb, 3-part touch, onboarding + flyer | FR-1.20a, 1.21a, 1.22, 1.22a, 1.23a–23d · AC-1.18–1.20 |

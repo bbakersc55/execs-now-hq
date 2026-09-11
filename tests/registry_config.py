@@ -10,7 +10,10 @@ from apps.accounts.models import MagicLinkToken
 from apps.crm.models import (
     Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactServiceCategory, ContactType, ContactTypeLink, EmailMessage,
-    EmailTemplate, EmailThread, GmailConnection, ImportBatch,
+    ContactPipelinePosition, DevSendAllowlistEntry, EmailTemplate, EmailThread,
+    MailPreference,
+    GmailConnection,
+    ImportBatch, Pipeline,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage,
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
@@ -48,6 +51,10 @@ register(EmailTemplate, factories.EmailTemplateFactory)
 register(EmailThread, factories.EmailThreadFactory)
 register(EmailMessage, factories.EmailMessageFactory)
 register(GmailConnection, factories.GmailConnectionFactory)
+register(DevSendAllowlistEntry, factories.DevSendAllowlistEntryFactory)
+register(MailPreference, factories.MailPreferenceFactory)
+register(Pipeline, factories.PipelineFactory)
+register(ContactPipelinePosition, factories.ContactPipelinePositionFactory)
 register(OutboxMessage, factories.OutboxMessageFactory)
 register(OutboxAttachment, factories.OutboxAttachmentFactory)
 register(ImportBatch, factories.ImportBatchFactory)

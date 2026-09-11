@@ -12,10 +12,54 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 
 
-def is_real_send_allowed(to_address: str) -> bool:
+class AllowlistEntryInvalid(ValueError):
+    """An entry that would widen the guard beyond one exact address."""
+
+
+def normalise_allowlist_entry(value: str) -> str:
+    """H6 — exact addresses only, and the rule is enforced in one place.
+
+    A bare domain or a wildcard would put every colleague and client at that
+    domain back in range, which is precisely what this guard exists to prevent.
+    """
+    entry = (value or "").strip().lower()
+    if not entry:
+        raise AllowlistEntryInvalid("Enter an email address.")
+    if "*" in entry or entry.startswith("@") or "@" not in entry:
+        raise AllowlistEntryInvalid(
+            f"{value!r} is not an exact address. Wildcards and bare domains are "
+            "rejected: one entry would put every colleague and client at that "
+            "domain back in range (assumption H6)."
+        )
+    local, _, domain = entry.partition("@")
+    if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+        raise AllowlistEntryInvalid(f"{value!r} is not a valid email address.")
+    return entry
+
+
+def dev_allowlist(tenant=None) -> set[str]:
+    """The effective allow-list: `.env` entries UNION the tenant's own rows.
+
+    The environment is the floor — an address set in `.env` cannot be removed
+    through the UI, so the deployment's guarantee cannot be quietly lowered by
+    someone clicking in the app.
+    """
+    entries = set(settings.DEV_REAL_SEND_ALLOWLIST)
+    if tenant is None or not settings.IS_LOCAL:
+        return entries
+    from apps.crm.models import DevSendAllowlistEntry
+
+    entries.update(
+        DevSendAllowlistEntry.all_objects.filter(tenant=tenant)
+        .values_list("address", flat=True)
+    )
+    return {e.strip().lower() for e in entries if e}
+
+
+def is_real_send_allowed(to_address: str, tenant=None) -> bool:
     if not settings.IS_LOCAL:
         return True
-    return (to_address or "").strip().lower() in settings.DEV_REAL_SEND_ALLOWLIST
+    return (to_address or "").strip().lower() in dev_allowlist(tenant)
 
 
 def send_now(*, tenant, to_address, subject, body_text, producer,
@@ -28,7 +72,7 @@ def send_now(*, tenant, to_address, subject, body_text, producer,
     """
     from apps.tenancy.models import AuditEvent
 
-    dev_real = settings.IS_LOCAL and is_real_send_allowed(to_address)
+    dev_real = settings.IS_LOCAL and is_real_send_allowed(to_address, tenant)
 
     message = EmailMessage(
         subject=subject,
