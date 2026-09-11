@@ -215,11 +215,15 @@ class NoteViewSet(viewsets.GenericViewSet):
             permission_classes=[crm_perms.IsTenantStaff, crm_perms.IsFF])
     def pin_reset(self, request, pk=None):
         """Matrix 6.6 — FF only. Emails a link; changes nothing by itself."""
+        from apps.crm.services.transport import TransportUnavailable
+
         self._load(pk)
         try:
             pins.request_reset(self.note, request=request)
         except pins.PinError as exc:
             return Response({"detail": str(exc)}, status=exc.status)
+        except TransportUnavailable as exc:
+            return Response({"detail": f"The reset link could not be sent: {exc}"}, status=503)
         return Response({"detail": f"A reset link was sent to {request.user.email}. "
                                    f"It clears the PIN; it does not reveal it."})
 

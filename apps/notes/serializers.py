@@ -57,6 +57,7 @@ def represent(note, *, request, unlocked: set) -> dict:
         "audio_duration_seconds": note.audio_duration_seconds,
         "transcription_state": note.transcription_state,
         "transcription_error": note.transcription_error,
+        "no_speech": recording.is_speech_problem(note.transcription_error),
         "transcript": note.transcript,
         "summary_state": note.summary_state,
         "proposed_summary": note.proposed_summary,

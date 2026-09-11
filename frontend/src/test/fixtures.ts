@@ -108,7 +108,7 @@ export function aNote(overrides: Partial<NoteFull> = {}): NoteFull {
     body: `${SECRET}\nSeverance terms for the ops lead.`, source: "manual",
     created_by: "u1", created_by_name: "Bryan Baker", updated_at: "2026-09-11T15:00:00Z",
     has_audio: false, audio_duration_seconds: null, transcription_state: "none",
-    transcription_error: "", transcript: null, summary_state: "none", proposed_summary: null,
+    transcription_error: "", no_speech: false, transcript: null, summary_state: "none", proposed_summary: null,
     summary: null, can_review_summary: true, retention_overdue: false,
     ...overrides,
   };

@@ -161,16 +161,24 @@ def lock_now(note, *, request):
 # only as a hash, single-use, 20 minutes, tenant-scoped — so a token from
 # another tenant resolves to nothing here. `redirect_to` carries the note id.
 
+REDACTED_LINK = "[one-time link — sent to the recipient only, not stored]"
+
+
+@transaction.atomic
 def request_reset(note, *, request):
     """FR-2.12 — email the FF a link. The email carries no PIN and no body.
 
-    Sent synchronously like a magic link (assumption A2a): a reset queued
-    behind a transcription would look broken.
+    A direct-to-sent Outbox producer through the configured transport, like
+    every other app email: the Outbox logs it, the dev allow-list governs it,
+    and in Beta it goes out through the practice's Gmail. The link itself is
+    delivered but never stored (outbox.create_message, `deliver_body_text`).
+    Atomic: if the send fails, the token it would have carried does not exist.
     """
     from django.conf import settings
 
-    from apps.accounts.mailer import send_now
     from apps.accounts.models import MagicLinkPurpose, MagicLinkToken
+    from apps.crm.models import OutboxMessage
+    from apps.crm.services import outbox
     from apps.notes.access import display_title
 
     if not note.is_locked:
@@ -185,20 +193,23 @@ def request_reset(note, *, request):
     if not root.startswith("http"):
         root = settings.PUBLIC_BASE_URL.rstrip("/") + "/" + root.lstrip("/")
     url = f"{root.rstrip('/')}/notes/pin-reset/{raw}"
-    send_now(
-        tenant=note.tenant,
-        to_address=request.user.email,
-        subject="Clear a note's PIN",
-        body_text=(
+
+    def body(link):
+        return (
             f"You asked to reset the PIN on the note \"{display_title(note)}\".\n\n"
             f"This link CLEARS the PIN. It does not tell you what the PIN was. "
             f"Once cleared, the note is readable by everyone who can normally see "
-            f"it, until someone sets a new PIN.\n\n{url}\n\n"
+            f"it, until someone sets a new PIN.\n\n{link}\n\n"
             f"The link works once and expires in 20 minutes. If you did not ask for "
             f"this, ignore this email; nothing changes."
-        ),
-        producer="note_pin_reset",
-        actor=request.user,
+        )
+
+    outbox.create_message(
+        tenant=note.tenant, producer=OutboxMessage.Producer.NOTE_PIN_RESET,
+        to_address=request.user.email, subject="Clear a note's PIN",
+        body_text=body(REDACTED_LINK), deliver_body_text=body(url),
+        role=request.membership.role, actor=request.user,
+        source_type="note", source_id=note.pk,
     )
     _audit(note, request.user, "note.pin_reset_requested")
 

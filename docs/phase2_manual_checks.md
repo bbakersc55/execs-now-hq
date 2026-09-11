@@ -63,6 +63,11 @@ When you have finished all four checks, remove it:
 
 ## Check 1 — Record a real 20-minute call
 
+**The recorder hears this device's microphone only** — use an in-person conversation or a
+dictation, not a video call (the other side of a call is not captured; meetings arrive
+through Module 5). If a recording comes back with little or no speech, the note says so and
+lists what to check, keeps the audio for a retry, and drafts no summary.
+
 1. Before the call, press **n** (or **+ New note** in the sidebar). The capture panel opens
    bottom-right. Optionally link it to the contact.
 2. Click **● Record**. The consent reminder appears first. Tell the other person you are
@@ -113,8 +118,12 @@ recordings* — this is recording 1.
 1. As yourself (FF), in a **new** session (sign out and back in, so you are not already
    unlocked), open the locked note. You see the stub, like everyone else — the PIN is not
    a role.
-2. **Email me a link that clears it.** The link arrives in **Mailpit**
-   (http://localhost:8125).
+2. **Email me a link that clears it.** Your address is on the dev allow-list, so the email
+   goes out through your connected Gmail and arrives **in your real inbox**, from the
+   practice alias. It also appears in the **Outbox** as a sent *Note PIN reset* — open it
+   there and confirm the stored copy shows *"[one-time link — sent to the recipient only,
+   not stored]"* instead of the link. *(Re-check after the fix of 2026-09-11: the first run
+   landed in Mailpit because the reset bypassed the Outbox.)*
 3. Read the email: it should name the note by its title, say the link **clears** the PIN,
    and contain neither the PIN nor any of the note's text.
 4. Follow the link. The page describes what will happen and changes nothing until you

@@ -59,6 +59,11 @@ describe("Recorder", () => {
     expect(getUserMedia).toHaveBeenCalledOnce();
   });
 
+  it("says it records the microphone only, before recording starts", () => {
+    setup(true);
+    expect(screen.getByText(/microphone only — not the other people on a video call/)).toBeInTheDocument();
+  });
+
   it("AC-2.6 — once dismissed this session, the next recording starts without it", async () => {
     setup(true);
     fireEvent.click(screen.getByRole("button", { name: /Record/ }));

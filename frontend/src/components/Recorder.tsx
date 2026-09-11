@@ -25,6 +25,12 @@ export function clock(seconds: number) {
 
 type Phase = "idle" | "consent" | "recording" | "stopping";
 
+/** Said wherever recording starts (manual check 1: a video call came back
+ *  empty). Meetings will arrive through meeting ingestion, Module 5. */
+export const MIC_ONLY =
+  "Records this device's microphone only — not the other people on a video call. " +
+  "For in-person conversations and dictation.";
+
 /**
  * Browser recording. The consent reminder (FR-2.15) is shown before the first
  * recording of each sign-in session; confirming it dismisses it for that
@@ -126,7 +132,7 @@ export function Recorder({ onComplete, onCancel, onActiveChange }: {
           <button className="primary" onClick={confirmConsent}>Everyone has agreed — start recording</button>
           <button className="ghost" onClick={() => { setPhase("idle"); onCancel?.(); }}>Cancel</button>
         </div>
-        <p className="muted small">You will not be asked again until you next sign in.</p>
+        <p className="muted small">{MIC_ONLY} You will not be asked again until you next sign in.</p>
       </div>
     );
   }
@@ -139,6 +145,7 @@ export function Recorder({ onComplete, onCancel, onActiveChange }: {
           <span><span className="pill bad">● REC</span> <span className="mono">{clock(elapsed)}</span></span>
           <button className="danger" onClick={stop} disabled={phase === "stopping"}>Stop recording</button>
         </div>
+        <p className="small muted" style={{ margin: ".35rem 0 0" }}>Microphone only.</p>
         {warn && (
           <Banner kind="warn">
             {clock(Math.max(0, MAX_SECONDS - elapsed))} left. Recording stops automatically at
@@ -150,9 +157,10 @@ export function Recorder({ onComplete, onCancel, onActiveChange }: {
   }
 
   return (
-    <>
+    <div>
       <button onClick={requestStart}>● Record</button>
+      <p className="small muted" style={{ margin: ".35rem 0 0" }}>{MIC_ONLY}</p>
       {error && <Banner kind="bad">{error}</Banner>}
-    </>
+    </div>
   );
 }

@@ -459,7 +459,7 @@ def test_ac_2_7_every_claude_call_is_costed(seeded_tenant, ff, api, fake_stt, fa
     client = api.as_(ff)
     note = recorded_note(client)
     upload(client, note["id"])
-    fake_stt.finish(fake_stt.started[0]["name"], "Short call.")
+    fake_stt.finish(fake_stt.started[0]["name"], "A short call about the lease renewal and the March move.")
     run_jobs(seeded_tenant)
     call = AiCall.all_objects.get(purpose="note_summary")
     assert call.succeeded and call.model == "claude-opus-5"
@@ -479,10 +479,10 @@ def test_ac_2_7_a_claude_failure_keeps_the_transcript(seeded_tenant, ff, api, fa
     client = api.as_(ff)
     note = recorded_note(client)
     upload(client, note["id"])
-    fake_stt.finish(fake_stt.started[0]["name"], "The transcript survives.")
+    fake_stt.finish(fake_stt.started[0]["name"], "The transcript survives even when Claude cannot be reached.")
     run_jobs(seeded_tenant)
     shown = client.get(f"/api/notes/{note['id']}/").json()
-    assert shown["transcript"] == "The transcript survives."
+    assert shown["transcript"] == "The transcript survives even when Claude cannot be reached."
     assert shown["summary_state"] == "failed" and shown["summary"] is None
     assert AiCall.all_objects.get(purpose="note_summary").succeeded is False
 
@@ -493,7 +493,7 @@ def test_ac_2_7_only_the_author_or_ff_reviews(seeded_tenant, ff, va, api, fake_s
     author = api.as_(va)
     note = recorded_note(author)
     upload(author, note["id"])
-    fake_stt.finish(fake_stt.started[0]["name"], "Words.")
+    fake_stt.finish(fake_stt.started[0]["name"], "Enough words here to count as a real conversation.")
     run_jobs(seeded_tenant)
     other_va = MembershipFactory(tenant=seeded_tenant, role="VA")
     assert post(api.as_(other_va), f"/api/notes/{note['id']}/summary/accept/").status_code == 403
@@ -569,7 +569,7 @@ def test_ac_2_9_retention_deletes_transcribed_audio_and_keeps_the_rest(
     client = api.as_(ff)
     note = recorded_note(client)
     upload(client, note["id"])
-    fake_stt.finish(fake_stt.started[0]["name"], "Keep this transcript.")
+    fake_stt.finish(fake_stt.started[0]["name"], "Keep this transcript after the audio is deleted.")
     run_jobs(seeded_tenant)
     post(client, f"/api/notes/{note['id']}/summary/accept/")
     stored = Note.all_objects.get(pk=note["id"]).audio_file
@@ -583,7 +583,7 @@ def test_ac_2_9_retention_deletes_transcribed_audio_and_keeps_the_rest(
     assert key not in storage.sizes(stored.bucket), "The audio object is still stored."
     kept = Note.all_objects.get(pk=note["id"])
     assert kept.audio_file_id is None
-    assert kept.transcript == "Keep this transcript."
+    assert kept.transcript == "Keep this transcript after the audio is deleted."
     assert kept.summary == fake_claude.reply
 
 
@@ -620,10 +620,10 @@ def test_ac_2_9_retention_zero_deletes_on_successful_transcription(seeded_tenant
     client = api.as_(ff)
     note = recorded_note(client)
     upload(client, note["id"])
-    fake_stt.finish(fake_stt.started[0]["name"], "Done.")
+    fake_stt.finish(fake_stt.started[0]["name"], "Done with the call, send the follow-up tomorrow.")
     run_jobs(seeded_tenant)
     shown = client.get(f"/api/notes/{note['id']}/").json()
-    assert shown["has_audio"] is False and shown["transcript"] == "Done."
+    assert shown["has_audio"] is False and shown["transcript"].startswith("Done with the call")
     retry = post(client, f"/api/notes/{note['id']}/retry-transcription/")
     assert retry.status_code == 409 and "deleted" in retry.json()["detail"]
 
@@ -738,3 +738,59 @@ def test_a_malformed_id_is_a_404_or_400_never_a_500(seeded_tenant, ff, api):
     assert client.get("/api/notes/not-a-uuid/").status_code == 404
     assert post(client, "/api/notes/not-a-uuid/unlock/", {"pin": "1234"}).status_code == 404
     assert client.get("/api/notes/?contact=not-a-uuid").status_code == 400
+
+
+@pytest.mark.django_db
+def test_no_speech_is_its_own_outcome_and_keeps_the_audio(seeded_tenant, ff, api, fake_stt):
+    """Manual check 1: a video call recorded through the browser came back
+    empty. The recorder hears this device's microphone only."""
+    client = api.as_(ff)
+    note = recorded_note(client)
+    upload(client, note["id"])
+    fake_stt.finish(fake_stt.started[0]["name"])  # finished, heard nothing
+    run_jobs(seeded_tenant)
+    shown = client.get(f"/api/notes/{note['id']}/").json()
+    assert shown["transcription_state"] == "failed"
+    assert shown["no_speech"] is True and shown["transcription_error"] == "No speech detected."
+    assert shown["has_audio"] is True
+    assert storage.exists(Note.all_objects.get(pk=note["id"]).audio_file)
+    assert post(client, f"/api/notes/{note['id']}/retry-transcription/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_almost_no_speech_is_treated_the_same_and_costs_no_claude_call(
+    seeded_tenant, ff, api, fake_stt, fake_claude
+):
+    """The actual check-1 case: a 383-second video call transcribed as 'Good.'"""
+    client = api.as_(ff)
+    note = recorded_note(client)
+    upload(client, note["id"], seconds=383)
+    fake_stt.finish(fake_stt.started[0]["name"], "Good.")
+    run_jobs(seeded_tenant)
+    shown = client.get(f"/api/notes/{note['id']}/").json()
+    assert shown["transcription_state"] == "failed" and shown["no_speech"] is True
+    assert shown["transcription_error"] == "Almost no speech detected: 1 word in 6 minutes."
+    assert shown["transcript"] == "Good." and shown["has_audio"] is True
+    assert shown["summary_state"] == "none" and fake_claude.requests == []
+
+
+@pytest.mark.django_db
+def test_a_short_dictation_is_not_mistaken_for_silence(seeded_tenant, ff, api, fake_stt,
+                                                       fake_claude):
+    client = api.as_(ff)
+    note = recorded_note(client)
+    upload(client, note["id"], seconds=8)
+    fake_stt.finish(fake_stt.started[0]["name"], "Remind me to call Dana Friday.")
+    run_jobs(seeded_tenant)
+    shown = client.get(f"/api/notes/{note['id']}/").json()
+    assert shown["transcription_state"] == "done" and shown["no_speech"] is False
+
+
+@pytest.mark.django_db
+def test_other_failures_are_not_reported_as_no_speech(seeded_tenant, ff, api, fake_stt):
+    client = api.as_(ff)
+    note = recorded_note(client)
+    upload(client, note["id"])
+    fake_stt.fail(fake_stt.started[0]["name"], "Invalid audio encoding")
+    run_jobs(seeded_tenant)
+    assert client.get(f"/api/notes/{note['id']}/").json()["no_speech"] is False

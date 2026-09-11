@@ -321,6 +321,8 @@ export interface NoteFull extends Omit<NoteStub, "stub"> {
   audio_duration_seconds: number | null;
   transcription_state: TranscriptionState;
   transcription_error: string;
+  /** Speech-to-Text finished and heard nothing — its own outcome, with its own help. */
+  no_speech: boolean;
   transcript: string | null;
   summary_state: SummaryState;
   proposed_summary: string | null;

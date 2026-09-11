@@ -83,20 +83,45 @@ def _send_magic_link(membership, raw_token):
 
     With one ORM-backed queue and no priority lanes, an enqueued magic link
     could sit behind a 40-minute transcription — a sign-in that looks broken.
+
+    A direct-to-sent Outbox producer (FR-1.15b) through the configured
+    transport, like every other app email. The link is delivered but never
+    stored: the Outbox row is visible to tenant staff, and a stored link would
+    let any of them sign in as the client (assumption C3).
+
+    A send failure does NOT change the response: the request endpoint answers
+    identically whether or not the address exists, and an error only for real
+    addresses would undo that. The failure is audited for the FF instead.
     """
-    from apps.accounts.mailer import send_now
+    from apps.crm.models import OutboxMessage
+    from apps.crm.services import outbox
+    from apps.crm.services.transport import TransportUnavailable
+    from apps.tenancy.context import tenant_context
+    from apps.tenancy.models import AuditEvent
 
     url = f"{settings.PUBLIC_BASE_URL}/auth/magic/{raw_token}"
-    send_now(
-        tenant=membership.tenant,
-        to_address=membership.user.email,
-        subject=f"Sign in to {PRODUCT_NAME}",
-        body_text=(
-            f"Click to sign in to {PRODUCT_NAME}:\n\n{url}\n\n"
-            "This link expires in 20 minutes and can be used once."
-        ),
-        producer="magic_link",
-    )
+
+    def body(link):
+        return (f"Click to sign in to {PRODUCT_NAME}:\n\n{link}\n\n"
+                "This link expires in 20 minutes and can be used once.")
+
+    try:
+        # The requester is not signed in, so no tenant is bound (B1). Bind the
+        # member's own, explicitly, as a background job would.
+        with tenant_context(membership.tenant_id):
+            outbox.create_message(
+                tenant=membership.tenant, producer=OutboxMessage.Producer.MAGIC_LINK,
+                to_address=membership.user.email, subject=f"Sign in to {PRODUCT_NAME}",
+                body_text=body("[one-time link — sent to the recipient only, not stored]"),
+                deliver_body_text=body(url),
+            )
+    except TransportUnavailable as exc:
+        AuditEvent.all_objects.create(
+            tenant=membership.tenant, verb="email.failed", target_type="user",
+            target_id=membership.user_id,
+            payload={"producer": "magic_link", "to": membership.user.email,
+                     "reason": str(exc)[:500]},
+        )
 
 
 @require_http_methods(["GET", "POST"])

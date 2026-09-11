@@ -203,7 +203,23 @@ function RecordingPanel({ note, retention, act }: {
         {note.transcription_state === "transcribing" && (
           <p>Transcribing… a long call can take a while. This page checks back on its own.</p>
         )}
-        {note.transcription_state === "failed" && (
+        {note.transcription_state === "failed" && note.no_speech && (
+          <Banner kind="warn">
+            <strong>{note.transcription_error}</strong> Speech-to-Text finished but heard little
+            or nothing in this recording, so no summary was drafted. Worth checking:
+            <ul className="small" style={{ margin: ".4rem 0" }}>
+              <li>The browser had permission to use the microphone, and the right microphone
+                was selected.</li>
+              <li>You were not using headphones on a call. The recorder hears this device's
+                microphone only — not the other people on a video call.</li>
+              <li>The microphone, or the call, was not muted.</li>
+            </ul>
+            {note.has_audio
+              ? "The audio is kept. Retry once you have checked, or discard it."
+              : "The audio has been discarded."}
+          </Banner>
+        )}
+        {note.transcription_state === "failed" && !note.no_speech && (
           <Banner kind="bad">
             {note.transcription_error || "Transcription failed."}{" "}
             {note.has_audio ? "The audio is kept." : ""}

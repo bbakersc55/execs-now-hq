@@ -33,6 +33,34 @@ ENCODINGS = {"audio/webm": "WEBM_OPUS", "audio/ogg": "OGG_OPUS"}
 OPUS_SAMPLE_RATE = 48000      # what every browser's MediaRecorder emits for Opus
 STT_MODEL = "latest_long"
 
+# Speech-to-Text finished and heard nothing. Its own outcome, not a generic
+# failure: the usual cause is what was recorded, not the service. The browser
+# recorder captures this device's microphone only, so on a video call with
+# headphones it hears the owner's side at most (Phase 2 manual check 1).
+NO_SPEECH = "No speech detected."
+# The check-1 recording was not empty: 383 seconds produced one word ("Good.")
+# and a summary saying nothing was captured, at the cost of a Claude call.
+# Ordinary speech runs well over 100 words a minute (the solo test: 134), so a
+# transcript under this rate is treated the same way.
+MIN_WORDS_PER_MINUTE = 5
+LITTLE_SPEECH = "Almost no speech detected"
+
+
+def speech_problem(text: str, duration_seconds) -> str:
+    """'' when the transcript is usable, else the note's error message."""
+    words = len(text.split())
+    if not words:
+        return NO_SPEECH
+    minutes = (duration_seconds or 0) / 60
+    if words < max(3, MIN_WORDS_PER_MINUTE * minutes):
+        return (f"{LITTLE_SPEECH}: {words} word{'s' if words != 1 else ''} "
+                f"in {max(1, round(minutes))} minute{'s' if round(minutes) != 1 else ''}.")
+    return ""
+
+
+def is_speech_problem(error: str) -> bool:
+    return error == NO_SPEECH or error.startswith(LITTLE_SPEECH)
+
 
 class RecordingError(Exception):
     def __init__(self, message, status=400):
@@ -211,9 +239,14 @@ def poll(note, *, now=None) -> bool:
         return True
 
     text = transcript_from(operation)
-    if not text:
-        _fail(note, "Speech-to-Text returned no words. Check the recording has "
-                    "audible speech, then retry.")
+    problem = speech_problem(text, note.audio_duration_seconds)
+    if problem:
+        # Kept: the few words there were, and the audio (retention never deletes
+        # audio that did not transcribe), so Retry and Discard stay available.
+        # No summary is drafted from nothing.
+        note.transcript = text or None
+        note.save(update_fields=["transcript", "updated_at"])
+        _fail(note, problem)
         return True
     note.transcript = text
     note.transcription_state = Note.TranscriptionState.DONE

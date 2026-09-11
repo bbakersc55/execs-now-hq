@@ -140,6 +140,17 @@ describe("AC-2.7 in the UI — the summary is proposed", () => {
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
   });
 
+  it("explains 'no speech detected' and keeps the audio for retry", async () => {
+    showNote(aNote({ source: "recording", has_audio: true, transcription_state: "failed",
+      transcription_error: "No speech detected.", no_speech: true }));
+    expect(await screen.findByText("No speech detected.")).toBeInTheDocument();
+    expect(screen.getByText(/permission to use the microphone/)).toBeInTheDocument();
+    expect(screen.getByText(/headphones/)).toBeInTheDocument();
+    expect(screen.getByText(/was not muted/)).toBeInTheDocument();
+    expect(screen.getByText(/The audio is kept/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry transcription" })).toBeInTheDocument();
+  });
+
   it("flags audio kept past retention because it never transcribed", async () => {
     showNote(aNote({ source: "recording", has_audio: true, transcription_state: "failed",
       transcription_error: "no speech", retention_overdue: true }));
@@ -178,6 +189,20 @@ describe("AC-2.1 / AC-2.2 — capture", () => {
     });
   });
 
+  it("labels each choice beside its own radio, and the search field as a contact search", async () => {
+    const user = userEvent.setup();
+    capture();
+    await user.click(screen.getByRole("button", { name: /New note/ }));
+    for (const name of ["Nothing", "A contact", "A company"]) {
+      const radio = screen.getByRole("radio", { name });
+      expect(radio.closest("label")).toHaveTextContent(name);  // the label wraps its own button
+    }
+    expect(screen.queryByLabelText("Find a contact by name")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "A contact" }));
+    expect(screen.getByLabelText("Find a contact by name")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Company")).not.toBeInTheDocument();
+  });
+
   it("offers no way to link a contact and a company at once", async () => {
     const user = userEvent.setup();
     const fetchMock = capture();
@@ -188,7 +213,7 @@ describe("AC-2.1 / AC-2.2 — capture", () => {
     await user.click(screen.getByLabelText("A company"));
     await user.selectOptions(await screen.findByLabelText("Company"), "co1");
     await user.click(screen.getByLabelText("A contact"));  // switching clears the company
-    await user.selectOptions(screen.getByLabelText("Task"), "t1");
+    await user.selectOptions(screen.getByLabelText(/^Task/), "t1");
     await user.type(screen.getByLabelText("Note"), "x");
     await user.click(screen.getByRole("button", { name: "Save note" }));
     await waitFor(() => expect(fetchMock.calls.some((c) => c.method === "POST")).toBe(true));

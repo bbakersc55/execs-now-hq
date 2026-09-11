@@ -89,12 +89,23 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
                    role=None, actor=None, to_contact=None, body_html="",
                    is_ai_generated=False, warning="", send_by=None,
                    from_address=None, sent_via="postmark", thread=None,
-                   source_type="", source_id=None, attachments=()):
-    """Single entry point. Nothing else in the codebase writes an OutboxMessage."""
+                   source_type="", source_id=None, attachments=(),
+                   deliver_body_text=None):
+    """Single entry point. Nothing else in the codebase writes an OutboxMessage.
+
+    `deliver_body_text` is for one-time links (magic links, PIN resets): it is
+    what the recipient receives, and it is NEVER stored. `body_text` — the copy
+    on the Outbox row and the thread, visible to every tenant user — carries the
+    same message with the link removed, so no row holds a working credential
+    (assumption C3). Only a direct-to-sent message may use it: a draft that
+    waits for approval has to be sendable from what is stored.
+    """
     if thread is None:
         thread = thread_for(tenant, contact=to_contact, subject=subject)
 
     direct = _direct_to_sent(producer, role)
+    if deliver_body_text is not None and not direct:
+        raise ValueError("deliver_body_text is only for direct-to-sent producers.")
     if not from_address:
         # FR-1.15c — the per-producer sender default. Resolved once, HERE, and
         # recorded on the row, so the log says what actually went out even if
@@ -129,7 +140,7 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
         )
 
     if direct:
-        _deliver(message, actor=actor)
+        _deliver(message, actor=actor, body_text=deliver_body_text)
     return message
 
 
@@ -188,7 +199,7 @@ def expire_due(tenant, *, now=None):
 
 # --------------------------------------------------------------- delivery
 
-def _deliver(message, *, actor=None):
+def _deliver(message, *, actor=None, body_text=None):
     """The one path out of the app.
 
     FR-0.7 / H6 — the dev-outbox guard lives here and is unchanged by the
@@ -245,7 +256,7 @@ def _deliver(message, *, actor=None):
         tenant=message.tenant,
         to_address=message.to_address,
         subject=message.subject,
-        body_text=message.body_text,
+        body_text=body_text if body_text is not None else message.body_text,
         thread=thread,
         in_reply_to=in_reply_to,
         attachments=attachments,

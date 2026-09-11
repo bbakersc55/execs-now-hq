@@ -24,7 +24,9 @@
 
 Module numbers follow `CLAUDE.md`. **Build order is not module order**, in one place:
 
-`0.5 foundation → 1 → 2 → 3 → 4 → 5 → 6 → 7 (Railway move)`
+`0.5 foundation → 1 → 2 → 3 → 4 → 5 → 6 → design pass → 7 (Railway move)`
+
+(The design pass may also follow the Railway move; it must precede Beta exit — see its section.)
 
 **Build order is module order again.** Ruling 9.3 moved Module 6 after Railway because its inbound half needed a public webhook. The transport change removes that dependency: with Gmail as the transport (assumption A3), inbound arrives by **polling the tenant's own mailbox**, which needs no public endpoint and runs on the laptop. **Module 6 returns to its original position, before the Railway move.**
 
@@ -401,6 +403,39 @@ AC-5.1–5.16, plus **extraction quality on N real meetings** with a count of pr
 ### Report
 
 Fixture results and live results **reported separately and labelled**. A replay pass is not evidence that mail is being delivered or ingested.
+
+---
+
+## Design pass — frontend, all modules, before Beta exit
+
+> **Added 2026-09-11 from the Phase 2 manual checks** (owner decision: recorded now, not
+> done now). Each module has shipped a UI that is functional and tested but not
+> presentable — the Notes capture panel was the example that prompted this. Fixing it
+> piecemeal inside each phase would restyle the same components five times.
+
+**One dedicated pass, after Phase 6 and before Beta exit.** It may run before or after the
+Railway move; note that clients first see the portal at the move, so a pass before cutover
+means no client ever sees the unstyled version.
+
+**Scope — every screen in Modules 1–6 and the client portal:**
+
+1. A small component set (form fields, choice rows, panels, dialogs, tables, status pills,
+   banners) replacing the ad hoc styles in `theme.css`, built on the Executives Now tokens
+   already there so V1's per-tenant branding stays a token swap.
+2. Layout and hierarchy on each screen; empty, loading and error states; narrow widths.
+3. Accessibility: every control labelled, keyboard reachable, visible focus, contrast
+   against the brand palette.
+4. **Known inputs:** the Notes capture panel (functional, not presentable — owner, Check 3);
+   the "Linked to" choices, whose layout broke because a panel-wide `input { width: 100% }`
+   also caught radio buttons.
+
+**Not in scope:** changes to behaviour, copy that carries a rule (the consent reminder, the
+PIN dialog's explanation, anything stating what is or isn't sent), or any review queue.
+Those change only with their own AC.
+
+**Done means:** every screen walked by the owner at desktop and laptop widths; the
+existing frontend tests pass unchanged except where a test names an element that was
+deliberately renamed.
 
 ---
 

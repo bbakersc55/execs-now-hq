@@ -157,4 +157,16 @@ button.ghost.small { font-size: .74rem; padding: .12rem .45rem; }
   max-height: calc(100vh - 3rem); overflow-y: auto; z-index: 20;
   box-shadow: 0 12px 32px rgba(10, 58, 101, .22); color: var(--blue);
 }
-.capture textarea, .capture input, .capture select { width: 100%; margin-bottom: .5rem; }
+/* Text fields only: a radio stretched to 100% pushes its label onto another line. */
+.capture textarea, .capture select,
+.capture input:not([type="radio"]):not([type="checkbox"]) { width: 100%; margin-bottom: .5rem; }
+
+/* One row of labelled choices — each radio sits beside its own label. */
+fieldset.choices { border: 0; padding: 0; margin: 0 0 .85rem; }
+fieldset.choices legend { font-size: .82rem; color: var(--gray-dark); margin-bottom: .35rem; padding: 0; }
+.choices .options { display: flex; flex-wrap: wrap; gap: .4rem 1.25rem; }
+.choices .options label {
+  display: inline-flex; align-items: center; gap: .4rem; margin: 0;
+  font-size: .92rem; color: var(--blue); cursor: pointer;
+}
+.choices .options input { width: auto; margin: 0; }

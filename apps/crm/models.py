@@ -710,6 +710,7 @@ class OutboxMessage(TenantScopedModel):
         STRATEGY_PDF = "strategy_pdf", "Strategy session PDF"
         PRECALL_INVITE = "precall_invite", "Pre-call invite"
         MAGIC_LINK = "magic_link", "Magic link"
+        NOTE_PIN_RESET = "note_pin_reset", "Note PIN reset"
         CADENCE_CHANGE = "cadence_change", "Cadence change"
         INBOUND_FORWARD = "inbound_forward", "Inbound forward"
         MANUAL = "manual", "Manual"
@@ -717,7 +718,7 @@ class OutboxMessage(TenantScopedModel):
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
     ALWAYS_DIRECT_TO_SENT = {
-        Producer.STRATEGY_PDF, Producer.MAGIC_LINK,
+        Producer.STRATEGY_PDF, Producer.MAGIC_LINK, Producer.NOTE_PIN_RESET,
         Producer.CADENCE_CHANGE, Producer.INBOUND_FORWARD,
     }
 
