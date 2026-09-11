@@ -640,7 +640,30 @@ def test_ac_2_9_the_retention_job_is_scheduled(seeded_tenant):
     assert purge.schedule_type == Schedule.DAILY and purge.repeats == -1
     assert Schedule.objects.filter(name=f"notes.process:{seeded_tenant.slug}",
                                    minutes=1).exists()
-    assert Schedule.objects.count() == 2
+    assert Schedule.objects.count() == 5
+
+
+@pytest.mark.django_db
+def test_module1_jobs_are_scheduled_and_rerunning_never_moves_them(seeded_tenant):
+    """The Phase 1 gap: these jobs existed and never ran. Re-running the
+    command must not push a daily job's next run, or it would re-fire."""
+    from zoneinfo import ZoneInfo
+
+    from django.core.management import call_command
+    from django_q.models import Schedule
+
+    call_command("ensure_schedules", stdout=open("/dev/null", "w"))
+    touches = Schedule.objects.get(name=f"crm.draft_referral_touches:{seeded_tenant.slug}")
+    assert touches.func == "apps.crm.tasks.draft_referral_touches"
+    assert touches.schedule_type == Schedule.DAILY
+    assert touches.next_run.astimezone(ZoneInfo(seeded_tenant.timezone)).hour == 6
+    for name in ("crm.expire_outbox", "crm.reindex_search"):
+        assert Schedule.objects.get(name=f"{name}:{seeded_tenant.slug}").schedule_type == Schedule.HOURLY
+
+    first = touches.next_run
+    call_command("ensure_schedules", stdout=open("/dev/null", "w"))
+    touches.refresh_from_db()
+    assert touches.next_run == first
 
 
 # ---------------------------------------------------------------- AC-2.10
