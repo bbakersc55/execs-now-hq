@@ -125,3 +125,59 @@ def test_cross_tenant_foreign_key_is_rejected(tenant_a, tenant_b):
     membership.user.save()
     with pytest.raises(ValidationError):
         membership.clean()
+
+
+# ------------------------------------------------------ Module 2 — note API
+# The registry tests above prove the managers. These prove the HTTP routes,
+# including the ones that act on a note rather than read it.
+
+@pytest.mark.django_db
+def test_note_routes_are_isolated_across_tenants(tenant_a, tenant_b, api):
+    import json
+
+    from .factories import MembershipFactory, NoteFactory
+
+    a_ff = MembershipFactory(tenant=tenant_a, role="FF")
+    b_note = NoteFactory(tenant=tenant_b, title="Bravo", body="bravo body text")
+    client = api.as_(a_ff)
+    base = f"/api/notes/{b_note.pk}/"
+    for method, path in [
+        ("get", base), ("patch", base), ("delete", base),
+        ("post", base + "pin/"), ("delete", base + "pin/"), ("post", base + "unlock/"),
+        ("post", base + "lock/"), ("post", base + "pin-reset/"),
+        ("post", base + "recording/"), ("post", base + "retry-transcription/"),
+        ("post", base + "discard-audio/"), ("post", base + "summary/accept/"),
+        ("post", base + "summary/discard/"), ("post", base + "summary/redraft/"),
+    ]:
+        response = client.generic(method.upper(), path, json.dumps({"pin": "1234"}),
+                                  content_type="application/json")
+        assert response.status_code == 404, (method, path, response.status_code)
+    assert client.get("/api/notes/?q=bravo").json() == []
+    b_note.refresh_from_db()
+    assert b_note.deleted_at is None and b_note.body == "bravo body text"
+
+
+@pytest.mark.django_db
+def test_a_pin_reset_token_from_tenant_b_does_nothing_in_tenant_a(tenant_a, tenant_b, api):
+    from django.utils import timezone
+
+    from .factories import MembershipFactory, NoteFactory
+
+    from apps.accounts.models import MagicLinkPurpose, MagicLinkToken
+
+    b_ff = MembershipFactory(tenant=tenant_b, role="FF")
+    b_note = NoteFactory(tenant=tenant_b, title="Bravo", body="x",
+                         pin_hash="h", pin_set_at=timezone.now())
+    _, raw = MagicLinkToken.issue(tenant=tenant_b, user=b_ff.user,
+                                  purpose=MagicLinkPurpose.PIN_RESET,
+                                  redirect_to=f"note:{b_note.pk}")
+    a_ff = MembershipFactory(tenant=tenant_a, role="FF")
+    for method in ("get", "post"):
+        response = (api.as_(a_ff).get(f"/api/notes/pin-reset/confirm/?token={raw}")
+                    if method == "get" else
+                    api.as_(a_ff).post("/api/notes/pin-reset/confirm/", {"token": raw},
+                                       content_type="application/json"))
+        assert response.status_code in (400, 403, 404)
+        assert "Bravo" not in response.content.decode()
+    b_note.refresh_from_db()
+    assert b_note.is_locked

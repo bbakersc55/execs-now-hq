@@ -127,6 +127,17 @@ def exists(stored_file) -> bool:
     return bool(_backend().size(stored_file.bucket, stored_file.object_key))
 
 
+def delete(stored_file) -> None:
+    """Remove the object, then the row.
+
+    Object first: this is how retention deletes audio, and a row removed while
+    its object survived would be a recording the owner believes is gone.
+    Deleting an object that is already absent is not an error.
+    """
+    _backend().delete(stored_file.bucket, stored_file.object_key)
+    stored_file.delete()
+
+
 def present_or_unknown(stored_file) -> bool | None:
     """For display: `None` when storage cannot be asked right now.
 
@@ -186,6 +197,9 @@ class LocalBackend:
         path = self._path(bucket, key)
         return path.stat().st_size if path.is_file() else None
 
+    def delete(self, bucket, key):
+        self._path(bucket, key).unlink(missing_ok=True)
+
     def list_sizes(self, bucket):
         base = self.root / bucket
         if not base.is_dir():
@@ -234,6 +248,15 @@ class GcsBackend:
         with _unavailable_on_failure(f"stat {bucket}/{key}"):
             blob = self._bucket(bucket).get_blob(key)
         return blob.size if blob is not None else None
+
+    def delete(self, bucket, key):
+        from google.api_core.exceptions import NotFound
+
+        with _unavailable_on_failure(f"delete {bucket}/{key}"):
+            try:
+                self._bucket(bucket).blob(key).delete()
+            except NotFound:
+                pass
 
     def list_sizes(self, bucket):
         with _unavailable_on_failure(f"list {bucket}"):

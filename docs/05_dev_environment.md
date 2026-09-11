@@ -316,6 +316,16 @@ Then open **http://localhost:5200** for the app and **http://localhost:8125** fo
 
 **`qcluster` must be running** or digests never generate, Drive never polls, and transcriptions never finish. If something "isn't happening," check terminal 2 first.
 
+**`qcluster` does not reload on code changes** (`runserver` does). After pulling or changing code, restart it — a cluster started before a migration runs the old models and fails every job that touches the new columns.
+
+**Periodic jobs are registered by one command**, idempotent, safe to re-run after every pull:
+
+```bash
+.venv/bin/python manage.py ensure_schedules
+```
+
+It declares every schedule in one list (`apps/tenancy/management/commands/ensure_schedules.py`). Until Phase 2 nothing registered a schedule at all.
+
 Common commands:
 
 ```bash
@@ -324,6 +334,8 @@ Common commands:
 .venv/bin/python manage.py createsuperuser
 .venv/bin/pytest                                # full suite
 .venv/bin/pytest -k "isolation or role"         # the two mandatory families
+RUN_GCS_LIVE=1 .venv/bin/pytest -m gcs_live -k storage   # the app's key against the real bucket
+RUN_STT_LIVE=1 .venv/bin/pytest tests/test_stt_live.py    # real Speech-to-Text on a 12 s fixture (cents)
 .venv/bin/python manage.py replay_inbound fixtures/inbound/token_match.json   # Module 6
 ```
 
@@ -682,6 +694,11 @@ Done. No address in this database can receive mail.
 | Restored DB replays old jobs | Queue tables came along in the dump | Flush the Django-Q2 queue tables before starting `qcluster` (A2) |
 | Every stored secret unreadable | `FIELD_ENCRYPTION_KEY` changed or lost | No recovery. Re-enter the Anthropic key and reconnect Google |
 | Upload or send fails: "No service-account key" or "Could not write/read gs://…" | Key missing or revoked, API disabled, or offline | Check `GOOGLE_APPLICATION_CREDENTIALS`, then `RUN_GCS_LIVE=1 .venv/bin/pytest tests/test_storage.py -m gcs_live` (§5b). The file is not lost — this is not `MissingContent` |
+| Every note job fails with a missing column | `qcluster` started before a migration | Restart `qcluster` (§6) |
+| Recording stuck on "Transcribing…" | `qcluster` not running, or no schedule | Terminal 2; then `manage.py ensure_schedules` |
+| Transcription fails: "Speech-to-Text could not start" | API disabled, key lacks `roles/speech.client`, or offline | §5b; the audio is kept — use **Retry transcription** |
+| Summary shows "Claude could not draft a summary" | No Anthropic key, a rejected key, or offline | Sidebar → AI usage → Anthropic API key; then **Draft another summary** |
+| Yellow "recording waiting to upload" banner | The upload never reached the server | It is held in this browser; **Retry upload now**, or download it |
 | WeasyPrint import error | Missing Pango/Cairo | The `apt install` line in §1 |
 | Google sign-in refused | No membership for that address | Correct — invite-only (C1) |
 

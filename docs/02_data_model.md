@@ -469,8 +469,10 @@ Session-scoped unlock (FR-2.9). `id · tenant_id · note_id · user_id · sessio
 Valid only while `expires_at > now()` **and** `unlocked_at >= note.pin_set_at` — so changing or
 resetting a PIN revokes every open unlock without touching these rows.
 
-**PIN reset needs no table.** The emailed link carries a signed token bound to the note's
-`pin_set_at`; clearing the PIN nulls it, so the link works once.
+**PIN reset uses `magic_link_token`** with `purpose = 'pin_reset'` and `redirect_to = 'note:<id>'`
+— the table Phase 0.5 built for it: hashed, single-use, 20 minutes, tenant-scoped. A link
+is also void once the note's `pin_set_at` is later than the token, so it can only clear the
+PIN it was issued for.
 
 ---
 

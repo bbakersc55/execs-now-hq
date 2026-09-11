@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
-import { Card, Empty, Pill, when } from "../components/ui";
+import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { api } from "../lib/api";
 
 interface Call {
@@ -31,6 +32,8 @@ export function AiUsage() {
         Every Claude call this practice has made, and what it cost. Visible to you only —
         spend is financial.
       </p>
+
+      <AnthropicKey />
 
       <Card title="Total">
         <p style={{ fontSize: "1.6rem", margin: 0 }}>
@@ -78,5 +81,50 @@ export function AiUsage() {
         )}
       </Card>
     </>
+  );
+}
+
+interface KeyStatus {
+  source: "tenant" | "env" | null; last4: string;
+  verified_at: string | null; rotated_at: string | null; model: string;
+}
+
+/** Assumption E1 — write-only. The key is never shown back, only its last
+ *  four characters; a new key is checked before it replaces the old one. */
+function AnthropicKey() {
+  const qc = useQueryClient();
+  const [key, setKey] = useState("");
+  const status = useQuery<KeyStatus>({ queryKey: ["ai-key"], queryFn: () => api.get<KeyStatus>("/api/ai-key/") });
+  const save = useMutation({
+    mutationFn: () => api.post<KeyStatus>("/api/ai-key/", { key }),
+    onSuccess: () => { setKey(""); qc.invalidateQueries({ queryKey: ["ai-key"] }); },
+  });
+  const s = status.data;
+
+  return (
+    <Card title="Anthropic API key">
+      {s?.source === "tenant" && (
+        <p>In use: <span className="mono">sk-ant-…{s.last4}</span>{" "}
+          <span className="muted small">checked {when(s.verified_at)} · model {s.model}</span></p>
+      )}
+      {s?.source === "env" && (
+        <Banner kind="warn">No practice key is stored. Calls use the development fallback from
+          <span className="mono"> .env</span>, which is refused once the app is off this laptop.</Banner>
+      )}
+      {s?.source === null && (
+        <Banner kind="bad">No key is set, so Claude cannot draft summaries. Recordings still
+          transcribe; their summaries wait until a key is added.</Banner>
+      )}
+      <form className="row" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <input aria-label="New Anthropic API key" type="password" autoComplete="off"
+          placeholder="sk-ant-…" value={key} onChange={(e) => setKey(e.target.value)} />
+        <button className="primary" type="submit" disabled={!key.trim() || save.isPending}>
+          {save.isPending ? "Checking…" : s?.source === "tenant" ? "Replace key" : "Save key"}
+        </button>
+      </form>
+      <p className="small muted">The key is checked with Anthropic before it is saved. If the check
+        fails, nothing changes. It is stored encrypted and never shown again.</p>
+      {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
+    </Card>
   );
 }

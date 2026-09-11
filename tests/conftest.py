@@ -157,3 +157,106 @@ def dev_outbox(settings):
     settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     mail.outbox = []
     return mail.outbox
+
+
+# ------------------------------------------------------------ Module 2 fakes
+
+class FakeSpeech:
+    """Google Speech-to-Text, faked at the client boundary.
+
+    Operations are REAL `google.longrunning` protobufs carrying a real packed
+    `LongRunningRecognizeResponse`, so the parsing code under test is the code
+    that runs against Google.
+    """
+
+    def __init__(self):
+        from types import SimpleNamespace
+
+        self.started = []
+        self.ops = {}
+        self.fail_start = None
+        self.transport = SimpleNamespace(
+            operations_client=SimpleNamespace(get_operation=self._get)
+        )
+
+    def long_running_recognize(self, *, config, audio):
+        from types import SimpleNamespace
+
+        from google.longrunning import operations_pb2
+
+        if self.fail_start is not None:
+            raise self.fail_start
+        name = f"operations/{len(self.started) + 1}"
+        self.started.append({"config": config, "audio": audio, "name": name})
+        self.ops[name] = operations_pb2.Operation(name=name, done=False)
+        return SimpleNamespace(operation=SimpleNamespace(name=name))
+
+    def _get(self, name):
+        return self.ops[name]
+
+    def finish(self, name, *paragraphs):
+        from google.cloud import speech_v1
+        from google.longrunning import operations_pb2
+
+        response = speech_v1.LongRunningRecognizeResponse(results=[
+            speech_v1.SpeechRecognitionResult(
+                alternatives=[speech_v1.SpeechRecognitionAlternative(transcript=p)]
+            ) for p in paragraphs
+        ])
+        op = operations_pb2.Operation(name=name, done=True)
+        op.response.Pack(speech_v1.LongRunningRecognizeResponse.pb(response))
+        self.ops[name] = op
+
+    def fail(self, name, message):
+        from google.longrunning import operations_pb2
+
+        op = operations_pb2.Operation(name=name, done=True)
+        op.error.code = 3
+        op.error.message = message
+        self.ops[name] = op
+
+
+@pytest.fixture
+def fake_stt(monkeypatch):
+    from apps.notes import recording
+
+    fake = FakeSpeech()
+    monkeypatch.setattr(recording, "_speech_client", lambda: fake)
+    return fake
+
+
+class FakeClaude:
+    """The Anthropic client at its boundary: records each request, returns the
+    SDK's response shape."""
+
+    def __init__(self):
+        from types import SimpleNamespace
+
+        self.requests = []
+        self.reply = "**Summary** — A call about the warehouse move."
+        self.stop_reason = "end_turn"
+        self.model = "claude-opus-5"
+        self.raise_exc = None
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        from types import SimpleNamespace
+
+        self.requests.append(kwargs)
+        if self.raise_exc is not None:
+            raise self.raise_exc
+        return SimpleNamespace(
+            model=self.model, stop_reason=self.stop_reason,
+            usage=SimpleNamespace(input_tokens=12000, output_tokens=800),
+            content=[SimpleNamespace(type="text", text=self.reply)],
+        )
+
+
+@pytest.fixture
+def fake_claude(monkeypatch, settings):
+    from apps.tenancy import claude
+
+    fake = FakeClaude()
+    settings.ANTHROPIC_API_KEY = "sk-ant-test-fallback"
+    monkeypatch.setattr(claude, "_client", lambda key: fake)
+    return fake

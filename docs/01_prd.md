@@ -340,7 +340,7 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 9. Entering the correct PIN unlocks that note for the browser session or 30 minutes, whichever is shorter.
 10. 5 consecutive wrong attempts lock that note for 15 minutes and write an `AuditEvent`.
 11. A locked note appears in search results and on timelines as a **stub: title and linked record only**. No body, no summary, no excerpt.
-11a. **Setting a PIN on a note whose title was auto-derived requires the user to type a real title first**, and the PIN dialog says why: the title is shown on the locked stub, and an auto-derived title *is the first line of the body* — so a note PIN'd without this step would display on its own stub the very sentence it was hidden to protect.
+11a. **Setting a PIN on a note whose title was auto-derived requires the user to type a real title first**, and the PIN dialog says why: the title is shown on the locked stub, and an auto-derived title *is the first line of the body* — so a note PIN'd without this step would display on its own stub the very sentence it was hidden to protect. *(Built as a dialog rule. The API accepts a PIN on an auto-titled note — AC-2.3 requires that bypass to succeed — and FR-2.11b plus the generated search index keep it safe.)*
 11b. **Defence in depth: a locked stub never renders an auto-derived title under any circumstance.** If one is somehow encountered — a note PIN'd through the API, a title auto-derived after the PIN was set, a data migration — the stub renders **"Locked note"** instead. FR-2.11a is the workflow; this is the invariant that holds when the workflow is bypassed.
 12. **PIN reset is FF-only**, performed by an emailed link, and **clears the PIN rather than revealing it**. The note becomes readable to everyone with normal access from that moment. The reset is audited.
 13. The PIN-set screen states plainly what the PIN does and does not do: it screens the note from other users of the app; it does not protect it from the FF, from a database dump, or from the nightly backup.
@@ -350,9 +350,11 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 14. Recording uses the browser's `MediaRecorder`. **Soft cap 120 minutes, with a warning at 110** — a strategy session runs 75 minutes to the seed's timing, and a cap that cannot hold the tool's own flagship session would be a self-inflicted limit.
 15. **Starting a recording shows a one-line reminder to confirm all parties consent to being recorded.** Dismissible per session, not per recording.
 16. Audio uploads to GCS; transcription runs asynchronously via Google Speech-to-Text; the note is usable (with a "transcribing" state) throughout.
-17. When the transcript is ready, Claude drafts a summary. **⛔ REVIEW QUEUE (R3):** the summary is presented beside the transcript for the author to **accept, edit, or discard**. No summary is attached silently.
+17. When the transcript is ready, Claude drafts a summary. **⛔ REVIEW QUEUE (R3):** the summary is presented beside the transcript for the author to **accept, edit, or discard**. No summary is attached silently. *(The reviewer is the note's author, or the FF. Enforced in the database: `summary` can be non-null only when `summary_state = 'accepted'`.)*
 18. If transcription fails, the note keeps the audio and shows a retry control. If Claude fails, the note keeps the transcript.
 19. **Audio retention is a per-tenant setting, `audio_retention_days`, default 30.** Transcript and summary are retained indefinitely. Setting it to 0 deletes audio on successful transcription, and the setting screen states that this forfeits re-transcription.
+19a. **Audio whose transcription never succeeded is not deleted by retention** (owner decision, 2026-09-11). It is the only record of the call; the note is flagged until someone retries the transcription or discards the audio.
+19b. **Recording audio is not in the nightly backup** (owner decision, 2026-09-11), so that retention actually deletes it. It relies on GCS durability and the media bucket's 7-day soft delete.
 
 ### Out of scope for Beta
 
@@ -386,9 +388,12 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 
 **AC-2.7 — Summary is proposed, not applied.** Record 60 seconds of speech. When transcription completes, the summary appears beside the transcript with accept / edit / discard controls, and the note's stored summary field is still empty. Discard it; the note retains the transcript with no summary. Repeat and accept; the summary is stored.
 
-**AC-2.8 — Failure degrades gracefully.** With an invalid Google credential, record a note. The note saves, shows a transcription-failed state with a retry control, and the audio is retained.
+**AC-2.8 — Failure degrades gracefully.** *(Re-worded 2026-09-11, owner-approved: one service-account key now serves both storage and Speech-to-Text, so "an invalid Google credential" fails the upload as well and the original wording could not hold.)*
 
-**AC-2.9 — Retention setting is honoured.** Set `audio_retention_days` to 1, create a recording, and run the retention job with a clock 2 days ahead. The audio object is gone from GCS; the transcript and summary remain.
+- **(a) Storage works, Speech-to-Text fails.** Record a note. The note saves, shows a transcription-failed state with a retry control, and the audio is retained in GCS.
+- **(b) The upload fails.** The recording stays in the browser that made it and is retried until the server confirms it; nothing is lost, and the audio can be downloaded from the browser meanwhile.
+
+**AC-2.9 — Retention setting is honoured.** Set `audio_retention_days` to 1, create a recording, and run the retention job with a clock 2 days ahead. The audio object is gone from GCS; the transcript and summary remain. A recording that never transcribed is **kept** by the same run and flagged (FR-2.19a).
 
 **AC-2.10 — Tenant isolation.** A note in tenant B is not returned by tenant A's search, timeline, or direct URL — including when the note is unlocked in tenant B.
 

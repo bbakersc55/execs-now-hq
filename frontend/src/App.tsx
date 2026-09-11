@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { NoteCapture } from "./components/NoteCapture";
+import { PendingUploads } from "./components/PendingUploads";
 import { api, Me } from "./lib/api";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
@@ -17,6 +19,10 @@ import { StageRules } from "./screens/StageRules";
 import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { AiUsage } from "./screens/AiUsage";
+import { NoteDetail } from "./screens/NoteDetail";
+import { Notes } from "./screens/Notes";
+import { PinReset } from "./screens/PinReset";
+import { TaskDetail } from "./screens/TaskDetail";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -26,6 +32,8 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   { to: "/contacts", label: "Contacts", roles: TENANT },
   { to: "/pipeline", label: "Pipeline", roles: TENANT },
   { to: "/companies", label: "Companies", roles: TENANT },
+  // Matrix 6.9 — notes have no client-visible form in Beta.
+  { to: "/notes", label: "Notes", roles: TENANT },
   { to: "/vendors", label: "Vendors", roles: TENANT },
   { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },
@@ -36,7 +44,19 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   { to: "/ai-usage", label: "AI usage", roles: ["FF"] },
 ];
 
+/** Pre-link a new note to the record on screen; everything else stays optional. */
+function captureDefaults(pathname: string) {
+  const contact = matchPath("/contacts/:id", pathname);
+  if (contact) return { contact: contact.params.id ?? null };
+  const company = matchPath("/companies/:id", pathname);
+  if (company) return { company: company.params.id ?? null };
+  const task = matchPath("/tasks/:id", pathname);
+  if (task) return { task: task.params.id ?? null };
+  return {};
+}
+
 export function App() {
+  const location = useLocation();
   const { data: me, isLoading, isError } = useQuery<Me>({
     queryKey: ["me"],
     queryFn: () => api.get<Me>("/api/me"),
@@ -61,6 +81,7 @@ export function App() {
     <div className="layout">
       <aside className="sidebar">
         <h1>Execs NOW HQ</h1>
+        {me.role && TENANT.includes(me.role) && <NoteCapture defaults={captureDefaults(location.pathname)} />}
         <nav>
           {visible.map((n) => (
             <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive ? "active" : "")}>
@@ -76,6 +97,7 @@ export function App() {
       </aside>
       <main>
         <ErrorBoundary>
+          {me.role && TENANT.includes(me.role) && <PendingUploads />}
           <Routes>
             <Route path="/" element={<Contacts me={me} />} />
             <Route path="/contacts" element={<Contacts me={me} />} />
@@ -92,6 +114,10 @@ export function App() {
             <Route path="/rules" element={<StageRules />} />
             <Route path="/staff" element={<Staff />} />
             <Route path="/ai-usage" element={<AiUsage />} />
+            <Route path="/notes" element={<Notes me={me} />} />
+            <Route path="/notes/pin-reset/:token" element={<PinReset />} />
+            <Route path="/notes/:id" element={<NoteDetail me={me} />} />
+            <Route path="/tasks/:id" element={<TaskDetail />} />
           </Routes>
         </ErrorBoundary>
       </main>

@@ -1,4 +1,4 @@
-import { Company, Contact, ContactType, Me, Pipeline } from "../lib/api";
+import { Company, Contact, ContactType, Me, NoteFull, NoteStub, Pipeline } from "../lib/api";
 
 /**
  * Shapes copied from a real `/api/contacts/` response against the owner's
@@ -94,3 +94,31 @@ export const PIPELINES: Pipeline[] = [
     ],
   },
 ];
+
+
+/** Both note shapes, as `apps/notes/serializers.py` builds them. */
+export const NOTE_ID = "9d6f1c1e-3a55-4a3e-9d1b-6a1c8f0c2b11";
+export const SECRET = "CONFIDENTIAL SEVERANCE DISCUSSION";
+
+export function aNote(overrides: Partial<NoteFull> = {}): NoteFull {
+  return {
+    id: NOTE_ID, title: SECRET, title_is_auto: true, is_locked: false, unlocked: false,
+    stub: false, created_at: "2026-09-11T15:00:00Z", can_reset_pin: false,
+    contact: null, contact_name: "", company: null, company_name: "", task: null, task_title: "",
+    body: `${SECRET}\nSeverance terms for the ops lead.`, source: "manual",
+    created_by: "u1", created_by_name: "Bryan Baker", updated_at: "2026-09-11T15:00:00Z",
+    has_audio: false, audio_duration_seconds: null, transcription_state: "none",
+    transcription_error: "", transcript: null, summary_state: "none", proposed_summary: null,
+    summary: null, can_review_summary: true, retention_overdue: false,
+    ...overrides,
+  };
+}
+
+export function aStub(overrides: Partial<NoteStub> = {}): NoteStub {
+  return {
+    id: NOTE_ID, title: "HR matter", is_locked: true, unlocked: false, stub: true,
+    created_at: "2026-09-11T15:00:00Z", can_reset_pin: false,
+    contact: null, contact_name: "", company: null, company_name: "", task: null, task_title: "",
+    ...overrides,
+  };
+}

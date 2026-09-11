@@ -149,3 +149,12 @@ label { display: block; font-size: .82rem; color: var(--gray-dark); margin-botto
 button.ghost.small { font-size: .74rem; padding: .12rem .45rem; }
 .attachments { margin: .5rem 0; }
 .attachments li { font-size: .8rem; }
+
+/* Module 2 — the docked capture panel. Fixed, so it survives route changes
+   mid-call and never sits inside the 220px sidebar. */
+.capture {
+  position: fixed; right: 1.5rem; bottom: 1.5rem; width: min(440px, calc(100vw - 3rem));
+  max-height: calc(100vh - 3rem); overflow-y: auto; z-index: 20;
+  box-shadow: 0 12px 32px rgba(10, 58, 101, .22); color: var(--blue);
+}
+.capture textarea, .capture input, .capture select { width: 100%; margin-bottom: .5rem; }

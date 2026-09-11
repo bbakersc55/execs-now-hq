@@ -215,6 +215,8 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # --- Google ---
 GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="execs-now-hq")
 GCS_BUCKET_MEDIA = env("GCS_BUCKET_MEDIA", default="execs-now-hq-media")
+# Speech-to-Text language for recordings (FR-2.16). BCP-47.
+GOOGLE_STT_LANGUAGE = env("GOOGLE_STT_LANGUAGE", default="en-US")
 
 # The app's own Google identity (05_dev_environment.md §5b). Expanded here
 # because the Google libraries open this path verbatim, and `~` in .env would

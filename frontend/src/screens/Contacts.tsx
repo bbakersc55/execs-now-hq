@@ -4,8 +4,9 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { BulkBar } from "../components/BulkBar";
 import { Banner, Card, Empty, Pill } from "../components/ui";
-import { Contact, ContactType, Me, Pipeline, api } from "../lib/api";
+import { Contact, ContactType, Me, Note, Pipeline, api } from "../lib/api";
 import { AddContact } from "./AddContact";
+import { NoteRow } from "./Notes";
 
 export function Contacts({ me }: { me: Me }) {
   const navigate = useNavigate();
@@ -31,7 +32,7 @@ export function Contacts({ me }: { me: Me }) {
     queryKey: ["pipelines"], queryFn: () => api.get<Pipeline[]>("/api/pipelines/"),
   });
 
-  const results = useQuery<{ contacts: Contact[]; companies: unknown[] }>({
+  const results = useQuery<{ contacts: Contact[]; companies: unknown[]; notes: Note[] }>({
     queryKey: ["search", active],
     queryFn: () => api.get(`/api/contacts/search/?q=${encodeURIComponent(active)}`),
     enabled: active.length > 0,
@@ -224,6 +225,12 @@ export function Contacts({ me }: { me: Me }) {
           </table>
         )}
       </Card>
+      {/* FR-2.7 — one search box. A locked note matches on its title only. */}
+      {active && (results.data?.notes ?? []).length > 0 && (
+        <Card title="Notes matching this search">
+          <ul className="timeline">{results.data!.notes.map((n) => <NoteRow key={n.id} note={n} />)}</ul>
+        </Card>
+      )}
     </>
   );
 }

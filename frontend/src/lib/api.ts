@@ -287,3 +287,57 @@ export interface GmailStatus {
   is_local_build: boolean;
   verify_error?: string;
 }
+
+/** Module 2. A locked note the viewer has not unlocked arrives as a stub:
+ *  the fields below `created_at` are absent, not empty (FR-2.11). */
+export interface NoteLinks {
+  contact: string | null; contact_name: string;
+  company: string | null; company_name: string;
+  task: string | null; task_title: string;
+}
+
+export interface NoteStub extends NoteLinks {
+  id: string;
+  title: string;
+  is_locked: boolean;
+  unlocked: boolean;
+  stub: true;
+  created_at: string;
+  can_reset_pin: boolean;
+}
+
+export type TranscriptionState = "none" | "uploading" | "transcribing" | "done" | "failed";
+export type SummaryState = "none" | "drafting" | "proposed" | "accepted" | "discarded" | "failed";
+
+export interface NoteFull extends Omit<NoteStub, "stub"> {
+  stub: false;
+  title_is_auto: boolean;
+  body: string;
+  source: "manual" | "import" | "recording";
+  created_by: string | null;
+  created_by_name: string;
+  updated_at: string;
+  has_audio: boolean;
+  audio_duration_seconds: number | null;
+  transcription_state: TranscriptionState;
+  transcription_error: string;
+  transcript: string | null;
+  summary_state: SummaryState;
+  proposed_summary: string | null;
+  summary: string | null;
+  can_review_summary: boolean;
+  retention_overdue: boolean;
+}
+
+export type Note = NoteStub | NoteFull;
+
+export interface NotesSettings {
+  audio_retention_days: number;
+  max_recording_seconds: number;
+  warn_at_seconds: number;
+}
+
+export interface Task {
+  id: string; title: string; description: string; status: string;
+  due_date: string | null; owner: string | null; contact: string | null;
+}

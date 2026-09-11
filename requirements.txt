@@ -15,8 +15,13 @@
 #   django-environ               — .env only (E2)
 #   whitenoise                   — serves the built Vite bundle in production
 #   google-cloud-storage         — stored_file content in gs://execs-now-hq-media (Phase 2)
+#   google-cloud-speech          — recording transcription (Module 2, FR-2.16)
+#   anthropic                    — Claude, the only LLM (CLAUDE.md); first used in Module 2
 # Everything else below is a transitive dependency of those.
 
+annotated-types==0.8.0
+anthropic==1.5.0
+anyio==4.15.1
 asgiref==3.12.1
 certifi==2026.7.22
 cffi==2.1.1
@@ -28,14 +33,22 @@ django-environ==0.14.0
 django-picklefield==3.4.0
 django-q2==1.11.1
 djangorestframework==3.18.1
+docstring_parser==0.18.0
 google-api-core==2.36.0
 google-auth==2.58.0
 google-cloud-core==2.7.0
+google-cloud-speech==2.40.0
 google-cloud-storage==3.14.1
 google-crc32c==1.8.0
 google-resumable-media==2.10.2
 googleapis-common-protos==1.75.3
+grpcio==1.83.1
+grpcio-status==1.83.1
+h11==0.16.0
+httpcore2==2.12.0
+httpx2==2.12.0
 idna==3.19
+jiter==0.16.0
 oauthlib==3.3.1
 opentelemetry-api==1.44.0
 proto-plus==1.28.4
@@ -45,9 +58,14 @@ psycopg-binary==3.3.5
 pyasn1==0.6.4
 pyasn1_modules==0.4.2
 pycparser==3.0
+pydantic==2.13.5
+pydantic_core==2.46.5
 PyJWT==2.13.0
 requests==2.34.2
+sniffio==1.3.1
 sqlparse==0.6.0
+truststore==0.10.4
 typing_extensions==4.16.0
+typing-inspection==0.4.4
 urllib3==2.7.0
 whitenoise==6.12.0

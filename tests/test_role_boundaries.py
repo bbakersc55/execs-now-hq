@@ -183,3 +183,167 @@ def test_cf_cannot_approve_for_an_unassigned_company(seeded_tenant, ff, cf, api,
     message.refresh_from_db()
     assert message.state != "sent"
     assert dev_outbox == []
+
+
+# ============================================================== Module 2 (§6)
+# Matrix rows 6.1-6.9. Row 6.4 is the one row whose scope is the PIN, not the
+# role: the FF without the PIN gets the stub, exactly like everyone else.
+
+import json as _json
+
+ALL_ROLES = ["FF", "CF", "VA", "FCC", "ECC"]
+SECRET_6 = "Personnel matter: performance plan for the ops lead"
+
+
+def _as(role, tenant):
+    from .factories import ClientCompanyFactory
+
+    company = ClientCompanyFactory(tenant=tenant) if role in ("FCC", "ECC") else None
+    return MembershipFactory(tenant=tenant, role=role, client_company=company)
+
+
+def _post(client, url, data=None):
+    return client.post(url, _json.dumps(data or {}), content_type="application/json")
+
+
+def _note(api, author, **data):
+    response = _post(api.as_(author), "/api/notes/", {"body": SECRET_6, **data})
+    assert response.status_code == 201, response.content
+    return response.json()
+
+
+MODULE2_ENDPOINTS = [
+    ("/api/notes/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    # Matrix 3.1 — a VA does not read tenant settings.
+    ("/api/notes/settings/", {"FF": 200, "CF": 200, "VA": 403, "FCC": 403, "ECC": 403}),
+    ("/api/notes/consent-reminder/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/ai-key/", {"FF": 200, "CF": 403, "VA": 403, "FCC": 403, "ECC": 403}),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,expected", MODULE2_ENDPOINTS, ids=[u for u, _ in MODULE2_ENDPOINTS])
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_module2_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
+    response = api.as_(_as(role, seeded_tenant)).get(url)
+    assert response.status_code == expected[role], (
+        f"{url} as {role}: expected {expected[role]}, got {response.status_code}"
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 201), ("CF", 201), ("VA", 201),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_6_1_create_a_note(role, expected, seeded_tenant, api):
+    response = _post(api.as_(_as(role, seeded_tenant)), "/api/notes/", {"body": "x"})
+    assert response.status_code == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["FF", "CF", "VA"])
+def test_6_3_and_6_4_a_locked_note_is_a_stub_for_every_role_including_ff(
+    role, seeded_tenant, api
+):
+    """Row 6.4: scope is the PIN. The FF who did not set it sees no body."""
+    from .factories import ClientAssignmentFactory, ClientCompanyFactory
+
+    author = _as("FF", seeded_tenant)
+    viewer = _as(role, seeded_tenant)
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    if role == "CF":
+        ClientAssignmentFactory(tenant=seeded_tenant, user=viewer.user, company=company)
+    note = _note(api, author, title="HR matter", company=str(company.pk))
+    assert _post(api.as_(author), f"/api/notes/{note['id']}/pin/", {"pin": "2468"}).status_code == 200
+
+    response = api.as_(viewer).get(f"/api/notes/{note['id']}/")
+    assert response.status_code == 200
+    assert response.json()["stub"] is True and response.json()["title"] == "HR matter"
+    assert SECRET_6 not in response.content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["FF", "CF", "VA"])
+def test_6_5_any_tenant_role_may_set_a_pin(role, seeded_tenant, api):
+    member = _as(role, seeded_tenant)
+    note = _note(api, member, title="Mine")
+    response = _post(api.as_(member), f"/api/notes/{note['id']}/pin/", {"pin": "13579"})
+    assert response.status_code == 200 and response.json()["is_locked"] is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 403), ("VA", 403),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_6_6_only_the_ff_may_reset_a_pin(role, expected, seeded_tenant, api, dev_outbox):
+    from .factories import ClientAssignmentFactory, ClientCompanyFactory
+
+    author = _as("FF", seeded_tenant)
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    note = _note(api, author, title="HR matter", company=str(company.pk))
+    _post(api.as_(author), f"/api/notes/{note['id']}/pin/", {"pin": "2468"})
+    member = _as(role, seeded_tenant)
+    if role == "CF":
+        ClientAssignmentFactory(tenant=seeded_tenant, user=member.user, company=company)
+    response = _post(api.as_(member), f"/api/notes/{note['id']}/pin-reset/")
+    assert response.status_code == expected
+    if expected != 200:
+        assert dev_outbox == [], "A refused reset still sent an email."
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 201), ("CF", 201), ("VA", 201)])
+def test_6_7_any_tenant_role_may_record(role, expected, seeded_tenant, api, fake_stt):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    member = _as(role, seeded_tenant)
+    client = api.as_(member)
+    note = _post(client, "/api/notes/", {"source": "recording"}).json()
+    audio = SimpleUploadedFile("r.webm", b"\x1aE\xdf\xa3 audio", content_type="audio/webm")
+    response = client.post(f"/api/notes/{note['id']}/recording/",
+                           {"audio": audio, "duration_seconds": "30"})
+    assert response.status_code == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["FCC", "ECC"])
+def test_6_9_client_users_reach_no_note_by_any_route(role, seeded_tenant, api):
+    author = _as("FF", seeded_tenant)
+    note = _note(api, author)
+    client = api.as_(_as(role, seeded_tenant))
+    for method, path in [
+        ("get", "/api/notes/"), ("get", f"/api/notes/{note['id']}/"),
+        ("get", f"/api/notes/?q=performance"), ("post", f"/api/notes/{note['id']}/unlock/"),
+        ("post", f"/api/notes/{note['id']}/pin/"), ("post", f"/api/notes/{note['id']}/recording/"),
+        ("post", f"/api/notes/{note['id']}/summary/accept/"),
+        ("get", "/api/contacts/search/?q=performance"),
+    ]:
+        response = getattr(client, method)(path)
+        assert response.status_code == 403, (role, method, path, response.status_code)
+        assert SECRET_6 not in response.content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 403), ("VA", 403)])
+def test_recording_retention_is_an_ff_setting(role, expected, seeded_tenant, api):
+    """Matrix 3.11 — audio retention is an FF setting."""
+    client = api.as_(_as(role, seeded_tenant))
+    response = client.patch("/api/notes/settings/", _json.dumps({"audio_retention_days": 7}),
+                            content_type="application/json")
+    assert response.status_code == expected
+    seeded_tenant.refresh_from_db()
+    assert seeded_tenant.audio_retention_days == (7 if expected == 200 else 30)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["CF", "VA"])
+def test_anthropic_key_is_ff_only_and_never_returned(role, seeded_tenant, api, monkeypatch):
+    from apps.tenancy import claude
+
+    monkeypatch.setattr(claude, "validate_key", lambda key: None)
+    ff = _as("FF", seeded_tenant)
+    saved = _post(api.as_(ff), "/api/ai-key/", {"key": "sk-ant-api03-SECRETKEY-9Zq1"})
+    assert saved.status_code == 200
+    assert saved.json()["last4"] == "9Zq1"
+    assert "SECRETKEY" not in saved.content.decode()
+    assert "SECRETKEY" not in api.as_(ff).get("/api/ai-key/").content.decode()
+    assert _post(api.as_(_as(role, seeded_tenant)), "/api/ai-key/",
+                 {"key": "sk-ant-other"}).status_code == 403

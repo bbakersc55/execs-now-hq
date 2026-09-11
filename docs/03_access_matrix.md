@@ -124,7 +124,7 @@
 | 6.5 | Set / change a PIN | ✅ | ✅ | ✅ | — | — | Requires a typed title first (FR-2.11a) |
 | 6.6 | **Reset a PIN** | ✅ | ❌ | ❌ | — | — | **FF only, by emailed link, clears rather than reveals** (`CLAUDE.md`, FR-2.12) |
 | 6.7 | Record audio / transcribe | ✅ | ✅ | ✅ | — | — | Consent reminder shown (FR-2.15) |
-| 6.8 | Accept / edit / discard a Claude summary | ✅ | ✅ | ✅ | — | — | The note's author reviews (R3) |
+| 6.8 | Accept / edit / discard a Claude summary | ✅ | ✅ | ✅ | — | — | The note's author reviews (R3); the FF may too. Another CF or VA gets 403. (Retention and the Anthropic key are rows 3.11 and 3.3) |
 | 6.9 | Access any note | — | — | — | ❌ | ❌ | **No client-visible note type exists in Beta** |
 
 > **Row 6.4 is the only row in this document whose scope is not a role or an assignment.** It is worth stating plainly, as FR-2.13 does: a PIN screens a note from other users of the app. It does not protect it from the FF (who can reset), from a database dump, or from the nightly backup.

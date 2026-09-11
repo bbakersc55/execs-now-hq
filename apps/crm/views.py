@@ -20,6 +20,8 @@ from apps.crm.models import (
     ServiceCategory, StageAutomation, StageChange, StageSemantic, Task,
 )
 from apps.crm.services import importer, merge, outbox, pipeline, referral, search, timeline
+from apps.notes.serializers import represent_many as note_representations
+from apps.notes.views import search_notes
 from apps.tenancy import storage
 from apps.tenancy.models import AuditEvent, Role
 
@@ -306,6 +308,11 @@ class ContactViewSet(TenantStaffViewSet):
                     )
                 ), many=True,
             ).data,
+            # FR-2.7 — one search box. Locked notes match on a typed title
+            # only and come back as stubs.
+            "notes": note_representations(
+                search_notes(request, request.query_params.get("q", "")), request=request,
+            ) if (request.query_params.get("q") or "").strip() else [],
         })
 
     @action(detail=False, methods=["get"], url_path="by-category")

@@ -30,22 +30,3 @@ def heartbeat(tenant_id: str, label: str = "scheduled") -> str:
         )
     return str(event.pk)
 
-
-def purge_expired_audio(tenant_id: str) -> int:
-    """FR-2.19 — delete recording audio past the tenant's retention window.
-
-    Registered as a schedule in Phase 2; defined here so Phase 0.5 proves the
-    scheduling path with something the product actually needs.
-    """
-    from .models import StoredFile, Tenant
-
-    with tenant_context(tenant_id):
-        tenant = Tenant.objects.get(pk=tenant_id)
-        cutoff = timezone.now() - timezone.timedelta(days=tenant.audio_retention_days)
-        stale = StoredFile.objects.filter(
-            purpose="recording_audio", created_at__lt=cutoff
-        )
-        count = stale.count()
-        # Blob deletion lands in Phase 2; the row-level sweep is proven now.
-        stale.update(delete_after=timezone.now())
-    return count

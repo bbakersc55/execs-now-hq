@@ -6,7 +6,7 @@ import { Banner, Card, Empty, Pill, when, positionsLabel } from "../components/u
 import { AddCompany } from "./AddCompany";
 import { Company, Contact, Me, api } from "../lib/api";
 
-interface TimelineEntry { kind: string; when: string; text: string; }
+interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 
 export function CompanyDetail({ me }: { me: Me }) {
   const { id } = useParams();
@@ -81,7 +81,12 @@ export function CompanyDetail({ me }: { me: Me }) {
           {(timeline.data ?? []).length === 0 ? <Empty>Nothing yet.</Empty> : (
             <ul className="timeline">
               {timeline.data!.map((e, i) => (
-                <li key={i}><div>{e.text}</div><div className="when">{e.kind} · {when(e.when)}</div></li>
+                <li key={i}>
+                  <div>{e.note_id
+                    ? <Link to={`/notes/${e.note_id}`}>{e.locked && "🔒 "}{e.text}</Link>
+                    : e.text}</div>
+                  <div className="when">{e.kind} · {when(e.when)}</div>
+                </li>
               ))}
             </ul>
           )}

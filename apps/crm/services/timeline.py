@@ -10,8 +10,23 @@ from apps.crm.models import EmailMessage, OutboxMessage, StageChange, Task
 from apps.notes.models import Note
 
 
-def _entry(kind, when, text):
-    return {"kind": kind, "when": when.isoformat() if when else None, "text": text}
+def _entry(kind, when, text, **extra):
+    return {"kind": kind, "when": when.isoformat() if when else None, "text": text, **extra}
+
+
+def _note_entry(note):
+    """A locked note is a stub here too (FR-2.11): its display title and a lock,
+    never a body excerpt — even for someone who has it unlocked, since a
+    timeline is a list read over someone's shoulder."""
+    from apps.notes.access import display_title
+
+    if note.is_locked:
+        text = f"Note (locked): {display_title(note)}"
+    else:
+        label = note.title or (note.body[:60] + ("…" if len(note.body) > 60 else ""))
+        suffix = " (imported)" if note.source == Note.Source.IMPORT else ""
+        text = f"Note: {label}{suffix}"
+    return _entry("note", note.created_at, text, note_id=str(note.pk), locked=note.is_locked)
 
 
 def for_contact(contact, limit=100):
@@ -31,9 +46,7 @@ def for_contact(contact, limit=100):
         entries.append(_entry("stage", change.created_at, text))
 
     for note in Note.objects.filter(contact=contact, deleted_at__isnull=True):
-        label = note.title or (note.body[:60] + ("…" if len(note.body) > 60 else ""))
-        suffix = " (imported)" if note.source == Note.Source.IMPORT else ""
-        entries.append(_entry("note", note.created_at, f"Note: {label}{suffix}"))
+        entries.append(_note_entry(note))
 
     for task in Task.objects.filter(contact=contact, deleted_at__isnull=True):
         due = f", due {task.due_date}" if task.due_date else ""
@@ -59,7 +72,7 @@ def for_company(company, limit=100):
 
     entries = []
     for note in Note.objects.filter(company=company, deleted_at__isnull=True):
-        entries.append(_entry("note", note.created_at, f"Note: {note.title or note.body[:60]}"))
+        entries.append(_note_entry(note))
 
     for contact in Contact.objects.filter(company=company, deleted_at__isnull=True):
         for change in StageChange.objects.filter(contact=contact).select_related(

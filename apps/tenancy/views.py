@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -98,3 +99,40 @@ class AiUsageViewSet(viewsets.ReadOnlyModelViewSet):
         )
         total = self.get_queryset().aggregate(cost=Sum("cost_usd"), calls=Count("id"))
         return Response({"by_purpose": list(rows), "total": total})
+
+
+class AnthropicKeyView(viewsets.ViewSet):
+    """Assumption E1 — the tenant's Anthropic key. FF only; write-only.
+
+    GET says whether a key is in force and its last four characters. POST
+    validates a new key with one free call before it replaces anything; on
+    failure the working key is untouched. No response ever contains a key.
+    """
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def list(self, request):
+        from apps.tenancy import claude
+        from apps.tenancy.models import SecretKind, TenantSecret
+
+        secret = TenantSecret.objects.filter(
+            kind=SecretKind.ANTHROPIC_API_KEY, user__isnull=True
+        ).first()
+        return Response({
+            "source": claude.key_source(request.tenant),
+            "last4": secret.last4 if secret else "",
+            "verified_at": secret.verified_at if secret else None,
+            "rotated_at": secret.rotated_at if secret else None,
+            "model": settings.ANTHROPIC_MODEL,
+        })
+
+    def create(self, request):
+        from apps.tenancy import claude
+
+        try:
+            claude.save_key(tenant=request.tenant, key=request.data.get("key", ""),
+                            actor=request.user)
+        except claude.ClaudeUnavailable as exc:
+            return Response({"detail": f"{exc} The existing key, if any, is unchanged."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return self.list(request)

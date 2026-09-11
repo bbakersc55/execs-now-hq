@@ -6,7 +6,7 @@ import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
 import { Contact, Me, OutboxMessage, api } from "../lib/api";
 
-interface TimelineEntry { kind: string; when: string; text: string; }
+interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 interface Duplicate { contact: Contact; match_reason: string; rank: number; }
 
 export function ContactDetail({ me }: { me: Me }) {
@@ -275,7 +275,9 @@ export function ContactDetail({ me }: { me: Me }) {
               <ul className="timeline">
                 {timeline.data!.map((entry, i) => (
                   <li key={i}>
-                    <div>{entry.text}</div>
+                    <div>{entry.note_id
+                      ? <Link to={`/notes/${entry.note_id}`}>{entry.locked && "🔒 "}{entry.text}</Link>
+                      : entry.text}</div>
                     <div className="when">{entry.kind} · {when(entry.when)}</div>
                   </li>
                 ))}
