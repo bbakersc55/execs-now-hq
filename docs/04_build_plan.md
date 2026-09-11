@@ -239,9 +239,71 @@ per `CLAUDE.md`.
 3. Ask for a PIN reset and confirm the email clears rather than reveals.
 4. Confirm the consent reminder is worded in a way you are comfortable relying on.
 
-### Report
+### Report — Phase 2 status (2026-09-11)
 
-AC-2.1–2.10. Speech-to-Text and Claude quality are reported as **observed on N real recordings**, with the count — not as a pass.
+**Phase 2 is complete. All ten acceptance criteria pass and all four manual checks pass.**
+
+| | |
+|---|---|
+| Automated tests | **613 passed**, 2 xfailed |
+| — of which the two mandatory families | **294** (tenant isolation + role boundaries) |
+| — Module 2 acceptance | **41** |
+| Frontend tests | **76 passed** |
+| Manual checks | **4 of 4 passed** |
+| Live against Google | Speech-to-Text on the app's own path (1 synthetic fixture + 2 real recordings); GCS read/write/delete with the app's key |
+| Live to a real inbox | **1** — the PIN reset, through the practice's Gmail (re-check after the fix below) |
+
+**Speech-to-Text and Claude quality — observed on 2 real recordings, not a pass.**
+
+| Recording | Outcome |
+|---|---|
+| Solo dictation, 3 min | Transcript usable. **Claude summary kept as written** — accepted unchanged by the owner. |
+| Video call, 6 min | **Microphone-only failure**, not a quality result: the browser recorder captures this device's microphone, so 383 seconds produced one word and a summary saying nothing was captured. Fixed as FR-2.18a; the recorder now states what it records, and a transcript under 5 words per recorded minute is reported as "almost no speech detected" with the audio kept and no summary drafted. |
+
+So the prompt in `apps/notes/summary.py` has **one** real result behind it, and it was good enough to keep unedited. Judge it again over the next few calls.
+
+**Legend** as in Phase 1. **Live** = exercised by the owner against the real service.
+**Walked** = automated *and* stepped through by hand. **Automated** = covered by the suite.
+Nothing is "written but not exercised".
+
+| AC | What it covers | Status |
+|---|---|---|
+| AC-2.1 | Capture needs only a sentence | ✅ Walked (Check 1) |
+| AC-2.2 | Linking optional, mutable, dual; never contact *and* company | ✅ Walked (Check 2) |
+| AC-2.3 | Locked stub leaks nothing; the title-leak defence, UI **and** API | ✅ Walked (Check 2) |
+| AC-2.4 | Five wrong PINs lock the note, audited per attempt | ✅ Walked (Check 2) |
+| AC-2.5 | **Reset clears rather than reveals, FF-only** | ✅ **Live** (Check 3) |
+| AC-2.5a | 110-minute warning, clean stop at 120 | ✅ Automated (simulated clock; no real 2-hour recording) |
+| AC-2.6 | Consent reminder, once per sign-in session | ✅ Walked (Check 4) — **wording approved by the owner as written** |
+| AC-2.7 | Summary proposed, never auto-attached | ✅ Walked (Check 1) |
+| AC-2.8 | (a) transcription fails, audio kept · (b) upload fails, browser keeps it | ✅ Automated |
+| AC-2.9 | Retention deletes transcribed audio, keeps and flags the rest | ✅ Automated |
+| AC-2.10 | Tenant isolation | ✅ Automated |
+
+**What the manual checks corrected, none of which the suite would have caught:**
+
+1. **PIN resets and magic links bypassed the Outbox entirely** — sent straight through
+   Django's mail backend, so they were never logged, never checked against the dev
+   allow-list, and never carried by the practice's Gmail. An allow-listed reset landed in
+   Mailpit instead of the owner's inbox. Both are now direct-to-`sent` Outbox producers
+   through the configured transport, with the one-time link delivered but never stored
+   (FR-1.15b). A guard test now fails if any code outside the transport module sends mail.
+2. **No speech is its own outcome** (FR-2.18a), from the video-call recording above.
+3. **The capture panel's "Linked to" radios were unusable** — a panel-wide input width rule
+   stretched the radios away from their labels, so the third label sat above the contact
+   search box and read as if the field were for a company.
+4. **Design debt recorded, not fixed:** the capture panel is functional but not
+   presentable. One frontend design pass across all modules before Beta exit — its own
+   section below, after Phase 6.
+
+**Two things carried out of Phase 2, both the owner's to decide, neither blocking Phase 3:**
+
+- **Staff magic links.** The magic-link request endpoint will issue a link to any member,
+  staff included, while access matrix 2.3 says staff sign in with Google only. Never
+  exposed in the UI, and now the only route for the local test VA (`dev_va_login`).
+- **Module 1's scheduled jobs were never registered** and now are (`ensure_schedules`).
+  The first referral-touch drafting run is due around 2026-10-07 with about 42 drafts, each
+  awaiting approval.
 
 ---
 
