@@ -14,6 +14,7 @@
 #   cryptography                 — Fernet for tenant_secret (E1)
 #   django-environ               — .env only (E2)
 #   whitenoise                   — serves the built Vite bundle in production
+#   google-cloud-storage         — stored_file content in gs://execs-now-hq-media (Phase 2)
 # Everything else below is a transitive dependency of those.
 
 asgiref==3.12.1
@@ -27,10 +28,22 @@ django-environ==0.14.0
 django-picklefield==3.4.0
 django-q2==1.11.1
 djangorestframework==3.18.1
+google-api-core==2.36.0
+google-auth==2.58.0
+google-cloud-core==2.7.0
+google-cloud-storage==3.14.1
+google-crc32c==1.8.0
+google-resumable-media==2.10.2
+googleapis-common-protos==1.75.3
 idna==3.19
 oauthlib==3.3.1
+opentelemetry-api==1.44.0
+proto-plus==1.28.4
+protobuf==7.36.1
 psycopg==3.3.5
 psycopg-binary==3.3.5
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
 pycparser==3.0
 PyJWT==2.13.0
 requests==2.34.2

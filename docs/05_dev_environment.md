@@ -135,7 +135,13 @@ GOOGLE_CLOUD_PROJECT=execs-now-hq
 # this — it uses the gcloud CLI. The app never uses gcloud ADC (assumption A7).
 GOOGLE_APPLICATION_CREDENTIALS=~/.config/execs-now-hq/sa-app.json
 GOOGLE_STT_LANGUAGE=en-US
+# Where stored_file CONTENT lives. gcs = gs://$GCS_BUCKET_MEDIA/<object_key>,
+# read and written with the key above. `local` (MEDIA_ROOT/<bucket>/<key>) is
+# for the test suite and the restore drill only; refused off localhost.
+STORAGE_BACKEND=gcs
 GCS_BUCKET_MEDIA=execs-now-hq-media
+# Only read when STORAGE_BACKEND=local.
+MEDIA_ROOT=
 
 # ---------- Backups ----------
 BACKUP_BUCKET=gs://execs-now-hq-db-backups
@@ -197,7 +203,31 @@ Switching to **External with CASA verification** is the V1 task, needed before a
 
 ### 5b. Service account for the app's own API calls
 
+**Done 2026-09-11** (Phase 2 prerequisite). Recorded here as it was actually run, which
+differs from the Phase 0 draft in two places, both noted inline.
+
 ```bash
+# APIs. IAM to create the account and key; Org Policy to scope the override below.
+gcloud services enable iam.googleapis.com speech.googleapis.com orgpolicy.googleapis.com \
+  --project=execs-now-hq
+
+# The media bucket — private, same region as the backups.
+gcloud storage buckets create gs://execs-now-hq-media --project=execs-now-hq \
+  --location=us-west3 --default-storage-class=STANDARD \
+  --uniform-bucket-level-access --public-access-prevention
+
+# DIFFERENCE 1: the organization enforces iam.disableServiceAccountKeyCreation
+# (Google's secure-by-default for newer Workspace orgs), so the key command below
+# is refused without this. It is overridden for THIS PROJECT ONLY; the org-wide
+# rule stays on. Needs roles/orgpolicy.policyAdmin at the org.
+cat > /tmp/execs-now-hq-sa-key-policy.yaml <<'EOF'
+name: projects/execs-now-hq/policies/iam.disableServiceAccountKeyCreation
+spec:
+  rules:
+  - enforce: false
+EOF
+gcloud org-policies set-policy /tmp/execs-now-hq-sa-key-policy.yaml
+
 gcloud iam service-accounts create execs-now-hq-app \
   --display-name="Execs NOW HQ application runtime" \
   --project=execs-now-hq
@@ -205,16 +235,27 @@ gcloud iam service-accounts create execs-now-hq-app \
 # Minimum roles — no project-wide editor
 gcloud projects add-iam-policy-binding execs-now-hq \
   --member="serviceAccount:execs-now-hq-app@execs-now-hq.iam.gserviceaccount.com" \
-  --role="roles/speech.client"
-gcloud projects add-iam-policy-binding execs-now-hq \
+  --role="roles/speech.client" --condition=None
+
+# DIFFERENCE 2: storage on the MEDIA BUCKET, not the project. Project-wide
+# objectAdmin would let a leaked app key delete the database backups too.
+# tests/test_storage.py::test_live_key_cannot_touch_the_backup_bucket asserts the 403.
+gcloud storage buckets add-iam-policy-binding gs://execs-now-hq-media \
   --member="serviceAccount:execs-now-hq-app@execs-now-hq.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
 
 # Key file, OUTSIDE the repo
-mkdir -p ~/.config/execs-now-hq
+mkdir -p ~/.config/execs-now-hq && chmod 700 ~/.config/execs-now-hq
 gcloud iam service-accounts keys create ~/.config/execs-now-hq/sa-app.json \
   --iam-account=execs-now-hq-app@execs-now-hq.iam.gserviceaccount.com
 chmod 600 ~/.config/execs-now-hq/sa-app.json
+```
+
+**Verify the key the way the app uses it** — this talks to the real bucket, writes
+under `_selftest/`, and deletes what it wrote:
+
+```bash
+RUN_GCS_LIVE=1 .venv/bin/pytest tests/test_storage.py -m gcs_live -v
 ```
 
 **Why a key file rather than the ADC you already have:** your laptop's ADC is shared with another project and its quota-project setting cannot serve both at once — the app would intermittently bill or fail against the wrong project. A key file also makes **development identical to Railway**, where there is no interactive gcloud login and a key file is the only option. Discovering that difference at cutover is avoidable.
@@ -293,9 +334,9 @@ Common commands:
 `scripts/backup_db.sh` — uses **gcloud ADC**, not a service-account key file (kickoff §I).
 
 **It backs up two things, because the database alone is not a restorable system.**
-A `stored_file` row records a bucket, an object key and a size; the bytes live under
-`MEDIA_ROOT`. Restoring the dump without the blobs gives you rows describing files that
-do not exist — which is precisely the 0-byte-attachment failure from Check 5,
+A `stored_file` row records a bucket, an object key and a size; the bytes live in
+`gs://execs-now-hq-media`. Restoring the dump without the blobs gives you rows describing
+files that do not exist — which is precisely the 0-byte-attachment failure from Check 5,
 reintroduced by the backup itself.
 
 > **Why the media sync runs AFTER the dump, and not before.** A file uploaded in the
@@ -304,26 +345,41 @@ reintroduced by the backup itself.
 > restores as a file that opens empty. One direction wastes a little space; the other
 > loses data silently.
 
-> **The media mirror is never pruned.** Retention matches `*.sql.gz` only. A flyer from
-> last year is still the flyer attached to live drafts, and `rsync` runs without
-> `--delete-unmatched-destination-objects` on purpose — this is a backup, not a mirror,
-> so a file deleted locally by accident stays recoverable.
+> **The media copy is never pruned — and so recordings are not in it.** Retention matches
+> `*.sql.gz` only. A flyer from last year is still the flyer attached to live drafts, and
+> `rsync` runs without `--delete-unmatched-destination-objects` on purpose — this is a
+> backup, not a mirror, so a file deleted by accident stays recoverable.
+>
+> That same property is why **recording audio is excluded** (owner decision, Phase 2): a
+> never-pruned copy would keep every recording forever and quietly break
+> `audio_retention_days`. Recordings rely on GCS durability plus the media bucket's 7-day
+> soft delete. `apps/tenancy/storage.py` refuses to store `recording_audio` anywhere but
+> `recordings/`, and refuses anything else there, so the one `--exclude` is the whole rule.
+> Verified 2026-09-11 with a probe object: copied without the exclude, skipped with it.
 
 ```bash
 #!/usr/bin/env bash
 # Nightly + on-demand backup of execsnowhq_dev to GCS. 30-day retention.
 #
 # Backs up TWO things, because the database alone is not a restorable system:
-# the Postgres dump, and the media/ tree that `stored_file` rows point at
-# (marketing flyer, Outbox attachments, and from Module 2 the recordings).
-# A dump without the blobs restores rows describing files that do not exist —
-# which is exactly the 0-byte-attachment failure, reintroduced by the backup.
+# the Postgres dump, and the media bucket that `stored_file` rows point at
+# (marketing flyer, Outbox attachments, strategy PDFs). A dump without the blobs
+# restores rows describing files that do not exist — which is exactly the
+# 0-byte-attachment failure, reintroduced by the backup.
+#
+# Recording audio is NOT copied (owner decision, Phase 2). A never-pruned copy
+# would keep every recording forever and make audio_retention_days a promise
+# the backup breaks. Recordings rely on GCS durability plus the bucket's 7-day
+# soft delete. storage.py forces all recording audio under recordings/, so the
+# exclude below is the whole rule.
 set -euo pipefail
 
 DB_NAME="execsnowhq_dev"
 BUCKET="gs://execs-now-hq-db-backups"
-MEDIA_DIR="${MEDIA_ROOT:-$(cd "$(dirname "$0")/.." && pwd)/media}"
-MEDIA_DEST="${BUCKET}/media"
+MEDIA_BUCKET="gs://execs-now-hq-media"
+# Keeps the <bucket>/<object_key> layout the restore drill already expects.
+MEDIA_DEST="${BUCKET}/media/execs-now-hq-media"
+RECORDINGS_EXCLUDE='^recordings/'
 RETENTION_DAYS=30
 STAMP="$(date +%Y%m%d_%H%M%S)"
 TMP="$(mktemp -d)"
@@ -352,21 +408,17 @@ gcloud storage cp "${FILE}" "${BUCKET}/"
 # window produces the opposite: a row with no bytes, which restores as a file
 # that opens empty. One direction wastes a little space; the other loses data
 # silently. So: dump, then media.
+#
+# Bucket to bucket, same region: a server-side copy, nothing passes through
+# this machine.
 # --------------------------------------------------------------------------
-if [ -d "${MEDIA_DIR}" ]; then
-  MEDIA_FILES=$(find "${MEDIA_DIR}" -type f | wc -l)
-  MEDIA_BYTES=$(du -sb "${MEDIA_DIR}" | cut -f1)
-  echo "==> Syncing media (${MEDIA_FILES} files, ${MEDIA_BYTES} bytes) to ${MEDIA_DEST}"
-  # No --delete-unmatched-destination-objects on purpose: this is a backup, not
-  # a mirror. A file deleted locally by accident stays recoverable here, which
-  # is the entire reason the copy exists.
-  gcloud storage rsync --recursive "${MEDIA_DIR}" "${MEDIA_DEST}"
-  echo "==> Media sync OK"
-else
-  # Not an error: a fresh clone has no media until the first upload. Say so
-  # rather than passing silently, so "no media backed up" is never a surprise.
-  echo "==> No media directory at ${MEDIA_DIR} — nothing to sync"
-fi
+echo "==> Syncing ${MEDIA_BUCKET} to ${MEDIA_DEST} (excluding ${RECORDINGS_EXCLUDE})"
+# No --delete-unmatched-destination-objects on purpose: this is a backup, not
+# a mirror. A file deleted by accident stays recoverable here, which is the
+# entire reason the copy exists.
+gcloud storage rsync --recursive --exclude="${RECORDINGS_EXCLUDE}" \
+  "${MEDIA_BUCKET}" "${MEDIA_DEST}"
+echo "==> Media sync OK"
 
 echo "==> Pruning backups older than ${RETENTION_DAYS} days"
 CUTOFF=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
@@ -457,7 +509,7 @@ psql execsnowhq_verify -c "SELECT purpose, count(*), sum(byte_size) FROM stored_
 ```
 
 ```bash
-# 2. The media, into a scratch directory.
+# 2. The media backup, into a scratch directory.
 mkdir -p /tmp/media_verify
 gcloud storage rsync --recursive gs://execs-now-hq-db-backups/media /tmp/media_verify
 find /tmp/media_verify -type f | wc -l      # compare with the count above
@@ -465,14 +517,24 @@ find /tmp/media_verify -type f | wc -l      # compare with the count above
 
 ```bash
 # 3. Reconcile the two. THIS is the check that matters: not "are there files",
-#    but "does every row the database references have content behind it".
-DATABASE_URL=postgres://localhost/execsnowhq_verify \
-MEDIA_ROOT=/tmp/media_verify \
-  .venv/bin/python manage.py check_media --strict
+#    but "does every row the database references have content behind it" — and,
+#    since Phase 2, at the recorded size.
+#    STORAGE_BACKEND=local points check_media at the scratch copy instead of the
+#    live bucket. Recordings are skipped because they are not in the backup by
+#    design; the output says how many were skipped.
+#    The empty-host URL uses the local socket (see DATABASE_URL in §3); a
+#    postgres://localhost/... URL needs a Postgres password this setup does not have.
+DATABASE_URL=postgres:///execsnowhq_verify \
+STORAGE_BACKEND=local MEDIA_ROOT=/tmp/media_verify \
+  .venv/bin/python manage.py check_media --strict --exclude-purpose recording_audio
 ```
 
 → `Every stored_file row has its content.` and exit code 0. Anything else names the
-missing files, and `--strict` fails the drill rather than letting it pass quietly.
+missing or wrong-size files, and `--strict` fails the drill rather than letting it pass
+quietly. Exit code 2 means the check could not reach storage at all — not a pass.
+
+**Day to day**, `.venv/bin/python manage.py check_media` with no overrides reconciles the
+database against the live bucket.
 
 ```bash
 # 4. Clean up.
@@ -483,27 +545,27 @@ dropdb execsnowhq_verify && rm -rf /tmp/media_verify
 > suggestion — and after Check 5 it is a two-part gate, because a restore that brings
 > back rows without blobs is not a restore.
 
-### Why media is still on the laptop, and when that has to change
+### Media moved to GCS in Phase 2
 
-The alternative to syncing `media/` is to put `stored_file` content in
-`gs://execs-now-hq-media` now rather than at the Railway move. **Not yet — but sooner
-than Phase 7.** The reasoning, so it can be re-argued rather than re-derived:
+`stored_file` content lives in `gs://execs-now-hq-media`, written and read with the
+§5b service-account key. It moved at the start of Phase 2 rather than at the Railway
+cutover because a nightly sync leaves up to 24 hours of writes unprotected — tolerable
+for a flyer that can be re-uploaded from the original, not for a meeting recording that
+exists nowhere else.
 
-**Why not now.** Beta's premise is that the app runs on the laptop while the owner uses
-it live. Moving blobs to GCS puts a network round-trip and a working credential in the
-path of every flyer upload and every send that reads an attachment — so an offline
-laptop, an expired key or a slow connection becomes a failed send. That is a new class
-of failure introduced into the exact code path that was just found silently broken,
-which is the worst possible moment to make it more complicated. The `rsync` closes the
-durability gap today with the tooling this script already uses, and object keys already
-mirror the GCS layout (`<bucket>/<object_key>`), so the switch stays a backend swap.
+**What was moved, 2026-09-11:** two objects (the flyer, and one Outbox attachment),
+both copied by `manage.py copy_media_to_gcs --apply` and verified by SHA-256 read-back
+through the app's key. Object keys did not change; no row was edited. Two further rows
+had no content to move — Outbox attachments on messages sent 2026-09-10, during the
+0-byte bug. On owner approval they were removed with their two `outbox_attachment` rows
+(dry run first; one `audit_event` each, verb `stored_file.orphan_removed`, recording the key,
+size and message). `check_media --strict` passes against GCS from that point.
+The laptop's `media/` directory was left in place and is no longer read.
 
-**Why not Phase 7 either.** A nightly sync means up to 24 hours of unprotected writes.
-For a flyer that is tolerable — it can be re-uploaded from the original. **For a meeting
-recording it is not**: the audio exists nowhere else, and "we lost this morning's client
-call" is not a recoverable event. **So the GCS switch is a Module 2 prerequisite, not a
-Phase 7 task** — it must land before recordings become real, not before Railway does.
-Until then, `media/` holds only re-creatable files and a nightly sync is proportionate.
+**The trade-off accepted.** An offline laptop, a slow connection or a revoked key is now
+a possible failure on every upload and every send with an attachment. It fails *as*
+unavailability — `StorageUnavailable`, "try again" — never as `MissingContent`, "re-upload",
+and screens show "storage unreachable — could not check" rather than "file missing".
 
 ---
 
@@ -619,6 +681,7 @@ Done. No address in this database can receive mail.
 | Mail sends from the wrong address | The alias is unverified and you expected a fallback | There is no fallback by design — verify the alias (§5c) |
 | Restored DB replays old jobs | Queue tables came along in the dump | Flush the Django-Q2 queue tables before starting `qcluster` (A2) |
 | Every stored secret unreadable | `FIELD_ENCRYPTION_KEY` changed or lost | No recovery. Re-enter the Anthropic key and reconnect Google |
+| Upload or send fails: "No service-account key" or "Could not write/read gs://…" | Key missing or revoked, API disabled, or offline | Check `GOOGLE_APPLICATION_CREDENTIALS`, then `RUN_GCS_LIVE=1 .venv/bin/pytest tests/test_storage.py -m gcs_live` (§5b). The file is not lost — this is not `MissingContent` |
 | WeasyPrint import error | Missing Pango/Cairo | The `apt install` line in §1 |
 | Google sign-in refused | No membership for that address | Correct — invite-only (C1) |
 

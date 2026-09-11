@@ -216,9 +216,25 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="execs-now-hq")
 GCS_BUCKET_MEDIA = env("GCS_BUCKET_MEDIA", default="execs-now-hq-media")
 
-# Where `stored_file` content actually lives. Beta runs on the laptop, so this
-# is the local filesystem, laid out as <bucket>/<object_key> — the same shape as
-# the GCS object path, so the Phase 7 move is a backend swap, not a re-keying.
+# The app's own Google identity (05_dev_environment.md §5b). Expanded here
+# because the Google libraries open this path verbatim, and `~` in .env would
+# otherwise be a file-not-found that reads like a bad key. Loaded explicitly by
+# apps/tenancy/storage.py — never via ADC (assumption A7).
+_credentials_path = env("GOOGLE_APPLICATION_CREDENTIALS", default="")
+GOOGLE_APPLICATION_CREDENTIALS = str(Path(_credentials_path).expanduser()) if _credentials_path else ""
+
+# Where `stored_file` content lives. `gcs` (gs://<bucket>/<object_key>) since
+# Phase 2: a recording exists nowhere else, so it cannot wait for a nightly
+# sync. `local` (MEDIA_ROOT/<bucket>/<object_key>, the same shape) is for the
+# test suite and the restore drill only.
+STORAGE_BACKEND = env("STORAGE_BACKEND", default="gcs")
+if STORAGE_BACKEND not in ("gcs", "local"):
+    raise RuntimeError(f"STORAGE_BACKEND must be 'gcs' or 'local', not {STORAGE_BACKEND!r}.")
+if STORAGE_BACKEND == "local" and not IS_LOCAL:
+    raise RuntimeError(
+        "STORAGE_BACKEND=local outside localhost would write client files to a "
+        "container disk that is discarded on every deploy. Use gcs."
+    )
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 MEDIA_URL = "/media/"
 

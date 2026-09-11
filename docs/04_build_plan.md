@@ -204,6 +204,15 @@ per `CLAUDE.md`.
 > move. The object keys already mirror the GCS layout, so this is a backend swap in
 > `apps/tenancy/storage.py`, plus creating the bucket (it does not exist yet) and the
 > service account in `05_dev_environment.md` §5b.
+>
+> **Done 2026-09-11.** Bucket created (us-west3, private); service account with storage
+> scoped to the media bucket only; the flyer and one Outbox attachment copied and
+> SHA-256-verified; `check_media` compares sizes against GCS; the backup copies the
+> bucket excluding `recordings/` (owner decision: recordings rely on GCS durability and
+> 7-day soft delete, so retention is not undone by the backup). Two changes the plan
+> did not anticipate: key creation needed a **project-scoped org-policy override**, and
+> **object keys are now unique per upload** — two flyer rows shared one object, which
+> the retention job's deletes would have turned into data loss.
 
 
 ### Done means

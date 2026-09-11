@@ -415,7 +415,7 @@ class OutboxAttachmentSerializer(serializers.ModelSerializer):
         """
         from apps.tenancy import storage
 
-        return storage.exists(obj.stored_file)
+        return storage.present_or_unknown(obj.stored_file)
 
 
 class OutboxMessageSerializer(serializers.ModelSerializer):

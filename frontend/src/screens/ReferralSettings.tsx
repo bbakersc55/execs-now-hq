@@ -13,7 +13,8 @@ interface Settings {
   marketing_flyer: string | null;
   marketing_flyer_name: string;
   marketing_flyer_bytes: number;
-  marketing_flyer_present: boolean;
+  /** null when storage could not be reached to check — not the same as missing. */
+  marketing_flyer_present: boolean | null;
 }
 
 export function ReferralSettings() {
@@ -124,14 +125,16 @@ export function ReferralSettings() {
         {s?.marketing_flyer ? (
           <>
             <p>
-              <Pill kind={s.marketing_flyer_present ? "ok" : "bad"}>
-                {s.marketing_flyer_present ? "attached" : "file missing"}
+              <Pill kind={s.marketing_flyer_present === null ? ""
+                : s.marketing_flyer_present ? "ok" : "bad"}>
+                {s.marketing_flyer_present === null ? "storage unreachable — could not check"
+                  : s.marketing_flyer_present ? "attached" : "file missing"}
               </Pill>{" "}
               {s.marketing_flyer_name}
               {s.marketing_flyer_present
                 && ` · ${Math.max(1, Math.round(s.marketing_flyer_bytes / 1024))} KB`}
             </p>
-            {!s.marketing_flyer_present && (
+            {s.marketing_flyer_present === false && (
               <Banner kind="bad">
                 This flyer was uploaded before the app stored file content, so the record
                 exists but the file does not. <strong>Re-upload it below.</strong> Until

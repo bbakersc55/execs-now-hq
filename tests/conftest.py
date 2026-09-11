@@ -141,8 +141,10 @@ def _isolated_media(tmp_path, settings):
     """Every test writes blobs into its own directory.
 
     Without this, `stored_file` content would leak between tests and — worse —
-    into the developer's real media directory.
+    into the real media bucket, which is the default backend since Phase 2.
+    The only tests that touch GCS are marked `gcs_live` and opt in explicitly.
     """
+    settings.STORAGE_BACKEND = "local"
     settings.MEDIA_ROOT = str(tmp_path / "media")
     return settings.MEDIA_ROOT
 

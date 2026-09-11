@@ -567,7 +567,9 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
 
         stored = storage.save(
             tenant=request.tenant, content=upload.read(),
-            object_key=f"outbox/{request.tenant.slug}/{message.pk}/{upload.name}",
+            object_key=storage.object_key(
+                f"outbox/{request.tenant.slug}/{message.pk}", upload.name
+            ),
             content_type=upload.content_type or "application/octet-stream",
             purpose="outbox_attachment",
         )
@@ -854,7 +856,7 @@ class ReferralSettingsView(viewsets.ViewSet):
             # nothing behind it. Saying so here is how the FF finds out before a
             # client would have.
             "marketing_flyer_present": (
-                storage.exists(tenant.marketing_flyer)
+                storage.present_or_unknown(tenant.marketing_flyer)
                 if tenant.marketing_flyer_id else False
             ),
         })
@@ -888,7 +890,9 @@ class ReferralSettingsView(viewsets.ViewSet):
         # it, so it arrived as a 0-byte attachment.
         stored = storage.save(
             tenant=request.tenant, content=upload.read(),
-            object_key=f"flyers/{request.tenant.slug}/{upload.name}",
+            # Unique per upload: a re-upload under the same name used to
+            # overwrite the bytes behind the previous flyer's row.
+            object_key=storage.object_key(f"flyers/{request.tenant.slug}", upload.name),
             content_type=upload.content_type or "application/pdf",
             purpose="marketing_flyer",
         )

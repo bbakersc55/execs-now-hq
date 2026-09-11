@@ -151,8 +151,9 @@ export interface OutboxMessage {
     filename: string;
     byte_size: number;
     content_type: string;
-    /** False when the row exists but its bytes do not (FR-1.23b). */
-    content_present: boolean;
+    /** False when the row exists but its bytes do not (FR-1.23b); null when
+     *  storage could not be reached to check. */
+    content_present: boolean | null;
   }[];
   /** Verified send-as addresses this draft may go from (FR-1.15c). */
   sender_options: { value: string; address: string; label: string }[];

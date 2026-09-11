@@ -228,10 +228,11 @@ def _deliver(message, *, actor=None):
     for attachment in message.attachments.select_related("stored_file"):
         try:
             content = storage.read(attachment.stored_file)
-        except storage.MissingContent as exc:
+        except (storage.MissingContent, storage.StorageUnavailable) as exc:
             # Fail the send. Delivering the message without the file it says is
             # attached is worse than not delivering it: the recipient cannot
-            # tell, and neither can the sender.
+            # tell, and neither can the sender. An unreachable bucket fails the
+            # same way, and the message names which of the two it was.
             raise TransportUnavailable(
                 f"{message.subject!r} could not be sent: {exc}"
             ) from exc
