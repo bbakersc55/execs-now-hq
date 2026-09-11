@@ -173,10 +173,14 @@ One place for GCS-backed blobs: recording audio, flyers, PDFs, inbound attachmen
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
-| `bucket` / `object_key` | text / text | |
-| `content_type` / `byte_size` | text / bigint | |
-| `purpose` | text | `recording_audio` · `marketing_flyer` · `session_pdf` · `email_attachment` |
-| `delete_after` | timestamptz? | set by retention (FR-2.19) |
+| `bucket` / `object_key` | text / text | **`object_key` is unique per upload** (`<prefix>/<uuid>/<filename>`) and a write never overwrites (Phase 2) |
+| `content_type` / `byte_size` | text / bigint | `byte_size` measured from what was written |
+| `purpose` | text | `recording_audio` · `marketing_flyer` · `outbox_attachment` · `session_pdf` · `email_attachment` |
+| `delete_after` | timestamptz? | **not used** — retention is computed from the tenant's *current* `audio_retention_days` at run time, so changing the setting applies to existing recordings (Phase 2) |
+
+**`recording_audio` lives under `recordings/` and nothing else does** — enforced in
+`apps/tenancy/storage.py`. The backup excludes that prefix so retention actually deletes
+audio (owner decision, Phase 2); the prefix is therefore the whole rule.
 
 ---
 
@@ -407,44 +411,66 @@ Everything else enters at `pending_approval`.
 
 ### `note`
 
-> **Created across two phases — deliberate, and recorded here so the split is not mistaken for drift.**
->
-> FR-1.1a makes a CSV notes column create a real `note` row rather than a blob on the contact (§12.2), so **Module 1's import depends on this table**. Phase 1 therefore creates `note` with six columns only: `title`, `title_is_auto`, `body`, `contact`, `company`, `source`, plus `import_batch` (so a rollback removes the notes it created) and `deleted_at`.
->
-> **Phase 2 adds the rest:** `pin_hash`, `pin_set_at`, `failed_pin_attempts`, `pin_locked_until`, `transcript`, `summary`, `proposed_summary`, `summary_state`, `audio_file`, `transcription_state`, and `search_vector`. The `task` FK arrives with Module 3.
->
-> The alternative — deferring the notes-column mapping to Phase 2 — would keep the module boundary clean but leave FR-1.1a untestable in Phase 1. Owner ruling: create it early.
-
+> **Created across two phases — deliberate.** Phase 1 created `note` with only the columns FR-1.1a's CSV import needed. **Phase 2 added the rest** (migration `notes/0002`, approved 2026-09-11), including **five columns this document did not originally list** and the `task` link, which had been scheduled for Module 3 — marked *added* below.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
-| `title` | text? | |
+| `title` | text | blank allowed |
 | `title_is_auto` | bool | **derived from the first body line; gates PIN-setting (FR-2.11a) and stub rendering (FR-2.11b)** |
 | `body` | text | markdown; **not encrypted** (FR-2.8) |
+| `created_by_id` | FK→`user`? | ***added*** — CF "owned" scope (matrix 6.2) and "the author reviews" (R3) |
 | `contact_id` | FK→`contact`? | |
 | `company_id` | FK→`company`? | |
-| `task_id` | FK→`task`? | **independent of the above (FR-2.3)** |
+| `task_id` | FK→`task`? | **independent of the above (FR-2.3)**. ***Moved from Module 3 to Phase 2*** — Phase 2 done-means #1 and AC-2.2 require it, and `task` already existed |
+| `source` / `import_batch_id` | text / FK? | Phase 1 |
 | `pin_hash` | text? | Django password hash; null = unlocked |
-| `pin_set_at` | timestamptz? | |
+| `pin_set_at` | timestamptz? | set with `pin_hash`, never alone (check constraint). **Also the unlock epoch** — an unlock older than this is void |
 | `failed_pin_attempts` / `pin_locked_until` | smallint / timestamptz? | 5 attempts → 15 min (FR-2.10) |
-| `transcript` | text? | |
-| `summary` | text? | **null until a human accepts it (FR-2.17)** |
-| `summary_state` | text | `none · proposed · accepted · discarded` |
-| `proposed_summary` | text? | held separately so accepting is an explicit copy, not an edit-in-place |
-| `audio_file_id` | FK→`stored_file`? | deleted per `audio_retention_days` |
+| `audio_file_id` | FK→`stored_file`? | `SET NULL` when retention deletes the audio |
+| `audio_duration_seconds` | int? | ***added*** — the 110/120-minute cap (FR-2.14) |
 | `transcription_state` | text | `none · uploading · transcribing · done · failed` |
-| `search_vector` | tsvector IX(GIN) | **excludes body and summary when `pin_hash IS NOT NULL`** |
+| `transcription_operation` | text | ***added*** — Speech-to-Text long-running operation name, so a restarted worker resumes polling rather than paying to transcribe twice |
+| `transcription_error` | text | ***added*** — shown beside Retry |
+| `transcript` | text? | |
+| `summary` | text? | **null until a human accepts it (FR-2.17) — check constraint `summary IS NULL OR summary_state = 'accepted'`** |
+| `summary_state` | text | `none · drafting · proposed · accepted · discarded · failed` (***drafting*** and ***failed*** added) |
+| `proposed_summary` | text? | held separately so accepting is an explicit copy, not an edit-in-place |
+| `search_vector` | tsvector, **generated**, IX(GIN) | see below |
 | `deleted_at` | timestamptz? | |
 
-**Check constraint:** `NOT (contact_id IS NOT NULL AND company_id IS NOT NULL)` — a contact already implies its company (FR-2.3a).
+**`search_vector` is a Postgres generated column**, so no code path — a view, a bulk
+update, an import, a data migration — can leave a locked note's text in the index:
 
-**Two rules the schema supports but does not enforce**, both covered by tests:
-1. Setting `pin_hash` requires `title_is_auto = false` (FR-2.11a).
-2. A locked stub renders `"Locked note"` when `title_is_auto` is true, whatever the title holds (FR-2.11b).
+```sql
+CASE WHEN pin_hash IS NULL   THEN title (A) || body (B) || summary (B)
+     WHEN NOT title_is_auto  THEN title (A)
+     ELSE ''::tsvector END            -- locked + auto title: the title IS the body's first line
+```
+
+Config `english` (a generated column needs an explicit one). `transcript` is not indexed —
+FR-2.7 names title, body and accepted summary.
+
+**Check constraints:** `NOT (contact_id IS NOT NULL AND company_id IS NOT NULL)` (FR-2.3a) ·
+`pin_hash` and `pin_set_at` both null or both set · `summary IS NULL OR summary_state = 'accepted'` (R3).
+
+**One rule the schema supports but does not enforce**, by design and covered by tests:
+setting `pin_hash` requires `title_is_auto = false` (FR-2.11a) is a *workflow* rule. The API
+accepts a PIN on an auto-titled note — AC-2.3 requires that bypass to succeed — and the
+stub then renders **"Locked note"** (FR-2.11b), with nothing of the title in the index.
+
+**Audio retention (FR-2.19, owner decision 2026-09-11):** the job deletes audio only when
+`transcription_state = 'done'` and the recording is older than the tenant's
+`audio_retention_days`. **Audio whose transcription never succeeded is kept**, and the note
+is flagged until someone retries or discards it — it is the only record of the call.
 
 ### `note_pin_unlock`
 Session-scoped unlock (FR-2.9). `id · tenant_id · note_id · user_id · session_key · unlocked_at · expires_at`.
+Valid only while `expires_at > now()` **and** `unlocked_at >= note.pin_set_at` — so changing or
+resetting a PIN revokes every open unlock without touching these rows.
+
+**PIN reset needs no table.** The emailed link carries a signed token bound to the note's
+`pin_set_at`; clearing the PIN nulls it, so the link works once.
 
 ---
 

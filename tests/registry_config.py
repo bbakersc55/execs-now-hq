@@ -17,7 +17,7 @@ from apps.crm.models import (
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage,
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
-from apps.notes.models import Note
+from apps.notes.models import Note, NotePinUnlock
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, StoredFile, TenantSecret,
 )
@@ -62,3 +62,4 @@ register(ImportRow, factories.ImportRowFactory)
 register(ImportMappingProfile, factories.ImportMappingProfileFactory)
 register(Task, factories.TaskFactory)
 register(Note, factories.NoteFactory)
+register(NotePinUnlock, factories.NotePinUnlockFactory, api_exposed=False)

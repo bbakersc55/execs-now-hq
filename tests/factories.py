@@ -14,7 +14,7 @@ from apps.crm.models import (
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
-from apps.notes.models import Note
+from apps.notes.models import Note, NotePinUnlock
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, Role, StoredFile,
     Tenant, TenantSecret,
@@ -407,3 +407,14 @@ class NoteFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     body = "Note body"
+
+
+class NotePinUnlockFactory(TenantScopedFactory):
+    class Meta:
+        model = NotePinUnlock
+
+    tenant = factory.SubFactory(TenantFactory)
+    note = factory.SubFactory(NoteFactory, tenant=factory.SelfAttribute("..tenant"))
+    user = factory.SubFactory(UserFactory)
+    session_key = factory.Sequence(lambda n: f"session{n:032d}")
+    expires_at = factory.LazyFunction(lambda: timezone.now() + timezone.timedelta(minutes=30))
