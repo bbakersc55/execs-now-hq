@@ -324,7 +324,7 @@ Then open **http://localhost:5200** for the app and **http://localhost:8125** fo
 .venv/bin/python manage.py ensure_schedules
 ```
 
-It declares every schedule in one list (`apps/tenancy/management/commands/ensure_schedules.py`). Until Phase 2 nothing registered a schedule at all.
+It declares every schedule in one list (`apps/tenancy/management/commands/ensure_schedules.py`): referral-touch drafting daily at 06:00 tenant time, Outbox expiry and contact reindex hourly, note processing every minute, audio retention daily. Re-running never moves a schedule's next run. Until Phase 2 nothing registered a schedule at all.
 
 Common commands:
 
@@ -336,6 +336,7 @@ Common commands:
 .venv/bin/pytest -k "isolation or role"         # the two mandatory families
 RUN_GCS_LIVE=1 .venv/bin/pytest -m gcs_live -k storage   # the app's key against the real bucket
 RUN_STT_LIVE=1 .venv/bin/pytest tests/test_stt_live.py    # real Speech-to-Text on a 12 s fixture (cents)
+.venv/bin/python manage.py dev_va_login          # LOCAL ONLY: one-time sign-in link for a test VA; --remove to revoke
 .venv/bin/python manage.py replay_inbound fixtures/inbound/token_match.json   # Module 6
 ```
 

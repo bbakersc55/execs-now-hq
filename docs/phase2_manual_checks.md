@@ -20,7 +20,7 @@ gcloud config configurations activate execs-now-hq
 ./scripts/backup_db.sh
 
 .venv/bin/pip install -r requirements.txt              # anthropic + google-cloud-speech are new
-.venv/bin/python manage.py ensure_schedules            # notes.process (1 min), notes.purge_expired_audio (daily)
+.venv/bin/python manage.py ensure_schedules            # every periodic job, Module 1's included — see below
 
 .venv/bin/python manage.py runserver 8100              # terminal 1
 .venv/bin/python manage.py qcluster                    # terminal 2 — RESTART it if it was already running
@@ -33,10 +33,31 @@ with Anthropic before it is saved; if the check fails nothing changes. Without a
 recordings still transcribe, and their summaries show *"Claude could not draft a summary"*
 with a button to try again once a key is in.
 
-**For Check 2 you need a second person.** Google sign-in only admits accounts in your
-Workspace (`@getexecutivesnow.com`). Invite one as a VA under **Staff**, and use a private
-window for them. If you have no second account to spare, tell me and I will set up a
-local-only way to sign in as a test VA.
+**For Check 2 you act as a VA without a second Workspace account.** Google sign-in only
+admits `@getexecutivesnow.com` accounts, so a local-only command creates one test VA and
+prints a one-time sign-in link for it:
+
+```bash
+# Target: terminal, from ~/projects/execs-now-hq
+.venv/bin/python manage.py dev_va_login
+```
+
+- It refuses to run unless the app **and** the database are on this laptop.
+- The test VA is `va.localtest@example.invalid` — `.invalid` is a reserved domain that can
+  never receive mail. Its creation is audited like any invite.
+- The link is an ordinary magic link: it works once and expires in 20 minutes. Run the
+  command again for a fresh one.
+- **Open the link in a private window.** Browsers share sign-in cookies across
+  `localhost` ports, so opening it in your normal window would sign *you* out and sign the
+  VA in. The private window keeps the two sessions apart.
+- The link lands you on the app at `localhost:5200` as the VA — the sidebar shows **VA**
+  under the name "Local test VA".
+
+When you have finished all four checks, remove it:
+
+```bash
+.venv/bin/python manage.py dev_va_login --remove   # revokes the membership and ends its sessions
+```
 
 ---
 
@@ -75,7 +96,7 @@ recordings* — this is recording 1.
    and explain why: the title stays visible on a locked note, and right now the title *is*
    your first line. Give it a title that does not give the content away.
 3. Set a 4–6 digit PIN.
-4. In the private window, signed in as the VA:
+4. Run `dev_va_login`, open the link in a **private window**, click **Sign in**. As the VA:
    - open the contact — the timeline shows **🔒 Note (locked): your title**, nothing more;
    - search the phrase in **Contacts** and in **Notes** — nothing comes back;
    - open the note — a title, an unlock box, and no body.
@@ -83,7 +104,9 @@ recordings* — this is recording 1.
    `notes` and `timeline` requests and search each **Response**. It must be in neither.
    (View Source would not tell you anything: it shows the app's empty shell.)
 6. As the VA, enter a wrong PIN five times. The fifth attempt locks the note for 15
-   minutes, and even the right PIN is refused until then.
+   minutes, and even the right PIN is refused until then — for you too, since the lockout
+   belongs to the note, not the person. (Do this on a throwaway note if you want to keep
+   working with the sensitive one straight away.)
 
 ## Check 3 — Reset a PIN and confirm it clears rather than reveals
 
@@ -114,6 +137,11 @@ session; after you confirm it, it does not reappear until you next sign in. It l
 
 ## Worth knowing
 
+- **Module 1's scheduled jobs are on** (2026-09-11). Referral touches are drafted daily at
+  06:00 your time — all 42 partners come due on 2026-10-10, so expect about 42 drafts in the
+  Outbox around **2026-10-07**, each awaiting approval, none sent. Unapproved drafts past
+  their send-by expire hourly. Contact search is reindexed hourly; it had never run, so
+  until now search matched tags only.
 - **Audio retention** is under **Notes** (FF only). Audio is deleted after the set number
   of days *once it has transcribed*; audio that never transcribed is kept and flagged on its
   note until someone retries or discards it. At **0**, audio goes as soon as its transcript
@@ -130,4 +158,4 @@ session; after you confirm it, it does not reappear until you next sign in. It l
 1. Check 1: call length, keep-or-not for transcript and summary, and what the summary got wrong.
 2. Checks 2 and 3: pass or fail, and anything that surprised you.
 3. Check 4: keep the wording, or your replacement.
-4. Whether to turn on Module 1's scheduled jobs (see the Phase 2 report).
+4. That you ran `dev_va_login --remove`.

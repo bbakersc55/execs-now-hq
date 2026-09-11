@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.contrib.auth import login
-from django.http import JsonResponse
+from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
@@ -132,4 +132,10 @@ def magic_link_landing(request, token: str):
         # re-requesting a link every week.
         request.session.set_expiry(settings.CLIENT_SESSION_AGE)
 
-    return JsonResponse({"ok": True, "redirect_to": record.redirect_to or "/"})
+    redirect_to = record.redirect_to or "/"
+    # The landing page is a plain HTML form, so a browser posting it expects a
+    # page, not JSON: it used to show {"ok": true, ...} and stop there.
+    # Callers that ask for JSON (or send no Accept header) still get it.
+    if "text/html" in request.headers.get("Accept", ""):
+        return HttpResponseRedirect(redirect_to)
+    return JsonResponse({"ok": True, "redirect_to": redirect_to})
