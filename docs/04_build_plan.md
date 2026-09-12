@@ -356,9 +356,53 @@ It reports the hierarchy and its three-level cap, the six statuses, `client_owne
 5. Sign in to the portal as a real client user on a second device. Create a task, create a project, comment. Confirm you cannot see anything internal.
 6. Grant a third seat with only two available and read the error message.
 
-### Report
+### Report — Phase 3 status (2026-09-11): automated complete, manual checks pending
 
-AC-3.1–3.39 with status, and a **plain statement of digest behaviour under each of the four combinations** of `hold_all_digests` × AI prose — since that matrix is where an unintended send would hide.
+**All 39 acceptance criteria pass in the automated suite. The six manual checks
+are the owner's and are not yet done**, so this is not a phase sign-off.
+
+| | |
+|---|---|
+| Automated tests | **771 passed**, 2 xfailed |
+| — of which the two mandatory families | **378** (tenant isolation + role boundaries, including client-company isolation) |
+| — Module 3 acceptance | **76** |
+| Frontend tests | **91 passed** |
+| Manual checks | **0 of 6 — pending** (`phase3_manual_checks.md`) |
+
+**Digest behaviour under each of the four combinations**, which is where an
+unintended send would hide. Tested as a parametrised table, all four cases:
+
+| `hold_all_digests` | AI prose | What happens at generation | What sends at the window |
+|---|---|---|---|
+| **ON** (Beta default) | ON | Waits: `pending` | **Nothing.** Unapproved at the window → `expired`, items released, content owed again |
+| **ON** | OFF | Waits: `pending` | **Nothing**, same as above — held means held, AI or not |
+| OFF | ON | **Still waits**: `pending` | **Nothing** unless approved: an AI-written digest always needs a person (FR-3.27) |
+| OFF | OFF | Pre-approved at generation | **Sends on cadence**, no human involved — the only combination that does |
+
+So exactly one of the four sends without a person, and it is the one with no AI
+in it. `hold_all_digests` defaults ON, so out of the box none of them do.
+
+**Four decisions the documents did not settle** (all owner-approved, recorded in
+`01_prd.md` and `02_data_model.md`): the rollup precedence with
+`waiting_on_client` first; monthly digests on the first send-day covering the
+previous calendar month; the in-app client-activity half as a feed over existing
+`task_update` rows rather than a new table; and the `apps/work` split with
+`task` left in `apps.crm`.
+
+**Three bugs the tests found in my own first cut**, all in the digest engine and
+all the kind that would have shown up as a client receiving the wrong thing:
+
+1. **A pending draft's updates looked unclaimed**, so a second draft could
+   collect them again. A claim is now any `digest_item`, which exists exactly as
+   long as the claim does.
+2. **Deferred content could fall out of the window.** Generation bounded its
+   query by the period label, so an update released by last week's expiry was
+   older than this week's window and would have been lost silently. What is owed
+   is now decided by claims, floored only at when the recipient was attached.
+3. **The weekly period label can sit in the future** (it derives from the send
+   window), and using it as the upper bound hid everything owed today.
+
+---
 
 ---
 

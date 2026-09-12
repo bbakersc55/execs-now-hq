@@ -463,7 +463,7 @@ Everything the fractional does for a client, in a structure the client can see, 
   2. **Reassignment by a client user is always bounded to users in their own company** — they can hand work to a colleague, never to a fractional, and never outside the company.
   3. **Soft-deleting is narrower than editing:** a client user may delete only tasks **they created**. Deleting work a fractional assigned is not a client's call.
   4. This rule is the `client-editable` scope in `03_access_matrix.md` rows 7.4–7.6.
-10. Goals and Projects carry a status **derived from their children at read time**, overridable by a manual value. The derived value is **never stored** — a stored rollup drifts the moment a child changes outside the code path that wrote it. Clearing the override returns the entity to the derived value.
+10. Goals and Projects carry a status **derived from their children at read time**, overridable by a manual value. *(Owner-approved precedence 2026-09-11, ignoring cancelled children: `waiting_on_client` > `blocked` > `in_progress` > `done` > `not_started`; all children done means done, all cancelled means cancelled, and a mix of done and not-started reads as in progress. `waiting_on_client` leads because FR-3.8 says the client being the blocker is the most useful thing a report can say.)* The derived value is **never stored** — a stored rollup drifts the moment a child changes outside the code path that wrote it. Clearing the override returns the entity to the derived value.
 
 **Visibility**
 
@@ -488,7 +488,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 20b. Where a stakeholder Contact *does* have a linked User, the portal and the digest are two views of the same entitlement — no separate subscription list exists.
 21. Each stakeholder carries a cadence: **`every_update`, `weekly` (default), `monthly`.**
 22. `every_update` is **batched with a 30-minute quiet window**, so one editing session produces one email rather than six.
-23. `weekly` and `monthly` fire on a per-tenant send day and hour, in tenant timezone. **Default: Friday 08:00.** A Friday send means the approval batch is generated Thursday morning, inside a working day; a Monday send would put the batch in front of you on Sunday, where it would not be actioned and every digest would expire.
+23. `weekly` and `monthly` fire on a per-tenant send day and hour, in tenant timezone. **Default: Friday 08:00.** *(Owner decision 2026-09-11: a **monthly** digest goes out on the **first send-day of the month and covers the previous calendar month** — 3 October covers all of September. Generated the day before, like the weekly.)* A Friday send means the approval batch is generated Thursday morning, inside a working day; a Monday send would put the batch in front of you on Sunday, where it would not be actioned and every digest would expire.
 
 **Digest composition and approval**
 
@@ -536,7 +536,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **Tenant notifications**
 
-40. Tenant users are notified in-app and by email when a client comments or creates a task, batched on the same 30-minute quiet window.
+40. Tenant users are notified in-app and by email when a client comments or creates a task, batched on the same 30-minute quiet window. *(Owner decision 2026-09-11: the in-app half is a **feed built from the `task_update` rows already recorded** for client actions — no notification table and no per-user read state. The email half is batched as specified.)*
 
 ### Out of scope for Beta
 

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { CommentsPanel } from "../components/CommentsPanel";
+import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { StatusChange } from "../components/StatusChange";
 import { StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
@@ -183,6 +184,8 @@ export function TaskDetail({ me }: { me: Me }) {
           keeps three levels from becoming unlimited.
         </p>
       </Card>
+
+      <StakeholdersPanel me={me} target="task" id={id!} />
 
       <CommentsPanel me={me} target="task" id={id!} />
 

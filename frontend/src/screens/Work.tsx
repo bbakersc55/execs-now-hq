@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 
 import { StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
-import { Company, Me, Task, WorkParent, api } from "../lib/api";
+import { Company, Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -51,6 +51,7 @@ export function Work({ me }: { me: Me }) {
       {note && <Banner kind="info">{note}</Banner>}
 
       {isTenant && <NewItem companies={companies.data ?? []} onCreate={create.mutate} />}
+      {isTenant && <ClientActivity />}
 
       <Card title="Goals">
         {(goals.data ?? []).length === 0 ? <Empty>No goals yet.</Empty> : (
@@ -142,6 +143,42 @@ function NewItem({ companies, onCreate }: {
       <p className="small muted">
         A task with a client company is shown to that client by default; an internal one is not.
       </p>
+    </Card>
+  );
+}
+
+
+interface ActivityRow extends TaskUpdateRow { task: string; task_title: string }
+
+/** FR-3.40's in-app half: what clients have done lately, from the same update
+ *  rows the digests are built from. The email half is batched separately. */
+function ClientActivity() {
+  const rows = useQuery<ActivityRow[]>({
+    queryKey: ["client-activity"],
+    queryFn: () => api.get<ActivityRow[]>("/api/client-activity/"),
+  });
+  const items = rows.data ?? [];
+  if (items.length === 0) return null;
+
+  const said: Record<string, string> = {
+    comment_added: "commented on", created: "created",
+    status_changed: "changed the status of", completed: "completed",
+  };
+
+  return (
+    <Card title="What your clients have done">
+      <ul className="timeline">
+        {items.slice(0, 10).map((row) => (
+          <li key={row.id}>
+            <div>
+              {row.actor.name || "A client user"}{" "}
+              {said[row.kind] ?? row.kind.replace(/_/g, " ")}{" "}
+              <Link to={`/tasks/${row.task}`}>{row.task_title}</Link>
+            </div>
+            <div className="when">{when(row.created_at)}</div>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

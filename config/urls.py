@@ -3,6 +3,7 @@ from django.urls import include, path
 
 from apps.accounts import views as account_views
 from apps.crm import views_gmail
+from apps.work import views_cadence as work_cadence
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -24,6 +25,11 @@ urlpatterns = [
     path("api/", include("apps.tenancy.urls")),
     path("api/", include("apps.notes.urls")),
     path("api/", include("apps.work.urls")),
+    # FR-3.33a — the cadence link from a digest footer. No session: the signed
+    # token IS the authentication, and it grants that one capability. Under
+    # /api/ so the app's own page can render it (the dev proxy forwards /api);
+    # the link in the email points at the app route that calls this.
+    path("api/cadence/<str:token>", work_cadence.cadence_link, name="cadence-link"),
     path("accounts/refused", account_views.login_refused, name="login-refused"),
     path("auth/magic/request", account_views.request_magic_link, name="magic-request"),
     # C3.3: GET renders a confirmation page; only POST consumes the token.

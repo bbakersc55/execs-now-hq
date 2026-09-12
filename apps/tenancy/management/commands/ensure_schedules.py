@@ -31,6 +31,10 @@ SCHEDULES = [
     ("crm.expire_outbox", "apps.crm.tasks.expire_outbox", Schedule.HOURLY, None, None),
     # FR-1.33: contact full-text search reads a stored vector nothing else writes.
     ("crm.reindex_search", "apps.crm.tasks.reindex_search", Schedule.HOURLY, None, None),
+    # Module 3 — one tick: quiet windows, generation, expiry, sending, and the
+    # client-activity notice. FR-3.23's timing lives in the code, not here, so
+    # a tenant's own send day and hour govern it.
+    ("work.tick", "apps.work.tasks.tick", Schedule.MINUTES, 1, None),
     # Module 2.
     ("notes.process", "apps.notes.tasks.process_notes", Schedule.MINUTES, 1, None),
     ("notes.purge_expired_audio", "apps.notes.tasks.purge_expired_audio",

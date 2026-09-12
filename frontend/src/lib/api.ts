@@ -408,3 +408,30 @@ export interface TaskUpdateRow {
   client_facing_line: string; actor: Person; source: string;
   is_client_actor: boolean; created_at: string;
 }
+
+export interface Stakeholder {
+  id: string; contact: Person; cadence: "every_update" | "weekly" | "monthly";
+  is_muted: boolean; level: "task" | "project" | "goal"; attached_to: string;
+  effective: boolean; last_notified_at: string | null;
+}
+
+export interface DigestRow {
+  id: string; contact: Person; to_address: string;
+  cadence: "every_update" | "weekly" | "monthly";
+  state: "pending" | "approved" | "sent" | "expired" | "skipped";
+  is_ai_generated: boolean; is_stale: boolean; stale_reason: string;
+  period_start: string; period_end: string; send_window_at: string;
+  generated_at: string; approved_by: Person; approved_at: string | null;
+  item_count: number; body_text: string; body_html?: string;
+}
+
+export interface PortalAccess {
+  company: string; seat_count: number | null; seats_in_use: number;
+  seats_available: number | null; may_manage: boolean;
+  people: { id: string; role: string; email: string; name: string;
+            contact: string | null; invited_at: string | null }[];
+}
+
+export interface ProgressReport {
+  since: string; until: string; body_text: string; updates: TaskUpdateRow[];
+}

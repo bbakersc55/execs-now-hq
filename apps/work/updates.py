@@ -36,7 +36,12 @@ def target_kwargs(entity) -> dict:
 
 def record(entity, kind, *, actor=None, role=None, from_value="", to_value="",
            client_facing_line="", source=TaskUpdate.Source.USER, source_id=None):
-    return TaskUpdate.all_objects.create(
+    """Write the event, then flag any pending draft it has overtaken.
+
+    FR-3.30a lives here rather than in the views: a draft must be flagged
+    whatever wrote the update — a person, a stage rule, or an ingestion job.
+    """
+    update = TaskUpdate.all_objects.create(
         tenant_id=entity.tenant_id,
         kind=kind,
         from_value=from_value or "",
@@ -48,6 +53,10 @@ def record(entity, kind, *, actor=None, role=None, from_value="", to_value="",
         is_client_actor=role in CLIENT_ROLES,
         **target_kwargs(entity),
     )
+    from apps.work import digests
+
+    digests.flag_stale_for(update)
+    return update
 
 
 def record_comment(comment: Comment, *, role=None):

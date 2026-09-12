@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { CommentsPanel } from "../components/CommentsPanel";
+import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import { Me, Task, WorkParent, api } from "../lib/api";
@@ -139,6 +140,8 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
             onClick={() => addTask.mutate()}>Add task</button>
         </div>
       </Card>
+
+      <StakeholdersPanel me={me} target={kind} id={id!} />
 
       <CommentsPanel me={me} target={kind} id={id!} />
 

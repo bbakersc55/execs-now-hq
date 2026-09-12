@@ -193,6 +193,10 @@ def test_cf_cannot_approve_for_an_unassigned_company(seeded_tenant, ff, cf, api,
 
 import json as _json
 
+from datetime import timedelta
+
+from apps.crm.models import OutboxMessage
+
 ALL_ROLES = ["FF", "CF", "VA", "FCC", "ECC"]
 SECRET_6 = "Personnel matter: performance plan for the ops lead"
 
@@ -401,3 +405,101 @@ def test_7_2a_a_client_may_create_a_project_but_never_under_a_goal(
         refused = _post(api.as_(member), "/api/projects/",
                         {"title": "Under a goal", "goal": str(goal.pk)})
         assert refused.status_code == 400
+
+
+# ======================================================= Digests (§8) and §9
+# Row 8.3 is the single most important role boundary in the product: a VA may
+# read and prepare a digest, and may never approve or send one.
+
+DIGEST_ENDPOINTS = [
+    ("/api/digests/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 200, "ECC": 200}),
+    ("/api/stakeholders/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 200, "ECC": 200}),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,expected", DIGEST_ENDPOINTS, ids=[u for u, _ in DIGEST_ENDPOINTS])
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_digest_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
+    """Client users reach these routes and see nothing through them: a digest is
+    the practice's to review (8.1), and the list comes back empty rather than
+    403, because the route is not secret — its contents are."""
+    response = api.as_(_as(role, seeded_tenant)).get(url)
+    assert response.status_code == expected[role]
+    if role in ("FCC", "ECC"):
+        assert response.json() == []
+
+
+def _a_pending_digest(tenant, ff, company=None):
+    from apps.work import digests as digest_service
+    from apps.work.models import Cadence, Stakeholder
+    from apps.work.services import apply_task_changes, create_task
+
+    from .factories import ClientCompanyFactory, ContactEmailFactory, ContactFactory
+
+    company = company or ClientCompanyFactory(tenant=tenant, name="Digest Co")
+    contact = ContactFactory(tenant=tenant, first_name="Dana", company=company)
+    ContactEmailFactory(tenant=tenant, contact=contact, is_primary=True,
+                        address="dana@digestco.invalid")
+    task = create_task(tenant=tenant, actor=ff.user, role="FF", title="Something moved",
+                       client_company=company, is_client_visible=True)
+    Stakeholder.all_objects.create(tenant=tenant, contact=contact, task=task,
+                                   cadence=Cadence.WEEKLY)
+    apply_task_changes(task, actor=ff.user, role="FF", changes={"status": "in_progress"},
+                       client_facing_line="Moved along.")
+    window = digest_service.next_window(tenant, Cadence.WEEKLY)
+    made = digest_service.generate_scheduled(tenant, cadence=Cadence.WEEKLY,
+                                             now=window - timedelta(hours=1))
+    return made[0], company
+
+
+@pytest.mark.django_db
+def test_8_3_a_va_can_read_a_digest_and_can_never_approve_or_send_it(
+    seeded_tenant, ff, va, api, dev_outbox, in_tenant_a
+):
+    from apps.work.models import Digest
+
+    digest, _company = _a_pending_digest(seeded_tenant, ff)
+
+    viewer = api.as_(va)
+    listed = viewer.get("/api/digests/").json()
+    assert [d["id"] for d in listed] == [str(digest.pk)]
+    assert "Moved along." in listed[0]["body_text"], "A VA may read and prepare (8.1/8.2)."
+
+    for action in ("approve", "skip"):
+        refused = _post(viewer, f"/api/digests/{digest.pk}/{action}/")
+        assert refused.status_code == 403, action
+    batch = _post(viewer, "/api/digests/approve-selected/", {"ids": [str(digest.pk)]})
+    assert batch.status_code == 403
+
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.PENDING
+    assert dev_outbox == [], "A refused approval still sent a digest."
+    assert not OutboxMessage.all_objects.filter(producer="digest").exists()
+
+
+@pytest.mark.django_db
+def test_8_3_a_cf_approves_only_for_assigned_companies(seeded_tenant, ff, cf, api,
+                                                        dev_outbox, in_tenant_a):
+    from .factories import ClientAssignmentFactory
+
+    digest, company = _a_pending_digest(seeded_tenant, ff)
+    unassigned = _post(api.as_(cf), f"/api/digests/{digest.pk}/approve/")
+    assert unassigned.status_code == 404, "Out of scope is 404, not 403 (matrix §1)."
+
+    ClientAssignmentFactory(tenant=seeded_tenant, user=cf.user, company=company)
+    assert _post(api.as_(cf), f"/api/digests/{digest.pk}/approve/").status_code == 200
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 403), ("VA", 403),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_9_5_seat_counts_are_visible_to_the_practice_only(role, expected, seeded_tenant, api):
+    """Matrix 4.12/9.5 — seat_count is the FF's; the CF sees usage on companies
+    they are assigned, which they have none of here."""
+    from .factories import ClientCompanyFactory
+
+    company = ClientCompanyFactory(tenant=seeded_tenant, seat_count=2)
+    member = _as(role, seeded_tenant)
+    response = api.as_(member).get(f"/api/portal-access/?company={company.pk}")
+    assert response.status_code in ((200,) if expected == 200 else (403, 404))

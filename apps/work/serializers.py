@@ -18,7 +18,9 @@ from apps.crm.models import Company, Contact, Task
 from apps.tenancy.models import CLIENT_ROLES
 from apps.work import permissions as work_perms
 from apps.work import status as status_service
-from apps.work.models import Comment, Goal, Priority, Project, TaskChecklistItem, TaskUpdate
+from apps.work.models import (
+    Cadence, Comment, Goal, Priority, Project, TaskChecklistItem, TaskUpdate,
+)
 
 
 def _person(user):
@@ -276,3 +278,103 @@ class ChecklistItemSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=500, required=False)
     is_done = serializers.BooleanField(required=False)
     position = serializers.IntegerField(required=False, min_value=0, max_value=32767)
+
+
+def represent_stakeholder(row, *, effective=False) -> dict:
+    level = "task" if row.task_id else "project" if row.project_id else "goal"
+    return {
+        "id": str(row.pk),
+        "contact": _contact(row.contact),
+        "cadence": row.cadence,
+        "is_muted": row.is_muted,
+        "level": level,
+        "attached_to": str(getattr(row, f"{level}_id")),
+        # True when this row won most-specific-wins for the task being asked about.
+        "effective": effective,
+        "last_notified_at": row.last_notified_at.isoformat() if row.last_notified_at else None,
+    }
+
+
+def represent_digest(digest, *, full=False) -> dict:
+    data = {
+        "id": str(digest.pk),
+        "contact": _contact(digest.contact),
+        "to_address": digest.contact.primary_email,
+        "cadence": digest.cadence,
+        "state": digest.state,
+        "is_ai_generated": digest.is_ai_generated,
+        "is_stale": digest.is_stale,
+        "stale_reason": digest.stale_reason,
+        "period_start": digest.period_start.isoformat(),
+        "period_end": digest.period_end.isoformat(),
+        "send_window_at": digest.send_window_at.isoformat(),
+        "generated_at": digest.generated_at.isoformat(),
+        "approved_by": _person(digest.approved_by),
+        "approved_at": digest.approved_at.isoformat() if digest.approved_at else None,
+        "item_count": digest.items.count(),
+        # The whole rendered content, because FR-3.29 says the approval screen
+        # shows what will actually go out — not a summary of it.
+        "body_text": digest.body_text,
+    }
+    if full:
+        data["body_html"] = digest.body_html
+        data["outbox_message"] = (str(digest.outbox_message_id)
+                                  if digest.outbox_message_id else None)
+    return data
+
+
+def represent_access(membership) -> dict:
+    return {
+        "id": str(membership.pk),
+        "role": membership.role,
+        "email": membership.user.email,
+        "name": membership.user.full_name or membership.user.email,
+        "contact": str(membership.contact_id) if membership.contact_id else None,
+        "invited_at": membership.invited_at.isoformat() if membership.invited_at else None,
+    }
+
+
+class StakeholderSerializer(ScopedFieldsMixin, serializers.Serializer):
+    contact = serializers.UUIDField(required=False)
+    task = serializers.UUIDField(required=False, allow_null=True)
+    project = serializers.UUIDField(required=False, allow_null=True)
+    goal = serializers.UUIDField(required=False, allow_null=True)
+    cadence = serializers.ChoiceField(choices=Cadence.choices, required=False)
+    is_muted = serializers.BooleanField(required=False)
+
+    def validate_contact(self, value):
+        return self._scoped(Contact, value, crm_perms.contact_queryset_for,
+                            deleted_at__isnull=True)
+
+    def validate_task(self, value):
+        from apps.work import permissions as perms
+
+        return self._scoped(Task, value, perms.task_queryset_for, deleted_at__isnull=True)
+
+    def validate_project(self, value):
+        from apps.work import permissions as perms
+
+        return self._scoped(Project, value, perms.project_queryset_for,
+                            deleted_at__isnull=True)
+
+    def validate_goal(self, value):
+        from apps.work import permissions as perms
+
+        return self._scoped(Goal, value, perms.goal_queryset_for, deleted_at__isnull=True)
+
+    def validate(self, attrs):
+        if self.instance is None:
+            if not attrs.get("contact"):
+                raise serializers.ValidationError({"contact": "Who is being told?"})
+            levels = [attrs.get(k) for k in ("task", "project", "goal")]
+            if sum(1 for level in levels if level) != 1:
+                raise serializers.ValidationError(
+                    "Attach a stakeholder to exactly one task, project or goal."
+                )
+            contact = attrs["contact"]
+            if not contact.primary_email:
+                raise serializers.ValidationError(
+                    {"contact": f"{contact.first_name} has no email address, so there is "
+                                f"nowhere to send their updates."}
+                )
+        return attrs

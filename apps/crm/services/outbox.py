@@ -90,7 +90,7 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
                    is_ai_generated=False, warning="", send_by=None,
                    from_address=None, sent_via="postmark", thread=None,
                    source_type="", source_id=None, attachments=(),
-                   deliver_body_text=None):
+                   deliver_body_text=None, force_direct=False):
     """Single entry point. Nothing else in the codebase writes an OutboxMessage.
 
     `deliver_body_text` is for one-time links (magic links, PIN resets): it is
@@ -103,7 +103,11 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
     if thread is None:
         thread = thread_for(tenant, contact=to_contact, subject=subject)
 
-    direct = _direct_to_sent(producer, role)
+    # `force_direct` is for a message whose human approval happened upstream in
+    # its own review queue — a digest approved on the digest screen (FR-3.29),
+    # or a deterministic digest the rules say needs no approval (FR-3.27).
+    # It does not bypass a gate; it records that one was already passed.
+    direct = force_direct or _direct_to_sent(producer, role)
     if deliver_body_text is not None and not direct:
         raise ValueError("deliver_body_text is only for direct-to-sent producers.")
     if not from_address:

@@ -324,7 +324,7 @@ Then open **http://localhost:5200** for the app and **http://localhost:8125** fo
 .venv/bin/python manage.py ensure_schedules
 ```
 
-It declares every schedule in one list (`apps/tenancy/management/commands/ensure_schedules.py`): referral-touch drafting daily at 06:00 tenant time, Outbox expiry and contact reindex hourly, note processing every minute, audio retention daily. Re-running never moves a schedule's next run. Until Phase 2 nothing registered a schedule at all.
+It declares every schedule in one list (`apps/tenancy/management/commands/ensure_schedules.py`): referral-touch drafting daily at 06:00 tenant time, Outbox expiry and contact reindex hourly, note processing every minute, audio retention daily, and Module 3's one tick every minute (digest quiet windows, generation, expiry, sending, and the client-activity notice). Re-running never moves a schedule's next run. Until Phase 2 nothing registered a schedule at all.
 
 Common commands:
 

@@ -23,10 +23,15 @@ import { NoteDetail } from "./screens/NoteDetail";
 import { Notes } from "./screens/Notes";
 import { PinReset } from "./screens/PinReset";
 import { TaskDetail } from "./screens/TaskDetail";
+import { CadenceLink } from "./screens/CadenceLink";
+import { Digests } from "./screens/Digests";
+import { Report } from "./screens/Report";
+import { Tasks } from "./screens/Tasks";
 import { Work } from "./screens/Work";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
 
 const TENANT = ["FF", "CF", "VA"];
+const CLIENT = ["FCC", "ECC"];
 
 const NAV: { to: string; label: string; roles?: string[] }[] = [
   // Matrix 4.18 — Module 1 has no client-facing surface, so every CRM entry is
@@ -38,6 +43,12 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   { to: "/notes", label: "Notes", roles: TENANT },
   // Module 3. The client portal's own navigation arrives with done-item 10.
   { to: "/work", label: "Work", roles: TENANT },
+  { to: "/tasks", label: "Tasks", roles: TENANT },
+  { to: "/digests", label: "Digests", roles: TENANT },
+  // The client portal: the same work, scoped to their company (FR-3.34).
+  { to: "/work", label: "Our work", roles: CLIENT },
+  { to: "/tasks", label: "Tasks", roles: CLIENT },
+  { to: "/report", label: "Progress report", roles: CLIENT },
   { to: "/vendors", label: "Vendors", roles: TENANT },
   { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },
@@ -61,6 +72,11 @@ function captureDefaults(pathname: string) {
 
 export function App() {
   const location = useLocation();
+  // FR-3.33a — reachable with no session at all, so it renders before the
+  // sign-in check below.
+  const cadence = matchPath("/updates/:token", location.pathname);
+  if (cadence) return <CadenceLink />;
+
   const { data: me, isLoading, isError } = useQuery<Me>({
     queryKey: ["me"],
     queryFn: () => api.get<Me>("/api/me"),
@@ -121,10 +137,13 @@ export function App() {
             <Route path="/notes" element={<Notes me={me} />} />
             <Route path="/notes/pin-reset/:token" element={<PinReset />} />
             <Route path="/notes/:id" element={<NoteDetail me={me} />} />
+            <Route path="/tasks" element={<Tasks me={me} />} />
             <Route path="/tasks/:id" element={<TaskDetail me={me} />} />
             <Route path="/work" element={<Work me={me} />} />
             <Route path="/work/goals/:id" element={<WorkParentDetail me={me} kind="goal" />} />
             <Route path="/work/projects/:id" element={<WorkParentDetail me={me} kind="project" />} />
+            <Route path="/digests" element={<Digests me={me} />} />
+            <Route path="/report" element={<Report me={me} />} />
           </Routes>
         </ErrorBoundary>
       </main>

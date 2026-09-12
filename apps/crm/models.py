@@ -711,6 +711,7 @@ class OutboxMessage(TenantScopedModel):
         PRECALL_INVITE = "precall_invite", "Pre-call invite"
         MAGIC_LINK = "magic_link", "Magic link"
         NOTE_PIN_RESET = "note_pin_reset", "Note PIN reset"
+        CLIENT_ACTIVITY = "client_activity", "Client activity notice"
         CADENCE_CHANGE = "cadence_change", "Cadence change"
         INBOUND_FORWARD = "inbound_forward", "Inbound forward"
         MANUAL = "manual", "Manual"
@@ -719,6 +720,9 @@ class OutboxMessage(TenantScopedModel):
     #: at creation time, not listed here.
     ALWAYS_DIRECT_TO_SENT = {
         Producer.STRATEGY_PDF, Producer.MAGIC_LINK, Producer.NOTE_PIN_RESET,
+        # Internal, to the practice's own people: no approval gate applies, but
+        # it is in the Outbox because every message that left is (FR-1.15).
+        Producer.CLIENT_ACTIVITY,
         Producer.CADENCE_CHANGE, Producer.INBOUND_FORWARD,
     }
 

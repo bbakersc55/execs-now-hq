@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { Banner, Card, Empty, Pill, when, positionsLabel } from "../components/ui";
 import { AddCompany } from "./AddCompany";
 import { Company, Contact, Me, api } from "../lib/api";
+import { PortalAccessCard } from "../components/PortalAccessCard";
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 
@@ -76,6 +77,8 @@ export function CompanyDetail({ me }: { me: Me }) {
             </table>
           )}
         </Card>
+
+        <PortalAccessCard me={me} company={c} />
 
         <Card title="Timeline">
           {(timeline.data ?? []).length === 0 ? <Empty>Nothing yet.</Empty> : (

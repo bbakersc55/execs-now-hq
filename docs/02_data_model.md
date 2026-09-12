@@ -478,6 +478,13 @@ PIN it was issued for.
 
 ## 5. Module 3 — Task engine
 
+> **Built in Phase 3 (2026-09-11), with four decisions the documents did not settle, all owner-approved:**
+>
+> 1. **A new `apps/work` app** holds everything Module 3 adds. `task` stays in `apps.crm`, where Phase 1 created it and where stage automations write it; moving it would have meant migration state surgery across every existing reference for no functional gain.
+> 2. **`source_map_row_id` and `source_proposal_item_id` are deferred** to Modules 4 and 5. They point at `strategy_map_row` and `proposal_item`, which do not exist yet; each arrives as a real foreign key with the table it references rather than as a UUID column with no integrity behind it.
+> 3. **`task.priority`** is `0` low, **`1` normal (the default)**, `2` high, `3` urgent — the data model said only "smallint".
+> 4. **`task.is_client_visible` defaults to false in the column**, and the create path sets it true when the task has a client company (FR-3.11): a column default cannot express a conditional, and false is the safe direction.
+
 > The hierarchy is **Goal → Project → Task**, with `goal` and `project` both nullable on a Task (FR-3.5), and **depth capped at three** — a task has no self-FK, which is what makes the cap structural rather than a rule someone has to remember.
 
 ### `goal`
@@ -619,6 +626,8 @@ The join written at generation. **This is what makes multi-stakeholder delivery 
 | `task_update_id` | FK→`task_update` IX | |
 | `stakeholder_id` | FK→`stakeholder`? | **which attachment this update reached the recipient through** — nullable, since the stakeholder row may later be removed |
 | | | `U(tenant_id, digest_id, task_update_id)` |
+
+**What decides that an update is owed** is the presence of a `digest_item`, not a date window. A window-based floor would silently lose content that an expiry deferred out of it (FR-3.30); the only floor is when the recipient was first attached, so a stakeholder added today is not sent a task's whole history. Implemented in `digests.since_for`.
 
 **The three rules this table encodes:**
 
