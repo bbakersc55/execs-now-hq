@@ -434,6 +434,19 @@ export interface PortalAccess {
             contact: string | null; invited_at: string | null }[];
 }
 
+/** Who may be granted portal access, and for anyone who may not, the reason. */
+export interface PortalCandidates {
+  company: string | null;
+  company_name: string | null;
+  is_client_company: boolean;
+  seat_count: number | null;
+  seats_in_use: number;
+  /** Set when the company itself blocks a grant: no seats allocated, or none free. */
+  seat_refusal: string | null;
+  people: { contact: string; name: string; email: string; title: string;
+            role: string; refusal: string | null }[];
+}
+
 export interface ProgressReport {
   since: string; until: string; body_text: string; updates: TaskUpdateRow[];
 }

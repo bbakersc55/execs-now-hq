@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Company, Contact, Me, PortalAccess, api } from "../lib/api";
+import { Company, Me, PortalAccess, PortalCandidates, api } from "../lib/api";
 import { Banner, Card, Empty, Field, Pill } from "./ui";
 
 /**
@@ -11,6 +11,10 @@ import { Banner, Card, Empty, Field, Pill } from "./ui";
  * Revoking frees the seat and ends their sessions, and **deletes nothing**:
  * their contact, comments, tasks and stakeholder rows all stay, and they keep
  * receiving digests if they are still a stakeholder.
+ *
+ * The people who can be granted are **this company's contacts**, listed
+ * without typing anything: the box narrows that list rather than being the only
+ * way to reach it.
  */
 export function PortalAccessCard({ me, company }: { me: Me; company: Company }) {
   const qc = useQueryClient();
@@ -23,13 +27,18 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
     enabled: !!me.role && ["FF", "CF"].includes(me.role) && company.is_client_company,
     retry: false,
   });
-  const found = useQuery<{ contacts: Contact[] }>({
-    queryKey: ["portal-search", term],
-    queryFn: () => api.get(`/api/contacts/search/?q=${encodeURIComponent(term)}`),
-    enabled: term.trim().length > 1,
+  const candidates = useQuery<PortalCandidates>({
+    queryKey: ["portal-candidates", company.id, term.trim()],
+    queryFn: () => api.get<PortalCandidates>(
+      `/api/portal-access/candidates/?company=${company.id}`
+      + (term.trim() ? `&q=${encodeURIComponent(term.trim())}` : "")),
+    enabled: !!me.role && ["FF", "CF"].includes(me.role) && company.is_client_company,
   });
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["portal-access", company.id] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["portal-access", company.id] });
+    qc.invalidateQueries({ queryKey: ["portal-candidates", company.id] });
+  };
   const grant = useMutation({
     mutationFn: (contact: string) => api.post("/api/portal-access/", { contact }),
     onSuccess: () => {
@@ -51,15 +60,19 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
 
   if (!access.data) return null;
   const a = access.data;
+  // Anyone already signed in is in the table above, not offered again below.
+  const granted = new Set(a.people.map((p) => p.contact));
+  const waiting = (candidates.data?.people ?? []).filter((p) => !granted.has(p.contact));
 
   return (
     <Card title="Portal access">
       {message && <Banner kind={message.kind}>{message.text}</Banner>}
       <p className="small">
         {a.seat_count === null
-          ? `${a.seats_in_use} in use, no seat limit set.`
+          ? "No seats allocated yet — set a client seat count on the company before granting access."
           : `${a.seats_in_use} of ${a.seat_count} seat${a.seat_count === 1 ? "" : "s"} in use.`}
-        {a.seats_available === 0 && " Free one, or raise the seat count, before granting another."}
+        {a.seat_count !== null && a.seats_available === 0
+          && " Free one, or raise the seat count, before granting another."}
       </p>
       {a.people.length === 0 ? <Empty>Nobody from this company can sign in yet.</Empty> : (
         <table>
@@ -83,18 +96,29 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
         </table>
       )}
       <Field label="Give someone access">
-        <input aria-label="Find a contact for portal access" placeholder="Start typing a name…"
+        <input aria-label="Narrow this company's people" placeholder="Narrow by name or email…"
           value={term} onChange={(e) => setTerm(e.target.value)} />
       </Field>
-      <ul className="small" style={{ listStyle: "none", paddingLeft: 0 }}>
-        {(found.data?.contacts ?? []).slice(0, 6).map((c) => (
-          <li key={c.id}>
-            <button className="ghost small" onClick={() => grant.mutate(c.id)}>
-              {c.first_name} {c.last_name}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {waiting.length === 0 ? (
+        <Empty>
+          {term.trim()
+            ? `Nobody at ${company.name} matches “${term.trim()}”.`
+            : `Everyone at ${company.name} already has access. Add a contact to the company first.`}
+        </Empty>
+      ) : (
+        <ul className="small" style={{ listStyle: "none", paddingLeft: 0 }}>
+          {waiting.map((p) => (
+            <li key={p.contact} style={{ padding: ".2rem 0" }}>
+              <button className="ghost small" disabled={!!p.refusal || grant.isPending}
+                title={p.refusal ?? ""} onClick={() => grant.mutate(p.contact)}>
+                Grant
+              </button>{" "}
+              {p.name} <span className="muted">{p.email || "no email"}</span>
+              {p.refusal && <div className="muted" style={{ paddingLeft: "3.6rem" }}>{p.refusal}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
       <p className="small muted">
         The company's main contact becomes its founder user; everyone else is an employee user.
       </p>

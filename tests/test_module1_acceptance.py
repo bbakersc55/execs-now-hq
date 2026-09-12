@@ -742,6 +742,52 @@ def test_search_finds_contacts_and_respects_tenancy(seeded_tenant, tenant_b):
         assert search.search(tenant_b, "Zephyrine")["contacts"] == []
 
 
+@pytest.mark.django_db
+def test_search_finds_a_partly_typed_name(seeded_tenant):
+    """A picker is typed into one letter at a time, and full text cannot answer
+    that: "Nob" is not the indexed word `nobl`, so it matched nothing and a
+    contact who was plainly on screen appeared not to exist."""
+    with tenant_context(seeded_tenant.pk):
+        wanted = _contact(seeded_tenant, first_name="Noble", last_name="Okonkwo")
+        for fragment in ("N", "No", "Nob", "Nobl", "Noble", "Okon", "Noble Oko"):
+            found = [c.pk for c in search.search(seeded_tenant, fragment)["contacts"]]
+            assert wanted.pk in found, f"Typing {fragment!r} found nobody."
+        assert search.search(seeded_tenant, "Zzz")["contacts"] == []
+
+
+@pytest.mark.django_db
+def test_search_finds_a_contact_by_email_address(seeded_tenant, tenant_b):
+    """Addresses live in their own table and were in no index at all, so
+    searching for one found nobody anywhere in the app."""
+    with tenant_context(seeded_tenant.pk):
+        wanted = _contact(seeded_tenant, first_name="Ada", last_name="Iwu")
+        wanted.emails.update(address="ada.iwu@acmefacilities.invalid")
+        for fragment in ("ada.iwu@acmefacilities.invalid", "ada.iwu", "acmefacilities.invalid"):
+            found = [c.pk for c in search.search(seeded_tenant, fragment)["contacts"]]
+            assert found == [wanted.pk], f"Searching {fragment!r} found {found}."
+
+    with tenant_context(tenant_b.pk):
+        assert search.search(tenant_b, "ada.iwu")["contacts"] == [], "Across tenants."
+
+
+@pytest.mark.django_db
+def test_a_new_contact_is_searchable_immediately(seeded_tenant):
+    """The index was only refreshed by the periodic job, so a contact created a
+    minute ago could not be found — the failure that left Module 1's 142
+    contacts unindexed, and the one that emptied the portal-access picker."""
+    with tenant_context(seeded_tenant.pk):
+        fresh = _contact(seeded_tenant, first_name="Marguerite", last_name="Adeyemi")
+        fresh.refresh_from_db()
+        assert fresh.search_vector is not None, "A saved contact was left unindexed."
+        assert [c.pk for c in search.search(seeded_tenant, "Marguerite")["contacts"]] \
+            == [fresh.pk]
+
+        fresh.last_name = "Baptiste"
+        fresh.save()
+        assert [c.pk for c in search.search(seeded_tenant, "Baptiste")["contacts"]] \
+            == [fresh.pk], "An edited name was not reindexed."
+
+
 # ============================================ requires Postmark (unexercised)
 
 @pytest.mark.django_db

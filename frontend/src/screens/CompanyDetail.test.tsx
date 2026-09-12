@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { COMPANY_ID, aCompany, aContact, aMe } from "../test/fixtures";
@@ -83,5 +84,114 @@ describe("CompanyDetail", () => {
     expect(screen.queryByText("client company")).not.toBeInTheDocument();
     expect(screen.queryByText(/seats used/)).not.toBeInTheDocument();
     expect(await screen.findByText("No contacts at this company.")).toBeInTheDocument();
+  });
+});
+
+describe("the portal-access picker", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const ACCESS = {
+    company: COMPANY_ID, seat_count: 3, seats_in_use: 0, seats_available: 3,
+    may_manage: true, people: [],
+  };
+
+  function candidates(people: unknown[], extra: Record<string, unknown> = {}) {
+    return {
+      company: COMPANY_ID, company_name: "Adapt CFO", is_client_company: true,
+      seat_count: 3, seats_in_use: 0, seat_refusal: null, people, ...extra,
+    };
+  }
+
+  function aPerson(over: Record<string, unknown> = {}) {
+    return {
+      contact: "p1", name: "Dana Reyes", email: "dana@adapt.invalid",
+      title: "COO", role: "ECC", refusal: null, ...over,
+    };
+  }
+
+  it("offers the company's people with nothing typed, and grants one", async () => {
+    // The bug: the picker searched every contact in the tenant by full text, so
+    // it showed nobody until a whole indexed word was typed.
+    let granted: unknown = null;
+    renderCompany({
+      [`/api/companies/${COMPANY_ID}/timeline/`]: [],
+      [`/api/companies/${COMPANY_ID}/`]: aCompany({ seats_in_use: 0, seats_available: 3 }),
+      "/api/portal-access/candidates/": candidates([
+        aPerson(), aPerson({ contact: "p2", name: "Ben Orji", email: "ben@adapt.invalid" }),
+      ]),
+      "POST /api/portal-access/": (body: unknown) => {
+        granted = body;
+        return { status: 201, body: { id: "m1", role: "ECC" } };
+      },
+      "/api/portal-access/": ACCESS,
+      "/api/contacts/": [],
+    });
+
+    const buttons = await screen.findAllByRole("button", { name: "Grant" });
+    expect(buttons).toHaveLength(2);
+    expect(screen.getByText("Dana Reyes")).toBeInTheDocument();
+    expect(screen.getByText("Ben Orji")).toBeInTheDocument();
+
+    await userEvent.click(buttons[0]);
+    expect(granted).toEqual({ contact: "p1" });
+    expect(await screen.findByText(/Access granted and a sign-in link sent/)).toBeInTheDocument();
+  });
+
+  it("passes what is typed to the server as a plain fragment", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      urls.push(url);
+      const body = url.startsWith("/api/portal-access/candidates/")
+        ? candidates([aPerson()])
+        : url.startsWith("/api/portal-access/") ? ACCESS
+        : url.startsWith(`/api/companies/${COMPANY_ID}/timeline`) ? []
+        : url.startsWith(`/api/companies/${COMPANY_ID}/`) ? aCompany()
+        : [];
+      return new Response(JSON.stringify(body), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }));
+    renderRoute(<CompanyDetail me={aMe()} />, {
+      path: "/companies/:id", route: `/companies/${COMPANY_ID}`,
+    });
+
+    await userEvent.type(await screen.findByLabelText("Narrow this company's people"), "Dan");
+    await waitFor(() => expect(urls.some((u) => u.includes("candidates/") && u.includes("q=Dan")))
+      .toBe(true));
+    // Never the global contact search, which is what missed everyone.
+    expect(urls.some((u) => u.includes("/api/contacts/search/"))).toBe(false);
+  });
+
+  it("shows why someone cannot be granted instead of hiding them", async () => {
+    renderCompany({
+      [`/api/companies/${COMPANY_ID}/timeline/`]: [],
+      [`/api/companies/${COMPANY_ID}/`]: aCompany(),
+      "/api/portal-access/candidates/": candidates([
+        aPerson({ email: "", refusal: "Dana has no email address, so no sign-in link can be sent." }),
+      ]),
+      "/api/portal-access/": ACCESS,
+      "/api/contacts/": [],
+    });
+
+    expect(await screen.findByText(/Dana has no email address/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Grant" })).toBeDisabled();
+  });
+
+  it("says no seats are allocated rather than implying no limit", async () => {
+    renderCompany({
+      [`/api/companies/${COMPANY_ID}/timeline/`]: [],
+      [`/api/companies/${COMPANY_ID}/`]: aCompany({ seat_count: null }),
+      "/api/portal-access/candidates/": candidates(
+        [aPerson({ refusal: "No seats have been allocated to Adapt CFO yet." })],
+        { seat_count: null, seat_refusal: "No seats have been allocated to Adapt CFO yet." },
+      ),
+      "/api/portal-access/": { ...ACCESS, seat_count: null, seats_available: 0 },
+      "/api/contacts/": [],
+    });
+
+    expect(await screen.findByText(/No seats allocated yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/no seat limit set/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Grant" })).toBeDisabled();
   });
 });

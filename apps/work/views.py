@@ -19,6 +19,7 @@ from rest_framework.response import Response
 
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Task
+from apps.crm.services import search as crm_search
 from apps.tenancy.models import CLIENT_ROLES, AuditEvent
 from apps.work import permissions as work_perms
 from apps.work import serializers as work_serializers
@@ -835,6 +836,71 @@ class PortalAccessViewSet(WorkViewSet):
             "may_manage": self._may_manage(request),
             "people": [work_serializers.represent_access(m)
                        for m in portal.access_rows(company)],
+        })
+
+    @action(detail=False, methods=["get"])
+    def candidates(self, request):
+        """Who can be given access, and for anyone who cannot, why not.
+
+        The picker used to run the **global** contact search — every contact in
+        the tenant, ranked by full text — which is the wrong question twice
+        over: it offers people at companies that are not clients, and it finds
+        nobody at all until a whole indexed word is typed. This lists the
+        company's own contacts, so the common case (three people, no typing)
+        needs no search, and `q` filters that list as plain text.
+
+        Pass `company` for the list, or `contact` for one person: the contact
+        page grants without a search at all.
+        """
+        from apps.crm.models import Contact
+
+        if not self._may_manage(request):
+            return Response({"detail": "Portal access is not available to you."}, status=403)
+
+        one = request.query_params.get("contact")
+        if one:
+            contact = crm_perms.contact_queryset_for(
+                request, Contact.objects.filter(pk=one, deleted_at__isnull=True)
+            ).first() if _is_uuid(one) else None
+            if contact is None:
+                raise Http404
+            company = contact.company
+            if company is not None:
+                # A CF may only manage the companies they are assigned.
+                self._company(request, str(company.pk))
+            contacts = [contact]
+        else:
+            company = self._company(request, request.query_params.get("company"))
+            contacts = crm_perms.contact_queryset_for(
+                request,
+                Contact.objects.filter(company=company, deleted_at__isnull=True),
+            )
+            term = (request.query_params.get("q") or "").strip()
+            if term:
+                contacts = contacts.filter(crm_search.as_typed(term)).distinct()
+            contacts = contacts.order_by("first_name", "last_name")[:100]
+
+        seats = portal.seat_refusal(company) if company is not None else None
+        return Response({
+            "company": str(company.pk) if company is not None else None,
+            "company_name": company.name if company is not None else None,
+            "is_client_company": bool(company and company.is_client_company),
+            "seat_count": company.seat_count if company is not None else None,
+            "seats_in_use": company.seats_in_use if company is not None else 0,
+            "seat_refusal": seats,
+            "people": [
+                {
+                    "contact": str(c.pk),
+                    "name": f"{c.first_name} {c.last_name}".strip(),
+                    "email": c.primary_email or "",
+                    "title": c.title,
+                    "role": portal.default_role_for(c),
+                    # The person-level reason first: an unallocated seat count is
+                    # not a reason to hide someone who is otherwise eligible.
+                    "refusal": portal.refusal_for(c, tenant=request.tenant) or seats,
+                }
+                for c in contacts
+            ],
         })
 
     def create(self, request):

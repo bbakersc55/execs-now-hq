@@ -195,7 +195,7 @@ audio (owner decision, Phase 2); the prefix is therefore the whole rule.
 | `industry` | text? | |
 | `address` | jsonb? | |
 | `is_client_company` | bool | derived by FR-1.6a.1, cleared only by hand |
-| `seat_count` | int? | FF-set; null until it is a client company (FR-3.33f) |
+| `seat_count` | int? | FF-set; null until it is a client company (FR-3.33f). Null is **no seats allocated**, not unlimited: a grant is refused saying so |
 | `digest_ai_prose` | bool | **FR-3.24 — AI prose on/off for this client's digests**, seeded from `tenant.digest_ai_prose_default` |
 | `primary_contact_id` | FK→`contact`? | FR-1.3a — designated recipient, FCC default |
 | `deleted_at` | timestamptz? | |
@@ -237,7 +237,7 @@ Ordered list. Feeds `{Location A}` / `{Location B}` (FR-1.3, FR-4.9a).
 | `referral_template_id` | FK→`email_template`? | used when mode is `template` |
 | `referral_next_touch_at` | timestamptz? | clock starts at onboarding (FR-1.23c) |
 | `referral_onboarded_at` | timestamptz? | **presence prevents re-triggering (FR-1.23d)** |
-| `search_vector` | tsvector IX(GIN) | FR-1.33 |
+| `search_vector` | tsvector IX(GIN) | FR-1.33. Refreshed on every save, not only by the periodic job, so a contact created a second ago is findable. Names and email addresses are **also** matched as typed fragments, because a tsvector holds stemmed whole words and a picker is typed one letter at a time |
 | `source` | text? | on `note`: `manual · import · recording` |
 | `merged_into_id` | FK→`contact`? | survivor pointer (FR-1.34) |
 | `deleted_at` | timestamptz? | |

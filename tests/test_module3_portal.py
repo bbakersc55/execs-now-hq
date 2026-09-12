@@ -397,3 +397,160 @@ def test_ac_3_31_lowering_the_seat_count_revokes_nobody_and_blocks_the_next_gran
     assert api.as_(va).patch(f"/api/companies/{company.pk}/",
                              json.dumps({"seat_count": 5}),
                              content_type="application/json").status_code == 403
+
+
+# ======================================= the picker: who can be granted, and why not
+
+@pytest.mark.django_db
+def test_the_picker_lists_this_companys_people_without_any_typing(
+    seeded_tenant, ff, api, company, in_tenant_a
+):
+    """The bug this replaces: the picker ran the global contact search, so it
+    found nobody until a whole indexed word was typed and offered people at
+    companies that are not clients. Three contacts at a client company must be
+    offered with an empty box."""
+    elsewhere = ClientCompanyFactory(tenant=seeded_tenant, name="Other Co", seat_count=1)
+    for first in ("Ama", "Bene", "Chidi"):
+        a_contact(seeded_tenant, company, first, f"{first.lower()}@northwind.invalid")
+    a_contact(seeded_tenant, elsewhere, "Outsider", "outsider@other.invalid")
+
+    body = api.as_(ff).get(f"/api/portal-access/candidates/?company={company.pk}").json()
+    assert [p["name"] for p in body["people"]] == ["Ama Okafor", "Bene Okafor", "Chidi Okafor"]
+    assert all(p["refusal"] is None for p in body["people"])
+    assert body["is_client_company"] is True and body["seat_count"] == 2
+
+
+@pytest.mark.django_db
+def test_the_picker_narrows_on_a_fragment_of_a_name_or_an_email(
+    seeded_tenant, ff, api, company, in_tenant_a
+):
+    """`q` is what someone half-types, not a full-text word."""
+    a_contact(seeded_tenant, company, "Ama", "ama.nwosu@northwind.invalid")
+    a_contact(seeded_tenant, company, "Bene", "bene@northwind.invalid")
+
+    def names(term):
+        return [p["name"] for p in api.as_(ff).get(
+            f"/api/portal-access/candidates/?company={company.pk}&q={term}").json()["people"]]
+
+    assert names("A") == ["Ama Okafor"]
+    assert names("Am") == ["Ama Okafor"]
+    assert names("ama.nw") == ["Ama Okafor"]
+    assert names("northwind.invalid") == ["Ama Okafor", "Bene Okafor"]
+    assert names("Zzz") == []
+
+
+@pytest.mark.django_db
+def test_the_picker_says_why_someone_cannot_be_granted(seeded_tenant, ff, api,
+                                                        company, in_tenant_a):
+    """Every reason is the sentence the grant itself would have refused with."""
+    from apps.crm.models import Contact
+
+    no_email = ContactFactory(tenant=seeded_tenant, first_name="Silent", last_name="Okafor",
+                              company=company)
+    already = a_contact(seeded_tenant, company, "Dana", "dana@northwind.invalid")
+    make(api.as_(ff), "/api/portal-access/", contact=str(already.pk))
+
+    rows = {p["contact"]: p for p in api.as_(ff).get(
+        f"/api/portal-access/candidates/?company={company.pk}").json()["people"]}
+    assert "no email address" in rows[str(no_email.pk)]["refusal"]
+    assert "already has access" in rows[str(already.pk)]["refusal"]
+
+    # The refusal the picker shows is the refusal the API gives.
+    refused = post(api.as_(ff), "/api/portal-access/", {"contact": str(no_email.pk)})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == rows[str(no_email.pk)]["refusal"]
+    assert Contact.objects.filter(pk=no_email.pk).exists()
+
+
+@pytest.mark.django_db
+def test_the_contact_page_can_grant_without_a_search_at_all(seeded_tenant, ff, api,
+                                                             company, in_tenant_a):
+    """`?contact=` is the contact page's own card: one row, no searching."""
+    contact = a_contact(seeded_tenant, company, "Dana", "dana@northwind.invalid")
+    body = api.as_(ff).get(f"/api/portal-access/candidates/?contact={contact.pk}").json()
+    assert [p["name"] for p in body["people"]] == ["Dana Okafor"]
+    assert body["people"][0]["refusal"] is None
+    assert body["company_name"] == "Northwind Foods"
+    make(api.as_(ff), "/api/portal-access/", contact=str(contact.pk))
+
+    after = api.as_(ff).get(f"/api/portal-access/candidates/?contact={contact.pk}").json()
+    assert "already has access" in after["people"][0]["refusal"]
+
+
+@pytest.mark.django_db
+def test_a_contact_at_a_company_that_is_not_a_client_is_refused_in_words(
+    seeded_tenant, ff, api, in_tenant_a
+):
+    """FR-3.33c — nothing to give access to, said plainly rather than silently."""
+    from apps.crm.models import Company
+
+    prospect = Company.objects.create(tenant=seeded_tenant, name="Just A Prospect",
+                                      is_client_company=False)
+    contact = a_contact(seeded_tenant, prospect, "Hope", "hope@prospect.invalid")
+
+    body = api.as_(ff).get(f"/api/portal-access/candidates/?contact={contact.pk}").json()
+    assert body["is_client_company"] is False
+    assert "not at a client company" in body["people"][0]["refusal"]
+
+    refused = post(api.as_(ff), "/api/portal-access/", {"contact": str(contact.pk)})
+    assert refused.status_code == 400
+    assert "not at a client company" in refused.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_a_client_company_with_no_seat_count_refuses_in_its_own_words(
+    seeded_tenant, ff, api, dev_outbox, in_tenant_a
+):
+    """`seat_count` is null until the company is set up as a client (§data model),
+    so null refuses — but it used to refuse saying "has None seats and 0 in use"."""
+    from apps.accounts.models import User
+
+    company = ClientCompanyFactory(tenant=seeded_tenant, name="Unallocated Ltd",
+                                   seat_count=None)
+    contact = a_contact(seeded_tenant, company, "Dana", "dana@unallocated.invalid")
+    before = User.objects.count()
+    dev_outbox.clear()
+
+    body = api.as_(ff).get(f"/api/portal-access/candidates/?company={company.pk}").json()
+    assert "No seats have been allocated" in body["seat_refusal"]
+    assert "None seats" not in body["seat_refusal"]
+    assert "No seats have been allocated" in body["people"][0]["refusal"]
+
+    refused = post(api.as_(ff), "/api/portal-access/", {"contact": str(contact.pk)})
+    assert refused.status_code == 409
+    assert "No seats have been allocated to Unallocated Ltd" in refused.json()["detail"]
+    assert User.objects.count() == before and dev_outbox == []
+    assert not Membership.all_objects.filter(contact=contact).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 200), ("VA", 403),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_who_may_see_the_picker(role, expected, seeded_tenant, api, company, in_tenant_a):
+    """Matrix §9 — the same scope as granting: a VA never grants, so a VA is
+    never shown who could be granted."""
+    member = MembershipFactory(
+        tenant=seeded_tenant, role=role,
+        client_company=company if role in ("FCC", "ECC") else None)
+    if role == "CF":
+        ClientAssignmentFactory(tenant=seeded_tenant, user=member.user, company=company)
+    response = api.as_(member).get(f"/api/portal-access/candidates/?company={company.pk}")
+    assert response.status_code == expected
+
+
+@pytest.mark.django_db
+def test_the_picker_is_blind_to_other_companies_and_other_tenants(
+    seeded_tenant, tenant_b, cf, ff, api, company, in_tenant_a
+):
+    unassigned = ClientCompanyFactory(tenant=seeded_tenant, name="Not Mine", seat_count=2)
+    theirs = ClientCompanyFactory(tenant=tenant_b, name="Tenant B Co", seat_count=2)
+    mine = a_contact(seeded_tenant, unassigned, "Nope", "nope@notmine.invalid")
+
+    # A CF sees only companies they are assigned.
+    assert api.as_(cf).get(
+        f"/api/portal-access/candidates/?company={unassigned.pk}").status_code == 404
+    assert api.as_(cf).get(
+        f"/api/portal-access/candidates/?contact={mine.pk}").status_code == 404
+    # Nobody reaches another tenant's company, FF included.
+    assert api.as_(ff).get(
+        f"/api/portal-access/candidates/?company={theirs.pk}").status_code == 404

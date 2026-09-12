@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import { GrantPortalAccess } from "../components/GrantPortalAccess";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
 import { Contact, Me, OutboxMessage, api } from "../lib/api";
@@ -268,6 +269,8 @@ export function ContactDetail({ me }: { me: Me }) {
         </div>
 
         <div>
+          <GrantPortalAccess me={me} contactId={id!} />
+
           <Card title="Timeline">
             {(timeline.data ?? []).length === 0 ? (
               <Empty>Nothing yet.</Empty>

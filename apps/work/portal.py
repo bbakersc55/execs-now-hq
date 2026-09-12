@@ -32,6 +32,46 @@ def default_role_for(contact) -> str:
     return Role.ECC
 
 
+def refusal_for(contact, *, tenant, role=None):
+    """Why this contact cannot be given portal access, or None if they can.
+
+    One function, so a picker can grey someone out for **exactly** the sentence
+    the grant would have refused them with. Seats are deliberately not checked
+    here: running out of seats is a different answer (a 409, and a company
+    problem rather than a person one) and `seat_refusal` handles it.
+    """
+    company = contact.company
+    if company is None or not company.is_client_company:
+        return (f"{contact.first_name} is not at a client company, so there is nothing "
+                f"to give them access to.")
+    if not contact.primary_email:
+        return f"{contact.first_name} has no email address, so no sign-in link can be sent."
+    if (role or default_role_for(contact)) not in (Role.FCC, Role.ECC):
+        return "Portal access is FCC or ECC."
+    existing = Membership.all_objects.filter(tenant=tenant, contact=contact).first()
+    if existing is not None and existing.revoked_at is None:
+        return f"{contact.first_name} already has access."
+    return None
+
+
+def seat_refusal(company):
+    """FR-3.33e — the seat answer, named rather than generic, or None.
+
+    `seat_count` is null until the company is set up as a client (§data model,
+    `seat_count`: "null until it is a client company"), so null is *no seats
+    allocated*, not unlimited — it refuses, and it has to say so in its own
+    words rather than reporting "None seats and 0 in use".
+    """
+    if company.seat_count is None:
+        return (f"No seats have been allocated to {company.name} yet. Set a client seat "
+                f"count on the company first, then grant access.")
+    if company.seats_available < 1:
+        return (f"{company.name} has {company.seat_count} seat"
+                f"{'s' if company.seat_count != 1 else ''} and "
+                f"{company.seats_in_use} in use. Free one, or raise the seat count.")
+    return None
+
+
 def access_rows(company):
     return Membership.all_objects.filter(
         client_company=company, role__in=[Role.FCC, Role.ECC], revoked_at__isnull=True
@@ -44,31 +84,18 @@ def grant(*, tenant, contact, role=None, actor):
     from apps.accounts.models import MagicLinkToken, User
     from apps.accounts.views import _send_magic_link
 
-    company = contact.company
-    if company is None or not company.is_client_company:
-        raise PortalAccessRefused(
-            f"{contact.first_name} is not at a client company, so there is nothing "
-            f"to give them access to."
-        )
-    if not contact.primary_email:
-        raise PortalAccessRefused(
-            f"{contact.first_name} has no email address, so no sign-in link can be sent."
-        )
-    role = role or default_role_for(contact)
-    if role not in (Role.FCC, Role.ECC):
-        raise PortalAccessRefused("Portal access is FCC or ECC.")
+    refused = refusal_for(contact, tenant=tenant, role=role)
+    if refused is not None:
+        raise PortalAccessRefused(refused)
 
+    company = contact.company
+    role = role or default_role_for(contact)
     existing = Membership.all_objects.filter(tenant=tenant, contact=contact).first()
-    if existing is not None and existing.revoked_at is None:
-        raise PortalAccessRefused(f"{contact.first_name} already has access.")
 
     # FR-3.33e — counted from live memberships, and named in the refusal.
-    if company.seats_available is not None and company.seats_available < 1:
-        raise SeatsExhausted(
-            f"{company.name} has {company.seat_count} seat"
-            f"{'s' if company.seat_count != 1 else ''} and "
-            f"{company.seats_in_use} in use. Free one, or raise the seat count."
-        )
+    seats = seat_refusal(company)
+    if seats is not None:
+        raise SeatsExhausted(seats)
 
     user, _ = User.objects.get_or_create(
         email=contact.primary_email.lower(),

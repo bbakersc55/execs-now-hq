@@ -33,9 +33,15 @@ put a real client's address nowhere near this until you mean it. To watch a
 digest land in a real inbox, make **yourself** a stakeholder.
 
 **A test client user.** Check 5 needs a client login. Grant portal access to a
-contact whose email you control (Company → **Portal access** → find the contact),
-then open the sign-in link from Mailpit in a private window. Revoke it when you
-are done.
+contact whose email you control, either way round:
+
+- **Company → Portal access** lists that company's people with a **Grant** button
+  each. Nothing needs typing; the box only narrows a long list.
+- **Contact → Portal access** grants the person you are already looking at.
+
+Then open the sign-in link from Mailpit in a private window. Revoke it when you
+are done. Anyone who cannot be granted stays on the list with the reason showing
+rather than quietly vanishing.
 
 ---
 
@@ -122,6 +128,12 @@ Set the company's `seat_count` to 2, use both, then try a third grant.
 
 ## Worth knowing
 
+- **A client company with no seat count cannot be granted access**, by design:
+  `seat_count` is null until you set it up as a client. It now says so in those
+  words. **SkyRun Park City** and **Academy of America** are both in that state.
+- **The founder user is the company's `primary_contact`.** Acme Facilities has
+  none set, so everyone there would be granted as an *employee* user. Set the
+  primary contact on the company first if Check 5 needs an FCC.
 - **A stakeholder is a contact, not a login.** Adding someone as a stakeholder
   consumes no seat and creates no user; they get the email and never need to
   sign in. Portal access is a separate thing you grant separately.
