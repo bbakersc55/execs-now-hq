@@ -40,6 +40,8 @@ export interface Me {
   role: "FF" | "CF" | "VA" | "FCC" | "ECC" | null;
   tenant: string | null;
   client_company: string | null;
+  /** True only on a localhost build: gates the development-only controls. */
+  dev_tools?: boolean;
 }
 
 export interface Contact {

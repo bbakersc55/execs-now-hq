@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Banner, Card, Empty, Pill, when } from "../components/ui";
-import { DigestRow, Me, api } from "../lib/api";
+import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
+import { Contact, DigestRow, Me, api } from "../lib/api";
 
 const CAN_APPROVE = ["FF", "CF"];
 
@@ -56,6 +56,8 @@ export function Digests({ me }: { me: Me }) {
         AI-written one waits even when it is off.
       </p>
       {note && <Banner kind="info">{note}</Banner>}
+
+      {me.dev_tools && <GenerateNow onDone={(text) => { setNote(text); refresh(); }} />}
       {!mayApprove && (
         <Banner kind="info">
           You can read and edit these to get them ready. Approving and sending is the
@@ -160,5 +162,97 @@ export function Digests({ me }: { me: Me }) {
         </>
       )}
     </>
+  );
+}
+
+
+/**
+ * Development only — the server says so, through `me.dev_tools`, and the
+ * endpoint behind it does not exist off localhost.
+ *
+ * It runs the ordinary generation path for one person over a period you choose,
+ * so a manual check does not have to wait until Thursday. It creates a draft and
+ * sends nothing; everything after that behaves exactly as it will in real use.
+ */
+function GenerateNow({ onDone }: { onDone: (message: string) => void }) {
+  const [term, setTerm] = useState("");
+  const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
+  const [cadence, setCadence] = useState("weekly");
+  const [days, setDays] = useState(7);
+  const [sendIn, setSendIn] = useState("");
+
+  const found = useQuery<{ contacts: Contact[] }>({
+    queryKey: ["digest-contact-search", term],
+    queryFn: () => api.get(`/api/contacts/search/?q=${encodeURIComponent(term)}`),
+    enabled: term.trim().length > 1,
+  });
+  const run = useMutation({
+    mutationFn: () => api.post<{ detail: string }>("/api/digests/generate-now/", {
+      contact: contact!.id, cadence, days,
+      ...(sendIn ? { send_in_minutes: Number(sendIn) } : {}),
+    }),
+    onSuccess: (r) => onDone(r.detail),
+    onError: (e: Error) => onDone(e.message),
+  });
+
+  return (
+    <Card title="Generate a digest now — development only">
+      <p className="small">
+        Runs the same generation the scheduler runs on Thursday, for one person over the
+        period you choose. It creates a draft in the list below and sends nothing. This
+        control does not exist once the app is off this laptop.
+      </p>
+      <div className="row">
+        <Field label="Whose digest">
+          {contact ? (
+            <p className="small" style={{ margin: 0 }}>
+              {contact.name}{" "}
+              <button className="ghost small" onClick={() => setContact(null)}>change</button>
+            </p>
+          ) : (
+            <input aria-label="Find a stakeholder" placeholder="Start typing a name…"
+              value={term} onChange={(e) => setTerm(e.target.value)} />
+          )}
+        </Field>
+        <Field label="Cadence">
+          <select aria-label="Cadence" value={cadence} onChange={(e) => setCadence(e.target.value)}>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="every_update">On every update</option>
+          </select>
+        </Field>
+        <Field label="Covering the last">
+          <select aria-label="Period in days" value={days}
+            onChange={(e) => setDays(Number(e.target.value))}>
+            <option value={1}>1 day</option>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+            <option value={90}>90 days</option>
+          </select>
+        </Field>
+        <Field label="Send window">
+          <select aria-label="Send window" value={sendIn}
+            onChange={(e) => setSendIn(e.target.value)}>
+            <option value="">The real one (next Friday)</option>
+            <option value="2">In 2 minutes — to watch it expire or send</option>
+            <option value="60">In an hour</option>
+          </select>
+        </Field>
+        <button className="primary" disabled={!contact || run.isPending}
+          onClick={() => run.mutate()}>Generate</button>
+      </div>
+      {!contact && (
+        <ul className="small" style={{ listStyle: "none", paddingLeft: 0 }}>
+          {(found.data?.contacts ?? []).slice(0, 6).map((c) => (
+            <li key={c.id}>
+              <button className="ghost small"
+                onClick={() => setContact({ id: c.id, name: `${c.first_name} ${c.last_name}` })}>
+                {c.first_name} {c.last_name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

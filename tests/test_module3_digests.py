@@ -701,3 +701,97 @@ def test_a_cf_only_sees_digests_for_companies_they_are_assigned(
     assert api.as_(cf).get("/api/digests/").json() == []
     ClientAssignmentFactory(tenant=seeded_tenant, user=cf.user, company=company)
     assert len(api.as_(cf).get("/api/digests/").json()) == 1
+
+
+# ------------------------------------------------ "Generate now" (dev only)
+
+@pytest.mark.django_db
+def test_generate_now_runs_the_real_path_for_a_chosen_stakeholder(
+    seeded_tenant, ff, api, company, recipient, project, in_tenant_a
+):
+    """The manual checks should not have to wait until Thursday."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Generated on demand.")
+
+    response = api.as_(ff).post(
+        "/api/digests/generate-now/",
+        json.dumps({"contact": str(recipient.pk), "cadence": "weekly", "days": 7}),
+        content_type="application/json")
+    assert response.status_code == 201
+    body = response.json()
+    assert "Generated a pending digest" in body["detail"]
+    assert "Generated on demand." in body["digest"]["body_text"]
+    # Held, exactly as the Thursday run would be.
+    assert body["digest"]["state"] == "pending"
+    assert Digest.all_objects.count() == 1
+    assert AuditEvent.all_objects.filter(verb="digest.generated_on_demand").exists()
+
+    # It claims what it covered, so the scheduled run will not repeat it.
+    assert digest_service.owed_to(recipient.pk, tenant=seeded_tenant,
+                                  cadence=Cadence.WEEKLY) == []
+
+
+@pytest.mark.django_db
+def test_generate_now_says_plainly_when_nothing_is_owed(seeded_tenant, ff, api, company,
+                                                        recipient, project, in_tenant_a):
+    stake(seeded_tenant, recipient, project=project)
+    response = api.as_(ff).post(
+        "/api/digests/generate-now/", json.dumps({"contact": str(recipient.pk)}),
+        content_type="application/json")
+    assert response.status_code == 200
+    assert response.json()["digest"] is None
+    assert "Nothing is owed" in response.json()["detail"]
+    assert Digest.all_objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_generate_now_can_put_the_send_window_in_a_moment(seeded_tenant, ff, api, company,
+                                                          recipient, project, dev_outbox,
+                                                          in_tenant_a):
+    """So Check 3 can watch an unapproved digest expire without waiting a week."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Will expire.")
+    created = api.as_(ff).post(
+        "/api/digests/generate-now/",
+        json.dumps({"contact": str(recipient.pk), "days": 7, "send_in_minutes": 2}),
+        content_type="application/json").json()["digest"]
+
+    later = timezone.now() + timedelta(minutes=3)
+    digest_service.expire_due(seeded_tenant, now=later)
+    digest_service.send_due(seeded_tenant, now=later)
+    digest = Digest.all_objects.get(pk=created["id"])
+    assert digest.state == Digest.State.EXPIRED and dev_outbox == []
+    # ...and the content comes back round.
+    assert "Will expire." in [u.client_facing_line for u, _ in digest_service.owed_to(
+        recipient.pk, tenant=seeded_tenant, cadence=Cadence.WEEKLY)]
+
+
+@pytest.mark.django_db
+def test_generate_now_does_not_exist_off_localhost(seeded_tenant, ff, api, settings,
+                                                   recipient, in_tenant_a):
+    settings.IS_LOCAL = False
+    response = api.as_(ff).post(
+        "/api/digests/generate-now/", json.dumps({"contact": str(recipient.pk)}),
+        content_type="application/json")
+    assert response.status_code == 404, "A development control reached a real build."
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 201), ("CF", 404), ("VA", 201),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_generate_now_follows_the_same_scope_rules(role, expected, seeded_tenant, ff, api,
+                                                    company, recipient, project, in_tenant_a):
+    """A VA prepares digests (matrix 8.2), so generating one is theirs to do;
+    a CF sees only assigned companies, and a client user none of it."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Scope check.")
+    member = MembershipFactory(
+        tenant=seeded_tenant, role=role,
+        client_company=company if role in ("FCC", "ECC") else None)
+    response = api.as_(member).post(
+        "/api/digests/generate-now/", json.dumps({"contact": str(recipient.pk)}),
+        content_type="application/json")
+    assert response.status_code == expected

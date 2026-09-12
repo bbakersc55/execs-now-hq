@@ -68,6 +68,7 @@ export function aMe(overrides: Partial<Me> = {}): Me {
     role: "FF",
     tenant: "t1",
     client_company: null,
+    dev_tools: true,
     ...overrides,
   };
 }

@@ -697,6 +697,8 @@ Done. No address in this database can receive mail.
 | Upload or send fails: "No service-account key" or "Could not write/read gs://…" | Key missing or revoked, API disabled, or offline | Check `GOOGLE_APPLICATION_CREDENTIALS`, then `RUN_GCS_LIVE=1 .venv/bin/pytest tests/test_storage.py -m gcs_live` (§5b). The file is not lost — this is not `MissingContent` |
 | Every note job fails with a missing column | `qcluster` started before a migration | Restart `qcluster` (§6) |
 | Recording stuck on "Transcribing…" | `qcluster` not running, or no schedule | Terminal 2; then `manage.py ensure_schedules` |
+| Waiting for a digest to test with | Generation runs 24 h before the send window | **Digests → Generate a digest now** (localhost only): the same path, for a chosen person and period |
+| No digest generated at all | Nothing was owed — no updates, or all already sent | Correct behaviour (FR-3.31): a period with nothing in it produces no email |
 | Transcription fails: "Speech-to-Text could not start" | API disabled, key lacks `roles/speech.client`, or offline | §5b; the audio is kept — use **Retry transcription** |
 | Summary shows "Claude could not draft a summary" | No Anthropic key, a rejected key, or offline | Sidebar → AI usage → Anthropic API key; then **Draft another summary** |
 | Yellow "recording waiting to upload" banner | The upload never reached the server | It is held in this browser; **Retry upload now**, or download it |

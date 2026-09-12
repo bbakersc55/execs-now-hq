@@ -622,6 +622,75 @@ class DigestViewSet(WorkViewSet):
         digest.refresh_from_db()
         return Response(work_serializers.represent_digest(digest, full=True))
 
+    @action(detail=False, methods=["post"], url_path="generate-now")
+    def generate_now(self, request):
+        """**Development only.** Run generation for one stakeholder over a chosen
+        period, instead of waiting for Thursday.
+
+        It is the same code path the scheduler uses — same claims, same hold
+        rules, same composition — so what a manual check sees here is what the
+        Thursday run would have produced. It creates a draft and sends nothing.
+        """
+        from datetime import timedelta
+
+        from django.conf import settings as dj_settings
+
+        from apps.crm.models import Contact
+        from apps.work.models import Cadence
+
+        if not dj_settings.IS_LOCAL:
+            raise Http404          # not a route that exists off the laptop
+        if crm_perms.role_of(request) in CLIENT_ROLES:
+            return Response({"detail": "Not available."}, status=403)
+
+        contact_id = request.data.get("contact")
+        if not _is_uuid(contact_id or ""):
+            return Response({"detail": "Choose whose digest to generate."}, status=400)
+        contact = crm_perms.contact_queryset_for(
+            request, Contact.objects.filter(pk=contact_id, deleted_at__isnull=True)
+        ).select_related("company").first()
+        if contact is None:
+            raise Http404
+
+        cadence = request.data.get("cadence") or Cadence.WEEKLY
+        if cadence not in Cadence.values:
+            return Response({"detail": "Unknown cadence."}, status=400)
+        try:
+            days = max(1, min(int(request.data.get("days", 7)), 365))
+            send_in = request.data.get("send_in_minutes")
+            send_in = int(send_in) if send_in not in (None, "") else None
+        except (TypeError, ValueError):
+            return Response({"detail": "days and send_in_minutes are numbers."}, status=400)
+
+        now = timezone.now()
+        since = now - timedelta(days=days)
+        owed = digest_service.owed_to(contact.pk, tenant=request.tenant, cadence=cadence,
+                                      since=since, until=now)
+        if not owed:
+            # FR-3.31 is a real outcome, not an error: say so plainly.
+            return Response({
+                "detail": f"Nothing is owed to {contact.first_name} at that cadence in the "
+                          f"last {days} days, so no digest was generated — which is exactly "
+                          f"what would happen on Thursday.",
+                "digest": None,
+            })
+        window = (now + timedelta(minutes=send_in)) if send_in is not None else             digest_service.next_window(request.tenant, cadence, after=now)
+        digest = digest_service.generate(
+            tenant=request.tenant, contact=contact, cadence=cadence,
+            period_start=since, period_end=now, send_window_at=window, owed=owed,
+        )
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="digest.generated_on_demand",
+            target_type="digest", target_id=digest.pk,
+            payload={"contact": str(contact.pk), "cadence": cadence, "days": days,
+                     "development_only": True},
+        )
+        return Response({
+            "detail": f"Generated a {digest.state} digest for {contact.first_name} "
+                      f"from {len(owed)} update{'s' if len(owed) != 1 else ''}.",
+            "digest": work_serializers.represent_digest(digest, full=True),
+        }, status=201)
+
     @action(detail=False, methods=["post"], url_path="approve-selected")
     def approve_selected(self, request):
         """FR-3.29 — approve-all for a batch that has been read. Each one still

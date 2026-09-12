@@ -42,6 +42,10 @@ def me(request):
             str(membership.client_company_id)
             if membership and membership.client_company_id else None
         ),
+        # Whether this build offers the development-only controls (the digest
+        # "Generate now", for instance). False anywhere that is not localhost,
+        # so the control cannot appear in front of a client.
+        "dev_tools": settings.IS_LOCAL,
     })
 
 

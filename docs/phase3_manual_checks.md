@@ -50,6 +50,13 @@ are done.
    sometimes and skip it sometimes** — that contrast is what this check is for.
 4. On Thursday morning the drafts appear in **Digests**. Read one end to end.
 
+> **You do not have to wait for Thursday.** The **Digests** screen has a
+> **Generate a digest now** card — development only, and it does not exist once
+> the app is off this laptop. Choose the person, the period and the send window,
+> and it runs the same generation the scheduler runs: same content, same hold
+> rules, a draft and no email. If nothing is owed it says so, which is itself the
+> right answer (FR-3.31).
+
 > **Does it read as value delivered, or as a changelog?** If it reads as a
 > changelog, tell me which parts felt mechanical. The two levers are the prompt
 > in `apps/work/digests.py` (`AI_SYSTEM`) and how the client-facing lines are
@@ -73,7 +80,8 @@ Railway move.
 
 ## Check 3 — Leave a digest unapproved on purpose
 
-Let one reach its Friday window without approving it.
+Use **Generate a digest now** with the send window set to **in 2 minutes**, and
+do not approve it. (Or let a real one reach its Friday window.)
 
 - Nothing arrives. The digest shows as **expired**.
 - Its content is **not lost**: next week's draft contains it again. Confirm that
@@ -122,6 +130,10 @@ Set the company's `seat_count` to 2, use both, then try a third grant.
   nothing else.
 - **Monthly digests** go out on the first send-day of the month and cover the
   previous calendar month (your decision).
+- **Generate a digest now** is on the Digests screen, on this laptop only. It is
+  the same code path as the scheduled run, so what you see there is what Thursday
+  would have produced. Every generation is audited as
+  `digest.generated_on_demand`.
 - **A goal's status** is derived from the work underneath it unless you set it by
   hand: `waiting on client` beats `blocked` beats `in progress`.
 

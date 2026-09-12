@@ -88,6 +88,39 @@ describe("the digest approval screen", () => {
       .toEqual({ ids: [DIGEST_ID] });
   });
 
+  it("offers Generate now only on a development build", async () => {
+    show([]);
+    expect(await screen.findByText(/Generate a digest now/)).toBeInTheDocument();
+    expect(screen.getByText(/does not exist once the app is off this laptop/)).toBeInTheDocument();
+  });
+
+  it("hides Generate now everywhere else", async () => {
+    show([], aMe({ dev_tools: false }));
+    await screen.findByText(/Nobody is owed an email/);
+    expect(screen.queryByText(/Generate a digest now/)).not.toBeInTheDocument();
+  });
+
+  it("generates for the chosen person, period and send window", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show([], aMe(), {
+      "/api/contacts/search/": { contacts: [{ id: "c9", first_name: "Dana",
+                                              last_name: "Okafor" }] },
+      "POST /api/digests/generate-now/": { detail: "Generated a pending digest for Dana "
+                                                   + "from 3 updates.", digest: {} },
+    });
+    await user.type(await screen.findByLabelText("Find a stakeholder"), "Dana");
+    await user.click(await screen.findByRole("button", { name: "Dana Okafor" }));
+    await user.selectOptions(screen.getByLabelText("Period in days"), "30");
+    await user.selectOptions(screen.getByLabelText("Send window"), "2");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => expect(screen.getByText(/Generated a pending digest for Dana/))
+      .toBeInTheDocument());
+    expect(fetchMock.calls.find((c) => c.url.endsWith("generate-now/"))?.body).toEqual({
+      contact: "c9", cadence: "weekly", days: 30, send_in_minutes: 2,
+    });
+  });
+
   it("says plainly when there is nothing to send", async () => {
     show([]);
     expect(await screen.findByText(/Nobody is owed an email/)).toBeInTheDocument();
