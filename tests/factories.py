@@ -15,6 +15,10 @@ from apps.crm.models import (
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.notes.models import Note, NotePinUnlock
+from apps.work.models import (
+    Comment, Digest, DigestItem, Goal, Project, Stakeholder, StakeholderToken,
+    TaskChecklistItem, TaskUpdate,
+)
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, Role, StoredFile,
     Tenant, TenantSecret,
@@ -418,3 +422,93 @@ class NotePinUnlockFactory(TenantScopedFactory):
     user = factory.SubFactory(UserFactory)
     session_key = factory.Sequence(lambda n: f"session{n:032d}")
     expires_at = factory.LazyFunction(lambda: timezone.now() + timezone.timedelta(minutes=30))
+
+
+# --- Module 3 -----------------------------------------------------------------
+
+class GoalFactory(TenantScopedFactory):
+    class Meta:
+        model = Goal
+
+    tenant = factory.SubFactory(TenantFactory)
+    title = factory.Sequence(lambda n: f"Goal {n}")
+
+
+class ProjectFactory(TenantScopedFactory):
+    class Meta:
+        model = Project
+
+    tenant = factory.SubFactory(TenantFactory)
+    title = factory.Sequence(lambda n: f"Project {n}")
+
+
+class TaskChecklistItemFactory(TenantScopedFactory):
+    class Meta:
+        model = TaskChecklistItem
+
+    tenant = factory.SubFactory(TenantFactory)
+    task = factory.SubFactory(TaskFactory, tenant=factory.SelfAttribute("..tenant"))
+    text = factory.Sequence(lambda n: f"Step {n}")
+
+
+class CommentFactory(TenantScopedFactory):
+    class Meta:
+        model = Comment
+
+    tenant = factory.SubFactory(TenantFactory)
+    task = factory.SubFactory(TaskFactory, tenant=factory.SelfAttribute("..tenant"))
+    author = factory.SubFactory(UserFactory)
+    body = "Internal by default."
+
+
+class TaskUpdateFactory(TenantScopedFactory):
+    class Meta:
+        model = TaskUpdate
+
+    tenant = factory.SubFactory(TenantFactory)
+    task = factory.SubFactory(TaskFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = TaskUpdate.Kind.STATUS_CHANGED
+    from_value = "not_started"
+    to_value = "in_progress"
+
+
+class StakeholderFactory(TenantScopedFactory):
+    class Meta:
+        model = Stakeholder
+
+    tenant = factory.SubFactory(TenantFactory)
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    task = factory.SubFactory(TaskFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class StakeholderTokenFactory(TenantScopedFactory):
+    class Meta:
+        model = StakeholderToken
+
+    tenant = factory.SubFactory(TenantFactory)
+    stakeholder = factory.SubFactory(StakeholderFactory,
+                                     tenant=factory.SelfAttribute("..tenant"))
+    token_hash = factory.Sequence(lambda n: f"{n:064d}")
+    expires_at = factory.LazyFunction(lambda: timezone.now() + timezone.timedelta(days=30))
+
+
+class DigestFactory(TenantScopedFactory):
+    class Meta:
+        model = Digest
+
+    tenant = factory.SubFactory(TenantFactory)
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    cadence = "weekly"
+    period_start = factory.LazyFunction(lambda: timezone.now() - timezone.timedelta(days=7))
+    period_end = factory.LazyFunction(timezone.now)
+    send_window_at = factory.LazyFunction(lambda: timezone.now() + timezone.timedelta(days=1))
+
+
+class DigestItemFactory(TenantScopedFactory):
+    class Meta:
+        model = DigestItem
+
+    tenant = factory.SubFactory(TenantFactory)
+    digest = factory.SubFactory(DigestFactory, tenant=factory.SelfAttribute("..tenant"))
+    task_update = factory.SubFactory(TaskUpdateFactory,
+                                     tenant=factory.SelfAttribute("..tenant"))

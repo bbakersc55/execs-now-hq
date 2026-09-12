@@ -908,10 +908,6 @@ class ReferralSettingsView(viewsets.ViewSet):
         return self.list(request)
 
 
-class TaskViewSet(TenantStaffViewSet):
-    """Phase 1 subset. Module 3 owns this properly."""
-
-    serializer_class = crm_serializers.TaskSerializer
-
-    def get_queryset(self):
-        return Task.objects.filter(deleted_at__isnull=True)
+# The task API moved to apps/work/views.py in Phase 3, where Module 3 owns it.
+# Phase 1's read-only stand-in is gone; the table stays in this app because
+# stage automations create tasks (FR-1.11).

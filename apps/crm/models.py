@@ -862,14 +862,22 @@ class Task(TenantScopedModel):
     """Module 3's table, created early for one Module 1 requirement.
 
     FR-1.11 says a `create_task` stage rule "fires immediately, no approval".
-    Module 1 therefore depends on this table. Created here with ONLY the columns
-    a stage rule needs; Module 3 adds project, goal, client_company, assignee,
-    is_client_visible, created_by_client, client_owner_contact,
-    source_map_row, source_proposal_item, checklist items, comments, and
-    stakeholders.
+    Module 1 therefore depends on this table, so Phase 1 created it with only
+    the columns a stage rule needs, and the full FR-3.7 status set so no value
+    ever had to be migrated.
 
-    Same precedent as `note` (owner ruling, data model §note). The full status
-    set from FR-3.7 is declared now so Phase 3 does not have to migrate values.
+    **Phase 3 adds** the columns below the Phase 1 block: the hierarchy links,
+    client company and assignee, client-side owner, priority, and the two
+    visibility flags. `task_checklist_item`, `comment`, `task_update` and
+    `stakeholder` live in `apps.work`, which is where everything else Module 3
+    introduces lives; the table stays here because stage automations write it.
+
+    Still deferred, because their target tables do not exist yet:
+    `source_map_row_id` (Module 4) and `source_proposal_item_id` (Module 5).
+    Each arrives as a real foreign key with the table it points at.
+
+    **No `parent_task_id`, ever.** Three levels is enforced by the absence of
+    the column (FR-3.4); sub-steps are checklist items.
     """
 
     class Status(models.TextChoices):
@@ -900,8 +908,46 @@ class Task(TenantScopedModel):
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
 
+    # ------------------------------------------------------ Phase 3 (Module 3)
+
+    # FR-3.5 — both nullable, so a standalone task is a first-class thing.
+    # SET_NULL, because deleting a goal or project detaches its children and
+    # reports them rather than deleting work (FR-3.6).
+    project = models.ForeignKey(
+        "work.Project", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tasks",
+    )
+    goal = models.ForeignKey(
+        "work.Goal", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tasks",
+    )
+    client_company = models.ForeignKey(
+        Company, null=True, blank=True, on_delete=models.SET_NULL, related_name="tasks",
+    )
+    # The app user doing the work. A client user may only be assigned, or
+    # assign, within their own company (FR-3.9).
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="assigned_tasks",
+    )
+    # Who on the client side is accountable — a Contact, since strategy map
+    # rows and meeting action items name people who may have no login (FR-3.3a).
+    client_owner_contact = models.ForeignKey(
+        Contact, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
+    priority = models.SmallIntegerField(default=1)  # work.Priority
+    # FR-3.11 — set true at creation when the task has a client company, false
+    # otherwise. A default cannot express that, so the code path does; the
+    # column default is the safe one.
+    is_client_visible = models.BooleanField(default=False)
+    created_by_client = models.BooleanField(default=False)  # FR-3.37
+
     class Meta(TenantScopedModel.Meta):
         db_table = "task"
+        indexes = [
+            models.Index(fields=["tenant", "client_company", "status"]),
+            models.Index(fields=["tenant", "project"]),
+        ]
 
     def __str__(self):
         return self.title

@@ -21,7 +21,6 @@ router.register("import-profiles", views.ImportMappingProfileViewSet,
                 basename="import-profile")
 router.register("email-templates", views.EmailTemplateViewSet, basename="email-template")
 router.register("referral-settings", views.ReferralSettingsView, basename="referral-settings")
-router.register("tasks", views.TaskViewSet, basename="task")
 router.register("gmail-connection", views_gmail.GmailConnectionViewSet,
                 basename="gmail-connection")
 

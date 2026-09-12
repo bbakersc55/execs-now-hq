@@ -339,7 +339,72 @@ export interface NotesSettings {
   warn_at_seconds: number;
 }
 
+export type WorkStatus =
+  | "not_started" | "in_progress" | "blocked" | "waiting_on_client" | "done" | "cancelled";
+
+export interface Person { id: string | null; name: string }
+
+/** Module 3. `may_edit` / `may_delete` carry FR-3.9a, so the UI never
+ *  re-derives the client-edit rule and cannot drift from the server. */
 export interface Task {
-  id: string; title: string; description: string; status: string;
-  due_date: string | null; owner: string | null; contact: string | null;
+  id: string;
+  title: string;
+  description: string;
+  status: WorkStatus;
+  priority: number;
+  priority_label: string;
+  due_date: string | null;
+  project: string | null;
+  project_title: string;
+  goal: string | null;
+  goal_title: string;
+  client_company: string | null;
+  client_company_name: string;
+  owner: Person;
+  assignee: Person;
+  client_owner_contact: Person;
+  contact: string | null;
+  is_client_visible: boolean;
+  created_by_client: boolean;
+  created_at: string;
+  updated_at: string;
+  may_edit: boolean;
+  may_delete: boolean;
+  may_set_visibility: boolean;
+}
+
+/** A goal or a project. `status` is what to show; `status_override` is what a
+ *  person set by hand, and `status_is_derived` says which you are looking at. */
+export interface WorkParent {
+  id: string;
+  kind: "goal" | "project";
+  title: string;
+  description: string;
+  status: WorkStatus;
+  status_override: WorkStatus | null;
+  status_is_derived: boolean;
+  client_company: string | null;
+  client_company_name: string;
+  owner: Person;
+  client_owner_contact: Person;
+  target_date: string | null;
+  created_at: string;
+  goal?: string | null;
+  goal_title?: string;
+  start_date?: string | null;
+  created_by_client?: boolean;
+}
+
+export interface WorkComment {
+  id: string; body: string; visibility: "internal" | "shared";
+  author: Person; created_at: string;
+  task: string | null; project: string | null; goal: string | null;
+}
+
+export interface ChecklistItem { id: string; text: string; is_done: boolean; position: number }
+
+export interface TaskUpdateRow {
+  id: string; kind: string; from_value: string; to_value: string;
+  client_facing_line: string; actor: Person; source: string;
+  is_client_actor: boolean; created_at: string;
 }

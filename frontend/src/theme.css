@@ -170,3 +170,25 @@ fieldset.choices legend { font-size: .82rem; color: var(--gray-dark); margin-bot
   font-size: .92rem; color: var(--blue); cursor: pointer;
 }
 .choices .options input { width: auto; margin: 0; }
+
+/* Module 3 — the six statuses, each visually its own (FR-3.7).
+   "Waiting on client" is deliberately the loudest: the difference between
+   "we are stuck" and "you are the blocker" is the most useful thing a
+   progress report can say (FR-3.8). */
+.pill.status-not_started { background: #eef0f3; color: var(--gray-dark); }
+.pill.status-in_progress { background: #e3eefb; color: var(--blue); }
+.pill.status-blocked { background: #fdecea; color: var(--bad); }
+.pill.status-waiting_on_client {
+  background: var(--orange); color: #fff; font-weight: 600;
+}
+.pill.status-done { background: #e6f4ec; color: var(--ok); }
+.pill.status-cancelled { background: #f3f4f6; color: var(--gray-light); text-decoration: line-through; }
+.pill.derived { border: 1px dashed var(--border); }
+
+.board { display: grid; gap: 1rem; }
+.work-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .75rem; }
+.work-columns .col { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .6rem; }
+.work-columns .col h4 { margin: 0 0 .5rem; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gray-dark); }
+.comment { border-left: 3px solid var(--border); padding: .1rem 0 .1rem .6rem; margin-bottom: .7rem; }
+.comment.internal { border-left-color: var(--gray-light); background: #fafbfc; }
+.comment.shared { border-left-color: var(--orange); }

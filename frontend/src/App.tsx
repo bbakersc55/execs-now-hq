@@ -23,6 +23,8 @@ import { NoteDetail } from "./screens/NoteDetail";
 import { Notes } from "./screens/Notes";
 import { PinReset } from "./screens/PinReset";
 import { TaskDetail } from "./screens/TaskDetail";
+import { Work } from "./screens/Work";
+import { WorkParentDetail } from "./screens/WorkParentDetail";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -34,6 +36,8 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   { to: "/companies", label: "Companies", roles: TENANT },
   // Matrix 6.9 — notes have no client-visible form in Beta.
   { to: "/notes", label: "Notes", roles: TENANT },
+  // Module 3. The client portal's own navigation arrives with done-item 10.
+  { to: "/work", label: "Work", roles: TENANT },
   { to: "/vendors", label: "Vendors", roles: TENANT },
   { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },
@@ -117,7 +121,10 @@ export function App() {
             <Route path="/notes" element={<Notes me={me} />} />
             <Route path="/notes/pin-reset/:token" element={<PinReset />} />
             <Route path="/notes/:id" element={<NoteDetail me={me} />} />
-            <Route path="/tasks/:id" element={<TaskDetail />} />
+            <Route path="/tasks/:id" element={<TaskDetail me={me} />} />
+            <Route path="/work" element={<Work me={me} />} />
+            <Route path="/work/goals/:id" element={<WorkParentDetail me={me} kind="goal" />} />
+            <Route path="/work/projects/:id" element={<WorkParentDetail me={me} kind="project" />} />
           </Routes>
         </ErrorBoundary>
       </main>

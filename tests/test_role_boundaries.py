@@ -117,8 +117,10 @@ MODULE1_ENDPOINTS = [
     ("/api/contact-types/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
     ("/api/service-categories/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
     ("/api/stage-automations/", {"FF": 200, "CF": 403, "VA": 403, "FCC": 403, "ECC": 403}),
-    ("/api/tasks/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
 ]
+# /api/tasks/ moved to Module 3 in Phase 3 — see MODULE3_ENDPOINTS below. Under
+# matrix 7.1 a client user reaches it and sees their own company's
+# client-visible tasks, so the Phase 1 expectation of 403 no longer holds.
 
 
 @pytest.mark.django_db
@@ -347,3 +349,55 @@ def test_anthropic_key_is_ff_only_and_never_returned(role, seeded_tenant, api, m
     assert "SECRETKEY" not in api.as_(ff).get("/api/ai-key/").content.decode()
     assert _post(api.as_(_as(role, seeded_tenant)), "/api/ai-key/",
                  {"key": "sk-ant-other"}).status_code == 403
+
+
+# ============================================================== Module 3 (§7)
+# Matrix rows 7.1-7.11. The client rows are the point: a client user reaches
+# these endpoints and sees only their own company's client-visible work.
+
+MODULE3_ENDPOINTS = [
+    ("/api/tasks/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 200, "ECC": 200}),
+    ("/api/goals/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 200, "ECC": 200}),
+    ("/api/projects/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 200, "ECC": 200}),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,expected", MODULE3_ENDPOINTS, ids=[u for u, _ in MODULE3_ENDPOINTS])
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_module3_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
+    response = api.as_(_as(role, seeded_tenant)).get(url)
+    assert response.status_code == expected[role], (
+        f"{url} as {role}: expected {expected[role]}, got {response.status_code}"
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 201), ("CF", 201), ("VA", 201),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_7_2_only_the_practice_creates_a_goal(role, expected, seeded_tenant, api):
+    """Matrix 7.2 — a goal is the strategy the engagement is judged against."""
+    member = _as(role, seeded_tenant)
+    response = _post(api.as_(member), "/api/goals/", {"title": "Cut order-to-cash to 20 days"})
+    assert response.status_code == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 201), ("CF", 201), ("VA", 201),
+                                           ("FCC", 201), ("ECC", 201)])
+def test_7_2a_a_client_may_create_a_project_but_never_under_a_goal(
+    role, expected, seeded_tenant, api
+):
+    """Matrix 7.2a / FR-3.35a."""
+    from apps.work.models import Goal
+
+    member = _as(role, seeded_tenant)
+    goal = Goal.all_objects.create(tenant=seeded_tenant, title="Practice goal")
+    response = _post(api.as_(member), "/api/projects/", {"title": "Q4 tidy-up"})
+    assert response.status_code == expected
+    if role in ("FCC", "ECC"):
+        body = response.json()
+        assert body["created_by_client"] is True and body["goal"] is None
+        refused = _post(api.as_(member), "/api/projects/",
+                        {"title": "Under a goal", "goal": str(goal.pk)})
+        assert refused.status_code == 400

@@ -1,4 +1,6 @@
-import { Company, Contact, ContactType, Me, NoteFull, NoteStub, Pipeline } from "../lib/api";
+import {
+  Company, Contact, ContactType, Me, NoteFull, NoteStub, Pipeline, Task, WorkParent,
+} from "../lib/api";
 
 /**
  * Shapes copied from a real `/api/contacts/` response against the owner's
@@ -119,6 +121,56 @@ export function aStub(overrides: Partial<NoteStub> = {}): NoteStub {
     id: NOTE_ID, title: "HR matter", is_locked: true, unlocked: false, stub: true,
     created_at: "2026-09-11T15:00:00Z", can_reset_pin: false,
     contact: null, contact_name: "", company: null, company_name: "", task: null, task_title: "",
+    ...overrides,
+  };
+}
+
+
+/** Module 3 shapes, as `apps/work/serializers.py` builds them. */
+export const TASK_ID = "7a1c2f30-51d4-4f6a-9c22-0f9a1b2c3d4e";
+
+export function aTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: TASK_ID,
+    title: "Map the invoice process",
+    description: "",
+    status: "not_started",
+    priority: 1,
+    priority_label: "Normal",
+    due_date: null,
+    project: null, project_title: "",
+    goal: null, goal_title: "",
+    client_company: COMPANY_ID, client_company_name: "Adapt CFO",
+    owner: { id: "u1", name: "Bryan Baker" },
+    assignee: { id: null, name: "" },
+    client_owner_contact: { id: null, name: "" },
+    contact: null,
+    is_client_visible: true,
+    created_by_client: false,
+    created_at: "2026-09-11T15:00:00Z",
+    updated_at: "2026-09-11T15:00:00Z",
+    may_edit: true,
+    may_delete: true,
+    may_set_visibility: true,
+    ...overrides,
+  };
+}
+
+export function aWorkParent(overrides: Partial<WorkParent> = {}): WorkParent {
+  return {
+    id: "3f2b1a09-8c7d-4e6f-b5a4-2d1c0b9a8f7e",
+    kind: "goal",
+    title: "Cut order-to-cash to 20 days",
+    description: "",
+    status: "in_progress",
+    status_override: null,
+    status_is_derived: true,
+    client_company: COMPANY_ID,
+    client_company_name: "Adapt CFO",
+    owner: { id: "u1", name: "Bryan Baker" },
+    client_owner_contact: { id: null, name: "" },
+    target_date: null,
+    created_at: "2026-09-11T15:00:00Z",
     ...overrides,
   };
 }

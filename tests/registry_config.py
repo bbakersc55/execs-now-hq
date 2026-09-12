@@ -18,6 +18,10 @@ from apps.crm.models import (
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.notes.models import Note, NotePinUnlock
+from apps.work.models import (
+    Comment, Digest, DigestItem, Goal, Project, Stakeholder, StakeholderToken,
+    TaskChecklistItem, TaskUpdate,
+)
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, StoredFile, TenantSecret,
 )
@@ -63,3 +67,14 @@ register(ImportMappingProfile, factories.ImportMappingProfileFactory)
 register(Task, factories.TaskFactory)
 register(Note, factories.NoteFactory)
 register(NotePinUnlock, factories.NotePinUnlockFactory, api_exposed=False)
+
+# --- Module 3 ---
+register(Goal, factories.GoalFactory)
+register(Project, factories.ProjectFactory)
+register(TaskChecklistItem, factories.TaskChecklistItemFactory)
+register(Comment, factories.CommentFactory)
+register(TaskUpdate, factories.TaskUpdateFactory)
+register(Stakeholder, factories.StakeholderFactory)
+register(StakeholderToken, factories.StakeholderTokenFactory, api_exposed=False)
+register(Digest, factories.DigestFactory)
+register(DigestItem, factories.DigestItemFactory)
