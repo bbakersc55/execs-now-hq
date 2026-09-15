@@ -356,18 +356,25 @@ It reports the hierarchy and its three-level cap, the six statuses, `client_owne
 5. Sign in to the portal as a real client user on a second device. Create a task, create a project, comment. Confirm you cannot see anything internal.
 6. Grant a third seat with only two available and read the error message.
 
-### Report — Phase 3 status (2026-09-11): automated complete, manual checks pending
+### Report — Phase 3 status (2026-09-15): 5 of 6 manual checks pass; Check 2 pending on the real weekly cycle
 
-**All 39 acceptance criteria pass in the automated suite. The six manual checks
-are the owner's and are not yet done**, so this is not a phase sign-off.
+**Not yet a phase sign-off.** All **41** acceptance criteria pass in the automated
+suite (AC-3.40 and AC-3.41 were added on 2026-09-15). **Five of the six manual checks
+pass.** Check 2 can only run on the real weekly cycle: real client work is being set
+up now, the digest generates **Thursday 2026-09-17 at 08:00 MDT**, and approval and
+delivery are **Friday 2026-09-18**. `phase-3` is merged to `main` on the owner's
+instruction, but **Phase 4 does not start until the owner confirms Friday's digest
+was delivered.**
 
 | | |
 |---|---|
-| Automated tests | **771 passed**, 2 xfailed |
-| — of which the two mandatory families | **378** (tenant isolation + role boundaries, including client-company isolation) |
-| — Module 3 acceptance | **76** |
-| Frontend tests | **91 passed** |
-| Manual checks | **0 of 6 — pending** (`phase3_manual_checks.md`) |
+| Automated tests | **900 passed**, 3 skipped, 2 xfailed (905 collected) |
+| — tenant isolation + role boundaries files | **374** (`test_tenant_isolation.py` 230, `test_role_boundaries.py` 144). The Module 3 files below add their own isolation and role cases |
+| — Module 3 test files | **196** (acceptance 29, digests 60, portal 63, act as 19, activity log 14, stakeholder picker 11) |
+| Frontend tests | **157 passed** |
+| Manual checks | **5 of 6 passed** · Check 2 **pending** (real weekly cycle, above) |
+| Migrations since the 2026-09-11 report | **4, all additive**, applied by the owner 2026-09-15: `work` 0002 (digest key unique among live digests only), `work` 0003 and `tenancy` 0003 (acting-as columns), `crm` 0019 (Outbox `suppressed` state) |
+| Live to a real inbox | An **every-update** digest, approved and delivered (retest, 2026-09-15). **A weekly digest: not yet** — that is Check 2 |
 
 **Digest behaviour under each of the four combinations**, which is where an
 unintended send would hide. Tested as a parametrised table, all four cases:
@@ -401,6 +408,28 @@ all the kind that would have shown up as a client receiving the wrong thing:
    is now decided by claims, floored only at when the recipient was attached.
 3. **The weekly period label can sit in the future** (it derives from the send
    window), and using it as the upper bound hid everything owed today.
+
+**The six manual checks** (`phase3_manual_checks.md`). Everything listed as found
+was fixed before the check was re-run, unless it says otherwise.
+
+| Check | Status | What it found |
+|---|---|---|
+| 1 · Read a real digest as your client would | ✅ Passed (owner) | Functional, not polished: the digest email and the progress report go to the design pass as known inputs (item 5), layout and typography only |
+| 2 · One full weekly cycle on a real engagement | ⏳ **Pending** | Runs on the real cycle. Thursday: the draft is pending in Digests and nothing has been sent. Friday: approve it; it goes out through the practice's Gmail, the task history shows the send, and the stakeholder row shows when they were last told. **Phase 4 waits for the owner's confirmation** |
+| 3 · Leave a digest unapproved | ✅ Passed on retest | **The server expired it on time; the screen never refreshed**, so it looked pending. Now: the list refreshes, a passed window is flagged, approving after the window is refused (it would otherwise have sent on the next tick), and a banner shows when the tick has stopped. The cluster had been down overnight with nothing showing it; the runbook now says to restart `qcluster` after every backend commit, and stale schedules are realigned (`work.tick` had been stuck at 12 Sep, firing every ~30 s) |
+| 4 · Be an every-update stakeholder | ✅ Passed on retest | **Two engine bugs:** a held every-update digest was expired by the same tick that generated it, and the expired row then blocked its content from ever generating again. Fixed; **FR-3.28d** (24-hour review window) confirmed by the owner. A later retest looked silent but was correctly inside the 30-minute quiet window — no defect — which led to the read-only **"Coming up"** card (FR-3.29a) |
+| 5 · Sign in to the portal as a real client user | ✅ Passed on retest | No create controls in the portal; "Add a task here" on a goal gave a client a bare 400; magic-link sign-in landed on a 404. Added from what the check showed: the client **activity log** (FR-3.41) and **act as** (FR-3.42) |
+| 6 · Grant a third seat with two available | ✅ Passed on retest | The seat message was clear. Also found: no FCC/ECC choice at grant, no way to change a role, the seat count out of step after a revoke, no primary contact picker, and a VA able to read seat usage (matrix 9.5). Matrix 9.2a added |
+
+**Also found during the checks, and fixed:** the stakeholder picker searched every
+contact in the tenant; it now defaults to the work's client company, with an explicit
+"someone outside" search, and marks the practice's own people.
+
+**Decided during the checks** (recorded in `01_prd.md` and `03_access_matrix.md`):
+clients may file a task directly on a goal they can see; FR-3.28d's 24-hour review
+window (owner-confirmed); who may act as whom, and that no email of any kind leaves
+while acting (FR-3.42, matrix 9.6–9.10); and what the client activity log contains
+and never contains (FR-3.41, matrix 7.16–7.17).
 
 ---
 
