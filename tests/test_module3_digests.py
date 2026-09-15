@@ -994,3 +994,74 @@ def test_a_digest_past_its_window_cannot_be_approved_before_the_tick_expires_it(
     run_tick(seeded_tenant, timezone.now())
     digest.refresh_from_db()
     assert digest.state == Digest.State.EXPIRED and dev_outbox == []
+
+
+@pytest.mark.django_db
+def test_retest_every_update_after_an_expired_and_a_sent_digest_for_the_same_contact(
+    seeded_tenant, ff, company, recipient, project, dev_outbox, in_tenant_a
+):
+    """The FR-3.28d retest, reproduced from the dev database (2026-09-15).
+
+    The history there: one every_update digest expired, the same content was
+    regenerated under the same period start and sent. Then the task was set to
+    Done, and a few minutes later changed again. Nothing appeared "after several
+    minutes" — and nothing should have: the quiet window closes 30 minutes after
+    the LAST change (FR-3.22), and each later change restarted it. This holds
+    down that the earlier expired and sent rows never block the next digest,
+    and that it appears once the window has closed.
+    """
+    from apps.work.tasks import tick
+
+    tenant_id = str(seeded_tenant.pk)
+    base = timezone.now() - timedelta(hours=26)
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    row = stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    move(task, ff, S.WAITING_ON_CLIENT)
+    Stakeholder.all_objects.filter(pk=row.pk).update(created_at=base - timedelta(minutes=5))
+    TaskUpdate.all_objects.filter(task=task).update(created_at=base)
+
+    # The history: expired, then regenerated with the same period start, and sent.
+    tick(tenant_id, now=base + timedelta(minutes=31))
+    first = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
+    tick(tenant_id, now=first.send_window_at + timedelta(minutes=1))
+    first.refresh_from_db()
+    assert first.state == Digest.State.EXPIRED
+    regenerated_at = first.send_window_at + timedelta(minutes=2)
+    tick(tenant_id, now=regenerated_at)
+    second = Digest.all_objects.exclude(pk=first.pk).get(cadence=Cadence.EVERY_UPDATE)
+    assert second.state == Digest.State.PENDING
+    assert second.period_start == first.period_start
+    digest_service.approve(second, actor=ff.user, role="FF")
+    tick(tenant_id, now=regenerated_at + timedelta(minutes=1))
+    second.refresh_from_db()
+    assert second.state == Digest.State.SENT and len(dev_outbox) == 1
+
+    # The retest: Done, then another change nine minutes later.
+    done_at = timezone.now()
+    move(task, ff, S.DONE)
+    move(task, ff, S.IN_PROGRESS)
+    last_change = done_at + timedelta(minutes=9)
+    newest = (TaskUpdate.all_objects.filter(task=task, kind=K.STATUS_CHANGED,
+                                            to_value=S.IN_PROGRESS)
+              .order_by("-created_at").first())
+    TaskUpdate.all_objects.filter(pk=newest.pk).update(created_at=last_change)
+
+    # "Several minutes" later — and even 38 minutes after Done — the window is
+    # still open, because the later change restarted it.
+    for minutes in (1, 5, 20, 38):
+        assert tick(tenant_id, now=done_at + timedelta(minutes=minutes))[
+            "every_update_generated"] == 0, minutes
+    assert Digest.all_objects.filter(cadence=Cadence.EVERY_UPDATE).count() == 2
+
+    result = tick(tenant_id, now=last_change + digest_service.QUIET_WINDOW + timedelta(seconds=30))
+    assert result["every_update_generated"] == 1
+    third = Digest.all_objects.exclude(pk__in=[first.pk, second.pk]).get(
+        cadence=Cadence.EVERY_UPDATE)
+    assert third.state == Digest.State.PENDING and third.contact_id == recipient.pk
+    claimed = set(third.items.values_list("task_update__to_value", flat=True))
+    assert {S.DONE, S.IN_PROGRESS} <= claimed, "The Done change is in it."
+    assert third.period_start > second.period_start
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.state == Digest.State.EXPIRED and second.state == Digest.State.SENT
+    assert len(dev_outbox) == 1, "Held: nothing more is sent until it is approved."
