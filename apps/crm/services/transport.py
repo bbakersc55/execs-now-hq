@@ -69,7 +69,7 @@ def token_from_message_id(value: str) -> str:
 
 def build_mime(*, to_address, from_address, subject, body_text,
                message_id, thread_token, in_reply_to="", references="",
-               attachments=()):
+               attachments=(), body_html=""):
     mime = MimeMessage()
     mime["To"] = to_address
     mime["From"] = from_address
@@ -79,7 +79,11 @@ def build_mime(*, to_address, from_address, subject, body_text,
     if in_reply_to:
         mime["In-Reply-To"] = in_reply_to
         mime["References"] = (references + " " + in_reply_to).strip()
+    # text/plain first, then text/html: every client that cannot or will not
+    # render HTML still gets the whole message (email_layout.for_delivery).
     mime.set_content(body_text)
+    if body_html:
+        mime.add_alternative(body_html, subtype="html")
     for filename, content, content_type in attachments:
         maintype, _, subtype = content_type.partition("/")
         mime.add_attachment(content, maintype=maintype or "application",
@@ -234,7 +238,7 @@ class GmailTransport:
     name = "gmail"
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
-             in_reply_to="", references="", attachments=()):
+             in_reply_to="", references="", attachments=(), body_html=""):
         connection = sending_connection_for(tenant)
         token = access_token_for(connection)
 
@@ -244,7 +248,7 @@ class GmailTransport:
             from_address=connection.send_as_address or tenant.from_address,
             subject=subject, body_text=body_text, message_id=message_id,
             thread_token=thread.thread_token, in_reply_to=in_reply_to,
-            references=references, attachments=attachments,
+            references=references, attachments=attachments, body_html=body_html,
         )
         payload = {"raw": base64.urlsafe_b64encode(mime.as_bytes()).decode()}
         if thread.gmail_thread_id:
@@ -293,16 +297,18 @@ class DevOutboxTransport:
     name = "dev"
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
-             in_reply_to="", references="", attachments=()):
-        from django.core.mail import EmailMessage as DjangoEmailMessage
+             in_reply_to="", references="", attachments=(), body_html=""):
+        from django.core.mail import EmailMultiAlternatives
 
         message_id = message_id_for(tenant, thread)
-        email = DjangoEmailMessage(
+        email = EmailMultiAlternatives(
             subject=subject, body=body_text, from_email=tenant.from_address,
             to=[to_address],
             headers={"Message-ID": message_id, THREAD_HEADER: thread.thread_token,
                      **({"In-Reply-To": in_reply_to} if in_reply_to else {})},
         )
+        if body_html:
+            email.attach_alternative(body_html, "text/html")
         for filename, content, content_type in attachments:
             email.attach(filename, content, content_type)
         email.send(fail_silently=False)

@@ -1,0 +1,14 @@
+<p style="margin:0 0 16px;font-size:20px;line-height:1.35;font-weight:700;color:#1A1A1A;">{{ heading }}</p>
+{% for paragraph in paragraphs %}<p style="margin:0 0 16px;">{{ paragraph }}</p>
+{% endfor %}{% if url %}<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 20px;border-collapse:separate;">
+  <tr>
+    <td align="center" style="background-color:{{ accent }};border-radius:6px;">
+      <a href="{{ url }}" style="display:inline-block;padding:14px 28px;font-family:{{ font }};font-size:17px;line-height:1.2;font-weight:700;color:#FFFFFF;text-decoration:none;border-radius:6px;">{{ button_label }}</a>
+    </td>
+  </tr>
+</table>
+<p style="margin:0 0 6px;font-size:16px;color:{{ muted }};">If the button doesn't work, copy this link into your browser:</p>
+<p style="margin:0 0 20px;font-size:16px;line-height:1.5;word-break:break-all;"><a href="{{ url }}" style="color:{{ accent }};text-decoration:underline;">{{ url }}</a></p>
+{% else %}<p style="margin:24px 0 20px;padding:12px 14px;background-color:#F4F4F5;font-size:16px;color:{{ muted }};">{{ redacted_note }}</p>
+{% endif %}<p style="margin:0 0 16px;font-size:16px;font-weight:600;">{{ expiry }}</p>
+{% if closing %}<p style="margin:0;font-size:16px;color:{{ muted }};">{{ closing }}</p>{% endif %}

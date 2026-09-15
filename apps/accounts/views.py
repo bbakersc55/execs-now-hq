@@ -94,6 +94,25 @@ def request_magic_link(request):
     return JsonResponse(_OPAQUE)
 
 
+MAGIC_LINK_REDACTED = "[one-time link — sent to the recipient only, not stored]"
+
+
+def magic_link_email(tenant, *, url):
+    """`(html, text)` for a sign-in link. `url=None` is the stored copy, which
+    never holds the link (assumption C3)."""
+    from apps.crm.services import email_layout
+
+    return email_layout.action_link_email(
+        tenant, subject=f"Sign in to {PRODUCT_NAME}", heading=f"Sign in to {PRODUCT_NAME}",
+        paragraphs=[f"Use the button below to sign in to {PRODUCT_NAME}. You'll see "
+                    "your company's work, and nothing else."],
+        button_label="Sign in", url=url,
+        expiry="This link expires in 20 minutes and can be used once.",
+        closing="If you didn't ask to sign in, you can ignore this email.",
+        redacted_note=MAGIC_LINK_REDACTED,
+    )
+
+
 def _send_magic_link(membership, raw_token):
     """Sent synchronously, not queued (assumption A2a).
 
@@ -116,10 +135,8 @@ def _send_magic_link(membership, raw_token):
     from apps.tenancy.models import AuditEvent
 
     url = f"{settings.PUBLIC_BASE_URL}/auth/magic/{raw_token}"
-
-    def body(link):
-        return (f"Click to sign in to {PRODUCT_NAME}:\n\n{link}\n\n"
-                "This link expires in 20 minutes and can be used once.")
+    stored_html, stored_text = magic_link_email(membership.tenant, url=None)
+    html, text = magic_link_email(membership.tenant, url=url)
 
     try:
         # The requester is not signed in, so no tenant is bound (B1). Bind the
@@ -128,8 +145,8 @@ def _send_magic_link(membership, raw_token):
             outbox.create_message(
                 tenant=membership.tenant, producer=OutboxMessage.Producer.MAGIC_LINK,
                 to_address=membership.user.email, subject=f"Sign in to {PRODUCT_NAME}",
-                body_text=body("[one-time link — sent to the recipient only, not stored]"),
-                deliver_body_text=body(url),
+                body_text=stored_text, body_html=stored_html,
+                deliver_body_text=text, deliver_body_html=html,
             )
     except TransportUnavailable as exc:
         AuditEvent.all_objects.create(

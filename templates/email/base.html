@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en" data-enhq-email="base">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F4F4F5;">
+{% if preheader %}<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:#F4F4F5;">{{ preheader }}</div>{% endif %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F4F4F5;border-collapse:collapse;">
+  <tr>
+    <td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:#FFFFFF;border-collapse:collapse;">
+        <tr>
+          <td style="background-color:{{ brand.header_color }};padding:22px 32px;font-family:{{ font }};font-size:22px;line-height:1.25;font-weight:700;letter-spacing:0.2px;color:#FFFFFF;">{{ brand.display_name }}</td>
+        </tr>
+        <tr>
+          <td style="background-color:{{ brand.accent_color }};height:4px;line-height:4px;font-size:1px;">&nbsp;</td>
+        </tr>
+        <tr>
+          <td style="padding:32px 32px 28px;font-family:{{ font }};font-size:16px;line-height:1.6;color:{{ text_color }};">{{ content|safe }}</td>
+        </tr>
+        <tr>
+          <td style="padding:18px 32px 26px;border-top:1px solid #E6E6E6;font-family:{{ font }};font-size:13px;line-height:1.5;color:{{ faint }};">{{ brand.practice_name }}{% if footer_link %}<br><a href="{{ footer_link.url }}" style="color:{{ muted }};text-decoration:underline;">{{ footer_link.label }}</a>{% endif %}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

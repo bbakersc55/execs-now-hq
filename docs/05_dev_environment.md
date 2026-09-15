@@ -314,6 +314,17 @@ mailpit --smtp localhost:1025 --listen localhost:8125
 
 Then open **http://localhost:5200** for the app and **http://localhost:8125** for mail.
 
+**Previewing an email.** On a localhost build, every Outbox item and every pending digest has **Preview email**: it opens the HTML exactly as it sends, from the same function delivery uses (add `?part=text` to the URL for the plain-text part). A sign-in or PIN link previews as its stored copy, which never holds the link. A pending digest shows a placeholder where the recipient's own cadence link goes; the real one is issued only when it sends.
+
+**Visual sign-off on real Gmail.** One sample of every producer, to an address in the dev allow-list:
+
+```bash
+.venv/bin/python manage.py send_email_samples --to you@example.com --dry-run   # render only
+.venv/bin/python manage.py send_email_samples --to you@example.com
+```
+
+Samples are built from each producer's own rendering functions with sample content, subject-prefixed `[Sample]`, and logged in the Outbox as `source_type = email_sample`. They never run digest generation, so no real update is claimed.
+
 **`qcluster` must be running** or digests never generate, Drive never polls, and transcriptions never finish. If something "isn't happening," check terminal 2 first.
 
 **`qcluster` does not reload on code changes** (`runserver` does). After pulling or changing code, restart it — a cluster started before a migration runs the old models and fails every job that touches the new columns.

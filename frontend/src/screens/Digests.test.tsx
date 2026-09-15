@@ -257,3 +257,32 @@ describe("coming up: every-update digests waiting on their quiet window (FR-3.29
     expect(card.querySelectorAll("button, input, select, textarea")).toHaveLength(0);
   });
 });
+
+describe("Preview email (development only)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("offers a preview of a pending digest, rendered exactly as it will send", async () => {
+    show([aDigest()], aMe({ dev_tools: true }));
+    const link = await screen.findByRole("link", { name: "Preview the email to Dana Okafor" });
+    expect(link).toHaveAttribute("href", `/api/digests/${DIGEST_ID}/preview/`);
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("offers none off localhost, or once a digest is no longer pending", async () => {
+    show([aDigest()], aMe({ dev_tools: false }));
+    await screen.findByText(/To dana@northwind\.invalid/);
+    expect(screen.queryByRole("link", { name: /Preview the email/ })).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+    show([aDigest({ state: "approved" })], aMe({ dev_tools: true }));
+    await screen.findAllByText(/To dana@northwind\.invalid/);
+    expect(screen.queryByRole("link", { name: /Preview the email/ })).not.toBeInTheDocument();
+  });
+
+  it("says that edited wording is sent without the grouping and chips", async () => {
+    const user = userEvent.setup();
+    show([aDigest()], aMe());
+    await user.click(await screen.findByRole("button", { name: "Edit the wording" }));
+    expect(screen.getByText(/Edited wording is sent as written/)).toBeInTheDocument();
+  });
+});

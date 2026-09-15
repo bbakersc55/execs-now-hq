@@ -115,6 +115,28 @@ def _next_touch(contact, from_when):
     return (from_when or timezone.now()) + timezone.timedelta(days=days)
 
 
+def compose_onboarding(contact, *, actor=None, template=None, with_attachment=False):
+    """FR-1.23b — the onboarding note's words."""
+    if template is not None:
+        return template.body
+    # The sentence has to match reality. Claiming an attachment that is not
+    # there is worse than not mentioning one: the partner looks for a file,
+    # finds none, and the first impression is of a broken email.
+    opening = (
+        "Great to meet you. I've attached a short overview of what we do, "
+        "so you know what to look out for."
+        if with_attachment else
+        "Great to meet you — good to know what you're working on."
+    )
+    return (
+        f"Hi {contact.first_name},\n\n"
+        f"{opening}\n\n"
+        "If there's a type of introduction that would help you, tell me and "
+        "I'll keep an eye out.\n\n"
+        f"{_signature_for(contact.tenant, actor)}"
+    )
+
+
 def onboard_referral_partner(contact, *, actor=None):
     """FR-1.23a-23d — fires the moment a contact FIRST becomes a referral
     partner, by hand or via a Module 5 approval.
@@ -139,22 +161,8 @@ def onboard_referral_partner(contact, *, actor=None):
         # draft.
         warning = "No marketing flyer is uploaded, so this draft has no attachment."
 
-    # FR-1.23b — the sentence has to match reality. Claiming an attachment that
-    # is not there is worse than not mentioning one: the partner looks for a
-    # file, finds none, and the first impression is of a broken email.
-    opening = (
-        "Great to meet you. I've attached a short overview of what we do, "
-        "so you know what to look out for."
-        if attachments else
-        "Great to meet you — good to know what you're working on."
-    )
-    body = template.body if template else (
-        f"Hi {contact.first_name},\n\n"
-        f"{opening}\n\n"
-        "If there's a type of introduction that would help you, tell me and "
-        "I'll keep an eye out.\n\n"
-        f"{_signature_for(tenant, actor)}"
-    )
+    body = compose_onboarding(contact, actor=actor, template=template,
+                              with_attachment=bool(attachments))
 
     message = create_message(
         tenant=tenant, producer=P.REFERRAL_ONBOARDING,

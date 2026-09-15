@@ -1,0 +1,14 @@
+{% if narrative %}<p style="margin:0 0 28px;font-size:17px;line-height:1.65;color:{{ text_color }};">{{ narrative }}</p>
+{% endif %}{% for group in groups %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;">
+  <tr>
+    <td style="padding:0 0 8px;border-bottom:1px solid #EEEEEE;font-size:17px;line-height:1.4;font-weight:700;color:#1A1A1A;">{{ group.title }}{% if group.parent %}<span style="font-weight:400;font-size:16px;color:{{ muted }};"> &middot; {{ group.parent }}</span>{% endif %}</td>
+  </tr>
+  {% for item in group.items %}<tr>
+    <td style="padding:10px 0 2px;">
+      {% if item.line %}<div style="font-size:16px;line-height:1.5;color:{{ muted }};">{% if item.chip %}<span style="display:inline-block;padding:2px 9px;border-radius:10px;background-color:{{ item.chip.bg }};color:{{ item.chip.fg }};font-size:13px;line-height:19px;font-weight:700;vertical-align:1px;">{{ item.chip.label }}</span>&nbsp; {% endif %}{{ item.line }}</div>{% endif %}
+      {% if item.sentence %}<div style="margin:8px 0 0;padding:2px 0 2px 14px;border-left:3px solid {{ accent }};font-size:16px;line-height:1.6;color:{{ text_color }};">{{ item.sentence }}</div>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endfor %}

@@ -447,6 +447,7 @@ and never contains (FR-3.41, matrix 7.16–7.17).
 6. **Template snapshot** so template edits cannot touch completed sessions.
 7. PDF via WeasyPrint with **all five exclusions defaulted off** and a true preview.
 8. Conversion: per-row Goal or Project, `owner_text` → `client_owner_contact_id` where it resolves, back-links preserved, client invariant fired.
+9. **Email:** the pre-call invite and the strategy-PDF email use the shared **base email layout** (`apps/crm/services/email_layout.py`, `templates/email/base.html`) with a text/plain part, and are previewable in the Outbox — no separate styling. Settled by the email presentation pass (2026-09-15).
 
 ### Tests that must pass
 
@@ -564,11 +565,11 @@ means no client ever sees the unstyled version.
    the "Linked to" choices, whose layout broke because a panel-wide `input { width: 100% }`
    also caught radio buttons.
 5. **Known inputs from Phase 3 (owner, Check 5, 2026-09-14):** the portal's **progress
-   report** and the **digest email** formatting — both functional and correct, neither
-   polished. The digest's structure and wording carry a rule (Module 3's aim: a report that
+   report** formatting — functional and correct, not polished. *(The **digest email** got its
+   branded HTML layout in the email presentation pass, 2026-09-15.)* The digest's structure and wording carry a rule (Module 3's aim: a report that
    reads as value delivered rather than a list of field changes) and stay as they are;
    this is layout and typography only.
-6. **Known input from Phase 3 (owner, 2026-09-15):** the **client-activity notification email** to the practice (FR-3.40) — subject and body need a proper template. Functional but bare: a generic subject and a flat bulleted list. What it reports and when (the 30-minute batching, never an update made while acting as) stays as it is.
+6. **Known input from Phase 3 (owner, 2026-09-15):** the **client-activity notification email** to the practice (FR-3.40) — the **subject** still needs proper wording. *(Its body moved to the branded layout — who, what and when — in the email presentation pass, 2026-09-15.)* What it reports and when (the 30-minute batching, never an update made while acting as) stays as it is.
 
 **Not in scope:** changes to behaviour, copy that carries a rule (the consent reminder, the
 PIN dialog's explanation, anything stating what is or isn't sent), or any review queue.

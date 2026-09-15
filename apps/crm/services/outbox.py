@@ -90,7 +90,7 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
                    is_ai_generated=False, warning="", send_by=None,
                    from_address=None, sent_via="postmark", thread=None,
                    source_type="", source_id=None, attachments=(),
-                   deliver_body_text=None, force_direct=False):
+                   deliver_body_text=None, force_direct=False, deliver_body_html=None):
     """Single entry point. Nothing else in the codebase writes an OutboxMessage.
 
     `deliver_body_text` is for one-time links (magic links, PIN resets): it is
@@ -118,7 +118,7 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
     # or a deterministic digest the rules say needs no approval (FR-3.27).
     # It does not bypass a gate; it records that one was already passed.
     direct = force_direct or _direct_to_sent(producer, role)
-    if deliver_body_text is not None and not direct:
+    if (deliver_body_text is not None or deliver_body_html is not None) and not direct:
         raise ValueError("deliver_body_text is only for direct-to-sent producers.")
     if not from_address:
         # FR-1.15c — the per-producer sender default. Resolved once, HERE, and
@@ -154,7 +154,8 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
         )
 
     if direct:
-        _deliver(message, actor=actor, body_text=deliver_body_text)
+        _deliver(message, actor=actor, body_text=deliver_body_text,
+                 body_html=deliver_body_html)
     return message
 
 
@@ -239,7 +240,7 @@ def expire_due(tenant, *, now=None):
 
 # --------------------------------------------------------------- delivery
 
-def _deliver(message, *, actor=None, body_text=None):
+def _deliver(message, *, actor=None, body_text=None, body_html=None):
     """The one path out of the app.
 
     FR-0.7 / H6 — the dev-outbox guard lives here and is unchanged by the
@@ -292,11 +293,17 @@ def _deliver(message, *, actor=None, body_text=None):
             attachment.stored_file.content_type or "application/pdf",
         ))
 
+    # One function decides what leaves, and every preview calls it too.
+    from apps.crm.services import email_layout
+
+    html_part, text_part = email_layout.for_delivery(message, body_text=body_text,
+                                                     body_html=body_html)
     result = transport.send(
         tenant=message.tenant,
         to_address=message.to_address,
         subject=message.subject,
-        body_text=body_text if body_text is not None else message.body_text,
+        body_text=text_part,
+        body_html=html_part,
         thread=thread,
         in_reply_to=in_reply_to,
         attachments=attachments,

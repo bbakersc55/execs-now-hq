@@ -206,6 +206,13 @@ export function Outbox() {
             </div>
             <div className="right">
               <Pill kind={STATE_KIND[m.state] ?? ""}>{m.state.replace(/_/g, " ")}</Pill>{" "}
+              {/* Development only: the email exactly as it sends, from the same function. */}
+              {me.data?.dev_tools && (
+                <a className="small" href={`/api/outbox/${m.id}/preview/`} target="_blank"
+                  rel="noreferrer" aria-label={`Preview the email to ${m.to_address}`}>
+                  Preview email
+                </a>
+              )}{" "}
               {m.is_ai_generated && <Pill kind="ai">AI-drafted</Pill>}{" "}
               {m.dev_real_send && <Pill kind="warn">sent for real, from dev</Pill>}
             </div>

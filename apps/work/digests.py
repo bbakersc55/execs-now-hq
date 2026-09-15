@@ -266,17 +266,116 @@ def narrative_for(tenant, owed, *, contact):
         return ""
 
 
+# Status chips: semantic colours, the same for every tenant.
+CHIPS = {
+    Task.Status.DONE: ("#1E7B34", "#E6F4EA"),
+    Task.Status.IN_PROGRESS: ("#1F5FA8", "#E7EFFA"),
+    Task.Status.WAITING_ON_CLIENT: ("#A04A00", "#FDEBDD"),
+    Task.Status.BLOCKED: ("#B42318", "#FDE8E6"),
+    Task.Status.NOT_STARTED: ("#555555", "#EFEFEF"),
+    Task.Status.CANCELLED: ("#555555", "#EFEFEF"),
+}
+FOOTER_LABEL = "Change how often you hear from us, or stop these updates"
+
+
+def _status_label(value):
+    return dict(Task.Status.choices).get(value, value or "")
+
+
+def _chip(value):
+    if value not in CHIPS:
+        return None
+    fg, bg = CHIPS[value]
+    return {"label": _status_label(value), "fg": fg, "bg": bg}
+
+
+def _item(update):
+    """The status change and the human sentence, kept apart: the change is a
+    small grey line with a chip; the line the fractional wrote is the sentence."""
+    kind, chip, line = update.kind, None, ""
+    if kind == K.STATUS_CHANGED:
+        chip = _chip(update.to_value)
+        line = (f"Moved from {_status_label(update.from_value)} to "
+                f"{_status_label(update.to_value)}" if update.from_value
+                else f"Set to {_status_label(update.to_value)}")
+    elif kind == K.COMPLETED:
+        chip, line = _chip(Task.Status.DONE), "Completed"
+    elif kind == K.CREATED:
+        line = "Added"
+    elif kind == K.DUE_CHANGED:
+        line = f"Due date now {update.to_value}" if update.to_value else "Due date removed"
+    elif kind == K.ASSIGNEE_CHANGED:
+        line = f"Now with {update.to_value}" if update.to_value else "Now unassigned"
+    elif kind == K.CHECKLIST_COMPLETED:
+        line = f"Step done: {update.to_value}"
+    elif kind == K.COMMENT_ADDED:
+        line = "New comment"
+    elif kind != K.NARRATIVE:
+        line = kind.replace("_", " ").capitalize()
+    return {"line": line, "chip": chip, "sentence": update.client_facing_line or ""}
+
+
+def _groups(owed):
+    """Updates grouped by task, in the order they happened, each group titled by
+    its task with the project (or goal) it sits under."""
+    groups, order = {}, []
+    for update, _row in owed:
+        task = update.task
+        key = task.pk if task is not None and task.pk else id(task)
+        if key not in groups:
+            project = getattr(task, "project", None) if task is not None else None
+            goal = getattr(task, "goal", None) if task is not None else None
+            groups[key] = {
+                "title": task.title if task is not None else "Other work",
+                "parent": project.title if project is not None
+                else (goal.title if goal is not None else ""),
+                "updates": [], "done": False,
+            }
+            order.append(key)
+        if update.kind == K.STATUS_CHANGED and update.to_value == Task.Status.DONE:
+            groups[key]["done"] = True
+        groups[key]["updates"].append(update)
+    out = []
+    for key in order:
+        group = groups[key]
+        # "Moved to Done" already says it; a separate "Completed" row repeats it.
+        items = [_item(u) for u in group["updates"]
+                 if not (u.kind == K.COMPLETED and group["done"])]
+        items = [i for i in items if i["line"] or i["sentence"]]
+        if items:
+            out.append({"title": group["title"], "parent": group["parent"], "items": items})
+    return out
+
+
+def digest_text(narrative, groups) -> str:
+    """The text/plain part, from the same groups as the HTML."""
+    parts = [narrative.strip()] if narrative else []
+    for group in groups:
+        lines = [group["title"] + (f" ({group['parent']})" if group["parent"] else "")]
+        for item in group["items"]:
+            if item["line"]:
+                chip = f"[{item['chip']['label']}] " if item["chip"] else ""
+                lines.append(f"  - {chip}{item['line']}")
+            if item["sentence"]:
+                lines.append(f"    “{item['sentence']}”")
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts).strip()
+
+
 def render(digest, owed, *, narrative=""):
-    body = deterministic_body(owed)
-    text = f"{narrative}\n\n{body}" if narrative else body
-    html_items = "".join(
-        f"<li>{_describe(u)}"
-        + (f"<br><em>{u.client_facing_line}</em>" if u.client_facing_line else "")
-        + "</li>"
-        for u, _ in owed
-    )
-    html = (f"<p>{narrative}</p>" if narrative else "") + f"<ul>{html_items}</ul>"
-    return text.strip(), html
+    """`(text, html_content)` — narrative first, then updates grouped by task.
+
+    The HTML is content only; `email_for` puts it in the layout at send time, so
+    the approval screen and the email show the same words.
+    """
+    from django.template.loader import render_to_string
+
+    from apps.crm.services import email_layout
+
+    groups = _groups(owed)
+    html = render_to_string("email/digest_content.html", email_layout.template_context(
+        digest.tenant, narrative=narrative, groups=groups))
+    return digest_text(narrative, groups), html
 
 
 # -------------------------------------------------------------- generation
@@ -540,7 +639,9 @@ def edit_body(digest, *, actor, role, body_text):
     if digest.state != Digest.State.PENDING:
         raise DigestActionRefused(f"This digest is {digest.state}.", status=409)
     digest.body_text = body_text
-    digest.save(update_fields=["body_text", "updated_at"])
+    # The edit is what gets sent: the grouped HTML described the old wording.
+    digest.body_html = ""
+    digest.save(update_fields=["body_text", "body_html", "updated_at"])
     AuditEvent.all_objects.create(
         tenant=digest.tenant, actor=actor, verb="digest.edited",
         target_type="digest", target_id=digest.pk, payload={})
@@ -548,6 +649,45 @@ def edit_body(digest, *, actor, role, body_text):
 
 
 def footer_for(digest) -> str:
+    """FR-3.33 — the text form of the recipient's own cadence control."""
+    url = footer_url_for(digest)
+    return f"\n\n—\n{FOOTER_LABEL}: {url}" if url else ""
+
+
+def preview_footer_url() -> str:
+    from django.conf import settings
+
+    root = settings.APP_ROOT_URL
+    if not root.startswith("http"):
+        root = settings.PUBLIC_BASE_URL.rstrip("/") + "/" + root.lstrip("/")
+    return f"{root.rstrip('/')}/updates/your-own-link-is-issued-when-it-sends"
+
+
+def email_for(digest, *, footer_url="") -> tuple[str, str]:
+    """`(html, text)` — the finished digest email. `send` stores and delivers
+    this; the development preview renders it with a placeholder cadence link,
+    because a real one is a credential issued only at send.
+
+    If someone edited the wording, the stored HTML was cleared, so the email is
+    built from their text — their words go out, without the grouping and chips.
+    """
+    from apps.crm.services import email_layout
+
+    brand = email_layout.branding(digest.tenant)
+    content = digest.body_html if (digest.body_html or "").strip() \
+        else email_layout.text_to_html(digest.body_text, accent=brand.accent_color)
+    first_line = (digest.body_text or "").strip().split("\n", 1)[0]
+    html = email_layout.document(
+        digest.tenant, content_html=content, subject=_subject(digest),
+        preheader=first_line[:140],
+        footer_link=(FOOTER_LABEL, footer_url) if footer_url else None,
+    )
+    text = (digest.body_text or "") + (f"\n\n—\n{FOOTER_LABEL}: {footer_url}"
+                                       if footer_url else "")
+    return html, text
+
+
+def footer_url_for(digest) -> str:
     """FR-3.33 — every digest carries the recipient's own cadence control."""
     from django.conf import settings
 
@@ -561,8 +701,7 @@ def footer_for(digest) -> str:
     root = settings.APP_ROOT_URL
     if not root.startswith("http"):
         root = settings.PUBLIC_BASE_URL.rstrip("/") + "/" + root.lstrip("/")
-    return (f"\n\n—\nChange how often you hear from us, or stop these updates: "
-            f"{root.rstrip('/')}/updates/{raw}")
+    return f"{root.rstrip('/')}/updates/{raw}"
 
 
 @transaction.atomic
@@ -577,11 +716,11 @@ def send(digest, *, actor=None):
         raise DigestActionRefused(
             f"{digest.contact.first_name} has no email address to send to.")
     subject = _subject(digest)
+    html, text = email_for(digest, footer_url=footer_url_for(digest))
     message = outbox.create_message(
         tenant=digest.tenant, producer=OutboxMessage.Producer.DIGEST,
         to_address=address, to_contact=digest.contact, subject=subject,
-        body_text=digest.body_text + footer_for(digest),
-        body_html=digest.body_html, is_ai_generated=digest.is_ai_generated,
+        body_text=text, body_html=html, is_ai_generated=digest.is_ai_generated,
         actor=actor, force_direct=True,
         source_type="digest", source_id=digest.pk,
     )

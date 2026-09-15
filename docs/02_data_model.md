@@ -43,6 +43,7 @@ The practice. One row in Beta.
 | `inbound_domain` | text | `inbound.getexecutivesnow.com` |
 | `discipline` | text | `operations` in Beta; multi-discipline is V1 |
 | `hold_all_digests` | bool | **default `true`** (FR-3.25) |
+| `email_display_name` / `email_header_color` / `email_accent_color` | text / text(7) / text(7) | Email presentation — the header wordmark and two colours every app-originated email uses. Defaults `Executives Now` · `#0A3A65` · `#F58220`; a V1 tenant sets its own without a template change (2026-09-15) |
 | `digest_ai_prose_default` | bool | default `true`; the value a new client company inherits (FR-3.24) |
 | `digest_send_day` | smallint | ISO weekday, default 5 = Friday (FR-3.23) |
 | `digest_send_hour` | smallint | default 8 |

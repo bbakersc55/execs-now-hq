@@ -552,6 +552,23 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
         ])
         return Response(self.get_serializer(message).data)
 
+    @action(detail=True, methods=["get"])
+    def preview(self, request, pk=None):
+        """Development only — this message rendered exactly as it sends, from the
+        same function delivery uses. `?part=text` shows the plain-text part. A
+        one-time link shows its stored copy, which never holds the link."""
+        from django.conf import settings
+        from django.http import Http404, HttpResponse
+
+        from apps.crm.services import email_layout
+
+        if not settings.IS_LOCAL:
+            raise Http404
+        html, text = email_layout.for_delivery(self.get_object())
+        if request.query_params.get("part") == "text":
+            return HttpResponse(text, content_type="text/plain; charset=utf-8")
+        return HttpResponse(html, content_type="text/html; charset=utf-8")
+
     @action(detail=True, methods=["post"], url_path="attachments")
     def add_attachment(self, request, pk=None):
         """FR-1.23b — add a file to a draft. Size-capped; PROTECTed once used."""

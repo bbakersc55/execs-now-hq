@@ -179,6 +179,10 @@ export function Digests({ me }: { me: Me }) {
                 <>
                   <textarea aria-label="Digest text" rows={12} value={draft}
                     onChange={(e) => setDraft(e.target.value)} />
+                  <p className="small muted">
+                    Edited wording is sent as written, in plain paragraphs — without the task
+                    grouping and status chips. Regenerate to get those back.
+                  </p>
                   <div className="row">
                     <button className="primary"
                       onClick={() => act.mutate({ id: d.id, path: "edit",
@@ -200,6 +204,12 @@ export function Digests({ me }: { me: Me }) {
                     onClick={() => act.mutate({ id: d.id, path: "approve" })}>
                     Approve and send
                   </button>
+                )}
+                {me.dev_tools && d.state === "pending" && (
+                  <a className="btn ghost" href={`/api/digests/${d.id}/preview/`} target="_blank"
+                    rel="noreferrer" aria-label={`Preview the email to ${d.contact.name}`}>
+                    Preview email
+                  </a>
                 )}
                 <button onClick={() => { setEditing(d.id); setDraft(d.body_text); }}>
                   Edit the wording

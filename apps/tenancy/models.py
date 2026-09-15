@@ -102,6 +102,18 @@ class Tenant(UUIDModel):
     digest_ai_prose_default = models.BooleanField(default=True)  # FR-3.24
     digest_send_day = models.PositiveSmallIntegerField(default=5)  # Friday
     digest_send_hour = models.PositiveSmallIntegerField(default=8)
+    # Email presentation — the header wordmark and the two colours every
+    # app-originated email uses (apps/crm/services/email_layout.py). Executives
+    # Now's values are the defaults; a V1 tenant sets its own without a template
+    # change. `db_default` too, so a database migrated ahead of the code still
+    # accepts rows written by the code that does not know these columns.
+    email_display_name = models.CharField(max_length=80, blank=True,
+                                          default="Executives Now",
+                                          db_default="Executives Now")
+    email_header_color = models.CharField(max_length=7, default="#0A3A65",
+                                          db_default="#0A3A65")
+    email_accent_color = models.CharField(max_length=7, default="#F58220",
+                                          db_default="#F58220")
     audio_retention_days = models.PositiveIntegerField(default=30)  # F7
 
     referral_blurb = models.TextField(blank=True, default="")  # FR-1.21a

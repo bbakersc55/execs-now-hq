@@ -668,6 +668,26 @@ class DigestViewSet(WorkViewSet):
     def retrieve(self, request, pk=None):
         return Response(work_serializers.represent_digest(self.load(pk), full=True))
 
+    @action(detail=True, methods=["get"])
+    def preview(self, request, pk=None):
+        """Development only — a pending digest exactly as it will send, with a
+        placeholder where the recipient's own cadence link goes (a real one is a
+        credential, issued only at send). `?part=text` shows the plain part."""
+        from django.conf import settings
+        from django.http import HttpResponse
+
+        if not settings.IS_LOCAL:
+            raise Http404
+        digest = self.load(pk)
+        if digest.state != Digest.State.PENDING:
+            return Response({"detail": f"This digest is {digest.state}. Preview what was "
+                                       "sent from its Outbox row."}, status=409)
+        html, text = digest_service.email_for(digest,
+                                              footer_url=digest_service.preview_footer_url())
+        if request.query_params.get("part") == "text":
+            return HttpResponse(text, content_type="text/plain; charset=utf-8")
+        return HttpResponse(html, content_type="text/html; charset=utf-8")
+
     @action(detail=False, methods=["get"])
     def upcoming(self, request):
         """FR-3.29a — every-update content waiting on its quiet window. Read-only

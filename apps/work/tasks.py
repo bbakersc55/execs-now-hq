@@ -74,6 +74,40 @@ def tick_health(tenant, *, now=None) -> dict:
     }
 
 
+def client_activity_email(tenant, rows) -> tuple[str, str, str]:
+    """`(subject, html, text)` — who did what, and when, in tenant time."""
+    from zoneinfo import ZoneInfo
+
+    from django.template.loader import render_to_string
+
+    from apps.crm.services import email_layout
+
+    zone = ZoneInfo(tenant.timezone)
+    items = []
+    for row in rows:
+        who = (row.actor.full_name or row.actor.email) if row.actor else "A client user"
+        verb = {"comment_added": "commented on", "created": "created",
+                "status_changed": "changed the status of"}.get(
+                    row.kind, row.kind.replace("_", " ") + " on")
+        local = row.created_at.astimezone(zone)
+        when = f"{local:%a} {local.day} {local:%b}, {local:%I:%M %p}".replace(" 0", " ")
+        items.append({"who": who, "when": when,
+                      "what": f"{verb} “{row.task.title if row.task else 'work'}”"})
+    count = len(items)
+    subject = f"Client activity — {count} update{'s' if count != 1 else ''}"
+    intro = "Your clients have been active in the portal."
+    closing = "Open Work in Execs NOW HQ to reply."
+    content = render_to_string("email/client_activity_content.html",
+                               email_layout.template_context(tenant, intro=intro, rows=items,
+                                                             closing=closing))
+    html = email_layout.document(tenant, content_html=content, subject=subject,
+                                 preheader=f"{count} update{'s' if count != 1 else ''} "
+                                           "from your clients")
+    text = (intro + "\n\n" + "\n".join(f"- {i['who']} {i['what']} — {i['when']}" for i in items)
+            + "\n\n" + closing)
+    return subject, html, text
+
+
 def notify_client_activity(tenant, *, now=None) -> int:
     """FR-3.40 — tell the practice when a client comments or creates a task,
     batched on the same 30-minute quiet window.
@@ -104,14 +138,7 @@ def notify_client_activity(tenant, *, now=None) -> int:
     if now - rows[-1].created_at < CLIENT_ACTIVITY_QUIET:
         return 0
 
-    lines = []
-    for row in rows:
-        who = row.actor.full_name or row.actor.email if row.actor else "A client user"
-        what = {"comment_added": "commented on", "created": "created",
-                "status_changed": "changed the status of"}.get(row.kind, row.kind + " on")
-        lines.append(f"- {who} {what} “{row.task.title if row.task else 'work'}”")
-    body = ("Your clients have been active in the portal:\n\n" + "\n".join(lines)
-            + "\n\nOpen Work in Execs NOW HQ to reply.")
+    subject, html, body = client_activity_email(tenant, rows)
 
     recipients = {
         member.user.email
@@ -123,9 +150,8 @@ def notify_client_activity(tenant, *, now=None) -> int:
     for address in sorted(recipients):
         outbox.create_message(
             tenant=tenant, producer=OutboxMessage.Producer.CLIENT_ACTIVITY,
-            to_address=address, subject=f"Client activity — {len(rows)} update"
-                                        f"{'s' if len(rows) != 1 else ''}",
-            body_text=body, force_direct=True,
+            to_address=address, subject=subject,
+            body_text=body, body_html=html, force_direct=True,
         )
     AuditEvent.objects.create(
         tenant=tenant, verb="client_activity.notified", target_type="tenant",

@@ -194,24 +194,38 @@ def request_reset(note, *, request):
         root = settings.PUBLIC_BASE_URL.rstrip("/") + "/" + root.lstrip("/")
     url = f"{root.rstrip('/')}/notes/pin-reset/{raw}"
 
-    def body(link):
-        return (
-            f"You asked to reset the PIN on the note \"{display_title(note)}\".\n\n"
-            f"This link CLEARS the PIN. It does not tell you what the PIN was. "
-            f"Once cleared, the note is readable by everyone who can normally see "
-            f"it, until someone sets a new PIN.\n\n{link}\n\n"
-            f"The link works once and expires in 20 minutes. If you did not ask for "
-            f"this, ignore this email; nothing changes."
-        )
+    stored_html, stored_text = pin_reset_email(note.tenant, title=display_title(note),
+                                               url=None)
+    html, text = pin_reset_email(note.tenant, title=display_title(note), url=url)
 
     outbox.create_message(
         tenant=note.tenant, producer=OutboxMessage.Producer.NOTE_PIN_RESET,
         to_address=request.user.email, subject="Clear a note's PIN",
-        body_text=body(REDACTED_LINK), deliver_body_text=body(url),
+        body_text=stored_text, body_html=stored_html,
+        deliver_body_text=text, deliver_body_html=html,
         role=request.membership.role, actor=request.user,
         source_type="note", source_id=note.pk,
     )
     _audit(note, request.user, "note.pin_reset_requested")
+
+
+def pin_reset_email(tenant, *, title, url):
+    """`(html, text)` for a PIN-reset link. `url=None` is the stored copy."""
+    from apps.crm.services import email_layout
+
+    return email_layout.action_link_email(
+        tenant, subject="Clear a note's PIN", heading="Clear this note's PIN",
+        paragraphs=[
+            f"You asked to reset the PIN on the note “{title}”.",
+            "This link CLEARS the PIN. It does not tell you what the PIN was. Once "
+            "cleared, the note is readable by everyone who can normally see it, until "
+            "someone sets a new PIN.",
+        ],
+        button_label="Clear the PIN", url=url,
+        expiry="The link works once and expires in 20 minutes.",
+        closing="If you did not ask for this, ignore this email; nothing changes.",
+        redacted_note=REDACTED_LINK,
+    )
 
 
 def _resolve(raw: str, *, user):

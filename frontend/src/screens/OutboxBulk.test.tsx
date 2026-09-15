@@ -177,3 +177,21 @@ describe("RichText output", () => {
       .toBe("Hi Dana\n\nLine two\nLine three");
   });
 });
+
+describe("Outbox: Preview email (development only)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("links each message to its exact render on a localhost build", async () => {
+    setup([aMessage()], {}, aMe({ dev_tools: true }));
+    const link = await screen.findByRole("link",
+      { name: "Preview the email to partner@example.invalid" });
+    expect(link).toHaveAttribute("href", "/api/outbox/m1/preview/");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("offers no preview off localhost", async () => {
+    setup([aMessage()], {}, aMe({ dev_tools: false }));
+    await screen.findAllByText("Checking in");
+    expect(screen.queryByRole("link", { name: /Preview the email/ })).not.toBeInTheDocument();
+  });
+});
