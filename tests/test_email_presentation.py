@@ -470,7 +470,7 @@ def logo(seeded_tenant, tmp_path):
 @pytest.mark.django_db
 def test_the_header_shows_the_tenant_logo_on_white_above_both_brand_bars(seeded_tenant, logo):
     assert (seeded_tenant.email_logo_width, seeded_tenant.email_logo_height) == (260, 59), (
-        "Fitted into the 260 x 80 header box, proportions kept.")
+        "Fitted into the 260 x 84 header box, proportions kept.")
     html = email_layout.document(seeded_tenant, content_html="<p>Hello</p>", subject="Hi")
     assert f'src="cid:{email_layout.LOGO_CID}"' in html
     assert 'width="260" height="59" alt="Executives Now"' in html, (
@@ -605,7 +605,7 @@ def test_image_size_reads_png_and_jpeg_headers():
     jpeg = (b"\xff\xd8" + b"\xff\xe0\x00\x04\x00\x00"
             + b"\xff\xc0\x00\x0b\x08\x00\x64\x01\xb8\x01\x01\x11\x00" + b"\xff\xd9")
     assert email_layout.image_size(jpeg) == ("image/jpeg", 440, 100)
-    assert email_layout.logo_display_size(400, 400) == (80, 80)
+    assert email_layout.logo_display_size(400, 400) == (84, 84), "The height caps a square."
 
 
 # ------------------------------------------------------ the personal sign-off

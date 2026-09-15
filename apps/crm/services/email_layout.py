@@ -57,7 +57,7 @@ PERSONAL_PRODUCERS = frozenset({"referral_touch", "referral_onboarding", "manual
 #: proxy, so an attached part is the one form every client shows in Beta.
 LOGO_CID = "enhq-logo"
 LOGO_MAX_WIDTH = 260    # display size; a logo supplied at 2x stays sharp on retina
-LOGO_MAX_HEIGHT = 80
+LOGO_MAX_HEIGHT = 84
 LOGO_MAX_BYTES = 500 * 1024
 #: The square mark beside a personal sign-off.
 MARK_CID = "enhq-mark"

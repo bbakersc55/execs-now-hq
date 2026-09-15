@@ -5,7 +5,7 @@
     manage.py set_email_logo --clear [--mark] [--tenant SLUG]
 
 - The **logo** sits in the white header of the base layout, fitted into
-  220 x 80 px.
+  260 x 84 px.
 - The **mark** (``--mark``) is the square symbol beside the sign-off on mail
   from a person, fitted into 56 x 56 px.
 
