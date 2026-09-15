@@ -4,7 +4,7 @@ Two layouts, both table-based with inline CSS only, because Gmail (web and
 mobile) strips `<style>` blocks and most clients ignore stylesheets:
 
 - **base** — the practice's logo on a white header (its name when there is no
-  logo), a bar in the header colour and an accent rule beneath, a white 600px
+  logo), a bar in the header colour and an accent rule beneath, a white 680px
   body at 16px, and a small footer naming the practice. Used for
   everything the app itself sends: digests, client-activity notices, sign-in and
   PIN links.

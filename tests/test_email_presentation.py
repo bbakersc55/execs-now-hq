@@ -108,7 +108,7 @@ def test_the_base_layout_is_branded_from_the_tenant_row_with_inline_styles_only(
     assert "background-color:#0A3A65" in html, "Executives Now's header colour by default."
     assert "background-color:#F58220" in html, "The accent rule beneath the header."
     assert ">Executives Now<" in html
-    assert "max-width:600px" in html and "font-size:16px" in html
+    assert "max-width:680px" in html and "font-size:16px" in html
     assert "<style" not in html.lower() and "<link" not in html.lower(), (
         "Gmail strips <style> blocks; everything must be inline.")
 
@@ -727,3 +727,23 @@ def test_the_four_personal_samples_send_from_the_owners_own_address(
     assert sum(1 for a in handed.values() if a == seeded_tenant.from_address) == 4
     assert "[Sample] Sign in to Executives Now" in handed
     assert out.getvalue().count("from bryan.baker@getexecutivesnow.com") == 4
+
+
+@pytest.mark.django_db
+def test_one_sample_can_be_sent_on_its_own(seeded_tenant, ff, settings, monkeypatch,
+                                           in_tenant_a):
+    """--only, for re-checking a single producer without mailing eight."""
+    settings.DEV_REAL_SEND_ALLOWLIST = ["owner@example.invalid"]
+    fake = RecordingTransport()
+    monkeypatch.setattr(transport, "get_transport", lambda name=None: fake)
+
+    out = io.StringIO()
+    call_command("send_email_samples", "--to", "owner@example.invalid", "--only", "manual",
+                 stdout=out)
+    assert "1 of 1 samples sent" in out.getvalue()
+    assert [row.producer for row in OutboxMessage.all_objects.all()] == ["manual"]
+    assert len(fake.sent) == 1
+
+    with pytest.raises(CommandError, match="is not a sample"):
+        call_command("send_email_samples", "--to", "owner@example.invalid", "--only", "nope",
+                     stdout=io.StringIO())

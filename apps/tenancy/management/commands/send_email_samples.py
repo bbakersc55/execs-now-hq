@@ -16,6 +16,7 @@ check sees the From a partner sees. If that address is not verified they fall
 back to the alias, and the output line says which address each one used.
 
     manage.py send_email_samples --to you@example.com [--dry-run]
+    manage.py send_email_samples --to you@example.com --only manual
 """
 
 from __future__ import annotations
@@ -172,6 +173,8 @@ class Command(BaseCommand):
         parser.add_argument("--tenant", help="Tenant slug; defaults to the only tenant.")
         parser.add_argument("--dry-run", action="store_true",
                             help="Render every sample and send nothing.")
+        parser.add_argument("--only", metavar="PRODUCER",
+                            help="Send just this one producer's sample, e.g. --only manual.")
 
     def handle(self, *args, **options):
         from apps.accounts.mailer import dev_allowlist
@@ -194,12 +197,20 @@ class Command(BaseCommand):
                 f"{address} is not in the dev allow-list, so it would not receive real mail. "
                 "Samples go only to an exact allow-listed address (FR-0.7).")
 
+        samples = SAMPLES
+        if options["only"]:
+            samples = [row for row in SAMPLES if row[0] == options["only"]]
+            if not samples:
+                raise CommandError(
+                    f"{options['only']!r} is not a sample. One of: "
+                    f"{', '.join(producer for producer, _ in SAMPLES)}.")
+
         with tenant_context(tenant.pk):
             owner = (Membership.objects.filter(role=Role.FF, revoked_at__isnull=True)
                      .select_related("user").first())
             actor = owner.user if owner else None
             sent = []
-            for producer, build in SAMPLES:
+            for producer, build in samples:
                 subject, html, text = build(tenant, actor)
                 subject = SAMPLE_PREFIX + subject
                 personal = producer in email_layout.PERSONAL_PRODUCERS
@@ -227,4 +238,4 @@ class Command(BaseCommand):
                                   f"via {message.sent_via}  from {message.from_address}  "
                                   f"outbox {message.pk}")
         if not options["dry_run"]:
-            self.stdout.write(f"{len(sent)} of {len(SAMPLES)} samples sent to {address}.")
+            self.stdout.write(f"{len(sent)} of {len(samples)} samples sent to {address}.")
