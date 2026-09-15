@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TASK_ID, aMe, aTask } from "../test/fixtures";
+import { COMPANY_ID, TASK_ID, aMe, aTask, aWorkParent } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { TaskDetail } from "./TaskDetail";
 
@@ -126,6 +126,83 @@ describe("AC-3.4 in the UI — internal by default, and unmistakable", () => {
     expect(await screen.findByLabelText("Add a comment")).toBeInTheDocument();
     expect(screen.queryByLabelText("Share this comment with the client")).not.toBeInTheDocument();
     expect(screen.getByText("Your comments are shared with the practice.")).toBeInTheDocument();
+  });
+});
+
+describe("a client edits and comments on a task (FR-3.9a)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const anEcc = () => aMe({ role: "ECC", client_company: COMPANY_ID });
+  const PROJECTS = [
+    aWorkParent({ id: "pr1", kind: "project", title: "Our tidy-up", client_company: COMPANY_ID }),
+    aWorkParent({ id: "pr9", kind: "project", title: "Someone else's", client_company: "co-2" }),
+  ];
+  const PEOPLE = [
+    { id: "u1", name: "Dana Reyes", role: "FCC", company: COMPANY_ID },
+    { id: "u2", name: "Priya Shah", role: "ECC", company: COMPANY_ID },
+    { id: "u9", name: "Bryan Baker", role: "FF", company: null },
+    { id: "u8", name: "Sam Other", role: "ECC", company: "co-2" },
+  ];
+  const options = (label: string) =>
+    Array.from((screen.getByLabelText(label) as HTMLSelectElement).options).map((o) => o.text);
+
+  it("edits title, project and assignee, offering only their own company's", async () => {
+    const user = userEvent.setup();
+    const { fetchMock } = show(
+      aTask({ created_by_client: true, may_set_visibility: false,
+              assignee: { id: "u1", name: "Dana Reyes" } }),
+      {
+        [`PATCH /api/tasks/${TASK_ID}/`]: aTask({ title: "Chase the supplier twice" }),
+        "/api/projects/": PROJECTS, "/api/portal-people/": PEOPLE,
+      },
+      anEcc(),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Edit task" }));
+    await waitFor(() => expect(options("Project")).toEqual(["No project", "Our tidy-up"]));
+    await waitFor(() => expect(options("Assignee")).toEqual(["Unassigned", "Dana Reyes", "Priya Shah"]));
+
+    const title = screen.getByLabelText("Title");
+    await user.clear(title);
+    await user.type(title, "Chase the supplier twice");
+    await user.selectOptions(screen.getByLabelText("Project"), "pr1");
+    await user.selectOptions(screen.getByLabelText("Assignee"), "u2");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    // Only what changed is sent.
+    await waitFor(() => expect(patchBody(fetchMock)).toEqual({
+      title: "Chase the supplier twice", project: "pr1", assignee: "u2",
+    }));
+  });
+
+  it("offers no edit when the task is the practice's", async () => {
+    show(aTask({ may_edit: false, may_delete: false, may_set_visibility: false }), {}, anEcc());
+    expect(await screen.findByText(/the practice's to change/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit task" })).not.toBeInTheDocument();
+  });
+
+  it("does not let saving go out with nothing changed", async () => {
+    const user = userEvent.setup();
+    show(aTask({ created_by_client: true }), {
+      "/api/projects/": PROJECTS, "/api/portal-people/": PEOPLE,
+    }, anEcc());
+    await user.click(await screen.findByRole("button", { name: "Edit task" }));
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  });
+
+  it("posts a comment, shared by definition, with no visibility sent", async () => {
+    const user = userEvent.setup();
+    const { fetchMock } = show(aTask({ may_edit: false, may_delete: false }), {
+      "POST /api/comments/": { id: "c3", body: "Can we move this to Friday?", visibility: "shared",
+                               author: { id: "u2", name: "Priya Shah" },
+                               created_at: "2026-09-14T15:00:00Z",
+                               task: TASK_ID, project: null, goal: null },
+    }, anEcc());
+    await user.type(await screen.findByLabelText("Add a comment"), "Can we move this to Friday?");
+    await user.click(screen.getByRole("button", { name: "Post comment" }));
+    await waitFor(() => expect(
+      fetchMock.calls.find((c) => c.method === "POST" && c.url === "/api/comments/")?.body,
+    ).toEqual({ task: TASK_ID, body: "Can we move this to Friday?" }));
   });
 });
 

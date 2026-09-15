@@ -704,6 +704,77 @@ def test_9_2a_a_role_change_is_blind_to_other_companies_tenants_and_staff(
     assert role_change(api.as_(ff), ecc, "FCC").status_code == 404
 
 
+# ============================ FR-3.35 / 3.35a: what the portal's create controls send
+
+@pytest.mark.django_db
+def test_fr_3_35_a_client_files_new_work_only_inside_their_own_company(
+    seeded_tenant, ff, api, company, fcc, ecc, in_tenant_a
+):
+    """The portal's New task form offers the company's projects and people; the
+    server must refuse anything else however the request is made."""
+    other = ClientCompanyFactory(tenant=seeded_tenant, name="Other Co", seat_count=1)
+    theirs = make(api.as_(ff), "/api/projects/", title="Theirs", client_company=str(other.pk))
+    client = api.as_(ecc)
+    before = Task.all_objects.count()
+
+    assert post(client, "/api/tasks/",
+                {"title": "x", "project": theirs["id"]}).status_code in (400, 404)
+    assert post(client, "/api/tasks/",
+                {"title": "x", "assignee": str(ff.user.pk)}).status_code == 400
+    assert Task.all_objects.count() == before, "A refused create still made a task."
+
+    ours = make(client, "/api/projects/", title="Our own tidy-up")
+    created = make(client, "/api/tasks/", title="Chase the supplier", project=ours["id"],
+                   assignee=str(fcc.user.pk), due_date="2026-10-01")
+    assert created["project"] == ours["id"] and created["due_date"] == "2026-10-01"
+    assert created["assignee"]["id"] == str(fcc.user.pk)
+    assert created["may_edit"] is True, "FR-3.9a — a client's own task is theirs to edit."
+    for text in ("Call them", "Confirm the date"):
+        assert post(client, f"/api/tasks/{created['id']}/checklist/",
+                    {"text": text}).status_code == 201
+
+
+@pytest.mark.django_db
+def test_a_client_files_a_task_straight_onto_a_goal_they_can_see(
+    seeded_tenant, ff, api, company, ecc, in_tenant_a
+):
+    """Check 5 — "Add a task here" on a goal page gave a client a bare 400: the
+    page sends the goal's company, and a client's company lookup found nothing,
+    not even their own. Matrix 7.3 lets a client create a task; FR-3.35a keeps
+    goals, and projects under goals, the practice's — a task on a goal is work
+    toward it, as a client's task in a practice project already was."""
+    goal = make(api.as_(ff), "/api/goals/", title="Cut order-to-cash",
+                client_company=str(company.pk))
+
+    # Exactly what the goal page sends.
+    task = make(api.as_(ecc), "/api/tasks/", title="Send the AP export",
+                goal=goal["id"], client_company=str(company.pk))
+    assert task["goal"] == goal["id"] and task["client_company"] == str(company.pk)
+    assert task["created_by_client"] is True and task["may_edit"] is True
+    children = api.as_(ff).get(f"/api/goals/{goal['id']}/children/").json()
+    assert [t["id"] for t in children["tasks"]] == [task["id"]]
+
+
+@pytest.mark.django_db
+def test_a_client_refused_on_company_or_goal_is_told_why_in_words(
+    seeded_tenant, ff, api, company, ecc, in_tenant_a
+):
+    other = ClientCompanyFactory(tenant=seeded_tenant, name="Other Co", seat_count=1)
+    their_goal = make(api.as_(ff), "/api/goals/", title="Theirs", client_company=str(other.pk))
+    before = Task.all_objects.count()
+
+    wrong_company = post(api.as_(ecc), "/api/tasks/",
+                         {"title": "x", "client_company": str(other.pk)})
+    assert wrong_company.status_code == 400
+    assert wrong_company.json() == {
+        "client_company": ["You can only add work for your own company."]}
+
+    wrong_goal = post(api.as_(ecc), "/api/tasks/", {"title": "x", "goal": their_goal["id"]})
+    assert wrong_goal.status_code == 400
+    assert wrong_goal.json() == {"goal": ["That goal is not available to you."]}
+    assert Task.all_objects.count() == before
+
+
 # ================================= matrix 4.8 / FR-1.3a: the company's primary contact
 
 def set_primary(client, company, contact):

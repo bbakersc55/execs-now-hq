@@ -142,17 +142,23 @@ class ScopedFieldsMixin:
             qs = scoper(request, qs)
         found = qs.first()
         if found is None:
-            raise serializers.ValidationError("Not found.")
+            # Said in words: this reaches a client as the whole explanation.
+            raise serializers.ValidationError(
+                f"That {model._meta.verbose_name} is not available to you.")
         return found
 
     def validate_client_company(self, value):
         request = self.context["request"]
-        company = self._scoped(Company, value, crm_perms.company_queryset_for,
-                               deleted_at__isnull=True)
-        if work_perms.is_client(request) and company is not None and \
-                company.pk != request.membership.client_company_id:
-            raise serializers.ValidationError("Not found.")
-        return company
+        if work_perms.is_client(request):
+            # A client has no CRM scope (matrix 4.18), so the company lookup
+            # below finds nothing for them — even their own company, which the
+            # goal page sends when adding a task. Their own company is the only
+            # answer, and the view sets it regardless.
+            if value is None or str(value) == str(request.membership.client_company_id):
+                return request.membership.client_company
+            raise serializers.ValidationError("You can only add work for your own company.")
+        return self._scoped(Company, value, crm_perms.company_queryset_for,
+                            deleted_at__isnull=True)
 
     def validate_client_owner_contact(self, value):
         return self._scoped(Contact, value, crm_perms.contact_queryset_for,

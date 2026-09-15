@@ -534,6 +534,11 @@ means no client ever sees the unstyled version.
 4. **Known inputs:** the Notes capture panel (functional, not presentable — owner, Check 3);
    the "Linked to" choices, whose layout broke because a panel-wide `input { width: 100% }`
    also caught radio buttons.
+5. **Known inputs from Phase 3 (owner, Check 5, 2026-09-14):** the portal's **progress
+   report** and the **digest email** formatting — both functional and correct, neither
+   polished. The digest's structure and wording carry a rule (Module 3's aim: a report that
+   reads as value delivered rather than a list of field changes) and stay as they are;
+   this is layout and typography only.
 
 **Not in scope:** changes to behaviour, copy that carries a rule (the consent reminder, the
 PIN dialog's explanation, anything stating what is or isn't sent), or any review queue.

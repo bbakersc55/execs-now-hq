@@ -38,9 +38,12 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
   });
 
   const addTask = useMutation({
+    // A client may file a task straight onto a goal or project they can see. The
+    // server sets a client's company itself, so only the practice sends one.
     mutationFn: () => api.post<Task>("/api/tasks/", {
       title: newTask, [kind]: id,
-      ...(entity.data?.client_company ? { client_company: entity.data.client_company } : {}),
+      ...(isTenant && entity.data?.client_company
+        ? { client_company: entity.data.client_company } : {}),
     }),
     onSuccess: () => {
       setNewTask("");

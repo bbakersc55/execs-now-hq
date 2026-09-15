@@ -114,3 +114,38 @@ def test_client_session_is_thirty_days(client, tenant_a, client_membership, sett
     _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user)
     client.post(f"/auth/magic/{raw}")
     assert client.session.get_expiry_age() > 60 * 60 * 24 * 29
+
+
+@pytest.mark.django_db
+def test_successful_login_redirects_to_the_app_root(client, tenant_a, client_membership):
+    """Mirrors test_google_signin's test of the same name. A link with no
+    `redirect_to` — every portal grant and self-serve request — used to land on
+    "/", Django's root, which is a 404 in development."""
+    from django.conf import settings
+
+    _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user)
+    response = client.post(f"/auth/magic/{raw}", HTTP_ACCEPT="text/html,application/xhtml+xml")
+
+    assert response.status_code == 302
+    assert response["Location"] == settings.LOGIN_REDIRECT_URL
+    assert settings.LOGIN_REDIRECT_URL == settings.APP_ROOT_URL
+    assert client.get("/api/me").json()["role"] == "FCC"
+
+
+@pytest.mark.django_db
+def test_the_landing_follows_the_configured_root_not_a_fixed_path(client, tenant_a,
+                                                                 client_membership, settings):
+    settings.LOGIN_REDIRECT_URL = "https://app.example.invalid/"
+    _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user)
+    browser = client.post(f"/auth/magic/{raw}", HTTP_ACCEPT="text/html")
+    assert browser["Location"] == "https://app.example.invalid/"
+
+    # The JSON answer names the same place.
+    _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user)
+    assert client.post(f"/auth/magic/{raw}").json()["redirect_to"] == "https://app.example.invalid/"
+
+    # A link that carries its own destination still goes there.
+    _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user,
+                                  redirect_to="https://app.example.invalid/tasks")
+    assert client.post(f"/auth/magic/{raw}", HTTP_ACCEPT="text/html")["Location"] == (
+        "https://app.example.invalid/tasks")

@@ -161,7 +161,11 @@ def magic_link_landing(request, token: str):
         # re-requesting a link every week.
         request.session.set_expiry(settings.CLIENT_SESSION_AGE)
 
-    redirect_to = record.redirect_to or "/"
+    # Same landing as Google sign-in. A bare "/" is Django's own root, which
+    # serves nothing in development (the app is on the Vite port), so every
+    # portal grant and self-serve link — neither sets `redirect_to` — ended on
+    # a 404 after a successful sign-in.
+    redirect_to = record.redirect_to or settings.LOGIN_REDIRECT_URL
     # The landing page is a plain HTML form, so a browser posting it expects a
     # page, not JSON: it used to show {"ok": true, ...} and stop there.
     # Callers that ask for JSON (or send no Accept header) still get it.

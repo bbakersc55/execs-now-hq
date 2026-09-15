@@ -7,10 +7,99 @@ import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { StatusChange } from "../components/StatusChange";
 import { StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
-import { ChecklistItem, Me, Note, Task, TaskUpdateRow, WorkStatus, api } from "../lib/api";
+import {
+  ChecklistItem, Me, Note, PortalPerson, Task, TaskUpdateRow, WorkParent, WorkStatus, api,
+} from "../lib/api";
 import { NoteRow } from "./Notes";
 
 const TENANT = ["FF", "CF", "VA"];
+
+/**
+ * Title, description, project and assignee — shown only when `may_edit` says
+ * so, which is FR-3.9a decided on the server. The choices stay inside the
+ * task's own company: a client hands work to a colleague (FR-3.9a.2), and a
+ * task is not moved into another company's project.
+ */
+function EditTask({ me, task, saving, onSave }: {
+  me: Me; task: Task; saving: boolean; onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const initial = {
+    title: task.title, description: task.description,
+    project: task.project ?? "", assignee: task.assignee.id ?? "",
+  };
+  const [form, setForm] = useState(initial);
+  const isClient = me.role === "FCC" || me.role === "ECC";
+
+  const projects = useQuery<WorkParent[]>({
+    queryKey: ["projects"], queryFn: () => api.get<WorkParent[]>("/api/projects/"), enabled: open,
+  });
+  const people = useQuery<PortalPerson[]>({
+    queryKey: ["portal-people"], queryFn: () => api.get<PortalPerson[]>("/api/portal-people/"),
+    enabled: open,
+  });
+  const projectChoices = (projects.data ?? [])
+    .filter((p) => p.client_company === task.client_company);
+  const peopleChoices = (people.data ?? []).filter((p) => isClient
+    ? p.company === me.client_company
+    : p.company === null || p.company === task.client_company);
+
+  if (!open) {
+    return (
+      <p><button onClick={() => { setForm(initial); setOpen(true); }}>Edit task</button></p>
+    );
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (form.title.trim() !== task.title) patch.title = form.title.trim();
+  if (form.description !== task.description) patch.description = form.description;
+  if (form.project !== initial.project) patch.project = form.project || null;
+  if (form.assignee !== initial.assignee) patch.assignee = form.assignee || null;
+
+  return (
+    <Card title="Edit task" actions={<button onClick={() => setOpen(false)}>Cancel</button>}>
+      <form onSubmit={(e) => { e.preventDefault(); onSave(patch); setOpen(false); }}>
+        <Field label="Title">
+          <input aria-label="Title" value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        </Field>
+        <Field label="Description">
+          <textarea aria-label="Description" rows={3} value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </Field>
+        <div className="row">
+          <Field label="Project">
+            <select aria-label="Project" value={form.project}
+              onChange={(e) => setForm({ ...form, project: e.target.value })}>
+              <option value="">No project</option>
+              {initial.project && !projectChoices.some((p) => p.id === initial.project) && (
+                <option value={initial.project}>{task.project_title || "Current project"}</option>
+              )}
+              {projectChoices.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+          </Field>
+          <Field label="Assignee">
+            <select aria-label="Assignee" value={form.assignee}
+              onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
+              <option value="">Unassigned</option>
+              {initial.assignee && !peopleChoices.some((p) => p.id === initial.assignee) && (
+                <option value={initial.assignee}>{task.assignee.name || "Current assignee"}</option>
+              )}
+              {peopleChoices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        </div>
+        {isClient && (
+          <p className="small muted">You can reassign this to anyone at your company.</p>
+        )}
+        <button className="primary" type="submit"
+          disabled={!form.title.trim() || Object.keys(patch).length === 0 || saving}>
+          Save changes
+        </button>
+      </form>
+    </Card>
+  );
+}
 
 const KIND_LABELS: Record<string, string> = {
   created: "created", status_changed: "status", assignee_changed: "assignee",
@@ -143,6 +232,11 @@ export function TaskDetail({ me }: { me: Me }) {
           </p>
         )}
       </Card>
+
+      {t.may_edit && (
+        <EditTask key={t.updated_at} me={me} task={t} saving={save.isPending}
+          onSave={(patch) => save.mutate(patch)} />
+      )}
 
       {isTenant && (
         <Card title="A line for the client, without changing status">

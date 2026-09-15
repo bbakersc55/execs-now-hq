@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import { PortalCreate } from "../components/PortalCreate";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Card, Empty, Field, when } from "../components/ui";
 import { Me, Task, WorkParent, api } from "../lib/api";
@@ -39,6 +40,8 @@ export function Tasks({ me }: { me: Me }) {
           ? "Everything your company can see, and everything you have added."
           : "Everything across your goals and projects, filed or not."}
       </p>
+
+      {(me.role === "FCC" || me.role === "ECC") && <PortalCreate me={me} offer={["task"]} />}
 
       <Card>
         <div className="row">

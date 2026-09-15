@@ -20,10 +20,21 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    const detail = data?.detail || `${response.status} ${response.statusText}`;
-    throw Object.assign(new Error(detail), { status: response.status, data });
+    throw Object.assign(new Error(refusal(response, data)), { status: response.status, data });
   }
   return data as T;
+}
+
+/** The server's own words. DRF puts a field refusal under the field's name
+ *  rather than `detail`, which used to surface as a bare "400 Bad Request". */
+function refusal(response: Response, data: unknown): string {
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    if (typeof record.detail === "string" && record.detail) return record.detail;
+    const said = Object.values(record).flat().filter((v): v is string => typeof v === "string");
+    if (said.length) return said.join(" ");
+  }
+  return `${response.status} ${response.statusText}`;
 }
 
 export const api = {
@@ -346,6 +357,9 @@ export type WorkStatus =
   | "not_started" | "in_progress" | "blocked" | "waiting_on_client" | "done" | "cancelled";
 
 export interface Person { id: string | null; name: string }
+
+/** /api/portal-people/ — for a client user, only their own company's users. */
+export interface PortalPerson { id: string; name: string; role: string; company: string | null }
 
 /** Module 3. `may_edit` / `may_delete` carry FR-3.9a, so the UI never
  *  re-derives the client-edit rule and cannot drift from the server. */

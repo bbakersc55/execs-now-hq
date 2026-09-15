@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import { PortalCreate } from "../components/PortalCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import { Company, Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
@@ -52,6 +53,8 @@ export function Work({ me }: { me: Me }) {
 
       {isTenant && <NewItem companies={companies.data ?? []} onCreate={create.mutate} />}
       {isTenant && <ClientActivity />}
+      {/* FR-3.35 / 3.35a — a client creates tasks and projects, never goals. */}
+      {!isTenant && <PortalCreate me={me} />}
 
       <Card title="Goals">
         {(goals.data ?? []).length === 0 ? <Empty>No goals yet.</Empty> : (
