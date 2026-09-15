@@ -15,6 +15,7 @@ router.register("stakeholders", views.StakeholderViewSet, basename="stakeholder"
 router.register("digests", views.DigestViewSet, basename="digest")
 router.register("progress-report", views.ProgressReportView, basename="progress-report")
 router.register("client-activity", views.ClientActivityView, basename="client-activity")
+router.register("portal-activity", views.PortalActivityView, basename="portal-activity")
 router.register("portal-access", views.PortalAccessViewSet, basename="portal-access")
 router.register("portal-people", views.AssignablePeopleView, basename="portal-people")
 

@@ -36,7 +36,8 @@ from apps.work import updates as update_service
 from apps.work.models import Cadence, Comment, Digest, DigestItem, TaskUpdate
 
 QUIET_WINDOW = timedelta(minutes=30)      # FR-3.22
-REVIEW_LEAD = timedelta(hours=24)         # FR-3.28
+REVIEW_LEAD = timedelta(hours=24)         # FR-3.28, and FR-3.28d for every_update
+DEAD_STATES = (Digest.State.EXPIRED, Digest.State.SKIPPED)
 K = TaskUpdate.Kind
 
 
@@ -109,7 +110,12 @@ def qualifying_updates(task_ids, contact_id, *, since=None, until=None):
     by a `sent` digest for this very contact — the claim is per recipient, which
     is the whole reason `digest_item` exists.
     """
-    rows = TaskUpdate.objects.filter(task_id__in=task_ids).select_related(
+    rows = TaskUpdate.objects.filter(
+        task_id__in=task_ids,
+        # FR-3.42 — an update written while acting as another user never
+        # reaches a digest. Its suppression is audited when it is written.
+        acting_user__isnull=True,
+    ).select_related(
         "task", "actor"
     ).exclude(
         # FR-3.19 — internal comments are never client material.
@@ -299,15 +305,19 @@ def generate(*, tenant, contact, cadence, period_start, period_end, send_window_
     ai = bool(company.digest_ai_prose) if company is not None else bool(
         tenant.digest_ai_prose_default
     )
-    digest, created = Digest.objects.get_or_create(
+    # Only a LIVE digest occupies a recipient's period. An expired or skipped one
+    # is history: it released its claims, so the same updates come round again
+    # with the same period start — and matching that dead row used to return it
+    # as though it had been generated, every tick, forever (Check 4).
+    existing = Digest.objects.filter(
         contact=contact, cadence=cadence, period_start=period_start,
-        defaults={
-            "tenant": tenant, "period_end": period_end,
-            "send_window_at": send_window_at, "is_ai_generated": ai,
-        },
+    ).exclude(state__in=DEAD_STATES).first()
+    if existing is not None:
+        return existing
+    digest = Digest.objects.create(
+        tenant=tenant, contact=contact, cadence=cadence, period_start=period_start,
+        period_end=period_end, send_window_at=send_window_at, is_ai_generated=ai,
     )
-    if not created:
-        return digest
 
     narrative = narrative_for(tenant, owed, contact=contact) if ai else ""
     digest.body_text, digest.body_html = render(digest, owed, narrative=narrative)
@@ -371,8 +381,17 @@ def close_quiet_windows(tenant, *, now=None):
             period_start=min(u.created_at for u, _ in owed), period_end=now,
             send_window_at=now, owed=owed,
         )
-        if digest is not None:
-            made.append(digest)
+        if digest is None:
+            continue
+        if digest.state == Digest.State.PENDING and digest.send_window_at <= now:
+            # FR-3.28a/3.28d — a held every_update digest WAITS in the approval
+            # screen. Its window was "now", and expiry runs later in the same
+            # tick, so it expired four seconds after it was made and nobody ever
+            # saw it (Check 4). It now has the same review lead as a scheduled
+            # digest, and send_due sends it as soon as it is approved.
+            digest.send_window_at = now + REVIEW_LEAD
+            digest.save(update_fields=["send_window_at", "updated_at"])
+        made.append(digest)
     return made
 
 
@@ -442,6 +461,13 @@ def approve(digest, *, actor, role):
         raise DigestActionRefused("A VA cannot approve a digest.", status=403)
     if digest.state != Digest.State.PENDING:
         raise DigestActionRefused(f"This digest is {digest.state}.", status=409)
+    if digest.send_window_at <= timezone.now():
+        # FR-3.30 — unapproved at its window, it never sends. Until the next tick
+        # expires it, it is still `pending`; approving it in that gap would
+        # have let the following tick send it.
+        raise DigestActionRefused(
+            "Its window has passed, so it expires unsent on the next tick and its "
+            "updates are owed again.", status=409)
     digest.state = Digest.State.APPROVED
     digest.approved_by = actor
     digest.approved_at = timezone.now()
@@ -549,8 +575,12 @@ def _subject(digest) -> str:
 def send_due(tenant, *, now=None):
     now = now or timezone.now()
     sent = []
-    for digest in Digest.objects.filter(state=Digest.State.APPROVED,
-                                        send_window_at__lte=now).select_related(
+    from django.db.models import Q
+
+    # An approved every_update digest goes now: its window is only the deadline
+    # by which an unapproved one expires (FR-3.28d). Promptness is its point.
+    due = Q(send_window_at__lte=now) | Q(cadence=Cadence.EVERY_UPDATE)
+    for digest in Digest.objects.filter(due, state=Digest.State.APPROVED).select_related(
                                             "contact", "tenant"):
         send(digest, actor=digest.approved_by)
         sent.append(digest)

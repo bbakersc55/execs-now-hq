@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Company, Me, PortalAccess, PortalCandidates, api } from "../lib/api";
+import { ActAsButton } from "./ActAs";
 import { Banner, Card, Empty, Field } from "./ui";
 
 export const PORTAL_ROLES = [
@@ -131,6 +132,8 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                   </select>
                 </td>
                 <td>
+                  {/* FR-3.42 — see exactly what they see; no email while acting. */}
+                  {!me.acting && <><ActAsButton membership={p.id} name={p.name} />{" "}</>}
                   <button className="ghost small" onClick={() => {
                     if (confirm(`Revoke access for ${p.name}? They keep their contact record, `
                                 + "comments and tasks, and any digests they are a stakeholder for.")) {

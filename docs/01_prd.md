@@ -502,6 +502,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 28a. **`every_update` digests cannot use a 24-hour lead**, since the whole point is promptness. An `every_update` digest is **generated when its 30-minute quiet window closes** (FR-3.22). From that moment it follows exactly the same rules as any other digest: with `hold_all_digests` ON it waits in the approval screen; with it OFF, an AI-drafted digest still waits and a deterministic one sends.
 28b. **Stated plainly so it is not a surprise in week one:** `hold_all_digests` ON *and* a stakeholder on `every_update` produces frequent small approvals — potentially several a day. That is accepted for Beta rather than engineered around, because the alternative is a special case in the one rule that must not have special cases. If it proves annoying in practice, the remedy is to move that stakeholder to `weekly` or to turn AI prose off for them, not to loosen the hold.
 28c. FR-3.30a (stale drafts) applies to `every_update` digests too, and will fire often for them by nature. The regenerate action is one click for exactly this reason.
+28d. **A held `every_update` digest's send window is its review deadline: generation plus the FR-3.28 review lead (24 hours).** It sends on the first tick after it is approved, and expires unapproved at that deadline like any other digest (FR-3.30). *(Phase 3 Check 4, 2026-09-15: the window was set to the moment of generation, so the tick that generated a held digest expired it seconds later and it never reached the approval screen. The 24-hour figure reuses FR-3.28's lead — owner to confirm.)* An unheld deterministic one still sends at once.
 29. The **approval screen** lists all pending digests with recipient, period, and full rendered content, offering per-digest **approve / edit / skip** and an **approve-all** for a batch that has been read.
 30. **An unapproved digest never sends.** At its send window it is marked `expired`, and **its content rolls into the next period's digest** so nothing is lost — it is deferred, not dropped.
 30a. **A draft that has been overtaken by events is marked stale, not silently sent.** If a `TaskUpdate` lands on any entity covered by a **generated but not yet approved** draft, that draft is flagged **stale** in the approval screen, naming what changed, with a **one-click regenerate**. A stale draft can still be approved as-is — the flag informs the reviewer, it does not block them — but it can never be approved without the staleness being visible first.
@@ -538,6 +539,18 @@ Everything the fractional does for a client, in a structure the client can see, 
 **Tenant notifications**
 
 40. Tenant users are notified in-app and by email when a client comments or creates a task, batched on the same 30-minute quiet window. *(Owner decision 2026-09-11: the in-app half is a **feed built from the `task_update` rows already recorded** for client actions — no notification table and no per-user read state. The email half is batched as specified.)*
+
+**Activity log and acting as** *(added 2026-09-15, Phase 3 manual checks)*
+
+41. **The client portal has a read-only activity log**, visible to FCC and ECC users only. It lists, newest first, their company's goal, project and task history (from `task_update`), shared comments, and a short list of company-relevant `audit_event` verbs: deletions of their company's work, portal access granted, revoked or re-roled, and acting-as sessions started or ended.
+41a. **It never shows** an internal comment in any form (not even "someone commented"), a task hidden from the client, or anything belonging to another company or tenant. Hidden work is excluded by its current visibility, so hiding a task removes its history from the log.
+41b. **Nobody can edit or delete an entry** — the endpoint has no write methods for any role. Tenant staff do not see this log; they see the same history on each task.
+42. **Acting as.** (a) An FF, or a CF on a company they are assigned, may act as any live client user at a client company they could grant portal access to (FR-3.33c). (b) An FCC may act as any other live user in their own company. Nobody else may; never across a company or tenant boundary, never as tenant staff or themselves, and never nested.
+42a. While acting, the app behaves exactly as it would for the acted-as user, and **a persistent banner names both people**; the only way out is an explicit **Stop acting as**.
+42b. **Every `task_update`, `comment` and `audit_event` written while acting carries `acting_user` (the real person) and `acted_as_user`**, stamped at save time so no write path can omit them.
+42c. **No email of any kind sends while acting.** A message created during the session is kept in the Outbox as `suppressed` and never delivered, with an `email.suppressed` audit event. A `task_update` written while acting is excluded from every digest and client-activity notice, and that suppression is audited when the update is written.
+42d. Entering, leaving, and an automatic end (the target revoked, an assignment removed, the company no longer a client) are audited as `act_as.started`, `act_as.stopped` and `act_as.ended`. Permission is re-checked on every request.
+42e. Client-visible history (FR-3.41, and a task's history and comments) shows an action taken while acting as **"by X on behalf of Y"**.
 
 ### Out of scope for Beta
 
@@ -602,6 +615,10 @@ Everything the fractional does for a client, in a structure the client can see, 
 **AC-3.38 — Clients delete only what they created. (FR-3.9a.3, matrix 7.6a.)** As an FCC, soft-delete a task you created: succeeds. Attempt to delete a task a fractional created and assigned to a client user — editable under FR-3.9a but **not deletable**: refused.
 
 **AC-3.39 — Clients create projects but not goals. (FR-3.35a, matrix 7.2/7.2a.)** As an FCC, create a project: it succeeds with `created_by_client = true`, no parent goal, and your own company set. Add two tasks to it and confirm they behave like any other task. Confirm **no control exists to create a Goal** and that the goal-create endpoint returns 403.
+
+**AC-3.40 — The activity log is the client's, read-only, and never shows internal material. (FR-3.41, matrix 7.16–7.17.)** As an ECC, confirm the log lists their company's task changes and shared comments. Post an internal comment on one of their tasks and hide another task: neither appears in any form. Confirm FF, CF and VA are refused, and that no role can create, edit or delete an entry.
+
+**AC-3.41 — Acting as is bounded, attributed and silent. (FR-3.42, matrix 9.6–9.10.)** As FF, act as an ECC and add a comment: the banner names both people, the comment is stored with both, and the client's log shows it "by <FF> on behalf of <ECC>". Request a magic link while acting: nothing arrives and the Outbox shows it `suppressed`. Confirm a VA is refused, an FCC cannot act as someone at another company, and nobody can act across tenants. Stop acting: the session ends and both ends are audited.
 
 **AC-3.33 — One update reaches two recipients independently. (Data model: `digest_item`.)** Put contact X on a Goal at weekly and contact Y on one task inside it at `every_update`. Make one status change on that task. Confirm: Y's `every_update` digest generates on quiet-window close and, once sent, **X's weekly digest still contains that same update**. Approve X's weekly digest; confirm the update now shows as consumed for both and is not repeated to either next period.
 

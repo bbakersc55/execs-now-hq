@@ -150,6 +150,7 @@ CREATE UNIQUE INDEX tenant_secret_one_per_tenant
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
 | `actor_id` | FK→`user`? | null = system |
+| `acting_user_id` / `acted_as_user_id` | FK→`user`? ×2 | **FR-3.42** — set when written while acting as another user; stamped at save time |
 | `verb` | text IX | `digest.approved`, `pin.reset`, `stage.changed`, `portal.granted`, … |
 | `target_type` / `target_id` | text / UUID | IX together |
 | `payload` | jsonb | |
@@ -374,7 +375,7 @@ Per FR-1.15 the Outbox is **both** the approval queue and the complete send log.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
-| `state` | text IX | `draft · pending_approval · approved · sent · rejected · expired` |
+| `state` | text IX | `draft · pending_approval · approved · sent · rejected · expired · suppressed` — **`suppressed`** (FR-3.42): created while someone acted as another user; kept as a record, never delivered |
 | `producer` | text IX | `stage_rule · referral_touch · referral_onboarding · digest · strategy_pdf · precall_invite · magic_link · cadence_change · inbound_forward · manual` |
 | `to_contact_id` | FK→`contact`? | |
 | `to_address` | citext | resolved at creation; survives contact edits |
@@ -555,6 +556,7 @@ The unresolved case is deliberately preserved rather than dropped: "Maria in dis
 | `id` | UUID PK · `tenant_id` | |
 | `task_id` / `project_id` / `goal_id` | FK? ×3 | exactly one set |
 | `author_id` | FK→`user` | |
+| `acting_user_id` / `acted_as_user_id` | FK→`user`? ×2 | **FR-3.42** — the real person and who they acted as; `author_id` is the latter |
 | `body` | text | |
 | `visibility` | text | `internal` · `shared` — **defaults `internal` (FR-3.12a)** |
 | `deleted_at` | timestamptz? | |
@@ -574,6 +576,7 @@ This is the most consequential table in the product. Digests are assembled from 
 | `source` | text | `user · stage_automation · meeting_approval · strategy_conversion · system` |
 | `source_id` | UUID? | e.g. the `stage_automation` row that fired |
 | `is_client_actor` | bool | client-originated updates are visible but never digest-triggering for their own author |
+| `acting_user_id` / `acted_as_user_id` | FK→`user`? ×2 | **FR-3.42** — set while acting as; such an update never reaches a digest or client-activity notice |
 | `created_at` | timestamptz IX | |
 
 > **There is deliberately no `digest_id` column here.** An earlier draft had one, and it was wrong: a single update is sent to *every* stakeholder on the entity, so one column cannot be simultaneously "consumed" for Dana on weekly and "unconsumed" for her site manager on `every_update`. Consumption is per recipient, so it lives in a join table — `digest_item`, below.
@@ -602,7 +605,7 @@ This is the most consequential table in the product. Digests are assembled from 
 | `contact_id` | FK→`contact` | **the recipient — authoritative** |
 | `period_start` / `period_end` | timestamptz | |
 | `cadence` | text | `every_update · weekly · monthly` |
-| | | **`U(tenant_id, contact_id, cadence, period_start)`** |
+| | | **`U(tenant_id, contact_id, cadence, period_start) WHERE state NOT IN ('expired','skipped')`** — unique among **live** digests only (Phase 3 Check 4, 2026-09-15): an expired or skipped row is history, and must not block the content it released from being generated again |
 
 > **Why `cadence` belongs in the key.** Most-specific-wins (FR-3.20a) can legitimately put one person on two cadences at once — weekly across a Goal, `every_update` on one urgent task inside it. Those are genuinely two different emails with different timing, not a duplicate. The unique constraint collapses the duplicates that matter (two Friday weeklies) while permitting the ones that are real.
 

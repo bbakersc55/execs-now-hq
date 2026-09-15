@@ -269,6 +269,12 @@ class AuditEvent(TenantScopedModel):
         on_delete=models.SET_NULL, related_name="audit_events",
     )
     verb = models.CharField(max_length=64, db_index=True)
+    # FR-3.42 — set when written while someone acts as another user: the real
+    # person, and who they were acting as. Stamped at save time.
+    acting_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    acted_as_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
     target_type = models.CharField(max_length=64, blank=True, default="")
     target_id = models.UUIDField(null=True, blank=True)
     payload = models.JSONField(default=dict, blank=True)

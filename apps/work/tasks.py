@@ -14,31 +14,63 @@ from apps.tenancy.context import tenant_context
 CLIENT_ACTIVITY_QUIET = timezone.timedelta(minutes=30)   # FR-3.40, same window
 
 
-def tick(tenant_id: str) -> dict:
+def tick(tenant_id: str, now=None) -> dict:
     """Every minute: close quiet windows, generate, expire, send, notify.
 
     Expiry runs before sending so that a digest which reached its window
     unapproved can never be picked up by the same tick as if it were approved.
+    `now` exists for tests that run the real tick past a window; the scheduler
+    never passes it.
     """
     from apps.tenancy.models import Tenant
     from apps.work import digests
     from apps.work.models import Cadence
 
+    now = now or timezone.now()
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
-        every_update = digests.close_quiet_windows(tenant)
+        every_update = digests.close_quiet_windows(tenant, now=now)
         scheduled = []
         for cadence in (Cadence.WEEKLY, Cadence.MONTHLY):
-            scheduled += digests.generate_scheduled(tenant, cadence=cadence)
-        expired = digests.expire_due(tenant)
-        sent = digests.send_due(tenant)
-        notified = notify_client_activity(tenant)
+            scheduled += digests.generate_scheduled(tenant, cadence=cadence, now=now)
+        expired = digests.expire_due(tenant, now=now)
+        sent = digests.send_due(tenant, now=now)
+        notified = notify_client_activity(tenant, now=now)
     return {
         "every_update_generated": len(every_update),
         "scheduled_generated": len(scheduled),
         "expired": len(expired),
         "sent": len(sent),
         "client_activity_notices": notified,
+    }
+
+
+TICK_STALE_AFTER = timezone.timedelta(minutes=5)
+
+
+def tick_health(tenant, *, now=None) -> dict:
+    """Whether this tenant's tick is actually running — read from Django-Q's
+    own result rows, so there is no second record to keep in step.
+
+    Check 3 looked like expiry failing; the first question was whether the tick
+    was running at all. This puts that answer on the screen that depends on it.
+    Django-Q keeps its most recent results (250 by default), so the newest run
+    is always there to read.
+    """
+    from django_q.models import Task as QueuedTask
+
+    now = now or timezone.now()
+    rows = [r for r in QueuedTask.objects.filter(func="apps.work.tasks.tick")
+            .order_by("-stopped")[:60]
+            if r.args and str(r.args[0]) == str(tenant.pk)]
+    ok = next((r for r in rows if r.success), None)
+    failed = next((r for r in rows if not r.success), None)
+    return {
+        "last_success_at": ok.stopped.isoformat() if ok else None,
+        "last_failure_at": failed.stopped.isoformat() if failed else None,
+        "last_failure": str(failed.result)[:300] if failed else "",
+        "stale": ok is None or now - ok.stopped > TICK_STALE_AFTER,
+        "stale_after_minutes": int(TICK_STALE_AFTER.total_seconds() // 60),
     }
 
 
@@ -60,7 +92,9 @@ def notify_client_activity(tenant, *, now=None) -> int:
               .order_by("-created_at").first())
     since = marker.payload.get("through") if marker else None
 
-    rows = TaskUpdate.objects.filter(is_client_actor=True).select_related("task", "actor")
+    # FR-3.42 — nothing done while acting as another user is announced by email.
+    rows = TaskUpdate.objects.filter(is_client_actor=True, acting_user__isnull=True) \
+        .select_related("task", "actor")
     if since:
         rows = rows.filter(created_at__gt=since)
     rows = list(rows.order_by("created_at"))

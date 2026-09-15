@@ -48,7 +48,8 @@ export function CommentsPanel({ me, target, id }: {
             <div key={c.id} className={`comment ${c.visibility}`}>
               <div style={{ whiteSpace: "pre-wrap" }}>{c.body}</div>
               <div className="when muted small">
-                {c.author.name} · {when(c.created_at)} ·{" "}
+                {c.acting_user ? `${c.acting_user.name} on behalf of ${c.author.name}` : c.author.name}
+                {" "}· {when(c.created_at)} ·{" "}
                 {c.visibility === "shared" ? "shared with the client" : "internal only"}
               </div>
             </div>

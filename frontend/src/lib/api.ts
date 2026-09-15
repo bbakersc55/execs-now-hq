@@ -53,6 +53,29 @@ export interface Me {
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */
   dev_tools?: boolean;
+  /** FR-3.42 — set while the real person acts as another user. Everything
+   *  above then describes the acted-as user. */
+  acting?: Acting | null;
+}
+
+export interface Acting {
+  real_name: string; real_email: string; real_role: string;
+  as_membership: string; as_name: string; as_email: string; as_role: string;
+  company: string; company_name: string;
+}
+
+/** GET /api/act-as/candidates/ — who the real person may act as. */
+export interface ActAsCandidate {
+  membership: string; name: string; email: string; role: string;
+  company: string; company_name: string;
+}
+
+/** GET /api/portal-activity/ — the client portal's read-only log (FR-3.41). */
+export interface ActivityEntry {
+  id: string; at: string; source: "update" | "comment" | "event"; kind: string; text: string;
+  entity: { type: string; id: string; title: string } | null;
+  /** The person who did it. With `on_behalf_of`, the real person acting as them. */
+  by: string; on_behalf_of: string | null;
 }
 
 export interface Contact {
@@ -413,6 +436,8 @@ export interface WorkParent {
 }
 
 export interface WorkComment {
+  /** FR-3.42 — the real person, when written while acting as `author`. */
+  acting_user?: Person | null;
   id: string; body: string; visibility: "internal" | "shared";
   author: Person; created_at: string;
   task: string | null; project: string | null; goal: string | null;
@@ -423,6 +448,8 @@ export interface ChecklistItem { id: string; text: string; is_done: boolean; pos
 export interface TaskUpdateRow {
   id: string; kind: string; from_value: string; to_value: string;
   client_facing_line: string; actor: Person; source: string;
+  /** FR-3.42 — the real person, when written while acting as `actor`. */
+  acting_user?: Person | null;
   is_client_actor: boolean; created_at: string;
 }
 
@@ -440,6 +467,19 @@ export interface DigestRow {
   period_start: string; period_end: string; send_window_at: string;
   generated_at: string; approved_by: Person; approved_at: string | null;
   item_count: number; body_text: string; body_html?: string;
+}
+
+/** GET /api/stakeholders/candidates/ — who "Who hears about this" offers. */
+export interface StakeholderCandidates {
+  company: string | null; company_name: string; outside: boolean;
+  people: { contact: string; name: string; email: string; company_name: string;
+            is_practice: boolean }[];
+}
+
+/** GET /api/digests/tick-status/ — is the scheduled tick running? */
+export interface TickStatus {
+  last_success_at: string | null; last_failure_at: string | null; last_failure: string;
+  stale: boolean; stale_after_minutes: number;
 }
 
 export interface PortalAccess {

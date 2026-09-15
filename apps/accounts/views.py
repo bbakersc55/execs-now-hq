@@ -46,7 +46,19 @@ def me(request):
         # "Generate now", for instance). False anywhere that is not localhost,
         # so the control cannot appear in front of a client.
         "dev_tools": settings.IS_LOCAL,
+        # FR-3.42 — while acting as, everything above describes the acted-as
+        # user; this names both people, for the banner that never goes away.
+        "acting": _acting(request),
     })
+
+
+def _acting(request):
+    from apps.tenancy.acting import describe
+
+    target = getattr(request, "acting_as", None)
+    if target is None:
+        return None
+    return describe(request.real_user, request.real_membership.role, target)
 
 
 def login_refused(request):

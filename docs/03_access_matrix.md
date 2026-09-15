@@ -150,6 +150,8 @@
 | 7.13 | Set a stakeholder's cadence | ✅ | 🔸 | ✅ | 🔸 | 🔸 | **Client: only their own**, via the signed token or the portal (FR-3.33a) |
 | 7.14 | Set a **status override** on a goal / project | ✅ | 🔸 | ✅ | ❌ | ❌ | FR-3.10 |
 | 7.15 | View the on-demand progress report | ✅ | 🔸 | ✅ | ✅ | ✅ | Requires a login; no email, no approval (FR-3.38) |
+| 7.16 | **View the portal activity log** | ❌ | ❌ | ❌ | ✅ | ✅ | FR-3.41. Their company only; never internal comments or hidden work. Staff see the same history on each task |
+| 7.17 | Edit or delete an activity-log entry | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody.** The endpoint has no write methods |
 
 ## 8. Digests — the highest-consequence rows in this document
 
@@ -176,6 +178,11 @@
 | 9.3 | Revoke portal access | ✅ | 🔸 | ❌ | ❌ | ❌ | Frees the seat, kills sessions and outstanding links (FR-3.33g) |
 | 9.4 | Manage users within their own company | — | — | — | ❌ | ❌ | **V1** (`CLAUDE.md`). The one capability that will separate FCC from ECC |
 | 9.5 | See how many seats are in use | ✅ | 🔸 | ❌ | ❌ | ❌ | |
+| 9.6 | **Act as another user** | ✅ | 🔸 | ❌ | 🔸 | ❌ | FR-3.42. FF: any client user at a client company. CF: `assigned`. FCC: another user in their own company. **VA 403** |
+| 9.7 | Stop acting as | ✅ | ✅ | — | ✅ | — | Whoever is acting; explicit, audited. Also ends automatically, audited, when no longer permitted |
+| 9.8 | Send any email while acting as | ❌ | ❌ | — | ❌ | — | Suppressed and logged (`suppressed` in the Outbox, `email.suppressed` audited); acting updates never reach a digest or notice |
+| 9.9 | Act as across a company or tenant, as tenant staff, or as oneself | ❌ | ❌ | ❌ | ❌ | ❌ | 404 |
+| 9.10 | Act as while already acting (nested) | ❌ | ❌ | — | ❌ | — | 409 |
 
 ## 10. Module 4 — Strategy session
 

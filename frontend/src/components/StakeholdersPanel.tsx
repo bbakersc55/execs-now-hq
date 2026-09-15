@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Contact, Me, Stakeholder, api } from "../lib/api";
+import { Me, Stakeholder, StakeholderCandidates, api } from "../lib/api";
 import { Banner, Card, Empty, Field, when } from "./ui";
 
 const TENANT = ["FF", "CF", "VA"];
@@ -17,12 +17,19 @@ const CADENCE_LABELS: Record<string, string> = {
  * Friday email and never opens the portal is the common case. On a task the
  * list shows the *effective* stakeholders — everyone reached through the task,
  * its project and its goal, with the most specific attachment deciding cadence.
+ *
+ * Who can be added is scoped by the server: for work at a client company, that
+ * company's contacts, listed without typing; "someone outside" is an explicit,
+ * typed search for the fractional's own boss or a board member. Internal work
+ * searches anyone. It used to search every contact in the tenant, so a client's
+ * task offered other clients' people.
  */
 export function StakeholdersPanel({ me, target, id }: {
   me: Me; target: "task" | "project" | "goal"; id: string;
 }) {
   const qc = useQueryClient();
   const [term, setTerm] = useState("");
+  const [outside, setOutside] = useState(false);
   const [message, setMessage] = useState("");
   const isTenant = !!me.role && TENANT.includes(me.role);
 
@@ -31,10 +38,22 @@ export function StakeholdersPanel({ me, target, id }: {
     queryFn: () => api.get<Stakeholder[]>(
       target === "task" ? `/api/stakeholders/?effective=${id}` : `/api/stakeholders/?${target}=${id}`),
   });
-  const found = useQuery<{ contacts: Contact[] }>({
-    queryKey: ["stakeholder-search", term],
-    queryFn: () => api.get(`/api/contacts/search/?q=${encodeURIComponent(term)}`),
-    enabled: isTenant && term.trim().length > 1,
+  const query = new URLSearchParams({ [target]: id });
+  if (outside) query.set("outside", "1");
+  if (term.trim()) query.set("q", term.trim());
+  const found = useQuery<StakeholderCandidates>({
+    queryKey: ["stakeholder-candidates", target, id, outside, term.trim()],
+    queryFn: () => api.get<StakeholderCandidates>(`/api/stakeholders/candidates/?${query}`),
+    enabled: isTenant,
+  });
+  // The default list, which also names the company. It stays cached while a
+  // typed search loads, so the box is never unmounted mid-word: anchoring the
+  // section on the search itself dropped the input on every keystroke.
+  const anchor = useQuery<StakeholderCandidates>({
+    queryKey: ["stakeholder-candidates", target, id, false, ""],
+    queryFn: () => api.get<StakeholderCandidates>(
+      `/api/stakeholders/candidates/?${new URLSearchParams({ [target]: id })}`),
+    enabled: isTenant,
   });
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["stakeholders", target, id] });
@@ -55,6 +74,13 @@ export function StakeholdersPanel({ me, target, id }: {
     onSuccess: refresh,
     onError: (e: Error) => setMessage(e.message),
   });
+
+  const company = anchor.data?.company_name ?? "";
+  const anchored = !!anchor.data?.company;
+  const attached = new Set((rows.data ?? []).map((r) => r.contact.id));
+  const offered = (found.data?.people ?? []).filter((p) => !attached.has(p.contact));
+  const typedEnough = term.trim().length >= 2;
+  const searching = found.isFetching;
 
   return (
     <Card title="Who hears about this">
@@ -95,21 +121,47 @@ export function StakeholdersPanel({ me, target, id }: {
         </table>
       )}
 
-      {isTenant && (
+      {isTenant && anchor.data && (
         <>
-          <Field label="Add someone by name">
-            <input aria-label="Find a contact to add" placeholder="Start typing a name…"
+          {anchored && (
+            <label className="small" style={{ display: "inline-flex", gap: ".4rem", alignItems: "center" }}>
+              <input type="checkbox" style={{ width: "auto" }} checked={outside}
+                aria-label={`Someone outside ${company}`}
+                onChange={(e) => { setOutside(e.target.checked); setTerm(""); }} />
+              Someone outside {company} — your own boss, a board member
+            </label>
+          )}
+          <Field label={anchored && !outside ? `Add someone from ${company}` : "Add someone by name"}>
+            <input
+              aria-label={anchored && !outside ? `Narrow ${company}'s people` : "Find a contact to add"}
+              placeholder={anchored && !outside ? "Narrow by name or email…" : "Start typing a name…"}
               value={term} onChange={(e) => setTerm(e.target.value)} />
           </Field>
-          <ul className="small" style={{ listStyle: "none", paddingLeft: 0 }}>
-            {(found.data?.contacts ?? []).slice(0, 6).map((c) => (
-              <li key={c.id}>
-                <button className="ghost small" onClick={() => add.mutate(c.id)}>
-                  {c.first_name} {c.last_name}
-                </button>
-              </li>
-            ))}
-          </ul>
+          {offered.length === 0 ? searching ? (
+            <p className="small muted">Looking…</p>
+          ) : (
+            <p className="small muted">
+              {anchored && !outside
+                ? (term.trim() ? `Nobody at ${company} matches “${term.trim()}”.`
+                               : `Everyone at ${company} is already here, or it has no contacts yet.`)
+                : (typedEnough ? `Nobody matches “${term.trim()}”.`
+                               : "Type at least two letters of their name.")}
+            </p>
+          ) : (
+            <ul className="small" style={{ listStyle: "none", paddingLeft: 0 }}>
+              {offered.map((p) => (
+                <li key={p.contact} style={{ padding: ".15rem 0" }}>
+                  <button className="ghost small" disabled={add.isPending}
+                    aria-label={`Add ${p.name}${p.is_practice ? " (practice)" : ""}`}
+                    onClick={() => add.mutate(p.contact)}>Add</button>{" "}
+                  {p.name}{p.is_practice && <strong> (practice)</strong>}
+                  {(outside || !anchored) && p.company_name && (
+                    <span className="muted"> · {p.company_name}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="small muted">
             They need no login: digests go to the contact's email. Weekly unless you change it,
             and they can change it themselves from any email we send.

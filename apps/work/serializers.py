@@ -45,6 +45,9 @@ def represent_update(update: TaskUpdate) -> dict:
         # FR-3.17 — first-class, because every digest is only as good as this.
         "client_facing_line": update.client_facing_line,
         "actor": _person(update.actor),
+        # FR-3.42 — "by <acting_user> on behalf of <actor>" when written while
+        # someone acted as another user. Null otherwise.
+        "acting_user": _person(update.acting_user) if update.acting_user_id else None,
         "source": update.source,
         "is_client_actor": update.is_client_actor,
         "created_at": update.created_at.isoformat(),
@@ -57,6 +60,7 @@ def represent_comment(comment: Comment) -> dict:
         "body": comment.body,
         "visibility": comment.visibility,
         "author": _person(comment.author),
+        "acting_user": _person(comment.acting_user) if comment.acting_user_id else None,
         "created_at": comment.created_at.isoformat(),
         "task": str(comment.task_id) if comment.task_id else None,
         "project": str(comment.project_id) if comment.project_id else None,

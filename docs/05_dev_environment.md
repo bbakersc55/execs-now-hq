@@ -318,6 +318,15 @@ Then open **http://localhost:5200** for the app and **http://localhost:8125** fo
 
 **`qcluster` does not reload on code changes** (`runserver` does). After pulling or changing code, restart it — a cluster started before a migration runs the old models and fails every job that touches the new columns.
 
+**Restart `qcluster` after every backend commit** — yours, one you pulled, or one Claude Code made — and after every `migrate`. Nothing tells you it is stale: it keeps running jobs against the code it was started with, and `runserver` reloading is not a sign the cluster has. To check, compare its start time with the last commit:
+
+```bash
+ps -o lstart=,args= -C python | grep qcluster | head -1   # when qcluster started
+git log -1 --format=%cd                                   # when the code last changed
+```
+
+**The Digests screen warns when the tick has stopped.** If no successful `work.tick` has finished in the last 5 minutes, a banner says so and quotes the last failure if there was one. Nothing on that screen — expiry, generation, sending — happens without the tick. *(Phase 3 Check 3: the cluster was down from 22:58 to 08:04 overnight, and nothing on screen showed it.)*
+
 **Periodic jobs are registered by one command**, idempotent, safe to re-run after every pull:
 
 ```bash
@@ -687,6 +696,9 @@ Done. No address in this database can receive mail.
 |---|---|---|
 | `TenantContextMissing` | A query ran with no tenant bound | **Working as designed** (B1). Fail-closed. Wrap job code in `with tenant_context(tenant_id):` |
 | Digests never generate | `qcluster` not running | Terminal 2 |
+| Digests screen: "The scheduled tick has not run" banner | `qcluster` stopped, or every tick is failing (the banner quotes the error) | Terminal 2; restart `qcluster`. If it names a missing column, run `migrate` first |
+| A digest stays "pending" on screen after its window | The server has expired it; the screen had not refreshed | Fixed: the list now refreshes every 30 s and marks a passed window. If it persists, check the tick banner |
+| Behaviour doesn't match the code you just committed | `qcluster` is still running the code it started with | Restart `qcluster` after **every** backend commit (§6) |
 | Nothing in Mailpit | Mailpit not running, or wrong port | `EMAIL_PORT=1025`, check terminal 4 |
 | A real client got dev mail | An address is in `DEV_REAL_SEND_ALLOWLIST` | Remove it. Exact addresses only; wildcards are rejected at startup |
 | Nothing sends; error names an alias | `info@` is not a confirmed Gmail send-as address | §5c — add it in Gmail, click the confirmation link, then Verify alias in the app |

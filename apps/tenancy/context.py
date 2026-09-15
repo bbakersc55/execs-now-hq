@@ -80,3 +80,26 @@ def no_tenant_context():
     finally:
         _current_tenant_id.reset(tenant_token)
         _current_client_company_id.reset(company_token)
+
+
+# --------------------------------------------------------------- acting as
+#
+# FR-3.42 — while a real person acts as another user, every task_update,
+# comment and audit_event written carries both (stamped at save time, so no
+# write path can forget), and no email leaves. Bound per request by
+# TenantMiddleware, cleared in its `finally` like the tenant.
+_acting: ContextVar[tuple | None] = ContextVar("acting", default=None)
+
+
+def get_acting() -> tuple | None:
+    """`(acting_user_id, acted_as_user_id)` while acting as, else None."""
+    return _acting.get()
+
+
+@contextlib.contextmanager
+def acting_context(acting_user_id, acted_as_user_id):
+    token = _acting.set((acting_user_id, acted_as_user_id))
+    try:
+        yield
+    finally:
+        _acting.reset(token)

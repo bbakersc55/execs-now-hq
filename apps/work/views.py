@@ -510,6 +510,79 @@ class StakeholderViewSet(WorkViewSet):
         return Response([work_serializers.represent_stakeholder(r)
                          for r in qs.order_by("created_at")[:LIST_LIMIT]])
 
+    @action(detail=False, methods=["get"])
+    def candidates(self, request):
+        """Who "Who hears about this" offers (Phase 3 manual checks, item 3).
+
+        It used to search every contact in the tenant, so a client's task
+        offered other clients' people. For work with a client company it now
+        lists **that company's contacts**, no typing needed; `outside=1` is the
+        explicit, typed search for the cases the spec allows — the fractional's
+        own boss, a board member — and excludes the company. Internal work, with
+        no company to anchor it, searches any contact. Tenant staff who are also
+        contacts are marked, so the owner can tell his own row from a client's.
+        """
+        from apps.crm.models import Contact, ContactEmail
+        from apps.tenancy.models import TENANT_ROLES, Membership
+
+        if (refused := self._staff_only(request)) is not None:
+            return refused
+        entity = None
+        for field, model, scoper in (("task", Task, work_perms.task_queryset_for),
+                                     ("project", Project, work_perms.project_queryset_for),
+                                     ("goal", Goal, work_perms.goal_queryset_for)):
+            value = request.query_params.get(field)
+            if value:
+                entity = scoper(request, model.objects.filter(
+                    pk=value, deleted_at__isnull=True)).select_related(
+                        "client_company").first() if _is_uuid(value) else None
+                if entity is None:
+                    raise Http404
+                break
+        if entity is None:
+            return Response({"detail": "Name the task, project or goal."}, status=400)
+
+        company = entity.client_company
+        outside = request.query_params.get("outside") == "1"
+        term = (request.query_params.get("q") or "").strip()
+        contacts = crm_perms.contact_queryset_for(
+            request, Contact.objects.filter(deleted_at__isnull=True))
+        if company is not None and not outside:
+            contacts = contacts.filter(company=company)
+            if term:
+                contacts = contacts.filter(crm_search.as_typed(term)).distinct()
+        else:
+            if company is not None:
+                contacts = contacts.exclude(company=company)
+            # The whole tenant is never listed unasked: it takes a typed name.
+            contacts = (contacts.filter(crm_search.as_typed(term)).distinct()
+                        if len(term) >= 2 else contacts.none())
+        contacts = list(contacts.select_related("company")
+                        .order_by("first_name", "last_name")[:50])
+
+        staff = list(Membership.objects.filter(role__in=TENANT_ROLES, revoked_at__isnull=True)
+                     .select_related("user"))
+        staff_contacts = {m.contact_id for m in staff if m.contact_id}
+        staff_emails = {m.user.email.lower() for m in staff if m.user.email}
+        for contact_id, address in ContactEmail.objects.filter(
+                contact_id__in=[c.pk for c in contacts]).values_list("contact_id", "address"):
+            if address.lower() in staff_emails:
+                staff_contacts.add(contact_id)
+
+        return Response({
+            "company": str(company.pk) if company else None,
+            "company_name": company.name if company else "",
+            "outside": outside,
+            "people": [
+                {"contact": str(c.pk),
+                 "name": f"{c.first_name} {c.last_name}".strip(),
+                 "email": c.primary_email or "",
+                 "company_name": c.company.name if c.company else "",
+                 "is_practice": c.pk in staff_contacts}
+                for c in contacts
+            ],
+        })
+
     def create(self, request):
         if (refused := self._staff_only(request)) is not None:
             return refused
@@ -594,6 +667,15 @@ class DigestViewSet(WorkViewSet):
 
     def retrieve(self, request, pk=None):
         return Response(work_serializers.represent_digest(self.load(pk), full=True))
+
+    @action(detail=False, methods=["get"], url_path="tick-status")
+    def tick_status(self, request):
+        """Whether expiry, generation and sending are running at all."""
+        from apps.work.tasks import tick_health
+
+        if crm_perms.role_of(request) not in crm_perms.TENANT_ROLES:
+            return Response({"detail": "Not available."}, status=403)
+        return Response(tick_health(request.tenant))
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
@@ -793,6 +875,122 @@ class ClientActivityView(viewsets.GenericViewSet):
              "task": str(u.task_id), "task_title": u.task.title if u.task else ""}
             for u in rows
         ])
+
+
+class PortalActivityView(viewsets.GenericViewSet):
+    """FR-3.41 / matrix 7.16–7.17 — the client portal's activity log.
+
+    Read-only for everyone: there is no create, edit or delete route, so a
+    history cannot be tidied. FCC and ECC only. It shows their company's goal,
+    project and task history and shared comments, and never an internal
+    comment, a hidden task, or anything outside their company.
+
+    Built from what is already recorded: `task_update` rows (the digests'
+    source), shared `comment` rows (for their words — the update row names
+    only the visibility), and a short whitelist of `audit_event` verbs that are
+    the company's business. Anything written while someone acted as another
+    user reads "by X on behalf of Y" (FR-3.42).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    LIMIT = 200
+    AUDIT_VERBS = ("task.deleted", "project.deleted", "goal.deleted",
+                   "portal.access_granted", "portal.access_revoked", "portal.role_changed",
+                   "act_as.started", "act_as.stopped", "act_as.ended")
+
+    def list(self, request):
+        from django.db.models import Q
+
+        from apps.tenancy.models import Membership
+
+        membership = getattr(request, "membership", None)
+        if membership is None or membership.role not in CLIENT_ROLES:
+            return Response({"detail": "The activity log is the client portal's."}, status=403)
+        company_id = membership.client_company_id
+        # Deleted work stays in its history; hidden work never appears at all.
+        tasks = Task.objects.filter(client_company_id=company_id, is_client_visible=True)
+        projects = Project.objects.filter(client_company_id=company_id)
+        goals = Goal.objects.filter(client_company_id=company_id)
+        in_company = Q(task__in=tasks) | Q(project__in=projects) | Q(goal__in=goals)
+        status = dict(Task.Status.choices)
+        entries = []
+
+        for u in (TaskUpdate.objects.filter(in_company)
+                  .exclude(kind=TaskUpdate.Kind.COMMENT_ADDED)
+                  .select_related("task", "project", "goal", "actor", "acting_user")
+                  .order_by("-created_at")[:self.LIMIT]):
+            entity = u.task or u.project or u.goal
+            title = f"“{entity.title}”" if entity else "work"
+            text = {
+                "created": f"created {title}",
+                "status_changed": f"changed {title} from {status.get(u.from_value, u.from_value)} "
+                                  f"to {status.get(u.to_value, u.to_value)}",
+                "assignee_changed": f"reassigned {title} to {u.to_value or 'nobody'}",
+                "due_changed": f"set the due date of {title} to {u.to_value or 'none'}",
+                "checklist_completed": f"completed the step “{u.to_value}” on {title}",
+                "completed": f"completed {title}",
+                "narrative": f"added a note on {title}: {u.client_facing_line}",
+            }.get(u.kind, f"updated {title}")
+            if u.kind == TaskUpdate.Kind.STATUS_CHANGED and u.client_facing_line:
+                text += f" — {u.client_facing_line}"
+            entries.append(self._entry(f"u-{u.pk}", u.created_at, "update", u.kind, text,
+                                       entity, u.actor, u.acting_user))
+
+        for c in (Comment.objects.filter(in_company, visibility=Comment.Visibility.SHARED,
+                                         deleted_at__isnull=True)
+                  .select_related("task", "project", "goal", "author", "acting_user")
+                  .order_by("-created_at")[:self.LIMIT]):
+            entity = c.task or c.project or c.goal
+            entries.append(self._entry(
+                f"c-{c.pk}", c.created_at, "comment", "comment",
+                f"commented on “{entity.title}”: {c.body}", entity, c.author, c.acting_user))
+
+        people = {str(m.pk): m for m in Membership.objects.filter(
+            client_company_id=company_id).select_related("user")}
+        entity_ids = {str(pk) for pk in tasks.values_list("pk", flat=True)} \
+            | {str(pk) for pk in projects.values_list("pk", flat=True)} \
+            | {str(pk) for pk in goals.values_list("pk", flat=True)}
+        titles = {str(e.pk): e.title for qs in (tasks, projects, goals) for e in qs}
+        for a in (AuditEvent.objects.filter(verb__in=self.AUDIT_VERBS)
+                  .select_related("actor", "acting_user").order_by("-created_at")[:self.LIMIT * 2]):
+            target = str(a.target_id) if a.target_id else ""
+            if a.verb.endswith(".deleted"):
+                if target not in entity_ids:
+                    continue
+                text = f"deleted “{titles[target]}”"
+            else:
+                person = people.get(target)
+                if person is None:
+                    continue
+                name = person.user.full_name or person.user.email
+                text = {
+                    "portal.access_granted": f"gave {name} access to the portal",
+                    "portal.access_revoked": f"removed {name}'s access to the portal",
+                    "portal.role_changed": f"changed {name}'s portal role to "
+                                           f"{'founder' if a.payload.get('to') == 'FCC' else 'employee'}",
+                    "act_as.started": f"began acting as {name}",
+                    "act_as.stopped": f"stopped acting as {name}",
+                    "act_as.ended": f"stopped acting as {name} (no longer permitted)",
+                }[a.verb]
+            entries.append(self._entry(f"a-{a.pk}", a.created_at, "event", a.verb, text, None,
+                                       a.actor, a.acting_user))
+
+        entries.sort(key=lambda e: e["at"], reverse=True)
+        return Response(entries[:self.LIMIT])
+
+    @staticmethod
+    def _entry(key, at, source, kind, text, entity, actor, acting_user):
+        def name(user):
+            return (user.full_name or user.email) if user else ""
+
+        return {
+            "id": key, "at": at.isoformat(), "source": source, "kind": kind, "text": text,
+            "entity": ({"type": entity._meta.model_name, "id": str(entity.pk),
+                        "title": entity.title} if entity is not None else None),
+            # "by X on behalf of Y": X is the real person, Y who they acted as.
+            "by": name(acting_user) if acting_user else (name(actor) or "The system"),
+            "on_behalf_of": name(actor) if acting_user else None,
+        }
 
 
 # ------------------------------------------------------------ portal access

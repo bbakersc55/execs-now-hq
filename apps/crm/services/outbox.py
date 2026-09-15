@@ -100,6 +100,16 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
     (assumption C3). Only a direct-to-sent message may use it: a draft that
     waits for approval has to be sendable from what is stored.
     """
+    from apps.tenancy.context import get_acting
+
+    if get_acting() is not None:
+        return _suppressed_while_acting(
+            tenant=tenant, producer=producer, to_contact=to_contact, to_address=to_address,
+            from_address=from_address, subject=subject, body_text=body_text,
+            body_html=body_html, is_ai_generated=is_ai_generated,
+            source_type=source_type, source_id=source_id,
+        )
+
     if thread is None:
         thread = thread_for(tenant, contact=to_contact, subject=subject)
 
@@ -145,6 +155,32 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
 
     if direct:
         _deliver(message, actor=actor, body_text=deliver_body_text)
+    return message
+
+
+def _suppressed_while_acting(*, tenant, producer, to_contact, to_address, from_address,
+                             subject, body_text, body_html, is_ai_generated,
+                             source_type, source_id):
+    """FR-3.42 — no email of any kind leaves while someone acts as another user.
+
+    Checked here, at the single entry point, so a magic link, a cadence
+    confirmation or anything added later is covered without knowing about it.
+    The row is kept, because the Outbox is the complete record of what the app
+    tried to send, but it is never delivered, starts no thread, and the one-time
+    body of a link is never stored — exactly as for a real send.
+    """
+    message = OutboxMessage.all_objects.create(
+        tenant=tenant, state=S.SUPPRESSED, producer=producer, to_contact=to_contact,
+        to_address=to_address, from_address=from_address or "", subject=subject[:255],
+        body_text=body_text, body_html=body_html, is_ai_generated=is_ai_generated,
+        source_type=source_type, source_id=source_id,
+    )
+    AuditEvent.all_objects.create(
+        tenant=tenant, verb="email.suppressed", target_type="outbox_message",
+        target_id=message.pk,
+        payload={"reason": "written while acting as", "producer": producer,
+                 "to": to_address, "subject": subject[:200]},
+    )
     return message
 
 

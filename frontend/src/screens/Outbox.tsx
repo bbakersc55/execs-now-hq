@@ -8,7 +8,7 @@ import { api, Me, OutboxMessage } from "../lib/api";
 
 const STATE_KIND: Record<string, string> = {
   sent: "ok", pending_approval: "warn", draft: "warn",
-  expired: "bad", rejected: "bad", approved: "ok",
+  expired: "bad", rejected: "bad", approved: "ok", suppressed: "bad",
 };
 
 export function Outbox() {
@@ -124,7 +124,7 @@ export function Outbox() {
 
       <Card>
         <div className="row">
-          {["pending_approval", "sent", "expired", "rejected", "all"].map((f) => (
+          {["pending_approval", "sent", "expired", "rejected", "suppressed", "all"].map((f) => (
             <div key={f} style={{ flex: "0 0 auto" }}>
               <button className={filter === f ? "primary" : ""} onClick={() => setFilter(f)}>
                 {f.replace(/_/g, " ")}

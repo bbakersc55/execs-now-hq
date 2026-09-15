@@ -32,7 +32,9 @@ function aDigest(overrides: Partial<DigestRow> = {}): DigestRow {
 }
 
 function show(rows: DigestRow[], me = aMe(), extra: Record<string, unknown> = {}) {
-  const fetchMock = mockApi({ "GET /api/digests/": rows, ...extra });
+  // Extras first: `GET /api/digests/` is a prefix of every digest route, and the
+  // first matching key wins.
+  const fetchMock = mockApi({ ...extra, "GET /api/digests/": rows });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<Digests me={me} />);
   return fetchMock;
@@ -154,5 +156,51 @@ describe("FR-3.39 — list and board", () => {
     await waitFor(() => expect(
       fetchMock.calls.some((c) => c.url.includes("status=blocked")),
     ).toBe(true));
+  });
+});
+
+
+describe("is the tick running (Check 3)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const FRESH = { last_success_at: new Date().toISOString(), last_failure_at: null,
+                  last_failure: "", stale: false, stale_after_minutes: 5 };
+
+  it("warns when the tick has not run in five minutes, quoting the last failure", async () => {
+    show([aDigest()], aMe(), {
+      "GET /api/digests/tick-status/": {
+        ...FRESH, stale: true, last_success_at: "2026-09-15T04:58:14Z",
+        last_failure: "ProgrammingError: column x does not exist",
+      },
+    });
+    expect(await screen.findByText(/has not run in the last 5 minutes/)).toBeInTheDocument();
+    expect(screen.getByText(/column x does not exist/)).toBeInTheDocument();
+  });
+
+  it("says there is no record when it has never run", async () => {
+    show([], aMe(), {
+      "GET /api/digests/tick-status/": { ...FRESH, stale: true, last_success_at: null },
+    });
+    expect(await screen.findByText(/There is no record of it running/)).toBeInTheDocument();
+  });
+
+  it("stays quiet while the tick is healthy", async () => {
+    const fetchMock = show([aDigest()], aMe(), { "GET /api/digests/tick-status/": FRESH });
+    await screen.findByText(/Dana Okafor/);
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.includes("tick-status"))).toBe(true));
+    expect(screen.queryByText(/has not run/)).not.toBeInTheDocument();
+  });
+
+  it("marks a pending digest whose window has passed", async () => {
+    show([aDigest({ send_window_at: "2020-01-01T00:00:00Z" })], aMe(),
+         { "GET /api/digests/tick-status/": FRESH });
+    expect(await screen.findByText(/Its window has passed/)).toBeInTheDocument();
+  });
+
+  it("says an every-update digest sends as soon as it is approved", async () => {
+    show([aDigest({ cadence: "every_update", send_window_at: "2099-01-01T00:00:00Z" })], aMe(),
+         { "GET /api/digests/tick-status/": FRESH });
+    expect(await screen.findByText(/sends as soon as approved/)).toBeInTheDocument();
+    expect(screen.queryByText(/Its window has passed/)).not.toBeInTheDocument();
   });
 });

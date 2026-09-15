@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { Contact, DigestRow, Me, api } from "../lib/api";
+import { Contact, DigestRow, Me, TickStatus, api } from "../lib/api";
 
 const CAN_APPROVE = ["FF", "CF"];
 
@@ -22,9 +22,19 @@ export function Digests({ me }: { me: Me }) {
   const [picked, setPicked] = useState<string[]>([]);
   const mayApprove = !!me.role && CAN_APPROVE.includes(me.role);
 
+  // Refreshed on its own: expiry and generation happen on the server's tick,
+  // and this list used to go on showing a digest as pending after the tick had
+  // expired it (Check 3). Window focus does not refetch in this app.
   const digests = useQuery<DigestRow[]>({
     queryKey: ["digests"], queryFn: () => api.get<DigestRow[]>("/api/digests/"),
+    refetchInterval: 30_000,
   });
+  const tick = useQuery<TickStatus>({
+    queryKey: ["tick-status"],
+    queryFn: () => api.get<TickStatus>("/api/digests/tick-status/"),
+    refetchInterval: 60_000,
+  });
+  const now = Date.now();
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["digests"] });
   const act = useMutation({
@@ -56,6 +66,19 @@ export function Digests({ me }: { me: Me }) {
         AI-written one waits even when it is off.
       </p>
       {note && <Banner kind="info">{note}</Banner>}
+
+      {tick.data?.stale && (
+        <Banner kind="bad">
+          <strong>The scheduled tick has not run in the last {tick.data.stale_after_minutes} minutes.</strong>{" "}
+          Nothing on this screen expires, generates or sends until it does.
+          {tick.data.last_success_at
+            ? ` Last successful run: ${when(tick.data.last_success_at)}.`
+            : " There is no record of it running."}
+          {tick.data.last_failure && ` Last failure: ${tick.data.last_failure}`}
+          {" "}Restart <span className="mono">qcluster</span>, and run migrations first if the
+          failure names a missing column.
+        </Banner>
+      )}
 
       {me.dev_tools && <GenerateNow onDone={(text) => { setNote(text); refresh(); }} />}
       {!mayApprove && (
@@ -102,9 +125,19 @@ export function Digests({ me }: { me: Me }) {
               ) : undefined}>
               <p className="small muted">
                 To {d.to_address} · covers {when(d.period_start)} to {when(d.period_end)} ·
-                sends {when(d.send_window_at)} · {d.item_count} update{d.item_count === 1 ? "" : "s"}{" "}
+                {d.cadence === "every_update"
+                  ? <>sends as soon as approved · expires {when(d.send_window_at)} if not</>
+                  : <>sends {when(d.send_window_at)}</>}
+                {" "}· {d.item_count} update{d.item_count === 1 ? "" : "s"}{" "}
                 {d.is_ai_generated ? <Pill kind="ai">AI narrative</Pill> : <Pill>plain list</Pill>}
               </p>
+
+              {d.state === "pending" && Date.parse(d.send_window_at) <= now && (
+                <Banner kind="warn">
+                  Its window has passed. The next tick expires it unsent and its updates are
+                  owed again; approving now is refused.
+                </Banner>
+              )}
 
               {d.is_stale && (
                 <Banner kind="warn">

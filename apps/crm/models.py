@@ -701,6 +701,9 @@ class OutboxMessage(TenantScopedModel):
         SENT = "sent", "Sent"
         REJECTED = "rejected", "Rejected"
         EXPIRED = "expired", "Expired"
+        # FR-3.42 — created while someone was acting as another user. Logged,
+        # because the Outbox is the complete record; never delivered.
+        SUPPRESSED = "suppressed", "Suppressed (acting as)"
 
     class Producer(models.TextChoices):
         STAGE_RULE = "stage_rule", "Stage rule"

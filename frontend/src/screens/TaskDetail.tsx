@@ -299,7 +299,9 @@ export function TaskDetail({ me }: { me: Me }) {
                   </div>
                 )}
                 <div className="when">
-                  {u.actor.name || u.source.replace(/_/g, " ")} · {when(u.created_at)}
+                  {u.acting_user
+                    ? `${u.acting_user.name} on behalf of ${u.actor.name}`
+                    : u.actor.name || u.source.replace(/_/g, " ")} · {when(u.created_at)}
                   {u.is_client_actor && " · by the client"}
                 </div>
               </li>

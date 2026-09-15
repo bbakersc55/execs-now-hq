@@ -160,6 +160,11 @@ class Comment(TenantScopedModel):
                              related_name="comments")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                on_delete=models.SET_NULL, related_name="+")
+    # FR-3.42 — the real person and who they acted as; `author` is the latter.
+    acting_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    acted_as_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
     body = models.TextField()
     visibility = models.CharField(max_length=8, choices=Visibility.choices,
                                   default=Visibility.INTERNAL)
@@ -213,6 +218,12 @@ class TaskUpdate(TenantScopedModel):
     # Nullable: a stage automation or an ingestion job has no user actor.
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
+    # FR-3.42 — set when written while acting as: the real person, and who they
+    # acted as (`actor` is the latter). Such an update never triggers an email.
+    acting_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    acted_as_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
     source = models.CharField(max_length=20, choices=Source.choices, default=Source.USER)
     source_id = models.UUIDField(null=True, blank=True)
     # A client's own update is visible but never triggers a digest to its author.
@@ -355,9 +366,13 @@ class Digest(TenantScopedModel):
     class Meta(TenantScopedModel.Meta):
         db_table = "digest"
         constraints = [
+            # One LIVE digest per recipient, cadence and period. Expired and
+            # skipped rows are history and must not block the content they
+            # released from being generated again (Check 4).
             models.UniqueConstraint(
                 fields=["tenant", "contact", "cadence", "period_start"],
-                name="digest_unique_per_recipient_period",
+                condition=~models.Q(state__in=["expired", "skipped"]),
+                name="digest_unique_live_per_recipient_period",
             ),
         ]
         indexes = [models.Index(fields=["tenant", "state", "send_window_at"])]

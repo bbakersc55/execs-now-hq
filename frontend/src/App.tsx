@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
+import { ActAsColleague, ActingBanner } from "./components/ActAs";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
@@ -18,6 +19,7 @@ import { ReferralSettings } from "./screens/ReferralSettings";
 import { StageRules } from "./screens/StageRules";
 import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
+import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
 import { NoteDetail } from "./screens/NoteDetail";
 import { Notes } from "./screens/Notes";
@@ -49,6 +51,8 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   { to: "/work", label: "Our work", roles: CLIENT },
   { to: "/tasks", label: "Tasks", roles: CLIENT },
   { to: "/report", label: "Progress report", roles: CLIENT },
+  // FR-3.41 — read-only history of their company's work.
+  { to: "/activity", label: "Activity", roles: CLIENT },
   { to: "/vendors", label: "Vendors", roles: TENANT },
   { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },
@@ -113,9 +117,12 @@ export function App() {
           {me.full_name || me.email}
           <br />
           <span className="pill" style={{ marginTop: ".4rem" }}>{me.role}</span>
+          <ActAsColleague me={me} />
         </div>
       </aside>
       <main>
+        {/* FR-3.42 — never dismissible; stopping is the only way out. */}
+        <ActingBanner me={me} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
           <Routes>
@@ -144,6 +151,7 @@ export function App() {
             <Route path="/work/projects/:id" element={<WorkParentDetail me={me} kind="project" />} />
             <Route path="/digests" element={<Digests me={me} />} />
             <Route path="/report" element={<Report me={me} />} />
+            <Route path="/activity" element={<Activity me={me} />} />
           </Routes>
         </ErrorBoundary>
       </main>

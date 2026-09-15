@@ -295,7 +295,11 @@ def test_ac_3_10_and_3_32_every_update_batches_on_the_quiet_window(
     digest = made[0]
     assert digest.cadence == Cadence.EVERY_UPDATE
     assert digest.state == Digest.State.PENDING       # hold is on
-    assert digest.send_window_at <= later             # not 24 hours later
+    assert digest.generated_at <= later               # generated now, not 24 hours later
+    # FR-3.28d — held, it waits a review lead before it can expire. This line
+    # used to assert the window was "now", which is exactly the Check 4 bug:
+    # the same tick then expired it.
+    assert digest.send_window_at == later + digest_service.REVIEW_LEAD
     assert digest.items.count() >= 4
 
     # A second pass creates nothing more: the draft's claim covers those updates.
@@ -795,3 +799,198 @@ def test_generate_now_follows_the_same_scope_rules(role, expected, seeded_tenant
         "/api/digests/generate-now/", json.dumps({"contact": str(recipient.pk)}),
         content_type="application/json")
     assert response.status_code == expected
+
+
+# ================================ Phase 3 manual checks 3 and 4: through the tick
+
+def run_tick(tenant, now):
+    from apps.work.tasks import tick
+
+    return tick(str(tenant.pk), now=now)
+
+
+@pytest.mark.django_db
+def test_check_3_the_tick_expires_an_unapproved_digest_past_its_window_and_releases_claims(
+    seeded_tenant, ff, api, company, recipient, project, dev_outbox, in_tenant_a
+):
+    """Check 3: a digest with a 2-minute window, left unapproved. The server did
+    expire it (the database shows it 4 s after its window); the approval screen
+    never refreshed. This holds the server half down through the real tick."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Left unapproved.")
+    created = api.as_(ff).post(
+        "/api/digests/generate-now/",
+        json.dumps({"contact": str(recipient.pk), "days": 7, "send_in_minutes": 2}),
+        content_type="application/json").json()["digest"]
+    digest = Digest.all_objects.get(pk=created["id"])
+    assert digest.state == Digest.State.PENDING and digest.items.count() >= 1
+    claimed = list(digest.items.values_list("task_update_id", flat=True))
+
+    # Before the window: the tick leaves it alone.
+    run_tick(seeded_tenant, digest.send_window_at - timedelta(seconds=30))
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.PENDING
+
+    result = run_tick(seeded_tenant, digest.send_window_at + timedelta(seconds=30))
+    digest.refresh_from_db()
+    assert result["expired"] == 1
+    assert digest.state == Digest.State.EXPIRED
+    assert digest.items.count() == 0
+    assert not DigestItem.all_objects.filter(task_update_id__in=claimed).exists(), (
+        "Its claims must be released.")
+    assert AuditEvent.all_objects.filter(verb="digest.expired", target_id=digest.pk).exists()
+    assert dev_outbox == []
+    owed = digest_service.owed_to(recipient.pk, tenant=seeded_tenant, cadence=Cadence.WEEKLY)
+    assert "Left unapproved." in [u.client_facing_line for u, _ in owed], (
+        "Deferred, not dropped.")
+
+
+@pytest.mark.django_db
+def test_check_4_a_held_every_update_digest_survives_the_tick_that_made_it(
+    seeded_tenant, ff, company, recipient, project, dev_outbox, in_tenant_a
+):
+    """Check 4: the tick generated it with a window of "now" and its own expiry
+    step removed it four seconds later, so it never reached the approval list."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    for status in (S.IN_PROGRESS, S.WAITING_ON_CLIENT):
+        move(task, ff, status)
+
+    closes = timezone.now() + timedelta(minutes=31)
+    assert run_tick(seeded_tenant, closes)["every_update_generated"] == 1
+    digest = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
+    assert digest.state == Digest.State.PENDING, "It expired in the tick that made it."
+    assert digest.send_window_at == closes + digest_service.REVIEW_LEAD
+
+    # Later ticks neither expire it nor pretend to generate it again.
+    later = run_tick(seeded_tenant, closes + timedelta(minutes=5))
+    assert later["every_update_generated"] == 0 and later["expired"] == 0
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.PENDING
+
+    # Approval sends it on the next tick, not a day later.
+    digest_service.approve(digest, actor=ff.user, role="FF")
+    run_tick(seeded_tenant, closes + timedelta(minutes=6))
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.SENT and len(dev_outbox) == 1
+
+
+@pytest.mark.django_db
+def test_check_4_an_unapproved_every_update_digest_expires_after_its_review_lead(
+    seeded_tenant, ff, company, recipient, project, dev_outbox, in_tenant_a
+):
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    move(task, ff, S.IN_PROGRESS)
+    closes = timezone.now() + timedelta(minutes=31)
+    run_tick(seeded_tenant, closes)
+    digest = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
+
+    run_tick(seeded_tenant, closes + digest_service.REVIEW_LEAD + timedelta(minutes=1))
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.EXPIRED and digest.items.count() == 0
+    assert dev_outbox == []
+
+
+@pytest.mark.django_db
+def test_check_4_an_expired_digest_does_not_block_its_content_forever(
+    seeded_tenant, ff, company, recipient, project, in_tenant_a
+):
+    """The second half of Check 4: once expired, the same updates were owed
+    again under the same period start, matched the dead row, and every tick
+    reported "generated 1" while generating nothing."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    move(task, ff, S.IN_PROGRESS)
+    closes = timezone.now() + timedelta(minutes=31)
+    run_tick(seeded_tenant, closes)
+    first = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
+    after_expiry = closes + digest_service.REVIEW_LEAD + timedelta(minutes=1)
+    run_tick(seeded_tenant, after_expiry)
+    first.refresh_from_db()
+    assert first.state == Digest.State.EXPIRED
+
+    result = run_tick(seeded_tenant, after_expiry + timedelta(minutes=1))
+    assert result["every_update_generated"] == 1
+    live = Digest.all_objects.exclude(pk=first.pk).get(cadence=Cadence.EVERY_UPDATE)
+    assert live.state == Digest.State.PENDING and live.items.count() == 1
+    assert live.period_start == first.period_start, "Same content, same period start."
+    first.refresh_from_db()
+    assert first.state == Digest.State.EXPIRED, "History is not rewritten."
+
+
+# ------------------------------------------------------- is the tick running
+
+def a_tick_result(tenant, *, stopped, success=True, result=None):
+    import uuid
+
+    from django_q.models import Task as QueuedTask
+
+    return QueuedTask.objects.create(
+        id=uuid.uuid4().hex, name=f"tick-{uuid.uuid4().hex[:6]}",
+        func="apps.work.tasks.tick", args=(str(tenant.pk),), kwargs={},
+        started=stopped - timedelta(seconds=1), stopped=stopped, success=success,
+        result=result,
+    )
+
+
+@pytest.mark.django_db
+def test_tick_health_says_stale_when_nothing_has_run(seeded_tenant, tenant_b, in_tenant_a):
+    from apps.work.tasks import tick_health
+
+    assert tick_health(seeded_tenant)["stale"] is True
+    # Another tenant's tick is not this tenant's.
+    a_tick_result(tenant_b, stopped=timezone.now())
+    assert tick_health(seeded_tenant)["stale"] is True
+
+
+@pytest.mark.django_db
+def test_tick_health_is_fresh_within_five_minutes_and_names_a_failure(seeded_tenant,
+                                                                     in_tenant_a):
+    from apps.work.tasks import tick_health
+
+    now = timezone.now()
+    a_tick_result(seeded_tenant, stopped=now - timedelta(minutes=4))
+    health = tick_health(seeded_tenant, now=now)
+    assert health["stale"] is False and health["last_failure"] == ""
+
+    a_tick_result(seeded_tenant, stopped=now - timedelta(minutes=1), success=False,
+                  result="ProgrammingError: column tenant.x does not exist")
+    health = tick_health(seeded_tenant, now=now + timedelta(minutes=2))
+    assert health["stale"] is True, "Six minutes since the last success."
+    assert "column tenant.x does not exist" in health["last_failure"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 200), ("VA", 200),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_tick_status_is_for_the_practice(role, expected, seeded_tenant, api, company):
+    member = MembershipFactory(tenant=seeded_tenant, role=role,
+                               client_company=company if role in ("FCC", "ECC") else None)
+    response = api.as_(member).get("/api/digests/tick-status/")
+    assert response.status_code == expected
+    if expected == 200:
+        assert response.json()["stale_after_minutes"] == 5
+
+
+@pytest.mark.django_db
+def test_a_digest_past_its_window_cannot_be_approved_before_the_tick_expires_it(
+    seeded_tenant, ff, api, company, recipient, project, dev_outbox, in_tenant_a
+):
+    """FR-3.30 — unapproved at its window means it never sends. Between the window
+    and the next tick it was still `pending`, and approving it then would have
+    let the following tick send it."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Too late.")
+    digest = generate_weekly(seeded_tenant)[0]
+    Digest.all_objects.filter(pk=digest.pk).update(
+        send_window_at=timezone.now() - timedelta(seconds=10))
+
+    refused = api.as_(ff).post(f"/api/digests/{digest.pk}/approve/")
+    assert refused.status_code == 409
+    assert "window has passed" in refused.json()["detail"]
+    run_tick(seeded_tenant, timezone.now())
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.EXPIRED and dev_outbox == []
