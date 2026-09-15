@@ -395,6 +395,43 @@ def close_quiet_windows(tenant, *, now=None):
     return made
 
 
+def upcoming_every_update(tenant, *, now=None, contact_ids=None):
+    """Who has every_update content waiting on a quiet window, and when it closes.
+
+    Read-only: computed from the same `owed_to` and QUIET_WINDOW that
+    `close_quiet_windows` uses, so it cannot disagree with what the tick will
+    do, and it writes nothing. Once the tick generates the digest its content is
+    claimed and it leaves this list for the approval list (FR-3.29a). `due` is a
+    window that has closed but that the tick has not reached yet.
+    """
+    from apps.crm.models import Contact
+
+    now = now or timezone.now()
+    rows = []
+    for contact_id in stakeholder_service.contacts_with_attachments(tenant):
+        if contact_ids is not None and contact_id not in contact_ids:
+            continue
+        owed = owed_to(contact_id, tenant=tenant, cadence=Cadence.EVERY_UPDATE)
+        if not owed:
+            continue
+        contact = Contact.objects.filter(pk=contact_id).first()
+        if contact is None:
+            continue
+        latest = max(u.created_at for u, _ in owed)
+        generates_at = latest + QUIET_WINDOW
+        rows.append({
+            "contact": {"id": str(contact.pk),
+                        "name": f"{contact.first_name} {contact.last_name}".strip()},
+            "cadence": Cadence.EVERY_UPDATE,
+            "update_count": len(owed),
+            "tasks": sorted({u.task.title for u, _ in owed if u.task is not None}),
+            "last_change_at": latest.isoformat(),
+            "generates_at": generates_at.isoformat(),
+            "due": generates_at <= now,
+        })
+    return sorted(rows, key=lambda r: r["generates_at"])
+
+
 # ------------------------------------------------------- staleness (FR-3.30a)
 
 def flag_stale_for(update: TaskUpdate):

@@ -1065,3 +1065,106 @@ def test_retest_every_update_after_an_expired_and_a_sent_digest_for_the_same_con
     second.refresh_from_db()
     assert first.state == Digest.State.EXPIRED and second.state == Digest.State.SENT
     assert len(dev_outbox) == 1, "Held: nothing more is sent until it is approved."
+
+
+# ================================ FR-3.29a: coming up, inside the quiet window
+
+@pytest.mark.django_db
+def test_coming_up_names_who_waits_on_a_quiet_window_and_agrees_with_the_tick(
+    seeded_tenant, ff, api, company, recipient, project, in_tenant_a
+):
+    from apps.work.tasks import tick
+
+    task = a_task(seeded_tenant, company, ff=ff, project=project, title="Replace the gate")
+    stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    move(task, ff, S.IN_PROGRESS)
+    move(task, ff, S.DONE)
+    latest = TaskUpdate.all_objects.filter(task=task).order_by("-created_at").first().created_at
+    digests_before = Digest.all_objects.count()
+    audit_before = AuditEvent.all_objects.count()
+
+    rows = api.as_(ff).get("/api/digests/upcoming/").json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["contact"]["name"] == "Dana Okafor" and row["cadence"] == "every_update"
+    assert row["tasks"] == ["Replace the gate"] and row["update_count"] >= 2
+    assert row["generates_at"] == (latest + digest_service.QUIET_WINDOW).isoformat()
+    assert row["due"] is False
+    assert Digest.all_objects.count() == digests_before, "Read-only: nothing generated."
+    assert AuditEvent.all_objects.count() == audit_before, "Read-only: nothing recorded."
+
+    # The time it states is the time the tick acts on.
+    tenant_id = str(seeded_tenant.pk)
+    assert tick(tenant_id, now=latest + timedelta(minutes=29))["every_update_generated"] == 0
+    assert tick(tenant_id, now=latest + digest_service.QUIET_WINDOW + timedelta(seconds=1))[
+        "every_update_generated"] == 1
+    assert api.as_(ff).get("/api/digests/upcoming/").json() == [], (
+        "Once generated it is in the approval list, not coming up.")
+    assert api.as_(ff).post("/api/digests/upcoming/").status_code == 405
+
+
+@pytest.mark.django_db
+def test_coming_up_says_due_when_the_window_closed_before_the_tick_reached_it(
+    seeded_tenant, ff, api, company, recipient, project, in_tenant_a
+):
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    row = stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    move(task, ff, S.IN_PROGRESS)
+    long_ago = timezone.now() - timedelta(minutes=31)
+    Stakeholder.all_objects.filter(pk=row.pk).update(created_at=long_ago - timedelta(minutes=5))
+    TaskUpdate.all_objects.filter(task=task).update(created_at=long_ago)
+    assert api.as_(ff).get("/api/digests/upcoming/").json()[0]["due"] is True
+
+
+@pytest.mark.django_db
+def test_coming_up_leaves_out_weekly_muted_and_already_claimed_content(
+    seeded_tenant, ff, api, company, recipient, project, in_tenant_a
+):
+    weekly_task = a_task(seeded_tenant, company, ff=ff, project=project, title="Weekly one")
+    stake(seeded_tenant, recipient, task=weekly_task, cadence=Cadence.WEEKLY)
+    move(weekly_task, ff, S.IN_PROGRESS)
+
+    muted_contact = ContactFactory(tenant=seeded_tenant, first_name="Mo", last_name="Muted",
+                                   company=company)
+    muted_task = a_task(seeded_tenant, company, ff=ff, project=project, title="Muted one")
+    Stakeholder.all_objects.create(tenant=seeded_tenant, contact=muted_contact, task=muted_task,
+                                   cadence=Cadence.EVERY_UPDATE, is_muted=True)
+    move(muted_task, ff, S.IN_PROGRESS)
+    assert api.as_(ff).get("/api/digests/upcoming/").json() == []
+
+    claimed_task = a_task(seeded_tenant, company, ff=ff, project=project, title="Claimed one")
+    stake(seeded_tenant, recipient, task=claimed_task, cadence=Cadence.EVERY_UPDATE)
+    move(claimed_task, ff, S.IN_PROGRESS)
+    digest_service.close_quiet_windows(seeded_tenant, now=timezone.now() + timedelta(minutes=31))
+    assert api.as_(ff).get("/api/digests/upcoming/").json() == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,assigned,expected,count", [
+    ("FF", False, 200, 1), ("VA", False, 200, 1), ("CF", True, 200, 1), ("CF", False, 200, 0),
+    ("FCC", False, 403, None), ("ECC", False, 403, None),
+])
+def test_coming_up_is_scoped_like_the_digest_list(role, assigned, expected, count,
+                                                  seeded_tenant, ff, api, company, recipient,
+                                                  project, in_tenant_a):
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    move(task, ff, S.IN_PROGRESS)
+    member = MembershipFactory(tenant=seeded_tenant, role=role,
+                               client_company=company if role in ("FCC", "ECC") else None)
+    if assigned:
+        ClientAssignmentFactory(tenant=seeded_tenant, user=member.user, company=company)
+    response = api.as_(member).get("/api/digests/upcoming/")
+    assert response.status_code == expected
+    if count is not None:
+        assert len(response.json()) == count
+
+
+@pytest.mark.django_db
+def test_coming_up_never_crosses_a_tenant(seeded_tenant, tenant_b, ff, api, company, recipient,
+                                          project, in_tenant_a):
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, task=task, cadence=Cadence.EVERY_UPDATE)
+    move(task, ff, S.IN_PROGRESS)
+    theirs = MembershipFactory(tenant=tenant_b, role="FF")
+    assert api.as_(theirs).get("/api/digests/upcoming/").json() == []

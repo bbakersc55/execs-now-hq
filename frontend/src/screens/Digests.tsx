@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { Contact, DigestRow, Me, TickStatus, api } from "../lib/api";
+import { Contact, DigestRow, Me, TickStatus, UpcomingDigest, api } from "../lib/api";
 
 const CAN_APPROVE = ["FF", "CF"];
 
@@ -33,6 +33,11 @@ export function Digests({ me }: { me: Me }) {
     queryKey: ["tick-status"],
     queryFn: () => api.get<TickStatus>("/api/digests/tick-status/"),
     refetchInterval: 60_000,
+  });
+  const upcoming = useQuery<UpcomingDigest[]>({
+    queryKey: ["digests-upcoming"],
+    queryFn: () => api.get<UpcomingDigest[]>("/api/digests/upcoming/"),
+    refetchInterval: 30_000,
   });
   const now = Date.now();
 
@@ -78,6 +83,26 @@ export function Digests({ me }: { me: Me }) {
           {" "}Restart <span className="mono">qcluster</span>, and run migrations first if the
           failure names a missing column.
         </Banner>
+      )}
+
+      {(upcoming.data ?? []).length > 0 && (
+        <Card title="Coming up">
+          <ul className="timeline">
+            {upcoming.data!.map((u) => (
+              <li key={u.contact.id}>
+                <div>{comingUpLine(u)}</div>
+                <div className="when">
+                  {u.update_count} update{u.update_count === 1 ? "" : "s"} waiting
+                  {u.tasks.length > 1 && ` on ${u.tasks.join(", ")}`} · last change {when(u.last_change_at)}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="small muted">
+            Every-update digests wait for 30 minutes of quiet, so one editing session is one email.
+            Nothing here has been generated or sent yet, and each new change moves the time.
+          </p>
+        </Card>
       )}
 
       {me.dev_tools && <GenerateNow onDone={(text) => { setNote(text); refresh(); }} />}
@@ -288,4 +313,13 @@ function GenerateNow({ onDone }: { onDone: (message: string) => void }) {
       )}
     </Card>
   );
+}
+
+
+/** FR-3.29a — "Bryan Baker · every update · generates at 11:49 AM unless the task changes again". */
+function comingUpLine(u: UpcomingDigest) {
+  if (u.due) return `${u.contact.name} · every update · generates on the next tick`;
+  const time = new Date(u.generates_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const which = u.tasks.length > 1 ? `any of these ${u.tasks.length} tasks changes` : "the task changes";
+  return `${u.contact.name} · every update · generates at ${time} unless ${which} again`;
 }

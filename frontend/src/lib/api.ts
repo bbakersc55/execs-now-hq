@@ -476,6 +476,14 @@ export interface StakeholderCandidates {
             is_practice: boolean }[];
 }
 
+/** GET /api/digests/upcoming/ — every-update content waiting on its quiet window. */
+export interface UpcomingDigest {
+  contact: Person; cadence: "every_update"; update_count: number; tasks: string[];
+  last_change_at: string; generates_at: string;
+  /** The window has closed; the next tick generates it. */
+  due: boolean;
+}
+
 /** GET /api/digests/tick-status/ — is the scheduled tick running? */
 export interface TickStatus {
   last_success_at: string | null; last_failure_at: string | null; last_failure: string;

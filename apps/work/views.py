@@ -668,6 +668,23 @@ class DigestViewSet(WorkViewSet):
     def retrieve(self, request, pk=None):
         return Response(work_serializers.represent_digest(self.load(pk), full=True))
 
+    @action(detail=False, methods=["get"])
+    def upcoming(self, request):
+        """FR-3.29a — every-update content waiting on its quiet window. Read-only
+        and computed; scoped like the digest list itself."""
+        from apps.crm.models import Contact
+
+        role = crm_perms.role_of(request)
+        if role not in crm_perms.TENANT_ROLES:
+            return Response({"detail": "A digest is the practice's to review."}, status=403)
+        contact_ids = None
+        if role == crm_perms.Role.CF:
+            contact_ids = set(Contact.objects.filter(
+                company_id__in=crm_perms.assigned_company_ids(request)
+            ).values_list("pk", flat=True))
+        return Response(digest_service.upcoming_every_update(request.tenant,
+                                                             contact_ids=contact_ids))
+
     @action(detail=False, methods=["get"], url_path="tick-status")
     def tick_status(self, request):
         """Whether expiry, generation and sending are running at all."""

@@ -34,7 +34,7 @@ function aDigest(overrides: Partial<DigestRow> = {}): DigestRow {
 function show(rows: DigestRow[], me = aMe(), extra: Record<string, unknown> = {}) {
   // Extras first: `GET /api/digests/` is a prefix of every digest route, and the
   // first matching key wins.
-  const fetchMock = mockApi({ ...extra, "GET /api/digests/": rows });
+  const fetchMock = mockApi({ "GET /api/digests/upcoming/": [], ...extra, "GET /api/digests/": rows });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<Digests me={me} />);
   return fetchMock;
@@ -202,5 +202,58 @@ describe("is the tick running (Check 3)", () => {
          { "GET /api/digests/tick-status/": FRESH });
     expect(await screen.findByText(/sends as soon as approved/)).toBeInTheDocument();
     expect(screen.queryByText(/Its window has passed/)).not.toBeInTheDocument();
+  });
+});
+
+
+describe("coming up: every-update digests waiting on their quiet window (FR-3.29a)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const HEALTHY = { last_success_at: new Date().toISOString(), last_failure_at: null,
+                    last_failure: "", stale: false, stale_after_minutes: 5 };
+  const CLOSES = "2026-09-15T17:49:25Z";
+  const clock = (iso: string) =>
+    new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const waiting = (over: Record<string, unknown> = {}) => ({
+    contact: { id: "c1", name: "Bryan Baker" }, cadence: "every_update", update_count: 6,
+    tasks: ["New task from ECC"], last_change_at: "2026-09-15T17:19:25Z",
+    generates_at: CLOSES, due: false, ...over,
+  });
+
+  it("names the person, the cadence and when it generates", async () => {
+    show([], aMe(), { "GET /api/digests/tick-status/": HEALTHY,
+                      "GET /api/digests/upcoming/": [waiting()] });
+    expect(await screen.findByText(
+      `Bryan Baker · every update · generates at ${clock(CLOSES)} unless the task changes again`,
+    )).toBeInTheDocument();
+    expect(screen.getByText(/6 updates waiting/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing here has been generated or sent yet/)).toBeInTheDocument();
+  });
+
+  it("says any of several tasks, and names them", async () => {
+    show([], aMe(), { "GET /api/digests/tick-status/": HEALTHY,
+      "GET /api/digests/upcoming/": [waiting({ tasks: ["Fix the dock", "Replace the gate"] })] });
+    expect(await screen.findByText(/unless any of these 2 tasks changes again/)).toBeInTheDocument();
+    expect(screen.getByText(/on Fix the dock, Replace the gate/)).toBeInTheDocument();
+  });
+
+  it("says the next tick once the window has closed", async () => {
+    show([], aMe(), { "GET /api/digests/tick-status/": HEALTHY,
+                      "GET /api/digests/upcoming/": [waiting({ due: true })] });
+    expect(await screen.findByText("Bryan Baker · every update · generates on the next tick"))
+      .toBeInTheDocument();
+  });
+
+  it("shows nothing when nobody is waiting, and offers no control on what is", async () => {
+    const fetchMock = show([aDigest()], aMe(), { "GET /api/digests/tick-status/": HEALTHY });
+    await screen.findByText(/Dana Okafor/);
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.includes("upcoming"))).toBe(true));
+    expect(screen.queryByText("Coming up")).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+    show([], aMe({ role: "VA" }), { "GET /api/digests/tick-status/": HEALTHY,
+                                     "GET /api/digests/upcoming/": [waiting()] });
+    const card = (await screen.findByText("Coming up")).closest(".card") ?? document.body;
+    expect(card.querySelectorAll("button, input, select, textarea")).toHaveLength(0);
   });
 });
