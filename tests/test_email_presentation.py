@@ -42,6 +42,19 @@ S = Task.Status
 K = TaskUpdate.Kind
 
 
+@pytest.fixture(autouse=True)
+def beta_branding(seeded_tenant):
+    """Executives Now's name and palette live on its tenant row, like any other
+    practice's — the code's defaults are neutral (white-label). These tests
+    assert the Beta look, so they set the Beta row."""
+    seeded_tenant.name = "Executives Now"
+    seeded_tenant.email_display_name = "Executives Now"
+    seeded_tenant.email_header_color = "#0A3A65"
+    seeded_tenant.email_accent_color = "#F58220"
+    seeded_tenant.save()
+    return seeded_tenant
+
+
 def html_part(email):
     """The text/html alternative of a Django EmailMultiAlternatives."""
     return next(content for content, mime in email.alternatives if mime == "text/html")
@@ -112,7 +125,9 @@ def test_the_base_layout_is_branded_from_the_tenant_row_with_inline_styles_only(
     # saved: the column is 7 characters and the database would refuse it anyway.)
     seeded_tenant.email_header_color = "red;display:none"
     assert "display:none\"" not in email_layout.document(seeded_tenant, content_html="x")
-    assert "background-color:#0A3A65" in email_layout.document(seeded_tenant, content_html="x")
+    # Falls back to the neutral default, never to the product owner's blue.
+    assert f"background-color:{email_layout.DEFAULT_HEADER_COLOR}" in \
+        email_layout.document(seeded_tenant, content_html="x")
 
 
 @pytest.mark.django_db
@@ -370,7 +385,9 @@ class RecordingTransport:
         n = len(self.sent)   # a real provider gives every message its own id
         return {"provider": "gmail", "provider_message_id": f"m{n}",
                 "gmail_message_id": f"m{n}", "gmail_thread_id": f"t{n}",
-                "message_id_header": f"<m{n}@x>", "from_address": "info@getexecutivesnow.com"}
+                "message_id_header": f"<m{n}@x>",
+                # Like a real transport: the address it actually sent from.
+                "from_address": kwargs.get("from_address") or "info@getexecutivesnow.com"}
 
 
 @pytest.mark.django_db
@@ -421,3 +438,292 @@ def test_samples_send_one_of_each_producer_and_touch_no_engagement(
     assert not Digest.all_objects.exists() and not DigestItem.all_objects.exists()
     assert not StakeholderToken.all_objects.exists()
     assert not AuditEvent.all_objects.filter(verb="client_activity.notified").exists()
+
+
+# ---------------------------------------------------------------------- the logo
+
+def png(width, height):
+    """A real, minimal PNG — no imaging library in the stack."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
+
+    rows = b"".join(b"\x00" + b"\xff\x82\x20" * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+@pytest.fixture
+def logo(seeded_tenant, tmp_path):
+    path = tmp_path / "executives-now-logo.png"
+    path.write_bytes(png(440, 100))
+    call_command("set_email_logo", str(path), "--tenant", seeded_tenant.slug,
+                 stdout=io.StringIO())
+    seeded_tenant.refresh_from_db()
+    return seeded_tenant.email_logo
+
+
+@pytest.mark.django_db
+def test_the_header_shows_the_tenant_logo_on_white_above_both_brand_bars(seeded_tenant, logo):
+    assert (seeded_tenant.email_logo_width, seeded_tenant.email_logo_height) == (260, 59), (
+        "Fitted into the 260 x 80 header box, proportions kept.")
+    html = email_layout.document(seeded_tenant, content_html="<p>Hello</p>", subject="Hi")
+    assert f'src="cid:{email_layout.LOGO_CID}"' in html
+    assert 'width="260" height="59" alt="Executives Now"' in html, (
+        "Outlook needs the size attributes; the alt text is the name when images are off.")
+    assert "background-color:#FFFFFF;padding:22px 32px" in html, "White header."
+    assert "background-color:#0A3A65;height:6px" in html, "The header-colour bar."
+    assert "background-color:#F58220;height:4px" in html, "The accent rule."
+    assert '0.2px;color:#0A3A65;">Executives Now<' not in html, (
+        "The logo replaces the text wordmark in the header; the footer still names "
+        "the practice.")
+    assert "<style" not in html.lower()
+
+
+@pytest.mark.django_db
+def test_without_a_logo_the_header_is_the_practice_name(seeded_tenant):
+    html = email_layout.document(seeded_tenant, content_html="x")
+    assert "<img" not in html and ">Executives Now<" in html
+    assert email_layout.with_logo(html, seeded_tenant) == (html, [])
+
+
+def test_the_mime_puts_the_logo_beside_the_html_it_is_cited_by():
+    mime = transport.build_mime(
+        to_address="a@example.invalid", from_address="info@example.invalid", subject="S",
+        body_text="Plain", body_html='<img data-enhq-logo src="cid:enhq-logo">', message_id="<x@y>",
+        thread_token="tok", attachments=[("f.pdf", b"%PDF-1", "application/pdf")],
+        inline_images=[("enhq-logo", png(4, 2), "image/png", "logo.png")])
+    parsed = message_from_bytes(mime.as_bytes())
+    types = [part.get_content_type() for part in parsed.walk()]
+    assert types.index("text/plain") < types.index("text/html")
+    related = next(p for p in parsed.walk() if p.get_content_type() == "multipart/related")
+    inside = [p.get_content_type() for p in related.walk()]
+    assert inside == ["multipart/related", "text/html", "image/png"]
+    image = next(p for p in parsed.walk() if p.get_content_type() == "image/png")
+    assert image["Content-ID"] == "<enhq-logo>"
+    assert image.get_content_disposition() == "inline"
+    assert image.get_payload(decode=True) == png(4, 2)
+    assert [p.get_filename() for p in parsed.walk()
+            if p.get_content_disposition() == "attachment"] == ["f.pdf"], (
+        "The logo is not an attachment; the real attachment still is.")
+
+
+@pytest.mark.django_db
+def test_a_sent_digest_carries_the_logo_bytes_inline(
+    seeded_tenant, ff, company, recipient, project, logo, dev_outbox, in_tenant_a
+):
+    digest = weekly_digest(seeded_tenant, ff, company, recipient, project,
+                           [("Map the invoice process", S.IN_PROGRESS, "Mapping has begun.")])
+    digest_service.approve(digest, actor=ff.user, role="FF")
+    digest_service.send_due(seeded_tenant, now=digest.send_window_at)
+
+    email = dev_outbox[0]
+    assert 'src="cid:enhq-logo"' in html_part(email)
+    images = [a for a in email.attachments if getattr(a, "get", None) and a.get("Content-ID")]
+    assert len(images) == 1 and images[0]["Content-ID"] == "<enhq-logo>"
+    assert images[0].get_payload(decode=True) == png(440, 100)
+    assert email.mixed_subtype == "related"
+
+
+@pytest.mark.django_db
+def test_an_unreadable_logo_never_stops_a_send_the_name_takes_its_place(
+    seeded_tenant, ff, logo, dev_outbox, in_tenant_a
+):
+    from apps.tenancy import storage
+
+    storage.delete(logo)   # the row still points at it; the bytes are gone
+    message = outbox.create_message(
+        tenant=seeded_tenant, producer=OutboxMessage.Producer.MANUAL,
+        to_address="x@partner.invalid", subject="S", body_text="B", actor=ff.user)
+    html = email_layout.document(seeded_tenant, content_html="<p>Sign in</p>")
+    resolved, inline = email_layout.with_logo(html, seeded_tenant)
+    assert inline == [] and "<img" not in resolved and ">Executives Now<" in resolved
+
+    # And end to end, through the one path out of the app.
+    message.body_html = html
+    message.save(update_fields=["body_html"])
+    outbox.approve(message, actor=ff.user, role="FF")
+    assert len(dev_outbox) == 1
+    assert "<img" not in html_part(dev_outbox[0]) and not dev_outbox[0].attachments
+
+
+@pytest.mark.django_db
+def test_the_preview_embeds_the_logo_because_a_browser_cannot_resolve_cid(
+    seeded_tenant, ff, api, logo, company, recipient, project, dev_outbox, in_tenant_a
+):
+    digest = weekly_digest(seeded_tenant, ff, company, recipient, project,
+                           [("Map the invoice process", S.IN_PROGRESS, "Preview me.")])
+    body = api.as_(ff).get(f"/api/digests/{digest.pk}/preview/").content.decode()
+    assert 'src="data:image/png;base64,' in body and "cid:" not in body
+    expected, _ = email_layout.with_logo(
+        digest_service.email_for(digest, footer_url=digest_service.preview_footer_url())[0],
+        seeded_tenant, as_data_uri=True)
+    assert body == expected, "Apart from the image source, the preview is the send."
+
+
+@pytest.mark.django_db
+def test_one_tenants_logo_never_appears_in_another_tenants_email(seeded_tenant, logo, tenant_b):
+    html = email_layout.document(tenant_b, content_html="x")
+    assert "<img" not in html and email_layout.with_logo(html, tenant_b) == (html, [])
+    # Even a document that cites the logo resolves against its own tenant only.
+    borrowed = email_layout.document(seeded_tenant, content_html="x")
+    resolved, inline = email_layout.with_logo(borrowed, tenant_b)
+    assert inline == [] and "<img" not in resolved
+
+
+@pytest.mark.django_db
+def test_set_email_logo_refuses_what_cannot_be_a_logo_and_clears(seeded_tenant, tmp_path, logo):
+    text = tmp_path / "logo.png"
+    text.write_bytes(b"not an image")
+    with pytest.raises(CommandError, match="PNG or a JPEG"):
+        call_command("set_email_logo", str(text), "--tenant", seeded_tenant.slug)
+    big = tmp_path / "big.png"
+    big.write_bytes(png(1, 1) + b"\x00" * (email_layout.LOGO_MAX_BYTES + 1))
+    with pytest.raises(CommandError, match="the limit is 500 KB"):
+        call_command("set_email_logo", str(big), "--tenant", seeded_tenant.slug)
+
+    dry = io.StringIO()
+    small = tmp_path / "small.png"
+    small.write_bytes(png(100, 40))
+    call_command("set_email_logo", str(small), "--tenant", seeded_tenant.slug, "--dry-run",
+                 stdout=dry)
+    assert "shown at 100 x 40 px" in dry.getvalue(), "Never enlarged."
+    seeded_tenant.refresh_from_db()
+    assert seeded_tenant.email_logo_id == logo.pk, "A dry run changes nothing."
+
+    call_command("set_email_logo", "--clear", "--tenant", seeded_tenant.slug, stdout=io.StringIO())
+    seeded_tenant.refresh_from_db()
+    assert seeded_tenant.email_logo_id is None and seeded_tenant.email_logo_width == 0
+
+
+def test_image_size_reads_png_and_jpeg_headers():
+    assert email_layout.image_size(png(440, 100)) == ("image/png", 440, 100)
+    jpeg = (b"\xff\xd8" + b"\xff\xe0\x00\x04\x00\x00"
+            + b"\xff\xc0\x00\x0b\x08\x00\x64\x01\xb8\x01\x01\x11\x00" + b"\xff\xd9")
+    assert email_layout.image_size(jpeg) == ("image/jpeg", 440, 100)
+    assert email_layout.logo_display_size(400, 400) == (80, 80)
+
+
+# ------------------------------------------------------ the personal sign-off
+
+SIGNATURE = ("Bryan Baker\nFractional COO, Executives Now\n(555) 010-0000\n"
+             "bryan.baker@getexecutivesnow.com\nhttps://getexecutivesnow.com")
+
+
+@pytest.fixture
+def mark(seeded_tenant, tmp_path):
+    path = tmp_path / "mark.png"
+    path.write_bytes(png(112, 112))
+    call_command("set_email_logo", str(path), "--mark", "--tenant", seeded_tenant.slug,
+                 stdout=io.StringIO())
+    seeded_tenant.refresh_from_db()
+    return seeded_tenant.email_mark
+
+
+def _touch(tenant, ff, body):
+    return outbox.create_message(
+        tenant=tenant, producer=OutboxMessage.Producer.REFERRAL_TOUCH,
+        to_address="maria@partner.invalid", subject="Checking in", body_text=body, actor=ff.user)
+
+
+@pytest.mark.django_db
+def test_mail_from_a_person_signs_off_with_the_mark_beside_the_contact_lines(
+    seeded_tenant, ff, mark, in_tenant_a
+):
+    from apps.crm.models import MailPreference
+
+    MailPreference.all_objects.update_or_create(tenant=seeded_tenant, user=ff.user,
+                                                defaults={"signature_text": SIGNATURE})
+    body = f"Hi Maria,\n\nGood to see you last week.\n\n{SIGNATURE}"
+    message = _touch(seeded_tenant, ff, body)
+    preferences = MailPreference.all_objects.count()
+
+    html, text = email_layout.for_delivery(message)
+    assert text == body, "The plain part is the words as written."
+    assert 'data-enhq-email="personal"' in html and "data-enhq-signature" in html
+    assert '<strong style="font-size:15px;color:#0A3A65;">Bryan Baker</strong>' in html
+    assert 'href="mailto:bryan.baker@getexecutivesnow.com"' in html
+    assert 'href="https://getexecutivesnow.com"' in html
+    assert "border-left:3px solid #F58220" in html
+    assert html.count("Fractional COO") == 1, "The sign-off is not also left in the body."
+    assert f'src="cid:{email_layout.MARK_CID}"' in html and 'width="56" height="56"' in html
+    assert "#0A3A65;height:6px" not in html, "Still no corporate header on mail from a person."
+
+    _, inline = email_layout.with_logo(html, seeded_tenant)
+    assert [part[0] for part in inline] == [email_layout.MARK_CID]
+    assert inline[0][1] == png(112, 112)
+    assert MailPreference.all_objects.count() == preferences, "Rendering writes nothing."
+
+
+@pytest.mark.django_db
+def test_the_default_sign_off_is_recognised_and_an_edited_one_is_left_alone(
+    seeded_tenant, ff, mark, in_tenant_a
+):
+    ff.user.full_name = "Bryan Baker"
+    ff.user.save()
+    signed = _touch(seeded_tenant, ff, f"Hi Maria,\n\nBryan Baker\n{seeded_tenant.name}")
+    assert "data-enhq-signature" in email_layout.for_delivery(signed)[0]
+
+    edited = _touch(seeded_tenant, ff, "Hi Maria,\n\nThanks,\nB")
+    html = email_layout.for_delivery(edited)[0]
+    assert "data-enhq-signature" not in html and "enhq-mark" not in html
+
+
+@pytest.mark.django_db
+def test_an_unreadable_mark_leaves_the_sign_off_without_an_image(seeded_tenant, ff, mark,
+                                                                  in_tenant_a):
+    from apps.tenancy import storage
+
+    ff.user.full_name = "Bryan Baker"
+    ff.user.save()
+    storage.delete(mark)
+    html = email_layout.for_delivery(
+        _touch(seeded_tenant, ff, f"Hi Maria,\n\nBryan Baker\n{seeded_tenant.name}"))[0]
+    resolved, inline = email_layout.with_logo(html, seeded_tenant)
+    assert inline == [] and "<img" not in resolved and "data-enhq-mark" not in resolved
+    assert "data-enhq-signature" in resolved and "Bryan Baker" in resolved
+
+
+@pytest.mark.django_db
+def test_a_client_signs_in_to_the_practice_not_to_the_product(seeded_tenant):
+    from apps.accounts.views import magic_link_email, magic_link_subject
+    from config.branding import PRODUCT_NAME
+
+    html, text = magic_link_email(seeded_tenant, url="https://app.example.invalid/auth/magic/x")
+    assert magic_link_subject(seeded_tenant) == "Sign in to Executives Now"
+    assert "Sign in to Executives Now" in html and "Sign in to Executives Now" in text
+    assert PRODUCT_NAME not in html and PRODUCT_NAME not in text
+    seeded_tenant.email_display_name = "Acme Fractional"
+    assert magic_link_subject(seeded_tenant) == "Sign in to Acme Fractional"
+
+
+@pytest.mark.django_db
+def test_the_four_personal_samples_send_from_the_owners_own_address(
+    seeded_tenant, ff, settings, monkeypatch, in_tenant_a
+):
+    from .factories import GmailConnectionFactory
+
+    settings.DEV_REAL_SEND_ALLOWLIST = ["owner@example.invalid"]
+    GmailConnectionFactory(tenant=seeded_tenant, user=ff.user,
+                           email_address="bryan.baker@getexecutivesnow.com",
+                           send_as_address=seeded_tenant.from_address,
+                           send_as_verified_at=timezone.now())
+    fake = RecordingTransport()
+    monkeypatch.setattr(transport, "get_transport", lambda name=None: fake)
+
+    out = io.StringIO()
+    call_command("send_email_samples", "--to", "owner@example.invalid", stdout=out)
+    by_producer = {row.producer: row.from_address
+                   for row in OutboxMessage.all_objects.filter(source_type="email_sample")}
+    handed = {kwargs["subject"]: kwargs["from_address"] for kwargs in fake.sent}
+    for producer in ("referral_touch", "referral_onboarding", "manual", "stage_rule"):
+        assert by_producer[producer] == "bryan.baker@getexecutivesnow.com", producer
+    assert sum(1 for a in handed.values() if a == "bryan.baker@getexecutivesnow.com") == 4, (
+        "The transport was handed the own address for exactly the four personal samples.")
+    assert sum(1 for a in handed.values() if a == seeded_tenant.from_address) == 4
+    assert "[Sample] Sign in to Executives Now" in handed
+    assert out.getvalue().count("from bryan.baker@getexecutivesnow.com") == 4

@@ -674,3 +674,37 @@ These came from `Execs_NOW_HQ_Kickoff.md` and are facts, not proposals. They fee
 **Closed. All 50 items marked, all 7 open questions answered.** 48 approved as written, 2 changed (A2 broker, F16 sequencing), 5 approved with additions (A3, C2, F7, F11, F14a), 1 added during review and approved (A2a).
 
 This register is the reference for every later document in Phase 0. Nothing in it is outstanding.
+
+
+---
+
+## I. White-label (owner ruling, 2026-09-15)
+
+### I1. No client of any tenant ever sees the product
+
+**The rule.** Every client-facing surface renders the **tenant's** display name, colours
+and logo, read from the tenant row: the portal shell and every portal screen, the
+magic-link sign-in page, the signed-out page, the refused-access page, the cadence page,
+and every email. Never a hardcoded `Executives Now`, never `Execs NOW HQ`. The product
+name appears **only on staff-facing screens** (FF/CF/VA) — `/api/branding` returns it to
+staff and returns `null` to everyone else.
+
+**Consequence for defaults.** The product cannot brand a practice by default, so the code
+defaults are a practice's own name over neutral greys (`#1F2933` / `#52606D`). Executives
+Now's name and palette are **data on its tenant row** (migration `tenancy 0005`), exactly
+as another practice's would be. A V1 tenant that sets nothing looks like itself, never
+like Executives Now.
+
+**Tenant resolution.** Signed in, it is the member's own practice. Otherwise the
+**hostname** decides: V1 gives each practice its own portal domain
+(`portal.<tenantbrand>.com`), resolved by `Host`. **Beta's `app.getexecutivesnow.com` is
+the single-tenant case of that same rule** — one row, so it resolves to that row. With
+more than one tenant and no hostname mapping yet, an unauthenticated page shows neutral
+branding rather than guessing.
+
+**Not covered by this rule:** `from_address` and `inbound_domain` are real addresses a
+practice configures, not branding text; Beta's are Executives Now's because that is whose
+practice it is. V1 sets them per tenant at onboarding.
+
+**Tested by** `tests/test_white_label.py`, including an assertion that no client-facing
+response or client-bound email contains the product name.

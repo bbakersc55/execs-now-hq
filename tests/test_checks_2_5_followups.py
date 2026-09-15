@@ -114,7 +114,8 @@ def test_the_onboarding_draft_carries_the_flyer(seeded_tenant, referrals, ff, ap
     )
     # The fix: the API now SAYS so, with a filename and a size.
     assert row["attachments"] == [{
-        "id": row["attachments"][0]["id"], "filename": "Executives-Now.pdf",
+        # White-label: the practice's own name, never the product owner's.
+        "id": row["attachments"][0]["id"], "filename": "tenant-a.pdf",
         "byte_size": flyer.byte_size, "content_type": "application/pdf",
         "content_present": True,
     }]

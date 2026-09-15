@@ -274,3 +274,79 @@ def test_thread_token_survives_a_round_trip_through_the_message_id():
 def test_unknown_message_id_yields_no_token():
     assert transport.token_from_message_id("") == ""
     assert transport.token_from_message_id("<random@elsewhere.com>") == ""
+
+
+# ------------------------------------------- the From is the row's (FR-1.15c)
+
+@pytest.fixture
+def own_connections(seeded_tenant, ff, cf):
+    for member, address in ((ff, "bryan@getexecutivesnow.com"), (cf, "cf@getexecutivesnow.com")):
+        GmailConnectionFactory(tenant=seeded_tenant, user=member.user, email_address=address,
+                               send_as_address=ALIAS, send_as_verified_at=timezone.now())
+
+
+def _gmail_send(tenant, *, actor, role, from_address):
+    """A direct send through the real Gmail transport, faked at the HTTP edge.
+    Returns the row, the From header Gmail was handed, and the connection used."""
+    import base64
+    from email import message_from_bytes
+
+    sent = _response(payload={"id": "msg-1", "threadId": "gthread-1"})
+    with tenant_context(tenant.pk), \
+         mock.patch.object(transport, "access_token_for", return_value="tok") as token, \
+         mock.patch("apps.crm.services.transport.requests.post", return_value=sent) as post:
+        message = outbox.create_message(
+            tenant=tenant, producer=outbox.P.MANUAL, role=role, actor=actor,
+            to_address="partner@example.invalid", subject="Hello", body_text="Hi",
+            from_address=from_address)
+    mime = message_from_bytes(base64.urlsafe_b64decode(post.call_args.kwargs["json"]["raw"]))
+    return message, mime["From"], token.call_args.args[0]
+
+
+@pytest.mark.django_db
+def test_mail_from_a_persons_own_address_goes_out_from_it(seeded_tenant, ff, own_connections,
+                                                          settings):
+    """This was the defect: the choice was recorded on the row, then the
+    transport sent every message as the alias and overwrote the row to match."""
+    settings.DEV_REAL_SEND_ALLOWLIST = ["partner@example.invalid"]
+    message, sent_from, used = _gmail_send(seeded_tenant, actor=ff.user, role="FF",
+                                           from_address="bryan@getexecutivesnow.com")
+    assert sent_from == "bryan@getexecutivesnow.com"
+    assert message.from_address == "bryan@getexecutivesnow.com", "The row says what went out."
+    assert used.user_id == ff.user_id
+
+
+@pytest.mark.django_db
+def test_a_cfs_own_address_goes_through_the_cfs_own_connection(seeded_tenant, cf,
+                                                               own_connections, settings):
+    settings.DEV_REAL_SEND_ALLOWLIST = ["partner@example.invalid"]
+    message, sent_from, used = _gmail_send(seeded_tenant, actor=cf.user, role="CF",
+                                           from_address="cf@getexecutivesnow.com")
+    assert sent_from == "cf@getexecutivesnow.com" and message.from_address == sent_from
+    assert used.user_id == cf.user_id, "A CF's mail never rides on the FF's account."
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("address", [
+    ALIAS, "stranger@example.invalid", "va@getexecutivesnow.com", "b@tenant-b.invalid",
+    "unverified@getexecutivesnow.com",
+])
+def test_anything_but_a_verified_ff_or_cf_address_goes_out_as_the_alias(
+    address, seeded_tenant, tenant_b, ff, cf, va, own_connections, settings
+):
+    from .factories import UserFactory
+
+    settings.DEV_REAL_SEND_ALLOWLIST = ["partner@example.invalid"]
+    # A VA's connection (H7: a VA never sends), another tenant's, and an unverified one.
+    GmailConnectionFactory(tenant=seeded_tenant, user=va.user, email_address="va@getexecutivesnow.com",
+                           send_as_address=ALIAS, send_as_verified_at=timezone.now())
+    GmailConnectionFactory(tenant=tenant_b, user=UserFactory(), email_address="b@tenant-b.invalid",
+                           send_as_address="info@tenant-b.invalid",
+                           send_as_verified_at=timezone.now())
+    GmailConnection.all_objects.filter(user=cf.user).update(
+        email_address="unverified@getexecutivesnow.com", send_as_verified_at=None)
+
+    message, sent_from, used = _gmail_send(seeded_tenant, actor=ff.user, role="FF",
+                                           from_address=address)
+    assert sent_from == ALIAS and message.from_address == ALIAS
+    assert used.user_id == ff.user_id

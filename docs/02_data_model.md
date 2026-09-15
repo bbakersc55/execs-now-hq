@@ -43,7 +43,9 @@ The practice. One row in Beta.
 | `inbound_domain` | text | `inbound.getexecutivesnow.com` |
 | `discipline` | text | `operations` in Beta; multi-discipline is V1 |
 | `hold_all_digests` | bool | **default `true`** (FR-3.25) |
-| `email_display_name` / `email_header_color` / `email_accent_color` | text / text(7) / text(7) | Email presentation — the header wordmark and two colours every app-originated email uses. Defaults `Executives Now` · `#0A3A65` · `#F58220`; a V1 tenant sets its own without a template change (2026-09-15) |
+| `email_display_name` / `email_header_color` / `email_accent_color` | text / text(7) / text(7) | Branding for **every client-facing surface** — email and the portal, sign-in and cadence pages via `/api/branding`. **White-label:** defaults are blank (falls back to `name`) over neutral greys `#1F2933` / `#52606D`, never the product owner's look. Executives Now's own values sit on its row (migration `tenancy 0005`), as another practice's would (2026-09-15) |
+| `email_logo` / `email_logo_width` / `email_logo_height` | FK → `stored_file` (nullable, SET NULL) / smallint / smallint | The email header logo (PNG or JPEG, `purpose = email_logo`) and its **display** size, fitted into 220 × 80 px when set by `manage.py set_email_logo`. Null: the header shows `email_display_name` (2026-09-15) |
+| `email_mark` / `email_mark_width` / `email_mark_height` | FK → `stored_file` (nullable, SET NULL) / smallint / smallint | The square mark beside the sign-off on mail from a person (`purpose = email_mark`), display size fitted into 56 × 56 px by `set_email_logo --mark`. Null: the sign-off has no image (2026-09-15) |
 | `digest_ai_prose_default` | bool | default `true`; the value a new client company inherits (FR-3.24) |
 | `digest_send_day` | smallint | ISO weekday, default 5 = Friday (FR-3.23) |
 | `digest_send_hour` | smallint | default 8 |

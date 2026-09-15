@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
@@ -31,6 +32,14 @@ import { Report } from "./screens/Report";
 import { Tasks } from "./screens/Tasks";
 import { Work } from "./screens/Work";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
+
+interface Branding {
+  display_name: string;
+  logo_url: string;
+  palette: { header: string; accent: string; gray_dark: string; gray_light: string };
+  /** Staff only. A client is never told the product's name. */
+  product_name: string | null;
+}
 
 const TENANT = ["FF", "CF", "VA"];
 const CLIENT = ["FCC", "ECC"];
@@ -87,12 +96,35 @@ export function App() {
     retry: false,
   });
 
+  // White-label: every client-facing surface wears the practice's name, colours
+  // and logo; only staff screens name the product. Unauthenticated too — the
+  // signed-out screen is the first thing a client with a dead session sees.
+  const { data: brand } = useQuery<Branding>({
+    queryKey: ["branding"],
+    queryFn: () => api.get<Branding>("/api/branding"),
+    retry: false,
+  });
+  const staff = !!me?.role && TENANT.includes(me.role);
+  const wordmark = (staff ? brand?.product_name : brand?.display_name) ?? "";
+  const palette = brand?.palette;
+
+  useEffect(() => {
+    if (!palette) return;
+    const root = document.documentElement;
+    root.style.setProperty("--blue", palette.header);
+    root.style.setProperty("--orange", palette.accent);
+  }, [palette]);
+
+  useEffect(() => {
+    if (wordmark) document.title = wordmark;
+  }, [wordmark]);
+
   if (isLoading) return <main style={{ padding: "2rem" }}>Loading…</main>;
 
   if (isError || !me?.authenticated) {
     return (
       <main style={{ padding: "3rem", textAlign: "center" }}>
-        <h2>Execs NOW HQ</h2>
+        <h2>{brand?.display_name || "Sign in"}</h2>
         <p className="muted">You are not signed in.</p>
         <a className="btn" href="/accounts/google/login/">Sign in with Google</a>
       </main>
@@ -104,7 +136,7 @@ export function App() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h1>Execs NOW HQ</h1>
+        <h1>{wordmark}</h1>
         {me.role && TENANT.includes(me.role) && <NoteCapture defaults={captureDefaults(location.pathname)} />}
         <nav>
           {visible.map((n) => (

@@ -5,7 +5,7 @@ import { Banner, Card } from "../components/ui";
 import { api } from "../lib/api";
 
 interface Cadence {
-  name: string; cadence: string; is_muted: boolean;
+  practice: string; name: string; cadence: string; is_muted: boolean;
   choices: { value: string; label: string }[];
 }
 
@@ -38,7 +38,7 @@ export function CadenceLink() {
 
   return (
     <main style={{ padding: "2rem", maxWidth: "34rem" }}>
-      <h2>Your updates</h2>
+      <h2>{data.practice ? `Updates from ${data.practice}` : "Your updates"}</h2>
       <Card>
         <p>{data.name}, choose how often you hear about progress on your work.</p>
         {save.isSuccess && <Banner kind="ok">Saved.</Banner>}

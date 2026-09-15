@@ -316,6 +316,19 @@ Then open **http://localhost:5200** for the app and **http://localhost:8125** fo
 
 **Previewing an email.** On a localhost build, every Outbox item and every pending digest has **Preview email**: it opens the HTML exactly as it sends, from the same function delivery uses (add `?part=text` to the URL for the plain-text part). A sign-in or PIN link previews as its stored copy, which never holds the link. A pending digest shows a placeholder where the recipient's own cadence link goes; the real one is issued only when it sends.
 
+**The email logo.** PNG or JPEG, up to 500 KB, supplied at about twice the size it should show (it is fitted into 220 × 80 px):
+
+```bash
+.venv/bin/python manage.py set_email_logo ~/path/to/logo.png --dry-run   # check the file and the size it will show at
+.venv/bin/python manage.py set_email_logo ~/path/to/logo.png
+.venv/bin/python manage.py set_email_logo --clear                         # back to the practice name
+.venv/bin/python manage.py set_email_logo ~/path/to/mark.png --mark        # the square mark beside a personal sign-off (56 × 56 px)
+```
+
+The sign-off block uses each person's signature from **Settings → Sender** (name on the first line, then title, phone, email, website — one per line).
+
+A preview shows the logo embedded; a real send carries it as an inline image part. If the file cannot be read at send time, the header shows the practice name and the email still goes.
+
 **Visual sign-off on real Gmail.** One sample of every producer, to an address in the dev allow-list:
 
 ```bash

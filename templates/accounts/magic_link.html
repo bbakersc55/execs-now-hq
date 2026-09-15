@@ -1,19 +1,25 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in — {{ product_name }}</title>
+{# White-label: a client signs in to their fractional's portal, so everything
+   branded here comes from the tenant row and the product is never named. #}
+<title>Sign in{% if display_name %} — {{ display_name }}{% endif %}</title>
 <style>
-  :root { --blue:#0A3A65; --orange:#F58220; --gray:#6D6E71; }
   body { font-family: system-ui, sans-serif; display:grid; place-items:center;
-         min-height:100vh; margin:0; background:#f7f8fa; color:var(--blue); }
+         min-height:100vh; margin:0; background:#f7f8fa; color:{{ header_color }}; }
   .card { background:#fff; padding:2.5rem; border-radius:10px; max-width:26rem;
           box-shadow:0 1px 3px rgba(0,0,0,.12); text-align:center; }
-  button { background:var(--orange); color:#fff; border:0; border-radius:6px;
+  img { display:block; margin:0 auto 1.25rem; max-width:260px; height:auto; }
+  button { background:{{ accent_color }}; color:#fff; border:0; border-radius:6px;
            padding:.85rem 2rem; font-size:1rem; cursor:pointer; }
-  p { color:var(--gray); line-height:1.5; }
+  p { color:#6D6E71; line-height:1.5; }
 </style>
 <div class="card">
-  <h1>{{ product_name }}</h1>
+  {% if logo_url %}
+    <img src="{{ logo_url }}" alt="{{ display_name }}">
+  {% else %}
+    <h1>{{ display_name|default:"Sign in" }}</h1>
+  {% endif %}
   {% if valid %}
     <p>Click below to finish signing in.</p>
     <form method="post">{% csrf_token %}<button type="submit">Sign in</button></form>

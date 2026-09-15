@@ -60,6 +60,33 @@ def resolve_from(tenant, user, producer, *, override=""):
     return alias
 
 
+def _default_signature_text(tenant, user):
+    full_name = (getattr(user, "full_name", "") or "").strip()
+    return f"{full_name}\n{tenant.name}" if full_name else tenant.name
+
+
+def signature_texts(tenant):
+    """Every sign-off a member of the practice's staff adds, longest first.
+
+    How the email layout finds the signature at the end of a draft to set it
+    in the branded sign-off block. Read-only: unlike `signature`, it creates no
+    preference rows, because rendering an email must write nothing.
+    """
+    from apps.tenancy.models import Membership, Role
+
+    members = Membership.all_objects.filter(
+        tenant=tenant, role__in=[Role.FF, Role.CF, Role.VA], revoked_at__isnull=True,
+    ).select_related("user")
+    saved = dict(MailPreference.all_objects.filter(tenant=tenant)
+                 .values_list("user_id", "signature_text"))
+    texts = set()
+    for member in members:
+        text = (saved.get(member.user_id) or "").strip() \
+            or _default_signature_text(tenant, member.user)
+        texts.add(text.replace("\r\n", "\n").strip())
+    return sorted((t for t in texts if t), key=len, reverse=True)
+
+
 def signature(tenant, user):
     """(text, html). Defaults to the user's full name over the practice name —
     a bare practice name signing a personal touch reads as a form letter."""
@@ -67,7 +94,7 @@ def signature(tenant, user):
     if preference is not None and preference.signature_text.strip():
         return preference.signature_text, preference.signature_html
     full_name = (getattr(user, "full_name", "") or "").strip()
-    text = f"{full_name}\n{tenant.name}" if full_name else tenant.name
+    text = _default_signature_text(tenant, user)
     html = (
         f"<p>{full_name}<br>{tenant.name}</p>" if full_name else f"<p>{tenant.name}</p>"
     )

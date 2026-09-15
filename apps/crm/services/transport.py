@@ -33,7 +33,11 @@ from django.utils import timezone
 
 GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-THREAD_HEADER = "X-ExecsNowHQ-Thread"
+# Neutral on purpose: this header rides on every message a client receives, and
+# no client-facing artefact carries the product's name (white-label). Nothing
+# reads it on the way in — a reply is matched by In-Reply-To — so the rename
+# costs no threading.
+THREAD_HEADER = "X-Thread-Token"
 
 
 class TransportUnavailable(Exception):
@@ -69,7 +73,7 @@ def token_from_message_id(value: str) -> str:
 
 def build_mime(*, to_address, from_address, subject, body_text,
                message_id, thread_token, in_reply_to="", references="",
-               attachments=(), body_html=""):
+               attachments=(), body_html="", inline_images=()):
     mime = MimeMessage()
     mime["To"] = to_address
     mime["From"] = from_address
@@ -84,6 +88,13 @@ def build_mime(*, to_address, from_address, subject, body_text,
     mime.set_content(body_text)
     if body_html:
         mime.add_alternative(body_html, subtype="html")
+        # The header logo: an inline part beside the HTML that cites it by
+        # Content-ID (multipart/related), so no client lists it as an attachment.
+        html_part = mime.get_body(preferencelist=("html",))
+        for cid, content, content_type, filename in inline_images:
+            maintype, _, subtype = content_type.partition("/")
+            html_part.add_related(content, maintype, subtype, cid=f"<{cid}>",
+                                  disposition="inline", filename=filename)
     for filename, content, content_type in attachments:
         maintype, _, subtype = content_type.partition("/")
         mime.add_attachment(content, maintype=maintype or "application",
@@ -207,10 +218,28 @@ def verify_send_as(connection, alias, *, save=True):
     raise SendAsNotVerified(message)
 
 
-def sending_connection_for(tenant):
-    """The FF's Gmail connection — the one app mail goes through."""
+def sending_connection_for(tenant, from_address=""):
+    """The Gmail connection a message goes through.
+
+    FR-1.15c — when `from_address` is the own address of an FF or CF in this
+    tenant whose connection is verified, that person's own connection: Gmail
+    always lets an account send as itself, and a CF's mail must not ride on the
+    FF's account. Everything else — the alias, a VA (who never sends, H7), an
+    unverified or unknown address — goes through the FF's connection as the alias.
+    """
     from apps.crm.models import GmailConnection
     from apps.tenancy.models import Membership, Role
+
+    if from_address:
+        senders = Membership.all_objects.filter(
+            tenant=tenant, role__in=[Role.FF, Role.CF], revoked_at__isnull=True
+        ).values_list("user_id", flat=True)
+        own = GmailConnection.all_objects.filter(
+            tenant=tenant, user_id__in=list(senders), email_address__iexact=from_address,
+            send_as_verified_at__isnull=False,
+        ).first()
+        if own is not None:
+            return own
 
     ff_ids = Membership.all_objects.filter(
         tenant=tenant, role=Role.FF, revoked_at__isnull=True
@@ -238,17 +267,24 @@ class GmailTransport:
     name = "gmail"
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
-             in_reply_to="", references="", attachments=(), body_html=""):
-        connection = sending_connection_for(tenant)
+             in_reply_to="", references="", attachments=(), body_html="",
+             inline_images=(), from_address=""):
+        connection = sending_connection_for(tenant, from_address)
         token = access_token_for(connection)
 
+        # The row's address when it is this connection's own; otherwise the
+        # alias. This used to be the alias unconditionally, so every "from my
+        # own address" choice was recorded on the row and then dropped here.
+        own = bool(from_address) and from_address.lower() == connection.email_address.lower()
         message_id = message_id_for(tenant, thread)
         mime = build_mime(
             to_address=to_address,
-            from_address=connection.send_as_address or tenant.from_address,
+            from_address=(connection.email_address if own
+                          else connection.send_as_address or tenant.from_address),
             subject=subject, body_text=body_text, message_id=message_id,
             thread_token=thread.thread_token, in_reply_to=in_reply_to,
             references=references, attachments=attachments, body_html=body_html,
+            inline_images=inline_images,
         )
         payload = {"raw": base64.urlsafe_b64encode(mime.as_bytes()).decode()}
         if thread.gmail_thread_id:
@@ -297,25 +333,36 @@ class DevOutboxTransport:
     name = "dev"
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
-             in_reply_to="", references="", attachments=(), body_html=""):
+             in_reply_to="", references="", attachments=(), body_html="",
+             inline_images=(), from_address=""):
         from django.core.mail import EmailMultiAlternatives
 
         message_id = message_id_for(tenant, thread)
+        sender = from_address or tenant.from_address
         email = EmailMultiAlternatives(
-            subject=subject, body=body_text, from_email=tenant.from_address,
+            subject=subject, body=body_text, from_email=sender,
             to=[to_address],
             headers={"Message-ID": message_id, THREAD_HEADER: thread.thread_token,
                      **({"In-Reply-To": in_reply_to} if in_reply_to else {})},
         )
         if body_html:
             email.attach_alternative(body_html, "text/html")
+            for cid, content, content_type, filename in inline_images:
+                from email.mime.image import MIMEImage
+
+                image = MIMEImage(content, _subtype=content_type.partition("/")[2] or "png")
+                image.add_header("Content-ID", f"<{cid}>")
+                image.add_header("Content-Disposition", "inline", filename=filename)
+                email.attach(image)
+            if inline_images and not attachments:
+                email.mixed_subtype = "related"
         for filename, content, content_type in attachments:
             email.attach(filename, content, content_type)
         email.send(fail_silently=False)
         return {
             "provider": "dev", "provider_message_id": "",
             "gmail_message_id": "", "gmail_thread_id": "",
-            "message_id_header": message_id, "from_address": tenant.from_address,
+            "message_id_header": message_id, "from_address": sender,
         }
 
 

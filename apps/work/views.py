@@ -686,6 +686,9 @@ class DigestViewSet(WorkViewSet):
                                               footer_url=digest_service.preview_footer_url())
         if request.query_params.get("part") == "text":
             return HttpResponse(text, content_type="text/plain; charset=utf-8")
+        from apps.crm.services import email_layout
+
+        html, _ = email_layout.with_logo(html, digest.tenant, as_data_uri=True)
         return HttpResponse(html, content_type="text/html; charset=utf-8")
 
     @action(detail=False, methods=["get"])

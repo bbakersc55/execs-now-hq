@@ -564,9 +564,12 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
 
         if not settings.IS_LOCAL:
             raise Http404
-        html, text = email_layout.for_delivery(self.get_object())
+        message = self.get_object()
+        html, text = email_layout.for_delivery(message)
         if request.query_params.get("part") == "text":
             return HttpResponse(text, content_type="text/plain; charset=utf-8")
+        # The logo embedded: a browser cannot resolve the cid: the send uses.
+        html, _ = email_layout.with_logo(html, message.tenant, as_data_uri=True)
         return HttpResponse(html, content_type="text/html; charset=utf-8")
 
     @action(detail=True, methods=["post"], url_path="attachments")

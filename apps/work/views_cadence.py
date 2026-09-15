@@ -22,7 +22,12 @@ CHOICES = [c for c, _ in Cadence.choices]
 
 
 def _payload(row):
+    from apps.crm.services import email_layout
+
     return {
+        # Whose updates these are: the practice's own name, so the page a
+        # stakeholder lands on is branded like the email it came from.
+        "practice": email_layout.branding(row.tenant).display_name,
         "name": f"{row.contact.first_name} {row.contact.last_name}".strip(),
         "cadence": row.cadence,
         "is_muted": row.is_muted,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.contrib.auth import login
-from django.http import HttpResponseRedirect, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
@@ -23,9 +23,80 @@ _IP_LIMIT = RateLimit(limit=20, window_seconds=3600, prefix="magic-ip")
 _OPAQUE = {"detail": "If that address has access, we've sent a link."}
 
 
+#: Roles whose screens may name the product. A client's never do.
+STAFF_ROLES = ("FF", "CF", "VA")
+
+
+def _branding_tenant(request):
+    """Whose branding a surface wears.
+
+    Signed in: that person's own practice. Otherwise the hostname decides —
+    V1 gives each practice its own portal domain, and Beta's single tenant on
+    app.getexecutivesnow.com is that same rule with one row.
+    """
+    from apps.tenancy.models import Tenant
+
+    membership = getattr(request, "membership", None)
+    if membership is not None:
+        return membership.tenant
+    tenants = list(Tenant.objects.all()[:2])
+    return tenants[0] if len(tenants) == 1 else None
+
+
+def tenant_branding(tenant):
+    """Name, colours and logo for a page — the same values the email layout uses."""
+    from apps.crm.services import email_layout
+
+    brand = email_layout.branding(tenant) if tenant is not None else None
+    return {
+        "display_name": brand.display_name if brand else "",
+        "header_color": brand.header_color if brand else email_layout.DEFAULT_HEADER_COLOR,
+        "accent_color": brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR,
+        "logo_url": ("/api/branding/logo"
+                     if tenant is not None and tenant.email_logo_id else ""),
+    }
+
+
 def branding(request):
-    """FR-0.6 / G5: one payload, so V1 white-labelling is a data change."""
-    return JsonResponse({"product_name": PRODUCT_NAME, "palette": PALETTE})
+    """FR-0.6 / G5: one payload, so white-labelling is a data change.
+
+    **White-label (owner ruling, 2026-09-15).** A client never sees the product.
+    This returns the practice's own name, colours and logo; `product_name` is
+    filled in only for signed-in staff, whose screens may name the product.
+    """
+    membership = getattr(request, "membership", None)
+    staff = membership is not None and membership.role in STAFF_ROLES
+    brand = tenant_branding(_branding_tenant(request))
+    return JsonResponse({
+        "display_name": brand["display_name"],
+        "logo_url": brand["logo_url"],
+        "palette": {
+            "header": brand["header_color"],
+            "accent": brand["accent_color"],
+            "gray_dark": PALETTE["gray_dark"],
+            "gray_light": PALETTE["gray_light"],
+        },
+        "product_name": PRODUCT_NAME if staff else None,
+    })
+
+
+def branding_logo(request):
+    """The practice's logo, for the portal and the sign-in page.
+
+    Always this request's own tenant — the logo is addressed by whose page it
+    is, never by an id in the URL, so no practice can fetch another's.
+    """
+    from apps.tenancy import storage
+
+    tenant = _branding_tenant(request)
+    if tenant is None or not tenant.email_logo_id:
+        raise Http404
+    try:
+        content = storage.read(tenant.email_logo)
+    except storage.StorageError as exc:
+        raise Http404 from exc
+    return HttpResponse(content,
+                        content_type=tenant.email_logo.content_type or "image/png")
 
 
 def me(request):
@@ -52,6 +123,17 @@ def me(request):
     })
 
 
+def _tenant_of(record):
+    """The practice a sign-in link belongs to, so its page wears their brand."""
+    from apps.tenancy.models import Membership
+
+    if record is None:
+        return None
+    membership = Membership.all_objects.filter(
+        user=record.user, revoked_at__isnull=True).select_related("tenant").first()
+    return membership.tenant if membership else None
+
+
 def _acting(request):
     from apps.tenancy.acting import describe
 
@@ -62,10 +144,12 @@ def _acting(request):
 
 
 def login_refused(request):
-    """C1 — where an uninvited Google account lands. No account was created."""
-    return render(request, "accounts/login_refused.html", {
-        "product_name": PRODUCT_NAME,
-    }, status=403)
+    """C1 — where an uninvited Google account lands. No account was created.
+
+    Anyone can reach this, a client included, so it wears the practice's name.
+    """
+    return render(request, "accounts/login_refused.html",
+                  tenant_branding(_branding_tenant(request)), status=403)
 
 
 @csrf_protect
@@ -97,14 +181,23 @@ def request_magic_link(request):
 MAGIC_LINK_REDACTED = "[one-time link — sent to the recipient only, not stored]"
 
 
+def magic_link_subject(tenant):
+    """A client signs in to their fractional's portal, not to our product: the
+    practice's display name, never PRODUCT_NAME."""
+    from apps.crm.services import email_layout
+
+    return f"Sign in to {email_layout.branding(tenant).display_name}"
+
+
 def magic_link_email(tenant, *, url):
     """`(html, text)` for a sign-in link. `url=None` is the stored copy, which
     never holds the link (assumption C3)."""
     from apps.crm.services import email_layout
 
+    name = email_layout.branding(tenant).display_name
     return email_layout.action_link_email(
-        tenant, subject=f"Sign in to {PRODUCT_NAME}", heading=f"Sign in to {PRODUCT_NAME}",
-        paragraphs=[f"Use the button below to sign in to {PRODUCT_NAME}. You'll see "
+        tenant, subject=magic_link_subject(tenant), heading=magic_link_subject(tenant),
+        paragraphs=[f"Use the button below to sign in to {name}. You'll see "
                     "your company's work, and nothing else."],
         button_label="Sign in", url=url,
         expiry="This link expires in 20 minutes and can be used once.",
@@ -144,7 +237,7 @@ def _send_magic_link(membership, raw_token):
         with tenant_context(membership.tenant_id):
             outbox.create_message(
                 tenant=membership.tenant, producer=OutboxMessage.Producer.MAGIC_LINK,
-                to_address=membership.user.email, subject=f"Sign in to {PRODUCT_NAME}",
+                to_address=membership.user.email, subject=magic_link_subject(membership.tenant),
                 body_text=stored_text, body_html=stored_html,
                 deliver_body_text=text, deliver_body_html=html,
             )
@@ -166,17 +259,15 @@ def magic_link_landing(request, token: str):
     """
     record = MagicLinkToken.resolve(token)
 
+    brand = tenant_branding(_tenant_of(record) or _branding_tenant(request))
+
     if request.method == "GET":
-        return render(request, "accounts/magic_link.html", {
-            "product_name": PRODUCT_NAME,
-            "valid": record is not None,
-            "token": token,
-        })
+        return render(request, "accounts/magic_link.html",
+                      {**brand, "valid": record is not None, "token": token})
 
     if record is None:
-        return render(request, "accounts/magic_link.html", {
-            "product_name": PRODUCT_NAME, "valid": False, "token": token,
-        }, status=400)
+        return render(request, "accounts/magic_link.html",
+                      {**brand, "valid": False, "token": token}, status=400)
 
     record.consume()
     user = record.user

@@ -20,6 +20,9 @@ urlpatterns = [
          name="gmail-callback"),
     path("accounts/", include("allauth.urls")),
     path("api/branding", account_views.branding, name="branding"),
+    # The practice's logo for client-facing pages: no id in the URL, so it can
+    # only ever serve the requesting tenant's own (white-label).
+    path("api/branding/logo", account_views.branding_logo, name="branding-logo"),
     path("api/me", account_views.me, name="me"),
     path("api/", include("apps.crm.urls")),
     path("api/", include("apps.tenancy.urls")),

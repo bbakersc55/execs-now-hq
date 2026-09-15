@@ -298,6 +298,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
 
     html_part, text_part = email_layout.for_delivery(message, body_text=body_text,
                                                      body_html=body_html)
+    html_part, inline_images = email_layout.with_logo(html_part, message.tenant)
     result = transport.send(
         tenant=message.tenant,
         to_address=message.to_address,
@@ -307,6 +308,8 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         thread=thread,
         in_reply_to=in_reply_to,
         attachments=attachments,
+        inline_images=inline_images,
+        from_address=message.from_address,
     )
 
     message.state = S.SENT

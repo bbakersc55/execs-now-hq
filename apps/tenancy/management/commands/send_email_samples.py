@@ -10,6 +10,11 @@ Refuses off a localhost build, and refuses any address that is not an exact
 match in the dev allow-list (FR-0.7). Every sample goes through the Outbox like
 any other send, so each one is logged there with `source_type = email_sample`.
 
+The four personal samples (touch, onboarding, manual, stage rule) are sent from
+the FF's own verified address — the "my own address" choice — so the sign-off
+check sees the From a partner sees. If that address is not verified they fall
+back to the alias, and the output line says which address each one used.
+
     manage.py send_email_samples --to you@example.com [--dry-run]
 """
 
@@ -132,11 +137,11 @@ def _stage_rule_sample(tenant, actor):
 
 
 def _magic_link_sample(tenant, actor):
-    from apps.accounts.views import PRODUCT_NAME, magic_link_email
+    from apps.accounts.views import magic_link_email, magic_link_subject
 
     html, text = magic_link_email(
         tenant, url=f"{settings.PUBLIC_BASE_URL.rstrip('/')}/auth/magic/sample-not-a-real-link")
-    return f"Sign in to {PRODUCT_NAME}", html, text
+    return magic_link_subject(tenant), html, text
 
 
 def _pin_reset_sample(tenant, actor):
@@ -170,7 +175,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from apps.accounts.mailer import dev_allowlist
-        from apps.crm.services import outbox
+        from apps.crm.services import email_layout, outbox
+        from apps.crm.services import sender as sender_service
         from apps.crm.services.transport import TransportUnavailable
         from apps.tenancy.context import tenant_context
         from apps.tenancy.models import Membership, Role, Tenant
@@ -196,8 +202,13 @@ class Command(BaseCommand):
             for producer, build in SAMPLES:
                 subject, html, text = build(tenant, actor)
                 subject = SAMPLE_PREFIX + subject
+                personal = producer in email_layout.PERSONAL_PRODUCERS
+                from_address = (sender_service.resolve_from(tenant, actor, producer,
+                                                            override="self")
+                                if personal and actor is not None else None)
                 if options["dry_run"]:
                     self.stdout.write(f"would send  {producer:20} {subject}  "
+                                      f"from {from_address or tenant.from_address}  "
                                       f"(html {len(html)} chars, text {len(text)} chars)")
                     continue
                 try:
@@ -206,12 +217,14 @@ class Command(BaseCommand):
                             tenant=tenant, producer=producer, to_address=address,
                             subject=subject, body_text=text, body_html=html, actor=actor,
                             force_direct=True, source_type="email_sample",
+                            from_address=from_address,
                         )
                 except TransportUnavailable as exc:
                     self.stdout.write(self.style.ERROR(f"FAILED      {producer:20} {exc}"))
                     continue
                 sent.append(message)
                 self.stdout.write(f"sent        {producer:20} {subject}  "
-                                  f"via {message.sent_via}  outbox {message.pk}")
+                                  f"via {message.sent_via}  from {message.from_address}  "
+                                  f"outbox {message.pk}")
         if not options["dry_run"]:
             self.stdout.write(f"{len(sent)} of {len(SAMPLES)} samples sent to {address}.")

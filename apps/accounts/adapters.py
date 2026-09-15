@@ -96,7 +96,8 @@ class InviteOnlySocialAdapter(DefaultSocialAccountAdapter):
     def _refuse(request):
         messages.error(
             request,
-            "That account has no access to this workspace. Execs NOW HQ is "
+            # No product name: a client could land here too (white-label).
+            "That account has no access to this workspace. It is "
             "invite-only; ask the practice owner to invite you.",
         )
         raise ImmediateHttpResponse(redirect(reverse("login-refused")))

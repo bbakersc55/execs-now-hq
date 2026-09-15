@@ -155,7 +155,11 @@ def onboard_referral_partner(contact, *, actor=None):
     attachments = []
     warning = ""
     if tenant.marketing_flyer_id:
-        attachments.append((tenant.marketing_flyer, "Executives-Now.pdf"))
+        # The practice's own name, never the product owner's: a client of any
+        # tenant sees only their fractional's brand (white-label).
+        from django.utils.text import slugify
+
+        attachments.append((tenant.marketing_flyer, f"{slugify(tenant.name) or 'practice'}.pdf"))
     else:
         # FR-1.23b — the flyer is optional; say so rather than suppressing the
         # draft.
