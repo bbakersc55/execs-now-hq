@@ -554,3 +554,287 @@ def test_the_picker_is_blind_to_other_companies_and_other_tenants(
     # Nobody reaches another tenant's company, FF included.
     assert api.as_(ff).get(
         f"/api/portal-access/candidates/?company={theirs.pk}").status_code == 404
+
+
+# =================================== matrix 9.2: choose FCC vs ECC on the grant
+
+@pytest.mark.django_db
+def test_9_2_the_grant_takes_the_role_chosen_over_the_default(
+    seeded_tenant, ff, api, company, in_tenant_a
+):
+    founder = a_contact(seeded_tenant, company, "Dana")
+    company.primary_contact = founder
+    company.save()
+    employee = a_contact(seeded_tenant, company, "Priya", "priya@northwind.invalid")
+
+    # The picker offers each person's default, which is what the control preselects.
+    rows = {p["contact"]: p["role"] for p in api.as_(ff).get(
+        f"/api/portal-access/candidates/?company={company.pk}").json()["people"]}
+    assert rows == {str(founder.pk): "FCC", str(employee.pk): "ECC"}
+
+    # ...and the person granting may choose otherwise, either way round.
+    assert make(api.as_(ff), "/api/portal-access/",
+                contact=str(founder.pk), role="ECC")["role"] == "ECC"
+    assert make(api.as_(ff), "/api/portal-access/",
+                contact=str(employee.pk), role="FCC")["role"] == "FCC"
+    audited = AuditEvent.all_objects.filter(verb="portal.access_granted")
+    assert sorted(e.payload["role"] for e in audited) == ["ECC", "FCC"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["FF", "CF", "VA", "owner"])
+def test_9_2_a_grant_never_makes_anything_but_a_client_user(role, seeded_tenant, ff, api,
+                                                           company, dev_outbox, in_tenant_a):
+    contact = a_contact(seeded_tenant, company, "Sneaky", "sneaky@northwind.invalid")
+    dev_outbox.clear()
+    refused = post(api.as_(ff), "/api/portal-access/", {"contact": str(contact.pk), "role": role})
+    assert refused.status_code == 400 and "FCC or ECC" in refused.json()["detail"]
+    assert not Membership.all_objects.filter(contact=contact).exists()
+    assert dev_outbox == []
+
+
+# ============================= matrix 9.2a: change an existing portal user's role
+
+def role_change(client, membership, role):
+    return patch(client, f"/api/portal-access/{membership.pk}/", {"role": role})
+
+
+@pytest.mark.django_db
+def test_9_2a_narrowing_ends_sessions_and_links_but_keeps_access(
+    seeded_tenant, ff, api, company, fcc, in_tenant_a
+):
+    from apps.accounts.models import MagicLinkToken
+
+    _, raw = MagicLinkToken.issue(tenant=seeded_tenant, user=fcc.user)
+    theirs = Client()
+    theirs.force_login(fcc.user)
+    assert theirs.get("/api/me").json()["role"] == "FCC"
+
+    response = role_change(api.as_(ff), fcc, "ECC")
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body["role"] == "ECC" and body["changed"] is True
+    assert body["sessions_ended"] >= 1 and body["links_invalidated"] == 1
+
+    assert theirs.get("/api/me").status_code == 401, "A founder session outlived the change."
+    assert Client().post(f"/auth/magic/{raw}").status_code == 400, "An old link still worked."
+
+    fcc.refresh_from_db()
+    assert fcc.role == "ECC" and fcc.revoked_at is None, "A role change is not a revoke."
+    assert company.seats_in_use == 1, "The seat is still theirs."
+    event = AuditEvent.all_objects.get(verb="portal.role_changed", target_id=fcc.pk)
+    assert event.actor == ff.user
+    assert event.payload["from"] == "FCC" and event.payload["to"] == "ECC"
+    assert event.payload["narrowed"] is True
+
+
+@pytest.mark.django_db
+def test_9_2a_widening_ends_nothing(seeded_tenant, ff, api, company, ecc, in_tenant_a):
+    from apps.accounts.models import MagicLinkToken
+
+    _, raw = MagicLinkToken.issue(tenant=seeded_tenant, user=ecc.user)
+    theirs = Client()
+    theirs.force_login(ecc.user)
+
+    body = role_change(api.as_(ff), ecc, "FCC").json()
+    assert body["role"] == "FCC" and body["sessions_ended"] == 0
+    assert body["links_invalidated"] == 0
+    # Takes effect on their very next request, in the session they already have.
+    assert theirs.get("/api/me").json()["role"] == "FCC"
+    assert MagicLinkToken.all_objects.filter(user=ecc.user, used_at__isnull=True).exists()
+    event = AuditEvent.all_objects.get(verb="portal.role_changed", target_id=ecc.pk)
+    assert event.payload["narrowed"] is False
+    assert raw  # issued, and untouched
+
+
+@pytest.mark.django_db
+def test_9_2a_the_same_role_again_changes_and_audits_nothing(ff, api, fcc, in_tenant_a):
+    theirs = Client()
+    theirs.force_login(fcc.user)
+    body = role_change(api.as_(ff), fcc, "FCC").json()
+    assert body["changed"] is False and body["sessions_ended"] == 0
+    assert theirs.get("/api/me").status_code == 200
+    assert not AuditEvent.all_objects.filter(verb="portal.role_changed").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["FF", "CF", "VA", "", None])
+def test_9_2a_a_role_change_never_makes_anything_but_a_client_user(role, ff, api, fcc,
+                                                                  in_tenant_a):
+    refused = role_change(api.as_(ff), fcc, role)
+    assert refused.status_code == 400
+    fcc.refresh_from_db()
+    assert fcc.role == "FCC"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 200), ("VA", 403),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_9_2a_who_may_change_a_portal_role(role, expected, seeded_tenant, api, company,
+                                           ecc, in_tenant_a):
+    member = MembershipFactory(
+        tenant=seeded_tenant, role=role,
+        client_company=company if role in ("FCC", "ECC") else None)
+    if role == "CF":
+        ClientAssignmentFactory(tenant=seeded_tenant, user=member.user, company=company)
+    assert role_change(api.as_(member), ecc, "FCC").status_code == expected
+    ecc.refresh_from_db()
+    assert ecc.role == ("FCC" if expected == 200 else "ECC")
+
+
+@pytest.mark.django_db
+def test_9_2a_a_role_change_is_blind_to_other_companies_tenants_and_staff(
+    seeded_tenant, tenant_b, ff, cf, api, ecc, in_tenant_a
+):
+    # A CF on a company they are not assigned: 404, not 403 (matrix §1).
+    assert role_change(api.as_(cf), ecc, "FCC").status_code == 404
+
+    # Another tenant's portal user is invisible to this FF.
+    theirs_co = ClientCompanyFactory(tenant=tenant_b, name="Tenant B Co", seat_count=2)
+    theirs = MembershipFactory(tenant=tenant_b, role="ECC", client_company=theirs_co)
+    assert role_change(api.as_(ff), theirs, "FCC").status_code == 404
+    theirs.refresh_from_db()
+    assert theirs.role == "ECC"
+
+    # Staff roles are not portal access (FR-0.8b).
+    assert role_change(api.as_(ff), cf, "FCC").status_code == 404
+
+    # Nor is someone whose access has been revoked.
+    api.as_(ff).delete(f"/api/portal-access/{ecc.pk}/")
+    assert role_change(api.as_(ff), ecc, "FCC").status_code == 404
+
+
+# ================================= matrix 4.8 / FR-1.3a: the company's primary contact
+
+def set_primary(client, company, contact):
+    return patch(client, f"/api/companies/{company.pk}/",
+                 {"primary_contact": str(contact.pk) if contact else None})
+
+
+@pytest.mark.django_db
+def test_4_8_the_primary_contact_sets_the_fcc_default_and_changes_no_existing_role(
+    seeded_tenant, ff, api, company, fcc, ecc, in_tenant_a
+):
+    newcomer = a_contact(seeded_tenant, company, "Ola", "ola@northwind.invalid")
+    assert set_primary(api.as_(ff), company, newcomer).status_code == 200
+
+    candidates = api.as_(ff).get(
+        f"/api/portal-access/candidates/?contact={newcomer.pk}").json()
+    assert candidates["people"][0]["role"] == "FCC", "FR-3.33d is now exercisable."
+
+    # Moving it onto the ECC, and away from the FCC, changes neither login.
+    assert set_primary(api.as_(ff), company, ecc.contact).status_code == 200
+    for member, role in ((fcc, "FCC"), (ecc, "ECC")):
+        member.refresh_from_db()
+        assert member.role == role, "Setting a primary contact changed a portal role."
+    assert not AuditEvent.all_objects.filter(verb="portal.role_changed").exists()
+
+    assert set_primary(api.as_(ff), company, None).status_code == 200
+    company.refresh_from_db()
+    assert company.primary_contact_id is None
+
+
+@pytest.mark.django_db
+def test_4_8_every_primary_contact_change_is_audited_with_who_old_and_new(
+    seeded_tenant, ff, cf, va, api, company, in_tenant_a
+):
+    ClientAssignmentFactory(tenant=seeded_tenant, user=cf.user, company=company)
+    dana = a_contact(seeded_tenant, company, "Dana")
+    priya = a_contact(seeded_tenant, company, "Priya", "priya@northwind.invalid")
+
+    def events():
+        return list(AuditEvent.all_objects.filter(
+            verb="company.primary_contact_changed", target_id=company.pk
+        ).order_by("created_at"))
+
+    assert set_primary(api.as_(ff), company, dana).status_code == 200
+    assert set_primary(api.as_(cf), company, priya).status_code == 200
+    assert set_primary(api.as_(ff), company, None).status_code == 200
+
+    trail = [(e.actor, e.payload["from"], e.payload["to"]) for e in events()]
+    assert trail == [
+        (ff.user, None, {"id": str(dana.pk), "name": "Dana Okafor"}),
+        (cf.user, {"id": str(dana.pk), "name": "Dana Okafor"},
+         {"id": str(priya.pk), "name": "Priya Okafor"}),
+        (ff.user, {"id": str(priya.pk), "name": "Priya Okafor"}, None),
+    ]
+
+    # Nothing changed, nothing recorded: an ordinary edit, resending the same
+    # value, and a refused attempt.
+    company.primary_contact = dana
+    company.save()
+    before = len(events())
+    patch(api.as_(ff), f"/api/companies/{company.pk}/", {"industry": "Food"})
+    set_primary(api.as_(ff), company, dana)
+    assert set_primary(api.as_(va), company, priya).status_code == 403
+    assert len(events()) == before
+
+
+@pytest.mark.django_db
+def test_4_8_the_primary_contact_must_be_one_of_this_companys_own_contacts(
+    seeded_tenant, tenant_b, ff, api, company, in_tenant_a
+):
+    from apps.crm.models import Company
+
+    elsewhere = ClientCompanyFactory(tenant=seeded_tenant, name="Other Co", seat_count=1)
+    outsider = a_contact(seeded_tenant, elsewhere, "Outsider", "outsider@other.invalid")
+    no_company = ContactFactory(tenant=seeded_tenant, first_name="Loose", company=None)
+    gone = a_contact(seeded_tenant, company, "Gone", "gone@northwind.invalid")
+    gone.deleted_at = timezone.now()
+    gone.save()
+    foreign_co = ClientCompanyFactory(tenant=tenant_b, name="Tenant B Co", seat_count=1)
+    foreign = ContactFactory(tenant=tenant_b, first_name="Foreign", company=foreign_co)
+
+    for contact in (outsider, no_company, gone, foreign):
+        refused = set_primary(api.as_(ff), company, contact)
+        assert refused.status_code == 400, (contact.first_name, refused.content)
+    assert Company.objects.get(pk=company.pk).primary_contact_id is None
+
+    # Nor on the way in: a new company has no contacts of its own yet.
+    created = post(api.as_(ff), "/api/companies/",
+                   {"name": "Brand New Co", "primary_contact": str(outsider.pk)})
+    assert created.status_code == 400
+    assert not Company.objects.filter(name="Brand New Co").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 200), ("VA", 403),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_4_8_who_may_set_the_primary_contact(role, expected, seeded_tenant, api, company,
+                                             in_tenant_a):
+    contact = a_contact(seeded_tenant, company, "Dana")
+    member = MembershipFactory(
+        tenant=seeded_tenant, role=role,
+        client_company=company if role in ("FCC", "ECC") else None)
+    if role == "CF":
+        ClientAssignmentFactory(tenant=seeded_tenant, user=member.user, company=company)
+    assert set_primary(api.as_(member), company, contact).status_code == expected
+    company.refresh_from_db()
+    assert company.primary_contact_id == (contact.pk if expected == 200 else None)
+
+
+@pytest.mark.django_db
+def test_4_8_a_va_cannot_clear_it_but_can_still_save_the_rest_of_the_company(
+    seeded_tenant, ff, va, api, company, in_tenant_a
+):
+    founder = a_contact(seeded_tenant, company, "Dana")
+    company.primary_contact = founder
+    company.save()
+
+    assert set_primary(api.as_(va), company, None).status_code == 403
+    # Resending the current value alongside an ordinary edit is not setting it.
+    saved = patch(api.as_(va), f"/api/companies/{company.pk}/",
+                  {"industry": "Food", "primary_contact": str(founder.pk)})
+    assert saved.status_code == 200, saved.content
+    company.refresh_from_db()
+    assert company.primary_contact_id == founder.pk and company.industry == "Food"
+
+
+@pytest.mark.django_db
+def test_4_8_a_cf_cannot_set_it_on_a_company_they_are_not_assigned(
+    seeded_tenant, cf, api, company, in_tenant_a
+):
+    contact = a_contact(seeded_tenant, company, "Dana")
+    assert set_primary(api.as_(cf), company, contact).status_code == 404
+    company.refresh_from_db()
+    assert company.primary_contact_id is None

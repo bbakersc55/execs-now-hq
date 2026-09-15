@@ -10,6 +10,8 @@ export function Companies({ me }: { me: Me }) {
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const [note, setNote] = useState("");
+  // Matrix 9.5 — seat usage is not a VA's to see.
+  const maySeeSeats = me.role === "FF" || me.role === "CF";
 
   const companies = useQuery<Company[]>({
     queryKey: ["companies"], queryFn: () => api.get<Company[]>("/api/companies/"),
@@ -45,14 +47,19 @@ export function Companies({ me }: { me: Me }) {
       <Card>
         {(companies.data ?? []).length === 0 ? <Empty>No companies yet — add one above.</Empty> : (
           <table>
-            <thead><tr><th>Name</th><th>Industry</th><th>Client</th><th>Seats</th></tr></thead>
+            <thead>
+              <tr><th>Name</th><th>Industry</th><th>Client</th>{maySeeSeats && <th>Seats</th>}</tr>
+            </thead>
             <tbody>
               {companies.data!.map((c) => (
                 <tr key={c.id}>
                   <td><Link to={`/companies/${c.id}`}>{c.name}</Link></td>
                   <td className="muted">{c.industry || "—"}</td>
                   <td>{c.is_client_company ? <Pill kind="ok">client</Pill> : <span className="muted">—</span>}</td>
-                  <td>{c.seat_count === null ? "—" : `${c.seats_in_use} / ${c.seat_count}`}</td>
+                  {maySeeSeats && (
+                    <td>{c.seat_count === null || c.seats_in_use === undefined
+                      ? "—" : `${c.seats_in_use} / ${c.seat_count}`}</td>
+                  )}
                 </tr>
               ))}
             </tbody>

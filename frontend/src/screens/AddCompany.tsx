@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Banner, Card, Field } from "../components/ui";
-import { Company, Me, api } from "../lib/api";
+import { Company, Contact, Me, api } from "../lib/api";
 
 /**
  * FR-1.3 — add one company by hand.
@@ -12,11 +12,13 @@ import { Company, Me, api } from "../lib/api";
  * would be a second source of truth for exactly the thing that invariant exists
  * to keep single.
  */
-export function AddCompany({ me, onDone, existing }: {
+export function AddCompany({ me, onDone, existing, people = [] }: {
   me: Me;
   onDone: (c: Company) => void;
   /** When present the form EDITS this company instead of creating one. */
   existing?: Company;
+  /** This company's own contacts: the only people who may be its primary contact. */
+  people?: Contact[];
 }) {
   const qc = useQueryClient();
   const editing = !!existing;
@@ -27,18 +29,27 @@ export function AddCompany({ me, onDone, existing }: {
     domains: (existing?.domains ?? []).join(", "),
     address: ((existing?.address as { lines?: string[] } | null)?.lines ?? []).join("\n"),
     seat_count: existing?.seat_count != null ? String(existing.seat_count) : "",
+    primary_contact: existing?.primary_contact ?? "",
   });
 
   const isFF = me.role === "FF";
+  // Matrix 4.8 — FF or CF. A new company has no contacts yet, so edit only.
+  const maySetPrimary = editing && (me.role === "FF" || me.role === "CF");
+  const theirs = people.filter((p) => p.company === existing?.id);
+  const current = people.find((p) => p.id === existing?.primary_contact);
 
   const save = useMutation({
     mutationFn: () => {
+      const primary = form.primary_contact || null;
       const body = {
         name: form.name.trim(),
         industry: form.industry.trim(),
         domains: form.domains.split(/[,;\s]+/).map((d) => d.trim()).filter(Boolean),
         address: form.address.trim() ? { lines: form.address.split("\n") } : null,
         ...(isFF && form.seat_count ? { seat_count: Number(form.seat_count) } : {}),
+        // Sent only when changed, so saving other fields never touches it.
+        ...(maySetPrimary && primary !== (existing?.primary_contact ?? null)
+          ? { primary_contact: primary } : {}),
       };
       return editing
         ? api.patch<Company>(`/api/companies/${existing!.id}/`, body)
@@ -87,6 +98,31 @@ export function AddCompany({ me, onDone, existing }: {
           <textarea rows={3} value={form.address} aria-label="Address"
             onChange={(e) => setForm({ ...form, address: e.target.value })} />
         </Field>
+
+        {maySetPrimary && (
+          <Field label="Primary contact">
+            <select aria-label="Primary contact" value={form.primary_contact}
+              onChange={(e) => setForm({ ...form, primary_contact: e.target.value })}>
+              <option value="">No primary contact</option>
+              {existing?.primary_contact && !theirs.some((p) => p.id === existing.primary_contact) && (
+                <option value={existing.primary_contact}>Current (no longer listed at this company)</option>
+              )}
+              {theirs.map((p) => (
+                <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+              ))}
+            </select>
+            <p className="muted small" style={{ marginBottom: 0 }}>
+              One of this company's own contacts. Portal access offers them as the founder
+              user; changing it does not change anyone's existing portal role.
+            </p>
+          </Field>
+        )}
+        {editing && !maySetPrimary && (
+          <p className="muted small">
+            Primary contact: {current ? `${current.first_name} ${current.last_name}` : "none"}.
+            Only the founder fractional or a CF changes it.
+          </p>
+        )}
 
         {isFF && (
           <Field label="Client seat count">

@@ -75,8 +75,9 @@ export interface Company {
   address?: { lines?: string[] } | null;
   is_client_company: boolean;
   seat_count: number | null;
-  seats_in_use: number;
-  seats_available: number;
+  /** Matrix 9.5 — absent for a VA: seat usage is the FF's and an assigned CF's. */
+  seats_in_use?: number;
+  seats_available?: number;
   primary_contact: string | null;
 }
 

@@ -128,19 +128,57 @@ def grant(*, tenant, contact, role=None, actor):
     return membership
 
 
-@transaction.atomic
-def revoke(membership, *, actor):
-    """FR-3.33g — frees the seat, ends sessions and outstanding links, and
-    leaves everything the person authored in place."""
+def _end_sessions_and_links(membership):
+    """What revoking does to a login, shared with a role change that narrows."""
     from apps.accounts.models import MagicLinkToken
     from apps.tenancy.services import _kill_sessions
 
     links = MagicLinkToken.all_objects.filter(
         tenant_id=membership.tenant_id, user_id=membership.user_id, used_at__isnull=True
     ).update(used_at=timezone.now())
+    return _kill_sessions(membership.user), links
+
+
+# FCC → ECC gives up what only a founder user will hold (matrix 9.4, V1), so it
+# narrows. ECC → FCC only widens.
+NARROWS = {(Role.FCC, Role.ECC)}
+
+
+@transaction.atomic
+def change_role(membership, new_role, *, actor):
+    """Matrix 9.2a — FCC vs ECC after the grant, audited.
+
+    A narrowing change ends sessions and outstanding links exactly as a revoke
+    does, so nothing signed in as a founder outlives the decision. Access itself
+    continues: they request a fresh link from the sign-in page. A widening
+    change ends nothing. The same role again is a no-op and is not audited.
+    """
+    if new_role not in (Role.FCC, Role.ECC):
+        raise PortalAccessRefused("Portal access is FCC or ECC.")
+    old = membership.role
+    if new_role == old:
+        return {"changed": False, "sessions_ended": 0, "links_invalidated": 0}
+
+    membership.role = new_role
+    membership.save(update_fields=["role", "updated_at"])
+    narrowed = (old, new_role) in NARROWS
+    sessions, links = _end_sessions_and_links(membership) if narrowed else (0, 0)
+    AuditEvent.all_objects.create(
+        tenant_id=membership.tenant_id, actor=actor, verb="portal.role_changed",
+        target_type="membership", target_id=membership.pk,
+        payload={"from": old, "to": new_role, "narrowed": narrowed,
+                 "sessions_ended": sessions, "links_invalidated": links},
+    )
+    return {"changed": True, "sessions_ended": sessions, "links_invalidated": links}
+
+
+@transaction.atomic
+def revoke(membership, *, actor):
+    """FR-3.33g — frees the seat, ends sessions and outstanding links, and
+    leaves everything the person authored in place."""
     membership.revoked_at = timezone.now()
     membership.save(update_fields=["revoked_at", "updated_at"])
-    sessions = _kill_sessions(membership.user)
+    sessions, links = _end_sessions_and_links(membership)
     AuditEvent.all_objects.create(
         tenant_id=membership.tenant_id, actor=actor, verb="portal.access_revoked",
         target_type="membership", target_id=membership.pk,

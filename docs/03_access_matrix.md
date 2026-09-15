@@ -172,6 +172,7 @@
 |---|---|---|---|---|---|---|---|
 | 9.1 | Grant portal access to a contact | ✅ | 🔸 | ❌ | ❌ | ❌ | CF: `assigned`. **VA 403** (FR-3.33c) |
 | 9.2 | Choose FCC vs ECC on grant | ✅ | 🔸 | ❌ | ❌ | ❌ | Defaults to FCC for `primary_contact` |
+| 9.2a | Change an existing portal user's FCC/ECC role | ✅ | 🔸 | ❌ | ❌ | ❌ | CF: `assigned`. Audited. **FCC → ECC ends sessions and outstanding links** as revoke does; access continues. Changing `primary_contact` (4.8) never changes an existing role |
 | 9.3 | Revoke portal access | ✅ | 🔸 | ❌ | ❌ | ❌ | Frees the seat, kills sessions and outstanding links (FR-3.33g) |
 | 9.4 | Manage users within their own company | — | — | — | ❌ | ❌ | **V1** (`CLAUDE.md`). The one capability that will separate FCC from ECC |
 | 9.5 | See how many seats are in use | ✅ | 🔸 | ❌ | ❌ | ❌ | |

@@ -39,9 +39,28 @@ describe("GrantPortalAccess", () => {
     });
 
     expect(await screen.findByText(/1 of 3 seats in use/)).toBeInTheDocument();
+    // Preselected to the server's default for this person.
+    expect(screen.getByLabelText("Portal role")).toHaveValue("ECC");
     await userEvent.click(screen.getByRole("button", { name: "Grant portal access" }));
-    expect(granted).toEqual({ contact: CONTACT });
+    expect(granted).toEqual({ contact: CONTACT, role: "ECC" });
     expect(await screen.findByText(/Access granted and a sign-in link sent/)).toBeInTheDocument();
+  });
+
+  it("preselects founder for the primary contact, and grants the role chosen", async () => {
+    let granted: unknown = null;
+    render({
+      "/api/portal-access/candidates/": candidate({}, { role: "FCC" }),
+      "POST /api/portal-access/": (body: unknown) => {
+        granted = body;
+        return { status: 201, body: { id: "m1", role: "ECC" } };
+      },
+    });
+
+    const select = await screen.findByLabelText("Portal role");
+    expect(select).toHaveValue("FCC");
+    await userEvent.selectOptions(select, "ECC");
+    await userEvent.click(screen.getByRole("button", { name: "Grant portal access" }));
+    expect(granted).toEqual({ contact: CONTACT, role: "ECC" });
   });
 
   it("explains a refusal instead of offering a button that would fail", async () => {

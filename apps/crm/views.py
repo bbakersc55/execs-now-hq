@@ -306,7 +306,7 @@ class ContactViewSet(TenantStaffViewSet):
                     request, Company.objects.filter(
                         pk__in=[c.pk for c in results["companies"]]
                     )
-                ), many=True,
+                ), many=True, context={"request": request},
             ).data,
             # FR-2.7 — one search box. Locked notes match on a typed title
             # only and come back as stubs.

@@ -239,13 +239,46 @@ class CompanySerializer(serializers.ModelSerializer):
         read_only_fields = ["is_client_company"]
 
     def to_representation(self, instance):
+        from apps.tenancy.models import Role
+
         data = super().to_representation(instance)
         data["domains"] = sorted(
             d.domain for d in CompanyDomain.all_objects.filter(
                 tenant_id=instance.tenant_id, company=instance
             )
         )
+        # Matrix 9.5 — seat usage is the FF's, or a CF's on companies they can
+        # reach. A VA sees companies but not how many seats are in use. Fails
+        # closed: with no request to say who is asking, nobody gets it.
+        membership = getattr(self.context.get("request"), "membership", None)
+        if membership is None or membership.role not in (Role.FF, Role.CF):
+            data.pop("seats_in_use", None)
+            data.pop("seats_available", None)
         return data
+
+    def validate_primary_contact(self, value):
+        """FR-1.3a / matrix 4.8 — one of this company's own contacts, set by the
+        FF or a CF (who only reaches companies they are assigned). It changes the
+        FCC default for the *next* grant and nothing else: an existing portal
+        user's role changes only through portal access (matrix 9.2a)."""
+        from rest_framework.exceptions import PermissionDenied
+
+        from apps.tenancy.models import Role
+
+        # Resending the current value (a VA saving other fields) is not setting it.
+        if getattr(value, "pk", None) == getattr(self.instance, "primary_contact_id", None):
+            return value
+        membership = getattr(self.context["request"], "membership", None)
+        if membership is None or membership.role not in (Role.FF, Role.CF):
+            raise PermissionDenied(
+                "Only the founder fractional or a CF sets the primary contact.")
+        if value is not None and (self.instance is None
+                                  or value.company_id != self.instance.pk
+                                  or value.deleted_at is not None):
+            raise serializers.ValidationError(
+                f"{value.first_name} {value.last_name}".strip()
+                + " is not one of this company's contacts.")
+        return value
 
     def validate_name(self, value):
         """FR-1.3 — a duplicate company by name is the thing the merge screen
@@ -272,10 +305,29 @@ class CompanySerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        from apps.tenancy.models import AuditEvent
+
         domains = validated_data.pop("domains", None)
+        old_primary = instance.primary_contact
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.save()
+        # The primary contact decides who is offered as the founder user
+        # (FR-3.33d), so who changed it, from whom and to whom, is on record.
+        new_primary = instance.primary_contact
+        if "primary_contact" in validated_data and \
+                getattr(old_primary, "pk", None) != getattr(new_primary, "pk", None):
+            def who(contact):
+                return (None if contact is None else
+                        {"id": str(contact.pk),
+                         "name": f"{contact.first_name} {contact.last_name}".strip()})
+
+            AuditEvent.all_objects.create(
+                tenant_id=instance.tenant_id, actor=self.context["request"].user,
+                verb="company.primary_contact_changed",
+                target_type="company", target_id=instance.pk,
+                payload={"from": who(old_primary), "to": who(new_primary)},
+            )
         if domains is not None:
             CompanyDomain.all_objects.filter(
                 tenant_id=instance.tenant_id, company=instance

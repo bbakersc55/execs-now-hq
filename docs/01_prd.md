@@ -521,7 +521,8 @@ Everything the fractional does for a client, in a structure the client can see, 
 33e. **When seats are exhausted, the grant fails with a clear message naming the company's seat count and how many are in use** — not a generic error, and never by silently succeeding without a seat.
 33f. Seat count is set by the **FF only**. Changing it below the number in use does not revoke anyone; it blocks new grants until usage falls below the new number, and says so.
 33g. **Revoking access** frees the seat, **invalidates the user's active sessions and every outstanding magic link**, and leaves the Contact, their stakeholder rows, and all their comments and tasks intact. Revocation is not deletion — a revoked person keeps receiving digests if they are still a stakeholder, because those are separate entitlements (FR-3.20).
-33h. Grants and revocations are audited with actor and timestamp.
+33h. Grants, revocations and role changes are audited with actor and timestamp.
+33i. **An existing portal user's role can be changed between FCC and ECC** by the same people who grant (FR-3.33c). A change that narrows (FCC → ECC) invalidates their sessions and outstanding magic links as a revoke does; their access and seat continue, and they sign in again with a fresh link. Setting a company's `primary_contact` changes only the default for future grants, never an existing role.
 
 **Client portal**
 

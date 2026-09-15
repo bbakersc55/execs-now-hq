@@ -924,20 +924,37 @@ class PortalAccessViewSet(WorkViewSet):
             return Response({"detail": str(exc)}, status=400)
         return Response(work_serializers.represent_access(membership), status=201)
 
-    def destroy(self, request, pk=None):
+    def _live_access(self, request, pk):
+        """A live portal login in scope: FF any, a CF only on assigned companies."""
         from apps.tenancy.models import Membership
 
-        if not self._may_manage(request):
-            return Response({"detail": "A VA does not revoke portal access."}, status=403)
         membership = Membership.objects.filter(
             pk=pk, role__in=CLIENT_ROLES, revoked_at__isnull=True
-        ).first() if _is_uuid(pk) else None
+        ).select_related("user").first() if _is_uuid(pk) else None
         if membership is None:
             raise Http404
         if crm_perms.role_of(request) == crm_perms.Role.CF and \
                 membership.client_company_id not in crm_perms.assigned_company_ids(request):
             raise Http404
-        return Response(portal.revoke(membership, actor=request.user))
+        return membership
+
+    def partial_update(self, request, pk=None):
+        """Matrix 9.2a — change FCC vs ECC on an existing portal user. Same
+        scope as revoke, and the same session handling when the role narrows."""
+        if not self._may_manage(request):
+            return Response({"detail": "A VA does not change portal roles."}, status=403)
+        membership = self._live_access(request, pk)
+        try:
+            result = portal.change_role(membership, request.data.get("role"),
+                                        actor=request.user)
+        except portal.PortalAccessRefused as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({**work_serializers.represent_access(membership), **result})
+
+    def destroy(self, request, pk=None):
+        if not self._may_manage(request):
+            return Response({"detail": "A VA does not revoke portal access."}, status=403)
+        return Response(portal.revoke(self._live_access(request, pk), actor=request.user))
 
 
 class AssignablePeopleView(viewsets.GenericViewSet):

@@ -503,3 +503,31 @@ def test_9_5_seat_counts_are_visible_to_the_practice_only(role, expected, seeded
     member = _as(role, seeded_tenant)
     response = api.as_(member).get(f"/api/portal-access/?company={company.pk}")
     assert response.status_code in ((200,) if expected == 200 else (403, 404))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,sees_usage", [("FF", True), ("CF", True), ("VA", False)])
+def test_9_5_the_companies_api_gives_seat_usage_to_ff_and_cf_only(role, sees_usage,
+                                                                 seeded_tenant, api):
+    """Matrix 9.5 — a VA reads companies (4.7) but not how many seats are in
+    use, on every route that serializes a company: list, detail and search."""
+    from .factories import ClientAssignmentFactory, ClientCompanyFactory
+
+    company = ClientCompanyFactory(tenant=seeded_tenant, name="Seatholder Foods", seat_count=3)
+    MembershipFactory(tenant=seeded_tenant, role="ECC", client_company=company)
+    member = _as(role, seeded_tenant)
+    if role == "CF":
+        ClientAssignmentFactory(tenant=seeded_tenant, user=member.user, company=company)
+    client = api.as_(member)
+
+    listed = [c for c in client.get("/api/companies/").json() if c["id"] == str(company.pk)]
+    detail = client.get(f"/api/companies/{company.pk}/").json()
+    found = [c for c in client.get("/api/contacts/search/?q=Seatholder").json()["companies"]
+             if c["id"] == str(company.pk)]
+    assert len(listed) == 1 and len(found) == 1, "The company must be reachable to test this."
+
+    for row in (listed[0], detail, found[0]):
+        if sees_usage:
+            assert row["seats_in_use"] == 1 and row["seats_available"] == 2
+        else:
+            assert "seats_in_use" not in row and "seats_available" not in row

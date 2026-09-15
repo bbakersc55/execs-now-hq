@@ -169,3 +169,73 @@ describe("Edit company", () => {
     expect(screen.queryByLabelText(/client company/i)).not.toBeInTheDocument();
   });
 });
+
+describe("Edit company: primary contact", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const existing = aCompany({ id: "co-1", name: "Acme Holdings", primary_contact: "p1" });
+  const people = [
+    aContact({ id: "p1", first_name: "Dana", last_name: "Reyes", company: "co-1" }),
+    aContact({ id: "p2", first_name: "Ben", last_name: "Orji", company: "co-1" }),
+    // Passed in by mistake from another company: must never be offered.
+    aContact({ id: "x9", first_name: "Sam", last_name: "Elsewhere", company: "co-2" }),
+  ];
+
+  function setup(me = aMe()) {
+    const fetchMock = mockApi({
+      "PATCH /api/companies/co-1/": (body: unknown) => ({ status: 200, body }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<AddCompany me={me} existing={existing} people={people} onDone={vi.fn()} />);
+    return fetchMock;
+  }
+
+  it("offers only this company's contacts and sends the one picked", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setup();
+
+    const picker = screen.getByLabelText("Primary contact");
+    expect(picker).toHaveValue("p1");
+    const options = Array.from((picker as HTMLSelectElement).options).map((o) => o.text);
+    expect(options).toEqual(["No primary contact", "Dana Reyes", "Ben Orji"]);
+
+    await user.selectOptions(picker, "p2");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(patched(fetchMock)).toBeTruthy());
+    expect(patched(fetchMock)?.body).toMatchObject({ primary_contact: "p2" });
+  });
+
+  it("clears it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setup(aMe({ role: "CF" }));
+    await user.selectOptions(screen.getByLabelText("Primary contact"), "");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(patched(fetchMock)).toBeTruthy());
+    expect(patched(fetchMock)?.body).toMatchObject({ primary_contact: null });
+  });
+
+  it("does not send it when unchanged", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setup();
+    await user.type(screen.getByLabelText("Industry"), "x");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(patched(fetchMock)).toBeTruthy());
+    expect(patched(fetchMock)?.body).not.toHaveProperty("primary_contact");
+  });
+
+  it("shows a VA who it is, with no picker, and never sends it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setup(aMe({ role: "VA" }));
+    expect(screen.queryByLabelText("Primary contact")).not.toBeInTheDocument();
+    expect(screen.getByText(/Primary contact: Dana Reyes/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(patched(fetchMock)).toBeTruthy());
+    expect(patched(fetchMock)?.body).not.toHaveProperty("primary_contact");
+  });
+
+  it("is not on the Add a company form", () => {
+    vi.stubGlobal("fetch", mockApi({}));
+    renderRoute(<AddCompany me={aMe()} people={people} onDone={vi.fn()} />);
+    expect(screen.queryByLabelText("Primary contact")).not.toBeInTheDocument();
+  });
+});
