@@ -6,8 +6,13 @@ referral touch was ever drafted, no Outbox draft ever expired, and no contact
 was ever in the search index. This list is the single place a periodic job is
 declared.
 
-Re-running updates what each job calls and how often, but never moves a
-schedule's next run: that would re-fire a daily job every time this ran.
+Re-running updates what each job calls and how often, but does not move a
+schedule's next run that is on cadence: that would re-fire a daily job every
+time this ran. It DOES realign one that has fallen more than one interval
+behind. With `catch_up` on (settings.Q_CLUSTER), Django-Q advances a stale next
+run by one interval per scheduler pass, so a one-minute job left three days
+behind by a stopped cluster fires every ~30 seconds for days instead of once a
+minute (Phase 3: `work.tick` was stuck at 12 Sep).
 """
 
 from __future__ import annotations
@@ -51,6 +56,28 @@ def _first_run(tenant, local_hour):
     return candidate if candidate > now else candidate + timedelta(days=1)
 
 
+def _interval(schedule_type, minutes):
+    return {
+        Schedule.MINUTES: timedelta(minutes=minutes or 1),
+        Schedule.HOURLY: timedelta(hours=1),
+        Schedule.DAILY: timedelta(days=1),
+    }.get(schedule_type)
+
+
+def realigned_next_run(tenant, schedule_type, minutes, local_hour, next_run, now=None):
+    """The next run a behind schedule should have, or None when it is on cadence.
+
+    Minute and hourly jobs simply run now and then keep their cadence. A daily
+    job with a local hour goes to its next occurrence; one without runs now,
+    which is the single catch-up a missed daily job is owed.
+    """
+    now = now or timezone.now()
+    interval = _interval(schedule_type, minutes)
+    if interval is None or next_run is None or next_run >= now - interval:
+        return None
+    return _first_run(tenant, local_hour) if local_hour is not None else now
+
+
 class Command(BaseCommand):
     help = "Create or update the periodic job schedules for every tenant."
 
@@ -70,8 +97,13 @@ class Command(BaseCommand):
                     verb = "created"
                 else:
                     Schedule.objects.filter(pk=schedule.pk).update(**fields)
-                    schedule.refresh_from_db()
                     verb = "updated"
+                    realigned = realigned_next_run(tenant, schedule_type, minutes, local_hour,
+                                                   schedule.next_run)
+                    if realigned is not None:
+                        Schedule.objects.filter(pk=schedule.pk).update(next_run=realigned)
+                        verb = "realigned"
+                    schedule.refresh_from_db()
                 self.stdout.write(
                     f"{verb:8} {full_name:45} next run {schedule.next_run:%Y-%m-%d %H:%M %Z}"
                 )

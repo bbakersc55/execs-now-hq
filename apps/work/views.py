@@ -970,7 +970,8 @@ class PortalActivityView(viewsets.GenericViewSet):
                                            f"{'founder' if a.payload.get('to') == 'FCC' else 'employee'}",
                     "act_as.started": f"began acting as {name}",
                     "act_as.stopped": f"stopped acting as {name}",
-                    "act_as.ended": f"stopped acting as {name} (no longer permitted)",
+                    "act_as.ended": f"stopped acting as {name} "
+                                    f"({a.payload.get('reason') or 'no longer permitted'})",
                 }[a.verb]
             entries.append(self._entry(f"a-{a.pk}", a.created_at, "event", a.verb, text, None,
                                        a.actor, a.acting_user))

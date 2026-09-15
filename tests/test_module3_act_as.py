@@ -329,3 +329,30 @@ def test_candidates_are_exactly_who_the_real_person_may_act_as(
     client = api.as_(ff)
     start(client, acme_ecc)
     assert client.get("/api/act-as/candidates/").status_code == 409
+
+
+@pytest.mark.django_db
+def test_signing_out_while_acting_ends_it_and_is_logged_like_any_other_end(
+    ff, api, acme, acme_ecc, in_tenant_a
+):
+    client = api.as_(ff)
+    start(client, acme_ecc)
+    assert client.post("/accounts/logout/").status_code in (200, 302)
+
+    ended = AuditEvent.all_objects.get(verb="act_as.ended")
+    assert ended.actor == ff.user and ended.target_id == acme_ecc.pk
+    assert ended.payload["reason"] == "signed out"
+    assert client.get("/api/me").status_code == 401
+    # Signing back in does not resume it.
+    client.force_login(ff.user)
+    assert client.get("/api/me").json()["acting"] is None
+
+    # And the client's log says why it ended.
+    rows = api.as_(acme_ecc).get("/api/portal-activity/").json()
+    assert any(r["text"] == "stopped acting as Priya Client (signed out)" for r in rows)
+
+
+@pytest.mark.django_db
+def test_signing_out_when_not_acting_logs_no_act_as_end(ff, api, in_tenant_a):
+    assert api.as_(ff).post("/accounts/logout/").status_code in (200, 302)
+    assert not AuditEvent.all_objects.filter(verb__startswith="act_as").exists()

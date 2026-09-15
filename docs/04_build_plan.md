@@ -539,6 +539,7 @@ means no client ever sees the unstyled version.
    polished. The digest's structure and wording carry a rule (Module 3's aim: a report that
    reads as value delivered rather than a list of field changes) and stay as they are;
    this is layout and typography only.
+6. **Known input from Phase 3 (owner, 2026-09-15):** the **client-activity notification email** to the practice (FR-3.40) — subject and body need a proper template. Functional but bare: a generic subject and a flat bulleted list. What it reports and when (the 30-minute batching, never an update made while acting as) stays as it is.
 
 **Not in scope:** changes to behaviour, copy that carries a rule (the consent reminder, the
 PIN dialog's explanation, anything stating what is or isn't sent), or any review queue.

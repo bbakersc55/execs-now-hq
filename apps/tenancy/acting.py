@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.contrib.auth.signals import user_logged_out
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
@@ -106,6 +107,26 @@ def describe(real_user, real_role, target) -> dict:
 
 
 # ----------------------------------------------------------- the receivers
+
+@receiver(user_logged_out, dispatch_uid="tenancy.act_as_ended_on_sign_out")
+def end_on_sign_out(sender, request=None, user=None, **kwargs):
+    """Signing out ends acting as, and is logged like any other end (owner,
+    2026-09-15). Django sends this before it flushes the session, so the
+    middleware's attributes still name both people."""
+    target = getattr(request, "acting_as", None)
+    real = getattr(request, "real_membership", None)
+    if target is None or real is None:
+        return
+    from .models import AuditEvent
+
+    AuditEvent.all_objects.create(
+        tenant_id=real.tenant_id, actor_id=real.user_id, verb="act_as.ended",
+        target_type="membership", target_id=target.pk,
+        payload={"reason": "signed out", "acting_role": real.role,
+                 "acted_as": target.user.email, "acted_as_role": target.role,
+                 "company": str(target.client_company_id)},
+    )
+
 
 @receiver(pre_save, dispatch_uid="tenancy.stamp_acting")
 def stamp_acting(sender, instance, raw=False, **kwargs):

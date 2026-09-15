@@ -333,7 +333,7 @@ git log -1 --format=%cd                                   # when the code last c
 .venv/bin/python manage.py ensure_schedules
 ```
 
-It declares every schedule in one list (`apps/tenancy/management/commands/ensure_schedules.py`): referral-touch drafting daily at 06:00 tenant time, Outbox expiry and contact reindex hourly, note processing every minute, audio retention daily, and Module 3's one tick every minute (digest quiet windows, generation, expiry, sending, and the client-activity notice). Re-running never moves a schedule's next run. Until Phase 2 nothing registered a schedule at all.
+It declares every schedule in one list (`apps/tenancy/management/commands/ensure_schedules.py`): referral-touch drafting daily at 06:00 tenant time, Outbox expiry and contact reindex hourly, note processing every minute, audio retention daily, and Module 3's one tick every minute (digest quiet windows, generation, expiry, sending, and the client-activity notice). Re-running never moves a schedule that is on cadence — but it **realigns one that has fallen more than one interval behind** (a cluster stopped for days). With `catch_up` on, Django-Q would otherwise fire a one-minute job every ~30 seconds until it caught up. **Run it after any long cluster outage.** *(Phase 3: `work.tick` was stuck at 12 Sep.)* Until Phase 2 nothing registered a schedule at all.
 
 Common commands:
 

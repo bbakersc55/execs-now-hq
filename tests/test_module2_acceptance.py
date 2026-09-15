@@ -794,3 +794,48 @@ def test_other_failures_are_not_reported_as_no_speech(seeded_tenant, ff, api, fa
     fake_stt.fail(fake_stt.started[0]["name"], "Invalid audio encoding")
     run_jobs(seeded_tenant)
     assert client.get(f"/api/notes/{note['id']}/").json()["no_speech"] is False
+
+
+@pytest.mark.django_db
+def test_a_schedule_left_far_behind_is_realigned_and_one_on_cadence_is_not(seeded_tenant):
+    """Phase 3: `work.tick` was stuck at 12 Sep. With catch_up on, Django-Q moves
+    a stale next run one interval per scheduler pass, so a one-minute job fired
+    every ~30 s for days. Re-running the command realigns anything more than one
+    interval behind, and still never moves a schedule that is on cadence."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    from django.core.management import call_command
+    from django.utils import timezone
+    from django_q.models import Schedule
+
+    call_command("ensure_schedules", stdout=open("/dev/null", "w"))
+    slug = seeded_tenant.slug
+    now = timezone.now()
+    three_days_ago = now - timedelta(days=3)
+    for name in ("work.tick", "crm.expire_outbox", "crm.draft_referral_touches",
+                 "notes.purge_expired_audio"):
+        Schedule.objects.filter(name=f"{name}:{slug}").update(next_run=three_days_ago)
+    # Behind by less than one interval: normal scheduler lag, left alone.
+    slightly = now - timedelta(seconds=20)
+    Schedule.objects.filter(name=f"notes.process:{slug}").update(next_run=slightly)
+    on_cadence = now + timedelta(minutes=40)
+    Schedule.objects.filter(name=f"crm.reindex_search:{slug}").update(next_run=on_cadence)
+
+    call_command("ensure_schedules", stdout=open("/dev/null", "w"))
+
+    def next_run(name):
+        return Schedule.objects.get(name=f"{name}:{slug}").next_run
+
+    for name in ("work.tick", "crm.expire_outbox", "notes.purge_expired_audio"):
+        assert abs(next_run(name) - timezone.now()) < timedelta(minutes=1), name
+    touches = next_run("crm.draft_referral_touches")
+    assert touches > timezone.now()
+    assert touches.astimezone(ZoneInfo(seeded_tenant.timezone)).hour == 6
+    assert next_run("notes.process") == slightly
+    assert next_run("crm.reindex_search") == on_cadence
+
+    # Realigned once; a third run changes nothing.
+    tick = next_run("work.tick")
+    call_command("ensure_schedules", stdout=open("/dev/null", "w"))
+    assert next_run("work.tick") == tick
