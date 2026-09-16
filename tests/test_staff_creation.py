@@ -159,3 +159,86 @@ def test_the_client_rules_are_untouched_by_the_practices_form(
     assert mine.status_code == 201
     task = Task.all_objects.get(pk=mine.json()["id"])
     assert task.client_company_id == company.pk and task.created_by_client is True
+
+
+# ------------------------------------------- editing what a goal or project says
+
+@pytest.mark.django_db
+def test_staff_edit_a_goals_details(seeded_tenant, ff, api, company, in_tenant_a):
+    """The API always accepted these; no screen ever sent them, so the record was
+    write-once in practice."""
+    from apps.work.models import Goal
+
+    goal = GoalFactory(tenant=seeded_tenant, title="Cut DSO", client_company=company)
+    owner = ContactFactory(tenant=seeded_tenant, first_name="Dana", last_name="Okafor",
+                           company=company)
+
+    response = api.as_(ff).patch(f"/api/goals/{goal.pk}/", {
+        "title": "Cut DSO to 30 days",
+        "description": "From 41 days.",
+        "target_date": "2026-12-31",
+        "client_owner_contact": str(owner.pk),
+    }, content_type="application/json")
+
+    assert response.status_code == 200, response.content
+    goal.refresh_from_db()
+    assert goal.title == "Cut DSO to 30 days" and goal.description == "From 41 days."
+    assert str(goal.target_date) == "2026-12-31" and goal.client_owner_contact_id == owner.pk
+
+
+@pytest.mark.django_db
+def test_staff_edit_a_projects_details_including_its_dates(seeded_tenant, ff, api, company,
+                                                           in_tenant_a):
+    from apps.work.models import Project
+
+    project = ProjectFactory(tenant=seeded_tenant, title="Order-to-cash",
+                             client_company=company)
+    response = api.as_(ff).patch(f"/api/projects/{project.pk}/", {
+        "title": "Order-to-cash, phase 2",
+        "description": "Matching rules.",
+        "start_date": "2026-10-01",
+        "target_date": "2026-12-31",
+    }, content_type="application/json")
+
+    assert response.status_code == 200, response.content
+    project.refresh_from_db()
+    assert project.title == "Order-to-cash, phase 2"
+    assert (str(project.start_date), str(project.target_date)) == ("2026-10-01", "2026-12-31")
+
+
+@pytest.mark.django_db
+def test_a_client_never_edits_the_practices_goals_or_projects(seeded_tenant, ff, api, company,
+                                                              in_tenant_a):
+    goal = GoalFactory(tenant=seeded_tenant, title="Cut DSO", client_company=company)
+    project = ProjectFactory(tenant=seeded_tenant, title="Order-to-cash",
+                             client_company=company)
+    client_user = MembershipFactory(tenant=seeded_tenant, role="FCC", client_company=company)
+
+    assert api.as_(client_user).patch(f"/api/goals/{goal.pk}/", {"title": "Mine now"},
+                                      content_type="application/json").status_code == 403
+    assert api.as_(client_user).patch(f"/api/projects/{project.pk}/", {"title": "Mine now"},
+                                      content_type="application/json").status_code == 403
+    goal.refresh_from_db()
+    project.refresh_from_db()
+    assert goal.title == "Cut DSO" and project.title == "Order-to-cash"
+
+
+@pytest.mark.django_db
+def test_a_client_may_still_edit_a_project_they_created(seeded_tenant, api, company,
+                                                        in_tenant_a):
+    """FR-3.35a — their own project stays theirs; only the practice's is refused."""
+    from apps.work.models import Project
+
+    client_user = MembershipFactory(tenant=seeded_tenant, role="FCC", client_company=company)
+    made = api.as_(client_user).post("/api/projects/", {"title": "Our tidy-up"},
+                                     content_type="application/json")
+    assert made.status_code == 201
+    project = Project.all_objects.get(pk=made.json()["id"])
+    assert project.created_by_client is True
+
+    changed = api.as_(client_user).patch(f"/api/projects/{project.pk}/",
+                                         {"description": "Ours to run."},
+                                         content_type="application/json")
+    assert changed.status_code == 200
+    project.refresh_from_db()
+    assert project.description == "Ours to run."

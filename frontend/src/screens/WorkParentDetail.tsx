@@ -6,7 +6,7 @@ import { CommentsPanel } from "../components/CommentsPanel";
 import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
-import { Me, Task, WorkParent, api } from "../lib/api";
+import { Contact, Me, Task, WorkParent, api } from "../lib/api";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -19,6 +19,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
   const navigate = useNavigate();
   const [message, setMessage] = useState("");
   const [newTask, setNewTask] = useState("");
+  const [editing, setEditing] = useState(false);
   const isTenant = !!me.role && TENANT.includes(me.role);
   const plural = kind === "goal" ? "goals" : "projects";
 
@@ -104,6 +105,23 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
         </p>
       </Card>
 
+      {isTenant && (editing
+        ? <EditDetails entity={e} kind={kind} onClose={() => setEditing(false)}
+            onSaved={() => {
+              setEditing(false);
+              qc.invalidateQueries({ queryKey: [kind, id] });
+              qc.invalidateQueries({ queryKey: [plural] });
+            }} />
+        : (
+          <Card title="Details" actions={
+            <button onClick={() => setEditing(true)}>Edit details</button>
+          }>
+            <p className="small muted">
+              Title, description, dates and the client owner. A client never edits these.
+            </p>
+          </Card>
+        ))}
+
       {kind === "goal" && (
         <Card title="Projects">
           {(children.data?.projects ?? []).length === 0 ? <Empty>No projects yet.</Empty> : (
@@ -158,5 +176,91 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
         </Card>
       )}
     </>
+  );
+}
+
+
+/**
+ * The practice edits what a goal or project actually says.
+ *
+ * The API accepted these fields the whole time; no screen ever sent them, so a
+ * title typed in haste, a missing description or a date that moved could not be
+ * corrected anywhere — the record was write-once in practice. Clients never see
+ * this: goals are the practice's (matrix 7.2), and a project of the practice's
+ * is refused to them by the server as well.
+ */
+function EditDetails({ entity, kind, onClose, onSaved }: {
+  entity: WorkParent; kind: "goal" | "project"; onClose: () => void; onSaved: () => void;
+}) {
+  const plural = kind === "goal" ? "goals" : "projects";
+  const [form, setForm] = useState({
+    title: entity.title,
+    description: entity.description ?? "",
+    target_date: entity.target_date ?? "",
+    start_date: entity.start_date ?? "",
+    client_owner_contact: entity.client_owner_contact.id ?? "",
+  });
+  const [error, setError] = useState("");
+
+  const contacts = useQuery<Contact[]>({
+    queryKey: ["contacts"], queryFn: () => api.get<Contact[]>("/api/contacts/"),
+    enabled: !!entity.client_company,
+  });
+  const theirs = (contacts.data ?? []).filter((c) => c.company === entity.client_company);
+
+  const save = useMutation({
+    mutationFn: () => api.patch<WorkParent>(`/api/${plural}/${entity.id}/`, {
+      title: form.title.trim(),
+      description: form.description.trim(),
+      target_date: form.target_date || null,
+      ...(kind === "project" ? { start_date: form.start_date || null } : {}),
+      client_owner_contact: form.client_owner_contact || null,
+    }),
+    onSuccess: onSaved,
+    onError: (e: Error) => setError(e.message),
+  });
+
+  return (
+    <Card title="Details" actions={<button onClick={onClose}>Cancel</button>}>
+      {error && <Banner kind="bad">{error}</Banner>}
+      <form onSubmit={(ev) => { ev.preventDefault(); setError(""); save.mutate(); }}>
+        <Field label="Title">
+          <input aria-label={`${kind === "goal" ? "Goal" : "Project"} title`} value={form.title}
+            onChange={(ev) => setForm({ ...form, title: ev.target.value })} />
+        </Field>
+        <Field label="Description">
+          <textarea aria-label={`${kind === "goal" ? "Goal" : "Project"} description`} rows={3}
+            value={form.description}
+            onChange={(ev) => setForm({ ...form, description: ev.target.value })} />
+        </Field>
+        <div className="row">
+          {kind === "project" && (
+            <Field label="Start">
+              <input aria-label="Start date" type="date" value={form.start_date}
+                onChange={(ev) => setForm({ ...form, start_date: ev.target.value })} />
+            </Field>
+          )}
+          <Field label="Target date">
+            <input aria-label="Target date" type="date" value={form.target_date}
+              onChange={(ev) => setForm({ ...form, target_date: ev.target.value })} />
+          </Field>
+          <Field label="Client owner">
+            <select aria-label="Client owner" value={form.client_owner_contact}
+              disabled={!entity.client_company}
+              onChange={(ev) => setForm({ ...form, client_owner_contact: ev.target.value })}>
+              <option value="">
+                {entity.client_company ? "Nobody" : "Internal work has no client owner"}
+              </option>
+              {theirs.map((c) => (
+                <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <button className="primary" type="submit" disabled={!form.title.trim() || save.isPending}>
+          {save.isPending ? "Saving…" : "Save details"}
+        </button>
+      </form>
+    </Card>
   );
 }

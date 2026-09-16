@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GrantPortalAccess } from "./GrantPortalAccess";
 import { PortalAccessCard } from "./PortalAccessCard";
 import { aCompany, aMe, COMPANY_ID } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
@@ -66,7 +67,7 @@ describe("starting to act as someone", () => {
     vi.stubGlobal("confirm", confirmMock);
     at(<ActAsButton membership="m2" name="Priya Shah" />);
 
-    await user.click(screen.getByRole("button", { name: "Act as Priya Shah" }));
+    await user.click(screen.getByRole("button", { name: "View portal as Priya Shah" }));
     expect(confirmMock).toHaveBeenCalledWith(expect.stringMatching(/no email is sent/));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
       .toEqual({ membership: "m2" }));
@@ -79,7 +80,7 @@ describe("starting to act as someone", () => {
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("confirm", vi.fn(() => false));
     at(<ActAsButton membership="m2" name="Priya Shah" />);
-    await user.click(screen.getByRole("button", { name: "Act as Priya Shah" }));
+    await user.click(screen.getByRole("button", { name: "View portal as Priya Shah" }));
     expect(fetchMock.calls).toEqual([]);
   });
 
@@ -96,13 +97,13 @@ describe("starting to act as someone", () => {
     };
     vi.stubGlobal("fetch", mockApi(routes));
     const { unmount } = renderRoute(<PortalAccessCard me={aMe()} company={aCompany()} />);
-    expect(await screen.findByRole("button", { name: "Act as Priya Shah" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "View portal as Priya Shah" })).toBeInTheDocument();
     unmount();
 
     vi.stubGlobal("fetch", mockApi(routes));
     renderRoute(<PortalAccessCard me={aMe({ acting: ACTING })} company={aCompany()} />);
     expect(await screen.findByText("Priya Shah")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Act as Priya Shah" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View portal as Priya Shah" })).not.toBeInTheDocument();
   });
 
   it("offers a founder user their colleagues, and nobody else a picker", async () => {
@@ -127,5 +128,68 @@ describe("starting to act as someone", () => {
       unmount();
     }
     expect(quiet).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("the entry point on a contact page", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const CONTACT = "p2";
+  const CANDIDATE = {
+    company: COMPANY_ID, company_name: "Acme Facilities", is_client_company: true,
+    seat_count: 3, seats_in_use: 1, seat_refusal: null,
+    people: [{ contact: CONTACT, name: "Priya Shah", email: "priya@acme.invalid",
+               title: "Ops", role: "ECC", refusal: "Priya Shah already has portal access." }],
+  };
+  const ACCESS = {
+    company: COMPANY_ID, seat_count: 3, seats_in_use: 1, seats_available: 2, may_manage: true,
+    people: [{ id: "m2", role: "ECC", email: "priya@acme.invalid", name: "Priya Shah",
+               contact: CONTACT, invited_at: null }],
+  };
+
+  function show(me = aMe()) {
+    const fetchMock = mockApi({
+      "/api/portal-access/candidates/": CANDIDATE,
+      "/api/portal-access/": ACCESS,
+      "POST /api/act-as/": { as_name: "Priya Shah" },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    at(<GrantPortalAccess me={me} contactId={CONTACT} />);
+    return fetchMock;
+  }
+
+  it("offers it for a contact who already signs in, and lands in their portal", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const fetchMock = show();
+
+    const button = await screen.findByRole("button", { name: "View portal as Priya Shah" });
+    await user.click(button);
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+      .toEqual({ membership: "m2" }));
+    expect(await screen.findByText("WORK SCREEN")).toBeInTheDocument();
+  });
+
+  it("is absent while already acting as someone", async () => {
+    show(aMe({ acting: ACTING }));
+    expect(await screen.findByText(/already has portal access/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View portal as Priya Shah" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("is absent for a contact who cannot sign in", async () => {
+    const fetchMock = mockApi({
+      "/api/portal-access/candidates/": {
+        ...CANDIDATE,
+        people: [{ ...CANDIDATE.people[0], refusal: null }],
+      },
+      "/api/portal-access/": { ...ACCESS, people: [] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    at(<GrantPortalAccess me={aMe()} contactId={CONTACT} />);
+    expect(await screen.findByRole("button", { name: "Grant portal access" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View portal as Priya Shah" }))
+      .not.toBeInTheDocument();
   });
 });

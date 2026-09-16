@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { Me, PortalCandidates, api } from "../lib/api";
+import { Me, PortalAccess, PortalCandidates, api } from "../lib/api";
+import { ActAsButton } from "./ActAs";
 import { PORTAL_ROLES } from "./PortalAccessCard";
 import { Banner, Card } from "./ui";
 
@@ -28,6 +29,18 @@ export function GrantPortalAccess({ me, contactId }: { me: Me; contactId: string
     retry: false,
   });
 
+  // Someone who already signs in can be viewed as, from the page you are on.
+  // Their membership id lives on the company's access list, not on the
+  // candidate row, so it is fetched once the candidate names their company.
+  const companyId = candidate.data?.company ?? "";
+  const access = useQuery<PortalAccess>({
+    queryKey: ["portal-access", companyId],
+    queryFn: () => api.get<PortalAccess>(`/api/portal-access/?company=${companyId}`),
+    enabled: mayManage && !!companyId,
+    retry: false,
+  });
+  const signsIn = (access.data?.people ?? []).find((p) => p.contact === contactId);
+
   const grant = useMutation({
     mutationFn: (role: string) => api.post("/api/portal-access/", { contact: contactId, role }),
     onSuccess: () => {
@@ -49,7 +62,17 @@ export function GrantPortalAccess({ me, contactId }: { me: Me; contactId: string
     <Card title="Portal access">
       {message && <Banner kind={message.kind}>{message.text}</Banner>}
       {person.refusal ? (
-        <p className="small muted">{person.refusal}</p>
+        <>
+          <p className="small muted">{person.refusal}</p>
+          {/* FR-3.42 — the practice's only way into the client's own screens,
+              the activity log among them. */}
+          {signsIn && !me.acting && (
+            <p className="small">
+              <ActAsButton membership={signsIn.id} name={signsIn.name} />{" "}
+              See exactly what {signsIn.name} sees, including their activity log.
+            </p>
+          )}
+        </>
       ) : (
         <>
           <p className="small">

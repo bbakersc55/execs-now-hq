@@ -58,19 +58,27 @@ export function ActingBanner({ me }: { me: Me }) {
   );
 }
 
-/** The practice's entry point, on a company's portal-access list. */
+/**
+ * The practice's entry point: a company's portal-access list, and a contact
+ * page for a contact who already has access.
+ *
+ * "View portal as" rather than "Act as", because that is what it is for — the
+ * practice has no other way to see the client's own screens, the activity log
+ * (FR-3.41) among them, which no staff role can open from their own sidebar.
+ */
 export function ActAsButton({ membership, name }: { membership: string; name: string }) {
   const start = useStartActing();
   return (
     <button className="ghost small" disabled={start.isPending}
-      aria-label={`Act as ${name}`}
+      aria-label={`View portal as ${name}`}
       onClick={() => {
-        if (confirm(`Act as ${name}? You will see and do exactly what they can. Everything is `
+        if (confirm(`View the portal as ${name}? You will see and do exactly what they can. `
+                    + `Everything is `
                     + "recorded as done by you on their behalf, and no email is sent until you stop.")) {
           start.mutate(membership);
         }
       }}>
-      Act as
+      View portal as…
     </button>
   );
 }

@@ -66,3 +66,73 @@ describe("Add a task here, on a goal (Check 5)", () => {
     expect(screen.queryByText(/400/)).not.toBeInTheDocument();
   });
 });
+
+
+describe("Editing what a goal or project says", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const CONTACTS = [
+    { id: "c1", first_name: "Dana", last_name: "Okafor", company: COMPANY_ID },
+    { id: "c9", first_name: "Sam", last_name: "Other", company: "co-2" },
+  ];
+
+  function show(me = aMe(), entity = GOAL, kind: "goal" | "project" = "goal") {
+    const plural = kind === "goal" ? "goals" : "projects";
+    const fetchMock = mockApi({
+      [`/api/${plural}/${entity.id}/children/`]: { projects: [], tasks: [] },
+      [`PATCH /api/${plural}/${entity.id}/`]: (body: unknown) => ({ body: { ...entity, ...(body as object) } }),
+      [`/api/${plural}/${entity.id}/`]: entity,
+      "/api/contacts/": CONTACTS,
+      "/api/stakeholders/": [],
+      "/api/comments/": [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<WorkParentDetail me={me} kind={kind} />, {
+      path: `/work/${plural}/:id`, route: `/work/${plural}/${entity.id}`,
+    });
+    return fetchMock;
+  }
+
+  it("saves the title, description, target date and client owner", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show();
+
+    await user.click(await screen.findByRole("button", { name: "Edit details" }));
+    const title = screen.getByLabelText("Goal title");
+    await user.clear(title);
+    await user.type(title, "Cut order-to-cash to 20 days, phase 2");
+    await user.type(screen.getByLabelText("Goal description"), "From 41 days.");
+    await user.type(screen.getByLabelText("Target date"), "2026-12-31");
+    await waitFor(() => expect(
+      Array.from((screen.getByLabelText("Client owner") as HTMLSelectElement).options)
+        .map((o) => o.text)).toEqual(["Nobody", "Dana Okafor"]));
+    await user.selectOptions(screen.getByLabelText("Client owner"), "c1");
+    await user.click(screen.getByRole("button", { name: "Save details" }));
+
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toEqual({
+      title: "Cut order-to-cash to 20 days, phase 2",
+      description: "From 41 days.",
+      target_date: "2026-12-31",
+      client_owner_contact: "c1",
+    }));
+  });
+
+  it("a project also carries a start date", async () => {
+    const user = userEvent.setup();
+    const project = aWorkParent({ id: "pr1", kind: "project", title: "Order-to-cash" });
+    const fetchMock = show(aMe(), project, "project");
+
+    await user.click(await screen.findByRole("button", { name: "Edit details" }));
+    await user.type(screen.getByLabelText("Start date"), "2026-10-01");
+    await user.click(screen.getByRole("button", { name: "Save details" }));
+
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+      .toMatchObject({ start_date: "2026-10-01", title: "Order-to-cash" }));
+  });
+
+  it("a client is never offered it", async () => {
+    show(aMe({ role: "FCC", client_company: COMPANY_ID }));
+    expect(await screen.findByText(/Cut order-to-cash/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
+  });
+});
