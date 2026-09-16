@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { PortalCreate } from "../components/PortalCreate";
+import { StaffCreate } from "../components/StaffCreate";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Card, Empty, Field, when } from "../components/ui";
 import { Me, Task, WorkParent, api } from "../lib/api";
@@ -41,7 +42,9 @@ export function Tasks({ me }: { me: Me }) {
           : "Everything across your goals and projects, filed or not."}
       </p>
 
-      {(me.role === "FCC" || me.role === "ECC") && <PortalCreate me={me} offer={["task"]} />}
+      {(me.role === "FCC" || me.role === "ECC")
+        ? <PortalCreate me={me} offer={["task"]} />
+        : <StaffCreate me={me} offer={["task"]} />}
 
       <Card>
         <div className="row">

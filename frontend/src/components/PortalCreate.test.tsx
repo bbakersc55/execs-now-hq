@@ -168,8 +168,8 @@ describe("where the portal offers them", () => {
     renderRoute(<Work me={anEcc()} />);
     expect(await screen.findByRole("button", { name: "New task" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("What to add")).not.toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "A goal" })).not.toBeInTheDocument();
+    // FR-3.35a — a client never creates a goal.
+    expect(screen.queryByRole("button", { name: "New goal" })).not.toBeInTheDocument();
   });
 
   it("Tasks offers New task to a client", async () => {
@@ -179,12 +179,13 @@ describe("where the portal offers them", () => {
     expect(screen.queryByRole("button", { name: "New project" })).not.toBeInTheDocument();
   });
 
-  it("the practice keeps its own Add form rather than the portal's", async () => {
+  it("the practice gets its own forms, not the portal's", async () => {
+    // Both roles now have a New task button; the practice's is StaffCreate,
+    // which also offers a goal — the portal never does (FR-3.35a).
     vi.stubGlobal("fetch", mockApi(WORK_ROUTES));
     renderRoute(<Work me={aMe()} />);
-    expect(await screen.findByLabelText("What to add")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "New project" })).not.toBeInTheDocument();
-    renderRoute(<Tasks me={aMe()} />);
-    expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "New goal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New task" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument();
   });
 });

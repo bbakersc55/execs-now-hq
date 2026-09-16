@@ -1,20 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { PortalCreate } from "../components/PortalCreate";
+import { StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
-import { Banner, Card, Empty, Field, when } from "../components/ui";
-import { Company, Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
+import { Card, Empty, when } from "../components/ui";
+import { Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
 
 const TENANT = ["FF", "CF", "VA"];
 
 /** Goal → Project → Task, three levels and no more (FR-3.4). Goals are the
  *  practice's; a client may create projects and tasks for their own company. */
 export function Work({ me }: { me: Me }) {
-  const qc = useQueryClient();
   const isTenant = !!me.role && TENANT.includes(me.role);
-  const [note, setNote] = useState("");
 
   const goals = useQuery<WorkParent[]>({
     queryKey: ["goals"], queryFn: () => api.get<WorkParent[]>("/api/goals/"),
@@ -25,21 +23,6 @@ export function Work({ me }: { me: Me }) {
   const unfiled = useQuery<Task[]>({
     queryKey: ["tasks", "unfiled"], queryFn: () => api.get<Task[]>("/api/tasks/?unfiled=1"),
   });
-  const companies = useQuery<Company[]>({
-    queryKey: ["companies"], queryFn: () => api.get<Company[]>("/api/companies/"),
-    enabled: isTenant,
-  });
-
-  const create = useMutation({
-    mutationFn: ({ kind, title, company }: { kind: string; title: string; company: string }) =>
-      api.post(`/api/${kind}/`, { title, ...(company ? { client_company: company } : {}) }),
-    onSuccess: (_d, v) => {
-      setNote(`${v.kind === "goals" ? "Goal" : v.kind === "projects" ? "Project" : "Task"} created.`);
-      qc.invalidateQueries({ queryKey: [v.kind === "goals" ? "goals" : v.kind === "projects" ? "projects" : "tasks"] });
-    },
-    onError: (e: Error) => setNote(e.message),
-  });
-
   const orphanProjects = (projects.data ?? []).filter((p) => !p.goal);
 
   return (
@@ -49,9 +32,8 @@ export function Work({ me }: { me: Me }) {
         Goals hold projects, projects hold tasks — and a task can stand on its own.
         A goal's status is derived from the work underneath it unless someone sets it.
       </p>
-      {note && <Banner kind="info">{note}</Banner>}
 
-      {isTenant && <NewItem companies={companies.data ?? []} onCreate={create.mutate} />}
+      {isTenant && <StaffCreate me={me} />}
       {isTenant && <ClientActivity />}
       {/* FR-3.35 / 3.35a — a client creates tasks and projects, never goals. */}
       {!isTenant && <PortalCreate me={me} />}
@@ -107,49 +89,6 @@ export function Work({ me }: { me: Me }) {
     </>
   );
 }
-
-function NewItem({ companies, onCreate }: {
-  companies: Company[];
-  onCreate: (v: { kind: string; title: string; company: string }) => void;
-}) {
-  const [kind, setKind] = useState("goals");
-  const [title, setTitle] = useState("");
-  const [company, setCompany] = useState("");
-
-  return (
-    <Card title="Add">
-      <div className="row">
-        <Field label="What">
-          <select aria-label="What to add" value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="goals">A goal</option>
-            <option value="projects">A project</option>
-            <option value="tasks">A task</option>
-          </select>
-        </Field>
-        <Field label="Title">
-          <input aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </Field>
-        <Field label="Client company (optional)">
-          <select aria-label="Client company" value={company}
-            onChange={(e) => setCompany(e.target.value)}>
-            <option value="">Internal</option>
-            {companies.filter((c) => c.is_client_company).map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </Field>
-        <button className="primary" disabled={!title.trim()}
-          onClick={() => { onCreate({ kind, title: title.trim(), company }); setTitle(""); }}>
-          Add
-        </button>
-      </div>
-      <p className="small muted">
-        A task with a client company is shown to that client by default; an internal one is not.
-      </p>
-    </Card>
-  );
-}
-
 
 interface ActivityRow extends TaskUpdateRow { task: string; task_title: string }
 
