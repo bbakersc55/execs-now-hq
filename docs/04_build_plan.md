@@ -18,7 +18,7 @@
 
 **Bugs get fixed in the current module, not carried forward** (`CLAUDE.md`). A defect found in Phase 3 that belongs to Phase 1 stops Phase 3.
 
-**Every migration is shown to you before it is applied.** Destructive migrations get a dry-run report first.
+**Every migration's SQL is shown to you before it is generated.** Destructive migrations get a dry-run report first and wait for your yes. **Since 2026-09-16** a purely additive migration may be applied immediately without waiting, on the three conditions in `CLAUDE.md` (additive, suite green on it, a backup ran this session); the report always says it was applied.
 
 ### Execution order
 

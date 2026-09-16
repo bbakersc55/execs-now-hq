@@ -63,6 +63,12 @@ Post-Beta / V1 and beyond, in this order: invoicing (PDF invoice by email with a
 - **Review queues over automation** anywhere the AI's output would email a client or create records. Human approves; the app executes.
 - **State what's proven vs. what's assumed.** When reporting, distinguish "tested end to end" from "written but not exercised." Never report a scoped subset as a total.
 - **Dry-run before irreversible steps** (migrations that drop data, bulk sends, deletes). Show the plan, wait for a yes.
+- **Migrations: SQL first, always; applying is conditional.** Show every migration's SQL (`manage.py sqlmigrate`) before generating it. You may then **apply it yourself, immediately**, only when all three hold:
+  1. **Purely additive** — no column dropped, altered or rewritten, and no data migration. A new table, column, index or constraint qualifies; a `RunPython` does not.
+  2. **The full suite is green on it** — run after the migration exists, not before.
+  3. **A backup ran this session** (`scripts/backup_db.sh`) — either you ran it and saw it succeed, or the owner said so in this conversation. A backup from a previous session does not count, and neither does assuming the nightly one fired.
+
+  Anything destructive, data-rewriting, or that you are unsure about **waits for the owner** — and "unsure" is itself a reason to wait, not to reason around. Say in the report which of the three you checked and that the migration is applied; an applied migration is never left unmentioned. *(Rule added 2026-09-16, after `crm` 0020 was left unapplied on a one-line additive constraint.)*
 - **Prompts for the owner** are delivered as copy-paste blocks with a stated target (Claude Code, terminal, Railway shell). The owner pastes results back for review.
 - Tests: every module ships with tests for tenant isolation (a user in tenant A can never see tenant B rows) and role boundaries (VA can't reach financial endpoints; ECC can't reach anything outside their company). These two test families are non-negotiable.
 - Secrets in `.env` only; `.env.example` is kept current; nothing secret is committed.
