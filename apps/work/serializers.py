@@ -259,9 +259,21 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
             raise serializers.ValidationError("Only the practice sets client visibility.")
         return value
 
+    ONE_PARENT = ("File a task under a project or directly on a goal, not both — "
+                  "a project already belongs to its goal.")
+
     def validate(self, attrs):
         if self.instance is None and not (attrs.get("title") or "").strip():
             raise serializers.ValidationError({"title": "A task needs a title."})
+        # Checked against what the task WILL hold, not just what was sent, so a
+        # PATCH naming one parent cannot join it to the one already stored. The
+        # database carries the same rule (task_one_parent_not_both); this is the
+        # half that answers with a sentence instead of an IntegrityError.
+        goal = attrs["goal"] if "goal" in attrs else getattr(self.instance, "goal", None)
+        project = (attrs["project"] if "project" in attrs
+                   else getattr(self.instance, "project", None))
+        if goal is not None and project is not None:
+            raise serializers.ValidationError({"project": self.ONE_PARENT})
         return attrs
 
 

@@ -955,6 +955,18 @@ class Task(TenantScopedModel):
             models.Index(fields=["tenant", "client_company", "status"]),
             models.Index(fields=["tenant", "project"]),
         ]
+        constraints = [
+            # One parent, or none. The two are not additive: a goal's children
+            # are every task naming it, so a task holding both is listed twice —
+            # once straight under the goal and once under its project — while
+            # the goal's status rolls it up only through the project. The staff
+            # New task form sent both until 2026-09-16; this is so no future
+            # caller can put the pair back. A project already belongs to a goal.
+            models.CheckConstraint(
+                condition=models.Q(goal__isnull=True) | models.Q(project__isnull=True),
+                name="task_one_parent_not_both",
+            ),
+        ]
 
     def __str__(self):
         return self.title

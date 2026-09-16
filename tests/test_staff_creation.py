@@ -39,7 +39,8 @@ def test_staff_create_a_task_with_every_field_the_form_offers(
         "title": "Map the invoice process",
         "description": "End to end.",
         "client_company": str(company.pk),
-        "goal": str(goal.pk),
+        # The project, not the pair: the goal comes with it. Both together is
+        # refused now — see test_a_task_may_not_hold_both_a_goal_and_a_project.
         "project": str(project.pk),
         "assignee": str(cf.user_id),
         "client_owner_contact": str(owner.pk),
@@ -53,7 +54,8 @@ def test_staff_create_a_task_with_every_field_the_form_offers(
     assert task.title == "Map the invoice process"
     assert task.description == "End to end."
     assert (task.client_company_id, task.goal_id, task.project_id) == \
-        (company.pk, goal.pk, project.pk)
+        (company.pk, None, project.pk)
+    assert task.project.goal_id == goal.pk, "and the goal is reached through it"
     assert task.assignee_id == cf.user_id
     assert task.client_owner_contact_id == owner.pk
     assert str(task.due_date) == "2026-10-01"
@@ -242,3 +244,111 @@ def test_a_client_may_still_edit_a_project_they_created(seeded_tenant, api, comp
     assert changed.status_code == 200
     project.refresh_from_db()
     assert project.description == "Ours to run."
+
+
+# --------------------------------------------------- One parent, never both
+
+ONE_PARENT = ("File a task under a project or directly on a goal, not both — "
+              "a project already belongs to its goal.")
+
+
+@pytest.fixture
+def goal_and_project(seeded_tenant, company):
+    goal = GoalFactory(tenant=seeded_tenant, title="Cut DSO", client_company=company)
+    project = ProjectFactory(tenant=seeded_tenant, title="Order-to-cash",
+                             client_company=company, goal=goal)
+    return goal, project
+
+
+@pytest.mark.django_db
+def test_a_task_may_not_hold_both_a_goal_and_a_project(
+    seeded_tenant, ff, api, company, goal_and_project, in_tenant_a
+):
+    """The two are not additive. A goal's children are every task naming it, so
+    a task holding both is listed twice — once straight under the goal, once
+    under its project — while the goal's status rolls it up only through the
+    project. The staff form sent both until 2026-09-16."""
+    goal, project = goal_and_project
+
+    response = api.as_(ff).post("/api/tasks/", {
+        "title": "Map the invoice process",
+        "client_company": str(company.pk),
+        "goal": str(goal.pk), "project": str(project.pk),
+    }, content_type="application/json")
+
+    assert response.status_code == 400, response.content
+    assert response.json()["project"] == [ONE_PARENT]
+    assert Task.all_objects.filter(title="Map the invoice process").exists() is False
+
+
+@pytest.mark.django_db
+def test_either_parent_alone_is_still_accepted(
+    seeded_tenant, ff, api, company, goal_and_project, in_tenant_a
+):
+    goal, project = goal_and_project
+    for field, parent in (("goal", goal), ("project", project)):
+        response = api.as_(ff).post("/api/tasks/", {
+            "title": f"Filed on the {field}", "client_company": str(company.pk),
+            field: str(parent.pk),
+        }, content_type="application/json")
+        assert response.status_code == 201, response.content
+        task = Task.all_objects.get(pk=response.json()["id"])
+        assert getattr(task, f"{field}_id") == parent.pk
+    # And neither, which FR-3.5 makes a first-class thing.
+    assert api.as_(ff).post("/api/tasks/", {"title": "On its own"},
+                            content_type="application/json").status_code == 201
+
+
+@pytest.mark.django_db
+def test_an_edit_cannot_join_a_second_parent_to_the_one_already_there(
+    seeded_tenant, ff, api, company, goal_and_project, in_tenant_a
+):
+    """The payload names one parent; the task already holds the other. Checked
+    against what the task will hold, not against what was sent."""
+    goal, project = goal_and_project
+    made = api.as_(ff).post("/api/tasks/", {
+        "title": "Map the invoice process", "client_company": str(company.pk),
+        "project": str(project.pk),
+    }, content_type="application/json")
+    task = Task.all_objects.get(pk=made.json()["id"])
+
+    response = api.as_(ff).patch(f"/api/tasks/{task.pk}/", {"goal": str(goal.pk)},
+                                 content_type="application/json")
+    assert response.status_code == 400, response.content
+    assert response.json()["project"] == [ONE_PARENT]
+    task.refresh_from_db()
+    assert (task.goal_id, task.project_id) == (None, project.pk), "and nothing moved"
+
+
+@pytest.mark.django_db
+def test_moving_a_task_from_its_project_onto_a_goal_works_in_one_call(
+    seeded_tenant, ff, api, company, goal_and_project, in_tenant_a
+):
+    """The way out of the refusal above: let the project go in the same breath."""
+    goal, project = goal_and_project
+    made = api.as_(ff).post("/api/tasks/", {
+        "title": "Map the invoice process", "client_company": str(company.pk),
+        "project": str(project.pk),
+    }, content_type="application/json")
+    task = Task.all_objects.get(pk=made.json()["id"])
+
+    response = api.as_(ff).patch(f"/api/tasks/{task.pk}/",
+                                 {"goal": str(goal.pk), "project": None},
+                                 content_type="application/json")
+    assert response.status_code == 200, response.content
+    task.refresh_from_db()
+    assert (task.goal_id, task.project_id) == (goal.pk, None)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_database_refuses_the_pair_whatever_the_caller(
+    seeded_tenant, company, goal_and_project, in_tenant_a
+):
+    """The serializer answers with a sentence; this is the floor under it, for
+    a caller that never goes through the API — a shell, a future job, an import."""
+    from django.db import IntegrityError
+
+    goal, project = goal_and_project
+    with pytest.raises(IntegrityError, match="task_one_parent_not_both"):
+        Task.all_objects.create(tenant=seeded_tenant, title="Straight in",
+                                goal=goal, project=project)
