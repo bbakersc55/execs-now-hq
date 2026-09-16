@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { PortalCreate } from "../components/PortalCreate";
-import { StaffCreate } from "../components/StaffCreate";
+import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Card, Empty, when } from "../components/ui";
 import { Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
@@ -28,10 +28,20 @@ export function Work({ me }: { me: Me }) {
   return (
     <>
       <h2>Work</h2>
-      <p className="sub">
-        Goals hold projects, projects hold tasks — and a task can stand on its own.
-        A goal's status is derived from the work underneath it unless someone sets it.
-      </p>
+      {/* The practice needs the vocabulary; a client already lives in their own
+          company's work and is never offered a goal to create. */}
+      {isTenant ? (
+        <>
+          <HierarchyNote />
+          <p className="sub">
+            A goal's status is derived from the work underneath it unless someone sets it.
+          </p>
+        </>
+      ) : (
+        <p className="sub">
+          Goals hold projects, projects hold tasks — and a task can stand on its own.
+        </p>
+      )}
 
       {isTenant && <StaffCreate me={me} />}
       {isTenant && <ClientActivity />}

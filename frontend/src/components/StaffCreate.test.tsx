@@ -93,7 +93,8 @@ describe("The practice's own New task (the portal had one; staff did not)", () =
       title: "Map the invoice process",
       description: "End to end.",
       client_company: CO,
-      goal: "g1",
+      // The goal is not sent with it: pr1 is under g1, and a task carrying both
+      // is listed twice on the goal's page.
       project: "pr1",
       assignee: "u2",
       client_owner_contact: "c1",
@@ -124,7 +125,98 @@ describe("The practice's own New task (the portal had one; staff did not)", () =
 
     // Picking a goal narrows the projects to that goal's own.
     await user.selectOptions(screen.getByLabelText("Goal for the new task"), "g1");
-    expect(options("Project for the new task")).toEqual(["No project", "Their project"]);
+    expect(options("Project for the new task"))
+      .toEqual(["No project — file on the goal", "Their project"]);
+  });
+
+  it("says so inline when the goal has no projects, rather than a dead picker", async () => {
+    const user = userEvent.setup();
+    const fetchMock = open({ "POST /api/tasks/": { id: "t9", title: "On the goal" } });
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    await user.type(screen.getByLabelText("New task title"), "On the goal");
+    await waitFor(() => expect(options("Client company for the new item")).toContain("Acme Foods"));
+    // g1 holds a project, so the picker is a real choice.
+    await user.selectOptions(screen.getByLabelText("Client company for the new item"), CO);
+    await user.selectOptions(screen.getByLabelText("Goal for the new task"), "g1");
+    expect(screen.getByLabelText("Project for the new task")).toBeInTheDocument();
+
+    // g2 holds none — the practice's own goal, with pr3 filed under no goal.
+    await user.selectOptions(screen.getByLabelText("Client company for the new item"), "");
+    await waitFor(() => expect(options("Goal for the new task")).toEqual(["No goal", "Our own goal"]));
+    await user.selectOptions(screen.getByLabelText("Goal for the new task"), "g2");
+
+    expect(screen.queryByLabelText("Project for the new task")).not.toBeInTheDocument();
+    expect(screen.getByText(/No projects under this goal yet/)).toBeInTheDocument();
+
+    // And it still files, on the goal.
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+    const posted = fetchMock.calls.find((c) => c.url === "/api/tasks/" && c.method === "POST");
+    expect(posted!.body).toEqual({
+      title: "On the goal", goal: "g2", priority: 1, is_client_visible: false,
+    });
+  });
+
+  it("a goal with no project chosen files the task on the goal itself", async () => {
+    const user = userEvent.setup();
+    const fetchMock = open({ "POST /api/tasks/": { id: "t9", title: "Straight on it" } });
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    await user.type(screen.getByLabelText("New task title"), "Straight on it");
+    await waitFor(() => expect(options("Client company for the new item")).toContain("Acme Foods"));
+    await user.selectOptions(screen.getByLabelText("Client company for the new item"), CO);
+    await user.selectOptions(screen.getByLabelText("Goal for the new task"), "g1");
+    // g1 has a project, and it is left alone.
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    const posted = fetchMock.calls.find((c) => c.url === "/api/tasks/" && c.method === "POST");
+    expect(posted!.body).toEqual({
+      title: "Straight on it", client_company: CO, goal: "g1",
+      priority: 1, is_client_visible: true,
+    });
+  });
+
+  it("a project picked with no goal shows the goal it sits in, read-only", async () => {
+    const user = userEvent.setup();
+    const fetchMock = open({ "POST /api/tasks/": { id: "t9", title: "Under the project" } });
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    await user.type(screen.getByLabelText("New task title"), "Under the project");
+    await waitFor(() => expect(options("Client company for the new item")).toContain("Acme Foods"));
+    await user.selectOptions(screen.getByLabelText("Client company for the new item"), CO);
+    await user.selectOptions(screen.getByLabelText("Project for the new task"), "pr1");
+
+    expect(screen.queryByLabelText("Goal for the new task")).not.toBeInTheDocument();
+    expect(screen.getByText(/Their goal — the project's goal\./)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+    const posted = fetchMock.calls.find((c) => c.url === "/api/tasks/" && c.method === "POST");
+    expect(posted!.body).toEqual({
+      title: "Under the project", client_company: CO, project: "pr1",
+      priority: 1, is_client_visible: true,
+    });
+  });
+
+  it("a project under no goal says that, instead of showing one", async () => {
+    const user = userEvent.setup();
+    open();
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    await waitFor(() => expect(options("Client company for the new item")).toContain("Acme Foods"));
+    await user.selectOptions(screen.getByLabelText("Client company for the new item"), CO);
+    await user.selectOptions(screen.getByLabelText("Project for the new task"), "pr2");
+
+    expect(screen.queryByLabelText("Goal for the new task")).not.toBeInTheDocument();
+    expect(screen.getByText(/That project isn't under a goal\./)).toBeInTheDocument();
+  });
+
+  it("clearing the project gives the goal picker back", async () => {
+    const user = userEvent.setup();
+    open();
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    await waitFor(() => expect(options("Client company for the new item")).toContain("Acme Foods"));
+    await user.selectOptions(screen.getByLabelText("Client company for the new item"), CO);
+    await user.selectOptions(screen.getByLabelText("Project for the new task"), "pr1");
+    expect(screen.queryByLabelText("Goal for the new task")).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Project for the new task"), "");
+    expect(screen.getByLabelText("Goal for the new task")).toBeInTheDocument();
   });
 
   it("clears choices that belonged to the company you just left", async () => {
@@ -231,6 +323,41 @@ describe("The practice's own New project and New goal", () => {
 
     const posted = fetchMock.calls.find((c) => c.url === "/api/goals/" && c.method === "POST");
     expect(posted!.body).toEqual({ title: "Cut DSO", target_date: "2026-12-31" });
+  });
+});
+
+describe("What the three levels mean, said where the decision is made", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  // The sentence is broken up by <strong> tags, so each match is one text node.
+  const hierarchy = () =>
+    screen.queryByText(/is a client outcome you are accountable for/);
+
+  it("Work tells the practice, in the practice's own terms", async () => {
+    vi.stubGlobal("fetch", mockApi({ ...LISTS, "/api/tasks/": [], "/api/client-activity/": [] }));
+    renderRoute(<Work me={anFf()} />);
+    await screen.findByRole("button", { name: "New task" });
+    expect(hierarchy()).toBeInTheDocument();
+    expect(screen.getByText(/a Strategy Map\s+row becomes one/)).toBeInTheDocument();
+    expect(screen.getByText(/sit under a project, straight\s+under a goal, or on its own/))
+      .toBeInTheDocument();
+  });
+
+  it("the New task form says it again, beside the pickers", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi(LISTS));
+    renderRoute(<StaffCreate me={anFf()} offer={["task"]} />);
+    expect(hierarchy()).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    expect(hierarchy()).toBeInTheDocument();
+  });
+
+  it("a client is not told they are accountable for the client's outcome", async () => {
+    vi.stubGlobal("fetch", mockApi({ ...LISTS, "/api/tasks/": [] }));
+    renderRoute(<Work me={aMe({ role: "ECC", client_company: CO })} />);
+    await screen.findByRole("button", { name: "New task" });
+    expect(hierarchy()).not.toBeInTheDocument();
+    expect(screen.getByText(/Goals hold projects, projects hold tasks/)).toBeInTheDocument();
   });
 });
 

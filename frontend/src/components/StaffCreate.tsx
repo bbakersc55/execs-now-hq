@@ -18,6 +18,26 @@ type Kind = "task" | "project" | "goal";
 type Outcome = { kind: string; text: string; link: string };
 
 /**
+ * What the three levels mean, in the practice's own terms.
+ *
+ * The first thing a fractional new to the product does not know, and nothing on
+ * screen said it: the words "goal", "project" and "task" are generic enough
+ * that everyone arrives with their own reading. Said where the decision is
+ * made — the top of Work, and beside the pickers on the New task form — rather
+ * than in documentation nobody opens.
+ */
+export function HierarchyNote() {
+  return (
+    <p className="sub">
+      A <strong>goal</strong> is a client outcome you are accountable for — a Strategy Map
+      row becomes one; a <strong>project</strong> is a body of work toward it; a{" "}
+      <strong>task</strong> is a single item. A task can sit under a project, straight
+      under a goal, or on its own.
+    </p>
+  );
+}
+
+/**
  * The practice's own "new" controls, with the whole form.
  *
  * The portal had these and the staff side did not. A fractional could create a
@@ -144,7 +164,18 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
   const [step, setStep] = useState("");
   const [error, setError] = useState("");
   const lists = useScopedLists(form.company);
-  const projects = lists.projects.filter((p) => !form.goal || p.goal === form.goal);
+
+  // Where the task files. A goal narrows the projects to its own; picking one
+  // of those files under the project, picking none files on the goal itself.
+  // Picking a project with no goal chosen inherits whatever goal it sits in —
+  // shown, not editable, because the project decides it.
+  const underGoal = lists.projects.filter((p) => p.goal === form.goal);
+  const projects = form.goal ? underGoal : lists.projects;
+  const goalHasNoProjects = !!form.goal && underGoal.length === 0;
+  const chosenProject = lists.projects.find((p) => p.id === form.project) ?? null;
+  const projectGoal = chosenProject
+    ? lists.goals.find((g) => g.id === chosenProject.goal) ?? null
+    : null;
 
   // Changing the company invalidates every choice scoped to the old one.
   const setCompany = (company: string) => {
@@ -158,8 +189,10 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
         title: form.title.trim(),
         ...(form.description.trim() ? { description: form.description.trim() } : {}),
         ...(form.company ? { client_company: form.company } : {}),
-        ...(form.goal ? { goal: form.goal } : {}),
-        ...(form.project ? { project: form.project } : {}),
+        // One parent only. A project already carries its goal, and a task sent
+        // with both is listed twice — once straight under the goal and again
+        // under the project — while the goal's status counts it only once.
+        ...(form.project ? { project: form.project } : form.goal ? { goal: form.goal } : {}),
         ...(form.assignee ? { assignee: form.assignee } : {}),
         ...(form.client_owner_contact
           ? { client_owner_contact: form.client_owner_contact } : {}),
@@ -214,22 +247,37 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
 
+        <HierarchyNote />
         <div className="row">
           <CompanyField value={form.company} onChange={setCompany}
             companies={lists.clientCompanies} />
           <Field label="Goal">
-            <select aria-label="Goal for the new task" value={form.goal}
-              onChange={(e) => setForm({ ...form, goal: e.target.value, project: "" })}>
-              <option value="">No goal</option>
-              {lists.goals.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
-            </select>
+            {chosenProject ? (
+              <p className="small muted" style={{ margin: ".35rem 0" }}>
+                {projectGoal
+                  ? `${projectGoal.title} — the project's goal.`
+                  : "That project isn't under a goal."}
+              </p>
+            ) : (
+              <select aria-label="Goal for the new task" value={form.goal}
+                onChange={(e) => setForm({ ...form, goal: e.target.value, project: "" })}>
+                <option value="">No goal</option>
+                {lists.goals.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+              </select>
+            )}
           </Field>
           <Field label="Project">
-            <select aria-label="Project for the new task" value={form.project}
-              onChange={(e) => setForm({ ...form, project: e.target.value })}>
-              <option value="">No project</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
+            {goalHasNoProjects ? (
+              <p className="small muted" style={{ margin: ".35rem 0" }}>
+                No projects under this goal yet — this task will file directly on the goal.
+              </p>
+            ) : (
+              <select aria-label="Project for the new task" value={form.project}
+                onChange={(e) => setForm({ ...form, project: e.target.value })}>
+                <option value="">{form.goal ? "No project — file on the goal" : "No project"}</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+              </select>
+            )}
           </Field>
         </div>
 
