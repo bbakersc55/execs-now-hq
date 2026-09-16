@@ -24,7 +24,7 @@
 
 Module numbers follow `CLAUDE.md`. **Build order is not module order**, in one place:
 
-`0.5 foundation → 1 → 2 → 3 → 4 → 5 → 6 → design pass → 7 (Railway move)`
+`0.5 foundation → 1 → 2 → 3 → 4 → 4.5 → 5 → 6 → design pass → 7 (Railway move)`
 
 (The design pass may also follow the Railway move; it must precede Beta exit — see its section.)
 
@@ -469,6 +469,294 @@ and never contains (FR-3.41, matrix 7.16–7.17).
 ### Report
 
 AC-4.1–4.19. The quality of Claude's map rows and mirror is reported as **your judgement on N real sessions**, with N — not as a pass. I will not claim the AI output is good; I will report what you said about it.
+
+---
+
+## Phase 4.5 — Module 4B: the client value report
+
+> **Scope only, written 2026-09-16 for the owner's review. No design, no code.**
+> This section is a proposal. Nothing here is built, and the module does not start
+> until the owner approves it — including its place in the order and its name.
+
+### Why this exists
+
+Module 3 shipped an on-demand progress report (FR-3.38) that renders **the same
+content as a digest for a chosen period**. That is what it says it is, and it is the
+wrong artifact. A client opening it reads a flat run of things that moved: statuses
+changed, comments posted, tasks closed, newest first. It answers *what happened
+lately*. It does not answer the only question a founder is actually paying to have
+answered — **are we getting where we said we were going, and is it working?**
+
+The difference is not presentational. A period-scoped activity list has no anchor
+outside the period, so it cannot show a direction, cannot show a distance still to
+travel, and cannot distinguish a month of real movement from a month of busywork.
+Worse, it invites the one summary number that destroys trust the fastest:
+percent-of-tasks-done. **A third of the tasks is not a third of an outcome**, and a
+client who works that out once stops believing every number on the page after it.
+
+The replacement is anchored on **goals** rather than on a period, because the goal is
+where the engagement's promise lives. Goals arrive from the strategy session — each
+accepted Strategy Map row becomes one on conversion (FR-4.28) — and are added
+throughout the engagement as new bottlenecks surface. The report is therefore the
+other half of the strategy session: the map says what we are going to change, and
+this says whether it changed.
+
+**This replaces FR-3.38.** It is not an additional screen alongside it.
+
+### Purpose, in one sentence
+
+Show a client, per goal, what outcome was promised, where the measure of it stood
+when we started, where it stands now, where it is meant to land, what has been done
+toward it, and — in the fractional's own words — what that adds up to.
+
+### The shape
+
+**Anchor and organisation.**
+
+1. The report is organised **by goal**, not by period. It shows **all** of a client
+   company's goals: **current first, historical below**.
+2. **Any single goal is openable on its own** — the unit a quarterly-review
+   conversation actually walks through, one goal at a time.
+3. Goals come from two places and the report does not distinguish them: Phase 4's
+   map-row conversion, and goals added by hand as the engagement runs.
+
+**What a goal carries, beyond today's fields.** Today a `goal` has title,
+description, client company, owner, client-owner contact, target date, a derived or
+overridden status, and a back-link to its map row. This module adds:
+
+4. **A measurable**, carried from the map row, with **a baseline value, a current
+   value, and a target value**. The baseline is what the number was when the
+   engagement started; without it there is no distance travelled, only a reading.
+5. **A 30/60/90 horizon**, already captured on the map row and currently dropped on
+   conversion.
+6. **A short outcome statement** — the fractional's own sentence about what this goal
+   is really for, written in client language and updated as understanding changes.
+   Not the description, which is internal scoping; this is the line a founder would
+   repeat to their board.
+7. **Optional milestones** — dated beats that are not tasks: "area lead hired",
+   "inspection app live". A goal may have none.
+
+**Progress display, and the rule that governs it.**
+
+8. **When a measurable exists, it is the headline**: baseline → current → target.
+9. **Task and project completion is a secondary bar**, present and clearly subordinate.
+10. **Never lead with percent-of-tasks-done.** This is a product rule, not a layout
+    preference, and it holds in the portal, in the PDF, and in any future digest that
+    borrows from this module.
+11. A goal with **no** measurable degrades honestly: the outcome statement and the
+    milestones carry the display, and the completion bar stays secondary. It does not
+    get promoted to the headline just because the slot is empty.
+
+**Resolution — how a goal becomes historical.**
+
+12. A goal is resolved into exactly one of: **achieved · changed course · paused ·
+    retired**. An unresolved goal is current; a resolved one moves to the historical
+    section and keeps its measurements and history.
+13. **Each resolution requires a one-line reason**, and that line becomes part of the
+    goal's permanent history rather than a field that can be edited away quietly.
+14. **"Changed course" is normal consulting** and is frequently the most valuable
+    judgement the fractional made all quarter. The reason line is the whole mechanism
+    that makes it read as judgement rather than as failure, which is why it is
+    required rather than optional. A resolution vocabulary with no reason attached
+    would make "changed course" indistinguishable from "gave up".
+
+**What updates itself, and what a person types.**
+
+15. **Automatic — everything structural**: task and project completion, the goal tree,
+    the timeline, milestone dates as they are hit.
+16. **By hand — two things only:**
+    - **The measurable's current value**, through a **"record measurement" action**
+      that keeps a **dated history**, so the measure can be charted over the
+      engagement rather than overwritten to a single latest number.
+    - **The outcome statement.**
+17. Nothing else is hand-maintained. Any field that would need the fractional to
+    remember to update it, and would silently go stale if they did not, does not
+    belong in this module.
+
+**AI's role.**
+
+18. Claude drafts **the connective narrative** for a goal, from **that goal's own
+    material only**: the client-facing lines on its task updates (FR-3.16), notes
+    linked to its tasks, its milestones, and its measurements.
+19. **It asserts nothing not present in that input** — the same constraint the digest
+    carries, tested the same way (AC-3.5).
+20. **The fractional edits and accepts.** It is **never auto-published**: an
+    unaccepted draft is invisible to the client, and the structural half of the report
+    stands on its own without it.
+
+**Where it appears.**
+
+21. **Always available in the client portal**, not only when something was sent. A
+    report a client can only see if it was emailed to them is a document; this is a
+    place they can go.
+22. **Exportable as a branded PDF** for the quarterly-review conversation, using the
+    **email layout's brand system** (`apps/crm/services/email_layout.py`,
+    `templates/email/base.html`) and WeasyPrint, which Phase 4 already establishes for
+    the strategy PDF. One brand system, not a third.
+
+### Data model additions — proposed, not settled
+
+On **`goal`**:
+
+| Column | Type | Notes |
+|---|---|---|
+| `measurable` | text? | carried from `strategy_map_row.measurable` |
+| `measurable_unit` | text? | "hours/week", "%", "days" — drives display, never arithmetic |
+| `baseline_value` | numeric? | what it read at engagement start |
+| `baseline_at` | date? | when that reading was taken |
+| `target_value` | numeric? | where it is meant to land |
+| `horizon_days` | smallint? | 30 · 60 · 90, from the map row |
+| `outcome_statement` | text? | the fractional's client-facing sentence |
+| `resolution` | text? | `achieved · changed_course · paused · retired`; **null = current** |
+| `resolution_reason` | text? | required when `resolution` is set — a CHECK, not a convention |
+| `resolved_at` | timestamptz? | |
+
+New tables:
+
+- **`goal_measurement`** — `id · tenant_id · goal_id · value numeric · measured_at date
+  · recorded_by FK→user · note text?`. The dated history behind the current value; the
+  "current value" is a read of the latest row, not a stored column that can drift.
+- **`goal_milestone`** — `id · tenant_id · goal_id · title · due_date date? ·
+  occurred_at date? · position`. Occurred-vs-due is what lets the timeline show a beat
+  as hit, late, or ahead without a status vocabulary of its own.
+- **`goal_narrative`** — the AI draft and its accepted form, per goal per report
+  period, with an `ai_call_id` and an accept/edit trail. Whether this is per-period or
+  a single living narrative per goal is an **open question** below.
+
+Not proposed, deliberately: any stored "percent complete", any stored derived status
+(FR-3.10's rule stands), and any denormalised "current value" on `goal`.
+
+### What it draws from
+
+| Source | What it contributes | Module |
+|---|---|---|
+| `goal` + the new columns | the anchor, the measurable, the outcome statement, resolution | 3 / this |
+| `goal_measurement` | baseline → current → target, and the chart | this |
+| `goal_milestone` | the dated beats on the timeline | this |
+| `project` · `task` · status rollup (`apps/work/status.py`) | the secondary completion bar and the goal tree | 3 |
+| `task_update.client_facing_line` (FR-3.16) | the narrative's primary raw material | 3 |
+| `note` rows linked to the goal's tasks | narrative material the fractional already captured | 2 |
+| `strategy_map_row` via `source_map_row_id` | the measurable, the horizon, the original bottleneck and fix | 4 |
+| `ai_call` | the spend and audit trail for every narrative draft | 0.5 |
+| `email_layout` + `templates/email/base.html` + WeasyPrint | the branded PDF | 1 / 4 |
+| client-company scoping | that a client sees only their own company's goals | 0.5 / 3 |
+
+### Consequence for Phase 4 — a correction, not an addition
+
+**Phase 4's map-row conversion must capture the measurable and prompt for its
+baseline. Today it does not, and the gap is already in the documents:**
+
+- `strategy_map_row` has a single free-text `measurable` column and a `horizon`.
+- **`goal` has no measurable column at all** — only `source_map_row_id`.
+- **AC-4.11 asserts that a converted record carries "owner, target date, and
+  measurable."** With no column to carry it into, the measurable is reachable only by
+  joining back to the map row, and the horizon is dropped outright.
+
+So this is not new Phase 4 scope invented by this module; it is a promise Phase 4
+already makes that the schema cannot currently keep. Three changes fall out:
+
+1. **The `goal` columns above must exist before or with Phase 4's conversion**, or
+   conversion has nowhere to put what AC-4.11 says it carries.
+2. **Conversion must prompt for the baseline** — at conversion, while the fractional
+   still has the diagnostic in front of them. A baseline asked for three weeks later is
+   a guess, and a guessed baseline makes every later reading dishonest.
+3. **A free-text measurable will not produce a baseline → current → target display.**
+   Either conversion asks the fractional to structure it (name, unit, target) or the
+   goal keeps the text and the headline falls back to the outcome statement. This is
+   the first open question below and it is the one that most shapes the module.
+
+### Consequences elsewhere
+
+- **FR-3.38 is replaced**, so **AC-3.26** ("on-demand report requires a login") and
+  **matrix row 7.15** ("view the on-demand progress report") are reworded onto this
+  module rather than deleted — the login requirement still holds.
+- `frontend/src/screens/Report.tsx` and `ProgressReportView` are replaced, not extended.
+- **The client activity log (FR-3.41) is untouched.** It is the honest flat log and
+  should stay flat; the mistake was having only that shape.
+- **The weekly digest is untouched by this scope** — see the open questions.
+- New access-matrix rows are needed for: recording a measurement, writing the outcome
+  statement, resolving a goal, accepting a narrative, and exporting the PDF. Expect
+  **VA excluded from resolution and from accepting a narrative** (both are judgement
+  about the client relationship), and **client roles read-only throughout**.
+
+### Open questions — for the owner, before any build
+
+1. **Structured or free-text measurables?** "Reduce supervisor overload" is not a
+   number. Options: (a) conversion asks for name + unit + baseline + target and the
+   headline is always numeric; (b) the measurable stays text and numbers are optional,
+   with the headline degrading to the outcome statement; (c) two kinds of measurable,
+   numeric and qualitative, displayed differently. **This decides the module's core
+   display and should be settled first.**
+2. **Direction of good.** Some measures improve downward (overtime hours, DSO) and
+   some upward. Infer from baseline-versus-target, or store it explicitly? Inference
+   is silently wrong when baseline and target are equal, or when a target is not yet set.
+3. **What a client sees before a narrative is accepted.** The structural half is
+   always live and the narrative is not. Does a goal with no accepted narrative show
+   the structure alone, or is the whole goal held back? **Recommendation: show the
+   structure.** Holding it back would make the report's availability depend on the
+   fractional's backlog, which is the failure mode of the artifact being replaced.
+4. **Live or snapshot for the PDF?** A quarterly PDF that regenerates differently a
+   month later does not match the conversation it was printed for. **Recommendation: a
+   snapshot on export**, kept as a `stored_file`, listed on the goal.
+5. **Does the weekly digest gain the goal anchor too, or stay as it is?** The digest is
+   a weekly "what moved"; this is the periodic "where are we". They may be correct as
+   two different things. Not assumed either way.
+6. **Who may resolve a goal, and who may accept a narrative?** FF only, or FF and CF on
+   their assigned clients? VA is excluded either way.
+7. **Can a resolution be reversed?** A paused goal resuming is ordinary; an achieved
+   goal being un-achieved is not. Proposed: resuming is allowed and appends to the
+   history rather than erasing the prior resolution line.
+8. **Milestones versus tasks.** A dated beat could be modelled as a task with a due
+   date. Keeping them separate risks the fractional maintaining the same fact twice.
+   Is a milestone ever anything but a task the client should see on a timeline?
+9. **Charting.** Does the measurement history chart in the portal, in the PDF, or both?
+   A chart with two readings is noise; is there a minimum before it appears?
+10. **A goal with no client company.** Internal goals exist. They presumably never
+    appear in this report at all — confirm.
+11. **Numbering and name.** This document uses **Phase 4.5 / Module 4B**, with
+    `FR-4B.x` and `AC-4B.x`, because `CLAUDE.md` numbers six modules and Modules 5 and 6
+    are spoken for. The alternative is renumbering Modules 5 and 6. **The owner's call**,
+    and everything above is independent of it.
+
+### Done means — sketch only
+
+Deliberately not enumerated to the usual gate detail, because the open questions above
+change what the gate says. At minimum it will include: the goal columns and the three
+new tables migrated; the portal report organised by goal with current and historical
+sections and a single-goal view; the measurable headline with completion subordinate;
+record-measurement with dated history; resolution with a required reason; the AI
+narrative under the AC-3.5 faithfulness constraint with accept/edit and no
+auto-publish; the branded PDF export; and FR-3.38's replacement removed rather than
+left alongside.
+
+### Tests that will be non-negotiable
+
+- **Tenant isolation and client-company isolation**, as every phase — a client of one
+  company never sees another's goals, measurements, or narratives, **404 both ways**.
+- **Role boundaries** for the new verbs, VA's exclusions asserted against the API body.
+- **The narrative asserts no fact absent from its inputs**, tested as AC-3.5 is.
+- **An unaccepted narrative is absent from the client's API response**, not merely
+  hidden in the UI — the same standard as internal comments (AC-3.4).
+- **A resolution cannot be stored without its reason**, at the database, not only the
+  serializer.
+- **Percent-of-tasks-done never appears as a headline figure** in the portal or the
+  PDF — worth an explicit test, because it is the thing most likely to creep back in.
+
+### Manual checks that will matter most
+
+1. **Read a real goal's report as the client.** Does it read as value delivered? This
+   is the same judgement Check 1 of Phase 3 asked for, on the artifact that was
+   supposed to answer it.
+2. **Resolve a real goal as "changed course" and read it back.** Does the reason line
+   make it read as judgement, or as failure? If it reads as failure, the vocabulary or
+   the layout is wrong and it is a bug in this module.
+3. **Export the quarterly PDF and take it into a real client conversation.** Whether it
+   survives that hour is the only honest test of the module.
+
+### Report
+
+The usual three values. The AI narrative's quality will be reported as **the owner's
+judgement on N real goals**, with N — never as a pass.
 
 ---
 
