@@ -798,10 +798,11 @@ def test_other_failures_are_not_reported_as_no_speech(seeded_tenant, ff, api, fa
 
 @pytest.mark.django_db
 def test_a_schedule_left_far_behind_is_realigned_and_one_on_cadence_is_not(seeded_tenant):
-    """Phase 3: `work.tick` was stuck at 12 Sep. With catch_up on, Django-Q moves
-    a stale next run one interval per scheduler pass, so a one-minute job fired
-    every ~30 s for days. Re-running the command realigns anything more than one
-    interval behind, and still never moves a schedule that is on cadence."""
+    """Phase 3: `work.tick` was stuck at 12 Sep. Re-running the command realigns
+    anything more than one interval behind, and still never moves a schedule that
+    is on cadence. Since `catch_up` went off this is belt-and-braces for the
+    heartbeats and the real fix for a daily job's local hour — see
+    `test_a_stale_heartbeat_fires_once_and_resumes_cadence` below."""
     from datetime import timedelta
     from zoneinfo import ZoneInfo
 
@@ -839,3 +840,44 @@ def test_a_schedule_left_far_behind_is_realigned_and_one_on_cadence_is_not(seede
     tick = next_run("work.tick")
     call_command("ensure_schedules", stdout=open("/dev/null", "w"))
     assert next_run("work.tick") == tick
+
+
+@pytest.mark.django_db
+def test_a_stale_heartbeat_fires_once_and_resumes_cadence(seeded_tenant, monkeypatch):
+    """The other half of the realignment above, and the durable one: with
+    `catch_up` OFF (settings.Q_CLUSTER) Django-Q's own scheduler collapses a
+    backlog itself, so a laptop that slept overnight needs no hand-run command.
+
+    Asserted against the real scheduler rather than the setting, because the
+    behaviour that matters belongs to Django-Q and an upgrade could change it.
+    """
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+    from django_q.brokers import get_broker
+    from django_q.conf import Conf
+    from django_q.models import OrmQ, Schedule
+    from django_q.scheduler import scheduler
+
+    assert Conf.CATCH_UP is False, "Q_CLUSTER catch_up must stay off"
+
+    call_command("ensure_schedules", stdout=open("/dev/null", "w"))
+    tick = f"work.tick:{seeded_tenant.slug}"
+    Schedule.objects.filter(name=tick).update(next_run=timezone.now() - timedelta(hours=9))
+    OrmQ.objects.all().delete()
+
+    # Everything below the connection handling is the real scheduler; that one
+    # call would close the connection this test's transaction is running on.
+    monkeypatch.setattr("django_q.scheduler.close_old_django_connections", lambda: None)
+    broker = get_broker()
+    scheduler(broker=broker)
+
+    queued = [q for q in OrmQ.objects.all() if q.task.get("func") == "apps.work.tasks.tick"]
+    assert len(queued) == 1, "nine hours behind must not replay nine hours of ticks"
+    assert Schedule.objects.get(name=tick).next_run > timezone.now()
+
+    # And a second pass, still inside the interval, queues nothing more.
+    scheduler(broker=broker)
+    assert len([q for q in OrmQ.objects.all()
+                if q.task.get("func") == "apps.work.tasks.tick"]) == 1

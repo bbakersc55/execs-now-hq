@@ -163,7 +163,13 @@ Q_CLUSTER = {
     "queue_limit": 50,
     "bulk": 5,
     "orm": "default",
-    "catch_up": True,  # a missed schedule fires on next start, not skipped
+    # OFF, which is what "a missed schedule fires once on next start" actually
+    # takes. ON means the opposite: Django-Q replays EVERY missed occurrence,
+    # one per scheduler pass, so a one-minute job left behind by a laptop that
+    # slept overnight fires every ~30 s for hours instead of resuming cadence.
+    # OFF advances next_run past now and fires once, so a missed daily job is
+    # still owed its run and a heartbeat simply picks up where it left off.
+    "catch_up": False,
 }
 
 # --- Email ---

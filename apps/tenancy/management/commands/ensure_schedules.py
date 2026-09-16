@@ -9,10 +9,15 @@ declared.
 Re-running updates what each job calls and how often, but does not move a
 schedule's next run that is on cadence: that would re-fire a daily job every
 time this ran. It DOES realign one that has fallen more than one interval
-behind. With `catch_up` on (settings.Q_CLUSTER), Django-Q advances a stale next
-run by one interval per scheduler pass, so a one-minute job left three days
-behind by a stopped cluster fires every ~30 seconds for days instead of once a
-minute (Phase 3: `work.tick` was stuck at 12 Sep).
+behind, which now matters only for a daily job's local hour — `catch_up` is off
+(settings.Q_CLUSTER), so Django-Q's scheduler collapses a backlog itself and
+fires a behind job once, at whatever time the cluster came back. Realigning
+puts the daily ones back on their proper hour instead.
+
+While `catch_up` was on, Django-Q advanced a stale next run by one interval per
+scheduler pass, so a one-minute job left three days behind by a stopped cluster
+fired every ~30 seconds for days instead of once a minute, and this command was
+the only thing that stopped it (Phase 3: `work.tick` was stuck at 12 Sep).
 """
 
 from __future__ import annotations
