@@ -3,9 +3,13 @@
 Scopes, per the matrix:
 
 - **FF, VA** — everything in the tenant.
-- **CF** — `assigned` client companies, plus internal work they own. (The
-  matrix names `assigned`; internal goals have no company, and a CF who owns
-  one can see it, the same reading as `owned` on a contact.)
+- **CF** — `assigned` client companies, **plus `own-work`**: anything they own
+  or are assigned, whatever company it sits on, the practice's internal work
+  included. A task reaches them by a fourth path as well — the contact it hangs
+  off, if that contact is in their FR-1.9c universe. (Matrix 7.1 said
+  `assigned` alone until 2026-09-17; the owner ruled the code right and the row
+  wrong. A CF's own work is theirs: work assigned to someone who cannot see it
+  is a bug, not a scope.)
 - **FCC, ECC** — their own company only, and for tasks only client-visible
   ones (FR-3.13). Out of scope is 404, never 403.
 
@@ -53,8 +57,10 @@ def project_queryset_for(request, queryset):
 
 
 def task_queryset_for(request, queryset):
-    """A task has no `owner`-only fallback for a CF: it is scoped by company,
-    by the contact it hangs off (Phase 1 stage-rule tasks), or by ownership."""
+    """A task reaches a CF by four paths, not one: the company is assigned, the
+    contact it hangs off is theirs (Phase 1 stage-rule tasks), they own it, or
+    it is assigned to them. The last two hold regardless of company — matrix
+    7.1's `own-work`."""
     role = crm_perms.role_of(request)
     membership = _membership(request)
     if role in (Role.FF, Role.VA):

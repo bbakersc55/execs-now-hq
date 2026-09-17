@@ -539,7 +539,8 @@ def test_9_5_the_companies_api_gives_seat_usage_to_ff_and_cf_only(role, sees_usa
 def test_the_company_filter_cannot_widen_what_a_cf_may_see(seeded_tenant, ff, cf, api):
     """Matrix 7.1 — the filter narrows a queryset that role scoping has already
     decided. Naming an unassigned company asks for nothing, not for more: a
-    filter that could reach past the scope would be the scope."""
+    filter that could reach past the scope would be the scope. What the CF does
+    keep across that line is `own-work`, asserted at the end."""
     from .factories import ClientAssignmentFactory, ClientCompanyFactory
 
     assigned = ClientCompanyFactory(tenant=seeded_tenant, name="Assigned")
@@ -561,8 +562,7 @@ def test_the_company_filter_cannot_widen_what_a_cf_may_see(seeded_tenant, ff, cf
     assert [t["title"] for t in
             viewer.get(f"/api/tasks/?client_company={assigned.pk}").json()] == ["Mine"]
     # Internal is a real side of the dimension for a CF, not a dead option: a
-    # task with no company still reaches them by assignment or ownership, which
-    # `task_queryset_for` allows and matrix 7.1's "CF: assigned" does not say.
+    # task with no company still reaches them by matrix 7.1's `own-work` arm.
     # One that reaches them by neither does not.
     assert [t["title"] for t in viewer.get("/api/tasks/?client_company=internal").json()] == [
         "Internal, and assigned to me",

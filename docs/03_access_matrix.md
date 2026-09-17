@@ -29,6 +29,7 @@
 
 - `assigned` — CF must hold a live `client_assignment` for the client company (FR-1.9a).
 - `owned` — the contact's `owner_id` is this user.
+- `own-work` — the goal, project or task's `owner_id` or `assignee_id` is this user, **whatever company it belongs to, and including none**. A CF's own work does not stop being theirs because it sits outside an assignment. *(Added 2026-09-17.)*
 - `own-company` — the client user's `membership.client_company_id` matches the row's `client_company_id` (FR-0.2).
 - `client-visible` — additionally requires `task.is_client_visible = true` and, for comments, `visibility = 'shared'`.
 - `client-editable` — a client-visible task in the user's own company that is **assigned to a client-side user or was created by a client user** (FR-3.9a). Tasks assigned to a tenant user are read-only to clients apart from shared comments.
@@ -133,7 +134,7 @@
 
 | # | Action | FF | CF | VA | FCC | ECC | Notes |
 |---|---|---|---|---|---|---|---|
-| 7.1 | View goals / projects / tasks | ✅ | 🔸 | ✅ | 🔸 | 🔸 | CF: `assigned`. Client: `own-company` + `client-visible` |
+| 7.1 | View goals / projects / tasks | ✅ | 🔸 | ✅ | 🔸 | 🔸 | CF: `assigned` **or `own-work`** — work at their assigned client companies, plus work they own or are assigned **regardless of company**, the practice's internal work included. Goals and projects carry no assignee, so for those `own-work` means owner. A task reaches a CF by a fourth path as well: the contact it hangs off, if that contact is in their FR-1.9c universe (Phase 1 stage-rule tasks land this way). Client: `own-company` + `client-visible` |
 | 7.2 | Create a **goal** | ✅ | 🔸 | ✅ | ❌ | ❌ | Strategy is the fractional's |
 | 7.2a | Create a **project** | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Client: `own-company`. A client using the portal as their task tool needs a way to group their own work; a client-created project has no parent goal by definition (FR-3.35a) |
 | 7.3 | Create a task | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Client: `own-company`. **No review queue** (FR-3.36) |
@@ -152,6 +153,11 @@
 | 7.15 | View the on-demand progress report | ✅ | 🔸 | ✅ | ✅ | ✅ | Requires a login; no email, no approval (FR-3.38) |
 | 7.16 | **View the activity feed** | ✅ | 🔸 | ✅ | ❌ | ❌ | **Reversed 2026-09-16** (FR-3.41a). It was the client's log; it is now the practice's, across every account. CF: `assigned` companies **plus contacts they own** — the FR-1.9c universe. A client is refused the endpoint and has no nav entry; their window into the work is the value report (Module 4B) |
 | 7.17 | Edit or delete an activity-feed entry | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody.** The endpoint has no write methods, and `apps/work/activity.py` has no function that writes |
+
+> **Row 7.1 was amended on 2026-09-17, and the code was not.** The row read "CF: `assigned`" from Phase 0 onward; `work/permissions.py` has always also admitted work a CF owns or is assigned, whatever company it sits on. **Owner ruling: the code is right and the row was wrong.** A contractor fractional's own work is theirs — an internal task the practice hands them, or a task on an account they are not the assigned lead for, does not become invisible to the person doing it. The narrower reading would have been a real bug hiding behind a correct-looking document: work assigned to a CF that they could not see. The discrepancy surfaced on 2026-09-17 while writing the company filter's role tests, which is the first thing that had asked the question of internal work.
+
+> **Row 7.16 is deliberately narrower than 7.1**, and the two should not be collapsed. The activity feed is the FR-1.9c contact universe — assigned companies plus contacts they own — because it is a feed *about accounts*. Row 7.1 is about work, and work has an owner and an assignee that a contact does not.
+
 
 ## 8. Digests — the highest-consequence rows in this document
 

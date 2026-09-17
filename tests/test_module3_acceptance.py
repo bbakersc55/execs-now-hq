@@ -425,7 +425,13 @@ def test_a_client_created_task_belongs_to_their_company_and_is_visible(
 # ------------------------------------------------------------- CF assignment
 
 @pytest.mark.django_db
-def test_a_cf_sees_only_assigned_client_work(seeded_tenant, ff, cf, api):
+def test_a_cf_sees_assigned_client_work_and_their_own(seeded_tenant, ff, cf, api):
+    """Matrix 7.1 — `assigned` **or** `own-work`.
+
+    The row said `assigned` alone until 2026-09-17, which was narrower than the
+    code has ever been; the owner ruled the code right. Work assigned to someone
+    who cannot see it is a bug, not a scope, so both arms are asserted here.
+    """
     staff = api.as_(ff)
     assigned = ClientCompanyFactory(tenant=seeded_tenant, name="Assigned")
     ClientAssignmentFactory(tenant=seeded_tenant, user=cf.user, company=assigned)
@@ -444,6 +450,23 @@ def test_a_cf_sees_only_assigned_client_work(seeded_tenant, ff, cf, api):
     # Attaching work to a company they are not assigned to is refused.
     assert post(viewer, "/api/goals/", {"title": "Sneak", "client_company": str(other.pk)}
                 ).status_code == 400
+
+    # The `own-work` arm, at each level and on both sides of the company line.
+    own_goal = make(viewer, "/api/goals/", title="My own internal goal")
+    handed_to_me = make(staff, "/api/tasks/", title="Internal, assigned to me",
+                        assignee=str(cf.user_id))
+    theirs_but_mine = make(staff, "/api/tasks/", title="Their account, my task",
+                           client_company=str(other.pk), assignee=str(cf.user_id))
+    nobody_told_me = make(staff, "/api/tasks/", title="Internal, nothing to do with me")
+
+    assert sorted(g["title"] for g in viewer.get("/api/goals/").json()) == [
+        "Assigned goal", "My own internal goal",
+    ]
+    assert viewer.get(f"/api/goals/{own_goal['id']}/").status_code == 200
+    for task in (handed_to_me, theirs_but_mine):
+        assert viewer.get(f"/api/tasks/{task['id']}/").status_code == 200, task["title"]
+    # Owning or being assigned is what does it — not merely being internal.
+    assert viewer.get(f"/api/tasks/{nobody_told_me['id']}/").status_code == 404
 
 
 @pytest.mark.django_db
