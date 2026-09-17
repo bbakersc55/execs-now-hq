@@ -181,3 +181,29 @@ def test_a_pin_reset_token_from_tenant_b_does_nothing_in_tenant_a(tenant_a, tena
         assert "Bravo" not in response.content.decode()
     b_note.refresh_from_db()
     assert b_note.is_locked
+
+
+# ------------------------------- Module 3 — the company filter on /api/tasks/
+
+@pytest.mark.django_db
+def test_a_company_id_from_tenant_b_filters_to_nothing_in_tenant_a(tenant_a, tenant_b, api):
+    """The filter is applied to an already-scoped queryset, so another tenant's
+    company id is simply an id that matches none of your rows — never a 403 or
+    an error that would confirm it exists."""
+    import json
+
+    from .factories import ClientCompanyFactory, MembershipFactory, TaskFactory
+
+    a_ff = MembershipFactory(tenant=tenant_a, role="FF")
+    a_company = ClientCompanyFactory(tenant=tenant_a, name="Alpha Foods")
+    b_company = ClientCompanyFactory(tenant=tenant_b, name="Bravo Freight")
+    TaskFactory(tenant=tenant_a, title="Alpha work", client_company=a_company)
+    TaskFactory(tenant=tenant_b, title="Bravo work", client_company=b_company)
+    TaskFactory(tenant=tenant_b, title="Bravo's own")
+
+    client = api.as_(a_ff)
+    assert [t["title"] for t in client.get("/api/tasks/").json()] == ["Alpha work"]
+    assert client.get(f"/api/tasks/?client_company={b_company.pk}").json() == []
+    # Tenant B's internal work is not tenant A's internal work.
+    assert client.get("/api/tasks/?client_company=internal").json() == []
+    assert json.dumps(client.get("/api/tasks/").json()).find("Bravo") == -1

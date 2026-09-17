@@ -1,19 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import {
+  CompanyFilter, CompanyGroup, groupByCompany, inCompany, useCompanyFilter,
+} from "../components/CompanyFilter";
 import { PortalCreate } from "../components/PortalCreate";
 import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Card, Empty, when } from "../components/ui";
 import { Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
+import { useRemembered } from "../lib/remembered";
 
 const TENANT = ["FF", "CF", "VA"];
 
 /** Goal → Project → Task, three levels and no more (FR-3.4). Goals are the
- *  practice's; a client may create projects and tasks for their own company. */
+ *  practice's; a client may create projects and tasks for their own company.
+ *
+ *  For the practice the screen carries a second dimension: whose work it is.
+ *  A fractional runs several accounts at once, and an undifferentiated list of
+ *  goals asks them to remember which client each one belongs to (FR-3.39a). */
 export function Work({ me }: { me: Me }) {
   const isTenant = !!me.role && TENANT.includes(me.role);
+  const { clients, company, choose } = useCompanyFilter(me, "work-company");
 
   const goals = useQuery<WorkParent[]>({
     queryKey: ["goals"], queryFn: () => api.get<WorkParent[]>("/api/goals/"),
@@ -31,6 +40,12 @@ export function Work({ me }: { me: Me }) {
   });
   const orphanProjects = (projects.data ?? []).filter((p) => !p.goal);
   const [collapsed, toggle] = useCollapsed(me);
+
+  // Narrowing and grouping are the same question asked twice: which company's
+  // work is this. Both go through `inCompany`, so a row can never be filtered
+  // into one group and out of another.
+  const mine = <T extends { client_company: string | null }>(rows: T[]) =>
+    rows.filter((r) => inCompany(r, company));
 
   return (
     <>
@@ -55,52 +70,83 @@ export function Work({ me }: { me: Me }) {
       {/* FR-3.35 / 3.35a — a client creates tasks and projects, never goals. */}
       {!isTenant && <PortalCreate me={me} />}
 
+      {/* One selector above all three lists, because it governs all three. */}
+      {isTenant && (
+        <Card>
+          <div className="row">
+            <CompanyFilter value={company} onChange={choose} companies={clients} />
+          </div>
+        </Card>
+      )}
+
       <Card title="Goals">
-        {(goals.data ?? []).length === 0 ? <Empty>No goals yet.</Empty> : (
-          <ul className="timeline">
-            {goals.data!.map((g) => (
-              <GoalBranch key={g.id} goal={g}
-                projects={(projects.data ?? []).filter((p) => p.goal === g.id)}
-                tasks={(tasks.data ?? []).filter((t) => t.goal === g.id && !t.project)}
-                allTasks={tasks.data ?? []}
-                collapsed={collapsed.includes(g.id)}
-                onToggle={() => toggle(g.id)} />
-            ))}
-          </ul>
-        )}
+        <Grouped rows={mine(goals.data ?? [])} headings={isTenant}
+          empty={company ? "No goals for this client yet." : "No goals yet."}
+          render={(g) => (
+            <GoalBranch key={g.id} goal={g}
+              projects={(projects.data ?? []).filter((p) => p.goal === g.id)}
+              tasks={(tasks.data ?? []).filter((t) => t.goal === g.id && !t.project)}
+              allTasks={tasks.data ?? []}
+              collapsed={collapsed.includes(g.id)}
+              onToggle={() => toggle(g.id)} />
+          )} />
       </Card>
 
+      {/* Unfiled work groups the same way — it is where work that belongs to
+          nothing lives, and it belongs to a client all the same. */}
       <Card title="Projects with no goal">
-        {orphanProjects.length === 0 ? <Empty>None.</Empty> : (
-          <ul className="timeline">
-            {orphanProjects.map((p) => (
-              <li key={p.id}>
-                <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
-                <StatusPill status={p.status} derived={p.status_is_derived} />
-                {p.created_by_client && <span className="pill">client's own</span>}
-                <div className="when">{p.client_company_name || "internal"}</div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <Grouped rows={mine(orphanProjects)} headings={isTenant} empty="None."
+          render={(p) => (
+            <li key={p.id}>
+              <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
+              <StatusPill status={p.status} derived={p.status_is_derived} />
+              {p.created_by_client && <span className="pill">client's own</span>}
+              <div className="when">{p.client_company_name || "internal"}</div>
+            </li>
+          )} />
       </Card>
 
       <Card title="Tasks filed under nothing">
-        {(unfiled.data ?? []).length === 0 ? <Empty>None.</Empty> : (
-          <ul className="timeline">
-            {unfiled.data!.map((t) => (
-              <li key={t.id}>
-                <Link to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
-                <StatusPill status={t.status} />
-                <div className="when">
-                  {t.assignee.name ? `${t.assignee.name}` : "unassigned"}
-                  {t.due_date && ` · due ${t.due_date}`} · {when(t.created_at)}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <Grouped rows={mine(unfiled.data ?? [])} headings={isTenant} empty="None."
+          render={(t) => (
+            <li key={t.id}>
+              <Link to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
+              <StatusPill status={t.status} />
+              <div className="when">
+                {t.assignee.name ? `${t.assignee.name}` : "unassigned"}
+                {t.due_date && ` · due ${t.due_date}`} · {when(t.created_at)}
+              </div>
+            </li>
+          )} />
       </Card>
+    </>
+  );
+}
+
+/**
+ * One list per client company, each under its own heading.
+ *
+ * `headings` is off in the portal: a client's rows all belong to their one
+ * company, so the grouping collapses to the single flat list the portal already
+ * showed and the heading would only name what they already know.
+ */
+function Grouped<T extends { client_company: string | null; client_company_name: string }>(
+  { rows, headings, empty, render }: {
+    rows: T[]; headings: boolean; empty: string; render: (row: T) => ReactNode;
+  },
+) {
+  const groups: CompanyGroup<T>[] = groupByCompany(rows);
+  if (groups.length === 0) return <Empty>{empty}</Empty>;
+  return (
+    <>
+      {groups.map((group) => (
+        <div key={group.key}>
+          {headings && (
+            <h4 style={{ margin: "1rem 0 .3rem" }}>{group.label}</h4>
+          )}
+          <ul className="timeline">{group.rows.map(render)}</ul>
+        </div>
+      ))}
     </>
   );
 }
@@ -109,29 +155,12 @@ export function Work({ me }: { me: Me }) {
  * Which goals this person has collapsed, remembered across visits.
  *
  * Per user, because two people share a browser on the practice's laptop and one
- * collapsing a goal should not collapse it for the other. `localStorage` only:
- * it is a per-viewer convenience, not state the server should carry, and it is
- * wrapped because a private window or blocked site data makes it throw.
+ * collapsing a goal should not collapse it for the other.
  */
 function useCollapsed(me: Me): [string[], (id: string) => void] {
-  const key = `work-collapsed:${me.email || "anon"}`;
-  const [ids, setIds] = useState<string[]>(() => {
-    try {
-      const saved = window.localStorage.getItem(key);
-      return saved ? (JSON.parse(saved) as string[]) : [];
-    } catch {
-      return [];   // Expanded by default is the right fallback, and the point.
-    }
-  });
-  const toggle = (id: string) => {
-    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
-    setIds(next);
-    try {
-      window.localStorage.setItem(key, JSON.stringify(next));
-    } catch {
-      /* The tree still works; only the memory of it is lost. */
-    }
-  };
+  const [ids, setIds] = useRemembered<string[]>(`work-collapsed:${me.email || "anon"}`, []);
+  const toggle = (id: string) =>
+    setIds(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
   return [ids, toggle];
 }
 

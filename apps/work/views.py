@@ -34,6 +34,11 @@ from apps.work.models import (
 
 LIST_LIMIT = 500
 
+# The other side of the company dimension the Work and Tasks screens carry: the
+# practice's own work has no company id to be filtered by, so the screens send
+# this word in place of one (FR-3.39/3.39a).
+INTERNAL = "internal"
+
 
 def _is_uuid(value) -> bool:
     try:
@@ -228,9 +233,12 @@ class TaskViewSet(WorkViewSet):
 
     def list(self, request):
         qs = self.get_queryset()
+        internal = request.query_params.get("client_company") == INTERNAL
+        if internal:
+            qs = qs.filter(client_company__isnull=True)
         for field in ("project", "goal", "client_company", "assignee"):
             value = request.query_params.get(field)
-            if value:
+            if value and not (field == "client_company" and internal):
                 if not _is_uuid(value):
                     return Response({"detail": f"{field} must be an id."}, status=400)
                 qs = qs.filter(**{f"{field}_id": value})

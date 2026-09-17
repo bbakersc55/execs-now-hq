@@ -531,3 +531,60 @@ def test_9_5_the_companies_api_gives_seat_usage_to_ff_and_cf_only(role, sees_usa
             assert row["seats_in_use"] == 1 and row["seats_available"] == 2
         else:
             assert "seats_in_use" not in row and "seats_available" not in row
+
+
+# ------------------------------------- the company filter obeys role scope
+
+@pytest.mark.django_db
+def test_the_company_filter_cannot_widen_what_a_cf_may_see(seeded_tenant, ff, cf, api):
+    """Matrix 7.1 — the filter narrows a queryset that role scoping has already
+    decided. Naming an unassigned company asks for nothing, not for more: a
+    filter that could reach past the scope would be the scope."""
+    from .factories import ClientAssignmentFactory, ClientCompanyFactory
+
+    assigned = ClientCompanyFactory(tenant=seeded_tenant, name="Assigned")
+    unassigned = ClientCompanyFactory(tenant=seeded_tenant, name="Not assigned")
+    ClientAssignmentFactory(tenant=seeded_tenant, user=cf.user, company=assigned)
+
+    staff = api.as_(ff)
+    _post(staff, "/api/tasks/", {"title": "Mine", "client_company": str(assigned.pk)})
+    _post(staff, "/api/tasks/", {"title": "Theirs", "client_company": str(unassigned.pk)})
+    _post(staff, "/api/tasks/", {"title": "Internal, and assigned to me",
+                                 "assignee": str(cf.user_id)})
+    _post(staff, "/api/tasks/", {"title": "Internal, and nothing to do with me"})
+
+    viewer = api.as_(cf)
+    assert sorted(t["title"] for t in viewer.get("/api/tasks/").json()) == [
+        "Internal, and assigned to me", "Mine",
+    ]
+    assert viewer.get(f"/api/tasks/?client_company={unassigned.pk}").json() == []
+    assert [t["title"] for t in
+            viewer.get(f"/api/tasks/?client_company={assigned.pk}").json()] == ["Mine"]
+    # Internal is a real side of the dimension for a CF, not a dead option: a
+    # task with no company still reaches them by assignment or ownership, which
+    # `task_queryset_for` allows and matrix 7.1's "CF: assigned" does not say.
+    # One that reaches them by neither does not.
+    assert [t["title"] for t in viewer.get("/api/tasks/?client_company=internal").json()] == [
+        "Internal, and assigned to me",
+    ]
+
+
+@pytest.mark.django_db
+def test_a_client_user_naming_another_company_still_sees_only_their_own(seeded_tenant, ff,
+                                                                        fcc, api):
+    """FR-0.2 — the portal sends no company filter, but the route is open to a
+    client user and a hand-written one must not become a way out of the company."""
+    from .factories import ClientCompanyFactory
+
+    other = ClientCompanyFactory(tenant=seeded_tenant, name="Somebody else")
+    staff = api.as_(ff)
+    _post(staff, "/api/tasks/", {"title": "Ours", "client_company": str(fcc.client_company_id),
+                                 "is_client_visible": True})
+    _post(staff, "/api/tasks/", {"title": "Not ours", "client_company": str(other.pk),
+                                 "is_client_visible": True})
+    _post(staff, "/api/tasks/", {"title": "The practice's own"})
+
+    viewer = api.as_(fcc)
+    assert [t["title"] for t in viewer.get("/api/tasks/").json()] == ["Ours"]
+    assert viewer.get(f"/api/tasks/?client_company={other.pk}").json() == []
+    assert viewer.get("/api/tasks/?client_company=internal").json() == []

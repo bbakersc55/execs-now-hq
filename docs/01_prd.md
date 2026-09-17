@@ -538,7 +538,11 @@ Everything the fractional does for a client, in a structure the client can see, 
 36. **A client user creating a task or comment does not pass through any review queue.** It is a person writing about their own work; a queue there would make the portal unusable. Stated explicitly so the review rule is not over-applied.
 37. Client-created tasks default to client-visible, and notify the tenant owner of the parent project (or the company's assigned fractional if none) subject to the same 30-minute quiet window.
 38. The portal offers an **on-demand progress report** rendering the same content as a digest for a chosen period, with no email and no approval required — because a client pulling a report has no outward effect.
-39. List view and board (status-column) view. Both filterable by project, assignee, and status.
+39. List view and board (status-column) view. Both filterable by **client company**, project, assignee, and status. Choosing a client **narrows the project and assignee filters to that client**, as the New task form already does — an option that cannot match anything is worse than no option.
+
+39a. **Work and Tasks carry a company dimension.** *(Owner request, 2026-09-17.)* A fractional runs several accounts at once, and an undifferentiated list asks them to remember which client each goal belongs to. On **Work**, goals are **grouped under a heading per client company**, with the practice's own work — anything with no client company — in its own group, last. "Projects with no goal" and "Tasks filed under nothing" group the same way. On both screens a selector narrows to **one client, or to internal**; the default on both is **All clients**, and the last choice is **remembered per user in that browser** (each screen remembers its own). A group appears only when there is work in it, so a client with nothing filed is not given an empty heading. **This is not out-of-scope item 11** (cross-client reporting or portfolio dashboards): it is a filter over work the person can already see, with no roll-up, no comparison and no numbers across accounts.
+
+39b. **The dimension never widens what a role may see.** The filter is applied to the queryset role scoping has already decided, so a CF naming an unassigned company asks for nothing rather than for more, and a company id from another tenant simply matches nothing. **The portal has no selector** — a client user has exactly one company and every row they can see belongs to it — and the grouping headings are off there for the same reason.
 
 **Tenant notifications**
 

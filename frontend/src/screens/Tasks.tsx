@@ -2,21 +2,31 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import { CompanyFilter, INTERNAL, inCompany, useCompanyFilter } from "../components/CompanyFilter";
 import { PortalCreate } from "../components/PortalCreate";
 import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
-import { Me, Task, WorkStatus, WorkParent, api } from "../lib/api";
+import { Me, PortalPerson, Task, WorkStatus, WorkParent, api } from "../lib/api";
 
-/** FR-3.39 — list and board, both filterable by project, assignee and status. */
+const TENANT = ["FF", "CF", "VA"];
+
+/** FR-3.39 — list and board, both filterable by client, project, assignee and
+ *  status. The client filter is the same dimension the Work screen groups by,
+ *  and it narrows the two filters below it for the same reason the New task
+ *  form does: an option that cannot match anything is worse than no option. */
 export function Tasks({ me }: { me: Me }) {
   const [view, setView] = useState<"list" | "board">("list");
   const [project, setProject] = useState("");
   const [assignee, setAssignee] = useState("");
   const [status, setStatus] = useState("");
+  const { isTenant: staff, clients, company, choose } = useCompanyFilter(me, "tasks-company");
 
   const query = new URLSearchParams();
+  // Filtered by the server, like the three beside it, so the list is never
+  // longer than LIST_LIMIT of the wrong company's work.
+  if (company) query.set("client_company", company);
   if (project) query.set("project", project);
   if (assignee) query.set("assignee", assignee);
   if (status) query.set("status", status);
@@ -28,9 +38,25 @@ export function Tasks({ me }: { me: Me }) {
   const projects = useQuery<WorkParent[]>({
     queryKey: ["projects"], queryFn: () => api.get<WorkParent[]>("/api/projects/"),
   });
-  const people = useQuery<{ id: string; name: string }[]>({
-    queryKey: ["portal-people"], queryFn: () => api.get("/api/portal-people/"),
+  const people = useQuery<PortalPerson[]>({
+    queryKey: ["portal-people"], queryFn: () => api.get<PortalPerson[]>("/api/portal-people/"),
   });
+
+  // With a client chosen, the pickers below hold only what belongs to them —
+  // their projects, and the practice's people plus their own. Internal work
+  // offers the practice's people alone, because nobody else can be assigned it.
+  const projectOptions = (projects.data ?? []).filter((p) => inCompany(p, company));
+  const peopleOptions = (people.data ?? []).filter((p) => !company
+    || TENANT.includes(p.role)
+    || (company !== INTERNAL && p.company === company));
+
+  // A project or a person belonging to the company just left would otherwise
+  // stay set and silently filter the list to nothing.
+  const chooseCompany = (next: string) => {
+    choose(next);
+    setProject("");
+    setAssignee("");
+  };
 
   const rows = tasks.data ?? [];
   const isTenant = !(me.role === "FCC" || me.role === "ECC");
@@ -58,11 +84,16 @@ export function Tasks({ me }: { me: Me }) {
               <option value="board">Board</option>
             </select>
           </Field>
+          {/* Not in the portal: a client has one company and every task they
+              can see belongs to it. */}
+          {staff && (
+            <CompanyFilter value={company} onChange={chooseCompany} companies={clients} />
+          )}
           <Field label="Project">
             <select aria-label="Filter by project" value={project}
               onChange={(e) => setProject(e.target.value)}>
               <option value="">Any project</option>
-              {(projects.data ?? []).map((p) => (
+              {projectOptions.map((p) => (
                 <option key={p.id} value={p.id}>{p.title}</option>
               ))}
             </select>
@@ -71,7 +102,7 @@ export function Tasks({ me }: { me: Me }) {
             <select aria-label="Filter by assignee" value={assignee}
               onChange={(e) => setAssignee(e.target.value)}>
               <option value="">Anyone</option>
-              {(people.data ?? []).map((p) => (
+              {peopleOptions.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>

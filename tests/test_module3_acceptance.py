@@ -459,3 +459,59 @@ def test_client_owner_contact_is_carried_on_all_three_levels(seeded_tenant, ff, 
                        client_company=str(client_company.pk),
                        client_owner_contact=str(contact.pk), **extra)
         assert created["client_owner_contact"]["name"] == "Maria Diaz"
+
+
+# ------------------------------------------- the company dimension (FR-3.39a)
+
+@pytest.fixture
+def three_ways(seeded_tenant, ff, api, client_company):
+    """One task for each side of the dimension: two clients and the practice."""
+    client = api.as_(ff)
+    other = ClientCompanyFactory(tenant=seeded_tenant, name="Ridgeline Freight")
+    return client, other, {
+        "theirs": make(client, "/api/tasks/", title="Northwind's",
+                       client_company=str(client_company.pk)),
+        "others": make(client, "/api/tasks/", title="Ridgeline's",
+                       client_company=str(other.pk)),
+        "ours": make(client, "/api/tasks/", title="Our own bookkeeping"),
+    }
+
+
+@pytest.mark.django_db
+def test_the_task_list_narrows_to_one_client(three_ways, client_company):
+    client, other, tasks = three_ways
+    titles = lambda url: sorted(t["title"] for t in client.get(url).json())  # noqa: E731
+
+    assert titles("/api/tasks/") == ["Northwind's", "Our own bookkeeping", "Ridgeline's"]
+    assert titles(f"/api/tasks/?client_company={client_company.pk}") == ["Northwind's"]
+    assert titles(f"/api/tasks/?client_company={other.pk}") == ["Ridgeline's"]
+
+
+@pytest.mark.django_db
+def test_internal_is_the_other_side_of_the_dimension_not_an_absent_filter(three_ways):
+    """The practice's own work has no company id, so an empty value cannot ask
+    for it — it would read as "no filter" and return everything. The screens
+    send the word instead."""
+    client, _other, _tasks = three_ways
+    internal = client.get("/api/tasks/?client_company=internal").json()
+    assert [t["title"] for t in internal] == ["Our own bookkeeping"]
+    assert all(t["client_company"] is None for t in internal)
+
+    # An empty value is still no filter at all, which is what "All clients" is.
+    assert len(client.get("/api/tasks/?client_company=").json()) == 3
+
+
+@pytest.mark.django_db
+def test_the_company_filter_composes_with_the_others_and_still_refuses_nonsense(three_ways):
+    client, _other, tasks = three_ways
+    assert patch(client, f"/api/tasks/{tasks['ours']['id']}/",
+                 {"status": S.IN_PROGRESS}).status_code == 200
+
+    both = client.get("/api/tasks/?client_company=internal&status=in_progress").json()
+    assert [t["title"] for t in both] == ["Our own bookkeeping"]
+    assert client.get("/api/tasks/?client_company=internal&status=blocked").json() == []
+
+    # "internal" is the one word that is not an id; anything else must be one.
+    refused = client.get("/api/tasks/?client_company=all")
+    assert refused.status_code == 400
+    assert "must be an id" in refused.json()["detail"]
