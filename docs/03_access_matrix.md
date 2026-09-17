@@ -150,8 +150,8 @@
 | 7.13 | Set a stakeholder's cadence | ✅ | 🔸 | ✅ | 🔸 | 🔸 | **Client: only their own**, via the signed token or the portal (FR-3.33a) |
 | 7.14 | Set a **status override** on a goal / project | ✅ | 🔸 | ✅ | ❌ | ❌ | FR-3.10 |
 | 7.15 | View the on-demand progress report | ✅ | 🔸 | ✅ | ✅ | ✅ | Requires a login; no email, no approval (FR-3.38) |
-| 7.16 | **View the portal activity log** | ❌ | ❌ | ❌ | ✅ | ✅ | FR-3.41. Their company only; never internal comments or hidden work. Staff see the same history on each task |
-| 7.17 | Edit or delete an activity-log entry | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody.** The endpoint has no write methods |
+| 7.16 | **View the activity feed** | ✅ | 🔸 | ✅ | ❌ | ❌ | **Reversed 2026-09-16** (FR-3.41a). It was the client's log; it is now the practice's, across every account. CF: `assigned` companies **plus contacts they own** — the FR-1.9c universe. A client is refused the endpoint and has no nav entry; their window into the work is the value report (Module 4B) |
+| 7.17 | Edit or delete an activity-feed entry | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody.** The endpoint has no write methods, and `apps/work/activity.py` has no function that writes |
 
 ## 8. Digests — the highest-consequence rows in this document
 

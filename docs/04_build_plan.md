@@ -418,7 +418,7 @@ was fixed before the check was re-run, unless it says otherwise.
 | 2 · One full weekly cycle on a real engagement | ⏳ **Pending** | Runs on the real cycle. Thursday: the draft is pending in Digests and nothing has been sent. Friday: approve it; it goes out through the practice's Gmail, the task history shows the send, and the stakeholder row shows when they were last told. **Phase 4 waits for the owner's confirmation** |
 | 3 · Leave a digest unapproved | ✅ Passed on retest | **The server expired it on time; the screen never refreshed**, so it looked pending. Now: the list refreshes, a passed window is flagged, approving after the window is refused (it would otherwise have sent on the next tick), and a banner shows when the tick has stopped. The cluster had been down overnight with nothing showing it; the runbook now says to restart `qcluster` after every backend commit, and stale schedules are realigned (`work.tick` had been stuck at 12 Sep, firing every ~30 s) |
 | 4 · Be an every-update stakeholder | ✅ Passed on retest | **Two engine bugs:** a held every-update digest was expired by the same tick that generated it, and the expired row then blocked its content from ever generating again. Fixed; **FR-3.28d** (24-hour review window) confirmed by the owner. A later retest looked silent but was correctly inside the 30-minute quiet window — no defect — which led to the read-only **"Coming up"** card (FR-3.29a) |
-| 5 · Sign in to the portal as a real client user | ✅ Passed on retest | No create controls in the portal; "Add a task here" on a goal gave a client a bare 400; magic-link sign-in landed on a 404. Added from what the check showed: the client **activity log** (FR-3.41) and **act as** (FR-3.42) |
+| 5 · Sign in to the portal as a real client user | ✅ Passed on retest | No create controls in the portal; "Add a task here" on a goal gave a client a bare 400; magic-link sign-in landed on a 404. Added from what the check showed: the client **activity log** (FR-3.41) and **act as** (FR-3.42). *(The activity log was **reversed on 2026-09-16** — it is the practice's feed now, not the client's, and a client is refused it: FR-3.41a. Act as stands.)* |
 | 6 · Grant a third seat with two available | ✅ Passed on retest | The seat message was clear. Also found: no FCC/ECC choice at grant, no way to change a role, the seat count out of step after a revoke, no primary contact picker, and a VA able to read seat usage (matrix 9.5). Matrix 9.2a added |
 
 **Also found during the checks, and fixed:** the stakeholder picker searched every
@@ -950,11 +950,14 @@ means no client ever sees the unstyled version.
 4. **Known inputs:** the Notes capture panel (functional, not presentable — owner, Check 3);
    the "Linked to" choices, whose layout broke because a panel-wide `input { width: 100% }`
    also caught radio buttons.
-5. **Known inputs from Phase 3 (owner, Check 5, 2026-09-14):** the portal's **progress
-   report** formatting — functional and correct, not polished. *(The **digest email** got its
-   branded HTML layout in the email presentation pass, 2026-09-15.)* The digest's structure and wording carry a rule (Module 3's aim: a report that
-   reads as value delivered rather than a list of field changes) and stay as they are;
-   this is layout and typography only.
+5. **Known inputs from Phase 3 (owner, Check 5, 2026-09-14):** ~~the portal's **progress
+   report** formatting~~ — **struck 2026-09-16: the progress report's formatting is
+   superseded by Module 4B (Phase 4.5), so spend no design-pass effort on it.** The
+   screen is being replaced, not restyled, and polishing it would be work thrown away.
+   *(The **digest email** got its branded HTML layout in the email presentation pass,
+   2026-09-15.)* The digest's structure and wording carry a rule (Module 3's aim: a
+   report that reads as value delivered rather than a list of field changes) and stay as
+   they are; this is layout and typography only.
 6. **Known input from Phase 3 (owner, 2026-09-15):** the **client-activity notification email** to the practice (FR-3.40) — the **subject** still needs proper wording. *(Its body moved to the branded layout — who, what and when — in the email presentation pass, 2026-09-15.)* What it reports and when (the 30-minute batching, never an update made while acting as) stays as it is.
 
 **Not in scope:** changes to behaviour, copy that carries a rule (the consent reminder, the

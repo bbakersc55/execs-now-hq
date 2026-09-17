@@ -347,8 +347,9 @@ def test_signing_out_while_acting_ends_it_and_is_logged_like_any_other_end(
     client.force_login(ff.user)
     assert client.get("/api/me").json()["acting"] is None
 
-    # And the client's log says why it ended.
-    rows = api.as_(acme_ecc).get("/api/portal-activity/").json()
+    # And the practice's feed says why it ended. This read the client's log until
+    # 2026-09-16; the reason line is the same, the audience is not (FR-3.41a).
+    rows = api.as_(ff).get("/api/activity/").json()
     assert any(r["text"] == "stopped acting as Priya Client (signed out)" for r in rows)
 
 

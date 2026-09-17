@@ -56,12 +56,14 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   { to: "/work", label: "Work", roles: TENANT },
   { to: "/tasks", label: "Tasks", roles: TENANT },
   { to: "/digests", label: "Digests", roles: TENANT },
+  // Was the client's own log (FR-3.41). The owner reversed that on 2026-09-16:
+  // the feed is the practice's view across every account, and a client is
+  // refused the endpoint outright.
+  { to: "/activity", label: "Activity", roles: TENANT },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT },
   { to: "/tasks", label: "Tasks", roles: CLIENT },
   { to: "/report", label: "Progress report", roles: CLIENT },
-  // FR-3.41 — read-only history of their company's work.
-  { to: "/activity", label: "Activity", roles: CLIENT },
   { to: "/vendors", label: "Vendors", roles: TENANT },
   { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },

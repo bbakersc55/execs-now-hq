@@ -15,7 +15,9 @@ router.register("stakeholders", views.StakeholderViewSet, basename="stakeholder"
 router.register("digests", views.DigestViewSet, basename="digest")
 router.register("progress-report", views.ProgressReportView, basename="progress-report")
 router.register("client-activity", views.ClientActivityView, basename="client-activity")
-router.register("portal-activity", views.PortalActivityView, basename="portal-activity")
+# Was "portal-activity", the client's own log (FR-3.41). The owner reversed that
+# on 2026-09-16: the feed is the practice's, and a client role is refused.
+router.register("activity", views.ActivityView, basename="activity")
 router.register("portal-access", views.PortalAccessViewSet, basename="portal-access")
 router.register("portal-people", views.AssignablePeopleView, basename="portal-people")
 

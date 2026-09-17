@@ -70,10 +70,20 @@ export interface ActAsCandidate {
   company: string; company_name: string;
 }
 
-/** GET /api/portal-activity/ — the client portal's read-only log (FR-3.41). */
+/** GET /api/activity/ — the practice's feed across every account. */
+export const ACTIVITY_CATEGORIES = [
+  "work", "comment", "note", "email", "pipeline",
+  "import", "portal", "act_as", "digest", "settings",
+] as const;
+
+export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number];
+
+/** The practice's feed. Client roles are refused the endpoint outright. */
 export interface ActivityEntry {
-  id: string; at: string; source: "update" | "comment" | "event"; kind: string; text: string;
+  id: string; at: string; category: ActivityCategory; kind: string; text: string;
   entity: { type: string; id: string; title: string } | null;
+  company: { id: string; name: string } | null;
+  contact: { id: string; name: string } | null;
   /** The person who did it. With `on_behalf_of`, the real person acting as them. */
   by: string; on_behalf_of: string | null;
 }

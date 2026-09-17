@@ -1,12 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { PortalCreate } from "../components/PortalCreate";
 import { StaffCreate } from "../components/StaffCreate";
+import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
-import { Card, Empty, Field, when } from "../components/ui";
-import { Me, Task, WorkParent, api } from "../lib/api";
+import { Banner, Card, Empty, Field, when } from "../components/ui";
+import { Me, Task, WorkStatus, WorkParent, api } from "../lib/api";
 
 /** FR-3.39 — list and board, both filterable by project, assignee and status. */
 export function Tasks({ me }: { me: Me }) {
@@ -32,6 +33,8 @@ export function Tasks({ me }: { me: Me }) {
   });
 
   const rows = tasks.data ?? [];
+  const isTenant = !(me.role === "FCC" || me.role === "ECC");
+  const board = useBoardDrag({ isTenant, tasks: rows });
 
   return (
     <>
@@ -105,27 +108,121 @@ export function Tasks({ me }: { me: Me }) {
           </table>
         </Card>
       ) : (
-        <div className="work-columns" aria-label="Board">
-          {STATUSES.map((s) => (
-            <div className="col" key={s}>
-              <h4>{STATUS_LABELS[s]}</h4>
-              {rows.filter((t) => t.status === s).map((t) => (
-                <div key={t.id} className="comment">
-                  <Link to={`/tasks/${t.id}`}>{t.title}</Link>
-                  <div className="when">
-                    {t.assignee.name || "unassigned"}
-                    {t.due_date && ` · due ${t.due_date}`}
+        <>
+          {board.error && <Banner kind="bad">{board.error}</Banner>}
+          {board.pending && (
+            <ClientFacingLinePrompt to={board.pending.to} what={board.pending.task.title}
+              onSave={board.confirm} onCancel={board.cancel} />
+          )}
+          <p className="small muted">
+            Drag a card to another column to change its status, or open it — both ask the
+            same question and write the same history.
+          </p>
+          <div className="work-columns" aria-label="Board">
+            {STATUSES.map((s) => (
+              <div className="col" key={s}
+                aria-label={`${STATUS_LABELS[s]} column`}
+                onDragOver={board.overColumn(s)}
+                onDrop={board.dropOn(s)}
+                style={board.hovering === s
+                  ? { outline: "2px dashed var(--orange, #F58220)" } : undefined}>
+                <h4>{STATUS_LABELS[s]}</h4>
+                {rows.filter((t) => t.status === s).map((t) => (
+                  <div key={t.id} className="comment"
+                    draggable={t.may_edit !== false}
+                    onDragStart={board.pickUp(t)} onDragEnd={board.drop}>
+                    <Link to={`/tasks/${t.id}`}>{t.title}</Link>
+                    <div className="when">
+                      {t.assignee.name || "unassigned"}
+                      {t.due_date && ` · due ${t.due_date}`}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {rows.filter((t) => t.status === s).length === 0 && (
-                <p className="small muted">—</p>
-              )}
-            </div>
-          ))}
-        </div>
+                ))}
+                {rows.filter((t) => t.status === s).length === 0 && (
+                  <p className="small muted">—</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
       <p className="small muted">Showing {rows.length} · {when(new Date().toISOString())}</p>
     </>
   );
+}
+
+/**
+ * Dragging a card between STATUS columns — and nothing else.
+ *
+ * Not goal, not assignee: those are decisions with more behind them than a
+ * column tells you, and a drag is too cheap a gesture to make them with.
+ *
+ * **A drop goes down exactly the path the task detail page uses**: the same
+ * `PATCH /api/tasks/:id/`, the same prompt for the client-facing line, the same
+ * skip. That is the point of the feature rather than an implementation detail —
+ * a drag that wrote a bare status change would put changelog rows into client
+ * digests, which is the failure FR-3.16's prompt exists to prevent. Opening the
+ * card stays the alternative path, and the two are now the same path.
+ *
+ * A client user is not asked for a line (the line is the practice's, FR-3.16),
+ * so their drop saves immediately — the same rule `StatusChange` already
+ * applies with `askForLine={false}`.
+ */
+function useBoardDrag({ isTenant, tasks }: { isTenant: boolean; tasks: Task[] }) {
+  const qc = useQueryClient();
+  const [dragging, setDragging] = useState<Task | null>(null);
+  const [hovering, setHovering] = useState<WorkStatus | null>(null);
+  const [pending, setPending] = useState<{ task: Task; to: WorkStatus } | null>(null);
+  const [error, setError] = useState("");
+
+  const save = useMutation({
+    mutationFn: ({ task, to, line }: { task: Task; to: WorkStatus; line: string }) =>
+      api.patch<Task>(`/api/tasks/${task.id}/`,
+                      { status: to, ...(line ? { client_facing_line: line } : {}) }),
+    onSuccess: (_updated, { task }) => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["task", task.id] });
+      qc.invalidateQueries({ queryKey: ["goals"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const clear = () => { setDragging(null); setHovering(null); };
+
+  return {
+    hovering, pending, error,
+    pickUp: (task: Task) => (event: React.DragEvent) => {
+      setError("");
+      setDragging(task);
+      // Firefox will not start a drag without data on the transfer.
+      event.dataTransfer.setData("text/plain", task.id);
+      event.dataTransfer.effectAllowed = "move";
+    },
+    drop: clear,
+    overColumn: (status: WorkStatus) => (event: React.DragEvent) => {
+      if (!dragging || dragging.status === status) return;
+      event.preventDefault();          // Without this the drop never fires.
+      event.dataTransfer.dropEffect = "move";
+      setHovering(status);
+    },
+    dropOn: (status: WorkStatus) => (event: React.DragEvent) => {
+      event.preventDefault();
+      const task = dragging
+        ?? tasks.find((t) => t.id === event.dataTransfer.getData("text/plain"));
+      clear();
+      if (!task || task.status === status) return;   // A drop back home is a no-op.
+      if (task.may_edit === false) {
+        setError("That task is not yours to change.");
+        return;
+      }
+      if (!isTenant) { save.mutate({ task, to: status, line: "" }); return; }
+      setPending({ task, to: status });
+    },
+    confirm: (line: string) => {
+      if (pending) save.mutate({ ...pending, line });
+      setPending(null);
+    },
+    cancel: () => setPending(null),
+  };
 }

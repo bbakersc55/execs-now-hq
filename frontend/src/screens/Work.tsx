@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { PortalCreate } from "../components/PortalCreate";
@@ -23,7 +24,13 @@ export function Work({ me }: { me: Me }) {
   const unfiled = useQuery<Task[]>({
     queryKey: ["tasks", "unfiled"], queryFn: () => api.get<Task[]>("/api/tasks/?unfiled=1"),
   });
+  // The whole list, so the tree is built here rather than by a children call
+  // per goal. One request either way, and the rows are already cached.
+  const tasks = useQuery<Task[]>({
+    queryKey: ["tasks", "all"], queryFn: () => api.get<Task[]>("/api/tasks/"),
+  });
   const orphanProjects = (projects.data ?? []).filter((p) => !p.goal);
+  const [collapsed, toggle] = useCollapsed(me);
 
   return (
     <>
@@ -52,14 +59,12 @@ export function Work({ me }: { me: Me }) {
         {(goals.data ?? []).length === 0 ? <Empty>No goals yet.</Empty> : (
           <ul className="timeline">
             {goals.data!.map((g) => (
-              <li key={g.id}>
-                <Link to={`/work/goals/${g.id}`}>{g.title}</Link>{" "}
-                <StatusPill status={g.status} derived={g.status_is_derived} />
-                <div className="when">
-                  {g.client_company_name || "internal"}
-                  {g.target_date && ` · target ${g.target_date}`}
-                </div>
-              </li>
+              <GoalBranch key={g.id} goal={g}
+                projects={(projects.data ?? []).filter((p) => p.goal === g.id)}
+                tasks={(tasks.data ?? []).filter((t) => t.goal === g.id && !t.project)}
+                allTasks={tasks.data ?? []}
+                collapsed={collapsed.includes(g.id)}
+                onToggle={() => toggle(g.id)} />
             ))}
           </ul>
         )}
@@ -98,6 +103,99 @@ export function Work({ me }: { me: Me }) {
       </Card>
     </>
   );
+}
+
+/**
+ * Which goals this person has collapsed, remembered across visits.
+ *
+ * Per user, because two people share a browser on the practice's laptop and one
+ * collapsing a goal should not collapse it for the other. `localStorage` only:
+ * it is a per-viewer convenience, not state the server should carry, and it is
+ * wrapped because a private window or blocked site data makes it throw.
+ */
+function useCollapsed(me: Me): [string[], (id: string) => void] {
+  const key = `work-collapsed:${me.email || "anon"}`;
+  const [ids, setIds] = useState<string[]>(() => {
+    try {
+      const saved = window.localStorage.getItem(key);
+      return saved ? (JSON.parse(saved) as string[]) : [];
+    } catch {
+      return [];   // Expanded by default is the right fallback, and the point.
+    }
+  });
+  const toggle = (id: string) => {
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    setIds(next);
+    try {
+      window.localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      /* The tree still works; only the memory of it is lost. */
+    }
+  };
+  return [ids, toggle];
+}
+
+/** A goal with its projects beneath it and each project's tasks beneath those —
+ *  three levels visible at once (FR-3.4's cap is also the display's depth).
+ *
+ *  Expanded by default: a founder opening "Our work" to check progress should
+ *  see the work, not three headings to click through. */
+function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
+  goal: WorkParent; projects: WorkParent[]; tasks: Task[]; allTasks: Task[];
+  collapsed: boolean; onToggle: () => void;
+}) {
+  const count = projects.length + tasks.length;
+  return (
+    <li>
+      <button className="ghost small" aria-expanded={!collapsed}
+        aria-label={`${collapsed ? "Expand" : "Collapse"} ${goal.title}`}
+        onClick={onToggle}>{collapsed ? "▸" : "▾"}</button>{" "}
+      <Link to={`/work/goals/${goal.id}`}>{goal.title}</Link>{" "}
+      <StatusPill status={goal.status} derived={goal.status_is_derived} />
+      <div className="when">
+        {goal.client_company_name || "internal"}
+        {goal.target_date && ` · target ${goal.target_date}`}
+        {collapsed && count > 0 && ` · ${count} item${count === 1 ? "" : "s"} hidden`}
+      </div>
+
+      {!collapsed && (count === 0 ? (
+        <p className="small muted" style={{ margin: ".3rem 0 .3rem 1.2rem" }}>
+          Nothing under this goal yet.
+        </p>
+      ) : (
+        <ul className="timeline" style={{ marginLeft: "1.2rem" }}>
+          {projects.map((p) => (
+            <li key={p.id}>
+              <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
+              <StatusPill status={p.status} derived={p.status_is_derived} />
+              {p.created_by_client && <span className="pill">client's own</span>}
+              <TaskLeaves tasks={allTasks.filter((t) => t.project === p.id)} />
+            </li>
+          ))}
+          {/* Tasks filed on the goal itself, beside the projects rather than
+              under one — the third arrangement FR-3.5 allows. */}
+          <TaskLeaves tasks={tasks} bare />
+        </ul>
+      ))}
+    </li>
+  );
+}
+
+function TaskLeaves({ tasks, bare = false }: { tasks: Task[]; bare?: boolean }) {
+  if (tasks.length === 0) return null;
+  const rows = tasks.map((t) => (
+    <li key={t.id}>
+      <Link to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
+      <StatusPill status={t.status} />
+      <div className="when">
+        {t.assignee.name || "unassigned"}
+        {t.due_date && ` · due ${t.due_date}`}
+      </div>
+    </li>
+  ));
+  // `bare` rows already sit in the goal's own list; a project's need their own.
+  return bare ? <>{rows}</>
+    : <ul className="timeline" style={{ marginLeft: "1.2rem" }}>{rows}</ul>;
 }
 
 interface ActivityRow extends TaskUpdateRow { task: string; task_title: string }

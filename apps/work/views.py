@@ -13,6 +13,7 @@ import uuid
 
 from django.http import Http404
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -917,121 +918,55 @@ class ClientActivityView(viewsets.GenericViewSet):
         ])
 
 
-class PortalActivityView(viewsets.GenericViewSet):
-    """FR-3.41 / matrix 7.16–7.17 — the client portal's activity log.
+class ActivityView(viewsets.GenericViewSet):
+    """The practice's activity feed. **FF, CF and VA only — never a client.**
 
-    Read-only for everyone: there is no create, edit or delete route, so a
-    history cannot be tidied. FCC and ECC only. It shows their company's goal,
-    project and task history and shared comments, and never an internal
-    comment, a hidden task, or anything outside their company.
+    This reverses the Phase 3 ruling (FR-3.41, matrix 7.16) that made the log the
+    client's. The owner asked for it, used it, and reversed it: the value is to
+    the practice, which runs several accounts and wants to see across them
+    including its own team's work. The client's window into the engagement is
+    the value report (Module 4B), not an audit feed of their own company.
 
-    Built from what is already recorded: `task_update` rows (the digests'
-    source), shared `comment` rows (for their words — the update row names
-    only the visibility), and a short whitelist of `audit_event` verbs that are
-    the company's business. Anything written while someone acted as another
-    user reads "by X on behalf of Y" (FR-3.42).
+    Read-only, structurally: `list` is the only route, there is no serializer
+    with a write path, and `apps/work/activity.py` has no function that writes.
+
+    Scope (activity.Scope): FF and VA see the tenant; a CF sees their assigned
+    companies plus the contacts they own, resolved through the CRM's own
+    `contact_queryset_for` so the two can never disagree.
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    LIMIT = 200
-    AUDIT_VERBS = ("task.deleted", "project.deleted", "goal.deleted",
-                   "portal.access_granted", "portal.access_revoked", "portal.role_changed",
-                   "act_as.started", "act_as.stopped", "act_as.ended")
 
     def list(self, request):
-        from django.db.models import Q
-
-        from apps.tenancy.models import Membership
+        from apps.work import activity
 
         membership = getattr(request, "membership", None)
-        if membership is None or membership.role not in CLIENT_ROLES:
-            return Response({"detail": "The activity log is the client portal's."}, status=403)
-        company_id = membership.client_company_id
-        # Deleted work stays in its history; hidden work never appears at all.
-        tasks = Task.objects.filter(client_company_id=company_id, is_client_visible=True)
-        projects = Project.objects.filter(client_company_id=company_id)
-        goals = Goal.objects.filter(client_company_id=company_id)
-        in_company = Q(task__in=tasks) | Q(project__in=projects) | Q(goal__in=goals)
-        status = dict(Task.Status.choices)
-        entries = []
+        if membership is None:
+            return Response({"detail": "No membership for this tenant."}, status=403)
+        if membership.role in CLIENT_ROLES:
+            # Matrix 7.16 as it now reads. A client is not told what the feed is.
+            return Response({"detail": "Not available."}, status=403)
 
-        for u in (TaskUpdate.objects.filter(in_company)
-                  .exclude(kind=TaskUpdate.Kind.COMMENT_ADDED)
-                  .select_related("task", "project", "goal", "actor", "acting_user")
-                  .order_by("-created_at")[:self.LIMIT]):
-            entity = u.task or u.project or u.goal
-            title = f"“{entity.title}”" if entity else "work"
-            text = {
-                "created": f"created {title}",
-                "status_changed": f"changed {title} from {status.get(u.from_value, u.from_value)} "
-                                  f"to {status.get(u.to_value, u.to_value)}",
-                "assignee_changed": f"reassigned {title} to {u.to_value or 'nobody'}",
-                "due_changed": f"set the due date of {title} to {u.to_value or 'none'}",
-                "checklist_completed": f"completed the step “{u.to_value}” on {title}",
-                "completed": f"completed {title}",
-                "narrative": f"added a note on {title}: {u.client_facing_line}",
-            }.get(u.kind, f"updated {title}")
-            if u.kind == TaskUpdate.Kind.STATUS_CHANGED and u.client_facing_line:
-                text += f" — {u.client_facing_line}"
-            entries.append(self._entry(f"u-{u.pk}", u.created_at, "update", u.kind, text,
-                                       entity, u.actor, u.acting_user))
+        params = request.query_params
+        company = params.get("company") or None
+        contact = params.get("contact") or None
+        actor = params.get("actor") or None
+        category = params.get("category") or None
+        for value, label in ((company, "company"), (contact, "contact"), (actor, "actor")):
+            if value and not _is_uuid(value):
+                return Response({"detail": f"{label} must be an id."}, status=400)
+        if category and category not in activity.CATEGORIES:
+            return Response({"detail": "Unknown category."}, status=400)
+        since, until = parse_datetime(params.get("since") or ""), \
+            parse_datetime(params.get("until") or "")
+        if params.get("since") and since is None:
+            return Response({"detail": "since must be a timestamp."}, status=400)
+        if params.get("until") and until is None:
+            return Response({"detail": "until must be a timestamp."}, status=400)
 
-        for c in (Comment.objects.filter(in_company, visibility=Comment.Visibility.SHARED,
-                                         deleted_at__isnull=True)
-                  .select_related("task", "project", "goal", "author", "acting_user")
-                  .order_by("-created_at")[:self.LIMIT]):
-            entity = c.task or c.project or c.goal
-            entries.append(self._entry(
-                f"c-{c.pk}", c.created_at, "comment", "comment",
-                f"commented on “{entity.title}”: {c.body}", entity, c.author, c.acting_user))
-
-        people = {str(m.pk): m for m in Membership.objects.filter(
-            client_company_id=company_id).select_related("user")}
-        entity_ids = {str(pk) for pk in tasks.values_list("pk", flat=True)} \
-            | {str(pk) for pk in projects.values_list("pk", flat=True)} \
-            | {str(pk) for pk in goals.values_list("pk", flat=True)}
-        titles = {str(e.pk): e.title for qs in (tasks, projects, goals) for e in qs}
-        for a in (AuditEvent.objects.filter(verb__in=self.AUDIT_VERBS)
-                  .select_related("actor", "acting_user").order_by("-created_at")[:self.LIMIT * 2]):
-            target = str(a.target_id) if a.target_id else ""
-            if a.verb.endswith(".deleted"):
-                if target not in entity_ids:
-                    continue
-                text = f"deleted “{titles[target]}”"
-            else:
-                person = people.get(target)
-                if person is None:
-                    continue
-                name = person.user.full_name or person.user.email
-                text = {
-                    "portal.access_granted": f"gave {name} access to the portal",
-                    "portal.access_revoked": f"removed {name}'s access to the portal",
-                    "portal.role_changed": f"changed {name}'s portal role to "
-                                           f"{'founder' if a.payload.get('to') == 'FCC' else 'employee'}",
-                    "act_as.started": f"began acting as {name}",
-                    "act_as.stopped": f"stopped acting as {name}",
-                    "act_as.ended": f"stopped acting as {name} "
-                                    f"({a.payload.get('reason') or 'no longer permitted'})",
-                }[a.verb]
-            entries.append(self._entry(f"a-{a.pk}", a.created_at, "event", a.verb, text, None,
-                                       a.actor, a.acting_user))
-
-        entries.sort(key=lambda e: e["at"], reverse=True)
-        return Response(entries[:self.LIMIT])
-
-    @staticmethod
-    def _entry(key, at, source, kind, text, entity, actor, acting_user):
-        def name(user):
-            return (user.full_name or user.email) if user else ""
-
-        return {
-            "id": key, "at": at.isoformat(), "source": source, "kind": kind, "text": text,
-            "entity": ({"type": entity._meta.model_name, "id": str(entity.pk),
-                        "title": entity.title} if entity is not None else None),
-            # "by X on behalf of Y": X is the real person, Y who they acted as.
-            "by": name(acting_user) if acting_user else (name(actor) or "The system"),
-            "on_behalf_of": name(actor) if acting_user else None,
-        }
+        return Response(activity.build(
+            request, company=company, contact=contact, actor=actor,
+            category=category, since=since, until=until))
 
 
 # ------------------------------------------------------------ portal access
