@@ -3,6 +3,7 @@ from django.urls import include, path
 
 from apps.accounts import views as account_views
 from apps.crm import views_gmail
+from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
 
 urlpatterns = [
@@ -28,11 +29,19 @@ urlpatterns = [
     path("api/", include("apps.tenancy.urls")),
     path("api/", include("apps.notes.urls")),
     path("api/", include("apps.work.urls")),
+    path("api/", include("apps.strategy.urls")),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed
     # token IS the authentication, and it grants that one capability. Under
     # /api/ so the app's own page can render it (the dev proxy forwards /api);
     # the link in the email points at the app route that calls this.
     path("api/cadence/<str:token>", work_cadence.cadence_link, name="cadence-link"),
+    # FR-4.6 / matrix 10.13 — the pre-call form. A public page authenticated by
+    # one token, which can read and answer nothing but its own session's
+    # pre-call questions.
+    path("api/strategy/precall/<str:token>", strategy_precall.precall_form,
+         name="precall-form"),
+    path("api/strategy/precall/<str:token>/complete", strategy_precall.precall_complete,
+         name="precall-complete"),
     path("accounts/refused", account_views.login_refused, name="login-refused"),
     path("auth/magic/request", account_views.request_magic_link, name="magic-request"),
     # C3.3: GET renders a confirmation page; only POST consumes the token.

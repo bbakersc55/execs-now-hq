@@ -132,10 +132,19 @@ def cost_of(model: str, input_tokens: int, output_tokens: int) -> Decimal:
     return (per_in * input_tokens + per_out * output_tokens) / Decimal(1_000_000)
 
 
-def complete(*, tenant, purpose: str, system: str, user_text: str,
-             target_type: str = "", target_id=None, trigger: str = "auto",
-             max_tokens: int = 16000) -> str:
+def complete(*, tenant, **kwargs) -> str:
     """One request, one text answer. Raises rather than returning a partial."""
+    return complete_with_call(tenant=tenant, **kwargs)[0]
+
+
+def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
+                       target_type: str = "", target_id=None, trigger: str = "auto",
+                       max_tokens: int = 16000):
+    """As `complete`, and also hands back the `AiCall` row it wrote.
+
+    Module 4 needs it: a drafted map row records **which run produced it**, so a
+    row in the tray can always be traced to the call that cost money.
+    """
     import anthropic
 
     from apps.tenancy.models import AiCall
@@ -200,4 +209,4 @@ def complete(*, tenant, purpose: str, system: str, user_text: str,
 
     call.succeeded = True
     call.save()
-    return text
+    return text, call

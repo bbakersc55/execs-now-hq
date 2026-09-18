@@ -83,11 +83,15 @@ register(StakeholderToken, factories.StakeholderTokenFactory, api_exposed=False)
 register(Digest, factories.DigestFactory)
 register(DigestItem, factories.DigestItemFactory)
 
-# --- Module 4 — the strategy session. No endpoints yet: the schema lands
-# before the API does, and `api_exposed=False` says so rather than pretending.
-register(StrategyTemplate, factories.StrategyTemplateFactory, api_exposed=False)
+# --- Module 4 — the strategy session.
+register(StrategyTemplate, factories.StrategyTemplateFactory,
+         endpoints=("/api/strategy-templates/",))
+register(StrategySession, factories.StrategySessionFactory,
+         endpoints=("/api/strategy-sessions/",))
+register(StrategyMapRow, factories.StrategyMapRowFactory,
+         endpoints=("/api/strategy-map-rows/",))
+# Reached only through their template or their session, never by id of their
+# own — there is no endpoint that takes one.
 register(StrategySection, factories.StrategySectionFactory, api_exposed=False)
 register(StrategyQuestion, factories.StrategyQuestionFactory, api_exposed=False)
-register(StrategySession, factories.StrategySessionFactory, api_exposed=False)
 register(StrategyAnswer, factories.StrategyAnswerFactory, api_exposed=False)
-register(StrategyMapRow, factories.StrategyMapRowFactory, api_exposed=False)

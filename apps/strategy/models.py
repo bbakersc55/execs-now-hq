@@ -177,6 +177,11 @@ class StrategySession(TenantScopedModel):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
     scheduled_at = models.DateTimeField(null=True, blank=True)
+    # When the call actually began — stamped the first time the session enters
+    # `in_call`, so the live view can show elapsed against the template's
+    # budgets (FR-4.15). Scheduled is when it was meant to start; this is when
+    # it did, and a call that starts late should not read as 20 minutes over.
+    started_at = models.DateTimeField(null=True, blank=True)
     state = models.CharField(max_length=20, choices=State.choices,
                              default=State.DRAFT, db_index=True)
     # FR-4.6 — the public form is reached by a signed token; only its hash is
@@ -191,6 +196,11 @@ class StrategySession(TenantScopedModel):
     pdf_file = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="+")
     pdf_include_flags = models.JSONField(default=default_pdf_include_flags, blank=True)
+    # FR-4.18a — which diagnostic areas have already fired the automatic draft.
+    # Kept here rather than inferred from `ai_call`, which records that a run
+    # happened but not what completed it; without this the second trigger would
+    # re-fire on every save once an area was full.
+    drafted_areas = models.JSONField(default=list, blank=True)
     converted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):

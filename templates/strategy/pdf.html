@@ -1,0 +1,130 @@
+{% load strategy_extras %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Strategy session — {{ company|default:prospect }}</title>
+<style>
+  @page { size: letter; margin: 18mm 16mm 20mm; 
+          @bottom-center { content: "Page " counter(page) " of " counter(pages);
+                           font: 9pt "Helvetica Neue", Helvetica, Arial, sans-serif;
+                           color: #939598; } }
+  body { font: 11pt/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; }
+  h1 { font-size: 22pt; color: #0A3A65; margin: 0 0 4pt; }
+  h2 { font-size: 13pt; color: #0A3A65; margin: 22pt 0 6pt;
+       border-bottom: 1.5pt solid #F58220; padding-bottom: 3pt; }
+  .lede { color: #6D6E71; font-size: 10.5pt; margin: 0 0 18pt; }
+  .qa { margin: 0 0 10pt; page-break-inside: avoid; }
+  .q { color: #6D6E71; font-size: 9.5pt; }
+  .a { font-size: 11pt; }
+  .note { margin-top: 3pt; padding-left: 8pt; border-left: 2pt solid #F58220;
+          color: #6D6E71; font-size: 10pt; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  th { text-align: left; background: #0A3A65; color: #fff; padding: 5pt 6pt;
+       font-size: 9pt; }
+  td { padding: 5pt 6pt; border-bottom: 0.75pt solid #E6E6E6; vertical-align: top; }
+  .bar { background: #EFEFEF; height: 9pt; border-radius: 5pt; overflow: hidden; }
+  .bar span { display: block; height: 9pt; background: #0A3A65; }
+  .bar.low span { background: #F58220; }
+  .six td { border-bottom: none; padding: 3pt 6pt 3pt 0; }
+  .mirror { background: #F5F8FB; border-left: 3pt solid #0A3A65; padding: 10pt 12pt; }
+  .muted { color: #939598; }
+</style>
+</head>
+<body>
+  <h1>Strategy session</h1>
+  <p class="lede">
+    {% if company %}{{ company }} · {% endif %}{{ prospect }}
+    · {{ session_date }}{% if fractional %} · with {{ fractional }}{% endif %}
+  </p>
+
+  {% if snapshot %}<h2>Where you are today</h2>
+    {% for item in snapshot %}<div class="qa">
+      <div class="q">{{ item.prompt }}</div>
+      <div class="a">{{ item.text|default:"—" }}</div>
+      {% if item.note %}<div class="note">{{ item.note }}</div>{% endif %}
+    </div>{% endfor %}
+  {% endif %}
+
+  {% if six_key.ratings %}<h2>Six Key Components</h2>
+    <table class="six">
+      {% for rating in six_key.ratings %}<tr>
+        <td style="width:26%">{{ rating.label }}</td>
+        <td style="width:10%"><strong>{{ rating.rating }}</strong>/10</td>
+        <td><div class="bar{% if rating.is_lowest %} low{% endif %}">
+          <span style="width: {{ rating.percent }}%"></span></div></td>
+      </tr>{% endfor %}
+    </table>
+    {% if six_key.complete %}<p class="muted">Average {{ six_key.average }} of 10.
+      The lowest score is where we look first.</p>{% endif %}
+  {% endif %}
+
+  {% if destination %}<h2>Where you want to go</h2>
+    {% for item in destination %}<div class="qa">
+      <div class="q">{{ item.prompt }}</div>
+      <div class="a">{{ item.text|default:"—" }}</div>
+      {% if item.note %}<div class="note">{{ item.note }}</div>{% endif %}
+    </div>{% endfor %}
+  {% endif %}
+
+  {% if mirror_goal or mirror_unlocks %}<h2>The mirror</h2>
+    <div class="mirror">
+      {% if mirror_goal %}<p><strong>Your goal, as you put it:</strong>
+        {{ mirror_goal }}</p>{% endif %}
+      {% if mirror_unlocks %}<p style="margin-bottom:0"><strong>What unlocks it:</strong>
+        {{ mirror_unlocks }}</p>{% endif %}
+    </div>
+  {% endif %}
+
+  {% if map_rows %}<h2>Strategy Map</h2>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Bottleneck</th><th>Root cause</th><th>The fix</th>
+        <th>Owner</th><th>Days</th><th>Measurable</th>
+        {% if show_mechanics %}<th>Notes / mechanics</th>{% endif %}
+      </tr></thead>
+      <tbody>{% for row in map_rows %}<tr>
+        <td>{{ row.position }}</td>
+        <td>{{ row.bottleneck }}</td>
+        <td>{{ row.root_cause }}</td>
+        <td>{{ row.the_fix }}</td>
+        <td>{{ row.owner_text|default:"—" }}</td>
+        <td>{{ row.horizon|default:"—" }}</td>
+        <td>{{ row.measurable|default:"—" }}</td>
+        {% if show_mechanics %}<td>{{ row.mechanics_note }}</td>{% endif %}
+      </tr>{% endfor %}</tbody>
+    </table>
+  {% endif %}
+
+  {% if paths %}<h2>Two paths</h2>
+    {% for item in paths %}<div class="qa">
+      <div class="q">{{ item.prompt }}</div>
+      <div class="a">
+        {% with reaction=item.value|get:"reaction" leaning=item.value|get:"leaning" %}
+        {% if reaction %}{{ reaction }}{% endif %}
+        {% if leaning %}<br><span class="muted">Leaning: {{ leaning }}</span>{% endif %}
+        {% endwith %}
+      </div>
+    </div>{% endfor %}
+  {% endif %}
+
+  {% if values %}<h2>What you value</h2>
+    <table>
+      <thead><tr><th style="width:40%">What matters</th><th>Why</th></tr></thead>
+      <tbody>{% for item in values %}<tr>
+        <td>{{ item.value }}</td><td>{{ item.why }}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+  {% endif %}
+
+  {% if scope %}<h2>Scope agreement</h2>
+    <table>
+      <thead><tr><th style="width:45%">Item</th><th>Agreed</th><th>Notes</th></tr></thead>
+      <tbody>{% for item in scope %}<tr>
+        <td>{{ item.prompt }}</td>
+        <td>{% if item.value|get:"agreed" %}Yes{% else %}—{% endif %}</td>
+        <td>{{ item.text }}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+  {% endif %}
+</body>
+</html>

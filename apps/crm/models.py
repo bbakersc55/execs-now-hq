@@ -715,6 +715,7 @@ class OutboxMessage(TenantScopedModel):
         MAGIC_LINK = "magic_link", "Magic link"
         NOTE_PIN_RESET = "note_pin_reset", "Note PIN reset"
         CLIENT_ACTIVITY = "client_activity", "Client activity notice"
+        PRECALL_COMPLETE = "precall_complete", "Pre-call form completed"
         CADENCE_CHANGE = "cadence_change", "Cadence change"
         INBOUND_FORWARD = "inbound_forward", "Inbound forward"
         MANUAL = "manual", "Manual"
@@ -726,6 +727,9 @@ class OutboxMessage(TenantScopedModel):
         # Internal, to the practice's own people: no approval gate applies, but
         # it is in the Outbox because every message that left is (FR-1.15).
         Producer.CLIENT_ACTIVITY,
+        # Likewise internal: "your prospect finished the form" goes to the
+        # fractional who is about to run the call (AC-4.3).
+        Producer.PRECALL_COMPLETE,
         Producer.CADENCE_CHANGE, Producer.INBOUND_FORWARD,
     }
 

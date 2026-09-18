@@ -139,7 +139,8 @@ def merge_context(session: StrategySession) -> dict:
         "Location B": locations[1].name if len(locations) > 1 else "",
         "Session date": (timezone.localtime(session.scheduled_at).strftime("%-d %B %Y")
                          if session.scheduled_at else ""),
-        "Fractional name": (owner.get_full_name() or owner.email) if owner else "",
+        "Fractional name": ((owner.full_name or "").strip() or owner.email)
+        if owner else "",
     }
 
 
@@ -292,6 +293,28 @@ def save_answer(session, *, question_key, value, answered_by, fractional_note=No
 
 def answers_of(session) -> dict:
     return {a.question_key: a for a in StrategyAnswer.objects.filter(session=session)}
+
+
+def must_ask_outstanding(session) -> dict:
+    """FR-4.15 — the ★ counter the live view runs on.
+
+    "Answered" means the answer has content in it, not that a row exists: a
+    saved-but-empty diagnostic triple has not been asked.
+    """
+    answers = answers_of(session)
+    outstanding, total = [], 0
+    for _section, question in questions_in(session.template_snapshot):
+        if not question.get("must_ask"):
+            continue
+        total += 1
+        answer = answers.get(question["key"])
+        filled = bool(answer and any(
+            (v or "").strip() for v in (answer.value or {}).values()
+            if isinstance(v, str)))
+        if not filled:
+            outstanding.append(question["key"])
+    return {"outstanding": outstanding, "answered": total - len(outstanding),
+            "of": total}
 
 
 # ------------------------------------------------ the Six Key Components (FR-4.10)

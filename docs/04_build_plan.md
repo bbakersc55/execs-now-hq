@@ -607,9 +607,90 @@ of the seed and all confirmed as seeded:
 4. Generate the PDF and read every page **as the prospect**. Confirm none of your private notes, mechanics, or the investment range are present.
 5. Convert the session and check the resulting Goals and Projects before the engagement starts.
 
-### Report
+### Report — Phase 4 status (2026-09-18): built and green; the five manual checks are yours to run
 
-AC-4.1–4.19. The quality of Claude's map rows and mirror is reported as **your judgement on N real sessions**, with N — not as a pass. I will not claim the AI output is good; I will report what you said about it.
+**Not a phase sign-off.** Every acceptance criterion passes in the automated suite and
+both mandatory families are green, but **no real strategy session has been run**, and
+the quality of Claude's drafting is deliberately **not** claimed here. Manual check 1
+is the only thing that tests this module honestly.
+
+| | |
+|---|---|
+| Automated tests | **1081 passed**, 3 skipped, 2 xfailed |
+| — Module 4 files | **67** (`test_module4_acceptance.py` 30, `test_module4_session.py` 30, `test_module4_seed.py` 7) |
+| — tenant isolation | **261** (was 231; the six new tables add 30, driven by the registry) |
+| — role boundaries | **146**, with matrix §10 asserted in the Module 4 files, as Module 3 did |
+| Frontend tests | **229 passed** (9 new: the public form, the live view, the §10 boundary) |
+| Migrations | **5, all additive**, applied: `strategy` 0001 (six tables), 0003 (`drafted_areas`), 0005 (`started_at`), `work` 0004 and `crm` 0021 (the goal columns and the three `source_map_row` back-links). Two data migrations: `strategy` 0002 (the seed) and 0004 (the diagnostic's note field) |
+| New dependency | **WeasyPrint 70.0**, pinned with its nine transitive pins |
+
+#### AC-4.1 to AC-4.19
+
+| AC | What it demands | Status | What proves it |
+|---|---|---|---|
+| 4.1 | Template seeds verbatim | ✅ | `test_ac_4_1_the_template_seeds_verbatim` — 9 sections in order, 47 questions, 13 pre-call, 7 ★, seven areas |
+| 4.2 | `ask_when` overridable, in-flight sessions untouched | ✅ | `test_ac_4_2_...` — flipped §3.1 appears on a new form and not on a running session |
+| 4.3 | Public, resumable, owner notified | ✅ | `test_ac_4_3_...` — no session cookie, answer persists across a reopen, `precall_complete` notice lands in the Outbox as `sent` |
+| 4.4 | Merge field degrades | ✅ | `test_ac_4_4_and_4_15_...` — "no Integrator identified", no brace survives |
+| 4.5 | Scoring computed, attention directed | ✅ | `test_ac_4_5_...` — average, lowest, and the flag moves with no stored value edited |
+| 4.6 | Timing and ★ tracking live | ⚠️ **Partly** | `test_ac_4_6_...` (counter, budgets) and `..._the_call_clock_starts_when_the_call_does`. **Elapsed is session-level**, against the template's 70 minutes; **per-section elapsed is not tracked** — nothing marks which section you are on. Open question below |
+| 4.7 | Rows require acceptance | ✅ | `test_ac_4_7_...` — tray of three, accept / edit-and-accept / discard, map holds exactly two |
+| 4.8 | Mirror proposed, not saved | ✅ | `test_ac_4_8_...` — draft lands in `proposed_mirror_*`, stored mirror stays blank until a person writes it |
+| 4.9 | PDF exclusions, all five | ✅ | Two tests: every marker absent with flags off; mechanics toggled on shows **only** that one; and the generated file's own bytes carry none |
+| 4.10 | Nothing emailed without a click | ✅ | `test_ac_4_10_...` — preview leaves the Outbox empty; send delivers, attaches, audits |
+| 4.11 | Conversion per-row and confirmed | ✅ | `test_ac_4_11_...` — preview creates nothing, then 2 goals + 1 project with owner, target date, measurable and back-links |
+| 4.12 | Snapshot protects history | ✅ | `test_ac_4_12_and_4_19_...` — section deleted, questions reworded, schema changed; the session's payload is identical |
+| 4.13 | VA financial boundary | ✅ | `test_ac_4_13_...` — the values are **not in the response body**, not merely hidden; plus a parametrised refusal of every fractional-only action |
+| 4.14 | Tenant isolation | ✅ | `test_ac_4_14_...` plus the registry family's 30 cases over the six tables |
+| 4.15 | Merge sources resolve and degrade | ✅ | With 4.4 — all seven fields, `{Visionary}` defaulted from `primary_contact` |
+| 4.16 | Two triggers, costed | ✅ | `test_ac_4_16_...` — save calls nothing; the button writes one `AiCall` with tokens and cost; completing an area fires once; the accepted row is untouched and nothing duplicates |
+| 4.17 | Owner resolves or is preserved | ✅ | `test_ac_4_17_...` — exact name resolves; "Maria in dispatch" and an ambiguous "Maria" stay verbatim with a null contact |
+| 4.18 | VA sends the invite and nothing else | ✅ | `test_ac_4_18_...` — direct-to-`sent`, and the stored copy carries **no working link** (assumption C3) |
+| 4.19 | Template edits cannot reach a completed session | ✅ | With 4.12 — and the soft-deleted question is still a row |
+
+#### The two mandatory families
+
+- **Tenant isolation — 261 cases.** The six new tables are in the registry, so the
+  meta-test would have failed had one been left out. On top of the generic cases:
+  a session, its PDF endpoint and its send action are 404 from another tenant, and the
+  pre-call token resolves only to its own session.
+- **Role boundaries — matrix §10, every row.** A VA is refused `answers`,
+  `draft-rows`, `draft-mirror`, `send-pdf`, `convert` and `conversion-preview`
+  (parametrised), may not toggle a PDF flag, and **never receives the §9 values in the
+  payload** — while still being able to create a session, send the invite and preview
+  the PDF, which is what 10.2/10.3/10.9 say. A client role reaches none of it.
+
+#### What is built
+
+Six tables, a seeded template, a public form, a live view, two Claude triggers, a PDF
+with five exclusions, conversion into Goals and Projects, and both emails through the
+shared layout. Three screens: `Sessions`, `SessionDetail` (the live view, the tray, the
+PDF panel and conversion), and the public `PreCallForm`, which renders before the
+sign-in check like the cadence link does.
+
+#### Gaps, stated plainly
+
+1. **No template-editing screen.** Matrix 10.1 and FR-4.2 are served by an API
+   (`PATCH /api/strategy-templates/<id>/`, FF only) with no UI. Editing the template
+   today means an API call. It is the one done-means item that is code-complete but not
+   usable by hand.
+2. **Per-section elapsed is not tracked** (AC-4.6, above).
+3. **Claude has been exercised only against the test double.** The drafting prompts
+   have never met the real API in a real session, and their output quality is
+   unmeasured: that is manual check 3's job, and the report on it will be **your
+   judgement on N real sessions**, with N.
+4. **The five manual checks have not run.** Check 1 — running a real session with a
+   real prospect — is the only honest test of this module.
+
+#### Open questions for the owner
+
+1. **Per-section pacing.** Should the live view carry a "we're on §4 now" control so
+   elapsed can be shown per section against its budget, or is the call-level clock
+   against the 70-minute total enough? The former needs a small UI affordance and one
+   more column; the latter is what is built.
+2. **The template editor.** Does it belong in Phase 4, or with the V1 multi-discipline
+   work where other fractionals need it? Beta has one template and it is seeded
+   correctly.
 
 ---
 

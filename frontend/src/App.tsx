@@ -27,6 +27,9 @@ import { Notes } from "./screens/Notes";
 import { PinReset } from "./screens/PinReset";
 import { TaskDetail } from "./screens/TaskDetail";
 import { CadenceLink } from "./screens/CadenceLink";
+import { PreCallForm } from "./screens/PreCallForm";
+import { SessionDetail } from "./screens/SessionDetail";
+import { Sessions } from "./screens/Sessions";
 import { Digests } from "./screens/Digests";
 import { Report } from "./screens/Report";
 import { Tasks } from "./screens/Tasks";
@@ -56,6 +59,9 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   { to: "/work", label: "Work", roles: TENANT },
   { to: "/tasks", label: "Tasks", roles: TENANT },
   { to: "/digests", label: "Digests", roles: TENANT },
+  // Module 4. A VA sets a session up and sends the form; the call itself is the
+  // fractional's, and the screen says so rather than hiding controls (§10).
+  { to: "/strategy", label: "Strategy", roles: TENANT },
   // Was the client's own log (FR-3.41). The owner reversed that on 2026-09-16:
   // the feed is the practice's view across every account, and a client is
   // refused the endpoint outright.
@@ -91,6 +97,10 @@ export function App() {
   // sign-in check below.
   const cadence = matchPath("/updates/:token", location.pathname);
   if (cadence) return <CadenceLink />;
+  // FR-4.6 / matrix 10.13 — the prospect has no login and no role, so the
+  // pre-call form renders before the sign-in check too.
+  const precall = matchPath("/strategy/precall/:token", location.pathname);
+  if (precall) return <PreCallForm />;
 
   const { data: me, isLoading, isError } = useQuery<Me>({
     queryKey: ["me"],
@@ -183,6 +193,8 @@ export function App() {
             <Route path="/work" element={<Work me={me} />} />
             <Route path="/work/goals/:id" element={<WorkParentDetail me={me} kind="goal" />} />
             <Route path="/work/projects/:id" element={<WorkParentDetail me={me} kind="project" />} />
+            <Route path="/strategy" element={<Sessions me={me} />} />
+            <Route path="/strategy/:id" element={<SessionDetail me={me} />} />
             <Route path="/digests" element={<Digests me={me} />} />
             <Route path="/report" element={<Report me={me} />} />
             <Route path="/activity" element={<Activity me={me} />} />

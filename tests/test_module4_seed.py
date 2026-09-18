@@ -75,8 +75,10 @@ def test_the_flags_that_carry_behaviour(seeded):
     # FR-4.17 — shown to the fractional, never asked aloud.
     assert list(questions.filter(is_fractional_observation=True)
                 .values_list("key", flat=True)) == ["s3_alignment_observation"]
-    # "Fractional-only field per item" on all seven Snapshot items.
-    assert questions.filter(has_fractional_note=True).count() == 7
+    # A private note field on all seven Snapshot items, and on every diagnostic
+    # question: AC-4.9's "§4 internal observation" is one of the five markers
+    # the PDF excludes, and it has its own toggle.
+    assert questions.filter(has_fractional_note=True).count() == 21
 
     by_schema = {}
     for schema in questions.values_list("response_schema", flat=True):

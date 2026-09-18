@@ -523,3 +523,88 @@ export interface PortalCandidates {
 export interface ProgressReport {
   since: string; until: string; body_text: string; updates: TaskUpdateRow[];
 }
+
+// --- Module 4 — the strategy session ----------------------------------------
+
+export type AnswerValue = Record<string, string | number | boolean>;
+
+export interface StrategyQuestion {
+  key: string;
+  prompt: string;
+  prompt_template?: string;
+  ask_when: "precall" | "live";
+  must_ask: boolean;
+  area: string;
+  response_schema: "free_text" | "rating_1_10" | "diagnostic_triple" | "value_pair"
+    | "agreed_note" | "path_reaction";
+  is_fractional_observation: boolean;
+  has_fractional_note: boolean;
+  is_financial: boolean;
+  position: number;
+}
+
+export interface StrategySection {
+  code: string; title: string; position: number;
+  time_budget_minutes: number | null;
+  questions: StrategyQuestion[];
+}
+
+export interface StrategyAnswerRow {
+  question_key: string; value: AnswerValue; fractional_note: string;
+  answered_by: "prospect" | "fractional"; updated_at: string;
+}
+
+export interface MapRow {
+  id: string; position: number; bottleneck: string; root_cause: string; the_fix: string;
+  owner_text: string; horizon: number | null; measurable: string; mechanics_note: string;
+  state: "proposed" | "accepted" | "discarded";
+  converted_to: "" | "goal" | "project";
+  from_ai: boolean;
+}
+
+export interface StrategySessionRow {
+  id: string;
+  state: "draft" | "precall_sent" | "precall_complete" | "in_call" | "complete"
+    | "converted" | "lost";
+  contact: Person | null;
+  company: { id: string; name: string } | null;
+  visionary: Person | null;
+  integrator: Person | null;
+  owner: string;
+  scheduled_at: string | null;
+  started_at: string | null;
+  budget_minutes: number;
+  precall_sent: boolean;
+  precall_expires_at: string | null;
+  mirror: { goal: string; unlocks: string };
+  proposed_mirror: { goal: string; unlocks: string };
+  pdf_include_flags: Record<string, boolean>;
+  has_pdf: boolean;
+  converted_at: string | null;
+  created_at: string;
+  // Present on a single session, not in the list.
+  sections?: StrategySection[];
+  answers?: StrategyAnswerRow[];
+  map_rows?: MapRow[];
+  six_key_components?: {
+    ratings: Record<string, number>; answered: number; of: number;
+    average: number | null; complete: boolean; lowest: string | null;
+  };
+  must_ask?: { outstanding: string[]; answered: number; of: number };
+}
+
+export interface ConversionRow {
+  row: string; position: number; title: string; the_fix: string; root_cause: string;
+  owner_text: string; client_owner_contact: Person | null; measurable: string;
+  horizon: number | null; target_date: string | null;
+  suggested: "goal" | "project"; needs_baseline: boolean;
+}
+
+export interface PreCallForm {
+  practice: string; company: string; first_name: string;
+  sections: { code: string; title: string; questions: {
+    key: string; prompt: string; response_schema: StrategyQuestion["response_schema"];
+    value: AnswerValue | null;
+  }[] }[];
+  answered: number; of: number; complete: boolean;
+}
