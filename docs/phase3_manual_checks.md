@@ -76,10 +76,28 @@ the transitions. That is the one thing it must never do.
 Thursday generation, Friday approval, on real work.
 
 - Thursday: the draft is in **Digests**, marked pending. Nothing has been sent.
-- Friday: approve it. It goes out through your Gmail; it lands in your inbox if
-  you made yourself a stakeholder, and in Mailpit for everyone else.
+- Friday: approve it **before its send window**. It goes out through your Gmail;
+  it lands in your inbox if you made yourself a stakeholder, and in Mailpit for
+  everyone else.
 - Open the task afterwards: the send shows in its history, and the stakeholder
   row shows when they were last told.
+
+**The window is a deadline, not a reminder.** A pending digest that reaches its
+send window unapproved is expired by the next tick — within seconds — and
+approving it after that is refused. Nothing is lost (its updates are owed again
+next period), but the cycle has to start over. The card counts down to it:
+"Expires in 6 hours". That countdown exists because this is exactly how the
+2026-09-17/18 run of this check lost both of its weekly drafts.
+
+**Proving the delivery half without waiting a week** (2026-09-18). The Thursday
+half passed on the real cycle; the Friday half did not run. Rather than wait
+another calendar week for delivery alone, use **Generate a digest now** for
+yourself, with the send window a couple of minutes out, then read the draft,
+approve it, and confirm it arrives in Gmail. That is the identical path —
+generation, review, approval, send — and only the calendar wait is skipped.
+Record it as what it is: **dev-triggered generation, real approval, real Gmail
+send.** The natural Thursday/Friday cycle keeps running alongside as ordinary
+use.
 
 Links in a digest point at `localhost` and work only on your machine until the
 Railway move.

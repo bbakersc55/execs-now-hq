@@ -356,24 +356,38 @@ It reports the hierarchy and its three-level cap, the six statuses, `client_owne
 5. Sign in to the portal as a real client user on a second device. Create a task, create a project, comment. Confirm you cannot see anything internal.
 6. Grant a third seat with only two available and read the error message.
 
-### Report — Phase 3 status (2026-09-15): 5 of 6 manual checks pass; Check 2 pending on the real weekly cycle
+### Report — Phase 3 status (2026-09-18): 5 of 6 manual checks pass; Check 2 half-run — generation proven, delivery not
 
 **Not yet a phase sign-off.** All **41** acceptance criteria pass in the automated
 suite (AC-3.40 and AC-3.41 were added on 2026-09-15). **Five of the six manual checks
-pass.** Check 2 can only run on the real weekly cycle: real client work is being set
-up now, the digest generates **Thursday 2026-09-17 at 08:00 MDT**, and approval and
-delivery are **Friday 2026-09-18**. `phase-3` is merged to `main` on the owner's
-instruction, but **Phase 4 does not start until the owner confirms Friday's digest
-was delivered.**
+pass.** `phase-3` is merged to `main` on the owner's instruction, but **Phase 4 does
+not start until the owner confirms a digest was delivered.**
+
+**Check 2 ran half-way on the real cycle, 2026-09-17/18.** Thursday's generation was
+correct: three weekly drafts were written 24 hours ahead, all `pending`, and nothing
+was sent. Friday's half did not happen — the drafts were not approved before their
+08:00 MDT window, and the tick expired them unsent 36 seconds later, exactly as
+FR-3.30 says it should. So what the cycle proved is **generation and expiry on real
+work**; **delivery through the practice's Gmail on a weekly digest remains unproven**,
+and Check 2 stays open. The content was not lost: the claims were released and
+`owed_to` returns it to the same recipients for the next period.
+
+**How the delivery half will be proven** (owner's decision, 2026-09-18): rather than
+wait another calendar week, generate a weekly digest to the owner's own address with
+the **dev control**, send window a couple of minutes out, then read it, approve it,
+and confirm it arrives. That exercises the identical path — the only thing skipped is
+the calendar wait. When it passes it will be recorded here in exactly those terms:
+**dev-triggered generation, real approval, real Gmail send.** The natural
+Thursday/Friday cycle keeps running alongside it as ordinary use.
 
 | | |
 |---|---|
-| Automated tests | **900 passed**, 3 skipped, 2 xfailed (905 collected) |
-| — tenant isolation + role boundaries files | **374** (`test_tenant_isolation.py` 230, `test_role_boundaries.py` 144). The Module 3 files below add their own isolation and role cases |
-| — Module 3 test files | **196** (acceptance 29, digests 60, portal 63, act as 19, activity log 14, stakeholder picker 11) |
-| Frontend tests | **157 passed** |
-| Manual checks | **5 of 6 passed** · Check 2 **pending** (real weekly cycle, above) |
-| Migrations since the 2026-09-11 report | **4, all additive**, applied by the owner 2026-09-15: `work` 0002 (digest key unique among live digests only), `work` 0003 and `tenancy` 0003 (acting-as columns), `crm` 0019 (Outbox `suppressed` state) |
+| Automated tests | **981 passed**, 3 skipped, 2 xfailed (2026-09-18) |
+| — tenant isolation + role boundaries files | **377** (`test_tenant_isolation.py` 231, `test_role_boundaries.py` 146). The Module 3 files below add their own isolation and role cases |
+| — Module 3 test files | **207** (acceptance 32, digests 63, portal 63, act as 19, activity log 19, stakeholder picker 11) |
+| Frontend tests | **220 passed** |
+| Manual checks | **5 of 6 passed** · Check 2 **half-run**: generation proven on the real cycle, delivery not (above) |
+| Migrations since the 2026-09-11 report | **4, all additive**, applied by the owner 2026-09-15: `work` 0002 (digest key unique among live digests only), `work` 0003 and `tenancy` 0003 (acting-as columns), `crm` 0019 (Outbox `suppressed` state). **None since** — the 2026-09-18 digest fix touches no schema |
 | Live to a real inbox | An **every-update** digest, approved and delivered (retest, 2026-09-15). **A weekly digest: not yet** — that is Check 2 |
 
 **Digest behaviour under each of the four combinations**, which is where an
@@ -415,7 +429,7 @@ was fixed before the check was re-run, unless it says otherwise.
 | Check | Status | What it found |
 |---|---|---|
 | 1 · Read a real digest as your client would | ✅ Passed (owner) | Functional, not polished: the digest email and the progress report go to the design pass as known inputs (item 5), layout and typography only |
-| 2 · One full weekly cycle on a real engagement | ⏳ **Pending** | Runs on the real cycle. Thursday: the draft is pending in Digests and nothing has been sent. Friday: approve it; it goes out through the practice's Gmail, the task history shows the send, and the stakeholder row shows when they were last told. **Phase 4 waits for the owner's confirmation** |
+| 2 · One full weekly cycle on a real engagement | ⏳ **Half-run 2026-09-17/18** | **Thursday passed:** three weekly drafts generated 24 h ahead, all `pending`, nothing sent. **Friday did not run:** the drafts were not approved before the 08:00 MDT window and the tick expired them unsent 36 s later — correct behaviour, but it leaves delivery unproven and released the content back to the next period. The remaining half is being proven by dev-triggered generation to the owner's own address with a short send window, then real approval and a real Gmail send. **Phase 4 waits for the owner's confirmation of delivery** |
 | 3 · Leave a digest unapproved | ✅ Passed on retest | **The server expired it on time; the screen never refreshed**, so it looked pending. Now: the list refreshes, a passed window is flagged, approving after the window is refused (it would otherwise have sent on the next tick), and a banner shows when the tick has stopped. The cluster had been down overnight with nothing showing it; the runbook now says to restart `qcluster` after every backend commit, and stale schedules are realigned (`work.tick` had been stuck at 12 Sep, firing every ~30 s) |
 | 4 · Be an every-update stakeholder | ✅ Passed on retest | **Two engine bugs:** a held every-update digest was expired by the same tick that generated it, and the expired row then blocked its content from ever generating again. Fixed; **FR-3.28d** (24-hour review window) confirmed by the owner. A later retest looked silent but was correctly inside the 30-minute quiet window — no defect — which led to the read-only **"Coming up"** card (FR-3.29a) |
 | 5 · Sign in to the portal as a real client user | ✅ Passed on retest | No create controls in the portal; "Add a task here" on a goal gave a client a bare 400; magic-link sign-in landed on a 404. Added from what the check showed: the client **activity log** (FR-3.41) and **act as** (FR-3.42). *(The activity log was **reversed on 2026-09-16** — it is the practice's feed now, not the client's, and a client is refused it: FR-3.41a. Act as stands.)* |
@@ -430,6 +444,78 @@ clients may file a task directly on a goal they can see; FR-3.28d's 24-hour revi
 window (owner-confirmed); who may act as whom, and that no email of any kind leaves
 while acting (FR-3.42, matrix 9.6–9.10); and what the client activity log contains
 and never contains (FR-3.41, matrix 7.16–7.17).
+
+#### The defect the half-run cycle uncovered — a dead digest holding live claims (fixed 2026-09-18, commit `0bb2169`)
+
+Confirming in the database what had become of Friday's two expired drafts turned up a
+**third** weekly digest from the same generation, to the owner's own contact row. It
+sat in `skipped` while its three `digest_item` rows **survived**.
+
+**Why that is worse than it looks.** `qualifying_updates` excludes an update claimed
+by any `digest_item` for that contact, *whatever state its digest is in*. A dead
+digest holding claims therefore owes its content **to nobody, for ever**, and appears
+on no screen. It is precisely the silent drop the digest engine exists to prevent —
+FR-3.30 says an expiring or skipped draft releases its claims, and this row had not.
+
+**What the evidence showed.** No audit event existed for the digest, and `skip()`
+always writes one inside its transaction — so `skip()` never ran. The only other
+writer of `skipped` is `regenerate()`'s "nothing owed" branch, which writes none. The
+items were created **15 ms before** the state write, which a single `regenerate` call
+cannot produce: it saves the row, *then* writes items. The reading that fits is **two
+regenerate calls milliseconds apart** — one click of a one-click button arriving
+twice. The first deleted the claims, re-collected and wrote fresh items; the second
+had already run its own delete, read the first one's committed items as live claims,
+found nothing owed, and marked the draft skipped while those items stayed behind.
+Stated as what it is: well-supported inference from timestamps and the absence of an
+audit event, not a logged sequence.
+
+**The fix** (`apps/work/digests.py`):
+
+- **`_locked(digest)`** — every writer of one draft (`regenerate`, `approve`, `skip`)
+  re-reads the row `select_for_update`, so a second call waits for the first and
+  redoes its work against the finished state.
+- **`_enter_dead_state`** — now the only way into `expired` or `skipped`. Releasing
+  the claims and writing the state is one operation, because the pair *is* the
+  invariant; the re-count afterwards asserts the release took and raises
+  `DigestClaimsHeld` rather than leave a dead row holding live claims. A refused
+  write leaves a **live draft a person can still see and act on**, which is always
+  the better failure.
+- **`expire_due`** — one locked transaction per digest, so the tick cannot expire a
+  draft someone is regenerating in the same second.
+- **The screen made it reachable in one click, so the screen changed too:**
+  Regenerate is single-submit, disabled and reading "Regenerating…" while in flight.
+
+**Tests, all three non-negotiable for this module from here on:** the invariant itself
+(every route into a dead state, then a sweep asserting no `digest_item` survives on
+any dead digest); the release failing to take must refuse the state and leave the
+draft `pending`; and the race fired on purpose — two threads on a barrier, asserting
+one live draft whose claims match what its body describes. The race test reproduces
+the exact production symptom (`skipped`) **three runs out of three** with the lock
+removed and passes with it; it is a timing test, so it is not claimed to be
+deterministic under load.
+
+**The repair, and the audit behind it.** The stuck digest's three claims were released
+on the owner's instruction, with a `digest.claims_released` audit event naming each
+freed update and why; `owed_to` for that contact then returned the three, so they come
+round again next period. **Every digest in a dead state, across all tenants, was then
+scanned:** 6 `expired` and 1 `skipped` digest hold **zero** claims, and no update is
+claimed only by a dead digest. The 18 claims that exist all sit on `sent` digests,
+which is the delivery record and correct. **That one row was the only occurrence.**
+
+#### The process lesson, and what changed because of it
+
+**A pending digest expires at its send window.** It does not sit and wait to be
+noticed; the window is a deadline, and the tick enforces it within seconds. That is
+right — FR-3.30 exists so nothing can send unread — but the screen was stating the
+deadline as an absolute time (*"expires 9/18, 8:00 AM if not"*), and an absolute time
+reads as information rather than as *this morning*. Both weekly drafts were lost that
+way.
+
+So each pending digest card now leads with a **countdown** — "Expires in 6 hours" in a
+warn pill, the absolute time beside it, the consequence spelled out — on a clock that
+ticks every 30 seconds, rounding always **down** so it never shows time that is not
+there. The general rule for this product: **where the app enforces a deadline, the
+screen shows time remaining, not a timestamp.**
 
 ---
 
