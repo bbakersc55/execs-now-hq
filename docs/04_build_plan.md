@@ -568,6 +568,28 @@ screen shows time remaining, not a timestamp.**
 8. Conversion: per-row Goal or Project, `owner_text` → `client_owner_contact_id` where it resolves, back-links preserved, client invariant fired.
 9. **Email:** the pre-call invite and the strategy-PDF email use the shared **base email layout** (`apps/crm/services/email_layout.py`, `templates/email/base.html`) with a text/plain part, and are previewable in the Outbox — no separate styling. Settled by the email presentation pass (2026-09-15).
 
+### Rulings taken at the seed, 2026-09-18 (owner)
+
+Four things `strategy_session_seed.md` does not settle, asked before building on top
+of the seed and all confirmed as seeded:
+
+1. **The diagnostic has seven areas, not six.** The prose above the list says "the six
+   places growth pressure shows up first"; the list under it has seven headings. The
+   list is operative and the word is the slip: Leadership & succession, People & labor,
+   Sales engine, Operations & quality, Money, Customer loss, Scaling stress test.
+2. **The worked example map row is in-app copy, not data.** A `strategy_map_row`
+   requires a session, so the supervisor-overload example has no home as a row without
+   inventing a fake session that every list and report would then have to exclude. It
+   ships as a constant beside the map's empty state. A tenant-editable example is a V1
+   question, not a Beta one.
+3. **Both §9 money items are `is_financial`** — the investment range *and* their
+   reaction to it. "They choked at that number" is the same information as the number;
+   hiding one and showing the other leaks it. Matrix 10.8 names both.
+4. **§9 carries no time budget of its own.** The seed's 10/25/5/15/5/10 covers six live
+   blocks and there are seven live sections: "what you value & next steps" is §7 and §9
+   together. §7 holds the 10 and §9 runs inside it. Splitting it 5/5 would have invented
+   a number the seed never gives.
+
 ### Tests that must pass
 
 - **Tenant isolation** (including the pre-call token) and **role boundaries** (matrix §10) — with **10.8 (VA cannot see §9 investment fields)** asserted against the API response body, not the UI.
