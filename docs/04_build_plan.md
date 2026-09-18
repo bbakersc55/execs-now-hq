@@ -356,29 +356,34 @@ It reports the hierarchy and its three-level cap, the six statuses, `client_owne
 5. Sign in to the portal as a real client user on a second device. Create a task, create a project, comment. Confirm you cannot see anything internal.
 6. Grant a third seat with only two available and read the error message.
 
-### Report — Phase 3 status (2026-09-18): 5 of 6 manual checks pass; Check 2 half-run — generation proven, delivery not
+### Report — Phase 3 SIGNED OFF (2026-09-18): 6 of 6 manual checks pass
 
-**Not yet a phase sign-off.** All **41** acceptance criteria pass in the automated
-suite (AC-3.40 and AC-3.41 were added on 2026-09-15). **Five of the six manual checks
-pass.** `phase-3` is merged to `main` on the owner's instruction, but **Phase 4 does
-not start until the owner confirms a digest was delivered.**
+**Signed off by the owner, 2026-09-18.** All **41** acceptance criteria pass in the
+automated suite (AC-3.40 and AC-3.41 were added on 2026-09-15), and **all six manual
+checks pass.** `phase-3` is merged to `main`.
 
-**Check 2 ran half-way on the real cycle, 2026-09-17/18.** Thursday's generation was
-correct: three weekly drafts were written 24 hours ahead, all `pending`, and nothing
-was sent. Friday's half did not happen — the drafts were not approved before their
-08:00 MDT window, and the tick expired them unsent 36 seconds later, exactly as
-FR-3.30 says it should. So what the cycle proved is **generation and expiry on real
-work**; **delivery through the practice's Gmail on a weekly digest remains unproven**,
-and Check 2 stays open. The content was not lost: the claims were released and
-`owed_to` returns it to the same recipients for the next period.
+**Check 2 ran in two parts, and both are recorded honestly.**
 
-**How the delivery half will be proven** (owner's decision, 2026-09-18): rather than
-wait another calendar week, generate a weekly digest to the owner's own address with
-the **dev control**, send window a couple of minutes out, then read it, approve it,
-and confirm it arrives. That exercises the identical path — the only thing skipped is
-the calendar wait. When it passes it will be recorded here in exactly those terms:
-**dev-triggered generation, real approval, real Gmail send.** The natural
-Thursday/Friday cycle keeps running alongside it as ordinary use.
+**The real cycle, 2026-09-17/18 — the generation half.** Thursday's generation was
+correct: three weekly drafts written 24 hours ahead, all `pending`, nothing sent.
+Friday's half did not run — the drafts were not approved before their 08:00 MDT
+window, and the tick expired them unsent 36 seconds later, exactly as FR-3.30 says it
+should. Nothing was lost: the claims were released and the content was owed again to
+the same recipients. That run proved **generation and expiry on real work**, and cost
+the delivery half a week.
+
+**The delivery half, same day, on the owner's decision:** rather than wait another
+calendar week for delivery alone, a weekly digest was generated to the owner's own
+address with the **dev control**, send window a couple of minutes out, then read,
+approved, and received. Recorded as what it is — **dev-triggered generation, real
+approval, real Gmail send.** The path is identical to the scheduled one; the only
+thing skipped is the calendar wait. The natural Thursday/Friday cycle keeps running
+alongside as ordinary use.
+
+**The owner's verdict on the delivered digest:** it reads as **value delivered rather
+than a list of actions** — a short summary, then the work itself; the narrative
+faithful to the updates written; branding solid on desktop. One improvement was taken
+before Phase 4 — see FR-3.24a below.
 
 | | |
 |---|---|
@@ -386,7 +391,7 @@ Thursday/Friday cycle keeps running alongside it as ordinary use.
 | — tenant isolation + role boundaries files | **377** (`test_tenant_isolation.py` 231, `test_role_boundaries.py` 146). The Module 3 files below add their own isolation and role cases |
 | — Module 3 test files | **207** (acceptance 32, digests 63, portal 63, act as 19, activity log 19, stakeholder picker 11) |
 | Frontend tests | **220 passed** |
-| Manual checks | **5 of 6 passed** · Check 2 **half-run**: generation proven on the real cycle, delivery not (above) |
+| Manual checks | **6 of 6 passed** · Check 2 in two parts: generation on the real cycle, delivery dev-triggered the same day (above) |
 | Migrations since the 2026-09-11 report | **4, all additive**, applied by the owner 2026-09-15: `work` 0002 (digest key unique among live digests only), `work` 0003 and `tenancy` 0003 (acting-as columns), `crm` 0019 (Outbox `suppressed` state). **None since** — the 2026-09-18 digest fix touches no schema |
 | Live to a real inbox | An **every-update** digest, approved and delivered (retest, 2026-09-15). **A weekly digest: not yet** — that is Check 2 |
 
@@ -429,7 +434,7 @@ was fixed before the check was re-run, unless it says otherwise.
 | Check | Status | What it found |
 |---|---|---|
 | 1 · Read a real digest as your client would | ✅ Passed (owner) | Functional, not polished: the digest email and the progress report go to the design pass as known inputs (item 5), layout and typography only |
-| 2 · One full weekly cycle on a real engagement | ⏳ **Half-run 2026-09-17/18** | **Thursday passed:** three weekly drafts generated 24 h ahead, all `pending`, nothing sent. **Friday did not run:** the drafts were not approved before the 08:00 MDT window and the tick expired them unsent 36 s later — correct behaviour, but it leaves delivery unproven and released the content back to the next period. The remaining half is being proven by dev-triggered generation to the owner's own address with a short send window, then real approval and a real Gmail send. **Phase 4 waits for the owner's confirmation of delivery** |
+| 2 · One full weekly cycle on a real engagement | ✅ **Passed 2026-09-18, in two parts** | **Generation, on the real cycle:** three weekly drafts 24 h ahead, all `pending`, nothing sent. **Friday's approval did not happen** and the tick expired them unsent 36 s past the window — correct behaviour, content owed again, delivery unproven. **Delivery, same day:** dev-triggered generation to the owner's own address with a short send window, real approval, real Gmail send, received. Owner's verdict: reads as value delivered, narrative faithful, branding solid on desktop. Improvement taken from it: FR-3.24a |
 | 3 · Leave a digest unapproved | ✅ Passed on retest | **The server expired it on time; the screen never refreshed**, so it looked pending. Now: the list refreshes, a passed window is flagged, approving after the window is refused (it would otherwise have sent on the next tick), and a banner shows when the tick has stopped. The cluster had been down overnight with nothing showing it; the runbook now says to restart `qcluster` after every backend commit, and stale schedules are realigned (`work.tick` had been stuck at 12 Sep, firing every ~30 s) |
 | 4 · Be an every-update stakeholder | ✅ Passed on retest | **Two engine bugs:** a held every-update digest was expired by the same tick that generated it, and the expired row then blocked its content from ever generating again. Fixed; **FR-3.28d** (24-hour review window) confirmed by the owner. A later retest looked silent but was correctly inside the 30-minute quiet window — no defect — which led to the read-only **"Coming up"** card (FR-3.29a) |
 | 5 · Sign in to the portal as a real client user | ✅ Passed on retest | No create controls in the portal; "Add a task here" on a goal gave a client a bare 400; magic-link sign-in landed on a 404. Added from what the check showed: the client **activity log** (FR-3.41) and **act as** (FR-3.42). *(The activity log was **reversed on 2026-09-16** — it is the practice's feed now, not the client's, and a client is refused it: FR-3.41a. Act as stands.)* |
@@ -501,6 +506,34 @@ round again next period. **Every digest in a dead state, across all tenants, was
 scanned:** 6 `expired` and 1 `skipped` digest hold **zero** claims, and no update is
 claimed only by a dead digest. The 18 claims that exist all sit on `sent` digests,
 which is the delivery record and correct. **That one row was the only occurrence.**
+
+#### FR-3.24a — the narrative says what the work is for (shipped 2026-09-18, before Phase 4)
+
+Taken from the owner's reading of the delivered digest: it read as value delivered,
+and the next thing it needed was to say **which goal the work serves**.
+
+Each block of updates is now passed to Claude under the goal it belongs to — the
+goal's title and, where the fractional wrote one, its outcome statement
+(`goal.description` today, `goal.outcome_statement` once 4B adds it) — and the model
+is instructed to frame movement in terms of that goal rather than as a list of
+actions. The update list is grouped the same way: goal, then task, with goal-less
+work in an unheaded section last, reported on its own terms and never filed under a
+goal it does not belong to.
+
+**The AC-3.5 constraint governs the goal exactly as it governs everything else**, and
+this is the part that must not soften. The narrative may say the work belongs to the
+goal and may repeat what the input says happened. It may **not** say the goal has
+advanced, is closer, is on track, is nearly met or will be met, and it may use **no
+number, proportion or comparison to before** unless a line in the input states it.
+Three tests hold it: the goal and its sentence reach the prompt with nothing about
+the recipient; the prohibitions are in the system prompt beside the AC-3.5 rule; and
+goal-less work stays unheaded and last.
+
+**The measured version of this is Module 4B, and deliberately not Module 3** (FR-3.24b).
+"Three of five sites now inspected weekly, up from one" needs the measurable's
+**baseline and current value** — `goal.baseline_value` and `goal_measurement`, neither
+of which exists until 4B. Until then Module 3 frames work by the goal it serves and
+says nothing about distance travelled, because it has nothing true to say about it.
 
 #### The process lesson, and what changed because of it
 
@@ -716,6 +749,18 @@ overridden status, and a back-link to its map row. This module adds:
     **email layout's brand system** (`apps/crm/services/email_layout.py`,
     `templates/email/base.html`) and WeasyPrint, which Phase 4 already establishes for
     the strategy PDF. One brand system, not a third.
+
+### Carried into 4B from Module 3 (added 2026-09-18)
+
+**The measured narrative belongs here, not in the digest.** Module 3 now frames every
+block of work by the goal it serves (FR-3.24a) — the goal's name and the sentence the
+fractional wrote about it — and is forbidden from saying anything about distance
+travelled, because Module 3 has no measurement to say it with. The fuller sentence the
+owner wants, *"three of five sites now inspected weekly, up from one"*, needs the
+measurable's **baseline** and **current value**: `goal.baseline_value` /
+`goal.baseline_at` and the latest `goal_measurement` row. Both arrive with this
+module, and the narrative that uses them is 4B's, not the digest's. When it lands,
+FR-3.24b comes off the books.
 
 ### Data model additions — settled 2026-09-16, subject to the usual review at build
 

@@ -1,5 +1,17 @@
 {% if narrative %}<p style="margin:0 0 28px;font-size:17px;line-height:1.65;color:{{ text_color }};">{{ narrative }}</p>
-{% endif %}{% for group in groups %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;">
+{% endif %}{% for section in sections %}{% if section.goal %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;">
+  <tr>
+    <td style="padding:0 0 2px;font-size:13px;line-height:1.4;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:{{ muted }};">Toward</td>
+  </tr>
+  <tr>
+    <td style="padding:0 0 4px;font-size:19px;line-height:1.35;font-weight:700;color:{{ accent }};">{{ section.goal }}</td>
+  </tr>
+  {% if section.outcome %}<tr>
+    <td style="padding:0 0 4px;font-size:16px;line-height:1.55;color:{{ text_color }};">{{ section.outcome }}</td>
+  </tr>
+  {% endif %}
+</table>
+{% endif %}{% for group in section.groups %}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;">
   <tr>
     <td style="padding:0 0 8px;border-bottom:1px solid #EEEEEE;font-size:17px;line-height:1.4;font-weight:700;color:#1A1A1A;">{{ group.title }}{% if group.parent %}<span style="font-weight:400;font-size:16px;color:{{ muted }};"> &middot; {{ group.parent }}</span>{% endif %}</td>
   </tr>
@@ -11,4 +23,4 @@
   </tr>
   {% endfor %}
 </table>
-{% endfor %}
+{% endfor %}{% endfor %}

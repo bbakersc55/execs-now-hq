@@ -116,7 +116,7 @@ def qualifying_updates(task_ids, contact_id, *, since=None, until=None):
         # reaches a digest. Its suppression is audited when it is written.
         acting_user__isnull=True,
     ).select_related(
-        "task", "actor"
+        "task", "actor", "task__goal", "task__project", "task__project__goal"
     ).exclude(
         # FR-3.19 — internal comments are never client material.
         kind=K.COMMENT_ADDED, to_value=Comment.Visibility.INTERNAL,
@@ -203,7 +203,45 @@ If the input is thin, write less.
 Write two to four sentences of plain prose that connect the work into a story \
 of progress. Do not list the items — they are listed underneath you. Do not \
 greet or sign off. Where a line the fractional wrote covers the point, prefer \
-their words to yours."""
+their words to yours.
+
+Each block of work is headed by the goal it serves, with the goal's own \
+sentence where the fractional wrote one. Say what the work is FOR: frame what \
+moved in terms of the goal it belongs to, rather than as a list of actions. \
+The goal is input like any other, and the same rule governs it — you may say \
+that this work belongs to that goal, and you may repeat what the input says \
+happened. You may NOT say that the goal has advanced, is closer, is on track, \
+is nearly met, or will be met, and you may not characterise how much of it is \
+done, unless a line in the input states it. No number, proportion, or \
+comparison to where things stood before may appear unless the input contains \
+it. Work listed under no goal is reported on its own terms; never attach it to \
+one."""
+
+
+def _goal_of(task):
+    """The goal a task serves, directly or through its project. FR-3.24a."""
+    if task is None:
+        return None
+    goal = getattr(task, "goal", None)
+    if goal is not None:
+        return goal
+    project = getattr(task, "project", None)
+    return getattr(project, "goal", None) if project is not None else None
+
+
+def _goal_line(goal) -> str:
+    """The goal's title, and its outcome statement where it has one.
+
+    `outcome_statement` arrives with Module 4B; until then the nearest thing a
+    goal carries is the description the fractional wrote. Either way it is a
+    sentence a person wrote — never anything derived, and never a measurement.
+    The measured version of this ("three of five sites now inspected weekly, up
+    from one") needs a baseline and a current value, and belongs to 4B.
+    """
+    if goal is None:
+        return ""
+    outcome = (getattr(goal, "outcome_statement", "") or goal.description or "").strip()
+    return f"{goal.title} — {outcome}" if outcome else goal.title
 
 
 def _describe(update) -> str:
@@ -240,11 +278,29 @@ def deterministic_body(owed) -> str:
 
 
 def ai_input(owed) -> str:
-    parts = []
+    """The transitions, the lines a person wrote, and the goal each piece of
+    work serves (FR-3.24a). Grouped by goal so the prose can say what the work
+    is for; chronological within each goal, so nothing about order is lost.
+
+    Still nothing derived, nothing computed, and nothing about the recipient.
+    """
+    buckets, order = {}, []
     for update, _row in owed:
-        parts.append(_describe(update))
+        goal = _goal_of(update.task)
+        key = goal.pk if goal is not None else None
+        if key not in buckets:
+            buckets[key] = {"goal": goal, "lines": []}
+            order.append(key)
+        buckets[key]["lines"].append(_describe(update))
         if update.client_facing_line:
-            parts.append(f'  line written for the client: "{update.client_facing_line}"')
+            buckets[key]["lines"].append(
+                f'  line written for the client: "{update.client_facing_line}"')
+    parts = []
+    for key in order:
+        bucket = buckets[key]
+        parts.append(f"Goal: {_goal_line(bucket['goal'])}" if bucket["goal"] is not None
+                     else "Work not attached to a goal:")
+        parts.extend(f"  {line}" for line in bucket["lines"])
     return "\n".join(parts)
 
 
@@ -316,49 +372,78 @@ def _item(update):
 
 
 def _groups(owed):
-    """Updates grouped by task, in the order they happened, each group titled by
-    its task with the project (or goal) it sits under."""
+    """Updates grouped by task, and those task groups grouped under the goal the
+    work serves (FR-3.24a) — because a client reads what the work was FOR before
+    they read what moved.
+
+    Returns a section per goal in the order its work first moved, each holding
+    task groups titled by their task with the project they sit under. Work with
+    no goal falls into one unheaded section at the end, on its own terms.
+    """
     groups, order = {}, []
     for update, _row in owed:
         task = update.task
         key = task.pk if task is not None and task.pk else id(task)
         if key not in groups:
             project = getattr(task, "project", None) if task is not None else None
-            goal = getattr(task, "goal", None) if task is not None else None
+            goal = _goal_of(task)
             groups[key] = {
                 "title": task.title if task is not None else "Other work",
-                "parent": project.title if project is not None
-                else (goal.title if goal is not None else ""),
+                "parent": project.title if project is not None else "",
+                "goal": goal,
                 "updates": [], "done": False,
             }
             order.append(key)
         if update.kind == K.STATUS_CHANGED and update.to_value == Task.Status.DONE:
             groups[key]["done"] = True
         groups[key]["updates"].append(update)
-    out = []
+
+    sections, section_order = {}, []
     for key in order:
         group = groups[key]
         # "Moved to Done" already says it; a separate "Completed" row repeats it.
         items = [_item(u) for u in group["updates"]
                  if not (u.kind == K.COMPLETED and group["done"])]
         items = [i for i in items if i["line"] or i["sentence"]]
-        if items:
-            out.append({"title": group["title"], "parent": group["parent"], "items": items})
-    return out
+        if not items:
+            continue
+        goal = group["goal"]
+        goal_key = goal.pk if goal is not None else None
+        if goal_key not in sections:
+            sections[goal_key] = {
+                "goal": goal.title if goal is not None else "",
+                # The fractional's own sentence about what the goal is for, when
+                # there is one. Never a measurement — that is Module 4B.
+                "outcome": ((getattr(goal, "outcome_statement", "") or goal.description)
+                            or "").strip() if goal is not None else "",
+                "groups": [],
+            }
+            section_order.append(goal_key)
+        sections[goal_key]["groups"].append(
+            {"title": group["title"], "parent": group["parent"], "items": items})
+    # A goal-less section reads as a trailing aside, so it goes last.
+    section_order.sort(key=lambda k: k is None)
+    return [sections[k] for k in section_order]
 
 
-def digest_text(narrative, groups) -> str:
-    """The text/plain part, from the same groups as the HTML."""
+def digest_text(narrative, sections) -> str:
+    """The text/plain part, from the same sections as the HTML."""
     parts = [narrative.strip()] if narrative else []
-    for group in groups:
-        lines = [group["title"] + (f" ({group['parent']})" if group["parent"] else "")]
-        for item in group["items"]:
-            if item["line"]:
-                chip = f"[{item['chip']['label']}] " if item["chip"] else ""
-                lines.append(f"  - {chip}{item['line']}")
-            if item["sentence"]:
-                lines.append(f"    “{item['sentence']}”")
-        parts.append("\n".join(lines))
+    for section in sections:
+        if section["goal"]:
+            heading = f"Toward: {section['goal']}"
+            if section["outcome"]:
+                heading += f"\n  {section['outcome']}"
+            parts.append(heading)
+        for group in section["groups"]:
+            lines = [group["title"] + (f" ({group['parent']})" if group["parent"] else "")]
+            for item in group["items"]:
+                if item["line"]:
+                    chip = f"[{item['chip']['label']}] " if item["chip"] else ""
+                    lines.append(f"  - {chip}{item['line']}")
+                if item["sentence"]:
+                    lines.append(f"    “{item['sentence']}”")
+            parts.append("\n".join(lines))
     return "\n\n".join(parts).strip()
 
 
@@ -372,10 +457,10 @@ def render(digest, owed, *, narrative=""):
 
     from apps.crm.services import email_layout
 
-    groups = _groups(owed)
+    sections = _groups(owed)
     html = render_to_string("email/digest_content.html", email_layout.template_context(
-        digest.tenant, narrative=narrative, groups=groups))
-    return digest_text(narrative, groups), html
+        digest.tenant, narrative=narrative, sections=sections))
+    return digest_text(narrative, sections), html
 
 
 # -------------------------------------------------------------- generation

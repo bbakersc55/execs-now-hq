@@ -1300,3 +1300,80 @@ def test_two_regenerates_at_once_leave_one_live_draft_with_consistent_claims(
                                   cadence=Cadence.WEEKLY) == []
     assert list(DigestItem.all_objects.filter(
         digest__state__in=digest_service.DEAD_STATES)) == []
+
+
+# ------------------------------------------- FR-3.24a — what the work is for
+#
+# A digest that reads as value delivered has to say what the movement was FOR.
+# The goal is passed to Claude as input like any other, under the same AC-3.5
+# rule: it may say the work belongs to the goal, never that the goal has moved.
+
+@pytest.mark.django_db
+def test_fr_3_24a_the_narrative_input_names_the_goal_and_what_it_is_for(
+    seeded_tenant, ff, company, recipient, project, goal, fake_claude, in_tenant_a
+):
+    company.digest_ai_prose = True
+    company.save()
+    goal.description = "Cash in the bank thirty days sooner."
+    goal.save()
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Mapped where invoices stall.")
+
+    fake_claude.reply = "Work on the invoice flow began."
+    generate_weekly(seeded_tenant)
+
+    given = fake_claude.requests[0]["messages"][0]["content"]
+    assert "Goal: Cut order-to-cash — Cash in the bank thirty days sooner." in given
+    assert "Mapped where invoices stall." in given
+    assert "Map the process" in given
+    # AC-3.5 stands: still nothing about the recipient or their company.
+    assert "Dana" not in given and "northwind" not in given.lower()
+
+
+@pytest.mark.django_db
+def test_fr_3_24a_the_prompt_forbids_progress_the_input_does_not_evidence(
+    seeded_tenant, ff, company, recipient, project, fake_claude, in_tenant_a
+):
+    """The goal may be named. It may not be claimed to have moved."""
+    company.digest_ai_prose = True
+    company.save()
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Mapped where invoices stall.")
+    generate_weekly(seeded_tenant)
+
+    system = fake_claude.requests[0]["system"]
+    assert "must not assert any fact" in system                    # AC-3.5, unchanged
+    assert "may NOT say that the goal has advanced" in system
+    assert "No number, proportion, or comparison" in system
+    assert "never attach it to one" in system
+
+
+@pytest.mark.django_db
+def test_fr_3_24a_the_list_groups_under_the_goal_and_loose_work_stands_alone(
+    seeded_tenant, ff, company, recipient, project, goal, in_tenant_a
+):
+    goal.description = "Cash in the bank thirty days sooner."
+    goal.save()
+    inside = a_task(seeded_tenant, company, ff=ff, project=project, title="Map the process")
+    loose = a_task(seeded_tenant, company, ff=ff, title="Renew the insurance")
+    stake(seeded_tenant, recipient, project=project)
+    stake(seeded_tenant, recipient, task=loose)
+    move(inside, ff, S.IN_PROGRESS, "Mapped where invoices stall.")
+    move(loose, ff, S.IN_PROGRESS, "Quotes are in.")
+
+    digest = generate_weekly(seeded_tenant)[0]
+    text, html = digest.body_text, digest.body_html
+
+    # The goal heads its own work, with the sentence saying what it is for.
+    assert "Toward: Cut order-to-cash" in text
+    assert "Cash in the bank thirty days sooner." in text
+    assert text.index("Toward: Cut order-to-cash") < text.index("Map the process")
+    assert "Cut order-to-cash" in html and "Toward" in html
+
+    # Work under no goal is reported on its own terms, last, and is never
+    # filed under a goal it does not belong to.
+    assert text.count("Toward:") == 1
+    assert text.index("Map the process") < text.index("Renew the insurance")
+    assert html.count("Toward") == 1
