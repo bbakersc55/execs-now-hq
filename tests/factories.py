@@ -19,6 +19,10 @@ from apps.work.models import (
     Comment, Digest, DigestItem, Goal, Project, Stakeholder, StakeholderToken,
     TaskChecklistItem, TaskUpdate,
 )
+from apps.strategy.models import (
+    StrategyAnswer, StrategyMapRow, StrategyQuestion, StrategySection,
+    StrategySession, StrategyTemplate,
+)
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, Role, StoredFile,
     Tenant, TenantSecret,
@@ -512,3 +516,69 @@ class DigestItemFactory(TenantScopedFactory):
     digest = factory.SubFactory(DigestFactory, tenant=factory.SelfAttribute("..tenant"))
     task_update = factory.SubFactory(TaskUpdateFactory,
                                      tenant=factory.SelfAttribute("..tenant"))
+
+
+# --- Module 4 -----------------------------------------------------------------
+
+class StrategyTemplateFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyTemplate
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Operations {n}")
+    discipline = "operations"
+
+
+class StrategySectionFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategySection
+
+    tenant = factory.SubFactory(TenantFactory)
+    template = factory.SubFactory(StrategyTemplateFactory,
+                                  tenant=factory.SelfAttribute("..tenant"))
+    code = factory.Sequence(lambda n: f"s{n}")
+    title = factory.Sequence(lambda n: f"Section {n}")
+    position = factory.Sequence(lambda n: n)
+
+
+class StrategyQuestionFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyQuestion
+
+    tenant = factory.SubFactory(TenantFactory)
+    section = factory.SubFactory(StrategySectionFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    template = factory.SelfAttribute("section.template")
+    key = factory.Sequence(lambda n: f"q{n}")
+    prompt = factory.Sequence(lambda n: f"Question {n}?")
+
+
+class StrategySessionFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategySession
+
+    tenant = factory.SubFactory(TenantFactory)
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    template = factory.SubFactory(StrategyTemplateFactory,
+                                  tenant=factory.SelfAttribute("..tenant"))
+
+
+class StrategyAnswerFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyAnswer
+
+    tenant = factory.SubFactory(TenantFactory)
+    session = factory.SubFactory(StrategySessionFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    question_key = factory.Sequence(lambda n: f"q{n}")
+    value = factory.LazyFunction(lambda: {"text": "An answer."})
+
+
+class StrategyMapRowFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyMapRow
+
+    tenant = factory.SubFactory(TenantFactory)
+    session = factory.SubFactory(StrategySessionFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    bottleneck = factory.Sequence(lambda n: f"Bottleneck {n}")

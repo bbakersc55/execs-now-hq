@@ -879,9 +879,9 @@ class Task(TenantScopedModel):
     `stakeholder` live in `apps.work`, which is where everything else Module 3
     introduces lives; the table stays here because stage automations write it.
 
-    Still deferred, because their target tables do not exist yet:
-    `source_map_row_id` (Module 4) and `source_proposal_item_id` (Module 5).
-    Each arrives as a real foreign key with the table it points at.
+    **Phase 4 adds** `source_map_row_id` as a real foreign key, with the table
+    it points at, exactly as the deferral promised. `source_proposal_item_id`
+    (Module 5) is still deferred on the same terms.
 
     **No `parent_task_id`, ever.** Three levels is enforced by the absence of
     the column (FR-3.4); sub-steps are checklist items.
@@ -912,6 +912,12 @@ class Task(TenantScopedModel):
     source_automation = models.ForeignKey(
         StageAutomation, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="created_tasks",
+    )
+    # Provenance, Module 4: the strategy map row this task was converted from
+    # (FR-4.31). Arrives with the table it points at, as promised.
+    source_map_row = models.ForeignKey(
+        "strategy.StrategyMapRow", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
 

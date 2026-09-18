@@ -97,7 +97,47 @@ class WorkItem(TenantScopedModel):
 
 
 class Goal(WorkItem):
-    """FR-3.1. Client-facing strategy; never authored by a client (FR-3.35a)."""
+    """FR-3.1. Client-facing strategy; never authored by a client (FR-3.35a).
+
+    The measurable columns are the **Phase 4.5 correction carried back into
+    Module 4** (owner, 2026-09-18): a strategy map row promises a measurable, a
+    horizon and a way of knowing, and AC-4.11 says conversion preserves what the
+    row holds. Without somewhere to put it, conversion would quietly drop the
+    half of the row that makes a goal answerable later. They are filled at
+    conversion — which **prompts for the baseline**, because a measurable with
+    no starting reading cannot be reported against — and read by Module 4B.
+
+    Named as 4B settled them (`02_data_model.md` §4.5) so that module adds its
+    measurement history and resolution log beside these rather than renaming
+    them. Deliberately absent until 4B: `measurable_kind`, `how_we_will_know`,
+    `outcome_statement`, and any stored current value — the current value is a
+    read of the latest `goal_measurement`, and a column here would drift.
+    """
+
+    class Direction(models.TextChoices):
+        UP_IS_GOOD = "up_is_good", "Up is good"
+        DOWN_IS_GOOD = "down_is_good", "Down is good"
+
+    # The name of the thing being moved — "supervisor hours per week".
+    measurable = models.CharField(max_length=255, blank=True, default="")
+    # Display only. Never used for arithmetic.
+    measurable_unit = models.CharField(max_length=40, blank=True, default="")
+    # What it read when the engagement started, and when that reading was taken.
+    # The date is not optional decoration: a baseline with no date cannot be
+    # honestly compared to anything later.
+    baseline_value = models.DecimalField(max_digits=14, decimal_places=4,
+                                         null=True, blank=True)
+    baseline_at = models.DateField(null=True, blank=True)
+    target_value = models.DecimalField(max_digits=14, decimal_places=4,
+                                       null=True, blank=True)
+    # Which way is good is **never inferred** from baseline versus target
+    # (4.5 ruling 2): a goal can be set to hold a number steady.
+    direction = models.CharField(max_length=12, choices=Direction.choices,
+                                 blank=True, default="")
+    horizon_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    # FR-4.31 — the back-link to the map row this goal came from.
+    source_map_row = models.ForeignKey("strategy.StrategyMapRow", null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
 
     class Meta(WorkItem.Meta):
         db_table = "goal"
@@ -113,6 +153,10 @@ class Project(WorkItem):
     )
     start_date = models.DateField(null=True, blank=True)
     created_by_client = models.BooleanField(default=False)
+    # FR-4.28/4.31 — a map row becomes a Goal *or* a Project, chosen per row,
+    # and either way the row it came from stays on the record.
+    source_map_row = models.ForeignKey("strategy.StrategyMapRow", null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
 
     class Meta(WorkItem.Meta):
         db_table = "project"

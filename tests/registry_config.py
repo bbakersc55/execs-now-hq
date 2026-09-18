@@ -22,6 +22,10 @@ from apps.work.models import (
     Comment, Digest, DigestItem, Goal, Project, Stakeholder, StakeholderToken,
     TaskChecklistItem, TaskUpdate,
 )
+from apps.strategy.models import (
+    StrategyAnswer, StrategyMapRow, StrategyQuestion, StrategySection,
+    StrategySession, StrategyTemplate,
+)
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, StoredFile, TenantSecret,
 )
@@ -78,3 +82,12 @@ register(Stakeholder, factories.StakeholderFactory)
 register(StakeholderToken, factories.StakeholderTokenFactory, api_exposed=False)
 register(Digest, factories.DigestFactory)
 register(DigestItem, factories.DigestItemFactory)
+
+# --- Module 4 — the strategy session. No endpoints yet: the schema lands
+# before the API does, and `api_exposed=False` says so rather than pretending.
+register(StrategyTemplate, factories.StrategyTemplateFactory, api_exposed=False)
+register(StrategySection, factories.StrategySectionFactory, api_exposed=False)
+register(StrategyQuestion, factories.StrategyQuestionFactory, api_exposed=False)
+register(StrategySession, factories.StrategySessionFactory, api_exposed=False)
+register(StrategyAnswer, factories.StrategyAnswerFactory, api_exposed=False)
+register(StrategyMapRow, factories.StrategyMapRowFactory, api_exposed=False)
