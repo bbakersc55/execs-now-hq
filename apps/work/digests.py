@@ -554,17 +554,72 @@ def flag_stale_for(update: TaskUpdate):
                           updated_at=timezone.now())
 
 
+# ------------------------------------------------- one draft, one writer
+
+class DigestClaimsHeld(RuntimeError):
+    """A digest was about to enter a dead state while its `digest_item` rows
+    survived.
+
+    That pair is the silent failure this module is built to make impossible: a
+    dead digest still holding claims is invisible on every screen, and
+    `qualifying_updates` excludes claimed updates whatever state their digest is
+    in — so its content is owed to nobody, for ever. Refusing the write leaves a
+    live draft that a person can still see and act on.
+    """
+
+
+def _locked(digest):
+    """Re-read one draft with its row locked, so two writers queue instead of
+    interleaving. Callers refresh their own instance afterwards."""
+    return Digest.objects.select_for_update().get(pk=digest.pk)
+
+
+def _release_claims(digest):
+    """Delete the items — the single act that hands a digest's updates back."""
+    digest.items.all().delete()
+
+
+def _enter_dead_state(digest, state):
+    """The only way into `expired` or `skipped` (FR-3.30).
+
+    Releasing the claims and writing the state is one operation, because the
+    pair *is* the invariant. The re-count is not redundant: it is the assertion
+    that the release actually took, and it refuses the state rather than leave a
+    dead row holding live claims.
+    """
+    if state not in DEAD_STATES:
+        raise ValueError(f"{state} is not a dead state.")
+    _release_claims(digest)
+    held = DigestItem.objects.filter(digest_id=digest.pk).count()
+    if held:
+        raise DigestClaimsHeld(
+            f"{held} digest_item row(s) survive on digest {digest.pk}; marking it "
+            f"{state} would owe their updates to nobody.")
+    digest.state = state
+    digest.save(update_fields=["state", "updated_at"])
+    return digest
+
+
 @transaction.atomic
 def regenerate(digest, *, actor=None):
-    """FR-3.30a — one click. Re-collect, re-render, clear the flag."""
+    """FR-3.30a — one click. Re-collect, re-render, clear the flag.
+
+    The row is re-read **locked**, because one click can arrive twice. On
+    2026-09-17 two of these interleaved on one draft: the first deleted the
+    claims, re-collected and wrote fresh `digest_item` rows; the second had
+    already run its own delete, then read the first one's committed items as
+    live claims, found nothing owed, and marked the draft `skipped` while those
+    items survived. The lock makes the second call wait, see the finished work,
+    and redo it against the truth.
+    """
+    digest = _locked(digest)
     if digest.state != Digest.State.PENDING:
         raise ValueError("Only a pending digest can be regenerated.")
-    digest.items.all().delete()
+    _release_claims(digest)
     owed = owed_to(digest.contact_id, tenant=digest.tenant, cadence=digest.cadence,
                    until=timezone.now())
     if not owed:
-        digest.state = Digest.State.SKIPPED
-        digest.save(update_fields=["state", "updated_at"])
+        _enter_dead_state(digest, Digest.State.SKIPPED)
         return digest
     narrative = narrative_for(digest.tenant, owed, contact=digest.contact) \
         if digest.is_ai_generated else ""
@@ -595,6 +650,7 @@ def approve(digest, *, actor, role):
     if role not in (Role.FF, Role.CF):
         # Matrix 8.3 — the single most important role boundary in the product.
         raise DigestActionRefused("A VA cannot approve a digest.", status=403)
+    digest = _locked(digest)
     if digest.state != Digest.State.PENDING:
         raise DigestActionRefused(f"This digest is {digest.state}.", status=409)
     if digest.send_window_at <= timezone.now():
@@ -624,11 +680,10 @@ def skip(digest, *, actor, role):
     if role not in (Role.FF, Role.CF):
         # Skipping suppresses a client email: a send decision either way.
         raise DigestActionRefused("A VA cannot skip a digest.", status=403)
+    digest = _locked(digest)
     if digest.state != Digest.State.PENDING:
         raise DigestActionRefused(f"This digest is {digest.state}.", status=409)
-    digest.state = Digest.State.SKIPPED
-    digest.items.all().delete()        # its claim is released
-    digest.save(update_fields=["state", "updated_at"])
+    _enter_dead_state(digest, Digest.State.SKIPPED)   # its claims go with it
     AuditEvent.all_objects.create(
         tenant=digest.tenant, actor=actor, verb="digest.skipped",
         target_type="digest", target_id=digest.pk, payload={})
@@ -765,18 +820,27 @@ def send_due(tenant, *, now=None):
 
 def expire_due(tenant, *, now=None):
     """FR-3.30 — an unapproved digest never sends. Its items are deleted, so
-    everything in it is owed again next period: deferred, not dropped."""
+    everything in it is owed again next period: deferred, not dropped.
+
+    One locked transaction per digest: the tick must not expire a draft that a
+    person is regenerating or approving in the same second, and a dead state is
+    never written while its claims survive.
+    """
     now = now or timezone.now()
     expired = []
-    for digest in Digest.objects.filter(state=Digest.State.PENDING,
-                                        send_window_at__lte=now):
-        digest.items.all().delete()
-        digest.state = Digest.State.EXPIRED
-        digest.save(update_fields=["state", "updated_at"])
-        AuditEvent.all_objects.create(
-            tenant=digest.tenant, verb="digest.expired", target_type="digest",
-            target_id=digest.pk, payload={"cadence": digest.cadence})
-        expired.append(digest)
+    due = list(Digest.objects.filter(state=Digest.State.PENDING,
+                                     send_window_at__lte=now)
+               .values_list("pk", flat=True))
+    for pk in due:
+        with transaction.atomic():
+            digest = Digest.objects.select_for_update().filter(pk=pk).first()
+            if digest is None or digest.state != Digest.State.PENDING:
+                continue           # another writer reached it while we queued
+            _enter_dead_state(digest, Digest.State.EXPIRED)
+            AuditEvent.all_objects.create(
+                tenant=digest.tenant, verb="digest.expired", target_type="digest",
+                target_id=digest.pk, payload={"cadence": digest.cadence})
+            expired.append(digest)
     return expired
 
 

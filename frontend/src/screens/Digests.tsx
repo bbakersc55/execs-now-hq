@@ -1,10 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
+import { Banner, Card, Empty, Field, Pill, countdown, when } from "../components/ui";
 import { Contact, DigestRow, Me, TickStatus, UpcomingDigest, api } from "../lib/api";
 
 const CAN_APPROVE = ["FF", "CF"];
+
+/** A clock that moves. A countdown rendered once is wrong a minute later. */
+function useNow(everyMs = 30_000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(id);
+  }, [everyMs]);
+  return now;
+}
 
 /**
  * FR-3.29 — the approval screen, and the last thing standing between the app
@@ -39,7 +49,7 @@ export function Digests({ me }: { me: Me }) {
     queryFn: () => api.get<UpcomingDigest[]>("/api/digests/upcoming/"),
     refetchInterval: 30_000,
   });
-  const now = Date.now();
+  const now = useNow();
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["digests"] });
   const act = useMutation({
@@ -151,11 +161,21 @@ export function Digests({ me }: { me: Me }) {
               <p className="small muted">
                 To {d.to_address} · covers {when(d.period_start)} to {when(d.period_end)} ·
                 {d.cadence === "every_update"
-                  ? <>sends as soon as approved · expires {when(d.send_window_at)} if not</>
+                  ? <>sends as soon as approved</>
                   : <>sends {when(d.send_window_at)}</>}
                 {" "}· {d.item_count} update{d.item_count === 1 ? "" : "s"}{" "}
                 {d.is_ai_generated ? <Pill kind="ai">AI narrative</Pill> : <Pill>plain list</Pill>}
               </p>
+
+              {d.state === "pending" && Date.parse(d.send_window_at) > now && (
+                <p className="small">
+                  <Pill kind="warn">Expires {countdown(d.send_window_at, now)}</Pill>{" "}
+                  <span className="muted">
+                    {when(d.send_window_at)} — unapproved by then it sends nothing, and its
+                    updates are owed again next period.
+                  </span>
+                </p>
+              )}
 
               {d.state === "pending" && Date.parse(d.send_window_at) <= now && (
                 <Banner kind="warn">
@@ -169,8 +189,13 @@ export function Digests({ me }: { me: Me }) {
                   <strong>Overtaken by events.</strong> {d.stale_reason} You can approve it as
                   it stands, or rebuild it with what has happened since.
                   <br />
-                  <button onClick={() => act.mutate({ id: d.id, path: "regenerate" })}>
-                    Regenerate
+                  {/* Single-submit. Two of these a few milliseconds apart raced
+                      in the engine on 2026-09-17 and left the draft skipped
+                      while it still held its claims. The server takes a row
+                      lock now; the button no longer offers the second click. */}
+                  <button disabled={act.isPending}
+                    onClick={() => act.mutate({ id: d.id, path: "regenerate" })}>
+                    {act.isPending ? "Regenerating…" : "Regenerate"}
                   </button>
                 </Banner>
               )}

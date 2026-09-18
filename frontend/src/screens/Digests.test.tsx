@@ -78,6 +78,52 @@ describe("the digest approval screen", () => {
     ).toBe(true));
   });
 
+  it("says how long is left, not only when the window is", async () => {
+    // 2026-09-18: "expires 9/18, 8:00 AM if not" was read past, and two weekly
+    // digests expired unapproved. A countdown is the thing that registers.
+    const sixHours = new Date(Date.now() + 6 * 60 * 60 * 1000 + 60_000).toISOString();
+    show([aDigest({ send_window_at: sixHours })]);
+    expect(await screen.findByText("Expires in 6 hours")).toBeInTheDocument();
+    expect(screen.getByText(/its updates are owed again next period/)).toBeInTheDocument();
+  });
+
+  it("counts down an every-update draft too, which sends as soon as approved", async () => {
+    const soon = new Date(Date.now() + 25 * 60 * 1000 + 30_000).toISOString();
+    show([aDigest({ cadence: "every_update", send_window_at: soon })]);
+    expect(await screen.findByText("Expires in 25 minutes")).toBeInTheDocument();
+    expect(screen.getByText(/sends as soon as approved/)).toBeInTheDocument();
+  });
+
+  it("fires Regenerate once, however many times it is clicked", async () => {
+    // The 2026-09-17 race started here: one click, two requests. The server
+    // takes a row lock now, and the button stops offering the second click.
+    const user = userEvent.setup();
+    let release = () => {};
+    const inFlight = new Promise<void>((resolve) => { release = resolve; });
+    const attempts: string[] = [];
+    const base = mockApi({
+      "GET /api/digests/upcoming/": [],
+      [`POST /api/digests/${DIGEST_ID}/regenerate/`]: aDigest(),
+      "GET /api/digests/": [aDigest({ is_stale: true, stale_reason: "Overtaken." })],
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/regenerate/")) {
+        attempts.push(String(input));
+        await inFlight;
+      }
+      return base(input, init);
+    }));
+    renderRoute(<Digests me={aMe()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Regenerate" }));
+    const busy = await screen.findByRole("button", { name: "Regenerating…" });
+    expect(busy).toBeDisabled();
+    await user.click(busy);                      // the second click of a double-click
+    expect(attempts).toHaveLength(1);
+    release();
+    await waitFor(() => expect(attempts).toHaveLength(1));
+  });
+
   it("approves a batch through one call, and reports what was refused", async () => {
     const user = userEvent.setup();
     const fetchMock = show([aDigest()], aMe(), {

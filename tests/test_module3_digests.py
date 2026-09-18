@@ -1168,3 +1168,135 @@ def test_coming_up_never_crosses_a_tenant(seeded_tenant, tenant_b, ff, api, comp
     move(task, ff, S.IN_PROGRESS)
     theirs = MembershipFactory(tenant=tenant_b, role="FF")
     assert api.as_(theirs).get("/api/digests/upcoming/").json() == []
+
+
+# ------------------------------------- the dead states hold no claims
+#
+# The failure these three exist for (found in the database on 2026-09-18, on
+# digest 13b5cb53 from the day before): a digest can reach a dead state while
+# its `digest_item` rows survive. Nothing on any screen shows it, and
+# `qualifying_updates` excludes a claimed update whatever state its digest is
+# in — so the content is owed to nobody, for ever. Two near-simultaneous
+# regenerates of one draft put it there.
+
+@pytest.mark.django_db
+def test_no_digest_in_a_dead_state_holds_a_claim(seeded_tenant, ff, company, recipient,
+                                                 project, in_tenant_a):
+    """Every route into `expired` and `skipped`, then one sweep of the table."""
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stakeholder = stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Mapped the flow.")
+
+    # 1 — the tick expires an unapproved draft at its window.
+    expiring = generate_weekly(seeded_tenant)[0]
+    assert expiring.items.count() == 1
+    digest_service.expire_due(seeded_tenant,
+                              now=expiring.send_window_at + timedelta(seconds=1))
+
+    # 2 — a person skips the next one.
+    move(task, ff, S.DONE, "Automation is live.")
+    skipped = generate_weekly(seeded_tenant)[0]
+    assert skipped.items.count() >= 1
+    digest_service.skip(skipped, actor=ff.user, role="FF")
+
+    # 3 — a regenerate finds nothing owed any more (the stakeholder row went).
+    regenerated = generate_weekly(seeded_tenant)[0]
+    assert regenerated.items.count() >= 1
+    Stakeholder.all_objects.filter(pk=stakeholder.pk).delete()
+    digest_service.regenerate(regenerated, actor=ff.user)
+
+    for digest in (expiring, skipped, regenerated):
+        digest.refresh_from_db()
+        assert digest.state in digest_service.DEAD_STATES
+
+    # The invariant itself, over everything in the table.
+    held = DigestItem.all_objects.filter(digest__state__in=digest_service.DEAD_STATES)
+    assert list(held) == [], f"{held.count()} claim(s) survive on a dead digest"
+
+
+@pytest.mark.django_db
+def test_a_dead_state_is_refused_while_its_claims_survive(monkeypatch, seeded_tenant, ff,
+                                                          company, recipient, project,
+                                                          in_tenant_a):
+    """The release failing to take must refuse the state, not write it anyway.
+
+    A live draft a person can still see and act on is a far better outcome than
+    a dead one holding claims, which nothing shows and nobody can reach.
+    """
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Mapped the flow.")
+    digest = generate_weekly(seeded_tenant)[0]
+    assert digest.items.count() == 1
+
+    monkeypatch.setattr(digest_service, "_release_claims", lambda d: None)
+    with pytest.raises(digest_service.DigestClaimsHeld):
+        digest_service.skip(digest, actor=ff.user, role="FF")
+
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.PENDING
+    assert digest.items.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_two_regenerates_at_once_leave_one_live_draft_with_consistent_claims(
+    seeded_tenant, ff, company, recipient, project, in_tenant_a
+):
+    """The 2026-09-17 race, fired on purpose: one click arriving twice.
+
+    Whichever call wins, the outcome has to be *one* coherent draft — alive,
+    holding exactly the claims its own body describes, with nothing left owed
+    that it has already claimed.
+    """
+    import threading
+
+    from django.db import connection
+
+    from apps.tenancy.context import tenant_context
+
+    task = a_task(seeded_tenant, company, ff=ff, project=project)
+    stake(seeded_tenant, recipient, project=project)
+    move(task, ff, S.IN_PROGRESS, "Mapped the flow.")
+    digest = generate_weekly(seeded_tenant)[0]
+    move(task, ff, S.DONE, "Automation is live.")      # two updates owed now
+
+    start = threading.Barrier(2, timeout=10)
+    errors: list[Exception] = []
+
+    def fire():
+        try:
+            with tenant_context(seeded_tenant.pk):
+                start.wait()
+                digest_service.regenerate(Digest.objects.get(pk=digest.pk), actor=ff.user)
+        except Exception as exc:                        # noqa: BLE001 — reported below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=fire) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+        assert not thread.is_alive(), "a regenerate blocked for 30s — check the lock"
+    assert not errors, errors
+
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.PENDING         # alive, not skipped
+    assert digest.is_stale is False
+    # One claim per qualifying update, exactly once: both moves and the
+    # `completed` row that the second one writes alongside its status change.
+    claimed = list(DigestItem.all_objects.filter(digest=digest)
+                   .values_list("task_update_id", flat=True))
+    assert len(claimed) == len(set(claimed)), "an update was claimed twice"
+    kinds = sorted(TaskUpdate.all_objects.filter(pk__in=claimed)
+                   .values_list("kind", flat=True))
+    assert kinds == ["completed", "status_changed", "status_changed"]
+    assert "Automation is live." in digest.body_text
+    assert "Mapped the flow." in digest.body_text
+    # Claims consistent with the draft: nothing it holds is owed again, and
+    # nothing it describes went missing.
+    assert digest_service.owed_to(recipient.pk, tenant=seeded_tenant,
+                                  cadence=Cadence.WEEKLY) == []
+    assert list(DigestItem.all_objects.filter(
+        digest__state__in=digest_service.DEAD_STATES)) == []

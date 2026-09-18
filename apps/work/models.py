@@ -386,6 +386,13 @@ class DigestItem(TenantScopedModel):
     digest for that contact. Expiry DELETES these rows, so the claim is
     released and the updates are owed again next period; an approved digest's
     items are never touched again (FR-3.30b).
+
+    The invariant, which is not expressible as a database constraint and so is
+    held by `digests._enter_dead_state` and its test: **no digest in a dead
+    state (`expired`, `skipped`) may hold one of these rows.** A dead digest
+    with live claims shows on no screen and owes its updates to nobody —
+    `qualifying_updates` excludes a claimed update whatever state its digest is
+    in. Reached once, by two regenerates racing on one draft (2026-09-17).
     """
 
     digest = models.ForeignKey(Digest, on_delete=models.CASCADE, related_name="items")
