@@ -268,3 +268,41 @@ describe("the template editor", () => {
     expect(screen.queryByLabelText("Wording of s4_done_right")).not.toBeInTheDocument();
   });
 });
+
+describe("the emailed link, walked end to end", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  // The 2026-09-19 bug. Every test above rendered PreCallForm inside a route
+  // that already named `:token`, so `useParams()` always had one — which is
+  // exactly the blind spot. This one starts where a prospect starts: the URL
+  // out of the email, through the real App, with nothing pre-matched.
+  it("opens the URL from the email and asks the server for THAT token", async () => {
+    const { App } = await import("../App");
+    const token = "plnK7MG8F044F0i8-KblbBQMQEvX5WkvdRhVI01QiKI";
+    const fetchMock = mockApi({ [`GET /api/strategy/precall/${token}`]: aForm() });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute(<App />, { path: "*", route: `/strategy/precall/${token}` });
+
+    expect(await screen.findByText(/Revenue — last year/)).toBeInTheDocument();
+    const asked = fetchMock.calls.map((c) => c.url);
+    expect(asked).toContain(`/api/strategy/precall/${token}`);
+    expect(asked.some((url) => url.includes("undefined"))).toBe(false);
+    // And no sign-in was attempted on the way: this page has no session.
+    expect(asked.some((url) => url.includes("/api/me"))).toBe(false);
+  });
+
+  it("does the same for the cadence link, which had the same shape", async () => {
+    const { App } = await import("../App");
+    const token = "a-stakeholder-token";
+    const fetchMock = mockApi({ [`GET /api/cadence/${token}`]: {
+      practice: "Executives Now", name: "Dana Reyes", cadence: "weekly",
+      is_muted: false, choices: [{ value: "weekly", label: "Weekly" }] } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute(<App />, { path: "*", route: `/updates/${token}` });
+
+    await waitFor(() => expect(fetchMock.calls.map((c) => c.url))
+      .toContain(`/api/cadence/${token}`));
+  });
+});

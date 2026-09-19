@@ -80,6 +80,15 @@ ignoring the tray, say so — that is a prompt problem and a Phase 4 bug.*
 
 ## Check 2 — Fill in the pre-call form as a prospect would
 
+> **Fixed 2026-09-19, found by this check.** The emailed link opened on "This
+> link has expired" for a token that was valid and a session 30 days from
+> expiry. The page was rendered outside a `<Route>`, so it never received the
+> token from the URL and asked the server for `/api/strategy/precall/undefined`
+> — which is, correctly, an unknown token. The cadence link in every digest
+> footer had the same shape and the same fault. Both now render inside a route,
+> and a test walks the real sequence: send the invite, take the URL out of the
+> delivered mail, open it cold.
+
 Before you send one to anybody real.
 
 1. Start a session against **yourself** (or a test contact whose email you hold).

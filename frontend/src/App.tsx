@@ -94,14 +94,25 @@ function captureDefaults(pathname: string) {
 
 export function App() {
   const location = useLocation();
-  // FR-3.33a — reachable with no session at all, so it renders before the
-  // sign-in check below.
-  const cadence = matchPath("/updates/:token", location.pathname);
-  if (cadence) return <CadenceLink />;
-  // FR-4.6 / matrix 10.13 — the prospect has no login and no role, so the
-  // pre-call form renders before the sign-in check too.
-  const precall = matchPath("/strategy/precall/:token", location.pathname);
-  if (precall) return <PreCallForm />;
+  // The two pages reachable with **no session at all**: the cadence link in
+  // every digest footer (FR-3.33a) and the pre-call form (FR-4.6, matrix
+  // 10.13). They render before the sign-in check below.
+  //
+  // They are rendered inside <Routes>, not returned bare. `useParams()` reads
+  // from the matched route, so a bare element gets an EMPTY params object and
+  // the page fetches `/api/.../undefined` — which the server answers, quite
+  // correctly, with "this link has expired". That is the 2026-09-19 bug: a
+  // valid token, a valid session, and a page that never sent it.
+  const isPublic = matchPath("/updates/:token", location.pathname)
+    || matchPath("/strategy/precall/:token", location.pathname);
+  if (isPublic) {
+    return (
+      <Routes>
+        <Route path="/updates/:token" element={<CadenceLink />} />
+        <Route path="/strategy/precall/:token" element={<PreCallForm />} />
+      </Routes>
+    );
+  }
 
   const { data: me, isLoading, isError } = useQuery<Me>({
     queryKey: ["me"],

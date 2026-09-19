@@ -766,3 +766,67 @@ def test_the_editor_refuses_an_empty_prompt_or_an_unknown_ask_when(edit, expecte
                                  {"questions": [{"key": "s4_done_right", **edit}]},
                                  content_type="application/json")
     assert response.status_code == expected
+
+
+# --------------------------------------- the emailed link, walked end to end
+#
+# The 2026-09-19 bug: a valid token, a valid session, and a page that fetched
+# `/api/strategy/precall/undefined` because the public page was rendered outside
+# a <Route> and `useParams()` had nothing to give it. Every test before this one
+# started from a token it already held, which is exactly how that survived. This
+# one starts where a prospect starts: the URL in the delivered mail.
+
+@pytest.mark.django_db
+def test_the_link_in_the_delivered_invite_opens_the_form(seeded_tenant, template,
+                                                         prospect, ff, api, client,
+                                                         dev_outbox):
+    import re
+
+    made = api.as_(ff).post("/api/strategy-sessions/", {"contact": str(prospect.pk)},
+                            content_type="application/json")
+    assert made.status_code == 201
+    session_id = made.json()["id"]
+
+    sent = api.as_(ff).post(f"/api/strategy-sessions/{session_id}/send-invite/")
+    assert sent.status_code == 201
+    assert len(dev_outbox) == 1, "the invite did not reach the transport"
+
+    # The URL as the prospect receives it — not one rebuilt from the database,
+    # because the whole failure was in the trip from the mail to the request.
+    body = dev_outbox[0].body
+    found = re.search(r"https?://[^\s]+/strategy/precall/([A-Za-z0-9_-]+)", body)
+    assert found, f"no pre-call link in the delivered mail:\n{body}"
+    token = found.group(1)
+
+    # And the stored copy still carries no working credential (assumption C3).
+    stored = OutboxMessage.all_objects.get(
+        producer=OutboxMessage.Producer.PRECALL_INVITE)
+    assert token not in stored.body_text and token not in stored.body_html
+
+    # Opened cold, with no session of any kind.
+    opened = client.get(f"/api/strategy/precall/{token}")
+    assert opened.status_code == 200, opened.content
+    payload = opened.json()
+    assert payload["first_name"] == prospect.first_name
+    assert payload["of"] == 13 and payload["answered"] == 0
+    assert payload["sections"][0]["questions"][0]["key"] == "s1_revenue"
+
+    # And it answers, which is the other half of the link working.
+    saved = client.post(f"/api/strategy/precall/{token}",
+                        data=json.dumps({"question_key": "s1_revenue",
+                                         "value": {"text": "4.2m"}}),
+                        content_type="application/json")
+    assert saved.status_code == 200 and saved.json()["answered"] == 1
+
+
+@pytest.mark.django_db
+def test_a_token_that_is_not_one_is_refused_the_same_way_as_an_expired_one(client,
+                                                                           session):
+    """What the broken page was hitting. Both are 404 with the same sentence:
+    the page cannot be told apart a bad link from an old one, and neither can a
+    prospect, so the message names the remedy rather than the cause."""
+    services.issue_precall_token(session)
+    for bad in ("undefined", "null", "not-a-token"):
+        response = client.get(f"/api/strategy/precall/{bad}")
+        assert response.status_code == 404
+        assert "expired" in response.json()["detail"]
