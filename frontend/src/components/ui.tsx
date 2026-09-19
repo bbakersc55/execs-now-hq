@@ -1,7 +1,9 @@
 import { ReactNode } from "react";
 
 export function Card({ title, children, actions }: {
-  title?: string; children: ReactNode; actions?: ReactNode;
+  // A node, not only a string: a card's heading is sometimes the control that
+  // acts on it — the live session's section headers start that section's clock.
+  title?: ReactNode; children: ReactNode; actions?: ReactNode;
 }) {
   return (
     <section className="card">

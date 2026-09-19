@@ -616,12 +616,12 @@ is the only thing that tests this module honestly.
 
 | | |
 |---|---|
-| Automated tests | **1081 passed**, 3 skipped, 2 xfailed |
-| — Module 4 files | **67** (`test_module4_acceptance.py` 30, `test_module4_session.py` 30, `test_module4_seed.py` 7) |
+| Automated tests | **1088 passed**, 3 skipped, 2 xfailed |
+| — Module 4 files | **74** (`test_module4_acceptance.py` 37, `test_module4_session.py` 30, `test_module4_seed.py` 7) |
 | — tenant isolation | **261** (was 231; the six new tables add 30, driven by the registry) |
 | — role boundaries | **146**, with matrix §10 asserted in the Module 4 files, as Module 3 did |
-| Frontend tests | **229 passed** (9 new: the public form, the live view, the §10 boundary) |
-| Migrations | **5, all additive**, applied: `strategy` 0001 (six tables), 0003 (`drafted_areas`), 0005 (`started_at`), `work` 0004 and `crm` 0021 (the goal columns and the three `source_map_row` back-links). Two data migrations: `strategy` 0002 (the seed) and 0004 (the diagnostic's note field) |
+| Frontend tests | **234 passed** (14 new: the public form, the live view, the §10 boundary, pacing, the editor) |
+| Migrations | **6, all additive**, applied: `strategy` 0001 (six tables), 0003 (`drafted_areas`), 0005 (`started_at`), 0006 (`current_section` + its clock), `work` 0004 and `crm` 0021 (the goal columns and the three `source_map_row` back-links), plus `crm` 0022 (a producer choice, no-op at the database). Two data migrations: `strategy` 0002 (the seed) and 0004 (the diagnostic's note field) |
 | New dependency | **WeasyPrint 70.0**, pinned with its nine transitive pins |
 
 #### AC-4.1 to AC-4.19
@@ -633,7 +633,7 @@ is the only thing that tests this module honestly.
 | 4.3 | Public, resumable, owner notified | ✅ | `test_ac_4_3_...` — no session cookie, answer persists across a reopen, `precall_complete` notice lands in the Outbox as `sent` |
 | 4.4 | Merge field degrades | ✅ | `test_ac_4_4_and_4_15_...` — "no Integrator identified", no brace survives |
 | 4.5 | Scoring computed, attention directed | ✅ | `test_ac_4_5_...` — average, lowest, and the flag moves with no stored value edited |
-| 4.6 | Timing and ★ tracking live | ⚠️ **Partly** | `test_ac_4_6_...` (counter, budgets) and `..._the_call_clock_starts_when_the_call_does`. **Elapsed is session-level**, against the template's 70 minutes; **per-section elapsed is not tracked** — nothing marks which section you are on. Open question below |
+| 4.6 | Timing and ★ tracking live | ✅ | `test_ac_4_6_...` (counter, budgets), `..._the_call_clock_starts_when_the_call_does`, and `..._clicking_a_section_starts_its_clock_...`. Per-section pacing landed on the owner's ruling of 2026-09-18 |
 | 4.7 | Rows require acceptance | ✅ | `test_ac_4_7_...` — tray of three, accept / edit-and-accept / discard, map holds exactly two |
 | 4.8 | Mirror proposed, not saved | ✅ | `test_ac_4_8_...` — draft lands in `proposed_mirror_*`, stored mirror stays blank until a person writes it |
 | 4.9 | PDF exclusions, all five | ✅ | Two tests: every marker absent with flags off; mechanics toggled on shows **only** that one; and the generated file's own bytes carry none |
@@ -662,35 +662,42 @@ is the only thing that tests this module honestly.
 
 #### What is built
 
-Six tables, a seeded template, a public form, a live view, two Claude triggers, a PDF
-with five exclusions, conversion into Goals and Projects, and both emails through the
-shared layout. Three screens: `Sessions`, `SessionDetail` (the live view, the tray, the
-PDF panel and conversion), and the public `PreCallForm`, which renders before the
-sign-in check like the cadence link does.
+Six tables, a seeded template, a public form, a live view with per-section pacing, two
+Claude triggers, a PDF with five exclusions, conversion into Goals and Projects, and
+both emails through the shared layout. Four screens: `Sessions`, `SessionDetail` (the
+live view, the tray, the PDF panel and conversion), `SessionTemplate` (the minimal
+editor), and the public `PreCallForm`, which renders before the sign-in check like the
+cadence link does.
+
+#### The two open questions, ruled on 2026-09-18 and built
+
+1. **Per-section pacing — build it, minimally.** Clicking a section header marks it
+   current and starts its clock; the pill counts against that section's own budget and
+   turns amber past it. The session keeps **only** the current section and when it
+   started (`current_section`, `current_section_at`) — no per-section ledger, because a
+   history of every section a fractional clicked through is state nobody reads.
+2. **The template editor is V1 — except a minimal one now.** Beta's editor changes
+   three things per question and no more: **the wording, `ask_when`, and `must_ask`**,
+   founder fractional only. Reordering, adding, deleting, and the flags that carry
+   privacy (`is_financial`, `has_fractional_note`) wait for V1's multi-discipline work.
+   The API refuses the rest rather than quietly ignoring it, and a test asserts that an
+   edit reaches no session already under way.
+
+Also ruled the same day: the **§4 note field stands as built** — AC-4.9's "§4 internal
+observation" needed a home, and the data migration that gave it one only touched
+questions still carrying the seeded wording.
 
 #### Gaps, stated plainly
 
-1. **No template-editing screen.** Matrix 10.1 and FR-4.2 are served by an API
-   (`PATCH /api/strategy-templates/<id>/`, FF only) with no UI. Editing the template
-   today means an API call. It is the one done-means item that is code-complete but not
-   usable by hand.
-2. **Per-section elapsed is not tracked** (AC-4.6, above).
-3. **Claude has been exercised only against the test double.** The drafting prompts
+1. **Claude has been exercised only against the test double.** The drafting prompts
    have never met the real API in a real session, and their output quality is
    unmeasured: that is manual check 3's job, and the report on it will be **your
    judgement on N real sessions**, with N.
-4. **The five manual checks have not run.** Check 1 — running a real session with a
-   real prospect — is the only honest test of this module.
-
-#### Open questions for the owner
-
-1. **Per-section pacing.** Should the live view carry a "we're on §4 now" control so
-   elapsed can be shown per section against its budget, or is the call-level clock
-   against the 70-minute total enough? The former needs a small UI affordance and one
-   more column; the latter is what is built.
-2. **The template editor.** Does it belong in Phase 4, or with the V1 multi-discipline
-   work where other fractionals need it? Beta has one template and it is seeded
-   correctly.
+2. **The five manual checks have not run** (`phase4_manual_checks.md`, with the click
+   paths). Check 1 — running a real session with a real prospect — is the only honest
+   test of this module.
+3. **V1's template work is deferred, deliberately:** no reordering, no adding or
+   deleting questions, no second discipline, no per-tenant worked example.
 
 ---
 

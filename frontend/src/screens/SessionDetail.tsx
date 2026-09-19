@@ -9,18 +9,24 @@ import {
 
 const CAN_RUN = ["FF", "CF"];
 
+/** Minutes since a moment, on a clock that moves. Returns null when there is
+ *  no moment to count from. */
+function useMinutesSince(from: string | null) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!from) return;
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [from]);
+  if (!from) return null;
+  return Math.max(0, Math.floor((now - Date.parse(from)) / 60_000));
+}
+
 /** Minutes since the call actually began — FR-4.15's pacing, on a clock that
  *  moves. Scheduled is when it was meant to start; `started_at` is when it did,
  *  so a call that began late does not open twenty minutes over budget. */
 function useElapsed(startedAt: string | null) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!startedAt) return;
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, [startedAt]);
-  if (!startedAt) return null;
-  return Math.max(0, Math.floor((now - Date.parse(startedAt)) / 60_000));
+  return useMinutesSince(startedAt);
 }
 
 // The seed's own worked example, kept as copy rather than as a row: a map row
@@ -54,6 +60,13 @@ export function SessionDetail({ me }: { me: Me }) {
     queryKey: ["strategy-session", id], queryFn: () => api.get<StrategySessionRow>(path),
   });
   const elapsed = useElapsed(session.data?.started_at ?? null);
+  // FR-4.15 — pacing. Clicking a section header says "we are here now", and the
+  // section's own clock starts. Nothing else is kept: no per-section ledger.
+  const onSection = useMinutesSince(session.data?.current_section_at ?? null);
+  const setSection = useMutation({
+    mutationFn: (code: string) => api.patch(path, { current_section: code }),
+    onSuccess: () => refresh(),
+  });
   const refresh = () => qc.invalidateQueries({ queryKey: ["strategy-session", id] });
 
   const answer = useMutation({
@@ -120,10 +133,26 @@ export function SessionDetail({ me }: { me: Me }) {
         <SixKey summary={data.six_key_components} sections={data.sections ?? []} />
       )}
 
-      {(data.sections ?? []).map((section) => (
-        <Card key={section.code} title={section.title}
-          actions={section.time_budget_minutes
-            ? <Pill>{section.time_budget_minutes} min</Pill> : undefined}>
+      {(data.sections ?? []).map((section) => {
+        const here = data.current_section === section.code;
+        const over = here && onSection !== null && section.time_budget_minutes !== null
+          && onSection > section.time_budget_minutes;
+        return (
+        <Card key={section.code}
+          title={
+            <button className="ghost" style={{ font: "inherit", padding: 0 }}
+              aria-label={`Start ${section.title}`}
+              onClick={() => setSection.mutate(here ? "" : section.code)}>
+              {here ? "▶ " : ""}{section.title}
+            </button>
+          }
+          actions={section.time_budget_minutes ? (
+            <Pill kind={over ? "warn" : here ? "ai" : ""}>
+              {here && onSection !== null
+                ? `${onSection} of ${section.time_budget_minutes} min`
+                : `${section.time_budget_minutes} min`}
+            </Pill>
+          ) : undefined}>
           {section.code === "mirror" && (
             <Mirror data={data} mayRun={mayRun}
               onDraft={() => act.mutate({ suffix: "draft-mirror/" })}
@@ -148,7 +177,8 @@ export function SessionDetail({ me }: { me: Me }) {
             <p className="small muted">Nothing to capture here.</p>
           )}
         </Card>
-      ))}
+        );
+      })}
 
       {mayRun && <PdfCard data={data} path={path} onChanged={refresh} setNote={setNote} />}
       {mayRun && <ConvertCard id={id!} path={path} data={data} onChanged={refresh}

@@ -25,7 +25,8 @@ from apps.crm.models import Contact
 from apps.strategy import ai, conversion, emails, pdf as pdf_service, services
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
-    StrategyAnswer, StrategyMapRow, StrategySession, StrategyTemplate, PDF_FLAG_KEYS,
+    AskWhen, StrategyAnswer, StrategyMapRow, StrategySession, StrategyTemplate,
+    PDF_FLAG_KEYS,
 )
 from apps.tenancy.models import CLIENT_ROLES, AuditEvent
 
@@ -151,6 +152,19 @@ class SessionViewSet(StrategyViewSet):
             if field in data:
                 setattr(session, field, (data[field] or "").strip())
                 fields.append(field)
+        # FR-4.15 — "we are on this section now". One field and its clock; the
+        # previous section's elapsed is not kept, because nothing reads it.
+        if "current_section" in data:
+            from django.utils import timezone
+
+            code = (data["current_section"] or "").strip()
+            known = {s["code"] for s in session.template_snapshot.get("sections", [])}
+            if code and code not in known:
+                return Response({"detail": "That section is not in this session."},
+                                status=400)
+            session.current_section = code
+            session.current_section_at = timezone.now() if code else None
+            fields += ["current_section", "current_section_at"]
         if "state" in data and data["state"] in StrategySession.State.values:
             session.state = data["state"]
             fields.append("state")
@@ -395,9 +409,22 @@ class MapRowViewSet(StrategyViewSet):
         return Response({"ok": True})
 
 
+# Matrix 10.1 / FR-4.2 — what Beta's editor may change, and no more. Reordering,
+# adding and deleting questions, and the flags that carry privacy
+# (`is_financial`, `has_fractional_note`) are V1's, with the multi-discipline
+# work: Beta has one template, seeded correctly, and the risk of a half-built
+# editor rewriting it is worse than the inconvenience of an API call.
+EDITABLE_QUESTION_FIELDS = ("prompt", "ask_when", "must_ask")
+
+
 class TemplateViewSet(StrategyViewSet):
     """Matrix 10.1 — the template is the FF's to edit. Everyone else reads it,
-    because the live view has to render its own session."""
+    because the live view has to render its own session.
+
+    **Editing here can never reach a session already under way** (FR-4.5): a
+    session renders from the snapshot it took at `start`, and nothing in it
+    points at these rows.
+    """
 
     def list(self, request):
         if self._role() not in {FF, CF, VA}:
@@ -420,13 +447,22 @@ class TemplateViewSet(StrategyViewSet):
         changed = []
         for edit in request.data.get("questions") or []:
             question = StrategyQuestion.objects.filter(
-                template=template, key=edit.get("key")).first()
+                template=template, key=edit.get("key"), deleted_at__isnull=True).first()
             if question is None:
                 continue
-            for field in ("prompt", "ask_when", "must_ask", "area", "position",
-                          "is_financial", "has_fractional_note"):
-                if field in edit:
-                    setattr(question, field, edit[field])
+            for field in EDITABLE_QUESTION_FIELDS:
+                if field not in edit:
+                    continue
+                if field == "ask_when" and edit[field] not in AskWhen.values:
+                    return Response({"detail": "ask_when is 'precall' or 'live'."},
+                                    status=400)
+                if field == "prompt" and not (edit[field] or "").strip():
+                    return Response({"detail": "A question needs a prompt."}, status=400)
+                setattr(question, field, edit[field])
             question.save()
             changed.append(question.key)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="strategy.template_edited",
+            target_type="strategy_template", target_id=template.pk,
+            payload={"questions": changed})
         return Response({"changed": changed})

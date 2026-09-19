@@ -7,6 +7,7 @@ import { aMe } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { PreCallForm as PreCall } from "./PreCallForm";
 import { SessionDetail } from "./SessionDetail";
+import { SessionTemplate } from "./SessionTemplate";
 
 const TOKEN = "a-public-token";
 const SESSION_ID = "11111111-2222-4333-8444-555555555555";
@@ -37,6 +38,7 @@ function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionR
     company: { id: "co1", name: "Acme Facilities" },
     visionary: null, integrator: null, owner: "Bryan Baker",
     scheduled_at: null, started_at: "2026-09-18T12:00:00Z", budget_minutes: 70,
+    current_section: "", current_section_at: null,
     precall_sent: true, precall_expires_at: "2026-10-18T14:00:00Z",
     mirror: { goal: "", unlocks: "" },
     proposed_mirror: { goal: "Two branches by spring.", unlocks: "Supervisor cover." },
@@ -183,5 +185,86 @@ describe("the live session view", () => {
     expect(screen.queryByText("Convert to work")).not.toBeInTheDocument();
     // It can still send the form — that is matrix 10.3.
     expect(screen.getByRole("button", { name: /Send it again/ })).toBeInTheDocument();
+  });
+});
+
+describe("per-section pacing", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("starts a section's clock when its header is clicked", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      [`PATCH /api/strategy-sessions/${SESSION_ID}/`]: aSession(),
+    });
+    await screen.findByText(/Diagnostic/);
+    await user.click(screen.getByRole("button", { name: /Start Diagnostic/ }));
+    await waitFor(() => {
+      const patched = fetchMock.calls.find((c) => c.method === "PATCH");
+      expect(patched?.body).toEqual({ current_section: "diagnostic" });
+    });
+  });
+
+  it("counts the current section against its own budget", async () => {
+    const twelveMinutesAgo = new Date(Date.now() - 12 * 60_000).toISOString();
+    showSession(aSession({ current_section: "diagnostic",
+                           current_section_at: twelveMinutesAgo }));
+    expect(await screen.findByText("12 of 25 min")).toBeInTheDocument();
+    // The sections not being run show their budget and nothing else.
+    expect(screen.getByText("15 min")).toBeInTheDocument();
+  });
+
+  it("flags a section that has run over", async () => {
+    const longAgo = new Date(Date.now() - 40 * 60_000).toISOString();
+    showSession(aSession({ current_section: "diagnostic", current_section_at: longAgo }));
+    const pill = await screen.findByText("40 of 25 min");
+    expect(pill).toHaveClass("warn");
+  });
+});
+
+describe("the template editor", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const TEMPLATE = {
+    id: "t1", name: "Operations — strategy session", discipline: "operations",
+    version: 1, is_default: true,
+    sections: [{ code: "diagnostic", title: "Diagnostic", position: 3,
+                 time_budget_minutes: 25, questions: [
+      { key: "s4_done_right", prompt: "How do you know a site was done right?",
+        prompt_template: "How do you know a site was done right?", ask_when: "live",
+        must_ask: true, area: "Operations & quality",
+        response_schema: "diagnostic_triple", is_fractional_observation: false,
+        has_fractional_note: true, is_financial: false, position: 0 },
+    ]}],
+  };
+
+  it("edits wording, when it is asked, and must-ask — and says what it cannot touch",
+     async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "PATCH /api/strategy-templates/t1/": { changed: ["s4_done_right"] },
+      "GET /api/strategy-templates/": [TEMPLATE],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<SessionTemplate me={aMe()} />);
+
+    const box = await screen.findByLabelText("Wording of s4_done_right");
+    await user.clear(box);
+    await user.type(box, "How do you know last night went well?");
+    await user.selectOptions(screen.getByLabelText("When to ask s4_done_right"),
+                             "precall");
+    await user.click(screen.getByRole("button", { name: /Save 1 change/ }));
+
+    await waitFor(() => expect(screen.getByText(/Sessions already under way are untouched/))
+      .toBeInTheDocument());
+    const patched = fetchMock.calls.find((c) => c.method === "PATCH");
+    expect(patched?.body).toEqual({ questions: [{ key: "s4_done_right",
+      prompt: "How do you know last night went well?", ask_when: "precall" }] });
+  });
+
+  it("is the founder fractional's alone", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/strategy-templates/": [TEMPLATE] }));
+    renderRoute(<SessionTemplate me={aMe({ role: "CF" })} />);
+    expect(await screen.findByText(/founder fractional's to edit/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Wording of s4_done_right")).not.toBeInTheDocument();
   });
 });

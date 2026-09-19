@@ -658,3 +658,111 @@ def test_ac_4_14_a_session_and_its_token_are_unreachable_from_another_tenant(
     # user holding the raw token gets that session's form and no other.
     resolved = services.session_for_precall_token(raw)
     assert resolved.tenant_id == seeded_tenant.pk
+
+
+# --------------------------------------- pacing and the minimal template editor
+#
+# Both owner rulings of 2026-09-18: per-section pacing keeps nothing but the
+# current section and when it started, and Beta's template editor changes three
+# things and no more.
+
+@pytest.mark.django_db
+def test_clicking_a_section_starts_its_clock_and_keeps_nothing_else(session, ff, api):
+    assert session.current_section == "" and session.current_section_at is None
+
+    api.as_(ff).patch(f"/api/strategy-sessions/{session.pk}/",
+                      {"current_section": "diagnostic"},
+                      content_type="application/json")
+    session.refresh_from_db()
+    assert session.current_section == "diagnostic"
+    first_at = session.current_section_at
+    assert first_at is not None
+
+    # Moving on replaces both. There is no ledger of where the call has been.
+    api.as_(ff).patch(f"/api/strategy-sessions/{session.pk}/",
+                      {"current_section": "strategy_map"},
+                      content_type="application/json")
+    session.refresh_from_db()
+    assert session.current_section == "strategy_map"
+    assert session.current_section_at > first_at
+
+    # Clearing it stops the clock.
+    api.as_(ff).patch(f"/api/strategy-sessions/{session.pk}/", {"current_section": ""},
+                      content_type="application/json")
+    session.refresh_from_db()
+    assert session.current_section == "" and session.current_section_at is None
+
+
+@pytest.mark.django_db
+def test_a_section_that_is_not_in_this_session_is_refused(session, ff, api):
+    refused = api.as_(ff).patch(f"/api/strategy-sessions/{session.pk}/",
+                                {"current_section": "invented"},
+                                content_type="application/json")
+    assert refused.status_code == 400
+    session.refresh_from_db()
+    assert session.current_section == ""
+
+
+@pytest.mark.django_db
+def test_only_the_founder_fractional_edits_the_template(template, seeded_tenant, ff, api):
+    for role in ("CF", "VA"):
+        member = MembershipFactory(tenant=seeded_tenant, role=role)
+        refused = api.as_(member).patch(f"/api/strategy-templates/{template.pk}/",
+                                        {"questions": [{"key": "s4_done_right",
+                                                        "must_ask": False}]},
+                                        content_type="application/json")
+        assert refused.status_code in (403, 404)
+    assert StrategyQuestion.objects.get(template=template,
+                                        key="s4_done_right").must_ask is True
+
+
+@pytest.mark.django_db
+def test_the_editor_changes_three_things_and_ignores_the_rest(template, ff, api):
+    response = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+        "questions": [{
+            "key": "s4_done_right",
+            "prompt": "How do you know last night went well?",
+            "ask_when": "precall",
+            "must_ask": False,
+            # Not Beta's to change — these come with V1's editor.
+            "is_financial": True,
+            "has_fractional_note": False,
+            "area": "Something else",
+            "position": 99,
+        }]}, content_type="application/json")
+    assert response.status_code == 200 and response.json()["changed"] == ["s4_done_right"]
+
+    question = StrategyQuestion.objects.get(template=template, key="s4_done_right")
+    assert question.prompt == "How do you know last night went well?"
+    assert question.ask_when == "precall" and question.must_ask is False
+    assert question.is_financial is False           # untouched
+    assert question.has_fractional_note is True     # untouched
+    assert question.area == "Operations & quality"  # untouched
+    assert question.position == 8                   # untouched
+    assert AuditEvent.all_objects.filter(verb="strategy.template_edited").exists()
+
+
+@pytest.mark.django_db
+def test_an_edit_cannot_reach_a_session_already_under_way(session, template, ff, api):
+    before = StrategySession.objects.get(pk=session.pk).template_snapshot
+    api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+        "questions": [{"key": "s4_done_right", "prompt": "Rewritten mid-call.",
+                       "ask_when": "precall", "must_ask": False}]},
+        content_type="application/json")
+    session.refresh_from_db()
+    assert session.template_snapshot == before
+    frozen = services.question_in(session.template_snapshot, "s4_done_right")
+    assert frozen["must_ask"] is True and frozen["ask_when"] == "live"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("edit,expected", [
+    ({"prompt": "   "}, 400),
+    ({"ask_when": "whenever"}, 400),
+])
+def test_the_editor_refuses_an_empty_prompt_or_an_unknown_ask_when(edit, expected,
+                                                                   template, ff, api):
+    response = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/",
+                                 {"questions": [{"key": "s4_done_right", **edit}]},
+                                 content_type="application/json")
+    assert response.status_code == expected

@@ -27,6 +27,12 @@ export function Sessions({ me }: { me: Me }) {
   return (
     <>
       <h1>Strategy sessions</h1>
+      {me.role === "FF" && (
+        <p className="small muted">
+          <Link to="/strategy/template">Edit the template</Link> — wording, pre-call or
+          live, and must-asks. Sessions already under way are never affected.
+        </p>
+      )}
       {note && <Banner kind="ok">{note}</Banner>}
       <NewSession onDone={(text) => { setNote(text); refresh(); }} />
 

@@ -574,6 +574,8 @@ export interface StrategySessionRow {
   scheduled_at: string | null;
   started_at: string | null;
   budget_minutes: number;
+  current_section: string;
+  current_section_at: string | null;
   precall_sent: boolean;
   precall_expires_at: string | null;
   mirror: { goal: string; unlocks: string };

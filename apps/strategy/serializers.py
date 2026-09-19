@@ -64,6 +64,9 @@ def represent_session(session, *, include_financial=True, full=False) -> dict:
         if session.owner_id else "",
         "scheduled_at": session.scheduled_at.isoformat() if session.scheduled_at else None,
         "started_at": session.started_at.isoformat() if session.started_at else None,
+        "current_section": session.current_section,
+        "current_section_at": (session.current_section_at.isoformat()
+                               if session.current_section_at else None),
         # The seed's own pacing, totalled: what "on time" means for this call.
         "budget_minutes": sum(s.get("time_budget_minutes") or 0
                               for s in session.template_snapshot.get("sections", [])),

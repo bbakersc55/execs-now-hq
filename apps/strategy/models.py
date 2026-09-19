@@ -196,6 +196,12 @@ class StrategySession(TenantScopedModel):
     pdf_file = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="+")
     pdf_include_flags = models.JSONField(default=default_pdf_include_flags, blank=True)
+    # FR-4.15 — pacing, and the whole of what is kept for it: which section the
+    # call is on, and when it got there. Deliberately not a per-section ledger:
+    # a strategy session is not a stopwatch, and a history of every section a
+    # fractional clicked through would be state nobody reads.
+    current_section = models.CharField(max_length=40, blank=True, default="")
+    current_section_at = models.DateTimeField(null=True, blank=True)
     # FR-4.18a — which diagnostic areas have already fired the automatic draft.
     # Kept here rather than inferred from `ai_call`, which records that a run
     # happened but not what completed it; without this the second trigger would
