@@ -712,9 +712,15 @@ Three defects found, all fixed the same day:
    Integrator's role" — and the explanation is appended once, in brackets: *"…, the
    Integrator's role (no Integrator identified yet)"*.
 
-**The tray verdict — the owner's judgement on the Claude-drafted map rows from this
-one dry-run session — is still outstanding.** It will be recorded here as their own
-sentence, attributed and counted (N = 1), and not written for them.
+**The tray verdict**, the owner's own words, on **N = 1 dry-run session**
+(2026-09-19):
+
+> Viable — the drafted map rows were usable and arrived on the fly during the
+> session; I would use them on a real call.
+
+That is the whole of the claim being made about the AI's output in this module: one
+session, the owner's sentence, no inference from it about how it will read on the
+next one. Check 3 on real sessions raises N; nothing else does.
 
 #### Gaps, stated plainly
 
@@ -1327,6 +1333,20 @@ In `CLAUDE.md`'s order, not started until Beta has run on your real practice for
 
 1. **The V1 Google verification track.** Beta runs on an **Internal** OAuth consent screen (assumption C1), which needs no verification and has no refresh-token expiry — but Internal means *only Workspace accounts can sign in*. The moment a second fractional's practice needs access, the app must move to **External**, and `gmail.send` plus `gmail.readonly` then require **Google verification with a CASA security assessment**. It is slow, expensive, and **the longest lead time in the entire V1 plan.** Start it before it is needed, not when it blocks launch.
 2. **Postgres row-level security** (B2), deferred from Beta as defence in depth once the schema stops moving.
+
+**On Module 4, for V1** *(owner, 2026-09-19, out of the dry run)*:
+
+3. **Dynamic follow-up questions, beyond the fixed template.** Today a session asks
+   exactly what the template holds, in the order it holds it. The next thing it should
+   do is **read the pre-call answers and the company profile and propose follow-ups**
+   — the question a good operator would ask *because* of what they just said, which a
+   fixed list cannot contain. The same rules as everything else Claude writes here:
+   proposed to the fractional, never asked automatically; asserting nothing the input
+   does not carry; and never displacing a **★ must-ask**, which is the floor the
+   template exists to guarantee. Where a follow-up's answer lands — against its parent
+   question, or as an answer in its own right with a generated key — is a data-model
+   question to settle when it is specified, because `question_key` resolving inside a
+   frozen snapshot (AC-4.12) is what a generated question has to respect.
 
 ---
 
