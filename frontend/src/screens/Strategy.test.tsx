@@ -54,20 +54,37 @@ function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionR
             response_schema: "diagnostic_triple", is_fractional_observation: false,
             has_fractional_note: true, is_financial: false, position: 0 },
         ]},
+      { code: "six_key_components", title: "Six Key Components: self-rating",
+        position: 1, time_budget_minutes: null, questions: [
+          { key: "s2_data", prompt: "Data", ask_when: "precall", must_ask: false,
+            area: "", response_schema: "rating_1_10", is_fractional_observation: false,
+            has_fractional_note: false, is_financial: false, position: 2 },
+        ]},
       { code: "mirror", title: "The mirror", position: 4, time_budget_minutes: 5,
         questions: [] },
       { code: "strategy_map", title: "Strategy Map", position: 5,
         time_budget_minutes: 15, questions: [] },
     ],
-    answers: [],
+    answers: [
+      { question_key: "s2_data", value: { rating: 3, comment: "We rewrote the "
+        + "dashboard in March and nobody has opened it since." },
+        fractional_note: "", answered_by: "prospect",
+        updated_at: "2026-09-19T11:00:00Z" },
+    ],
     map_rows: [
       { id: "r1", position: 0, bottleneck: "Supervisor overload", root_cause: "14 sites",
         the_fix: "Area lead per 8", owner_text: "Integrator", horizon: 60,
         measurable: "Inspections per site", mechanics_note: "", state: "proposed",
         converted_to: "", from_ai: true },
     ],
-    six_key_components: { ratings: { s2_vision: 8, s2_data: 3 }, answered: 2, of: 6,
-                          average: 5.5, complete: false, lowest: null },
+    six_key_components: {
+      scores: [
+        { key: "s2_vision", rating: 8, comment: "", answered_by: "prospect" },
+        { key: "s2_data", rating: 3, comment: "We rewrote the dashboard in March "
+          + "and nobody has opened it since.", answered_by: "prospect" },
+      ],
+      ratings: { s2_vision: 8, s2_data: 3 }, answered: 2, of: 6,
+      average: 5.5, complete: false, lowest: null },
     must_ask: { outstanding: ["s4_done_right"], answered: 0, of: 7 },
     ...overrides,
   };
@@ -304,5 +321,48 @@ describe("the emailed link, walked end to end", () => {
 
     await waitFor(() => expect(fetchMock.calls.map((c) => c.url))
       .toContain(`/api/cadence/${token}`));
+  });
+});
+
+describe("answers the prospect already gave", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  // The 2026-09-19 dry run: all six self-ratings answered on the form, and the
+  // live view showed six empty dropdowns under an otherwise correct summary.
+  it("shows a self-rating as answered, not as a blank dropdown", async () => {
+    showSession();
+    const field = await screen.findByLabelText("Data");
+    expect(field).toHaveValue("3");
+    expect(screen.getAllByText("from the form").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the prospect's comment beside the rating, and on saving it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/answers/`]: {
+        answer: { question_key: "s2_data", value: { rating: 5, comment: "x" },
+                  fractional_note: "", answered_by: "fractional",
+                  updated_at: "2026-09-19T12:00:00Z" },
+        six_key_components: { scores: [], ratings: {}, answered: 0, of: 6,
+                              average: null, complete: false, lowest: null },
+        drafted: [] },
+    });
+    expect(await screen.findByLabelText("Data — comment"))
+      .toHaveValue("We rewrote the dashboard in March and nobody has opened it since.");
+
+    await user.selectOptions(screen.getByLabelText("Data"), "5");
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.method === "POST");
+      // Changing the number must not delete the sentence that explains it.
+      expect(posted?.body).toEqual({ question_key: "s2_data", fractional_note: "",
+        value: { rating: 5, comment: "We rewrote the dashboard in March and "
+          + "nobody has opened it since." } });
+    });
+  });
+
+  it("puts each comment beside its rating in the summary", async () => {
+    showSession();
+    expect(await screen.findByText(/We rewrote the dashboard in March/))
+      .toBeInTheDocument();
   });
 });

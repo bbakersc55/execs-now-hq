@@ -168,6 +168,7 @@ export function SessionDetail({ me }: { me: Me }) {
             <QuestionRow key={question.key} question={question}
               saved={answers[question.key]?.value ?? null}
               savedNote={answers[question.key]?.fractional_note ?? ""}
+              answeredBy={answers[question.key]?.answered_by}
               disabled={!mayRun}
               onSave={(value, fractional_note) =>
                 answer.mutate({ question_key: question.key, value, fractional_note })} />
@@ -200,11 +201,19 @@ function SixKey({ summary, sections }: {
         {summary.average !== null && <> · average <strong>{summary.average}</strong></>}
       </p>
       <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-        {Object.entries(summary.ratings).map(([key, rating]) => (
-          <li key={key} className="row" style={{ gap: ".5rem" }}>
-            <span style={{ width: "8rem" }}>{labels[key] ?? key}</span>
-            <strong>{rating}</strong>
-            {summary.lowest === key && <Pill kind="warn">Look here first</Pill>}
+        {summary.scores.map((score) => (
+          <li key={score.key} style={{ marginBottom: ".35rem" }}>
+            <span className="row" style={{ gap: ".5rem" }}>
+              <span style={{ width: "8rem" }}>{labels[score.key] ?? score.key}</span>
+              <strong>{score.rating}</strong>
+              {summary.lowest === score.key && <Pill kind="warn">Look here first</Pill>}
+            </span>
+            {/* The comment beside the number is usually where the signal is. */}
+            {score.comment && (
+              <p className="small muted" style={{ margin: ".1rem 0 0 8.5rem" }}>
+                “{score.comment}”
+              </p>
+            )}
           </li>
         ))}
       </ul>
@@ -379,17 +388,24 @@ function MapSection({ tray, map, mayRun, onDraft, onChanged }: {
   );
 }
 
-function QuestionRow({ question, saved, savedNote, disabled, onSave }: {
+function QuestionRow({ question, saved, savedNote, answeredBy, disabled, onSave }: {
   question: StrategyQuestion; saved: AnswerValue | null; savedNote: string;
+  answeredBy?: "prospect" | "fractional";
   disabled: boolean; onSave: (value: AnswerValue, note?: string) => void;
 }) {
   const value = saved ?? {};
   const [said, setSaid] = useState(String(value.said ?? ""));
   const [cause, setCause] = useState(String(value.cause ?? ""));
   const [tried, setTried] = useState(String(value.tried ?? ""));
-  const [text, setText] = useState(String(value.text ?? value.value ?? ""));
+  // A rating's answer is `{rating, comment}`, and reading it as `text` is what
+  // made a fully answered self-rating render as six empty dropdowns in the
+  // 2026-09-19 dry run — the prospect's work, invisible on the screen that
+  // matters most.
+  const [text, setText] = useState(
+    String(value.rating ?? value.text ?? value.value ?? ""));
   const [why, setWhy] = useState(String(value.why ?? ""));
   const [notes, setNotes] = useState(String(value.notes ?? ""));
+  const [comment, setComment] = useState(String(value.comment ?? ""));
   const [agreed, setAgreed] = useState(Boolean(value.agreed));
   const [note, setNote] = useState(savedNote);
   const schema = question.response_schema;
@@ -400,6 +416,9 @@ function QuestionRow({ question, saved, savedNote, disabled, onSave }: {
       {question.must_ask && <> <Pill kind="warn">must ask</Pill></>}
       {question.is_fractional_observation && <> <Pill>not asked aloud</Pill></>}
       {question.is_financial && <> <Pill kind="bad">financial</Pill></>}
+      {/* Whose answer this is. A prospect's answer is theirs until the
+          fractional changes it, and the screen should say so. */}
+      {answeredBy === "prospect" && <> <Pill kind="ok">from the form</Pill></>}
     </label>
   );
 
@@ -414,7 +433,9 @@ function QuestionRow({ question, saved, savedNote, disabled, onSave }: {
     if (schema === "diagnostic_triple") return { said, cause, tried };
     if (schema === "value_pair") return { value: text, why };
     if (schema === "agreed_note") return { agreed, notes };
-    if (schema === "rating_1_10") return { rating: Number(text || 0) };
+    // Keep the prospect's own comment: changing the number must not silently
+    // delete the sentence that explains it.
+    if (schema === "rating_1_10") return { rating: Number(text || 0), comment };
     if (schema === "path_reaction") return { reaction: said, risk: cause, leaning: tried };
     return { text };
   }
@@ -481,15 +502,23 @@ function QuestionRow({ question, saved, savedNote, disabled, onSave }: {
         </div>
       )}
       {schema === "rating_1_10" && (
-        <select id={question.key} aria-label={question.prompt} value={text}
-          style={{ width: "6rem" }} disabled={disabled}
-          onChange={(e) => { setText(e.target.value);
-            if (e.target.value) onSave({ rating: Number(e.target.value) }, note); }}>
-          <option value="">—</option>
-          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-            <option key={n} value={n}>{n}</option>
-          ))}
-        </select>
+        <div className="row">
+          <select id={question.key} aria-label={question.prompt} value={text}
+            style={{ width: "6rem" }} disabled={disabled}
+            onChange={(e) => { setText(e.target.value);
+              if (e.target.value) {
+                onSave({ rating: Number(e.target.value), comment }, note);
+              } }}>
+            <option value="">—</option>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <input aria-label={`${question.prompt} — comment`} value={comment}
+            placeholder="What they said about it" disabled={disabled}
+            onChange={(e) => setComment(e.target.value)}
+            onBlur={() => text && onSave(currentValue(), note)} />
+        </div>
       )}
       {schema === "free_text" && (
         <textarea id={question.key} rows={2} value={text} disabled={disabled}

@@ -108,14 +108,28 @@ def question_in(snapshot: dict, key: str):
 
 # FR-4.9a — what a merge field says when the thing it names is not there. Never
 # a blank: a blank reads as a bug and gets skipped mid-call.
-MISSING = {
-    "Visionary": "no Visionary identified",
-    "Integrator": "no Integrator identified",
+#
+# Two parts, because one is not enough. A merge field usually lands **inside a
+# sentence**, often inside a possessive — "{Integrator}'s role" — and a whole
+# explanatory clause dropped in there reads as broken English: "no Integrator
+# identified's role" (found in the 2026-09-19 dry run). So the substitution is a
+# plain noun phrase that survives a possessive, and the explanation is added once
+# at the end of the prompt, in brackets, where it reads as a note rather than as
+# part of the question.
+MISSING_NAME = {
+    "Visionary": "the Visionary",
+    "Integrator": "the Integrator",
     "Location A": "their first location",
     "Location B": "their second location",
     "Company": "their company",
     "Session date": "the session date",
     "Fractional name": "your name",
+}
+MISSING_NOTE = {
+    "Visionary": "no Visionary identified yet",
+    "Integrator": "no Integrator identified yet",
+    "Location A": "no locations on file",
+    "Location B": "no second location on file",
 }
 
 
@@ -145,12 +159,26 @@ def merge_context(session: StrategySession) -> dict:
 
 
 def render_prompt(prompt: str, context: dict) -> str:
-    """Fill the merge fields, naming what is missing rather than leaving a hole."""
+    """Fill the merge fields, naming what is missing rather than leaving a hole.
+
+    A missing field becomes a noun phrase that reads correctly wherever it
+    lands — including inside a possessive — and the reason is appended once, in
+    brackets: *"…, the Integrator's role (no Integrator identified yet)"*.
+    """
+    missing: list[str] = []
+
     def replace(match):
         field = match.group(1)
         value = (context.get(field) or "").strip()
-        return value or MISSING.get(field, match.group(0))
-    return MERGE_FIELD.sub(replace, prompt)
+        if value:
+            return value
+        if field not in missing:
+            missing.append(field)
+        return MISSING_NAME.get(field, match.group(0))
+
+    text = MERGE_FIELD.sub(replace, prompt)
+    notes = [MISSING_NOTE[field] for field in missing if field in MISSING_NOTE]
+    return f"{text} ({'; '.join(notes)})" if notes else text
 
 
 # -------------------------------------------------------------- the session
@@ -335,14 +363,26 @@ def six_key_components(session) -> dict:
     scored = []
     for key in keys:
         answer = answers.get(key)
-        rating = (answer.value or {}).get("rating") if answer else None
+        value = (answer.value or {}) if answer else {}
+        rating = value.get("rating")
         if isinstance(rating, int):
-            scored.append((key, rating))
+            scored.append({
+                "key": key,
+                "rating": rating,
+                # The comment beside the number, which is usually where the
+                # signal is: "6" says little, "6, because we rewrote it in
+                # March and nobody has read it since" says everything.
+                "comment": (value.get("comment") or "").strip(),
+                "answered_by": answer.answered_by if answer else "",
+            })
     complete = len(scored) == len(keys) and bool(keys)
-    average = round(sum(r for _k, r in scored) / len(scored), 1) if scored else None
-    lowest = min(scored, key=lambda pair: pair[1])[0] if complete else None
+    average = round(sum(row["rating"] for row in scored) / len(scored), 1) \
+        if scored else None
+    lowest = min(scored, key=lambda row: row["rating"])["key"] if complete else None
     return {
-        "ratings": {key: rating for key, rating in scored},
+        "scores": scored,
+        # Kept for anything reading the old shape; `scores` carries the comment.
+        "ratings": {row["key"]: row["rating"] for row in scored},
         "answered": len(scored),
         "of": len(keys),
         "average": average,

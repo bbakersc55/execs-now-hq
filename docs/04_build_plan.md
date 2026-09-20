@@ -616,11 +616,11 @@ is the only thing that tests this module honestly.
 
 | | |
 |---|---|
-| Automated tests | **1088 passed**, 3 skipped, 2 xfailed |
-| — Module 4 files | **74** (`test_module4_acceptance.py` 37, `test_module4_session.py` 30, `test_module4_seed.py` 7) |
+| Automated tests | **1095 passed**, 3 skipped, 2 xfailed |
+| — Module 4 files | **81** (`test_module4_acceptance.py` 39, `test_module4_session.py` 35, `test_module4_seed.py` 7) |
 | — tenant isolation | **261** (was 231; the six new tables add 30, driven by the registry) |
 | — role boundaries | **146**, with matrix §10 asserted in the Module 4 files, as Module 3 did |
-| Frontend tests | **234 passed** (14 new: the public form, the live view, the §10 boundary, pacing, the editor) |
+| Frontend tests | **239 passed** (19 new: the public form, the live view, the §10 boundary, pacing, the editor, and the 2026-09-19 dry run's three) |
 | Migrations | **6, all additive**, applied: `strategy` 0001 (six tables), 0003 (`drafted_areas`), 0005 (`started_at`), 0006 (`current_section` + its clock), `work` 0004 and `crm` 0021 (the goal columns and the three `source_map_row` back-links), plus `crm` 0022 (a producer choice, no-op at the database). Two data migrations: `strategy` 0002 (the seed) and 0004 (the diagnostic's note field) |
 | New dependency | **WeasyPrint 70.0**, pinned with its nine transitive pins |
 
@@ -687,13 +687,43 @@ Also ruled the same day: the **§4 note field stands as built** — AC-4.9's "§
 observation" needed a home, and the data migration that gave it one only touched
 questions still carrying the seeded wording.
 
+#### The dry run, 2026-09-19 — Checks 2, 3 and 4 on a real session
+
+Run against Noble Baker's session. **Working as intended, confirmed by the owner:**
+the pre-call form's autosave and resume, the owner notification on completion, the
+Snapshot answers carrying through to the live view, and the PDF generated and sent.
+
+Three defects found, all fixed the same day:
+
+1. **A self-rating answered on the form rendered as an empty dropdown in the live
+   view** — six of them, under a summary card that showed the ratings correctly. The
+   live view read a rating answer as if it were free text (`value.text`), so the
+   prospect's own work was invisible on the screen that matters most. Ratings now
+   render as answered and carry a **"from the form"** marker, so it is clear whose
+   answer it is before the fractional changes it.
+2. **The summary showed the numbers and not the comments.** The comment beside a
+   rating is usually where the signal is — "6" says little; "6, because we rewrote it
+   in March and nobody has read it since" says everything. Comments now show beside
+   their rating in the live view and in the PDF, and changing a rating no longer
+   deletes the sentence that explains it.
+3. **A missing merge field read as broken English inside a possessive**: *"no
+   Integrator identified's role"*. FR-4.9a's rule stands, but it needed a second half.
+   What stands in is now a **noun phrase that survives mid-sentence** — "the
+   Integrator's role" — and the explanation is appended once, in brackets: *"…, the
+   Integrator's role (no Integrator identified yet)"*.
+
+**The tray verdict — the owner's judgement on the Claude-drafted map rows from this
+one dry-run session — is still outstanding.** It will be recorded here as their own
+sentence, attributed and counted (N = 1), and not written for them.
+
 #### Gaps, stated plainly
 
 1. **Claude has been exercised only against the test double.** The drafting prompts
    have never met the real API in a real session, and their output quality is
    unmeasured: that is manual check 3's job, and the report on it will be **your
    judgement on N real sessions**, with N.
-2. **The five manual checks have not run** (`phase4_manual_checks.md`, with the click
+2. **Checks 2, 3 and 4 ran as a dry run on 2026-09-19** (above); **Checks 1 and 5
+   have not run** (`phase4_manual_checks.md`, with the click
    paths). Check 1 — running a real session with a real prospect — is the only honest
    test of this module.
 3. **V1's template work is deferred, deliberately:** no reordering, no adding or

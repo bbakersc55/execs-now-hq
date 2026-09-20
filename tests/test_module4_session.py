@@ -112,10 +112,14 @@ def test_merge_fields_fill_from_the_session(session, company, tenant_a):
 
 @pytest.mark.django_db
 def test_a_missing_merge_field_is_named_rather_than_left_blank(session):
-    """FR-4.9a — a blank reads as a bug and gets skipped mid-call."""
+    """FR-4.9a — a blank reads as a bug and gets skipped mid-call.
+
+    What stands in has to read as English wherever it lands, so it is a noun
+    phrase and the reason follows in brackets (see the possessive test below).
+    """
     context = services.merge_context(session)
     assert services.render_prompt("What does {Integrator} own outright?", context) == (
-        "What does no Integrator identified own outright?")
+        "What does the Integrator own outright? (no Integrator identified yet)")
     assert "{" not in services.render_prompt(
         "Is {Location B} run the way {Location A} is?", context)
 
@@ -286,3 +290,75 @@ def test_the_financial_questions_can_be_withheld_from_the_payload(session):
                                                         include_financial=False)]
     assert "s9_investment_range" not in keys and "s9_reaction_to_range" not in keys
     assert "s9_start_date" in keys and len(keys) == 45
+
+
+# ------------------------------- what the 2026-09-19 dry run found
+
+@pytest.mark.django_db
+def test_a_missing_merge_field_reads_correctly_inside_a_possessive(session):
+    """FR-4.9a, second cut. "no Integrator identified's role" is broken English,
+    and it went out on a real dry run. The substitution has to survive being in
+    the middle of a sentence; the explanation goes at the end, in brackets."""
+    context = services.merge_context(session)
+    rendered = services.render_prompt(
+        "3-year picture — revenue, locations, {Visionary}'s role, {Integrator}'s role",
+        context)
+    assert "identified's" not in rendered
+    assert "the Integrator's role" in rendered
+    assert rendered.endswith("(no Integrator identified yet)")
+    assert "{" not in rendered
+
+
+@pytest.mark.django_db
+def test_two_missing_fields_are_explained_once_each(session):
+    context = services.merge_context(session)
+    rendered = services.render_prompt("Is {Location B} run the way {Location A} is?",
+                                      context)
+    assert rendered.startswith("Is their second location run the way their first "
+                               "location is?")
+    assert rendered.count("no second location on file") == 1
+    assert rendered.count("no locations on file") == 1
+
+
+@pytest.mark.django_db
+def test_a_field_that_resolves_adds_no_note(session, tenant_a, company):
+    integrator = ContactFactory(tenant=tenant_a, first_name="Sam", last_name="Okonkwo",
+                                company=company)
+    session.integrator_contact = integrator
+    session.save()
+    rendered = services.render_prompt("What does {Integrator} own outright?",
+                                      services.merge_context(session))
+    assert rendered == "What does Sam Okonkwo own outright?"
+
+
+@pytest.mark.django_db
+def test_the_six_key_summary_carries_each_comment_and_who_answered(session):
+    """The comment is usually where the signal is: "6" says little, "6, because
+    we rewrote it in March and nobody has read it since" says everything."""
+    services.save_answer(session, question_key="s2_data",
+                         value={"rating": 3, "comment": "Rewrote it in March; "
+                                                        "nobody has opened it since."},
+                         answered_by=PROSPECT)
+    services.save_answer(session, question_key="s2_vision", value={"rating": 8},
+                         answered_by=PROSPECT)
+    summary = services.six_key_components(session)
+    scores = {row["key"]: row for row in summary["scores"]}
+    assert scores["s2_data"]["comment"] == ("Rewrote it in March; nobody has opened "
+                                            "it since.")
+    assert scores["s2_data"]["answered_by"] == PROSPECT
+    assert scores["s2_vision"]["comment"] == ""
+    assert summary["ratings"] == {"s2_data": 3, "s2_vision": 8}
+
+
+@pytest.mark.django_db
+def test_a_prospects_rating_is_in_the_live_views_payload_as_an_answer(session, ff, api):
+    """The dry run's first bug, from the server's side: the live view renders
+    from `answers`, so a rating answered on the form has to be in there — with
+    its value intact, not merely counted in the summary."""
+    services.save_answer(session, question_key="s2_data",
+                         value={"rating": 3, "comment": "Nobody opens it."},
+                         answered_by=PROSPECT)
+    payload = api.as_(ff).get(f"/api/strategy-sessions/{session.pk}/").json()
+    answer = next(a for a in payload["answers"] if a["question_key"] == "s2_data")
+    assert answer["value"] == {"rating": 3, "comment": "Nobody opens it."}
+    assert answer["answered_by"] == "prospect"

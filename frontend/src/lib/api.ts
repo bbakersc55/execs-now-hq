@@ -589,6 +589,8 @@ export interface StrategySessionRow {
   answers?: StrategyAnswerRow[];
   map_rows?: MapRow[];
   six_key_components?: {
+    scores: { key: string; rating: number; comment: string;
+              answered_by: "prospect" | "fractional" | "" }[];
     ratings: Record<string, number>; answered: number; of: number;
     average: number | null; complete: boolean; lowest: string | null;
   };

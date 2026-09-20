@@ -52,7 +52,12 @@
         <td style="width:10%"><strong>{{ rating.rating }}</strong>/10</td>
         <td><div class="bar{% if rating.is_lowest %} low{% endif %}">
           <span style="width: {{ rating.percent }}%"></span></div></td>
-      </tr>{% endfor %}
+      </tr>
+      {% if rating.comment %}<tr>
+        <td></td>
+        <td colspan="2" style="padding:0 6pt 6pt 0;font-size:10pt;color:#6D6E71;">
+          &ldquo;{{ rating.comment }}&rdquo;</td>
+      </tr>{% endif %}{% endfor %}
     </table>
     {% if six_key.complete %}<p class="muted">Average {{ six_key.average }} of 10.
       The lowest score is where we look first.</p>{% endif %}
