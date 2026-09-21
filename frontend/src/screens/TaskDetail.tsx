@@ -6,6 +6,7 @@ import { CommentsPanel } from "../components/CommentsPanel";
 import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { StatusChange } from "../components/StatusChange";
 import { StatusPill } from "../components/StatusPill";
+import { Sheet } from "../components/shell";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import {
   ChecklistItem, Me, Note, PortalPerson, Task, TaskUpdateRow, WorkParent, WorkStatus, api,
@@ -107,8 +108,24 @@ const KIND_LABELS: Record<string, string> = {
   completed: "completed", narrative: "note for the client",
 };
 
-export function TaskDetail({ me }: { me: Me }) {
-  const { id } = useParams();
+/**
+ * The task editor. It opens as a **focused panel over the board** rather than a
+ * page of its own (design brief, Tier 1) — `TaskSheet` wraps this in the sheet
+ * and `/tasks/:id` renders it there, so a task can be linked and deep-opened
+ * and Escape puts you back where you were.
+ */
+export function TaskSheet({ me, id }: { me: Me; id: string }) {
+  const navigate = useNavigate();
+  return (
+    <Sheet title={null} onClose={() => navigate("/tasks")}>
+      <TaskDetail me={me} taskId={id} />
+    </Sheet>
+  );
+}
+
+export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
+  const routeId = useParams().id;
+  const id = taskId ?? routeId;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [message, setMessage] = useState("");

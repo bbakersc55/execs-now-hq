@@ -192,7 +192,7 @@ describe("FR-3.39 — list and board", () => {
     renderRoute(<Tasks me={aMe()} />);
 
     expect(await screen.findByText("Waiting one")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("View"), "board");
+    // The board is the default since Tier 1 of the design brief.
     const board = screen.getByLabelText("Board");
     expect(board.querySelectorAll(".col")).toHaveLength(6);
     expect(board).toHaveTextContent("Waiting on client");

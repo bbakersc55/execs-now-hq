@@ -51,7 +51,9 @@ function open(me = aMe({ role: "FF" }), routes: Record<string, unknown> = {}) {
 
 async function showBoard() {
   const user = userEvent.setup();
-  await user.selectOptions(await screen.findByLabelText("View"), "board");
+  // The board is the default since Tier 1 of the design brief; this waits for
+  // it rather than switching to it.
+  await screen.findByLabelText("Board");
   return user;
 }
 
@@ -174,6 +176,8 @@ describe("the board: dragging a card changes its status, the long way round", ()
 
   it("the list view is unchanged and has no drag", async () => {
     open();
+    await screen.findByLabelText("Board");
+    await userEvent.setup().click(screen.getByRole("button", { name: "List" }));
     await screen.findByRole("table");
     expect(screen.queryByLabelText("Not started column")).not.toBeInTheDocument();
   });
@@ -200,7 +204,7 @@ describe("Tasks carries the same company dimension as Work", () => {
   it("defaults to all clients, then asks the server for one", async () => {
     const user = userEvent.setup();
     const fetchMock = open();
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
     expect(chooser()).toHaveValue("");
     expect(asked(fetchMock)).toBe("/api/tasks/?");
 
@@ -219,7 +223,7 @@ describe("Tasks carries the same company dimension as Work", () => {
      async () => {
     const user = userEvent.setup();
     open();
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
     // All clients: everything is on offer.
     expect(within(projectFilter()).getByText("Fleet renewal")).toBeInTheDocument();
     expect(within(assigneeFilter()).getByText("Ridgeline's founder")).toBeInTheDocument();
@@ -237,7 +241,7 @@ describe("Tasks carries the same company dimension as Work", () => {
   it("offers the practice's own people alone on internal work", async () => {
     const user = userEvent.setup();
     open();
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
 
     await user.selectOptions(chooser(), "internal");
     expect(within(projectFilter()).getByText("Our own website")).toBeInTheDocument();
@@ -250,7 +254,7 @@ describe("Tasks carries the same company dimension as Work", () => {
      async () => {
     const user = userEvent.setup();
     const fetchMock = open();
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
 
     await user.selectOptions(chooser(), CO);
     await user.selectOptions(projectFilter(), "pr1");
@@ -265,13 +269,13 @@ describe("Tasks carries the same company dimension as Work", () => {
   it("remembers the client per person, and keeps its own memory from Work's", async () => {
     const user = userEvent.setup();
     open(aMe({ role: "FF", email: "bryan@x.invalid" }));
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
     await user.selectOptions(chooser(), CO2);
 
     cleanup();
     vi.unstubAllGlobals();
     const fetchMock = open(aMe({ role: "FF", email: "bryan@x.invalid" }));
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
     expect(chooser()).toHaveValue(CO2);
     expect(asked(fetchMock)).toBe("/api/tasks/?client_company=co-ridge");
 
@@ -279,7 +283,7 @@ describe("Tasks carries the same company dimension as Work", () => {
     cleanup();
     vi.unstubAllGlobals();
     open(aMe({ role: "VA", email: "someone@x.invalid" }));
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
     expect(chooser()).toHaveValue("");
 
     // Each screen remembers its own: narrowing Work does not narrow Tasks.
@@ -287,13 +291,13 @@ describe("Tasks carries the same company dimension as Work", () => {
     vi.unstubAllGlobals();
     window.localStorage.setItem("work-company:alone@x.invalid", JSON.stringify(CO));
     open(aMe({ role: "FF", email: "alone@x.invalid" }));
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
     expect(chooser()).toHaveValue("");
   });
 
   it("leaves the portal alone: no selector, and no companies request", async () => {
     const fetchMock = open(aMe({ role: "FCC", client_company: CO, email: "f@x.invalid" }));
-    await screen.findByRole("table");
+    await screen.findByLabelText("Board");
 
     expect(screen.queryByLabelText("Filter by client company")).toBeNull();
     expect(projectFilter()).toBeInTheDocument();     // the others are untouched

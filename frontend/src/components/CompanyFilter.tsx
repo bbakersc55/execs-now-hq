@@ -51,19 +51,22 @@ export function useCompanyFilter(me: Me, key: string) {
   };
 }
 
-export function CompanyFilter({ value, onChange, companies }: {
+export function CompanyFilter({ value, onChange, companies, asChip }: {
   value: string; onChange: (value: string) => void; companies: Company[];
+  /** On a filter bar it is a control among chips, with no stacked label
+      (design brief, Tier 1). On a form it keeps its label. */
+  asChip?: boolean;
 }) {
-  return (
-    <Field label="Client">
-      <select aria-label="Filter by client company" value={value}
-        onChange={(e) => onChange(e.target.value)}>
-        <option value="">All clients</option>
-        {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        <option value={INTERNAL}>Internal — the practice's own</option>
-      </select>
-    </Field>
+  const select = (
+    <select aria-label="Filter by client company" value={value}
+      style={asChip ? { width: "auto", minWidth: 170 } : undefined}
+      onChange={(e) => onChange(e.target.value)}>
+      <option value="">All clients</option>
+      {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      <option value={INTERNAL}>Internal — the practice's own</option>
+    </select>
   );
+  return asChip ? select : <Field label="Client">{select}</Field>;
 }
 
 /** Whether one row falls on the chosen side of the dimension. */
