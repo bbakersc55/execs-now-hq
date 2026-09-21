@@ -760,6 +760,26 @@ target boxes are number fields, so it is harder to type in the first place.
 **Check 5 is not passed.** The fix is proven by tests, not by the owner's run;
 re-running it is the next thing.
 
+#### The PDF redesigned as a sales document, 2026-09-21
+
+Before the first real prospect session, on the owner's instruction: **two pages,
+visual over verbose**, same brand system, WeasyPrint. Page one is the Snapshot as
+header chips, the Six Key Components as a bar chart with the lowest score in the accent
+colour, the mirror as a callout, and the map as cards under a 30/60/90 strip saying
+which fix lands when. Page two is the two paths side by side, what they value, and the
+agreed next steps as a checklist with dates. **Five tests hold it**, including the page
+count against a full nine-row map — the brief is two pages, and a later loosening of a
+truncation limit now fails a test rather than a prospect's inbox.
+
+**One exclusion rule narrowed, and said out loud.** §9 used to be dropped as a section
+unless the investment flag was on, which left the next-steps checklist empty on every
+document that had not opted into showing the money. The rule now keys on the question's
+own `is_financial` flag (ruling 3 puts it on both money items), so **the range and their
+reaction to it are excluded exactly as before** and §9's logistics — start date,
+cadence, who else weighs in, the follow-up call, the proposal due date — carry the
+checklist. AC-4.9 is unchanged and still passes: its §9 marker sits in the investment
+range. **If the owner would rather §9 stayed shut entirely, it is one line.**
+
 #### Gaps, stated plainly
 
 1. **Claude has been exercised only against the test double.** The drafting prompts

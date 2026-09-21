@@ -4,132 +4,235 @@
 <meta charset="utf-8">
 <title>Strategy session — {{ company|default:prospect }}</title>
 <style>
-  @page { size: letter; margin: 18mm 16mm 20mm; 
-          @bottom-center { content: "Page " counter(page) " of " counter(pages);
-                           font: 9pt "Helvetica Neue", Helvetica, Arial, sans-serif;
-                           color: #939598; } }
-  body { font: 11pt/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; }
-  h1 { font-size: 22pt; color: #0A3A65; margin: 0 0 4pt; }
-  h2 { font-size: 13pt; color: #0A3A65; margin: 22pt 0 6pt;
-       border-bottom: 1.5pt solid #F58220; padding-bottom: 3pt; }
-  .lede { color: #6D6E71; font-size: 10.5pt; margin: 0 0 18pt; }
-  .qa { margin: 0 0 10pt; page-break-inside: avoid; }
-  .q { color: #6D6E71; font-size: 9.5pt; }
-  .a { font-size: 11pt; }
-  .note { margin-top: 3pt; padding-left: 8pt; border-left: 2pt solid #F58220;
-          color: #6D6E71; font-size: 10pt; }
-  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-  th { text-align: left; background: #0A3A65; color: #fff; padding: 5pt 6pt;
-       font-size: 9pt; }
-  td { padding: 5pt 6pt; border-bottom: 0.75pt solid #E6E6E6; vertical-align: top; }
-  .bar { background: #EFEFEF; height: 9pt; border-radius: 5pt; overflow: hidden; }
-  .bar span { display: block; height: 9pt; background: #0A3A65; }
-  .bar.low span { background: #F58220; }
-  .six td { border-bottom: none; padding: 3pt 6pt 3pt 0; }
-  .mirror { background: #F5F8FB; border-left: 3pt solid #0A3A65; padding: 10pt 12pt; }
+  /* One brand system: the colours are the tenant's, exactly as the email
+     layout resolves them. Nothing here is a second palette. */
+  :root { --blue: {{ brand.header_color }}; --orange: {{ brand.accent_color }}; }
+  @page { size: letter; margin: 13mm 13mm 14mm;
+          @bottom-right { content: "Page " counter(page) " of " counter(pages);
+                          font: 8pt "Helvetica Neue", Helvetica, Arial, sans-serif;
+                          color: #939598; } }
+  body { font: 9.5pt/1.36 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #2B2F33;
+         margin: 0; }
+  h1 { font-size: 19pt; color: {{ brand.header_color }}; margin: 0; letter-spacing: -0.2pt; }
+  h2 { font-size: 10.5pt; color: {{ brand.header_color }}; margin: 0 0 5pt;
+       text-transform: uppercase; letter-spacing: 0.7pt; }
+  .head { border-bottom: 2.5pt solid {{ brand.accent_color }}; padding-bottom: 6pt;
+          margin-bottom: 9pt; }
+  .head .who { color: #6D6E71; font-size: 9.5pt; margin: 2pt 0 0; }
+  .head .mark { float: right; text-align: right; color: #939598; font-size: 8.5pt; }
+  .chips { margin: 6pt 0 0; }
+  .chip { display: inline-block; background: #F3F6F9; border-radius: 3pt;
+          padding: 2pt 6pt; margin: 0 4pt 3pt 0; font-size: 8.5pt; color: #4A5056; }
+  .chip b { color: {{ brand.header_color }}; font-weight: 600; }
+  .block { margin: 0 0 8pt; }
+  .two { display: table; width: 100%; table-layout: fixed; border-spacing: 10pt 0; }
+  .two > div { display: table-cell; vertical-align: top; }
+  .mirror { background: #F3F6F9; border-left: 3pt solid {{ brand.accent_color }};
+            padding: 8pt 10pt; }
+  .mirror .label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.6pt;
+                   color: #6D6E71; }
+  .mirror .said { font-size: 12pt; line-height: 1.3; color: {{ brand.header_color }};
+                  margin: 1pt 0 6pt; }
+  .mirror .unlocks { font-size: 10pt; margin: 0; }
+  .lane { display: table; width: 100%; table-layout: fixed; border-spacing: 6pt 0;
+          margin-bottom: 6pt; }
+  .lane > div { display: table-cell; vertical-align: top; }
+  .lane .when { background: {{ brand.header_color }}; color: #fff; font-size: 8.5pt;
+                padding: 3pt 6pt; border-radius: 3pt 3pt 0 0; font-weight: 600; }
+  .lane .what { border: 0.75pt solid #E4E8EB; border-top: none; padding: 5pt 6pt;
+                font-size: 8.5pt; color: #4A5056; border-radius: 0 0 3pt 3pt; }
+  .cards { display: table; width: 100%; table-layout: fixed; border-spacing: 5pt; }
+  .cards .row { display: table-row; }
+  .card { display: table-cell; vertical-align: top;
+          border: 0.75pt solid #E4E8EB; border-top: 2pt solid {{ brand.accent_color }};
+          padding: 5pt 6pt; }
+  .card .n { font-size: 7.5pt; color: #939598; }
+  .card .bottleneck { font-weight: 600; font-size: 9pt; color: {{ brand.header_color }};
+                      margin: 1pt 0 3pt; }
+  .card .fix { font-size: 8.5pt; margin: 0 0 4pt; }
+  .card .meta { font-size: 7.5pt; color: #6D6E71; }
+  .card .mech { font-size: 7.5pt; color: #6D6E71; border-top: 0.5pt dotted #D8DDE1;
+                margin-top: 4pt; padding-top: 3pt; }
+  .pill { display: inline-block; background: #F3F6F9; border-radius: 8pt;
+          padding: 1pt 5pt; font-size: 7.5pt; color: {{ brand.header_color }}; }
+  .path { border: 0.75pt solid #E4E8EB; padding: 7pt 8pt; height: 100%; }
+  .path .name { font-weight: 600; color: {{ brand.header_color }}; font-size: 10pt; }
+  .path .detail { font-size: 8pt; color: #6D6E71; margin: 2pt 0 5pt; }
+  .path .line { font-size: 8.5pt; margin: 0 0 3pt; }
+  .path .line b { color: #4A5056; font-weight: 600; }
+  .values td { font-size: 9pt; padding: 3pt 6pt 3pt 0; vertical-align: top;
+               border-bottom: 0.5pt solid #EDF0F2; }
+  .values .v { font-weight: 600; color: {{ brand.header_color }}; width: 42%; }
+  .steps { width: 100%; border-collapse: collapse; }
+  .steps td { font-size: 9pt; padding: 3.5pt 6pt 3.5pt 0; vertical-align: top;
+              border-bottom: 0.5pt solid #EDF0F2; }
+  .steps .box { width: 14pt; color: {{ brand.accent_color }}; font-size: 10pt; }
+  .steps .when { text-align: right; white-space: nowrap; color: {{ brand.header_color }};
+                 font-weight: 600; width: 26%; }
   .muted { color: #939598; }
+  .chart text { font: 8.5pt "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  .page-break { break-before: page; }
 </style>
 </head>
 <body>
+
+{# ------------------------------------------------- page one: where they are #}
+<div class="head">
+  <div class="mark">
+    <img data-enhq-logo src="cid:enhq-logo" alt="" style="max-height:34px">
+  </div>
   <h1>Strategy session</h1>
-  <p class="lede">
-    {% if company %}{{ company }} · {% endif %}{{ prospect }}
-    · {{ session_date }}{% if fractional %} · with {{ fractional }}{% endif %}
+  <p class="who">
+    {% if company %}{{ company }} · {% endif %}{{ prospect }} · {{ session_date }}
+    {% if fractional %} · with {{ fractional }}{% endif %}
   </p>
-
-  {% if snapshot %}<h2>Where you are today</h2>
-    {% for item in snapshot %}<div class="qa">
-      <div class="q">{{ item.prompt }}</div>
-      <div class="a">{{ item.text|default:"—" }}</div>
-      {% if item.note %}<div class="note">{{ item.note }}</div>{% endif %}
-    </div>{% endfor %}
+  {% if snapshot %}
+    <p class="chips">
+      {% for item in snapshot|slice:":4" %}{% if item.text %}
+        <span class="chip">{{ item.label|truncatechars:24 }} <b>{{ item.text|truncatechars:30 }}</b></span>
+      {% endif %}{% endfor %}
+    </p>
   {% endif %}
+</div>
 
-  {% if six_key.ratings %}<h2>Six Key Components</h2>
-    <table class="six">
-      {% for rating in six_key.ratings %}<tr>
-        <td style="width:26%">{{ rating.label }}</td>
-        <td style="width:10%"><strong>{{ rating.rating }}</strong>/10</td>
-        <td><div class="bar{% if rating.is_lowest %} low{% endif %}">
-          <span style="width: {{ rating.percent }}%"></span></div></td>
-      </tr>
-      {% if rating.comment %}<tr>
-        <td></td>
-        <td colspan="2" style="padding:0 6pt 6pt 0;font-size:10pt;color:#6D6E71;">
-          &ldquo;{{ rating.comment }}&rdquo;</td>
-      </tr>{% endif %}{% endfor %}
-    </table>
-    {% if six_key.complete %}<p class="muted">Average {{ six_key.average }} of 10.
-      The lowest score is where we look first.</p>{% endif %}
-  {% endif %}
-
-  {% if destination %}<h2>Where you want to go</h2>
-    {% for item in destination %}<div class="qa">
-      <div class="q">{{ item.prompt }}</div>
-      <div class="a">{{ item.text|default:"—" }}</div>
-      {% if item.note %}<div class="note">{{ item.note }}</div>{% endif %}
-    </div>{% endfor %}
-  {% endif %}
-
-  {% if mirror_goal or mirror_unlocks %}<h2>The mirror</h2>
-    <div class="mirror">
-      {% if mirror_goal %}<p><strong>Your goal, as you put it:</strong>
-        {{ mirror_goal }}</p>{% endif %}
-      {% if mirror_unlocks %}<p style="margin-bottom:0"><strong>What unlocks it:</strong>
-        {{ mirror_unlocks }}</p>{% endif %}
-    </div>
-  {% endif %}
-
-  {% if map_rows %}<h2>Strategy Map</h2>
-    <table>
-      <thead><tr>
-        <th>#</th><th>Bottleneck</th><th>Root cause</th><th>The fix</th>
-        <th>Owner</th><th>Days</th><th>Measurable</th>
-        {% if show_mechanics %}<th>Notes / mechanics</th>{% endif %}
-      </tr></thead>
-      <tbody>{% for row in map_rows %}<tr>
-        <td>{{ row.position }}</td>
-        <td>{{ row.bottleneck }}</td>
-        <td>{{ row.root_cause }}</td>
-        <td>{{ row.the_fix }}</td>
-        <td>{{ row.owner_text|default:"—" }}</td>
-        <td>{{ row.horizon|default:"—" }}</td>
-        <td>{{ row.measurable|default:"—" }}</td>
-        {% if show_mechanics %}<td>{{ row.mechanics_note }}</td>{% endif %}
-      </tr>{% endfor %}</tbody>
-    </table>
-  {% endif %}
-
-  {% if paths %}<h2>Two paths</h2>
-    {% for item in paths %}<div class="qa">
-      <div class="q">{{ item.prompt }}</div>
-      <div class="a">
-        {% with reaction=item.value|get:"reaction" leaning=item.value|get:"leaning" %}
-        {% if reaction %}{{ reaction }}{% endif %}
-        {% if leaning %}<br><span class="muted">Leaning: {{ leaning }}</span>{% endif %}
-        {% endwith %}
+<div class="two block">
+  <div>
+    {% if six_key.chart %}
+      <h2>The six key components</h2>
+      <svg class="chart" width="{{ six_key.chart.width }}" height="{{ six_key.chart.height }}"
+           viewBox="0 0 {{ six_key.chart.width }} {{ six_key.chart.height }}">
+        {% for bar in six_key.chart.bars %}
+          <text x="0" y="{{ bar.text_y }}" fill="#4A5056">{{ bar.label }}</text>
+          <rect x="{{ six_key.chart.label_width }}" y="{{ bar.y }}"
+                width="{{ six_key.chart.track }}" height="{{ six_key.chart.bar_height }}"
+                fill="#EDF0F2" rx="2"/>
+          <rect x="{{ six_key.chart.label_width }}" y="{{ bar.y }}"
+                width="{{ bar.width }}" height="{{ six_key.chart.bar_height }}" rx="2"
+                fill="{% if bar.is_lowest %}{{ brand.accent_color }}{% else %}{{ brand.header_color }}{% endif %}"/>
+          <text x="{{ bar.value_x }}" y="{{ bar.text_y }}"
+                fill="{% if bar.is_lowest %}{{ brand.accent_color }}{% else %}{{ brand.header_color }}{% endif %}"
+                style="font-weight:600">{{ bar.rating }}</text>
+        {% endfor %}
+      </svg>
+      <p class="muted" style="font-size:8.5pt;margin:2pt 0 0">
+        {% if six_key.complete %}Average {{ six_key.average }} of 10.{% endif %}
+        The lowest score is where we look first.
+      </p>
+    {% endif %}
+  </div>
+  <div>
+    {% if mirror_goal or mirror_unlocks %}
+      <h2>The mirror</h2>
+      <div class="mirror">
+        {% if mirror_goal %}
+          <div class="label">Where you said you want to go</div>
+          <p class="said">{{ mirror_goal }}</p>
+        {% endif %}
+        {% if mirror_unlocks %}
+          <div class="label">What unlocks it</div>
+          <p class="unlocks">{{ mirror_unlocks }}</p>
+        {% endif %}
       </div>
-    </div>{% endfor %}
-  {% endif %}
+    {% endif %}
+  </div>
+</div>
 
-  {% if values %}<h2>What you value</h2>
-    <table>
-      <thead><tr><th style="width:40%">What matters</th><th>Why</th></tr></thead>
-      <tbody>{% for item in values %}<tr>
-        <td>{{ item.value }}</td><td>{{ item.why }}</td>
-      </tr>{% endfor %}</tbody>
-    </table>
-  {% endif %}
+{% if map_rows %}
+  <div class="block">
+    <h2>The strategy map — what we would change, and when</h2>
+    {% if horizons %}
+      <div class="lane">
+        {% for bucket in horizons %}
+          <div>
+            <div class="when">{{ bucket.label }}</div>
+            <div class="what">
+              {% for row in bucket.rows %}{{ row.bottleneck|truncatechars:38 }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div class="cards">
+      {% for row in map_rows %}
+        {% if forloop.counter0|divisibleby:3 %}<div class="row">{% endif %}
+        <div class="card">
+          <div class="n">{{ row.position }}{% if row.horizon %} · <span class="pill">{{ row.horizon }} days</span>{% endif %}</div>
+          <p class="bottleneck">{{ row.bottleneck|truncatechars:62 }}</p>
+          {% if row.the_fix %}<p class="fix">{{ row.the_fix|truncatechars:104 }}</p>{% endif %}
+          <div class="meta">
+            {% if row.owner_text %}{{ row.owner_text }} · {% endif %}
+            {{ row.measurable|default:"measure to be agreed"|truncatechars:64 }}
+          </div>
+          {% if row.mechanics_note %}<div class="mech">{{ row.mechanics_note }}</div>{% endif %}
+        </div>
+        {% if forloop.counter|divisibleby:3 or forloop.last %}</div>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
 
-  {% if scope %}<h2>Scope agreement</h2>
-    <table>
-      <thead><tr><th style="width:45%">Item</th><th>Agreed</th><th>Notes</th></tr></thead>
-      <tbody>{% for item in scope %}<tr>
-        <td>{{ item.prompt }}</td>
-        <td>{% if item.value|get:"agreed" %}Yes{% else %}—{% endif %}</td>
-        <td>{{ item.text }}</td>
-      </tr>{% endfor %}</tbody>
+{# ------------------------------------------------ page two: what happens now #}
+<div class="page-break"></div>
+
+{% if path_pair %}
+  <div class="block">
+    <h2>Two ways forward</h2>
+    <div class="two">
+      {% for path in path_pair %}
+        <div>
+          <div class="path">
+            <div class="name">{{ path.name }}</div>
+            <div class="detail">{{ path.detail }}</div>
+            {% if path.reaction %}<p class="line"><b>Your reaction</b><br>{{ path.reaction }}</p>{% endif %}
+            {% if path.risk %}<p class="line"><b>The honest risk</b><br>{{ path.risk }}</p>{% endif %}
+            {% if path.leaning %}<p class="line"><b>Leaning</b><br>{{ path.leaning }}</p>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% if values %}
+  <div class="block">
+    <h2>What you told us matters</h2>
+    <table class="values" style="width:100%;border-collapse:collapse">
+      {% for item in values %}{% if item.value %}
+        <tr><td class="v">{{ item.value }}</td><td>{{ item.why }}</td></tr>
+      {% endif %}{% endfor %}
     </table>
-  {% endif %}
+  </div>
+{% endif %}
+
+{% if next_steps %}
+  <div class="block">
+    <h2>What happens next</h2>
+    <table class="steps">
+      {% for step in next_steps %}{% if step.agreed or step.detail %}
+        <tr>
+          <td class="box">{% if step.agreed %}&#10003;{% else %}&#9744;{% endif %}</td>
+          <td>{{ step.label }}</td>
+          <td class="when">{{ step.detail|default:"" }}</td>
+        </tr>
+      {% endif %}{% endfor %}
+    </table>
+  </div>
+{% endif %}
+
+{% if money %}
+  <div class="block">
+    <h2>Scope and investment</h2>
+    <table class="steps">
+      {% for item in money %}
+        <tr>
+          <td class="box">{% if item.value|get:"agreed" %}&#10003;{% else %}&#9744;{% endif %}</td>
+          <td>{{ item.prompt }}</td>
+          <td class="when">{{ item.text }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+{% endif %}
+
 </body>
 </html>

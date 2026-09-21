@@ -749,12 +749,14 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 **Output PDF**
 
 23. The PDF renders: Snapshot, the Six Key Components chart, the mirror, the Strategy Map, the two paths, and what they value.
+23a. **It is a sales document, and it is two pages.** *(Owner, 2026-09-21, before the first real prospect session.)* Visual over verbose, in the email layout's brand system via WeasyPrint. **Page one:** the Snapshot as a strip of chips in the header — a prospect knows their own numbers, and the document's job is what to do about them — the **Six Key Components as a bar chart** with the lowest score in the accent colour, the **mirror as a callout**, and the **Strategy Map as cards** under a **30/60/90 strip that says which fix lands when**. **Page two:** the **two paths side by side**, what they value, and **the agreed next steps as a checklist with dates**. Two pages is a requirement, not an aspiration: the page count is asserted in the suite against a full nine-row map, so a later loosening fails a test rather than a prospect's inbox.
+23b. **Nothing is inferred to make the document more persuasive.** Neither path is highlighted as the one they favour — both carry a leaning line saying what they actually said — and a row with no horizon sits in its own column rather than being given a date it was never agreed.
 24. **Excluded by default, each with an explicit per-block "include in PDF" toggle defaulted off:**
     1. every fractional-only note field on any question,
     2. the Strategy Map's **Notes / mechanics from experience** column,
     3. §4 diagnostic internal observations,
     4. §3 item 4 — the Visionary/Integrator alignment observation,
-    5. **all of §9**, including the investment range, their reaction to it, and the proposal due date.
+    5. **§9's financial items** — the investment range and their reaction to it, which ruling 3 marks `is_financial`. *(Narrowed 2026-09-21 from "all of §9", with the owner told rather than the change made quietly.)* The rule keys on the question's own `is_financial` flag rather than on the section, so **§9's logistics — scope, start date, cadence, who else weighs in, the follow-up call, the map sent, the proposal due date — are the next-steps checklist on page two** (FR-4.23a). Those are things the prospect agreed to out loud on the call, and sending them back the same day is what the document is for; the money stays behind the toggle exactly as it was. Reverting is one line in `apps/strategy/pdf.py`.
 25. The send screen shows a **true preview of the exact PDF the prospect will receive**, not a description of it.
 26. ⛔ **REVIEW QUEUE (R8):** the PDF is emailed only when the fractional reviews and clicks send. "Same day" is a workflow expectation, not an automation.
 27. The PDF is stored against the session and re-downloadable.

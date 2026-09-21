@@ -350,6 +350,121 @@ def test_ac_4_9_the_generated_file_itself_carries_no_marker(session):
     assert "MARKERNOTE" not in pdf_service.render_html(session)
 
 
+# ---------------------------------------- the sales document (owner, 2026-09-21)
+
+def _a_full_session(session, rows=9):
+    """A session with as much in it as a real one: six ratings, a mirror, a
+    nine-row map, both paths, values, and §9 agreed."""
+    for key, rating in (("s2_vision", 10), ("s2_people", 8), ("s2_data", 6),
+                        ("s2_issues", 7), ("s2_process", 4), ("s2_traction", 8)):
+        answer(session, key, {"rating": rating, "comment": "As discussed."})
+    answer(session, "s1_revenue", {"text": "5m then 5.5m"})
+    session.mirror_goal = "To grow, but do it more sustainably."
+    session.mirror_unlocks = "Solid processes and accountability mechanisms."
+    session.save(update_fields=["mirror_goal", "mirror_unlocks", "updated_at"])
+    for index in range(rows):
+        StrategyMapRow.objects.create(
+            tenant=session.tenant, session=session, position=index,
+            bottleneck=f"Bottleneck {index} — decisions stall waiting on the founder",
+            root_cause="Nobody else may approve a credit over five hundred dollars",
+            the_fix="Publish an approval ladder to $5k and hold the line on it",
+            owner_text="Noble Baker", horizon=[30, 60, 90][index % 3],
+            measurable="Count of decisions escalated to Noble per week",
+            state=StrategyMapRow.State.ACCEPTED)
+    answer(session, "s8_path_a", {"reaction": "They have already tried it.",
+                                  "risk": "Know they need help.", "leaning": "Nope."})
+    answer(session, "s8_path_b", {"reaction": "They like the idea.",
+                                  "risk": "Need to get us up to speed.",
+                                  "leaning": "Yes."})
+    answer(session, "s7_value_1", {"value": "Systems before they double.",
+                                   "why": "They don't want CSTAT to plummet."})
+    answer(session, "s9_start_date", {"agreed": True, "notes": "10/1"})
+    answer(session, "s9_follow_up_call", {"agreed": True, "notes": "Next Tuesday"})
+    answer(session, "s9_proposal_due", {"agreed": True, "notes": "Tuesday"})
+    answer(session, "s9_investment_range", {"agreed": True, "notes": "MARKERINVESTMENT"})
+    answer(session, "s9_reaction_to_range", {"agreed": True, "notes": "MARKERREACTION"})
+    session.refresh_from_db()
+    return session
+
+
+@pytest.mark.django_db
+def test_the_sales_pdf_is_two_pages_with_a_full_nine_row_map(session):
+    """The brief is two pages. This is what holds the design to it — the page
+    count is measured, not eyeballed, so a later loosening of a truncation
+    limit fails here instead of in a prospect's inbox."""
+    _a_full_session(session)
+    assert pdf_service.page_count(session) <= 2
+
+
+@pytest.mark.django_db
+def test_the_six_key_components_render_as_a_chart_with_the_lowest_called_out(session):
+    _a_full_session(session)
+    context = pdf_service.context_for(session)
+    chart = context["six_key"]["chart"]
+    assert [bar["rating"] for bar in chart["bars"]] == [10, 8, 6, 7, 4, 8]
+    # A bar's width is arithmetic on the rating, and the lowest is the one the
+    # accent colour is spent on.
+    assert chart["bars"][0]["width"] == chart["track"]
+    assert [bar["is_lowest"] for bar in chart["bars"]] == [False] * 4 + [True, False]
+    html = pdf_service.render_html(session)
+    assert "<svg" in html and html.count("<rect") == 12      # track + bar, six times
+
+
+@pytest.mark.django_db
+def test_the_map_carries_a_30_60_90_strip_saying_which_fix_lands_when(session):
+    _a_full_session(session)
+    context = pdf_service.context_for(session)
+    assert [bucket["label"] for bucket in context["horizons"]] == [
+        "30 days", "60 days", "90 days"]
+    assert [len(bucket["rows"]) for bucket in context["horizons"]] == [3, 3, 3]
+    # Cards are numbered as the document reads, not by stored position: a
+    # discarded row leaves a hole, and "1, 2, 4" reads as a missing page.
+    StrategyMapRow.objects.filter(session=session, position=0).update(
+        state=StrategyMapRow.State.DISCARDED)
+    positions = [row["position"] for row in pdf_service.context_for(session)["map_rows"]]
+    assert positions == list(range(1, 9))
+
+
+@pytest.mark.django_db
+def test_next_steps_are_the_checklist_and_the_money_is_still_behind_the_flag(session,
+                                                                            ff, api):
+    """The exclusion narrowed on 2026-09-21 from "all of §9" to "§9's financial
+    items" — so the dates a prospect agreed to out loud come back to them the
+    same day, and the range and their reaction to it do not."""
+    _a_full_session(session)
+    context = pdf_service.context_for(session)
+
+    labels = [step["label"] for step in context["next_steps"]]
+    assert "Start date" in labels and "Proposal due date" in labels
+    assert [step["detail"] for step in context["next_steps"]
+            if step["label"] == "Start date"] == ["10/1"]
+    assert not any("Investment" in label or "reaction" in label for label in labels)
+    assert context["money"] == []
+
+    html = pdf_service.render_html(session)
+    assert "10/1" in html and "Next Tuesday" in html
+    assert "MARKERINVESTMENT" not in html and "MARKERREACTION" not in html
+
+    # With the flag on, and only then, the money shows — exactly as before.
+    api.as_(ff).patch(f"/api/strategy-sessions/{session.pk}/pdf-flags/",
+                      {"investment": True}, content_type="application/json")
+    session.refresh_from_db()
+    with_money = pdf_service.render_html(session)
+    assert "MARKERINVESTMENT" in with_money and "MARKERREACTION" in with_money
+    assert len(pdf_service.context_for(session)["money"]) == 2
+
+
+@pytest.mark.django_db
+def test_neither_path_is_favoured_by_reading_a_yes_out_of_free_text(session):
+    """Both paths carry a leaning — "Nope." is one — so highlighting on its
+    presence lit up both. Reading agreement out of free text is a guess this
+    document does not make."""
+    _a_full_session(session)
+    context = pdf_service.context_for(session)
+    assert [path["leaning"] for path in context["path_pair"]] == ["Nope.", "Yes."]
+    assert "class=\"path leaning\"" not in pdf_service.render_html(session)
+
+
 # ------------------------------------------------------------------ AC-4.10
 
 @pytest.mark.django_db
