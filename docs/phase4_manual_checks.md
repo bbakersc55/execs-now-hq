@@ -198,6 +198,63 @@ multi-discipline work.
 
 ---
 
+## Customising the questions for one prospect, before his session
+
+**Read this first: in Beta there is one template for the whole practice.** There is
+no per-prospect template and no per-session override. "Customising it for him" means
+**editing the practice's template and then starting his session** — and the edit stays
+in force for **every session started after his** until you change it back. The snapshot
+protects sessions that already exist; it does not un-edit the template.
+
+**The order is the whole trick.** The snapshot is taken at the moment you press
+**Start**. Edit first, start second.
+
+1. **Strategy** in the left-hand navigation.
+2. **"Edit the template"** — the link under the heading, founder fractional only.
+3. Find the question. The cards are the nine sections in their running order, and each
+   question shows its key (`s3_three_year_picture`), its diagnostic area, and a red
+   **financial** chip on the two §9 money items.
+4. Change any of **three things, and only three**: the **wording** (the box itself),
+   **When to ask** — *On the pre-call form* or *In the call* — and **Must ask**.
+5. **Save N changes**, at the top of the page. It answers *"Saved N questions. Sessions
+   already under way are untouched."*
+6. Back to **Strategy** → **Start a session** → type his name, pick him from the
+   results, set the date and time, **Start**.
+7. Open the session and **Send the form**. The form renders from his snapshot, so it
+   carries the wording you just saved.
+
+**What you cannot change in Beta**, and the editor refuses rather than quietly
+ignoring: reordering, adding or deleting a question, the privacy flags
+(`is_financial`, `has_fractional_note`), and the section time budgets. All V1.
+
+**If you start the session and then edit the template**, his session keeps the old
+wording — there is no way to re-snapshot it and no way to delete a session. The clean
+recovery is to **start a second session for the same prospect** after the edit and run
+that one; the first sits in the list as a Draft and harms nothing.
+
+**Before editing anything, check whether you need to.** The merge fields already
+personalise every prompt that uses one — `{Company}`, `{Visionary}`, `{Integrator}`,
+`{Location A}`, `{Location B}`, `{Session date}`, `{Fractional name}` — so a question
+that reads generically on the template often reads specifically to him on the form.
+
+### The snapshot rule, confirmed
+
+**A later edit cannot reach his session.** `services.start` freezes the whole template
+into `strategy_session.template_snapshot` — sections, questions, wording, `ask_when`,
+`must_ask`, the schemas — and the live view, the pre-call form and the PDF all render
+from that copy. Nothing in a running session points at the template rows, which is what
+makes this structural rather than a promise.
+
+Two tests hold it:
+
+- **AC-4.2** — flip a question to the pre-call form: it appears on a **new** session's
+  form and **not** on one already under way.
+- **AC-4.12 / AC-4.19** — delete a section, reword questions, change a response schema,
+  then read a completed session's payload: **identical**. A soft-deleted question is
+  still a row in its snapshot, because it was asked.
+
+---
+
 ## Where the five checks stand, 2026-09-21
 
 | Check | Ran | Outcome |
