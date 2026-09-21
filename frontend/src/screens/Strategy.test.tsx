@@ -41,6 +41,8 @@ function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionR
     current_section: "", current_section_at: null,
     precall_sent: true, precall_expires_at: "2026-10-18T14:00:00Z",
     precall_questions_sent_at: null,
+    prep: null,
+    pinned_questions: [],
     precall_default_intro: "Hi Dana,\n\nAhead of our session, here are a few questions.",
     mirror: { goal: "", unlocks: "" },
     proposed_mirror: { goal: "Two branches by spring.", unlocks: "Supervisor cover." },
@@ -596,5 +598,73 @@ describe("the questions by email", () => {
       .toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /email the questions/i }))
       .not.toBeInTheDocument();
+  });
+});
+
+
+describe("session prep", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const PREP = {
+    id: "prep1", state: "ready" as const,
+    website_url: "https://acme.invalid", notes: "Donna runs hiring.",
+    summary: "Their site says they clean commercial kitchens.",
+    bottlenecks: ["Likely dispatch runs through one person"],
+    rewordings: [{ key: "s1_revenue", current: "Revenue — last year / this year",
+                   suggested: "Revenue last year and this — contract versus one-off",
+                   why: "Their site says contracts are the bulk of it." }],
+    questions: [
+      { id: "q1", text: "Who decides a crew is short on the day?", why: "Likely it.",
+        position: 0, is_pinned: false, note: "" },
+    ],
+    web_searches: 3,
+  };
+
+  it("asks for the site and what you know, then keeps the brief", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/prepare/`]: PREP,
+    });
+    await user.type(await screen.findByLabelText("Their website"), "https://acme.invalid");
+    await user.type(screen.getByLabelText("What you already know"), "Donna runs hiring.");
+    await user.click(screen.getByRole("button", { name: "Prepare" }));
+
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.url.endsWith("/prepare/"));
+      expect(posted?.body).toEqual({ website_url: "https://acme.invalid",
+                                     notes: "Donna runs hiring." });
+    });
+    expect(await screen.findByText(/3 searches/)).toBeInTheDocument();
+  });
+
+  it("shows a rewording beside today's wording, and only offers to copy it", async () => {
+    showSession(aSession({ prep: PREP }), aMe());
+    expect(await screen.findByText(/Their site says they clean commercial kitchens/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/Revenue — last year \/ this year/)).toBeInTheDocument();
+    expect(screen.getByText(/contract versus one-off/)).toBeInTheDocument();
+
+    // The only thing offered is a link into the editor — nothing applies it here.
+    const copy = screen.getByRole("link", { name: "Copy to the editor" });
+    expect(copy).toHaveAttribute(
+      "href", `/strategy/template?session=${SESSION_ID}&prefill=s1_revenue`);
+    expect(screen.queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
+  });
+
+  it("shows a pinned question in the live view with a note of its own", async () => {
+    const pinned = { ...PREP.questions[0], is_pinned: true, note: "After the diagnostic." };
+    showSession(aSession({ prep: { ...PREP, questions: [pinned] },
+                           pinned_questions: [pinned] }), aMe());
+    expect(await screen.findByText("Your questions")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Your note — Who decides a crew/))
+      .toHaveValue("After the diagnostic.");
+    expect(screen.getByText(/prompts, not scored answers/)).toBeInTheDocument();
+  });
+
+  it("a VA gets no prep panel and no brief", async () => {
+    // The server sends a VA no prep at all; the screen offers them nothing either.
+    showSession(aSession({ prep: null }), aMe({ role: "VA" }));
+    await screen.findByText(/Running the call, drafting, sending/);
+    expect(screen.queryByText("Prepare for this session")).not.toBeInTheDocument();
   });
 });

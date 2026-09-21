@@ -259,6 +259,73 @@ class StrategyAnswer(TenantScopedModel):
         ]
 
 
+class StrategySessionPrep(TenantScopedModel):
+    """What the fractional knows about a prospect before the call, and what
+    Claude made of it (owner, 2026-09-21).
+
+    **Fractional-only, in every direction.** It never reaches the prospect: not
+    the pre-call form, not the questions email, not the PDF. It is the
+    equivalent of the notes a fractional would have made on the train, and the
+    only thing that crosses from it into the prospect's world is a reworded
+    question the fractional **copies into the template themselves**.
+    """
+
+    class State(models.TextChoices):
+        DRAFTING = "drafting", "Drafting"
+        READY = "ready", "Ready"
+        FAILED = "failed", "Failed"
+
+    session = models.OneToOneField(StrategySession, on_delete=models.CASCADE,
+                                   related_name="prep")
+    # What it was given.
+    website_url = models.URLField(blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    # What it made of it. `summary` is what the company does and how it sells;
+    # `bottlenecks` the ordinary ones for a business of that shape.
+    summary = models.TextField(blank=True, default="")
+    bottlenecks = models.JSONField(default=list, blank=True)
+    #: [{"key": .., "current": .., "suggested": .., "why": ..}] — a suggestion
+    #: per pre-call question. **Never applied by the app**: the fractional
+    #: copies one into the template editor and saves it themselves.
+    rewordings = models.JSONField(default=list, blank=True)
+    state = models.CharField(max_length=10, choices=State.choices,
+                             default=State.DRAFTING)
+    ai_call = models.ForeignKey("tenancy.AiCall", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "strategy_session_prep"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "session"],
+                                    name="one_prep_per_session"),
+        ]
+
+
+class StrategyPrepQuestion(TenantScopedModel):
+    """One of the five extra questions prep suggests asking live.
+
+    **Pinned, it shows in the live view as a prompt with a note field** — and
+    it is not an answer. It carries no `question_key`, is never scored, and
+    never enters the session's snapshot, so AC-4.12 still holds: a session
+    renders from the template it froze, and this sits beside that.
+    """
+
+    prep = models.ForeignKey(StrategySessionPrep, on_delete=models.CASCADE,
+                             related_name="questions")
+    session = models.ForeignKey(StrategySession, on_delete=models.CASCADE,
+                                related_name="prep_questions")
+    text = models.TextField()
+    why = models.TextField(blank=True, default="")
+    position = models.PositiveSmallIntegerField(default=0)
+    is_pinned = models.BooleanField(default=False)
+    # The fractional's own note against it, and the only thing captured here.
+    note = models.TextField(blank=True, default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "strategy_prep_question"
+        ordering = ["position", "created_at"]
+
+
 class StrategyPathNote(TenantScopedModel):
     """A pro or a con on one of §8's two paths (owner, 2026-09-21).
 

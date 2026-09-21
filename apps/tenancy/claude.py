@@ -137,13 +137,25 @@ def complete(*, tenant, **kwargs) -> str:
     return complete_with_call(tenant=tenant, **kwargs)[0]
 
 
+#: Anthropic's own search tool. Used by session prep, which has to read a
+#: prospect's website — and by nothing else, because every other call in this
+#: product answers from material the practice already holds.
+WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 6}
+
+
 def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
                        target_type: str = "", target_id=None, trigger: str = "auto",
-                       max_tokens: int = 16000):
+                       max_tokens: int = 16000, tools=None):
     """As `complete`, and also hands back the `AiCall` row it wrote.
 
     Module 4 needs it: a drafted map row records **which run produced it**, so a
     row in the tray can always be traced to the call that cost money.
+
+    `tools` passes Anthropic's server-side tools through — today only
+    `WEB_SEARCH_TOOL`. The searches it ran are counted onto the row; **their
+    cost is not in `cost_usd`**, which is the token cost, because Anthropic
+    bills searches separately and a number that quietly under-reports spend is
+    worse than one that admits what it covers.
     """
     import anthropic
 
@@ -173,6 +185,7 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
             messages=[{"role": "user", "content": user_text}],
             betas=[FALLBACK_BETA],
             fallbacks="default",
+            **({"tools": tools} if tools else {}),
         )
     except anthropic.AuthenticationError as exc:
         fail("Anthropic rejected the stored key. The founder fractional can replace it "
@@ -189,6 +202,8 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
         fail("Could not reach Anthropic. Check the connection and try again.", exc)
 
     usage = response.usage
+    call.web_searches = getattr(
+        getattr(usage, "server_tool_use", None), "web_search_requests", 0) or 0
     call.model = response.model or settings.ANTHROPIC_MODEL
     call.input_tokens = usage.input_tokens or 0
     call.output_tokens = usage.output_tokens or 0

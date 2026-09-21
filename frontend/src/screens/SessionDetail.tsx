@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
-import { Inbox, Play, Square } from "lucide-react";
+import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import {
-  AnswerValue, ConversionRow, MapRow, Me, PathNote, StrategyQuestion,
-  StrategySessionRow, api,
+  AnswerValue, ConversionRow, MapRow, Me, PathNote, PrepQuestion, SessionPrep,
+  StrategyQuestion, StrategySessionRow, api,
 } from "../lib/api";
 
 const CAN_RUN = ["FF", "CF"];
@@ -126,6 +126,9 @@ export function SessionDetail({ me }: { me: Me }) {
         </Banner>
       )}
 
+      {mayRun && <PrepCard id={id!} path={path} data={data} onChanged={refresh}
+                           setNote={setNote} />}
+
       <Card title="The pre-call questions">
         <p className="small muted">
           {data.precall_sent
@@ -152,6 +155,18 @@ export function SessionDetail({ me }: { me: Me }) {
 
       {data.six_key_components && data.six_key_components.of > 0 && (
         <SixKey summary={data.six_key_components} sections={data.sections ?? []} />
+      )}
+
+      {mayRun && (data.pinned_questions ?? []).length > 0 && (
+        <Card title="Your questions">
+          <p className="small muted">
+            From your prep. They are prompts, not scored answers — nothing here
+            reaches the prospect, the form or the PDF.
+          </p>
+          {(data.pinned_questions ?? []).map((question) => (
+            <PinnedQuestion key={question.id} question={question} onChanged={refresh} />
+          ))}
+        </Card>
       )}
 
       <div className="session-layout">
@@ -1017,6 +1032,155 @@ function QuestionsByEmail({ path, data, onSent }: {
           onClick={() => send.mutate()}>Send the questions</button>
         <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Session prep (owner, 2026-09-21): one Claude call with the web open, over the
+ * company's site and whatever the fractional already knows.
+ *
+ * **Nothing it suggests is applied.** A reworded question is copied into the
+ * template editor, where the fractional saves it themselves; an extra question
+ * appears in the live view only once they pin it. The brief is theirs and
+ * reaches no prospect surface.
+ */
+function PrepCard({ id, path, data, onChanged, setNote }: {
+  id: string; path: string; data: StrategySessionRow; onChanged: () => void;
+  setNote: (text: string) => void;
+}) {
+  const prep = data.prep ?? null;
+  const [open, setOpen] = useState(!prep);
+  const [url, setUrl] = useState(prep?.website_url ?? "");
+  const [notes, setNotes] = useState(prep?.notes ?? "");
+  const run = useMutation({
+    mutationFn: () => api.post<SessionPrep>(`${path}prepare/`,
+                                            { website_url: url, notes }),
+    onSuccess: (result) => {
+      setOpen(false);
+      setNote(`Prep is ready${result.web_searches
+        ? ` — ${result.web_searches} search${result.web_searches === 1 ? "" : "es"}`
+        : ""}. Nothing is applied until you apply it.`);
+      onChanged();
+    },
+    onError: (e: Error) => setNote(e.message),
+  });
+
+  return (
+    <Card title="Prepare for this session">
+      {!open ? (
+        <button className="ghost" onClick={() => setOpen(true)}>
+          <Search size={16} /> {prep ? "Prepare again" : "Prepare"}
+        </button>
+      ) : (
+        <>
+          <Field label="Their website">
+            <input aria-label="Their website" value={url} placeholder="https://"
+              onChange={(e) => setUrl(e.target.value)} />
+          </Field>
+          <Field label="Anything you already know — pasted emails, call notes">
+            <textarea aria-label="What you already know" rows={5} value={notes}
+              onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+          <div className="row tight">
+            <button className="primary" disabled={run.isPending}
+              onClick={() => run.mutate()}>
+              {run.isPending ? "Reading their site…" : "Prepare"}
+            </button>
+            {prep && <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>}
+          </div>
+          <p className="small muted" style={{ marginTop: "var(--s2)" }}>
+            One Claude call with the web open. It marks what it read from their
+            site and what it is guessing, and it stays yours — no part of it
+            reaches the prospect.
+          </p>
+        </>
+      )}
+
+      {prep && prep.state === "ready" && (
+        <div style={{ marginTop: "var(--s4)" }}>
+          {prep.summary && <p className="narrative">{prep.summary}</p>}
+          {prep.bottlenecks.length > 0 && (
+            <>
+              <h4>Where a business of this shape usually breaks</h4>
+              <ul className="small">
+                {prep.bottlenecks.map((line) => <li key={line}>{line}</li>)}
+              </ul>
+            </>
+          )}
+
+          {prep.rewordings.length > 0 && (
+            <>
+              <h4>Their words for your questions</h4>
+              <p className="small muted">
+                Copying one opens the template editor with it filled in. It is
+                not saved until you save it there.
+              </p>
+              {prep.rewordings.map((row) => (
+                <div className="card" key={row.key}>
+                  <p className="tiny muted" style={{ margin: 0 }}>{row.key}</p>
+                  <p className="small" style={{ margin: "var(--s1) 0" }}>
+                    <span className="muted">Now: </span>{row.current}
+                  </p>
+                  <p className="small" style={{ margin: "var(--s1) 0" }}>
+                    <span className="muted">Suggested: </span><strong>{row.suggested}</strong>
+                  </p>
+                  {row.why && <p className="tiny muted" style={{ margin: 0 }}>{row.why}</p>}
+                  <Link className="btn small" style={{ marginTop: "var(--s2)" }}
+                    to={`/strategy/template?session=${id}&prefill=${row.key}`}>
+                    Copy to the editor
+                  </Link>
+                </div>
+              ))}
+            </>
+          )}
+
+          {prep.questions.length > 0 && (
+            <>
+              <h4>Five to ask live</h4>
+              {prep.questions.map((question) => (
+                <PinnedQuestion key={question.id} question={question} onChanged={onChanged}
+                  compact />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** A prep question: pinned or not, with the fractional's own note. It is never
+ *  a scored answer — it carries no `question_key` and never enters the
+ *  session's snapshot. */
+function PinnedQuestion({ question, onChanged, compact }: {
+  question: PrepQuestion; onChanged: () => void; compact?: boolean;
+}) {
+  const [note, setNote] = useState(question.note);
+  const save = useMutation({
+    mutationFn: (body: Partial<PrepQuestion>) =>
+      api.patch(`/api/strategy-prep-questions/${question.id}/`, body),
+    onSuccess: () => onChanged(),
+  });
+
+  return (
+    <div className={compact ? "subrow" : "field"}>
+      <div className="spread" style={{ alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0 }}>{question.text}</p>
+          {question.why && <p className="tiny muted" style={{ margin: 0 }}>{question.why}</p>}
+        </div>
+        <button className="small" aria-label={`${question.is_pinned ? "Unpin" : "Pin"} ${question.text}`}
+          onClick={() => save.mutate({ is_pinned: !question.is_pinned })}>
+          {question.is_pinned ? <><PinOff size={14} /> Unpin</> : <><Pin size={14} /> Pin</>}
+        </button>
+      </div>
+      {!compact && (
+        <input aria-label={`Your note — ${question.text}`} value={note}
+          placeholder="Your note — yours only" onChange={(e) => setNote(e.target.value)}
+          onBlur={() => note !== question.note && save.mutate({ note })} />
+      )}
     </div>
   );
 }

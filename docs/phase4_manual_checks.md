@@ -198,6 +198,34 @@ multi-discipline work.
 
 ---
 
+## Preparing for a session
+
+On a Draft session, **Prepare for this session**: their website, and anything you
+already know pasted in — old emails, call notes, whatever. One Claude call with
+the web open reads the site and comes back with what they do and how they sell,
+where a business of that shape usually breaks, a rewording of **each** pre-call
+question in their own words, and **five extra questions** to ask live.
+
+**Nothing it suggests is applied.** A rewording has a **Copy to the editor**
+button, which opens the template editor with that question's box filled in and
+**not saved** — you still press Save, and the usual order applies: edit the
+template, *then* start his session. An extra question shows in the live view only
+once you **pin** it, under **Your questions**, as a prompt with a note field of
+your own. It is never scored and never joins the template.
+
+**It marks what it read.** A line beginning *"Their site says"* is the website
+talking; one beginning *"Likely"* is Claude guessing. Outside those two it is
+told to assert nothing your inputs do not carry, and specifically not to invent
+revenue, headcount, customer counts, locations, names or dates.
+
+**It is yours.** The brief reaches no prospect surface — not the form, not the
+questions email, not the PDF — and a VA does not see it at all. Cost shows on
+**AI usage** as one call, with the number of web searches beside it; **searches
+are billed on top of tokens**, so the dollar figure there is the token cost and
+the search count is what tells you the rest.
+
+---
+
 ## When the prospect will not click a link: email the questions
 
 **The session runs on the laptop, so the form's link only works on this

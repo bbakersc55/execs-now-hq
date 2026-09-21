@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { Banner, Card, Pill } from "../components/ui";
-import { Me, StrategySection, api } from "../lib/api";
+import { Me, StrategySection, StrategySessionRow, api } from "../lib/api";
 
 interface Template {
   id: string; name: string; discipline: string; version: number; is_default: boolean;
@@ -25,6 +26,28 @@ export function SessionTemplate({ me }: { me: Me }) {
   const qc = useQueryClient();
   const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [note, setNote] = useState("");
+
+  // Arrived here from a session's prep with a suggested rewording (owner,
+  // 2026-09-21). It fills the box and counts as a pending change — **it is
+  // never saved for you**, which is the whole point of copying rather than
+  // applying.
+  const [params, setParams] = useSearchParams();
+  const fromSession = params.get("session");
+  const prefillKey = params.get("prefill");
+  const session = useQuery<StrategySessionRow>({
+    queryKey: ["strategy-session", fromSession],
+    queryFn: () => api.get<StrategySessionRow>(`/api/strategy-sessions/${fromSession}/`),
+    enabled: !!fromSession && !!prefillKey,
+  });
+  useEffect(() => {
+    if (!prefillKey || !session.data?.prep) return;
+    const row = session.data.prep.rewordings.find((r) => r.key === prefillKey);
+    if (!row) return;
+    setEdits((current) => ({ ...current, [prefillKey]: { prompt: row.suggested } }));
+    setNote(`Filled in from your prep for ${session.data?.contact?.name ?? "the session"}.`
+      + " Nothing is saved until you press Save.");
+    setParams({}, { replace: true });
+  }, [prefillKey, session.data, setParams]);
 
   const templates = useQuery<Template[]>({
     queryKey: ["strategy-templates"],
@@ -98,7 +121,7 @@ export function SessionTemplate({ me }: { me: Me }) {
                     </label>
                     <textarea id={`prompt-${question.key}`} rows={2}
                       aria-label={`Wording of ${question.key}`}
-                      defaultValue={question.prompt_template ?? question.prompt}
+                      value={edit.prompt ?? question.prompt_template ?? question.prompt}
                       onChange={(e) => setEdits({ ...edits,
                         [question.key]: { ...edit, prompt: e.target.value } })} />
                     <div className="row">

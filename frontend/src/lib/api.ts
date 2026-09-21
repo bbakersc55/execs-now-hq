@@ -671,6 +671,27 @@ export interface PathNote {
   position: number; state: "proposed" | "accepted" | "discarded"; from_ai: boolean;
 }
 
+/** Session prep (owner, 2026-09-21) — **fractional-only**. It is absent from a
+ *  VA's payload entirely, and reaches no prospect surface. */
+export interface PrepQuestion {
+  id: string; text: string; why: string; position: number;
+  is_pinned: boolean; note: string;
+}
+
+export interface SessionPrep {
+  id: string;
+  state: "drafting" | "ready" | "failed";
+  website_url: string;
+  notes: string;
+  summary: string;
+  bottlenecks: string[];
+  /** One per pre-call question, with today's wording beside it. Never applied
+   *  by the app: the fractional copies one into the template editor. */
+  rewordings: { key: string; current: string; suggested: string; why: string }[];
+  questions: PrepQuestion[];
+  web_searches: number;
+}
+
 export interface StrategySessionRow {
   id: string;
   state: "draft" | "precall_sent" | "precall_complete" | "in_call" | "complete"
@@ -703,6 +724,8 @@ export interface StrategySessionRow {
   answers?: StrategyAnswerRow[];
   map_rows?: MapRow[];
   path_notes?: PathNote[];
+  prep?: SessionPrep | null;
+  pinned_questions?: PrepQuestion[];
   six_key_components?: {
     scores: { key: string; rating: number; comment: string;
               answered_by: "prospect" | "fractional" | "" }[];

@@ -237,6 +237,7 @@ class FakeClaude:
         self.stop_reason = "end_turn"
         self.model = "claude-opus-5"
         self.raise_exc = None
+        self.web_searches = 2
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs):
@@ -245,9 +246,15 @@ class FakeClaude:
         self.requests.append(kwargs)
         if self.raise_exc is not None:
             raise self.raise_exc
+        # The API reports server-side tool use only when the request carried
+        # tools; the double does the same, so a caller that forgets to ask for
+        # the web cannot pass a test that asserts it searched.
+        server_tool_use = (SimpleNamespace(web_search_requests=self.web_searches)
+                           if kwargs.get("tools") else None)
         return SimpleNamespace(
             model=self.model, stop_reason=self.stop_reason,
-            usage=SimpleNamespace(input_tokens=12000, output_tokens=800),
+            usage=SimpleNamespace(input_tokens=12000, output_tokens=800,
+                                  server_tool_use=server_tool_use),
             content=[SimpleNamespace(type="text", text=self.reply)],
         )
 

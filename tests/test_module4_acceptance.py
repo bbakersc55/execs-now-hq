@@ -705,6 +705,201 @@ def test_ac_4_10_nothing_is_emailed_until_someone_clicks_send(session, ff, api):
     assert AuditEvent.all_objects.filter(verb="strategy.pdf_sent").exists()
 
 
+# ------------------------------- session prep (owner, 2026-09-21)
+
+PREP_REPLY = json.dumps({
+    "summary": "Their site says they clean commercial kitchens across three counties, "
+               "and they sell on contract renewals rather than one-off jobs.",
+    "bottlenecks": ["Likely dispatch runs through one person",
+                    "Likely margin is known per company and not per site"],
+    "rewordings": [
+        {"key": "s1_revenue", "suggested": "Revenue last year and this — contract "
+                                           "versus one-off, if you split it that way",
+         "why": "Their site says contracts are the bulk of the work."},
+        {"key": "s1_sites", "suggested": "How many kitchens are you in each week?",
+         "why": "Their own word for a site."},
+        {"key": "not_a_question_here", "suggested": "Ignored", "why": "Not asked."},
+    ],
+    "questions": [
+        {"text": "Who decides a crew is short on the day?", "why": "Likely the bottleneck."},
+        {"text": "What happens when a kitchen fails an inspection?", "why": ""},
+    ],
+})
+
+
+@pytest.mark.django_db
+def test_prep_reads_the_site_and_keeps_what_came_back(session, ff, api, fake_claude):
+    fake_claude.reply = PREP_REPLY
+    made = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {
+        "website_url": "https://acme-facilities.invalid",
+        "notes": "He mentioned in an email that Donna runs hiring."},
+        content_type="application/json")
+    assert made.status_code == 201, made.content
+    body = made.json()
+
+    assert "commercial kitchens" in body["summary"]
+    assert len(body["bottlenecks"]) == 2
+    # A rewording of a question this session does not ask is a rewording of
+    # nothing, and is dropped rather than shown against a blank.
+    assert [r["key"] for r in body["rewordings"]] == ["s1_revenue", "s1_sites"]
+    assert body["rewordings"][0]["current"], "the current wording travels with it"
+    assert len(body["questions"]) == 2
+    assert all(q["is_pinned"] is False for q in body["questions"])
+
+    # The web was open, and the request carried what the fractional knows.
+    sent = fake_claude.requests[-1]
+    assert sent["tools"] == [{"type": "web_search_20250305", "name": "web_search",
+                              "max_uses": 6}]
+    assert "https://acme-facilities.invalid" in json.dumps(sent)
+    assert "Donna runs hiring" in json.dumps(sent)
+    # Every pre-call question is offered for rewording.
+    assert "s1_revenue:" in json.dumps(sent) and "s2_vision:" in json.dumps(sent)
+
+
+@pytest.mark.django_db
+def test_prep_is_told_to_mark_what_it_read_and_invent_nothing(session, ff, api,
+                                                              fake_claude):
+    """The guardrail is in the prompt, and the prompt is the boundary."""
+    fake_claude.reply = PREP_REPLY
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                     content_type="application/json")
+    system = fake_claude.requests[-1]["system"]
+    assert "Their site says" in system and "Likely" in system
+    assert "assert nothing that is not in the material you were given" in system
+    assert "Do not invent" in system
+
+
+@pytest.mark.django_db
+def test_one_ai_call_per_prep_run_with_its_cost_and_its_searches(session, ff, api,
+                                                                 fake_claude):
+    from apps.tenancy.models import AiCall
+
+    fake_claude.reply = PREP_REPLY
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                     content_type="application/json")
+    calls = AiCall.objects.filter(purpose="session_prep")
+    assert calls.count() == 1
+    call = calls.first()
+    assert call.input_tokens and call.output_tokens and call.cost_usd > 0
+    # The searches are counted, and deliberately NOT folded into `cost_usd`:
+    # Anthropic bills them separately and a number that under-reports spend is
+    # worse than one that says what it covers.
+    assert call.web_searches == 2
+
+
+@pytest.mark.django_db
+def test_the_prep_brief_never_reaches_the_prospect(session, ff, api, fake_claude,
+                                                   client):
+    """The whole point of the guardrail, asserted in all four directions."""
+    fake_claude.reply = json.dumps({
+        "summary": "MARKERPREP — their site says they clean kitchens.",
+        "bottlenecks": ["MARKERBOTTLENECK"],
+        "rewordings": [{"key": "s1_revenue", "suggested": "MARKERREWORD", "why": ""}],
+        "questions": [{"text": "MARKERQUESTION", "why": ""}],
+    })
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                     content_type="application/json")
+    markers = ("MARKERPREP", "MARKERBOTTLENECK", "MARKERREWORD", "MARKERQUESTION")
+
+    # 1. Not on the pre-call form the prospect opens.
+    raw = services.issue_precall_token(session)
+    form = client.get(f"/api/strategy/precall/{raw}")
+    assert form.status_code == 200
+    for marker in markers:
+        assert marker not in form.content.decode(), f"{marker} reached the form"
+
+    # 2. Not in the questions email.
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/send-questions/", {},
+                     content_type="application/json")
+    message = OutboxMessage.all_objects.get(
+        producer=OutboxMessage.Producer.PRECALL_QUESTIONS)
+    for marker in markers:
+        assert marker not in f"{message.body_text}{message.body_html}"
+
+    # 3. Not in the PDF — the html it is built from, and the bytes themselves.
+    html = pdf_service.render_html(session)
+    content = pdf_service.render_pdf(session)
+    for marker in markers:
+        assert marker not in html and marker.encode() not in content
+
+    # 4. And not even in a VA's payload, on the §9 standard: absent, not hidden.
+    va = MembershipFactory(tenant=session.tenant, role="VA")
+    payload = api.as_(va).get(f"/api/strategy-sessions/{session.pk}/").content.decode()
+    for marker in markers:
+        assert marker not in payload
+    assert json.loads(payload)["prep"] is None
+    # The fractional's own payload has it.
+    assert "MARKERPREP" in api.as_(ff).get(
+        f"/api/strategy-sessions/{session.pk}/").content.decode()
+
+
+@pytest.mark.django_db
+def test_a_va_cannot_run_prep(session, va, api, fake_claude):
+    from apps.tenancy.models import AiCall
+
+    refused = api.as_(va).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                               content_type="application/json")
+    assert refused.status_code == 403
+    assert AiCall.objects.filter(purpose="session_prep").count() == 0
+
+
+@pytest.mark.django_db
+def test_nothing_prep_suggests_is_applied_until_a_person_applies_it(session, ff, api,
+                                                                    fake_claude):
+    """A rewording is copied into the template by the fractional; an extra
+    question shows in the live view only once pinned."""
+    fake_claude.reply = PREP_REPLY
+    prep = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                            content_type="application/json").json()
+
+    # The template is untouched: the question still asks what it asked.
+    question = StrategyQuestion.objects.get(key="s1_revenue")
+    assert question.prompt == "Revenue — last year / this year"
+    # And so is the session's own snapshot.
+    snapshot = services.question_in(session.template_snapshot, "s1_revenue")
+    assert snapshot["prompt"] == "Revenue — last year / this year"
+
+    # An unpinned question is not in the live view's pinned list.
+    payload = api.as_(ff).get(f"/api/strategy-sessions/{session.pk}/").json()
+    assert payload["pinned_questions"] == []
+
+    pinned = api.as_(ff).patch(
+        f"/api/strategy-prep-questions/{prep['questions'][0]['id']}/",
+        {"is_pinned": True, "note": "Ask this after the diagnostic."},
+        content_type="application/json")
+    assert pinned.status_code == 200
+    payload = api.as_(ff).get(f"/api/strategy-sessions/{session.pk}/").json()
+    assert [q["text"] for q in payload["pinned_questions"]] == [
+        "Who decides a crew is short on the day?"]
+    assert payload["pinned_questions"][0]["note"] == "Ask this after the diagnostic."
+
+    # A pinned question is a prompt and a note — never a scored answer, and
+    # never in the snapshot AC-4.12 holds the session to.
+    assert StrategyAnswer.objects.filter(session=session).count() == 0
+    assert services.question_in(session.template_snapshot,
+                                prep["questions"][0]["id"]) is None
+
+
+@pytest.mark.django_db
+def test_a_second_prep_run_leaves_a_pinned_question_alone(session, ff, api, fake_claude):
+    fake_claude.reply = PREP_REPLY
+    first = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                             content_type="application/json").json()
+    api.as_(ff).patch(f"/api/strategy-prep-questions/{first['questions'][0]['id']}/",
+                      {"is_pinned": True}, content_type="application/json")
+
+    fake_claude.reply = json.dumps({"summary": "A second opinion.", "bottlenecks": [],
+                                    "rewordings": [],
+                                    "questions": [{"text": "Something else", "why": ""}]})
+    second = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                              content_type="application/json").json()
+    texts = [q["text"] for q in second["questions"]]
+    # The one they chose survives; the one they did not is replaced.
+    assert "Who decides a crew is short on the day?" in texts
+    assert "What happens when a kitchen fails an inspection?" not in texts
+    assert "Something else" in texts
+
+
 # ------------------- the questions by email (owner, 2026-09-21)
 
 @pytest.mark.django_db

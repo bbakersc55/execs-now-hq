@@ -12,7 +12,8 @@ from rest_framework import serializers
 
 from apps.strategy import services
 from apps.strategy.models import (
-    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategySession,
+    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
+    StrategySession, StrategySessionPrep,
 )
 
 
@@ -52,6 +53,34 @@ def represent_path_note(note) -> dict:
     }
 
 
+def represent_prep_question(question) -> dict:
+    return {
+        "id": str(question.pk),
+        "text": question.text,
+        "why": question.why,
+        "position": question.position,
+        "is_pinned": question.is_pinned,
+        "note": question.note,
+    }
+
+
+def represent_prep(prep) -> dict:
+    """**Fractional-only** (owner, 2026-09-21). The caller decides whether to
+    include this at all; nothing in here is ever put in front of a prospect."""
+    return {
+        "id": str(prep.pk),
+        "state": prep.state,
+        "website_url": prep.website_url,
+        "notes": prep.notes,
+        "summary": prep.summary,
+        "bottlenecks": prep.bottlenecks,
+        "rewordings": prep.rewordings,
+        "questions": [represent_prep_question(q) for q in
+                      StrategyPrepQuestion.objects.filter(prep=prep)],
+        "web_searches": prep.ai_call.web_searches if prep.ai_call_id else 0,
+    }
+
+
 def represent_answer(answer) -> dict:
     return {
         "question_key": answer.question_key,
@@ -62,7 +91,8 @@ def represent_answer(answer) -> dict:
     }
 
 
-def represent_session(session, *, include_financial=True, full=False) -> dict:
+def represent_session(session, *, include_financial=True, full=False,
+                      include_prep=True) -> dict:
     """`include_financial=False` is matrix 10.8, applied to questions *and*
     answers — a VA's payload does not contain the numbers at all."""
     merge = services.merge_context(session)
@@ -128,6 +158,17 @@ def represent_session(session, *, include_financial=True, full=False) -> dict:
     from apps.strategy import emails as strategy_emails
 
     payload["precall_default_intro"] = strategy_emails.default_intro(session)
+    # Prep is the fractional's own preparation and reaches nobody else — not a
+    # VA's payload, and certainly not a prospect's.
+    prep = StrategySessionPrep.objects.filter(session=session).first() \
+        if include_prep else None
+    payload["prep"] = represent_prep(prep) if prep else None
+    # Pinned prep questions ride beside the template's own, as prompts with a
+    # note and no score (owner, 2026-09-21).
+    payload["pinned_questions"] = [
+        represent_prep_question(q) for q in
+        StrategyPrepQuestion.objects.filter(session=session, is_pinned=True)
+    ] if include_prep else []
     return payload
 
 

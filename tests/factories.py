@@ -23,8 +23,9 @@ from apps.work.models import (
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.strategy.models import (
-    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyQuestion,
-    StrategySection, StrategySession, StrategyTemplate,
+    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
+    StrategyQuestion, StrategySection, StrategySession, StrategySessionPrep,
+    StrategyTemplate,
 )
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, Role, StoredFile,
@@ -664,3 +665,24 @@ class StrategyPathNoteFactory(TenantScopedFactory):
     path = StrategyPathNote.Path.A
     kind = StrategyPathNote.Kind.PRO
     text = factory.Sequence(lambda n: f"A pro {n}")
+
+
+class StrategySessionPrepFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategySessionPrep
+
+    tenant = factory.SubFactory(TenantFactory)
+    session = factory.SubFactory(StrategySessionFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    summary = "Their site says they clean commercial kitchens."
+
+
+class StrategyPrepQuestionFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyPrepQuestion
+
+    tenant = factory.SubFactory(TenantFactory)
+    prep = factory.SubFactory(StrategySessionPrepFactory,
+                              tenant=factory.SelfAttribute("..tenant"))
+    session = factory.SelfAttribute("prep.session")
+    text = factory.Sequence(lambda n: f"A question {n}")

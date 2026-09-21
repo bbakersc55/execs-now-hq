@@ -22,11 +22,13 @@ from rest_framework.response import Response
 
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Contact
-from apps.strategy import ai, conversion, emails, pdf as pdf_service, services
+from apps.strategy import ai, conversion, emails, pdf as pdf_service
+from apps.strategy import prep as prep_service
+from apps.strategy import services
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
-    AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategySession,
-    StrategyTemplate, PDF_FLAG_KEYS,
+    AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
+    StrategySession, StrategySessionPrep, StrategyTemplate, PDF_FLAG_KEYS,
 )
 from apps.tenancy.models import CLIENT_ROLES, AuditEvent
 
@@ -90,7 +92,10 @@ class SessionViewSet(StrategyViewSet):
     def retrieve(self, request, pk=None):
         session = self.load(pk)
         return Response(strategy_serializers.represent_session(
-            session, include_financial=_may_see_financial(request), full=True))
+            session, include_financial=_may_see_financial(request), full=True,
+            # Prep is the fractional's preparation for their own call. A VA's
+            # payload does not contain it at all, on the same standard as §9.
+            include_prep=_may_see_financial(request)))
 
     def create(self, request):
         """Matrix 10.2 — a VA may set a session up; only the call itself is
@@ -234,6 +239,36 @@ class SessionViewSet(StrategyViewSet):
             "path_notes": [strategy_serializers.represent_path_note(n)
                            for n in path_notes],
         })
+
+    @action(detail=True, methods=["post"])
+    def prepare(self, request, pk=None):
+        """One Claude call, with the web open, over the site and what the
+        fractional already knows (owner, 2026-09-21).
+
+        **Nothing it produces is applied.** A reworded question is copied into
+        the template editor by the fractional; an extra question is pinned by
+        them. The app never edits the template on Claude's say-so.
+        """
+        session = self.load(pk)
+        if (refused := self._fractional_only("prepare a session")) is not None:
+            return refused
+        result = prep_service.prepare(
+            session, website_url=request.data.get("website_url") or "",
+            notes=request.data.get("notes") or "", actor=request.user)
+        if result is None:
+            return Response({"detail": "Claude could not be reached. The call is "
+                                       "recorded on AI usage; nothing was saved."},
+                            status=502)
+        if result.state == StrategySessionPrep.State.FAILED:
+            return Response({"detail": "Claude answered with something this could not "
+                                       "read. Nothing was saved; the call is on AI "
+                                       "usage."}, status=502)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="strategy.prepared",
+            target_type="strategy_session", target_id=session.pk,
+            payload={"website": result.website_url,
+                     "searches": result.ai_call.web_searches if result.ai_call_id else 0})
+        return Response(strategy_serializers.represent_prep(result), status=201)
 
     @action(detail=True, methods=["post"], url_path="send-questions")
     def send_questions(self, request, pk=None):
@@ -459,6 +494,32 @@ class MapRowViewSet(StrategyViewSet):
 # work: Beta has one template, seeded correctly, and the risk of a half-built
 # editor rewriting it is worse than the inconvenience of an API call.
 EDITABLE_QUESTION_FIELDS = ("prompt", "ask_when", "must_ask")
+
+
+class PrepQuestionViewSet(StrategyViewSet):
+    """The five extra questions. Pinning one is the fractional's act, and a
+    pinned question is a **prompt with a note**, never a scored answer — it
+    carries no `question_key` and never enters the session's snapshot."""
+
+    def questions(self):
+        return StrategyPrepQuestion.objects.filter(
+            session__in=self.sessions()).select_related("session")
+
+    def load_question(self, pk):
+        found = self.questions().filter(pk=pk).first()
+        if found is None:
+            raise Http404
+        return found
+
+    def partial_update(self, request, pk=None):
+        question = self.load_question(pk)
+        if (refused := self._fractional_only("change a prep question")) is not None:
+            return refused
+        for field in ("is_pinned", "note"):
+            if field in request.data:
+                setattr(question, field, request.data[field])
+        question.save()
+        return Response(strategy_serializers.represent_prep_question(question))
 
 
 class PathNoteViewSet(StrategyViewSet):

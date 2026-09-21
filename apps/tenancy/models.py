@@ -349,6 +349,11 @@ class AiCall(TenantScopedModel):
     trigger = models.CharField(max_length=16, default="button")  # FR-4.18a
     succeeded = models.BooleanField(default=True)
     error = models.TextField(blank=True, default="")
+    # Server-side tool use, when a call had tools (session prep searches the
+    # web). **`cost_usd` is the token cost only**: Anthropic bills a web search
+    # per request on top, so the count is recorded rather than folded into a
+    # number that would then be wrong in a direction that flatters us.
+    web_searches = models.IntegerField(default=0)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "ai_call"
