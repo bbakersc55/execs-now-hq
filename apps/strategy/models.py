@@ -254,6 +254,50 @@ class StrategyAnswer(TenantScopedModel):
         ]
 
 
+class StrategyPathNote(TenantScopedModel):
+    """A pro or a con on one of §8's two paths (owner, 2026-09-21).
+
+    **A table and not a pair of fields on the session**, although the owner's
+    note said "fields": accept, edit and discard are per item, which is the
+    shape `StrategyMapRow` already has and the shape the tray already knows how
+    to draw. Two JSON blobs would have meant reimplementing the tray's verbs on
+    a list index.
+
+    Same rule as every other thing Claude writes in this module: it lands
+    `proposed`, and **only an accepted note reaches the prospect's PDF**.
+    """
+
+    class Path(models.TextChoices):
+        A = "a", "Path A — continue to run it yourself"
+        B = "b", "Path B — work with the practice"
+
+    class Kind(models.TextChoices):
+        PRO = "pro", "A pro"
+        CON = "con", "A con"
+
+    class State(models.TextChoices):
+        PROPOSED = "proposed", "Proposed by Claude"
+        ACCEPTED = "accepted", "Accepted onto the document"
+        DISCARDED = "discarded", "Discarded"
+
+    session = models.ForeignKey(StrategySession, on_delete=models.CASCADE,
+                                related_name="path_notes")
+    path = models.CharField(max_length=1, choices=Path.choices)
+    kind = models.CharField(max_length=3, choices=Kind.choices)
+    text = models.TextField()
+    position = models.PositiveSmallIntegerField(default=0)
+    state = models.CharField(max_length=10, choices=State.choices,
+                             default=State.PROPOSED, db_index=True)
+    ai_call = models.ForeignKey("tenancy.AiCall", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
+    from_ai = models.BooleanField(default=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "strategy_path_note"
+        ordering = ["path", "kind", "position", "created_at"]
+        indexes = [models.Index(fields=["tenant", "session", "state"])]
+
+
 class StrategyMapRow(TenantScopedModel):
     """A row of the Strategy Map: bottleneck → root cause → fix → owner →
     horizon → measurable.

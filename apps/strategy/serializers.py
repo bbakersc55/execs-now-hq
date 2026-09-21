@@ -11,7 +11,9 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.strategy import services
-from apps.strategy.models import StrategyAnswer, StrategyMapRow, StrategySession
+from apps.strategy.models import (
+    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategySession,
+)
 
 
 def _contact(contact):
@@ -35,6 +37,18 @@ def represent_map_row(row) -> dict:
         "state": row.state,
         "converted_to": row.converted_to,
         "from_ai": row.ai_call_id is not None,
+    }
+
+
+def represent_path_note(note) -> dict:
+    return {
+        "id": str(note.pk),
+        "path": note.path,
+        "kind": note.kind,
+        "text": note.text,
+        "position": note.position,
+        "state": note.state,
+        "from_ai": note.ai_call_id is not None,
     }
 
 
@@ -105,6 +119,8 @@ def represent_session(session, *, include_financial=True, full=False) -> dict:
     payload["map_rows"] = [represent_map_row(row) for row in
                            StrategyMapRow.objects.filter(session=session)
                            .order_by("position", "created_at")]
+    payload["path_notes"] = [represent_path_note(note) for note in
+                             StrategyPathNote.objects.filter(session=session)]
     return payload
 
 
@@ -121,6 +137,15 @@ class AnswerSerializer(serializers.Serializer):
     question_key = serializers.CharField(max_length=80)
     value = serializers.JSONField()
     fractional_note = serializers.CharField(required=False, allow_blank=True)
+
+
+class PathNoteSerializer(serializers.Serializer):
+    path = serializers.ChoiceField(choices=StrategyPathNote.Path.choices,
+                                   required=False)
+    kind = serializers.ChoiceField(choices=StrategyPathNote.Kind.choices,
+                                   required=False)
+    text = serializers.CharField(required=False, allow_blank=True)
+    position = serializers.IntegerField(required=False, min_value=0)
 
 
 class MapRowSerializer(serializers.Serializer):

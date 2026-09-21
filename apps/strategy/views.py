@@ -25,8 +25,8 @@ from apps.crm.models import Contact
 from apps.strategy import ai, conversion, emails, pdf as pdf_service, services
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
-    AskWhen, StrategyAnswer, StrategyMapRow, StrategySession, StrategyTemplate,
-    PDF_FLAG_KEYS,
+    AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategySession,
+    StrategyTemplate, PDF_FLAG_KEYS,
 )
 from apps.tenancy.models import CLIENT_ROLES, AuditEvent
 
@@ -223,10 +223,16 @@ class SessionViewSet(StrategyViewSet):
             session.started_at = session.started_at or timezone.now()
             session.save(update_fields=["state", "started_at", "updated_at"])
         drafted = ai.draft_for_newly_completed_areas(session)
+        # The second automatic trigger (owner, 2026-09-21): once, when §8 is
+        # captured. Like the first, it cannot re-fire — `drafted_areas` records
+        # that it ran.
+        path_notes = ai.draft_paths_once_captured(session)
         return Response({
             "answer": strategy_serializers.represent_answer(answer),
             "six_key_components": services.six_key_components(session),
             "drafted": [strategy_serializers.represent_map_row(r) for r in drafted],
+            "path_notes": [strategy_serializers.represent_path_note(n)
+                           for n in path_notes],
         })
 
     @action(detail=True, methods=["post"], url_path="draft-rows")
@@ -238,6 +244,20 @@ class SessionViewSet(StrategyViewSet):
         rows = ai.draft_map_rows(session, trigger="button")
         return Response({"drafted": [strategy_serializers.represent_map_row(r)
                                      for r in rows]}, status=201 if rows else 200)
+
+    @action(detail=True, methods=["post"], url_path="draft-paths")
+    def draft_paths(self, request, pk=None):
+        """The pros and cons of the two paths, on demand (owner, 2026-09-21).
+
+        The other half of the same trigger pair the map rows have: this button,
+        and once when §8 is captured. Nothing else calls it.
+        """
+        session = self.load(pk)
+        if (refused := self._fractional_only("run a Claude draft")) is not None:
+            return refused
+        notes = ai.draft_path_notes(session, trigger="button")
+        return Response({"drafted": [strategy_serializers.represent_path_note(n)
+                                     for n in notes]}, status=201 if notes else 200)
 
     @action(detail=True, methods=["post"], url_path="draft-mirror")
     def draft_mirror(self, request, pk=None):
@@ -417,6 +437,74 @@ class MapRowViewSet(StrategyViewSet):
 # work: Beta has one template, seeded correctly, and the risk of a half-built
 # editor rewriting it is worse than the inconvenience of an API call.
 EDITABLE_QUESTION_FIELDS = ("prompt", "ask_when", "must_ask")
+
+
+class PathNoteViewSet(StrategyViewSet):
+    """§8's tray. Matrix 10.6's rule, applied to the same kind of judgement:
+    accepting, editing and discarding a pro or a con is the fractional's, never
+    a VA's and never Claude's."""
+
+    def notes(self):
+        return StrategyPathNote.objects.filter(
+            session__in=self.sessions()).select_related("session")
+
+    def load_note(self, pk):
+        note = self.notes().filter(pk=pk).first()
+        if note is None:
+            raise Http404
+        return note
+
+    def create(self, request):
+        """One the fractional writes themselves. Accepted on arrival — a person
+        typing it has already made the judgement the tray exists for."""
+        if (refused := self._fractional_only("add a pro or a con")) is not None:
+            return refused
+        session = self.load(request.data.get("session"))
+        serializer = strategy_serializers.PathNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if not (data.get("text") or "").strip():
+            return Response({"detail": "A pro or a con needs some words."}, status=400)
+        if not data.get("path") or not data.get("kind"):
+            return Response({"detail": "Say which path, and whether it is a pro or "
+                                       "a con."}, status=400)
+        note = StrategyPathNote.objects.create(
+            tenant=request.tenant, session=session, from_ai=False,
+            state=StrategyPathNote.State.ACCEPTED,
+            position=data.get("position", StrategyPathNote.objects.filter(
+                session=session, path=data["path"], kind=data["kind"]).count()),
+            **{k: v for k, v in data.items() if k != "position"})
+        return Response(strategy_serializers.represent_path_note(note), status=201)
+
+    def partial_update(self, request, pk=None):
+        note = self.load_note(pk)
+        if (refused := self._fractional_only("edit a pro or a con")) is not None:
+            return refused
+        serializer = strategy_serializers.PathNoteSerializer(data=request.data,
+                                                             partial=True)
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(note, field, value)
+        note.save()
+        return Response(strategy_serializers.represent_path_note(note))
+
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        return self._set_state(request, pk, StrategyPathNote.State.ACCEPTED,
+                               "accept a pro or a con")
+
+    @action(detail=True, methods=["post"])
+    def discard(self, request, pk=None):
+        return self._set_state(request, pk, StrategyPathNote.State.DISCARDED,
+                               "discard a pro or a con")
+
+    def _set_state(self, request, pk, state, what):
+        note = self.load_note(pk)
+        if (refused := self._fractional_only(what)) is not None:
+            return refused
+        note.state = state
+        note.save(update_fields=["state", "updated_at"])
+        return Response(strategy_serializers.represent_path_note(note))
 
 
 class TemplateViewSet(StrategyViewSet):

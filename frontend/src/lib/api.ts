@@ -650,6 +650,13 @@ export interface MapRow {
   from_ai: boolean;
 }
 
+/** §8's tray (owner, 2026-09-21). A pro or a con on one of the two paths;
+ *  only an accepted one reaches the prospect's PDF. */
+export interface PathNote {
+  id: string; path: "a" | "b"; kind: "pro" | "con"; text: string;
+  position: number; state: "proposed" | "accepted" | "discarded"; from_ai: boolean;
+}
+
 export interface StrategySessionRow {
   id: string;
   state: "draft" | "precall_sent" | "precall_complete" | "in_call" | "complete"
@@ -676,6 +683,7 @@ export interface StrategySessionRow {
   sections?: StrategySection[];
   answers?: StrategyAnswerRow[];
   map_rows?: MapRow[];
+  path_notes?: PathNote[];
   six_key_components?: {
     scores: { key: string; rating: number; comment: string;
               answered_by: "prospect" | "fractional" | "" }[];

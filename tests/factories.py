@@ -23,8 +23,8 @@ from apps.work.models import (
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.strategy.models import (
-    StrategyAnswer, StrategyMapRow, StrategyQuestion, StrategySection,
-    StrategySession, StrategyTemplate,
+    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyQuestion,
+    StrategySection, StrategySession, StrategyTemplate,
 )
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, Role, StoredFile,
@@ -652,3 +652,15 @@ class GoalReportExportFactory(TenantScopedFactory):
                                      purpose="value_report_pdf",
                                      object_key=factory.Sequence(
                                          lambda n: f"value-report/{n}.pdf"))
+
+
+class StrategyPathNoteFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyPathNote
+
+    tenant = factory.SubFactory(TenantFactory)
+    session = factory.SubFactory(StrategySessionFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    path = StrategyPathNote.Path.A
+    kind = StrategyPathNote.Kind.PRO
+    text = factory.Sequence(lambda n: f"A pro {n}")

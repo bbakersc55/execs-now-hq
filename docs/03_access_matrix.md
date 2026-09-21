@@ -200,6 +200,7 @@
 | 10.4 | Run the live session view | ✅ | 🔸 | ❌ | — | — | |
 | 10.5 | Trigger a Claude draft run | ✅ | 🔸 | ❌ | — | — | Costs money against the tenant key; writes an `ai_call` |
 | 10.6 | Accept / edit / discard map rows | ✅ | 🔸 | ❌ | — | — | R6 — the fractional's judgement |
+| 10.6a | Accept / edit / discard **§8's pros and cons** | ✅ | 🔸 | ❌ | — | — | R6a — the same judgement as 10.6, on the decision page. **Only an accepted note reaches the prospect's PDF** |
 | 10.7 | View sections 1–8 of a session | ✅ | 🔸 | ✅ | — | — | |
 | 10.8 | **View §9 investment range and reaction** | ✅ | 🔸 | ❌ | — | — | **`is_financial` questions. `CLAUDE.md`: VA has no financials.** Must be absent from the API response (AC-4.13) |
 | 10.9 | Generate the PDF | ✅ | 🔸 | ✅ | — | — | Generating is not sending |

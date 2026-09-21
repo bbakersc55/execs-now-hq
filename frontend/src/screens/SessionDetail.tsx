@@ -4,7 +4,8 @@ import { useParams } from "react-router-dom";
 
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import {
-  AnswerValue, ConversionRow, MapRow, Me, StrategyQuestion, StrategySessionRow, api,
+  AnswerValue, ConversionRow, MapRow, Me, PathNote, StrategyQuestion,
+  StrategySessionRow, api,
 } from "../lib/api";
 
 const CAN_RUN = ["FF", "CF"];
@@ -160,6 +161,11 @@ export function SessionDetail({ me }: { me: Me }) {
                 api.patch(path, { mirror_goal: goal, mirror_unlocks: unlocks })
                   .then(refresh)} />
           )}
+          {section.code === "two_paths" && (
+            <PathsSection notes={data.path_notes ?? []} mayRun={mayRun}
+              onDraft={() => act.mutate({ suffix: "draft-paths/" })}
+              onChanged={refresh} />
+          )}
           {section.code === "strategy_map" && (
             <MapSection tray={tray} map={map} mayRun={mayRun}
               onDraft={() => act.mutate({ suffix: "draft-rows/" })} onChanged={refresh} />
@@ -174,7 +180,7 @@ export function SessionDetail({ me }: { me: Me }) {
                 answer.mutate({ question_key: question.key, value, fractional_note })} />
           ))}
           {section.questions.length === 0 && section.code !== "mirror"
-            && section.code !== "strategy_map" && (
+            && section.code !== "strategy_map" && section.code !== "two_paths" && (
             <p className="small muted">Nothing to capture here.</p>
           )}
         </Card>
@@ -309,7 +315,7 @@ function MapSection({ tray, map, mayRun, onDraft, onChanged }: {
 
       {tray.length > 0 && (
         <>
-          <h3 style={{ marginBottom: ".25rem" }}>Tray — {tray.length} proposed</h3>
+          <h3 style={{ marginBottom: ".25rem" }}>Tray — {tray.length} proposed rows</h3>
           {tray.map((row) => (
             <div key={row.id} className="card" style={{ marginBottom: ".5rem" }}>
               <strong>{row.bottleneck}</strong>
@@ -721,5 +727,99 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
         </>
       )}
     </Card>
+  );
+}
+
+
+/**
+ * §8's pros and cons (owner, 2026-09-21). The same tray the map rows get, for
+ * the same reason: Claude proposes, the fractional disposes, and **only an
+ * accepted note reaches the prospect's PDF**.
+ *
+ * What the prospect said — their reaction and the honest risk — is captured in
+ * the questions above and **stays here**. It is the fractional's record of the
+ * call, not a line in a document the prospect keeps.
+ */
+function PathsSection({ notes, mayRun, onDraft, onChanged }: {
+  notes: PathNote[]; mayRun: boolean; onDraft: () => void; onChanged: () => void;
+}) {
+  const act = useMutation({
+    mutationFn: ({ note, suffix }: { note: string; suffix: string }) =>
+      api.post(`/api/strategy-path-notes/${note}/${suffix}`),
+    onSuccess: () => onChanged(),
+  });
+  const tray = notes.filter((n) => n.state === "proposed");
+  const accepted = notes.filter((n) => n.state === "accepted");
+
+  const column = (path: "a" | "b") => {
+    const label = path === "a" ? "Path A — they run it" : "Path B — run it together";
+    const mine = accepted.filter((n) => n.path === path);
+    return (
+      <div key={path} style={{ flex: 1 }}>
+        <p className="small" style={{ margin: ".2rem 0", fontWeight: 600 }}>{label}</p>
+        {mine.length === 0 && <p className="small muted">Nothing accepted yet.</p>}
+        {mine.map((note) => (
+          <p key={note.id} className="small" style={{ margin: ".15rem 0" }}>
+            <Pill kind={note.kind === "con" ? "warn" : ""}>
+              {note.kind === "pro" ? "+" : "−"}
+            </Pill>{" "}
+            {note.text}
+            {mayRun && (
+              <button className="link" style={{ marginLeft: ".4rem" }}
+                onClick={() => act.mutate({ note: note.id, suffix: "discard/" })}>
+                remove
+              </button>
+            )}
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {mayRun && (
+        <div className="row">
+          <button onClick={onDraft}>Draft pros and cons with Claude</button>
+          <span className="small muted">
+            Drafted from this session only. Nothing reaches the PDF until you accept it.
+          </span>
+        </div>
+      )}
+      {tray.length > 0 && (
+        <>
+          <h3 style={{ marginBottom: ".25rem" }}>
+            Tray — {tray.length} proposed for the two paths
+          </h3>
+          {tray.map((note) => (
+            <div key={note.id} className="card" style={{ marginBottom: ".4rem" }}>
+              <p className="small" style={{ margin: 0 }}>
+                <Pill>{note.path === "a" ? "Path A" : "Path B"}</Pill>{" "}
+                <Pill kind={note.kind === "con" ? "warn" : ""}>{note.kind}</Pill>{" "}
+                {note.text}
+              </p>
+              {mayRun && (
+                <div className="row" style={{ marginTop: ".3rem" }}>
+                  {/* The labels name the note: two trays on one screen, and a
+                      bare "Accept" says nothing about which. */}
+                  <button className="primary" aria-label={`Accept "${note.text}"`}
+                    onClick={() => act.mutate({ note: note.id, suffix: "accept/" })}>
+                    Accept
+                  </button>
+                  <button className="danger" aria-label={`Discard "${note.text}"`}
+                    onClick={() => act.mutate({ note: note.id, suffix: "discard/" })}>
+                    Discard
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+      <div className="row" style={{ gap: "1rem", alignItems: "flex-start" }}>
+        {column("a")}
+        {column("b")}
+      </div>
+    </>
   );
 }

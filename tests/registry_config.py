@@ -24,8 +24,8 @@ from apps.work.models import (
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.strategy.models import (
-    StrategyAnswer, StrategyMapRow, StrategyQuestion, StrategySection,
-    StrategySession, StrategyTemplate,
+    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyQuestion,
+    StrategySection, StrategySession, StrategyTemplate,
 )
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, StoredFile, TenantSecret,
@@ -105,6 +105,8 @@ register(StrategySession, factories.StrategySessionFactory,
          endpoints=("/api/strategy-sessions/",))
 register(StrategyMapRow, factories.StrategyMapRowFactory,
          endpoints=("/api/strategy-map-rows/",))
+register(StrategyPathNote, factories.StrategyPathNoteFactory,
+         endpoints=("/api/strategy-path-notes/",))
 # Reached only through their template or their session, never by id of their
 # own — there is no endpoint that takes one.
 register(StrategySection, factories.StrategySectionFactory, api_exposed=False)

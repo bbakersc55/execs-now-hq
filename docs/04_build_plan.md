@@ -780,6 +780,32 @@ cadence, who else weighs in, the follow-up call, the proposal due date — carry
 checklist. AC-4.9 is unchanged and still passes: its §9 marker sits in the investment
 range. **If the owner would rather §9 stayed shut entirely, it is one line.**
 
+#### The owner's PDF feedback, applied 2026-09-21
+
+Four changes after reading the first draft, all on the same two pages.
+
+1. **"What happens next" is sized like the last thing he reads** — 12pt rows, 17pt
+   ticks, double the row height.
+2. **The decision page is rebuilt.** Written to the person deciding, in the second
+   person, with the practice's name taken from the tenant's display name. Each path
+   carries two lines on what taking it means, then its **accepted pros and cons**, then
+   their leaning. **The reaction and the honest risk come off the document** — they are
+   the fractional's record of the call, they stay in the live view, and they remain
+   input to the draft. A prospect reading their own reaction quoted back at them is a
+   different and worse document. **The pros and cons are Claude's, into the tray**
+   (R6a): two triggers, a button and once when §8 is captured, an `ai_call` per run, and
+   nothing on the document until a person accepts it. One new table,
+   `strategy_path_note` — **a table and not the "fields on the session" the note asked
+   for**, because accept, edit and discard are per item, which is the shape the map rows
+   already have and the tray already knows how to draw.
+3. **The map is grouped by horizon**, priority order within a column, **three cards a
+   column**, and a fourth listed by title as "Also noted — lower priority" so it is
+   neither lost nor promoted. The mixed 1–9 grid is gone.
+4. **Three header chips** — revenue, team, customers — with labels that fit.
+
+`strategy` 0007 is one `CREATE TABLE` with its indexes: **purely additive**, the suite
+was green on it before it was applied, and today's backup had already run. **Applied.**
+
 #### Gaps, stated plainly
 
 1. **Claude has been exercised only against the test double.** The drafting prompts

@@ -34,41 +34,60 @@
   .mirror .said { font-size: 12pt; line-height: 1.3; color: {{ brand.header_color }};
                   margin: 1pt 0 6pt; }
   .mirror .unlocks { font-size: 10pt; margin: 0; }
-  .lane { display: table; width: 100%; table-layout: fixed; border-spacing: 6pt 0;
-          margin-bottom: 6pt; }
-  .lane > div { display: table-cell; vertical-align: top; }
-  .lane .when { background: {{ brand.header_color }}; color: #fff; font-size: 8.5pt;
-                padding: 3pt 6pt; border-radius: 3pt 3pt 0 0; font-weight: 600; }
-  .lane .what { border: 0.75pt solid #E4E8EB; border-top: none; padding: 5pt 6pt;
-                font-size: 8.5pt; color: #4A5056; border-radius: 0 0 3pt 3pt; }
-  .cards { display: table; width: 100%; table-layout: fixed; border-spacing: 5pt; }
-  .cards .row { display: table-row; }
-  .card { display: table-cell; vertical-align: top;
-          border: 0.75pt solid #E4E8EB; border-top: 2pt solid {{ brand.accent_color }};
-          padding: 5pt 6pt; }
-  .card .n { font-size: 7.5pt; color: #939598; }
+  /* The map, in columns by horizon: three cards, then the rest by name. */
+  .lanes { display: table; width: 100%; table-layout: fixed; border-spacing: 6pt 0; }
+  .lane-col { display: table-cell; vertical-align: top; }
+  .when { background: {{ brand.header_color }}; color: #fff; font-size: 9pt;
+          padding: 3.5pt 7pt; border-radius: 3pt; font-weight: 600;
+          margin-bottom: 5pt; }
+  .card { border: 0.75pt solid #E4E8EB; border-left: 2.5pt solid {{ brand.accent_color }};
+          padding: 5pt 7pt; margin-bottom: 5pt; }
   .card .bottleneck { font-weight: 600; font-size: 9pt; color: {{ brand.header_color }};
-                      margin: 1pt 0 3pt; }
+                      margin: 0 0 3pt; }
   .card .fix { font-size: 8.5pt; margin: 0 0 4pt; }
   .card .meta { font-size: 7.5pt; color: #6D6E71; }
   .card .mech { font-size: 7.5pt; color: #6D6E71; border-top: 0.5pt dotted #D8DDE1;
                 margin-top: 4pt; padding-top: 3pt; }
-  .pill { display: inline-block; background: #F3F6F9; border-radius: 8pt;
-          padding: 1pt 5pt; font-size: 7.5pt; color: {{ brand.header_color }}; }
-  .path { border: 0.75pt solid #E4E8EB; padding: 7pt 8pt; height: 100%; }
-  .path .name { font-weight: 600; color: {{ brand.header_color }}; font-size: 10pt; }
-  .path .detail { font-size: 8pt; color: #6D6E71; margin: 2pt 0 5pt; }
-  .path .line { font-size: 8.5pt; margin: 0 0 3pt; }
-  .path .line b { color: #4A5056; font-weight: 600; }
+  .also { margin-top: 2pt; }
+  .also-head { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.5pt;
+               color: #939598; margin-bottom: 2pt; }
+  .also-row { font-size: 8pt; color: #6D6E71; padding-left: 7pt;
+              border-left: 0.75pt solid #E4E8EB; margin-bottom: 1.5pt; }
+  /* The decision page: two boxes, written to the person deciding. */
+  .path { border: 0.75pt solid #E4E8EB; border-top: 3pt solid {{ brand.header_color }};
+          padding: 8pt 10pt; }
+  .path .label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.8pt;
+                 color: {{ brand.accent_color }}; font-weight: 600; }
+  .path .name { font-weight: 600; color: {{ brand.header_color }}; font-size: 12pt;
+                line-height: 1.25; margin: 1pt 0 6pt; }
+  .path .move { font-size: 9pt; margin: 0 0 5pt; }
+  .path .move b { color: #2B2F33; font-weight: 600; }
+  .path .move .muted { font-size: 8.5pt; }
+  .pc { margin-top: 6pt; }
+  .pc-head { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.6pt;
+             color: #939598; margin-bottom: 2pt; }
+  .pc-row { font-size: 9pt; margin-bottom: 2pt; padding-left: 11pt;
+            text-indent: -11pt; }
+  .pc-row .tick { color: {{ brand.header_color }}; font-weight: 700;
+                  display: inline-block; width: 11pt; text-indent: 0; }
+  .pc-row .minus { color: {{ brand.accent_color }}; font-weight: 700;
+                   display: inline-block; width: 11pt; text-indent: 0; }
+  .path .leaning { font-size: 9pt; margin: 7pt 0 0; padding-top: 5pt;
+                   border-top: 0.75pt solid #EDF0F2; }
+  .path .leaning b { color: {{ brand.header_color }}; }
   .values td { font-size: 9pt; padding: 3pt 6pt 3pt 0; vertical-align: top;
                border-bottom: 0.5pt solid #EDF0F2; }
   .values .v { font-weight: 600; color: {{ brand.header_color }}; width: 42%; }
+  /* The last thing he reads, and sized like it (owner, 2026-09-21). */
   .steps { width: 100%; border-collapse: collapse; }
-  .steps td { font-size: 9pt; padding: 3.5pt 6pt 3.5pt 0; vertical-align: top;
-              border-bottom: 0.5pt solid #EDF0F2; }
-  .steps .box { width: 14pt; color: {{ brand.accent_color }}; font-size: 10pt; }
-  .steps .when { text-align: right; white-space: nowrap; color: {{ brand.header_color }};
-                 font-weight: 600; width: 26%; }
+  .steps td { font-size: 12pt; padding: 8pt 8pt 8pt 0; vertical-align: middle;
+              border-bottom: 0.75pt solid #E4E8EB; }
+  .steps .box { width: 26pt; color: {{ brand.accent_color }}; font-size: 17pt;
+                line-height: 1; }
+  .steps .step-when { text-align: right; white-space: nowrap;
+                      color: {{ brand.header_color }}; font-weight: 700; width: 26%;
+                      font-size: 12pt; }
+  h2.big { font-size: 13pt; letter-spacing: 0.5pt; }
   .muted { color: #939598; }
   .chart text { font: 8.5pt "Helvetica Neue", Helvetica, Arial, sans-serif; }
   .page-break { break-before: page; }
@@ -140,32 +159,30 @@
 {% if map_rows %}
   <div class="block">
     <h2>The strategy map — what we would change, and when</h2>
-    {% if horizons %}
-      <div class="lane">
-        {% for bucket in horizons %}
-          <div>
-            <div class="when">{{ bucket.label }}</div>
-            <div class="what">
-              {% for row in bucket.rows %}{{ row.bottleneck|truncatechars:38 }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+    <div class="lanes">
+      {% for bucket in horizons %}
+        <div class="lane-col">
+          <div class="when">{{ bucket.label }}</div>
+          {% for row in bucket.cards %}
+            <div class="card">
+              <p class="bottleneck">{{ row.bottleneck|truncatechars:62 }}</p>
+              {% if row.the_fix %}<p class="fix">{{ row.the_fix|truncatechars:104 }}</p>{% endif %}
+              <div class="meta">
+                {% if row.owner_text %}{{ row.owner_text }} · {% endif %}
+                {{ row.measurable|default:"measure to be agreed"|truncatechars:58 }}
+              </div>
+              {% if row.mechanics_note %}<div class="mech">{{ row.mechanics_note }}</div>{% endif %}
             </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-    <div class="cards">
-      {% for row in map_rows %}
-        {% if forloop.counter0|divisibleby:3 %}<div class="row">{% endif %}
-        <div class="card">
-          <div class="n">{{ row.position }}{% if row.horizon %} · <span class="pill">{{ row.horizon }} days</span>{% endif %}</div>
-          <p class="bottleneck">{{ row.bottleneck|truncatechars:62 }}</p>
-          {% if row.the_fix %}<p class="fix">{{ row.the_fix|truncatechars:104 }}</p>{% endif %}
-          <div class="meta">
-            {% if row.owner_text %}{{ row.owner_text }} · {% endif %}
-            {{ row.measurable|default:"measure to be agreed"|truncatechars:64 }}
-          </div>
-          {% if row.mechanics_note %}<div class="mech">{{ row.mechanics_note }}</div>{% endif %}
+          {% endfor %}
+          {% if bucket.also %}
+            <div class="also">
+              <div class="also-head">Also noted — lower priority</div>
+              {% for row in bucket.also %}
+                <div class="also-row">{{ row.bottleneck|truncatechars:56 }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
         </div>
-        {% if forloop.counter|divisibleby:3 or forloop.last %}</div>{% endif %}
       {% endfor %}
     </div>
   </div>
@@ -181,11 +198,27 @@
       {% for path in path_pair %}
         <div>
           <div class="path">
-            <div class="name">{{ path.name }}</div>
-            <div class="detail">{{ path.detail }}</div>
-            {% if path.reaction %}<p class="line"><b>Your reaction</b><br>{{ path.reaction }}</p>{% endif %}
-            {% if path.risk %}<p class="line"><b>The honest risk</b><br>{{ path.risk }}</p>{% endif %}
-            {% if path.leaning %}<p class="line"><b>Leaning</b><br>{{ path.leaning }}</p>{% endif %}
+            <div class="label">{{ path.label }}</div>
+            <div class="name">{{ path.title }}</div>
+            {% for move in path.moves %}
+              <p class="move"><b>{{ move.headline }}</b><br>
+                <span class="muted">{{ move.detail }}</span></p>
+            {% endfor %}
+            {% if path.pros %}
+              <div class="pc">
+                <div class="pc-head">What is good about it</div>
+                {% for pro in path.pros %}<div class="pc-row"><span class="tick">+</span>{{ pro }}</div>{% endfor %}
+              </div>
+            {% endif %}
+            {% if path.cons %}
+              <div class="pc">
+                <div class="pc-head">What it costs you</div>
+                {% for con in path.cons %}<div class="pc-row"><span class="minus">−</span>{{ con }}</div>{% endfor %}
+              </div>
+            {% endif %}
+            {% if path.leaning %}
+              <p class="leaning"><b>Your leaning</b> · {{ path.leaning }}</p>
+            {% endif %}
           </div>
         </div>
       {% endfor %}
@@ -206,13 +239,13 @@
 
 {% if next_steps %}
   <div class="block">
-    <h2>What happens next</h2>
+    <h2 class="big">What happens next</h2>
     <table class="steps">
       {% for step in next_steps %}{% if step.agreed or step.detail %}
         <tr>
           <td class="box">{% if step.agreed %}&#10003;{% else %}&#9744;{% endif %}</td>
           <td>{{ step.label }}</td>
-          <td class="when">{{ step.detail|default:"" }}</td>
+          <td class="step-when">{{ step.detail|default:"" }}</td>
         </tr>
       {% endif %}{% endfor %}
     </table>
@@ -227,7 +260,7 @@
         <tr>
           <td class="box">{% if item.value|get:"agreed" %}&#10003;{% else %}&#9744;{% endif %}</td>
           <td>{{ item.prompt }}</td>
-          <td class="when">{{ item.text }}</td>
+          <td class="step-when">{{ item.text }}</td>
         </tr>
       {% endfor %}
     </table>

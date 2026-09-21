@@ -21,13 +21,20 @@ import json
 import re
 
 from apps.strategy import services
-from apps.strategy.models import StrategyMapRow
+from apps.strategy.models import StrategyMapRow, StrategyPathNote
 
 ROWS_PURPOSE = "strategy_rows"
 MIRROR_PURPOSE = "strategy_mirror"
+PATHS_PURPOSE = "strategy_path_notes"
 
 DIAGNOSTIC_SECTION = "diagnostic"
 DESTINATION_SECTION = "where_they_want_to_go"
+PATHS_SECTION = "two_paths"
+VALUES_SECTION = "what_they_value"
+
+#: The marker that keeps §8's automatic draft to once a session, kept beside the
+#: diagnostic areas in `drafted_areas` rather than in a column of its own.
+PATHS_MARKER = "§8"
 
 ROWS_SYSTEM = """\
 You are drafting candidate rows for a fractional operations executive's Strategy \
@@ -68,6 +75,32 @@ cause the input does not name. If they never stated a destination, say so in the
 
 Reply with JSON only: an object with the keys "goal" and "unlocks". No prose \
 around it, no markdown fence."""
+
+
+PATHS_SYSTEM = """\
+You are drafting the pros and cons of two paths, for the decision page of a \
+document a prospect keeps after a strategy session with a fractional operations \
+executive.
+
+Path A is that they carry on themselves, using the strategy map they were just \
+given. Path B is that they work with {practice} to do it.
+
+Write 2 to 3 pros and 2 to 3 cons for EACH path. Address the reader directly as \
+"you" and "your team". One line each, no more than about fifteen words, no \
+headings, no bullet characters, no trailing full stops unless the line is a \
+sentence.
+
+You are given only this session's own material: what they said in the \
+diagnostic, the mirror, what they told us they value, the map rows drafted from \
+the conversation, and their reaction, stated risk and leaning on each path. \
+**Assert nothing that is not in that input.** No figures they did not give, no \
+timelines nobody agreed, no claim about {practice}'s results elsewhere, and no \
+promise of an outcome. A con of Path B is a real cost or risk of bringing \
+someone in — write it honestly; a document where one column has no downside \
+persuades nobody.
+
+Reply with JSON only: {{"a": {{"pros": [], "cons": []}}, "b": {{"pros": [], \
+"cons": []}}}}. No prose around it, no markdown fence."""
 
 
 def _answered(session, section_code):
@@ -244,3 +277,138 @@ def draft_for_newly_completed_areas(session):
     session.drafted_areas = sorted(already | newly)
     session.save(update_fields=["drafted_areas", "updated_at"])
     return rows
+
+
+# ------------------------------------------ §8's pros and cons (owner, 2026-09-21)
+
+def path_input(session) -> str:
+    """What the pros-and-cons draft is given: this session's own material.
+
+    The reaction and the stated risk **are** input — they are the most useful
+    thing said about either path — even though they never reach the prospect's
+    PDF. A draft that had to ignore what they said about the paths could only
+    write brochure copy.
+    """
+    lines = [drafting_input(session)]
+    if session.mirror_goal or session.mirror_unlocks:
+        lines.append("\nThe mirror, as read back to them:")
+        if session.mirror_goal:
+            lines.append(f"  their goal: {session.mirror_goal}")
+        if session.mirror_unlocks:
+            lines.append(f"  what unlocks it: {session.mirror_unlocks}")
+
+    values = _answered(session, VALUES_SECTION)
+    if values:
+        lines.append("\nWhat they told us they value:")
+    for _question, _prompt, value in values:
+        said = (value.get("value") or "").strip()
+        why = (value.get("why") or "").strip()
+        if said:
+            lines.append(f"  {said}" + (f" — because {why}" if why else ""))
+
+    rows = list(StrategyMapRow.objects.filter(
+        session=session, state=StrategyMapRow.State.ACCEPTED).order_by("position"))
+    if rows:
+        lines.append("\nThe map they were just given, in priority order:")
+        for index, row in enumerate(rows, start=1):
+            horizon = f" ({row.horizon} days)" if row.horizon else ""
+            lines.append(f"  {index}. {row.bottleneck}{horizon}")
+
+    paths = _answered(session, PATHS_SECTION)
+    if paths:
+        lines.append("\nThe two paths, and what they said about each:")
+    for _question, prompt, value in paths:
+        lines.append(prompt)
+        for field, label in (("reaction", "their reaction"),
+                             ("risk", "the honest risk, in their words"),
+                             ("leaning", "leaning")):
+            said = (value.get(field) or "").strip()
+            if said:
+                lines.append(f"  {label}: {said}")
+    return "\n".join(lines).strip()
+
+
+def paths_captured(session) -> bool:
+    """§8 is captured when both paths carry something a person typed."""
+    answers = services.answers_of(session)
+    keys = [question["key"]
+            for section, question in services.questions_in(session.template_snapshot)
+            if section["code"] == PATHS_SECTION]
+    if not keys:
+        return False
+    return all(
+        any((answers[key].value or {}).get(field, "").strip()
+            for field in ("reaction", "risk", "leaning"))
+        for key in keys if key in answers
+    ) and len([key for key in keys if key in answers]) == len(keys)
+
+
+def draft_path_notes(session, *, trigger="button"):
+    """Append pros and cons to the tray. Never touches one already there.
+
+    Two to three of each, per path. A note lands `proposed`; **only an accepted
+    one reaches the prospect's PDF**, which is the same rule the map rows and
+    the mirror carry.
+    """
+    from apps.crm.services import email_layout
+    from apps.tenancy import claude
+
+    user_text = path_input(session)
+    if not user_text:
+        return []
+    practice = email_layout.branding(session.tenant).display_name or "the practice"
+    try:
+        text, call = claude.complete_with_call(
+            tenant=session.tenant, purpose=PATHS_PURPOSE,
+            system=PATHS_SYSTEM.format(practice=practice),
+            user_text=user_text, target_type="strategy_session", target_id=session.pk,
+            trigger=trigger, max_tokens=1500,
+        )
+    except (claude.ClaudeUnavailable, claude.ClaudeRefused):
+        return []                        # the ai_call row records what happened
+    payload = _json_payload(text)
+    if not isinstance(payload, dict):
+        return []
+
+    existing = {(note.path, note.kind, note.text.strip().lower())
+                for note in StrategyPathNote.objects.filter(session=session)}
+    made = []
+    for path in (StrategyPathNote.Path.A, StrategyPathNote.Path.B):
+        side = payload.get(path) or {}
+        if not isinstance(side, dict):
+            continue
+        for kind, key in ((StrategyPathNote.Kind.PRO, "pros"),
+                          (StrategyPathNote.Kind.CON, "cons")):
+            items = side.get(key)
+            if not isinstance(items, list):
+                continue
+            position = StrategyPathNote.objects.filter(
+                session=session, path=path, kind=kind).count()
+            # Three is the brief's ceiling; a fourth is padding, and padding on
+            # a decision page is what makes a prospect stop reading.
+            for raw in items[:3]:
+                line = str(raw or "").strip()
+                if not line or (path, kind, line.lower()) in existing:
+                    continue
+                existing.add((path, kind, line.lower()))
+                made.append(StrategyPathNote.objects.create(
+                    tenant=session.tenant, session=session, path=path, kind=kind,
+                    text=line, position=position, ai_call=call,
+                    state=StrategyPathNote.State.PROPOSED))
+                position += 1
+    return made
+
+
+def draft_paths_once_captured(session):
+    """The second trigger, fired at most once a session (owner, 2026-09-21).
+
+    Recorded beside the diagnostic areas in `drafted_areas`, so "has this
+    already run?" has one answer in one place.
+    """
+    already = set(session.drafted_areas or [])
+    if PATHS_MARKER in already or not paths_captured(session):
+        return []
+    notes = draft_path_notes(session, trigger="auto")
+    session.drafted_areas = sorted(already | {PATHS_MARKER})
+    session.save(update_fields=["drafted_areas", "updated_at"])
+    return notes

@@ -746,3 +746,32 @@ def test_10a_9_nobody_edits_a_derived_milestone_or_a_narrative_version(
         response = getattr(api.as_(ff), method)(
             f"/api/value-report/{goal.pk}/narrative-versions/")
         assert response.status_code in (404, 405), method
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 404), ("VA", 403)])
+def test_10a_6a_only_the_fractional_accepts_a_pro_or_a_con(role, expected, seeded_tenant,
+                                                            api, in_tenant_a):
+    """Matrix 10.6a — the decision page is judgement, like the map rows.
+
+    A CF unassigned to the session's prospect gets 404, not 403: the row exists,
+    and saying so would confirm it.
+    """
+    from apps.strategy.models import StrategyPathNote
+    from apps.strategy.seed import seed_tenant
+    from apps.strategy import services
+
+    from .factories import ContactFactory
+
+    template = seed_tenant(seeded_tenant)
+    ff = MembershipFactory(tenant=seeded_tenant, role=Role.FF)
+    prospect = ContactFactory(tenant=seeded_tenant)
+    session = services.start(tenant=seeded_tenant, contact=prospect, template=template,
+                             owner=ff.user)
+    note = StrategyPathNote.objects.create(tenant=seeded_tenant, session=session,
+                                           path="a", kind="pro", text="A pro.")
+    membership = ff if role == "FF" else MembershipFactory(tenant=seeded_tenant, role=role)
+    response = api.as_(membership).post(f"/api/strategy-path-notes/{note.pk}/accept/")
+    assert response.status_code == expected
+    note.refresh_from_db()
+    assert (note.state == "accepted") is (expected == 200)

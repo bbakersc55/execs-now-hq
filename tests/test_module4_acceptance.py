@@ -17,9 +17,10 @@ from django.utils import timezone
 
 from apps.crm.models import Contact, OutboxMessage, Pipeline, PipelineStage, StageSemantic
 from apps.strategy import ai, conversion, emails, pdf as pdf_service, services
+from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
-    AskWhen, StrategyAnswer, StrategyMapRow, StrategyQuestion, StrategySection,
-    StrategySession,
+    AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyQuestion,
+    StrategySection, StrategySession,
 )
 from apps.strategy.seed import seed_tenant
 from apps.tenancy.models import AiCall, AuditEvent
@@ -455,14 +456,198 @@ def test_next_steps_are_the_checklist_and_the_money_is_still_behind_the_flag(ses
 
 
 @pytest.mark.django_db
-def test_neither_path_is_favoured_by_reading_a_yes_out_of_free_text(session):
-    """Both paths carry a leaning — "Nope." is one — so highlighting on its
-    presence lit up both. Reading agreement out of free text is a guess this
-    document does not make."""
+def test_the_decision_page_keeps_the_leaning_and_drops_what_they_said(session):
+    """Owner, 2026-09-21. **The reaction and the honest risk are the
+    fractional's**, captured on the call and kept in the live view; a prospect
+    reading their own reaction quoted back at them is a different, worse
+    document. The leaning stays — it is what they decided."""
     _a_full_session(session)
     context = pdf_service.context_for(session)
     assert [path["leaning"] for path in context["path_pair"]] == ["Nope.", "Yes."]
-    assert "class=\"path leaning\"" not in pdf_service.render_html(session)
+
+    html = pdf_service.render_html(session)
+    assert "Nope." in html and "Yes." in html
+    for said in ("They have already tried it.", "Know they need help.",
+                 "They like the idea.", "Need to get us up to speed."):
+        assert said not in html, f"{said!r} is the fractional's record, not the PDF's"
+    # And it is still in the live view's payload, where it was captured.
+    payload = strategy_serializers.represent_session(session, full=True)
+    assert "They have already tried it." in json.dumps(payload)
+
+
+@pytest.mark.django_db
+def test_the_decision_page_is_written_to_the_person_deciding(session, seeded_tenant):
+    """The two boxes' copy, with the practice's name from the tenant's display
+    name rather than hardcoded."""
+    seeded_tenant.email_display_name = "Executives Now"
+    seeded_tenant.save(update_fields=["email_display_name"])
+    _a_full_session(session)
+    paths = pdf_service.context_for(session)["path_pair"]
+
+    assert [path["label"] for path in paths] == ["Path A", "Path B"]
+    assert paths[0]["title"] == "Continue to run it yourself"
+    assert paths[1]["title"] == "Work with Executives Now"
+    # The map's size is stated rather than described: nine rows, said as nine.
+    assert "9 fixes" in paths[0]["moves"][0]["detail"]
+    assert "Executives Now" in paths[1]["moves"][0]["headline"]
+    assert paths[1]["moves"][0]["detail"].startswith("Starting with Bottleneck 0")
+
+    seeded_tenant.email_display_name = "Someone Else Ops"
+    seeded_tenant.save(update_fields=["email_display_name"])
+    session.refresh_from_db()            # the FK caches the tenant it first read
+    renamed = pdf_service.context_for(session)["path_pair"]
+    assert renamed[1]["title"] == "Work with Someone Else Ops"
+    assert "Executives Now" not in json.dumps(renamed)
+
+
+@pytest.mark.django_db
+def test_pros_and_cons_reach_the_pdf_only_once_accepted(session, ff, api):
+    """The tray's rule, on §8's notes: proposed is invisible to the prospect."""
+    _a_full_session(session)
+    proposed = StrategyPathNote.objects.create(
+        tenant=session.tenant, session=session, path="a", kind="con",
+        text="MARKERPROPOSED — you would be doing this between service calls.")
+    accepted = StrategyPathNote.objects.create(
+        tenant=session.tenant, session=session, path="b", kind="pro",
+        text="MARKERACCEPTED — someone owns the list on Monday morning.",
+        state=StrategyPathNote.State.ACCEPTED)
+
+    html = pdf_service.render_html(session)
+    assert "MARKERPROPOSED" not in html
+    assert "MARKERACCEPTED" in html
+    assert b"MARKERPROPOSED" not in pdf_service.render_pdf(session)
+
+    api.as_(ff).post(f"/api/strategy-path-notes/{proposed.pk}/accept/")
+    assert "MARKERPROPOSED" in pdf_service.render_html(session)
+
+    api.as_(ff).post(f"/api/strategy-path-notes/{accepted.pk}/discard/")
+    assert "MARKERACCEPTED" not in pdf_service.render_html(session)
+
+
+@pytest.mark.django_db
+def test_claude_drafts_pros_and_cons_on_two_triggers_and_costs_once_each(
+    session, ff, api, fake_claude
+):
+    """The same trigger pair the map rows have: a button, and once when §8 is
+    captured. Nothing else calls it, and each run writes one `ai_call`."""
+    from apps.tenancy.models import AiCall
+
+    fake_claude.reply = json.dumps({
+        "a": {"pros": ["You keep every pound of it in-house"],
+              "cons": ["It waits behind the day job", "Nobody owns the list"]},
+        "b": {"pros": ["Someone owns the list on Monday", "You get the hours back"],
+              "cons": ["It costs money you have not spent before"]},
+    })
+    _a_full_session(session)
+
+    # Nothing yet: §8 was filled by the service, not through the answers route.
+    assert StrategyPathNote.objects.filter(session=session).count() == 0
+
+    drafted = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/draft-paths/")
+    assert drafted.status_code == 201
+    notes = StrategyPathNote.objects.filter(session=session)
+    assert notes.count() == 6
+    assert notes.filter(path="a", kind="con").count() == 2
+    assert set(notes.values_list("state", flat=True)) == {"proposed"}
+    assert AiCall.objects.filter(purpose="strategy_path_notes").count() == 1
+
+    # A second run adds nothing it already said, and never touches an accepted one.
+    accepted = notes.filter(path="b", kind="pro").first()
+    accepted.state = StrategyPathNote.State.ACCEPTED
+    accepted.save(update_fields=["state", "updated_at"])
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/draft-paths/")
+    assert StrategyPathNote.objects.filter(session=session).count() == 6
+    accepted.refresh_from_db()
+    assert accepted.state == StrategyPathNote.State.ACCEPTED
+    assert AiCall.objects.filter(purpose="strategy_path_notes").count() == 2
+
+
+@pytest.mark.django_db
+def test_the_second_trigger_fires_once_when_section_eight_is_captured(
+    session, ff, api, fake_claude
+):
+    fake_claude.reply = json.dumps({
+        "a": {"pros": ["A pro"], "cons": ["A con"]},
+        "b": {"pros": ["Another pro"], "cons": ["Another con"]},
+    })
+    url = f"/api/strategy-sessions/{session.pk}/answers/"
+    first = api.as_(ff).post(url, {"question_key": "s8_path_a",
+                                   "value": {"reaction": "Tried it.", "leaning": "No."}},
+                             content_type="application/json")
+    assert first.json()["path_notes"] == [], "one path is not §8 captured"
+    assert StrategyPathNote.objects.filter(session=session).count() == 0
+
+    second = api.as_(ff).post(url, {"question_key": "s8_path_b",
+                                    "value": {"reaction": "Like it.", "leaning": "Yes."}},
+                              content_type="application/json")
+    assert len(second.json()["path_notes"]) == 4
+
+    # Once. Answering §8 again does not fire it a second time.
+    api.as_(ff).post(url, {"question_key": "s8_path_b",
+                           "value": {"reaction": "Still like it.", "leaning": "Yes."}},
+                     content_type="application/json")
+    assert StrategyPathNote.objects.filter(session=session).count() == 4
+
+
+@pytest.mark.django_db
+def test_the_pros_and_cons_prompt_carries_only_this_sessions_material(
+    session, ff, api, fake_claude
+):
+    """AC-3.5's constraint, on §8's draft. The reaction and the risk **are**
+    input — they are the most useful thing said about either path — even though
+    they never reach the PDF."""
+    _a_full_session(session)
+    answer(session, "s4_done_right", {"said": "MARKERDIAGNOSTIC — spot checks only."},
+           note="MARKERPRIVATE — they are kidding themselves.")
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/draft-paths/")
+
+    sent = json.dumps(fake_claude.requests[-1])
+    assert "MARKERDIAGNOSTIC" in sent
+    assert "They have already tried it." in sent      # the reaction is input
+    assert "Systems before they double." in sent      # what they value is input
+    assert "MARKERPRIVATE" not in sent, "the private column is private from the model"
+    assert "MARKERINVESTMENT" not in sent, "no money reaches a draft"
+    assert "Assert nothing that is not in that input" in fake_claude.requests[-1]["system"]
+
+
+@pytest.mark.django_db
+def test_the_map_groups_by_horizon_with_three_cards_and_the_rest_named(session):
+    """Owner, 2026-09-21. Priority order within a column, three cards, and a
+    fourth listed by title rather than dropped."""
+    _a_full_session(session, rows=11)
+    horizons = pdf_service.context_for(session)["horizons"]
+    by_label = {bucket["label"]: bucket for bucket in horizons}
+
+    assert [bucket["label"] for bucket in horizons] == ["30 days", "60 days", "90 days"]
+    assert [len(bucket["cards"]) for bucket in horizons] == [3, 3, 3]
+    # 11 rows round-robin 30/60/90: four land on 30, four on 60, three on 90.
+    assert len(by_label["30 days"]["also"]) == 1
+    assert len(by_label["60 days"]["also"]) == 1
+    assert by_label["90 days"]["also"] == []
+
+    # Priority order within the column, not creation order shuffled.
+    thirty = by_label["30 days"]
+    assert [row["bottleneck"] for row in thirty["cards"] + thirty["also"]] == [
+        f"Bottleneck {i} — decisions stall waiting on the founder"
+        for i in (0, 3, 6, 9)]
+
+    html = pdf_service.render_html(session)
+    assert "Also noted — lower priority" in html
+    assert "Bottleneck 9" in html, "the eleventh row is named, not forgotten"
+
+
+@pytest.mark.django_db
+def test_the_header_carries_three_chips_with_labels_that_fit(session):
+    _a_full_session(session)
+    answer(session, "s1_team", {"text": "28 FT / 10 PT"})
+    answer(session, "s1_sites", {"text": "250"})
+    answer(session, "s1_service_mix", {"text": "all contract"})
+
+    chips = pdf_service.context_for(session)["snapshot"]
+    assert [chip["label"] for chip in chips] == ["Revenue", "Team", "Customers"]
+    assert [chip["text"] for chip in chips] == ["5m then 5.5m", "28 FT / 10 PT", "250"]
+    html = pdf_service.render_html(session)
+    assert "Active customer sites" not in html and "Service mix" not in html
 
 
 # ------------------------------------------------------------------ AC-4.10

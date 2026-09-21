@@ -62,6 +62,8 @@ function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionR
         ]},
       { code: "mirror", title: "The mirror", position: 4, time_budget_minutes: 5,
         questions: [] },
+      { code: "two_paths", title: "Two paths", position: 6, time_budget_minutes: 5,
+        questions: [] },
       { code: "strategy_map", title: "Strategy Map", position: 5,
         time_budget_minutes: 15, questions: [] },
     ],
@@ -85,6 +87,12 @@ function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionR
       ],
       ratings: { s2_vision: 8, s2_data: 3 }, answered: 2, of: 6,
       average: 5.5, complete: false, lowest: null },
+    path_notes: [
+      { id: "p1", path: "a", kind: "con", text: "It waits behind the day job.",
+        position: 0, state: "proposed", from_ai: true },
+      { id: "p2", path: "b", kind: "pro", text: "Someone owns the list on Monday.",
+        position: 0, state: "accepted", from_ai: true },
+    ],
     must_ask: { outstanding: ["s4_done_right"], answered: 0, of: 7 },
     ...overrides,
   };
@@ -161,7 +169,7 @@ describe("the live session view", () => {
     const fetchMock = showSession(aSession(), aMe(), {
       "POST /api/strategy-map-rows/r1/accept/": {},
     });
-    expect(await screen.findByText(/Tray — 1 proposed/)).toBeInTheDocument();
+    expect(await screen.findByText(/Tray — 1 proposed rows/)).toBeInTheDocument();
     expect(screen.getByText(/The map — 0 rows/)).toBeInTheDocument();
     // The worked example stands in for an empty map.
     expect(screen.getByText(/1 supervisor covering 14 sites/)).toBeInTheDocument();
@@ -489,5 +497,52 @@ describe("converting a session into work, from the page the owner opens", () => 
     }
     expect(screen.getByRole("button", { name: "Create the work" })).toBeDisabled();
     expect(screen.getByText(/Every row is left out/)).toBeInTheDocument();
+  });
+});
+
+
+describe("the decision page's pros and cons", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  // Owner, 2026-09-21. The same tray the map rows get, for the same reason:
+  // Claude proposes, the fractional disposes, and nothing reaches the
+  // prospect's PDF until someone accepts it.
+  it("keeps a drafted pro or con in the tray until someone accepts it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      "POST /api/strategy-path-notes/p1/accept/": {},
+    });
+    await screen.findByText(/Two paths/);
+    expect(screen.getByText("It waits behind the day job.")).toBeInTheDocument();
+    // The accepted one is already in its column, not in the tray.
+    expect(screen.getByText("Someone owns the list on Monday.")).toBeInTheDocument();
+
+    expect(screen.getByText(/Tray — 1 proposed for the two paths/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole(
+      "button", { name: 'Accept "It waits behind the day job."' }));
+    await waitFor(() => expect(fetchMock.calls.some(
+      (c) => c.url === "/api/strategy-path-notes/p1/accept/")).toBe(true));
+  });
+
+  it("asks Claude for them on the button, and says nothing is published", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/draft-paths/`]: { drafted: [] },
+    });
+    await user.click(await screen.findByRole("button",
+                                             { name: /Draft pros and cons with Claude/ }));
+    await waitFor(() => expect(fetchMock.calls.some(
+      (c) => c.url.endsWith("/draft-paths/"))).toBe(true));
+    expect(screen.getByText(/Nothing reaches the PDF until you accept it/))
+      .toBeInTheDocument();
+  });
+
+  it("matrix §10 — a VA sees them and cannot accept one", async () => {
+    showSession(aSession(), aMe({ role: "VA" }));
+    expect(await screen.findByText("It waits behind the day job.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Draft pros and cons/ }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Accept "/ })).not.toBeInTheDocument();
   });
 });
