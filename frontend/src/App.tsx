@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
@@ -46,18 +46,28 @@ interface Branding {
 }
 
 const TENANT = ["FF", "CF", "VA"];
+
+/** The five codes are the schema's; nobody signing in thinks of themselves as
+ *  an "ECC". */
+const ROLE_LABELS: Record<string, string> = {
+  FF: "Founder", CF: "Fractional", VA: "Assistant",
+  FCC: "Client — founder", ECC: "Client",
+};
 const CLIENT = ["FCC", "ECC"];
 
-const NAV: { to: string; label: string; roles?: string[] }[] = [
+/** `group` is the heading the item sits under in the sidebar. A flat list of
+ *  seventeen links is a list nobody reads; the groups say what each part of the
+ *  product is for, and they are the same words the modules use. */
+const NAV: { to: string; label: string; roles?: string[]; group?: string }[] = [
   // Matrix 4.18 — Module 1 has no client-facing surface, so every CRM entry is
   // scoped to tenant staff. Without this, an FCC saw the whole sidebar.
-  { to: "/contacts", label: "Contacts", roles: TENANT },
+  { to: "/contacts", label: "Contacts", roles: TENANT , group: "Accounts" },
   { to: "/pipeline", label: "Pipeline", roles: TENANT },
   { to: "/companies", label: "Companies", roles: TENANT },
   // Matrix 6.9 — notes have no client-visible form in Beta.
   { to: "/notes", label: "Notes", roles: TENANT },
   // Module 3. The client portal's own navigation arrives with done-item 10.
-  { to: "/work", label: "Work", roles: TENANT },
+  { to: "/work", label: "Work", roles: TENANT , group: "The work" },
   { to: "/tasks", label: "Tasks", roles: TENANT },
   { to: "/digests", label: "Digests", roles: TENANT },
   // Module 4. A VA sets a session up and sends the form; the call itself is the
@@ -70,15 +80,15 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   // The practice reads the same report the client does, per company.
   { to: "/report", label: "Value report", roles: TENANT },
   // The client portal: the same work, scoped to their company (FR-3.34).
-  { to: "/work", label: "Our work", roles: CLIENT },
+  { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" },
   { to: "/tasks", label: "Tasks", roles: CLIENT },
   // Module 4B — replaces FR-3.38's progress report. A place they can go,
   // not a document somebody remembered to send.
   { to: "/report", label: "Where we are", roles: CLIENT },
-  { to: "/vendors", label: "Vendors", roles: TENANT },
+  { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" },
   { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },
-  { to: "/settings/email", label: "Email settings", roles: ["FF", "CF"] },
+  { to: "/settings/email", label: "Email settings", roles: ["FF", "CF"] , group: "Settings" },
   { to: "/referrals", label: "Referral settings", roles: ["FF"] },
   { to: "/rules", label: "Stage automations", roles: ["FF"] },
   { to: "/staff", label: "Staff", roles: ["FF"] },
@@ -168,15 +178,18 @@ export function App() {
         {me.role && TENANT.includes(me.role) && <NoteCapture defaults={captureDefaults(location.pathname)} />}
         <nav>
           {visible.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive ? "active" : "")}>
-              {n.label}
-            </NavLink>
+            <Fragment key={`${n.to}-${n.label}`}>
+              {n.group && <div className="nav-group">{n.group}</div>}
+              <NavLink to={n.to} end={n.to === "/work" || n.to === "/report"}
+                className={({ isActive }) => (isActive ? "active" : "")}>
+                {n.label}
+              </NavLink>
+            </Fragment>
           ))}
         </nav>
         <div className="who">
-          {me.full_name || me.email}
-          <br />
-          <span className="pill" style={{ marginTop: ".4rem" }}>{me.role}</span>
+          <div style={{ fontWeight: 600, color: "#fff" }}>{me.full_name || me.email}</div>
+          <span className="pill" style={{ marginTop: ".4rem" }}>{ROLE_LABELS[me.role!] ?? me.role}</span>
           <ActAsColleague me={me} />
         </div>
       </aside>

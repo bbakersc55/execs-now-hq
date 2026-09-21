@@ -144,7 +144,7 @@ function Grouped<T extends { client_company: string | null; client_company_name:
           {headings && (
             <h4 style={{ margin: "1rem 0 .3rem" }}>{group.label}</h4>
           )}
-          <ul className="timeline">{group.rows.map(render)}</ul>
+          <ul className="work-tree">{group.rows.map(render)}</ul>
         </div>
       ))}
     </>
@@ -246,7 +246,7 @@ function ClientActivity() {
 
   return (
     <Card title="What your clients have done">
-      <ul className="timeline">
+      <ul className="work-tree">
         {items.slice(0, 10).map((row) => (
           <li key={row.id}>
             <div>

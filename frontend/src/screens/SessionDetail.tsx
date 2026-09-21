@@ -99,7 +99,7 @@ export function SessionDetail({ me }: { me: Me }) {
   return (
     <>
       <h1>{data.contact?.name}{data.company ? ` · ${data.company.name}` : ""}</h1>
-      <p className="small muted">
+      <p className="session-meta">
         {data.scheduled_at ? when(data.scheduled_at) : "Not scheduled"} · {data.owner}
         {data.must_ask && <> · <strong>{data.must_ask.answered} of {data.must_ask.of}</strong> must-asks answered</>}
         {elapsed !== null && (
@@ -139,7 +139,7 @@ export function SessionDetail({ me }: { me: Me }) {
         const over = here && onSection !== null && section.time_budget_minutes !== null
           && onSection > section.time_budget_minutes;
         return (
-        <Card key={section.code}
+        <Card key={section.code} tone={here ? "current" : undefined}
           title={
             <button className="ghost" style={{ font: "inherit", padding: 0 }}
               aria-label={`Start ${section.title}`}

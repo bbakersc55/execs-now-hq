@@ -56,7 +56,9 @@ async function showBoard() {
 }
 
 function card(title: string) {
-  return screen.getByText(title).closest("div.comment") as HTMLElement;
+  // A board card is `.task-card` since the 2026-09-21 design pass; it used to
+  // be `.comment`, which is the class for a comment on a task.
+  return screen.getByText(title).closest("div.task-card") as HTMLElement;
 }
 
 function column(label: string) {

@@ -135,16 +135,12 @@ function TimelineCard({ timeline }: { timeline: EngagementTimeline }) {
   return (
     <Card title="The engagement, in order">
       <p className="small muted">{timeline.from} to {timeline.to}</p>
-      <ol className="timeline" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+      <ol style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {timeline.marks.map((mark, index) => (
-          <li key={`${mark.goal}-${mark.kind}-${index}`}
-              style={{ display: "flex", gap: ".6rem", padding: ".25rem 0",
-                       borderBottom: "1px solid var(--line, #eee)" }}>
-            <span className="small muted" style={{ minWidth: "6.5rem" }}>{mark.at}</span>
-            <span className="small" style={{ minWidth: "10rem", color: "var(--blue)" }}>
-              {mark.goal_title}
-            </span>
-            <span className="small">
+          <li key={`${mark.goal}-${mark.kind}-${index}`} className="timeline-row small">
+            <span className="at">{mark.at}</span>
+            <span className="which">{mark.goal_title}</span>
+            <span>
               {mark.kind === "start" && <>Started</>}
               {mark.kind === "milestone" && <>{mark.label} <Pill>{mark.detail}</Pill></>}
               {mark.kind === "reading" && <>Reading: <strong>{mark.label}</strong>
@@ -217,7 +213,7 @@ function Measure({ block }: { block: GoalBlock }) {
   }
   return (
     <div className="measure">
-      <p style={{ fontSize: "1.3rem", margin: ".2rem 0" }}>
+      <p className="figures" style={{ margin: ".2rem 0" }}>
         <span className="muted">{m.baseline.value ?? "—"}</span>
         <span className="muted"> → </span>
         <strong>{m.current.value}</strong>
@@ -303,9 +299,7 @@ function GoalCard({ block, me, onChanged, setNote }: {
     <Card title={<a href={`/report/${block.id}`}>{block.title}</a>}
           actions={block.is_historical ? <Pill>{block.resolution?.resolution}</Pill> : null}>
       {/* The headline is the server's decision, not this screen's. */}
-      <p style={{ fontSize: "1.05rem", margin: 0, color: "var(--blue)" }}>
-        {block.headline.text}
-      </p>
+      <p className="headline" style={{ margin: 0 }}>{block.headline.text}</p>
       {block.measure.kind_is_undecided && staff && (
         <Banner kind="info">
           Nobody has said how we will know this worked. Choose a number, a sentence,

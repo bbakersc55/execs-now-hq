@@ -1471,6 +1471,44 @@ Fixture results and live results **reported separately and labelled**. A replay 
 
 ## Design pass — frontend, all modules, before Beta exit
 
+> **Pulled forward in part, 2026-09-21**, on the owner's instruction, scoped to
+> **what a prospect and a demo see**: the app shell, the Work screen, the
+> portal's Our work, task detail, the client value report, the Tasks board and
+> the strategy session live view. Nothing outside that list was touched. The
+> rest of this section still stands for the full pass before Beta exit.
+>
+> **What changed, and why it was worth doing first.** Three faults were
+> structural rather than cosmetic, which is why the fix is mostly in
+> `theme.css` and barely in the screens:
+>
+> 1. **Body text was set in the brand blue.** Every sentence in the app was
+>    `#0A3A65`. That reads as washed out, and it leaves the brand colour with
+>    nothing to emphasise, because everything already is it. Text is a cool
+>    near-black now; the blue is for headings, links and structure, and the
+>    orange marks one thing at a time.
+> 2. **There was no scale.** Type sizes and spacings were chosen per rule.
+>    Both are tokens now (`--t-*`, `--s1`–`--s7`) and every component sits on
+>    them. Numbers that line up in columns are `tabular-nums`.
+> 3. **Everything was a card** — one border, one radius, one shadow — so
+>    nothing on a screen could be more important than anything else. Elevation
+>    is now spent where it means something: the section being run in the live
+>    view, a goal's measure on the report, a card on the board.
+>
+> Beyond those: the sidebar's links are grouped under headings and the active
+> one is marked with a rail rather than a filled orange bar; the five role
+> codes render as words a person would use; board cards stopped being
+> `.comment` (the class for a comment on a task, which is why a board of work
+> read like a thread) and became their own object with a status stripe; task
+> detail leads with chips rather than a sentence; and the Work tree reads as a
+> tree.
+>
+> **Not verified in a browser.** The Chrome extension was not connected in this
+> session, so the pass is written and typechecked but **not looked at**. 257
+> frontend tests pass, which says the markup still behaves — it does not say it
+> looks right. *(Also: the `frontend-design` skill the owner named is not
+> installed on this machine; the nearest available, `artifact-design`, supplied
+> the direction, along with `CLAUDE.md`'s palette, which is fixed.)*
+
 > **Added 2026-09-11 from the Phase 2 manual checks** (owner decision: recorded now, not
 > done now). Each module has shipped a UI that is functional and tested but not
 > presentable — the Notes capture panel was the example that prompted this. Fixing it

@@ -157,9 +157,17 @@ export function Tasks({ me }: { me: Me }) {
                 onDrop={board.dropOn(s)}
                 style={board.hovering === s
                   ? { outline: "2px dashed var(--orange, #F58220)" } : undefined}>
-                <h4>{STATUS_LABELS[s]}</h4>
+                {/* The column says what it holds and how much of it. A count
+                    is the one number a board is actually read for. */}
+                <h4 className="spread">
+                  <span className={`dot status-${s}`} aria-hidden="true" />
+                  <span style={{ flex: 1 }}>{STATUS_LABELS[s]}</span>
+                  <span className="tabular muted">
+                    {rows.filter((t) => t.status === s).length}
+                  </span>
+                </h4>
                 {rows.filter((t) => t.status === s).map((t) => (
-                  <div key={t.id} className="comment"
+                  <div key={t.id} className={`task-card status-${s}`}
                     draggable={t.may_edit !== false}
                     onDragStart={board.pickUp(t)} onDragEnd={board.drop}>
                     <Link to={`/tasks/${t.id}`}>{t.title}</Link>

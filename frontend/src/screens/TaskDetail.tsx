@@ -169,19 +169,28 @@ export function TaskDetail({ me }: { me: Me }) {
 
   return (
     <>
-      <p className="small">
-        {t.goal && <><Link to={`/work/goals/${t.goal}`}>{t.goal_title}</Link> · </>}
-        {t.project && <><Link to={`/work/projects/${t.project}`}>{t.project_title}</Link> · </>}
+      {/* Where this task sits, read the way a person says it: the goal, then
+          the project, then the screen it all lives on. */}
+      <p className="small muted" style={{ marginBottom: ".35rem" }}>
         <Link to="/work">Work</Link>
+        {t.goal && <> · <Link to={`/work/goals/${t.goal}`}>{t.goal_title}</Link></>}
+        {t.project && <> · <Link to={`/work/projects/${t.project}`}>{t.project_title}</Link></>}
       </p>
       <h2>{t.title}</h2>
-      <p className="sub">
-        <StatusPill status={t.status} />{" "}
-        {t.client_company_name
-          ? <Link to={`/companies/${t.client_company}`}>{t.client_company_name}</Link>
-          : "internal"}
-        {t.created_by_client && <> · <span className="pill">created by the client</span></>}
-        {t.client_company && !t.is_client_visible && <> · <span className="pill bad">hidden from the client</span></>}
+      {/* The state of the task, as chips rather than a sentence: status first,
+          because it is what the page is opened to change. */}
+      <p className="sub detail-head">
+        <StatusPill status={t.status} />
+        <span>
+          {t.client_company_name
+            ? <Link to={`/companies/${t.client_company}`}>{t.client_company_name}</Link>
+            : "internal"}
+        </span>
+        {t.due_date && <span className="pill tabular">due {t.due_date}</span>}
+        {t.assignee.name && <span className="pill">{t.assignee.name}</span>}
+        {t.created_by_client && <span className="pill">created by the client</span>}
+        {t.client_company && !t.is_client_visible
+          && <span className="pill bad">hidden from the client</span>}
       </p>
       {message && <Banner kind="bad">{message}</Banner>}
       {!t.may_edit && (

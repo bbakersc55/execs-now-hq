@@ -1,12 +1,15 @@
 import { ReactNode } from "react";
 
-export function Card({ title, children, actions }: {
+export function Card({ title, children, actions, tone }: {
   // A node, not only a string: a card's heading is sometimes the control that
   // acts on it — the live session's section headers start that section's clock.
   title?: ReactNode; children: ReactNode; actions?: ReactNode;
+  /** "current" lifts the one card being worked in. Elevation is spent where it
+   *  means something rather than stamped on every block. */
+  tone?: "current";
 }) {
   return (
-    <section className="card">
+    <section className={tone ? `card ${tone}` : "card"}>
       {(title || actions) && (
         <div className="spread" style={{ marginBottom: ".75rem" }}>
           {title && <h3 style={{ margin: 0 }}>{title}</h3>}
