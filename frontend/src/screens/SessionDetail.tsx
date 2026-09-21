@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { Inbox, Play, Square } from "lucide-react";
+
+import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import {
   AnswerValue, ConversionRow, MapRow, Me, PathNote, StrategyQuestion,
@@ -55,6 +58,7 @@ export function SessionDetail({ me }: { me: Me }) {
   const qc = useQueryClient();
   const path = `/api/strategy-sessions/${id}/`;
   const [note, setNote] = useState("");
+  const [trayOpen, setTrayOpen] = useState(false);
   const mayRun = !!me.role && CAN_RUN.includes(me.role);
 
   const session = useQuery<StrategySessionRow>({
@@ -95,10 +99,18 @@ export function SessionDetail({ me }: { me: Me }) {
   const answers = Object.fromEntries((data.answers ?? []).map((a) => [a.question_key, a]));
   const tray = (data.map_rows ?? []).filter((r) => r.state === "proposed");
   const map = (data.map_rows ?? []).filter((r) => r.state === "accepted");
+  const trayCount = tray.length
+    + (data.path_notes ?? []).filter((n) => n.state === "proposed").length;
+
+  const scrollTo = (code: string) => {
+    document.getElementById(`section-${code}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <>
-      <h1>{data.contact?.name}{data.company ? ` · ${data.company.name}` : ""}</h1>
+      <PageHead title={`${data.contact?.name ?? ""}${data.company ? ` · ${data.company.name}` : ""}`}
+        crumbs={[{ to: "/strategy", label: "Strategy sessions" }]} />
       <p className="session-meta">
         {data.scheduled_at ? when(data.scheduled_at) : "Not scheduled"} · {data.owner}
         {data.must_ask && <> · <strong>{data.must_ask.answered} of {data.must_ask.of}</strong> must-asks answered</>}
@@ -142,26 +154,49 @@ export function SessionDetail({ me }: { me: Me }) {
         <SixKey summary={data.six_key_components} sections={data.sections ?? []} />
       )}
 
+      <div className="session-layout">
+        {/* The rail navigates and nothing else. Starting a section is its own
+            control, so reading ahead mid-call cannot move the pacing under
+            you (owner's ruling, 2026-09-21). */}
+        <nav className="rail" aria-label="Sections">
+          {(data.sections ?? []).map((section) => (
+            <button key={section.code} onClick={() => scrollTo(section.code)}
+              className={data.current_section === section.code ? "on" : ""}>
+              <span>{section.title}</span>
+              <span className="mins">
+                {data.current_section === section.code && onSection !== null
+                  ? `${onSection}′`
+                  : section.time_budget_minutes ? `${section.time_budget_minutes}′` : ""}
+              </span>
+            </button>
+          ))}
+        </nav>
+
+        <div>
       {(data.sections ?? []).map((section) => {
         const here = data.current_section === section.code;
         const over = here && onSection !== null && section.time_budget_minutes !== null
           && onSection > section.time_budget_minutes;
         return (
         <Card key={section.code} tone={here ? "current" : undefined}
-          title={
-            <button className="ghost" style={{ font: "inherit", padding: 0 }}
-              aria-label={`Start ${section.title}`}
-              onClick={() => setSection.mutate(here ? "" : section.code)}>
-              {here ? "▶ " : ""}{section.title}
-            </button>
-          }
-          actions={section.time_budget_minutes ? (
-            <Pill kind={over ? "warn" : here ? "ai" : ""}>
-              {here && onSection !== null
-                ? `${onSection} of ${section.time_budget_minutes} min`
-                : `${section.time_budget_minutes} min`}
-            </Pill>
-          ) : undefined}>
+          title={<span id={`section-${section.code}`}>{section.title}</span>}
+          actions={
+            <span className="inline">
+              {section.time_budget_minutes && (
+                <Pill kind={over ? "warn" : here ? "ai" : ""}>
+                  {here && onSection !== null
+                    ? `${onSection} of ${section.time_budget_minutes} min`
+                    : `${section.time_budget_minutes} min`}
+                </Pill>
+              )}
+              {mayRun && (
+                <button className="small" aria-label={`${here ? "Stop" : "Start"} ${section.title}`}
+                  onClick={() => setSection.mutate(here ? "" : section.code)}>
+                  {here ? <><Square size={14} /> Stop</> : <><Play size={14} /> Start</>}
+                </button>
+              )}
+            </span>
+          }>
           {section.code === "mirror" && (
             <Mirror data={data} mayRun={mayRun}
               onDraft={() => act.mutate({ suffix: "draft-mirror/" })}
@@ -200,7 +235,89 @@ export function SessionDetail({ me }: { me: Me }) {
       {mayRun && <PdfCard data={data} path={path} onChanged={refresh} setNote={setNote} />}
       {mayRun && <ConvertCard id={id!} path={path} data={data} onChanged={refresh}
                               setNote={setNote} />}
+        </div>
+      </div>
+
+      {/* Claude's candidates arrive in a drawer rather than in the middle of
+          the section being run: the tray is read between answers, not instead
+          of them. */}
+      {mayRun && (trayCount > 0 || trayOpen) && (
+        <TrayDrawer open={trayOpen} onToggle={() => setTrayOpen(!trayOpen)}
+          rows={tray} notes={(data.path_notes ?? []).filter((n) => n.state === "proposed")}
+          onChanged={refresh} />
+      )}
     </>
+  );
+}
+
+/**
+ * The Claude tray, as the brief asks: a right-side drawer that slides in when
+ * candidates land, and gets out of the way when they have been dealt with.
+ *
+ * Accepting is still the fractional's single click, and nothing in here reaches
+ * the map or the prospect's PDF without it.
+ */
+function TrayDrawer({ open, onToggle, rows, notes, onChanged }: {
+  open: boolean; onToggle: () => void; rows: MapRow[]; notes: PathNote[];
+  onChanged: () => void;
+}) {
+  const act = useMutation({
+    mutationFn: ({ url }: { url: string }) => api.post(url),
+    onSuccess: () => onChanged(),
+  });
+  const count = rows.length + notes.length;
+
+  if (!open) {
+    return (
+      <button className="primary tray-toggle" onClick={onToggle}>
+        <Inbox size={16} /> Tray · {count}
+      </button>
+    );
+  }
+  return (
+    <aside className="tray-drawer" aria-label="Claude's tray">
+      <div className="spread" style={{ marginBottom: "var(--s3)" }}>
+        <h3 style={{ margin: 0 }}>Tray · {count} proposed</h3>
+        <button className="icon-button" aria-label="Close the tray" onClick={onToggle}>×</button>
+      </div>
+      {count === 0 && <p className="small muted">Nothing waiting. Drafts land here.</p>}
+      {rows.map((row) => (
+        <div className="card" key={row.id}>
+          <strong>{row.bottleneck}</strong>
+          <p className="tiny muted" style={{ margin: "var(--s1) 0" }}>
+            {row.the_fix}{row.horizon ? ` · ${row.horizon} days` : ""}
+          </p>
+          <div className="row tight">
+            <button className="primary small" aria-label={`Accept ${row.bottleneck}`}
+              onClick={() => act.mutate({ url: `/api/strategy-map-rows/${row.id}/accept/` })}>
+              Accept
+            </button>
+            <button className="small danger" aria-label={`Discard ${row.bottleneck}`}
+              onClick={() => act.mutate({ url: `/api/strategy-map-rows/${row.id}/discard/` })}>
+              Discard
+            </button>
+          </div>
+        </div>
+      ))}
+      {notes.map((note) => (
+        <div className="card" key={note.id}>
+          <p className="small" style={{ margin: 0 }}>
+            <Pill>{note.path === "a" ? "Path A" : "Path B"}</Pill>{" "}
+            <Pill kind={note.kind === "con" ? "warn" : ""}>{note.kind}</Pill> {note.text}
+          </p>
+          <div className="row tight" style={{ marginTop: "var(--s2)" }}>
+            <button className="primary small" aria-label={`Accept "${note.text}"`}
+              onClick={() => act.mutate({ url: `/api/strategy-path-notes/${note.id}/accept/` })}>
+              Accept
+            </button>
+            <button className="small danger" aria-label={`Discard "${note.text}"`}
+              onClick={() => act.mutate({ url: `/api/strategy-path-notes/${note.id}/discard/` })}>
+              Discard
+            </button>
+          </div>
+        </div>
+      ))}
+    </aside>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 import {
   CompanyFilter, CompanyGroup, groupByCompany, inCompany, useCompanyFilter,
@@ -8,6 +9,7 @@ import {
 import { PortalCreate } from "../components/PortalCreate";
 import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
+import { Avatar, PageHead } from "../components/shell";
 import { Card, Empty, when } from "../components/ui";
 import { Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
 import { useRemembered } from "../lib/remembered";
@@ -49,21 +51,13 @@ export function Work({ me }: { me: Me }) {
 
   return (
     <>
-      <h2>Work</h2>
-      {/* The practice needs the vocabulary; a client already lives in their own
-          company's work and is never offered a goal to create. */}
-      {isTenant ? (
-        <>
-          <HierarchyNote />
-          <p className="sub">
-            A goal's status is derived from the work underneath it unless someone sets it.
-          </p>
-        </>
-      ) : (
-        <p className="sub">
-          Goals hold projects, projects hold tasks — and a task can stand on its own.
-        </p>
-      )}
+      <PageHead title={isTenant ? "Work" : "Our work"}
+        sub={isTenant
+          ? "A goal's status is derived from the work underneath it unless someone sets it."
+          : "Goals hold projects, projects hold tasks — and a task can stand on its own."} />
+      {/* The practice needs the vocabulary; a client already lives in their
+          own company's work and is never offered a goal to create. */}
+      {isTenant && <HierarchyNote />}
 
       {isTenant && <StaffCreate me={me} />}
       {isTenant && <ClientActivity />}
@@ -174,57 +168,111 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
   collapsed: boolean; onToggle: () => void;
 }) {
   const count = projects.length + tasks.length;
+  const own = allTasks.filter((t) => t.goal === goal.id
+    || projects.some((p) => p.id === t.project));
+  const done = own.filter((t) => t.status === "done").length;
+
   return (
     <li>
-      <button className="ghost small" aria-expanded={!collapsed}
-        aria-label={`${collapsed ? "Expand" : "Collapse"} ${goal.title}`}
-        onClick={onToggle}>{collapsed ? "▸" : "▾"}</button>{" "}
-      <Link to={`/work/goals/${goal.id}`}>{goal.title}</Link>{" "}
-      <StatusPill status={goal.status} derived={goal.status_is_derived} />
-      <div className="when">
-        {goal.client_company_name || "internal"}
-        {goal.target_date && ` · target ${goal.target_date}`}
-        {collapsed && count > 0 && ` · ${count} item${count === 1 ? "" : "s"} hidden`}
-      </div>
+      <div className="card goal-card">
+        <div className="head" onClick={onToggle} role="button" tabIndex={0}
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${goal.title}`}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(); }}>
+          {collapsed ? <ChevronRight size={18} strokeWidth={1.75} />
+            : <ChevronDown size={18} strokeWidth={1.75} />}
+          <div className="grow">
+            <h3><Link to={`/work/goals/${goal.id}`}
+              onClick={(e) => e.stopPropagation()}>{goal.title}</Link></h3>
+            {/* The measure leads when there is one — the report's rule, on the
+                screen the practice reads (FR-4B.18). */}
+            {goal.measurable_kind === "numeric" && goal.baseline_value !== null && (
+              <p className="measure-line">
+                {goal.baseline_value}<span className="to">→</span>
+                {goal.target_value ?? "—"}
+                {goal.measurable_unit && <span className="unit">{goal.measurable_unit}</span>}
+              </p>
+            )}
+            {goal.measurable && goal.measurable_kind === "numeric" && (
+              <p className="tiny muted" style={{ margin: 0 }}>{goal.measurable}</p>
+            )}
+            {/* Completion is present and subordinate, never the headline. */}
+            {collapsed && count > 0 && (
+              <p className="tiny muted" style={{ margin: "var(--s1) 0 0" }}>
+                {count} item{count === 1 ? "" : "s"} hidden
+              </p>
+            )}
+            {own.length > 0 && (
+              <div className="inline tiny muted" style={{ marginTop: "var(--s2)" }}>
+                <span className="meter" style={{ width: 160 }}>
+                  <span style={{ width: `${Math.round(100 * done / own.length)}%` }} />
+                </span>
+                {done} of {own.length} done
+              </div>
+            )}
+          </div>
+          <div className="right">
+            <StatusPill status={goal.status} derived={goal.status_is_derived} />
+            {goal.horizon_days && <span className="pill">{goal.horizon_days} days</span>}
+            {goal.target_date && <span className="pill">{goal.target_date}</span>}
+            <Avatar name={goal.client_owner_contact?.name || goal.owner?.name} />
+          </div>
+        </div>
 
-      {!collapsed && (count === 0 ? (
-        <p className="small muted" style={{ margin: ".3rem 0 .3rem 1.2rem" }}>
-          Nothing under this goal yet.
-        </p>
-      ) : (
-        <ul className="timeline" style={{ marginLeft: "1.2rem" }}>
-          {projects.map((p) => (
-            <li key={p.id}>
-              <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
-              <StatusPill status={p.status} derived={p.status_is_derived} />
-              {p.created_by_client && <span className="pill">client's own</span>}
-              <TaskLeaves tasks={allTasks.filter((t) => t.project === p.id)} />
-            </li>
-          ))}
-          {/* Tasks filed on the goal itself, beside the projects rather than
-              under one — the third arrangement FR-3.5 allows. */}
-          <TaskLeaves tasks={tasks} bare />
-        </ul>
-      ))}
+        {!collapsed && (count === 0 ? (
+          <p className="empty-state">
+            Nothing under this goal yet — add a project or a task to start it moving.
+          </p>
+        ) : (
+          <div style={{ marginTop: "var(--s3)" }}>
+            {projects.map((p) => {
+              const its = allTasks.filter((t) => t.project === p.id);
+              const its_done = its.filter((t) => t.status === "done").length;
+              return (
+                // The project and its tasks are one block, so "which project
+                // does this task belong to" is in the markup and not only in
+                // the indentation.
+                <div key={p.id} className="project-block">
+                  <div className="subrow">
+                    <span className="grow">
+                      <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
+                      {p.created_by_client && <span className="pill">client's own</span>}
+                    </span>
+                    {its.length > 0 && (
+                      <span className="meter tiny" style={{ width: 120 }}>
+                        <span style={{ width: `${Math.round(100 * its_done / its.length)}%` }} />
+                      </span>
+                    )}
+                    <StatusPill status={p.status} derived={p.status_is_derived} />
+                  </div>
+                  <TaskLeaves tasks={its} />
+                </div>
+              );
+            })}
+            {/* Tasks filed on the goal itself, beside the projects rather than
+                under one — the third arrangement FR-3.5 allows. */}
+            <TaskLeaves tasks={tasks} />
+          </div>
+        ))}
+      </div>
     </li>
   );
 }
 
-function TaskLeaves({ tasks, bare = false }: { tasks: Task[]; bare?: boolean }) {
+function TaskLeaves({ tasks }: { tasks: Task[] }) {
   if (tasks.length === 0) return null;
-  const rows = tasks.map((t) => (
-    <li key={t.id}>
-      <Link to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
-      <StatusPill status={t.status} />
-      <div className="when">
-        {t.assignee.name || "unassigned"}
-        {t.due_date && ` · due ${t.due_date}`}
-      </div>
-    </li>
-  ));
-  // `bare` rows already sit in the goal's own list; a project's need their own.
-  return bare ? <>{rows}</>
-    : <ul className="timeline" style={{ marginLeft: "1.2rem" }}>{rows}</ul>;
+  return (
+    <>
+      {tasks.map((t) => (
+        <div className="subrow" key={t.id} style={{ paddingLeft: "var(--s6)" }}>
+          <span className={`dot status-${t.status}`} aria-hidden="true" />
+          <span className="grow"><Link to={`/tasks/${t.id}`}>{t.title}</Link></span>
+          {t.due_date && <span className="tiny muted">{t.due_date}</span>}
+          <Avatar name={t.assignee.name} />
+        </div>
+      ))}
+    </>
+  );
 }
 
 interface ActivityRow extends TaskUpdateRow { task: string; task_title: string }

@@ -120,11 +120,19 @@ describe("the client value report", () => {
   });
 
   it("opens with the engagement timeline across every goal", async () => {
+    const user = userEvent.setup();
     show(aReport(), aMe({ role: "FCC" }));
     const timeline = (await screen.findByText("The engagement, in order"))
       .closest("section")!;
-    expect(within(timeline).getByText("Ladder published")).toBeInTheDocument();
-    expect(within(timeline).getByText("Changed course")).toBeInTheDocument();
+
+    // One horizontal axis, with every mark on it (design brief, Tier 1).
+    const axis = within(timeline).getByRole("img", { name: /marks between/ });
+    expect(axis.querySelectorAll(".mark")).toHaveLength(3);
+    expect(within(axis).getByTitle(/Ladder published/)).toBeInTheDocument();
+
+    // And the words underneath, for reading rather than scanning.
+    await user.click(within(timeline).getByText("Every mark, in words"));
+    expect(within(timeline).getAllByText("Changed course").length).toBeGreaterThan(0);
     // Ruling G — the client reads the reason.
     expect(within(timeline).getByText(/The second branch mattered more./))
       .toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -218,13 +218,18 @@ describe("the live session view", () => {
 describe("per-section pacing", () => {
   beforeEach(() => vi.unstubAllGlobals());
 
-  it("starts a section's clock when its header is clicked", async () => {
+  it("starts a section's clock from its own control, not by navigating", async () => {
     const user = userEvent.setup();
     const fetchMock = showSession(aSession(), aMe(), {
       [`PATCH /api/strategy-sessions/${SESSION_ID}/`]: aSession(),
     });
-    await screen.findByText(/Diagnostic/);
-    await user.click(screen.getByRole("button", { name: /Start Diagnostic/ }));
+    // The rail navigates and touches nothing — the owner's ruling, so that
+    // reading ahead mid-call cannot move the pacing under you.
+    const rail = await screen.findByRole("navigation", { name: "Sections" });
+    await user.click(within(rail).getByRole("button", { name: /Diagnostic/ }));
+    expect(fetchMock.calls.some((c) => c.method === "PATCH")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: /^Start Diagnostic/ }));
     await waitFor(() => {
       const patched = fetchMock.calls.find((c) => c.method === "PATCH");
       expect(patched?.body).toEqual({ current_section: "diagnostic" });
@@ -514,8 +519,7 @@ describe("the decision page's pros and cons", () => {
     const fetchMock = showSession(aSession(), aMe(), {
       "POST /api/strategy-path-notes/p1/accept/": {},
     });
-    await screen.findByText(/Two paths/);
-    expect(screen.getByText("It waits behind the day job.")).toBeInTheDocument();
+    expect(await screen.findByText("It waits behind the day job.")).toBeInTheDocument();
     // The accepted one is already in its column, not in the tray.
     expect(screen.getByText("Someone owns the list on Monday.")).toBeInTheDocument();
 

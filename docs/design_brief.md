@@ -62,6 +62,30 @@ Light content area on a dark navy sidebar. Clean modern sans (Inter). Cards for 
 - Our work and the task pages get the same treatment as the staff side, in the tenant brand.
 - The value report: goal cards with the measurable headline, chart when there are three readings, milestones on a horizontal timeline, narrative beneath, resolution history in a quiet list. The engagement timeline at the top as one horizontal axis.
 
+## Tier 1 — built 2026-09-21
+
+Everything above this line in Tier 1 is built, with three questions answered by
+the owner before any of it was written:
+
+- **The task editor replaces the page.** `/tasks/:id` renders the board with the
+  sheet over it; there is one task editor, not two that drift.
+- **The live view's rail navigates and nothing else.** Starting a section is its
+  own control, so reading ahead mid-call cannot move the pacing under you.
+- **Inter and Lucide are self-hosted.** Inter is vendored as one variable woff2
+  with its OFL licence; the app is demonstrated on other people's wifi, and a
+  `<link>` to Google falls back to system fonts silently.
+
+**Three things the build decided**, stated here rather than left in the code:
+avatars are initials with a tint derived from the name, because no photograph
+exists in Beta and none is invented; "remembered per user" is remembered in that
+browser, since the app has no per-user settings table, which is how FR-3.39a's
+filter already works; and the Work screen keeps its client selector rather than
+gaining a chip bar, because the brief gives the filter bar to Tasks.
+
+**Not verified in a browser** — the Chrome extension is not connected in this
+session. 264 frontend tests pass, which says the markup behaves, not that it
+looks right.
+
 ## Tier 2 (after the call)
 
 - **Dashboard** as the landing page: four stat tiles (tasks due this week, pending digests, pipeline movement this week, open goals), then panels: tasks due (by day), pending digests with approve, pipeline changes, client cards (one per client company, click to drill in). Calendar panel wired when Google Calendar integration lands.

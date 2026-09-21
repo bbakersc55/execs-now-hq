@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { Avatar, PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import {
   EngagementTimeline, GoalBlock, Me, ValueReport, ValueReportExport, api,
@@ -68,7 +69,8 @@ export function Report({ me }: { me: Me }) {
     if (!single.data) return <p>Opening the goal…</p>;
     return (
       <>
-        <h2>{single.data.title}</h2>
+        <PageHead title={single.data.title}
+          crumbs={[{ to: "/report", label: "Where we are" }]} />
         {note && <Banner kind="info">{note}</Banner>}
         <GoalCard block={single.data} me={me} onChanged={refresh} setNote={setNote} />
       </>
@@ -86,11 +88,9 @@ export function Report({ me }: { me: Me }) {
 
   return (
     <>
-      <h2>Where we are{staff ? ` · ${data.company.name}` : ""}</h2>
-      <p className="sub">
-        Per goal: what we set out to change, where the measure stood when we started,
-        where it stands now, and what it adds up to. Opening this sends nothing.
-      </p>
+      <PageHead title={`Where we are${staff ? ` · ${data.company.name}` : ""}`}
+        sub="Per goal: what we set out to change, where the measure stood when we
+             started, where it stands now, and what it adds up to." />
       {note && <Banner kind="info">{note}</Banner>}
 
       {staff && clients.length > 1 && (
@@ -134,23 +134,68 @@ function TimelineCard({ timeline }: { timeline: EngagementTimeline }) {
   if (timeline.marks.length === 0) return null;
   return (
     <Card title="The engagement, in order">
-      <p className="small muted">{timeline.from} to {timeline.to}</p>
-      <ol style={{ listStyle: "none", padding: 0, margin: 0 }}>
-        {timeline.marks.map((mark, index) => (
-          <li key={`${mark.goal}-${mark.kind}-${index}`} className="timeline-row small">
-            <span className="at">{mark.at}</span>
-            <span className="which">{mark.goal_title}</span>
-            <span>
-              {mark.kind === "start" && <>Started</>}
-              {mark.kind === "milestone" && <>{mark.label} <Pill>{mark.detail}</Pill></>}
-              {mark.kind === "reading" && <>Reading: <strong>{mark.label}</strong>
-                {mark.detail && <span className="muted"> — {mark.detail}</span>}</>}
-              {mark.kind === "resolution" && <><strong>{mark.label}</strong> — {mark.detail}</>}
-            </span>
-          </li>
-        ))}
-      </ol>
+      <Axis from={timeline.from} to={timeline.to}
+        marks={timeline.marks.map((mark) => {
+          const label = mark.kind === "start" ? mark.goal_title : mark.label;
+          return {
+            at: mark.at,
+            label,
+            // What the dot is, on hover: the mark, whose goal, and when.
+            detail: [label, mark.goal_title === label ? "" : mark.goal_title, mark.at,
+                     mark.detail].filter(Boolean).join(" · "),
+            tone: (mark.kind === "resolution" ? "late"
+              : mark.kind === "milestone" ? "hit" : "due") as "hit" | "late" | "due",
+          };
+        })} />
+      {/* The axis shows the shape; the list is where the words are. */}
+      <details>
+        <summary className="small muted" style={{ cursor: "pointer" }}>
+          Every mark, in words
+        </summary>
+        <ol style={{ listStyle: "none", padding: 0, margin: "var(--s3) 0 0" }}>
+          {timeline.marks.map((mark, index) => (
+            <li key={`${mark.goal}-${mark.kind}-${index}`} className="timeline-row small">
+              <span className="at">{mark.at}</span>
+              <span className="which">{mark.goal_title}</span>
+              <span>
+                {mark.kind === "start" && <>Started</>}
+                {mark.kind === "milestone" && <>{mark.label} <Pill>{mark.detail}</Pill></>}
+                {mark.kind === "reading" && <>Reading: <strong>{mark.label}</strong>
+                  {mark.detail && <span className="muted"> — {mark.detail}</span>}</>}
+                {mark.kind === "resolution" && <><strong>{mark.label}</strong> — {mark.detail}</>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </details>
     </Card>
+  );
+}
+
+/** One horizontal axis. Every mark is placed by its own date between the two
+ *  ends, so the gaps mean what they look like they mean. */
+function Axis({ from, to, marks }: {
+  from: string; to: string;
+  marks: { at: string; label: string; detail: string; tone: "hit" | "late" | "due" }[];
+}) {
+  const start = Date.parse(from);
+  const span = Math.max(Date.parse(to) - start, 1);
+  return (
+    <div className="axis" role="img"
+      aria-label={`${marks.length} marks between ${from} and ${to}`}>
+      <span className="line" />
+      {marks.map((mark, index) => {
+        const left = Math.min(98, Math.max(2, 100 * (Date.parse(mark.at) - start) / span));
+        return (
+          <span key={`${mark.at}-${index}`} className={`mark ${mark.tone}`}
+            style={{ left: `${left}%` }} title={mark.detail}>
+            <i />
+            {/* Every other label, so a busy month does not print on itself. */}
+            {index % 2 === 0 && <span>{mark.label.slice(0, 18)}</span>}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -297,7 +342,12 @@ function GoalCard({ block, me, onChanged, setNote }: {
 
   return (
     <Card title={<a href={`/report/${block.id}`}>{block.title}</a>}
-          actions={block.is_historical ? <Pill>{block.resolution?.resolution}</Pill> : null}>
+          actions={
+            <span className="inline">
+              {block.is_historical && <Pill>{block.resolution?.resolution.replace("_", " ")}</Pill>}
+              {block.client_owner_contact && <Avatar name={block.client_owner_contact} />}
+            </span>
+          }>
       {/* The headline is the server's decision, not this screen's. */}
       <p className="headline" style={{ margin: 0 }}>{block.headline.text}</p>
       {block.measure.kind_is_undecided && staff && (
@@ -312,23 +362,32 @@ function GoalCard({ block, me, onChanged, setNote }: {
       {block.narrative?.body && <p className="narrative">{block.narrative.body}</p>}
 
       {block.milestones.length > 0 && (
-        <ul className="small" style={{ margin: ".4rem 0" }}>
-          {block.milestones.map((stone) => (
-            <li key={stone.id}>
-              <span className="muted">{stone.occurred_at ?? stone.due_date ?? "—"} · </span>
-              {stone.title} <Pill kind={stone.state === "late" ? "warn" : ""}>{stone.state}</Pill>
+        <Axis
+          from={block.milestones.map((m) => m.occurred_at ?? m.due_date ?? "")
+            .filter(Boolean).sort()[0] ?? ""}
+          to={block.milestones.map((m) => m.occurred_at ?? m.due_date ?? "")
+            .filter(Boolean).sort().at(-1) ?? ""}
+          marks={block.milestones
+            .filter((m) => m.occurred_at || m.due_date)
+            .map((stone) => ({
+              at: (stone.occurred_at ?? stone.due_date)!,
+              label: stone.title,
+              detail: `${stone.title} · ${stone.state}`,
+              tone: stone.state === "late" ? "late"
+                : stone.state === "due" ? "due" : "hit",
+            }))} />
+      )}
+
+      {block.resolutions.length > 0 && (
+        <ul className="timeline" style={{ marginTop: "var(--s3)" }}>
+          {block.resolutions.map((row) => (
+            <li key={row.id}>
+              <strong>{row.resolution.replace("_", " ")}</strong> — {row.reason}
+              <div className="when">{when(row.at)}{row.by ? ` · ${row.by}` : ""}</div>
             </li>
           ))}
         </ul>
       )}
-
-      {block.resolutions.map((row) => (
-        <p key={row.id} className="small" style={{ borderLeft: "2px solid var(--orange)",
-                                                   paddingLeft: ".5rem" }}>
-          <strong>{row.resolution}</strong> — {row.reason}
-          <span className="muted"> · {when(row.at)}{row.by ? ` · ${row.by}` : ""}</span>
-        </p>
-      ))}
 
       {/* Present, and subordinate. Never the headline (FR-4B.21). */}
       {block.completion.of > 0 && (

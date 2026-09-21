@@ -88,11 +88,13 @@ describe("Work shows three levels at once, not one", () => {
     const goal = await branch("Cut supervisor overload");
     // Level two, and level three inside it.
     const project = await within(goal).findByText("Order-to-cash");
-    expect(within(project.closest("li")!).getByText("Map the invoice process"))
-      .toBeInTheDocument();
+    // A project and its tasks are one block (`.project-block` since Tier 1 of
+    // the design brief; it used to be the project's own <li>).
+    const block = project.closest(".project-block") as HTMLElement;
+    expect(within(block).getByText("Map the invoice process")).toBeInTheDocument();
     // A task filed on the goal itself sits beside the project, not under it.
     expect(within(goal).getByText("Straight on the goal")).toBeInTheDocument();
-    expect(within(project.closest("li")!).queryByText("Straight on the goal")).toBeNull();
+    expect(within(block).queryByText("Straight on the goal")).toBeNull();
   });
 
   it("says so when a goal holds nothing, rather than looking broken", async () => {

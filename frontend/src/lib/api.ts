@@ -423,6 +423,8 @@ export interface Task {
   may_set_visibility: boolean;
 }
 
+export type MeasurableKind = "numeric" | "qualitative" | "none" | null;
+
 /** A goal or a project. `status` is what to show; `status_override` is what a
  *  person set by hand, and `status_is_derived` says which you are looking at. */
 export interface WorkParent {
@@ -443,6 +445,19 @@ export interface WorkParent {
   goal_title?: string;
   start_date?: string | null;
   created_by_client?: boolean;
+  /** Module 4B, on a goal only. The Work screen leads with the measure when
+   *  there is one, exactly as the value report does (FR-4B.18). */
+  measurable_kind?: MeasurableKind;
+  kind_is_undecided?: boolean;
+  measurable?: string;
+  measurable_unit?: string;
+  how_we_will_know?: string;
+  direction?: "" | "up_is_good" | "down_is_good";
+  baseline_value?: string | null;
+  baseline_at?: string | null;
+  target_value?: string | null;
+  horizon_days?: number | null;
+  outcome_statement?: string;
 }
 
 export interface WorkComment {
@@ -522,7 +537,6 @@ export interface PortalCandidates {
 
 // --- Module 4B — the client value report ------------------------------------
 
-export type MeasurableKind = "numeric" | "qualitative" | "none" | null;
 
 /** A goal's measure. `kind_is_undecided` is the practice's nudge (FR-4B.6a) and
  *  is never true in a client's response: *not yet decided* is a fact about the
