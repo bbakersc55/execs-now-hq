@@ -616,11 +616,11 @@ is the only thing that tests this module honestly.
 
 | | |
 |---|---|
-| Automated tests | **1095 passed**, 3 skipped, 2 xfailed |
-| — Module 4 files | **81** (`test_module4_acceptance.py` 39, `test_module4_session.py` 35, `test_module4_seed.py` 7) |
+| Automated tests | **1098 passed**, 3 skipped, 2 xfailed |
+| — Module 4 files | **84** (`test_module4_acceptance.py` 42, `test_module4_session.py` 35, `test_module4_seed.py` 7) |
 | — tenant isolation | **261** (was 231; the six new tables add 30, driven by the registry) |
 | — role boundaries | **146**, with matrix §10 asserted in the Module 4 files, as Module 3 did |
-| Frontend tests | **239 passed** (19 new: the public form, the live view, the §10 boundary, pacing, the editor, and the 2026-09-19 dry run's three) |
+| Frontend tests | **243 passed** (23 new: the public form, the live view, the §10 boundary, pacing, the editor, the 2026-09-19 dry run's three, and the 2026-09-21 conversion four — which render the **real `App`** at the session's own URL and press the button) |
 | Migrations | **6, all additive**, applied: `strategy` 0001 (six tables), 0003 (`drafted_areas`), 0005 (`started_at`), 0006 (`current_section` + its clock), `work` 0004 and `crm` 0021 (the goal columns and the three `source_map_row` back-links), plus `crm` 0022 (a producer choice, no-op at the database). Two data migrations: `strategy` 0002 (the seed) and 0004 (the diagnostic's note field) |
 | New dependency | **WeasyPrint 70.0**, pinned with its nine transitive pins |
 
@@ -638,7 +638,7 @@ is the only thing that tests this module honestly.
 | 4.8 | Mirror proposed, not saved | ✅ | `test_ac_4_8_...` — draft lands in `proposed_mirror_*`, stored mirror stays blank until a person writes it |
 | 4.9 | PDF exclusions, all five | ✅ | Two tests: every marker absent with flags off; mechanics toggled on shows **only** that one; and the generated file's own bytes carry none |
 | 4.10 | Nothing emailed without a click | ✅ | `test_ac_4_10_...` — preview leaves the Outbox empty; send delivers, attaches, audits |
-| 4.11 | Conversion per-row and confirmed | ✅ | `test_ac_4_11_...` — preview creates nothing, then 2 goals + 1 project with owner, target date, measurable and back-links |
+| 4.11 | Conversion per-row and confirmed | ✅ *(re-proved 2026-09-21)* | `test_ac_4_11_...` — preview creates nothing, then 2 goals + 1 project with owner, target date, measurable and back-links. Until 2026-09-21 its "de-select one" was a row **discarded in the tray**, which is not what the criterion says: de-selecting is a choice made at conversion, and the server refused it. The test now leaves a fourth accepted row out with `{"as": "skip"}` and asserts it survives accepted and unconverted |
 | 4.12 | Snapshot protects history | ✅ | `test_ac_4_12_and_4_19_...` — section deleted, questions reworded, schema changed; the session's payload is identical |
 | 4.13 | VA financial boundary | ✅ | `test_ac_4_13_...` — the values are **not in the response body**, not merely hidden; plus a parametrised refusal of every fractional-only action |
 | 4.14 | Tenant isolation | ✅ | `test_ac_4_14_...` plus the registry family's 30 cases over the six tables |
@@ -722,16 +722,55 @@ That is the whole of the claim being made about the AI's output in this module: 
 session, the owner's sentence, no inference from it about how it will read on the
 next one. Check 3 on real sessions raises N; nothing else does.
 
+#### Check 5, 2026-09-21 — conversion, and a button that looked dead
+
+Run against Noble Baker's session: nine accepted rows, every one of them carrying
+a measurable, none with a baseline. **"Create the work" appeared to do nothing** —
+no confirmation, no error, nothing on the Work screen.
+
+**It reached the API every time and was refused every time.** The database says
+so as clearly as a request log would: the session is still `complete`, its rows
+still `converted_to = ""`, and not one Goal or Project carries a
+`source_map_row`. Replaying the press against the real session, rolled back,
+reproduces the refusal exactly. Three defects, all fixed the same day:
+
+1. **"Leave it out" was a word the server did not know.** The chooser has offered
+   *A goal / A project / Leave it out* since the module shipped; `convert`
+   accepted only the first two and refused the whole press on the third — so a
+   session where one row was de-selected could never convert at all. This is
+   AC-4.11's "de-select one", which the test had been proving with a row
+   *discarded in the tray* instead. Skip is now a choice at conversion, and it
+   leaves the map row accepted and unconverted.
+2. **The refusal was drawn three screens above the button that caused it.** Both
+   outcomes went to the page-level banner at the top; on a nine-row session the
+   fractional is at the bottom and sees nothing change. The card now carries its
+   own banner, and marks every row the server named **not ready**. A line under
+   the button also says what the press will do before it is pressed — *"Creates
+   2 goals and 1 project, leaving 1 out"*.
+3. **One press told one row's worth of truth.** `convert` refused on the first
+   row it met, so nine rows needing a baseline were nine presses to learn nine
+   things. Every row is now checked before anything is written, and the refusal
+   names them all (once, when they share a reason) and returns their ids.
+
+Two smaller things went with it: a baseline typed as *"7 a week"* reaching a
+decimal column was a **500 with nothing in it a person could act on**, and is now
+a sentence that says the unit belongs in the measurable — and the baseline and
+target boxes are number fields, so it is harder to type in the first place.
+
+**Check 5 is not passed.** The fix is proven by tests, not by the owner's run;
+re-running it is the next thing.
+
 #### Gaps, stated plainly
 
 1. **Claude has been exercised only against the test double.** The drafting prompts
    have never met the real API in a real session, and their output quality is
    unmeasured: that is manual check 3's job, and the report on it will be **your
    judgement on N real sessions**, with N.
-2. **Checks 2, 3 and 4 ran as a dry run on 2026-09-19** (above); **Checks 1 and 5
-   have not run** (`phase4_manual_checks.md`, with the click
-   paths). Check 1 — running a real session with a real prospect — is the only honest
-   test of this module.
+2. **Checks 2, 3 and 4 ran as a dry run on 2026-09-19**, and **Check 5 ran on
+   2026-09-21 and failed** (both above). Check 5's three defects are fixed and
+   covered by tests, but **the owner has not re-run it**, and **Check 1 has never
+   run** (`phase4_manual_checks.md`, with the click paths). Check 1 — running a
+   real session with a real prospect — is the only honest test of this module.
 3. **V1's template work is deferred, deliberately:** no reordering, no adding or
    deleting questions, no second discipline, no per-tenant worked example.
 

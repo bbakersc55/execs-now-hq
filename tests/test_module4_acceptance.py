@@ -379,14 +379,14 @@ def test_ac_4_11_conversion_is_per_row_and_creates_nothing_until_confirmed(
         tenant=session.tenant, session=session, position=i,
         bottleneck=f"Bottleneck {i}", the_fix=f"Fix {i}", horizon=60,
         measurable=f"Measure {i}", state=StrategyMapRow.State.ACCEPTED)
-        for i in range(3)]
+        for i in range(4)]
     discarded = StrategyMapRow.objects.create(
-        tenant=session.tenant, session=session, position=3, bottleneck="Not this one",
+        tenant=session.tenant, session=session, position=4, bottleneck="Not this one",
         state=StrategyMapRow.State.DISCARDED)
 
     preview = api.as_(ff).get(
         f"/api/strategy-sessions/{session.pk}/conversion-preview/").json()
-    assert len(preview["rows"]) == 3               # the discarded row is not offered
+    assert len(preview["rows"]) == 4               # the discarded row is not offered
     assert Goal.objects.count() == 0 and Project.objects.count() == 0
 
     made = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/convert/", {
@@ -396,9 +396,16 @@ def test_ac_4_11_conversion_is_per_row_and_creates_nothing_until_confirmed(
                               "direction": "down_is_good"},
             str(rows[1].pk): {"as": "goal", "baseline_unknown": True},
             str(rows[2].pk): {"as": "project"},
+            # AC-4.11's "de-select one" — a choice made here, at conversion, not
+            # a row discarded in the tray an hour earlier. Until 2026-09-21 the
+            # screen offered this and the server refused the whole press.
+            str(rows[3].pk): {"as": "skip"},
         }}, content_type="application/json")
     assert made.status_code == 201, made.content
     assert Goal.objects.count() == 2 and Project.objects.count() == 1
+    rows[3].refresh_from_db()
+    assert rows[3].converted_to == ""
+    assert rows[3].state == StrategyMapRow.State.ACCEPTED   # left out, not discarded
 
     goal = Goal.objects.get(source_map_row=rows[0])
     assert goal.measurable == "Measure 0" and goal.horizon_days == 60
@@ -420,6 +427,59 @@ def test_conversion_asks_for_a_baseline_before_it_will_write_a_measurable(sessio
         "choices": {str(row.pk): {"as": "goal"}}}, content_type="application/json")
     assert refused.status_code == 400
     assert "baseline" in refused.json()["detail"]
+    assert Goal.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_leaving_every_row_out_creates_nothing_and_says_which_way_out(session, ff, api):
+    """A press that would make nothing says so, rather than converting the
+    session into an empty engagement."""
+    rows = [StrategyMapRow.objects.create(
+        tenant=session.tenant, session=session, position=i, bottleneck=f"B{i}",
+        state=StrategyMapRow.State.ACCEPTED) for i in range(2)]
+    refused = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/convert/", {
+        "choices": {str(row.pk): {"as": "skip"} for row in rows}},
+        content_type="application/json")
+    assert refused.status_code == 400
+    assert "nothing to create" in refused.json()["detail"]
+    session.refresh_from_db()
+    assert session.state != StrategySession.State.CONVERTED
+    assert Goal.objects.count() == 0 and Project.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_a_baseline_written_in_words_is_refused_in_a_sentence(session, ff, api):
+    """`baseline_value` is a decimal column. "7 a week" reaching it used to be a
+    500 with nothing in it a person could act on."""
+    row = StrategyMapRow.objects.create(
+        tenant=session.tenant, session=session, bottleneck="Escalations",
+        measurable="Decisions escalated per week", horizon=30,
+        state=StrategyMapRow.State.ACCEPTED)
+    refused = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/convert/", {
+        "choices": {str(row.pk): {"as": "goal", "baseline_value": "7 a week"}}},
+        content_type="application/json")
+    assert refused.status_code == 400
+    detail = refused.json()["detail"]
+    assert "7 a week" in detail and "not a number" in detail
+    assert refused.json()["rows"] == [str(row.pk)]
+    assert Goal.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_one_press_names_every_row_that_is_not_ready(session, ff, api):
+    """Nine measurables with no baseline used to be nine presses to learn nine
+    things: it refused on the first row it met."""
+    rows = [StrategyMapRow.objects.create(
+        tenant=session.tenant, session=session, position=i,
+        bottleneck=f"Bottleneck {i}", measurable=f"Measure {i}", horizon=60,
+        state=StrategyMapRow.State.ACCEPTED) for i in range(4)]
+    refused = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/convert/",
+                               {"choices": {}}, content_type="application/json")
+    assert refused.status_code == 400
+    body = refused.json()
+    assert set(body["rows"]) == {str(row.pk) for row in rows}
+    assert body["detail"].startswith("4 rows are not ready")
+    assert "baseline" in body["detail"]
     assert Goal.objects.count() == 0
 
 

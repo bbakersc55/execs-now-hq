@@ -322,7 +322,9 @@ class SessionViewSet(StrategyViewSet):
             made = conversion.convert(session, choices=choices, actor=request.user,
                                       role=self._role())
         except conversion.ConversionRefused as exc:
-            return Response({"detail": str(exc)}, status=exc.status)
+            # `rows` names the map rows that are not ready, so the card can mark
+            # them where the fractional is looking rather than only at the top.
+            return Response({"detail": str(exc), "rows": exc.rows}, status=exc.status)
         AuditEvent.all_objects.create(
             tenant=request.tenant, actor=request.user, verb="strategy.converted",
             target_type="strategy_session", target_id=session.pk,

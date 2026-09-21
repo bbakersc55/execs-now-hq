@@ -17,6 +17,7 @@ Three things this has to get right:
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
@@ -28,10 +29,22 @@ from apps.work.models import Goal, Project
 
 GOAL = StrategyMapRow.ConvertedTo.GOAL
 PROJECT = StrategyMapRow.ConvertedTo.PROJECT
+# Not a `ConvertedTo` value, because nothing is converted: "leave it out" is a
+# choice made at conversion, and it leaves the map row exactly as it was.
+SKIP = "skip"
 
 
 class ConversionRefused(SessionError):
-    pass
+    """Refused, and — where the refusal is about particular rows — which ones.
+
+    `rows` exists so one press can tell the whole truth. A session with nine
+    measurables that each need a baseline used to refuse on the first row it
+    met, which is nine presses to learn nine things.
+    """
+
+    def __init__(self, message, status=400, rows=()):
+        super().__init__(message, status=status)
+        self.rows = [str(row) for row in rows]
 
 
 def accepted_rows(session):
@@ -111,12 +124,15 @@ def _won_stage(tenant):
 def convert(session, *, choices, actor=None, role=None):
     """Create the work, back-linked, and make the prospect a client.
 
-    `choices` is `{row_id: {"as": "goal"|"project", "baseline_value": ..,
+    `choices` is `{row_id: {"as": "goal"|"project"|"skip", "baseline_value": ..,
     "baseline_at": .., "target_value": .., "measurable_unit": ..,
     "direction": .., "baseline_unknown": bool}}`.
 
     A goal carrying a measurable must come with either a baseline or an explicit
     "not measured yet" — the prompt is enforced here, not only drawn on a screen.
+
+    Every row is checked **before** anything is written, so one press names every
+    row that is not ready rather than the first one.
     """
     if session.state == StrategySession.State.CONVERTED:
         raise ConversionRefused("This session has already been converted.", status=409)
@@ -125,12 +141,32 @@ def convert(session, *, choices, actor=None, role=None):
         raise ConversionRefused(
             "There is nothing to convert: no map row has been accepted.", status=409)
 
-    made = []
+    plan, refusals = [], []
     for row in rows:
         choice = dict(choices.get(str(row.pk)) or {})
         as_what = choice.get("as") or GOAL
+        if as_what == SKIP:
+            continue
         if as_what not in (GOAL, PROJECT):
-            raise ConversionRefused(f"{as_what!r} is not 'goal' or 'project'.")
+            refusals.append((row, f"{as_what!r} is not 'goal', 'project' or 'skip'."))
+            continue
+        if as_what == GOAL:
+            problem = _goal_problem(row, choice)
+            if problem is not None:
+                refusals.append((row, problem))
+                continue
+        plan.append((row, as_what, choice))
+
+    if refusals:
+        raise ConversionRefused(_refusal_sentence(refusals),
+                                rows=[row.pk for row, _ in refusals])
+    if not plan:
+        raise ConversionRefused(
+            "Every row is left out, so there is nothing to create. Choose a goal or "
+            "a project for at least one of them.", status=400)
+
+    made = []
+    for row, as_what, choice in plan:
         owner_contact = resolve_owner(session, row.owner_text)
         common = {
             "tenant": session.tenant,
@@ -145,21 +181,15 @@ def convert(session, *, choices, actor=None, role=None):
         if as_what == PROJECT:
             made.append(("project", Project.objects.create(**common)))
         else:
-            baseline = choice.get("baseline_value")
-            if row.measurable and baseline in (None, "") \
-                    and not choice.get("baseline_unknown"):
-                raise ConversionRefused(
-                    f'"{row.measurable}" needs a baseline before the engagement starts, '
-                    f"or say it is not measured yet. A measurable with no starting "
-                    f"reading cannot be reported against.", status=400)
+            baseline = _number(choice.get("baseline_value"))
             made.append(("goal", Goal.objects.create(
                 **common,
                 measurable=row.measurable,
                 measurable_unit=(choice.get("measurable_unit") or "").strip(),
-                baseline_value=baseline if baseline not in (None, "") else None,
+                baseline_value=baseline,
                 baseline_at=choice.get("baseline_at")
-                or (timezone.localdate() if baseline not in (None, "") else None),
-                target_value=choice.get("target_value") or None,
+                or (timezone.localdate() if baseline is not None else None),
+                target_value=_number(choice.get("target_value")),
                 direction=(choice.get("direction") or ""),
                 horizon_days=row.horizon,
             )))
@@ -179,3 +209,69 @@ def convert(session, *, choices, actor=None, role=None):
     session.converted_at = timezone.now()
     session.save(update_fields=["state", "converted_at", "updated_at"])
     return made
+
+
+def _number(value):
+    """A figure, or None. Raises nothing — `_goal_problem` has already refused
+    anything that is not a number, in a sentence a person can act on."""
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value).strip())
+    except (InvalidOperation, ArithmeticError, ValueError):
+        return None
+
+
+def _is_a_number(value) -> bool:
+    if value in (None, ""):
+        return True
+    try:
+        Decimal(str(value).strip())
+    except (InvalidOperation, ArithmeticError, ValueError):
+        return False
+    return True
+
+
+def _goal_problem(row, choice) -> str | None:
+    """Why this row cannot become a goal yet, in the fractional's words."""
+    baseline = choice.get("baseline_value")
+    for value, field in ((baseline, "baseline"), (choice.get("target_value"), "target")):
+        if not _is_a_number(value):
+            # A DecimalField meeting "7 a week" used to be a 500 with no sentence
+            # in it. The unit lives in the measurable; this column is the figure.
+            return (f'has a {field} that reads "{value}", which is not a number — '
+                    f"give the figure on its own, since the unit belongs in the "
+                    f"measurable")
+    if row.measurable and baseline in (None, "") and not choice.get("baseline_unknown"):
+        return ("needs a baseline before the engagement starts, or an explicit "
+                '"not measured yet": a measurable with no starting reading cannot be '
+                "reported against")
+    return None
+
+
+def _refusal_sentence(refusals) -> str:
+    """One sentence for however many rows are not ready.
+
+    Nine rows refused for the same reason say the reason once and name the rows;
+    nine refused for two different reasons must not report one reason nine
+    times. Either way the card marks each row it names.
+    """
+    if len(refusals) == 1:
+        row, problem = refusals[0]
+        return f'"{row.bottleneck}" {problem}.'
+
+    def named(rows):
+        shown = ", ".join(f'"{row.bottleneck}"' for row in rows[:3])
+        rest = len(rows) - 3
+        return shown + (f", and {rest} more below" if rest > 0 else "")
+
+    reasons = {problem for _, problem in refusals}
+    if len(reasons) == 1:
+        rows = [row for row, _ in refusals]
+        return (f"{len(refusals)} rows are not ready to convert — {named(rows)}. "
+                f"Each of them {reasons.pop()}.")
+    listed = "; ".join(f'"{row.bottleneck}" {problem}'
+                       for row, problem in refusals[:3])
+    rest = len(refusals) - 3
+    return (f"{len(refusals)} rows are not ready to convert: {listed}"
+            + (f", and {rest} more below" if rest > 0 else "") + ".")

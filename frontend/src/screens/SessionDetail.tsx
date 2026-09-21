@@ -576,11 +576,27 @@ function PdfCard({ data, path, onChanged, setNote }: {
   );
 }
 
+type Choice = {
+  as?: string; baseline_value?: string; target_value?: string;
+  baseline_unknown?: boolean;
+};
+
+/**
+ * Conversion (FR-4.28–4.32, AC-4.11). The per-row chooser **is** the preview:
+ * every accepted row, what it would become, and what it still needs. The button
+ * is the confirmation, and nothing is written before it.
+ *
+ * Two things the 2026-09-21 Check-5 run found. The server refused every press —
+ * nine measurables with no baseline, and a row set to "Leave it out" that the
+ * server did not know the word for — and the refusal was drawn in the page's
+ * banner, three screens above the button. So the card now carries its own
+ * banner and marks the rows the server named, where the fractional is looking.
+ */
 function ConvertCard({ id, path, data, onChanged, setNote }: {
   id: string; path: string; data: StrategySessionRow; onChanged: () => void;
   setNote: (text: string) => void;
 }) {
-  const [choices, setChoices] = useState<Record<string, Record<string, unknown>>>({});
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
   const preview = useQuery<{ rows: ConversionRow[] }>({
     queryKey: ["conversion-preview", id],
     queryFn: () => api.get<{ rows: ConversionRow[] }>(`${path}conversion-preview/`),
@@ -607,6 +623,23 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
     );
   }
   const rows = preview.data?.rows ?? [];
+  const choiceFor = (row: ConversionRow): Choice => choices[row.row] ?? {};
+  const asFor = (row: ConversionRow) => choiceFor(row).as ?? row.suggested;
+  const set = (row: ConversionRow, patch: Choice) =>
+    setChoices((current) => ({
+      ...current,
+      [row.row]: { as: asFor(row), ...(current[row.row] ?? {}), ...patch },
+    }));
+
+  // What the press will do, said before it is pressed.
+  const counts = rows.reduce((tally, row) => {
+    const as = asFor(row);
+    return { ...tally, [as]: (tally[as] ?? 0) + 1 };
+  }, {} as Record<string, number>);
+  const making = (counts.goal ?? 0) + (counts.project ?? 0);
+  const refusedError = convert.error as
+    (Error & { data?: { rows?: string[] } }) | null;
+  const refusedRows = refusedError?.data?.rows ?? [];
 
   return (
     <Card title="Convert to work">
@@ -619,12 +652,18 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
             baseline, or an explicit "not measured yet" — without a starting reading
             there is nothing to report against later.
           </p>
+          {convert.isError && (
+            <Banner kind="bad">{refusedError?.message}</Banner>
+          )}
           {rows.map((row) => {
-            const choice = choices[row.row] ?? {};
-            const as = (choice.as as string) ?? row.suggested;
+            const choice = choiceFor(row);
+            const as = asFor(row);
+            const notReady = refusedRows.includes(row.row);
             return (
-              <div key={row.row} className="card" style={{ marginBottom: ".5rem" }}>
+              <div key={row.row} className="card"
+                   style={{ marginBottom: ".5rem", opacity: as === "skip" ? 0.6 : 1 }}>
                 <strong>{row.title}</strong>
+                {notReady && <> <Pill kind="warn">not ready</Pill></>}
                 <p className="small muted" style={{ margin: ".2rem 0" }}>
                   {row.owner_text && <>Owner: {row.owner_text}
                     {row.client_owner_contact
@@ -635,8 +674,7 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
                 </p>
                 <div className="row">
                   <select aria-label={`Convert ${row.title} as`} value={as}
-                    onChange={(e) => setChoices({ ...choices,
-                      [row.row]: { ...choice, as: e.target.value } })}>
+                    onChange={(e) => set(row, { as: e.target.value })}>
                     <option value="goal">A goal</option>
                     <option value="project">A project</option>
                     <option value="skip">Leave it out</option>
@@ -644,17 +682,23 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
                   {as === "goal" && row.needs_baseline && (
                     <>
                       <input aria-label={`Baseline for ${row.title}`}
+                        type="number" step="any" inputMode="decimal"
                         placeholder="Baseline today"
-                        onChange={(e) => setChoices({ ...choices,
-                          [row.row]: { ...choice, as, baseline_value: e.target.value } })} />
-                      <input aria-label={`Target for ${row.title}`} placeholder="Target"
-                        onChange={(e) => setChoices({ ...choices,
-                          [row.row]: { ...choice, as, target_value: e.target.value } })} />
+                        disabled={!!choice.baseline_unknown}
+                        value={choice.baseline_value ?? ""}
+                        onChange={(e) => set(row, { baseline_value: e.target.value })} />
+                      <input aria-label={`Target for ${row.title}`}
+                        type="number" step="any" inputMode="decimal" placeholder="Target"
+                        disabled={!!choice.baseline_unknown}
+                        value={choice.target_value ?? ""}
+                        onChange={(e) => set(row, { target_value: e.target.value })} />
                       <label className="small" style={{ display: "inline-flex", gap: ".3rem" }}>
                         <input type="checkbox" style={{ width: "auto" }}
                           aria-label={`Not measured yet — ${row.title}`}
-                          onChange={(e) => setChoices({ ...choices,
-                            [row.row]: { ...choice, as, baseline_unknown: e.target.checked } })} />
+                          checked={!!choice.baseline_unknown}
+                          onChange={(e) => set(row, { baseline_unknown: e.target.checked,
+                            ...(e.target.checked
+                              ? { baseline_value: "", target_value: "" } : {}) })} />
                         Not measured yet
                       </label>
                     </>
@@ -663,10 +707,17 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
               </div>
             );
           })}
-          <button className="primary" disabled={convert.isPending}
+          <button className="primary" disabled={convert.isPending || making === 0}
             onClick={() => convert.mutate()}>
             Create the work
           </button>
+          <p className="small muted" style={{ marginTop: ".4rem" }}>
+            {making === 0
+              ? "Every row is left out — there is nothing to create."
+              : `Creates ${counts.goal ?? 0} goal${counts.goal === 1 ? "" : "s"} and `
+                + `${counts.project ?? 0} project${counts.project === 1 ? "" : "s"}`
+                + `${counts.skip ? `, leaving ${counts.skip} out` : ""}.`}
+          </p>
         </>
       )}
     </Card>

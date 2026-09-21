@@ -150,12 +150,28 @@ it shows on the contact's timeline.
 
 ## Check 5 — Convert a session and check the work before the engagement starts
 
+> **Fixed 2026-09-21, found by this check.** "Create the work" appeared to do
+> nothing. It had reached the API every time and been refused every time, for two
+> reasons — all nine of Noble Baker's rows carry a measurable and none had a
+> baseline, and one row set to **Leave it out** was a word the server did not
+> know — and the refusal was drawn in the page's banner, at the top, three
+> screens above the button that caused it. Three things changed: **Leave it out
+> now works** (it is what AC-4.11 calls de-selecting, and it leaves the map row
+> accepted and unconverted); **the refusal appears in the card**, beside the
+> button, with every row it names marked **not ready**; and **one press now names
+> every row that is not ready**, rather than refusing on the first one it meets —
+> nine rows used to be nine presses to learn nine things. The baseline and target
+> boxes are number fields now: "7 a week" reaching a decimal column used to be a
+> 500 with nothing in it you could act on.
+
 1. Accept three or four map rows, with a measurable and a 30/60/90 on each.
 2. **Convert to work.** Choose **a goal** for some and **a project** for others;
-   leave one out.
+   leave one out. The line under the button says what the press will do —
+   *"Creates 2 goals and 1 project, leaving 1 out"* — before you press it.
 3. A goal carrying a measurable **will not convert without a baseline** — either
    type today's reading or tick **Not measured yet**. That refusal is deliberate:
-   a measurable with no starting reading cannot be reported against later.
+   a measurable with no starting reading cannot be reported against later. The
+   baseline is the **figure only**; its unit belongs in the measurable.
 4. Confirm. Then open **Work** and read what was created: title, owner, target
    date, measurable, and the goal's baseline and target.
 5. Check the owner mapping: a row whose owner text is exactly a contact's name at

@@ -366,3 +366,128 @@ describe("answers the prospect already gave", () => {
       .toBeInTheDocument();
   });
 });
+
+describe("converting a session into work, from the page the owner opens", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  // Check 5, 2026-09-21. "Create the work" appeared to do nothing: the server
+  // refused every press — nine measurables with no baseline, and "Leave it out"
+  // a word it did not know — and drew the refusal in the page banner, three
+  // screens above the button. Every test above rendered ConvertCard's screen on
+  // a pre-matched route with an empty preview, so none of them ever pressed it.
+  const ROWS = [
+    { row: "r1", position: 0, title: "Decisions stall waiting on Noble",
+      the_fix: "Publish a decision list", root_cause: "No one else may decide",
+      owner_text: "Noble Baker",
+      client_owner_contact: { id: "c9", name: "Noble Baker" },
+      measurable: "Decisions escalated per week", horizon: 30,
+      target_date: "2026-10-21", suggested: "goal" as const, needs_baseline: true },
+    { row: "r2", position: 1, title: "Recruiting has no owner", the_fix: "Name one",
+      root_cause: "Donna does it between jobs", owner_text: "Donna",
+      client_owner_contact: null, measurable: "Days to fill an open role",
+      horizon: 60, target_date: "2026-11-20", suggested: "goal" as const,
+      needs_baseline: true },
+    { row: "r3", position: 2, title: "Margin is a blended average",
+      the_fix: "Report per site", root_cause: "One ledger", owner_text: "",
+      client_owner_contact: null, measurable: "", horizon: 90,
+      target_date: "2026-12-20", suggested: "goal" as const, needs_baseline: false },
+  ];
+
+  /** The whole app, at the session's own URL, with nothing pre-matched. */
+  async function openTheSession(convertRoute: unknown) {
+    const { App } = await import("../App");
+    const fetchMock = mockApi({
+      "GET /api/me": aMe(),
+      "GET /api/branding": { display_name: "Executives Now",
+                             product_name: "Execs NOW HQ", palette: null },
+      [`POST /api/strategy-sessions/${SESSION_ID}/convert/`]: convertRoute,
+      [`GET /api/strategy-sessions/${SESSION_ID}/conversion-preview/`]: { rows: ROWS },
+      "GET /api/strategy-sessions/": aSession({ state: "complete" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<App />, { path: "*", route: `/strategy/${SESSION_ID}` });
+    await screen.findByText("Convert to work");
+    // The card draws before its preview lands; the rows are the preview.
+    await screen.findByLabelText(`Convert ${ROWS[0].title} as`);
+    return fetchMock;
+  }
+
+  const theCard = () => screen.getByText("Convert to work").closest("section")!;
+
+  it("chooses per row, takes the baselines, and sends what was chosen", async () => {
+    const user = userEvent.setup();
+    const fetchMock = await openTheSession({ created: [
+      { as: "goal", title: "Decisions stall waiting on Noble" },
+      { as: "project", title: "Recruiting has no owner" }] });
+
+    // What the press will do, before it is pressed.
+    expect(screen.getByText(/Creates 3 goals and 0 projects/)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Baseline for Decisions stall waiting on Noble"),
+                    "7");
+    await user.type(screen.getByLabelText("Target for Decisions stall waiting on Noble"),
+                    "2");
+    await user.selectOptions(screen.getByLabelText("Convert Recruiting has no owner as"),
+                             "project");
+    await user.selectOptions(
+      screen.getByLabelText("Convert Margin is a blended average as"), "skip");
+    expect(screen.getByText(/Creates 1 goal and 1 project, leaving 1 out/))
+      .toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Create the work" }));
+
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.url.endsWith("/convert/"));
+      expect(posted?.body).toEqual({ choices: {
+        r1: { as: "goal", baseline_value: "7", target_value: "2" },
+        r2: { as: "project" },
+        r3: { as: "skip" },
+      }});
+    });
+  });
+
+  it("ticks 'not measured yet' instead of a baseline, and says so", async () => {
+    const user = userEvent.setup();
+    const fetchMock = await openTheSession({ created: [] });
+
+    await user.type(screen.getByLabelText("Baseline for Recruiting has no owner"), "9");
+    await user.click(screen.getByLabelText("Not measured yet — Recruiting has no owner"));
+    // The reading it replaces goes with it, rather than being sent alongside.
+    expect(screen.getByLabelText("Baseline for Recruiting has no owner"))
+      .toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Create the work" }));
+
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.url.endsWith("/convert/"));
+      expect((posted?.body as { choices: Record<string, unknown> }).choices.r2)
+        .toEqual({ as: "goal", baseline_unknown: true, baseline_value: "",
+                   target_value: "" });
+    });
+  });
+
+  it("shows the refusal in the card, beside the button that caused it", async () => {
+    const user = userEvent.setup();
+    await openTheSession(() => ({ status: 400, body: {
+      detail: "2 rows are not ready to convert — \"Decisions stall waiting on Noble\", "
+        + "\"Recruiting has no owner\". Each one needs a baseline before the "
+        + "engagement starts, or an explicit \"not measured yet\".",
+      rows: ["r1", "r2"] } }));
+
+    await user.click(screen.getByRole("button", { name: "Create the work" }));
+
+    const card = theCard();
+    await waitFor(() => expect(card).toHaveTextContent(/2 rows are not ready to convert/));
+    // And the rows it named are marked where they are, not only at the top.
+    expect(screen.getAllByText("not ready")).toHaveLength(2);
+  });
+
+  it("will not press when every row is left out", async () => {
+    const user = userEvent.setup();
+    await openTheSession({ created: [] });
+    for (const row of ROWS) {
+      await user.selectOptions(screen.getByLabelText(`Convert ${row.title} as`), "skip");
+    }
+    expect(screen.getByRole("button", { name: "Create the work" })).toBeDisabled();
+    expect(screen.getByText(/Every row is left out/)).toBeInTheDocument();
+  });
+});
