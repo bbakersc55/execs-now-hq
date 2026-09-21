@@ -198,6 +198,23 @@ multi-discipline work.
 
 ---
 
+## Where the five checks stand, 2026-09-21
+
+| Check | Ran | Outcome |
+|---|---|---|
+| 1 — a real session with a real prospect | **not yet** | **Open.** The only honest test of this module |
+| 2 — the pre-call form as a prospect | 2026-09-19 | Passed, after the emailed link was fixed |
+| 3 — are the drafted rows usable | 2026-09-19 | *"Viable — I would use them on a real call."* **N = 1** |
+| 4 — the PDF read as the prospect | 2026-09-19 | Passed, after ratings, comments and the merge field were fixed |
+| 5 — convert and check the work | 2026-09-21 | Passed on the re-run: work created per row, Noble at Closed Won, the session converted |
+
+**Module 4 is signed off with Check 1 open.** Two judgements from the Check 5 run are
+recorded in the build plan rather than carried in anyone's head: nine "Not measured
+yet" ticks is acceptable friction for now and gets revisited after a real session, and
+an owner that lands as text with nobody assigned is correct.
+
+---
+
 ## What I would like back
 
 For each check: passed, or what it showed. For Check 1 and Check 3 especially,

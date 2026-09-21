@@ -504,6 +504,17 @@ PIN it was issued for.
 | `status_override` | text? | **FR-3.10: null means derive from children at read time; never store the derived value** |
 | `source_map_row_id` | FK→`strategy_map_row`? | **the back-link from Module 4 (FR-4.31)** |
 | `deleted_at` | timestamptz? | |
+| `measurable` | text? | the name — "supervisor hours per week". Carried from `strategy_map_row.measurable` |
+| `measurable_unit` | text? | numeric only. "hours/week", "%", "days" — **drives display, never arithmetic** |
+| `direction` | text? | **`up_is_good · down_is_good`** (4.5 ruling 2). Required on a numeric measurable. **Never inferred** |
+| `baseline_value` | numeric(14,4)? | what it read at engagement start |
+| `baseline_at` | date? | when that reading was taken — a baseline with no date compares to nothing |
+| `target_value` | numeric(14,4)? | where it is meant to land |
+| `horizon_days` | smallint? | 30 · 60 · 90, from the map row |
+
+> **The measurable columns above are Module 4B's, landed early by Phase 4** (owner, 2026-09-18). A map row promises a measurable and a horizon, and **AC-4.11 says conversion carries what the row holds** — with nowhere to put them, conversion would have dropped the half of the row that makes a goal answerable later. They are named as 4B settled them so that module adds its history and resolution log beside them rather than renaming them. **Conversion prompts for the baseline** (FR-4B.12) because a baseline asked for three weeks later is a guess, and a guessed baseline makes every later reading dishonest.
+>
+> **Three more columns arrive with 4B itself** — `measurable_kind`, `how_we_will_know`, `outcome_statement` — with the six new tables. See §6A.
 
 ### `project`
 Same shape — including `owner_id`, `client_owner_contact_id`, and `status_override` — plus `goal_id FK→goal?`, `start_date`, its own `source_map_row_id` (a map row becomes a Goal *or* a Project, chosen per row — FR-4.28), and **`created_by_client bool`**.
@@ -737,6 +748,137 @@ Put plainly: the snapshot is why AC-4.12 passes; the soft delete is why cross-se
 | `converted_to` | text? | `goal` · `project` — the per-row choice (FR-4.28) |
 
 > A row is on the map only when `state = 'accepted'` (FR-4.18). `proposed` rows are the tray.
+
+---
+
+## 6A. Module 4B — Client value report
+
+> **Specified 2026-09-21 from the Phase 4.5 scope and its eleven rulings (owner, 2026-09-16), and amended the same day by rulings A–H. Nothing here is migrated yet.** The `goal` columns in §5 above are the part Phase 4 already landed; the six tables below are this module's.
+
+**Six tables** — five, plus the narrative's version log that **ruling B** added on 2026-09-21 — and **no new column on `goal` beyond the three named in §5 as 4B's**.
+
+> **On `ON DELETE CASCADE` below:** a Goal is **soft-deleted** (§0), so cascade is a floor for a genuine hard delete and not the ordinary path. A soft-deleted goal's readings, milestones, resolutions and narratives stay exactly where they are, and disappear from every read because the goal does.
+
+What is deliberately *not* proposed matters as much as what is:
+
+| Not proposed | Why |
+|---|---|
+| a stored `percent_complete` | derived from the task tree at read time, like every other rollup (FR-3.10) |
+| a stored `current_value` on `goal` | it would drift the first time a reading is corrected; the current value is a read of the latest `goal_measurement` (FR-4B.15) |
+| `resolution` / `resolved_at` columns on `goal` | ruling 7 makes resolution append-only, and one column with a reason beside it is the one shape that cannot express it — the second resolution overwrites the first |
+| a `direction` derived from baseline-versus-target | ruling 2. Silently wrong when they are equal, and undefined before a target exists |
+| a stored derived status | FR-3.10's rule stands here too |
+
+### `goal_measurement`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` | |
+| `goal_id` | FK→`goal` · IX | `ON DELETE CASCADE` — a reading has no meaning without its goal |
+| `value` | numeric(14,4) | same precision as `goal.baseline_value` and `target_value`, so a series and its endpoints compare without rounding |
+| `measured_at` | date · IX | **the date of the reading, not of the typing** (FR-4B.16) |
+| `recorded_by_id` | FK→`user`? | null when a departed member took the reading (FR-0.8c) |
+| `note` | text? | why this reading is what it is — *"two sites closed for the week"* |
+
+> **The series the chart is drawn from, and the only place a current value lives.** `U(tenant_id, goal_id, measured_at)` is **not** applied — **ruling C, 2026-09-21**: two readings on one date is a correction or a second source, **both are kept, and the latest is current**. Refusing the second at the database would push the fractional into editing history, which is the one thing this module is built not to do. Ordering is `measured_at DESC, created_at DESC`, so **latest means most recently recorded**, never the higher or the better reading.
+>
+> **The baseline is not a row here** (FR-4B.17). It lives on `goal` because it is what the number read when the engagement started and must survive any later correction of the series. **It counts as one point toward the chart's three-reading threshold, and only when `baseline_at` is set** (**ruling D, 2026-09-21**) — it is a reading, taken at the engagement's start, and a point with no date cannot be placed on an axis.
+
+### `goal_milestone`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` | |
+| `goal_id` | FK→`goal` · IX | `ON DELETE CASCADE` |
+| `title` | text | |
+| `due_date` | date? | when it was meant to happen |
+| `occurred_at` | date? | when it did. **Null is "not yet", never "late"** — late is `due_date` in the past with this null |
+| `position` | smallint | the fractional's order, for beats that share a date |
+| `source_task_id` | FK→`task`? · `U(tenant_id, source_task_id)` | **ruling 8** |
+
+> **`source_task_id` is what stops a dated beat being maintained in two places.** A task marked as a milestone derives `occurred_at` from its completion; **un-completing the task clears it** (FR-4B.25), because a milestone must never claim a date that did not happen. A derived milestone's title and dates are **not writable** on the milestone — they belong to the task — and the unique constraint means one task yields at most one milestone.
+>
+> **Only a client-visible task in the goal's own tree is eligible** (**ruling E, 2026-09-21**) — under one of the goal's projects, or filed directly under the goal, and **never an internal task**: a milestone is a beat on the client's timeline, and a task the client cannot see would leak the work in its title alone. **A task hidden or moved out of the tree afterwards takes its milestone out of the client's response** while the row survives for the practice. Enforced in the service, not by a constraint — `is_client_visible` and the goal's tree are both mutable, and a `CHECK` that a later edit can falsify is worse than a rule the read path applies every time.
+>
+> A standalone milestone has `source_task_id` null and both dates typed. **Occurred-versus-due is the whole status vocabulary**: hit, late, or ahead falls out of two dates, and no `status` column is added to express what subtraction already says.
+
+### `goal_resolution`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` | |
+| `goal_id` | FK→`goal` · IX | `ON DELETE CASCADE` |
+| `resolution` | text | `achieved · changed_course · paused · retired` |
+| `reason` | text **NOT NULL** | **at the database, not by serializer convention** (AC-4B.10) |
+| `resolved_by_id` | FK→`user`? | |
+| `resolved_at` | timestamptz | |
+
+> **Append-only, and the append-only-ness is structural** (ruling 7): there is no update or delete route, and `resolution` plus `reason` are written once. **A goal's current state is its latest row; a goal with no rows is current.** Resuming a paused goal appends a `paused`-reversing line of its own kind; un-achieving an achieved goal appends a new line with its own reason. Nothing is edited away, because *how the thinking changed* is the part a client conversation is actually about.
+>
+> **`reason` is `NOT NULL` with no default and no empty-string escape** — a `CHECK (length(btrim(reason)) > 0)` goes with it, because a NOT NULL column that accepts `''` enforces nothing. This is the one mechanism that makes **changed course** read as judgement rather than as giving up (FR-4B.29).
+
+### `goal_narrative`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` | |
+| `goal_id` | FK→`goal` · IX · **`U(tenant_id, goal_id)`** | `ON DELETE CASCADE`. **One living narrative per goal** (ruling B) — and no period columns, which is the shape the ruling replaced |
+| `proposed_body` | text? | **Claude's draft. Never shown to a client** (FR-4B.33) |
+| `body` | text? | the accepted text — **what the client reads now**. Null until a person accepts |
+| `state` | text | `drafting · proposed · accepted · discarded · failed` — the same vocabulary `note.summary_state` uses, for the same reason |
+| `accepted_by_id` | FK→`user`? · `accepted_at` timestamptz? | the most recent acceptance |
+| `ai_call_id` | FK→`ai_call`? | which draft run produced the current draft, with its tokens and cost |
+
+> **One living narrative per goal, not one per period** (**ruling B, 2026-09-21**). The report has no period (FR-4B.1) and neither does its prose: a client reads the current account of the goal, redrafted as the goal moves. The unique constraint is what makes that structural — a second accepted narrative for a goal cannot exist to disagree with the first.
+>
+> **Two body columns, not one**, on the same precedent as `note.proposed_summary` / `note.summary` and `strategy_session.proposed_mirror_*`: the draft stays beside the accepted text so the fractional can see what they changed, and **the client's serializer reads `body` and never `proposed_body`** — absent from the response, not hidden in the UI (AC-4B.15).
+>
+> **The goal shows without this row existing at all** (FR-4B.34). An unaccepted or missing narrative costs the client the prose and nothing else.
+
+### `goal_narrative_version`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` | |
+| `narrative_id` | FK→`goal_narrative` · IX | `ON DELETE CASCADE` |
+| `goal_id` | FK→`goal` · IX | denormalised deliberately: the version log is read from the goal, and a join through the narrative to answer "what did we tell them in March" is a join for nothing |
+| `body` | text | **the accepted text as accepted.** Not nullable — a version exists because something was accepted |
+| `accepted_by_id` | FK→`user`? · `accepted_at` timestamptz | |
+
+> **A dated snapshot per acceptance** (ruling B), and the reason the living narrative can be rewritten freely: **what the client reads is replaced; what the client was told is not.** Append-only, exactly as `goal_resolution` is — **no update or delete route exists**, and the same reasoning applies: the history of how the account changed is the part a client conversation is actually about.
+>
+> **An export cites the version current at export** (FR-4B.33b), which is what keeps a snapshot PDF and this log agreeing with each other a year later. `goal_report_export` carries the reference.
+
+### `goal_report_export`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK · `tenant_id` | |
+| `goal_id` | FK→`goal`? · IX | **null is an all-goals export** for the company |
+| `client_company_id` | FK→`company` · IX | set on every row, including a single-goal export — an all-goals export has no goal to reach the company through |
+| `stored_file_id` | FK→`stored_file` | the bytes, in the same place every other generated document lives |
+| `narrative_version_id` | FK→`goal_narrative_version`? | **which accepted text this PDF carries** (FR-4B.33b). Null on an all-goals export and on a goal with no accepted narrative |
+| `exported_at` | timestamptz · `exported_by_id` FK→`user`? | |
+
+> **Ruling 4 — the PDF is a snapshot at export, not a live render.** The document a quarterly conversation was held over still reads the way it read that day, a year later, after four more measurements and a rewritten outcome statement (AC-4B.19). Rows are **listed on the goal and on the client company**, with their dates, so a year of them is findable from the account as well as from the goal.
+>
+> **Every export is kept; nothing auto-deletes** (**ruling F, 2026-09-21**). No retention window, no cleanup job — deliberately. Notes carries an audio retention setting because audio is large and its value decays; neither is true of a PDF that records what a client was shown and when. Deleting one is a person's deliberate act, and no scheduled process exists that could do it for them.
+>
+> **Exporting is not sending** (FR-4B.39). Nothing here reaches a client; a PDF travels only as an attachment on an ordinary Outbox message a person approves, which is the Outbox's row to hold, not this table's.
+
+### What Module 4B adds to `goal`
+
+Three columns, and only three — the rest arrived with Phase 4 (§5):
+
+| Column | Type | Notes |
+|---|---|---|
+| `measurable_kind` | text? | **`numeric · qualitative · none`** (ruling 1, extended by **ruling A, 2026-09-21**). **`none` is a decision: deliberately not measurable.** **Null is the absence of one** — nobody has chosen yet — and the goal carries a standing nudge until somebody does (FR-4B.6a) |
+| `how_we_will_know` | text? | **qualitative only**: the sentence that stands in for a number. Blank is legitimate — prompting is not blocking (FR-4B.13a) |
+| `outcome_statement` | text? | the fractional's client-facing sentence; **the headline for a qualitative goal** |
+
+> **A model-level check, not a database constraint:** `direction` is required when `measurable_kind = 'numeric'` (ruling 2), and `how_we_will_know` is meaningless when it is not `qualitative`. Both are `clean()` rules with tests, on the same precedent as the cross-tenant FK checks in §0 — the alternative is a partial `CHECK` that a data migration over pre-module goals would have to fight.
+>
+> **Why `none` and null are two values and not one** (ruling A). They render identically to a client (FR-4B.19) and mean opposite things to the practice: *"we decided this one is not measurable"* versus *"nobody has looked at it yet"*. Collapsing them would make the deliberate choice the owner asked for indistinguishable from the empty field it was meant to replace — and the nudge that chases a null would then chase every goal that had already been settled. **The nudge never blocks and never reaches a client**; it is the whole mechanism keeping a null from quietly ageing into a decision nobody made.
 
 ---
 

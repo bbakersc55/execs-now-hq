@@ -7,7 +7,7 @@
 
 ## How to read this document
 
-Six modules, in `CLAUDE.md`'s build order. Each carries: **Purpose** (one paragraph), **User stories** by role, **Functional requirements** (numbered `FR-<module>.<n>`), **Out of scope for Beta**, and **Acceptance criteria** (`AC-<module>.<n>`) written so you can verify each one by hand without reading code.
+Six modules, in `CLAUDE.md`'s build order — **plus Module 4B** (§6A, the client value report), which the review added between Modules 4 and 5 and which replaces FR-3.38 rather than standing beside it. Each carries: **Purpose** (one paragraph), **User stories** by role, **Functional requirements** (numbered `FR-<module>.<n>`), **Out of scope for Beta**, and **Acceptance criteria** (`AC-<module>.<n>`) written so you can verify each one by hand without reading code.
 
 Two conventions worth knowing before you start:
 
@@ -66,6 +66,7 @@ There are **two review surfaces**, not one, and keeping them distinct matters be
 | R7 | Claude-drafted "mirror" | 4 | Live accept/edit tray | Goal + unlocks-most text | Saved to session | Blank, fractional writes it |
 | R8 | Strategy session PDF | 4 | Send screen with preview | PDF + exclusion toggles | Emails prospect | Not sent |
 | R9 | Strategy Map → task conversion | 4 | Conversion screen | Proposed Goals/Projects/Tasks | Rows created | No rows created |
+| R9a | **Claude-drafted goal narrative** | 4B | Goal report, accept/edit | Connective narrative per goal | Visible to the client on that goal | **The goal still shows its structure** (FR-4B.34); no prose |
 | R10 | Meeting ingestion — contact match | 5 | Meeting review queue | New-contact candidate **or** ranked existing matches | Contact created or linked | Nothing created |
 | R11 | Meeting ingestion — action items | 5 | Meeting review queue | Extracted tasks with dates | Tasks created | Nothing created |
 | R11a | Claude-drafted meeting summary | 5 | Meeting review queue | Summary text | Stored on the Meeting record | Meeting created with no summary |
@@ -499,7 +500,7 @@ Everything the fractional does for a client, in a structure the client can see, 
     - **AI prose on** — Claude writes the connective narrative that turns transitions into a report. It is given **only** the status transitions and the human-written client-facing lines, and is instructed that it must not assert any fact not present in that input.
     - **AI prose off** — deterministic template: status transitions and human-written text only, no AI output whatsoever.
 24a. **The narrative says what the work is FOR** *(owner decision, 2026-09-18, after Check 2's delivered digest read well but read as work done rather than work toward something)*. Each block of updates is passed to Claude under **the goal it serves** — the goal's title and, where the fractional wrote one, its outcome statement (`goal.description` today; `goal.outcome_statement` once Module 4B adds it) — and the model is instructed to frame movement in terms of that goal rather than as a list of actions. **The AC-3.5 constraint governs the goal exactly as it governs everything else:** the narrative may say this work belongs to that goal and may repeat what the input says happened; it may **not** say the goal has advanced, is closer, is on track, is nearly met or will be met, and it may use **no number, proportion or comparison to before** unless a line in the input states it. Work attached to no goal is reported on its own terms and is never filed under one. The **update list is grouped the same way** — goal, then task — with goal-less work in an unheaded section last.
-24b. **The measured version of FR-3.24a is Module 4B, not Module 3.** "Three of five sites now inspected weekly, up from one" requires the measurable's **baseline and current value**, which live in `goal.baseline_value` and `goal_measurement` — neither exists until 4B. Module 3 therefore frames work by the goal it serves and says nothing about distance travelled, because it has nothing true to say about it.
+24b. **The measured version of FR-3.24a is Module 4B, not Module 3.** "Three of five sites now inspected weekly, up from one" requires the measurable's **baseline and current value**, which live in `goal.baseline_value` and `goal_measurement` — neither exists until 4B. Module 3 therefore frames work by the goal it serves and says nothing about distance travelled, because it has nothing true to say about it. **This requirement comes off the books when 4B lands** (FR-4B.43): the measured sentence is 4B's to write, in the value report, and the digest is not retrofitted to write it.
 25. **`hold_all_digests` is a per-tenant setting, default ON for Beta.**
 26. **While `hold_all_digests` is ON, every digest waits for approval — AI-drafted and deterministic alike.** ⛔ **REVIEW QUEUE (R4, R5).**
 27. When `hold_all_digests` is OFF: **AI-drafted digests still require approval** (⛔ R4); deterministic digests send on cadence without approval.
@@ -539,7 +540,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 35b. A client-created project is visible to the tenant staff on that account like any other, and its tasks follow the ordinary stakeholder and digest rules.
 36. **A client user creating a task or comment does not pass through any review queue.** It is a person writing about their own work; a queue there would make the portal unusable. Stated explicitly so the review rule is not over-applied.
 37. Client-created tasks default to client-visible, and notify the tenant owner of the parent project (or the company's assigned fractional if none) subject to the same 30-minute quiet window.
-38. The portal offers an **on-demand progress report** rendering the same content as a digest for a chosen period, with no email and no approval required — because a client pulling a report has no outward effect.
+38. ~~The portal offers an **on-demand progress report** rendering the same content as a digest for a chosen period~~ — **replaced by Module 4B (FR-4B.1, FR-4B.5), 2026-09-21.** It answered *what happened lately*, which is the wrong question; the client value report answers whether the work is working. **Two things survive the replacement**: the report needs no email and no approval, because a client pulling a report has no outward effect (FR-4B.37); and it **requires a login** — a cadence token does not reach it (AC-4B.21). Its implementation is removed rather than left alongside: two answers to "how is it going" that disagree is worse than either.
 39. List view and board (status-column) view. Both filterable by **client company**, project, assignee, and status. Choosing a client **narrows the project and assignee filters to that client**, as the New task form already does — an option that cannot match anything is worse than no option.
 
 39a. **Work and Tasks carry a company dimension.** *(Owner request, 2026-09-17.)* A fractional runs several accounts at once, and an undifferentiated list asks them to remember which client each goal belongs to. On **Work**, goals are **grouped under a heading per client company**, with the practice's own work — anything with no client company — in its own group, last. "Projects with no goal" and "Tasks filed under nothing" group the same way. On both screens a selector narrows to **one client, or to internal**; the default on both is **All clients**, and the last choice is **remembered per user in that browser** (each screen remembers its own). A group appears only when there is work in it, so a client with nothing filed is not given an empty heading. **This is not out-of-scope item 11** (cross-client reporting or portfolio dashboards): it is a filter over work the person can already see, with no roll-up, no comparison and no numbers across accounts.
@@ -646,7 +647,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **AC-3.25 — Cadence link works without a session. (FR-3.33a–33b.)** From that delivered digest, in a private window with no session, follow the footer link and change weekly to monthly. It succeeds; the stakeholder row updates; the change is audited. Then attempt, using the same token, to fetch a task, a digest, and another stakeholder's row: **all are refused.** Remove the stakeholder and confirm the token no longer works.
 
-**AC-3.26 — On-demand report requires a login. (FR-3.38.)** Confirm the on-demand progress report is unreachable with only a cadence token, and reachable by a signed-in FCC.
+**AC-3.26 — The client's report requires a login. (FR-3.38, carried onto FR-4B.37.)** Confirm the client value report is unreachable with only a cadence token, and reachable by a signed-in FCC. **The criterion outlives the screen it was written for**: FR-3.38's implementation is replaced by Module 4B, and this login rule moves onto it unchanged — see **AC-4B.21**, which is where it is tested once 4B lands.
 
 **AC-3.27 — Portal grant creates the user and consumes a seat. (FR-3.33c–33d.)** Set a client company's `seat_count` to 2. As FF, grant portal access to the company's `primary_contact`: a User is created with role **FCC**, one seat is consumed, and a magic link is sent. Grant to a second contact: role defaults to **ECC**, second seat consumed.
 
@@ -817,6 +818,205 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 **AC-4.16 — Drafting triggers only twice, and is costed. (FR-4.18a–18d.)** Answer one diagnostic question and save. **Confirm no Claude call was made** — no new `AiCall` row, no new candidates. Click "Draft rows": one `AiCall` row appears with tokens and cost. Then complete every question in one diagnostic area: a second call fires automatically. Confirm candidates already in the tray, and any accepted rows, are unchanged by the second run.
 
 **AC-4.14 — Tenant isolation.** A session, its pre-call form token, and its PDF from tenant B are unreachable from tenant A, including by direct token URL.
+
+---
+
+## 6A. Module 4B — Client value report
+
+> **Phase 4.5. Scope and its eleven rulings approved by the owner 2026-09-16; written up here 2026-09-21, spec before code; amended the same day by rulings A–H on the eight questions this write-up opened.** This section is the full `FR-4B.x` write-up the build plan's Phase 4.5 promised, and the rulings are recorded there beside the questions they answer. Nothing in it is built.
+
+### Purpose
+
+The other half of the strategy session. The map says what we are going to change; this says whether it changed. It answers the one question a founder is paying a fractional to have answered — **are we getting where we said we were going, and is it working?** — per goal, with the measure of it, the distance travelled, and the fractional's own sentence about what that adds up to.
+
+**It replaces FR-3.38**, the on-demand progress report, which renders the same content as a digest for a chosen period. That artifact answers *what happened lately*. A period-scoped activity list has no anchor outside the period, so it cannot show a direction, cannot show a distance still to travel, and cannot tell a month of real movement from a month of busywork. Worse, it invites the one summary number that destroys trust fastest: **percent-of-tasks-done**. A third of the tasks is not a third of an outcome, and a client who works that out once stops believing every number on the page after it.
+
+The anchor is the **goal**, because the goal is where the engagement's promise lives. Goals arrive from the strategy session — each accepted map row becomes one on conversion (FR-4.28) — and are added by hand as new bottlenecks surface. The report does not distinguish them.
+
+### User stories
+
+**FF**
+- As the FF, I open a client's report and see, per goal, what was promised, where the measure stood when we started, where it stands now, and where it is meant to land — without assembling it.
+- As the FF, I record this week's reading on a goal in one action, and the chart builds itself over the engagement.
+- As the FF, I write the sentence that says what a goal is really for, in the client's language, and change it as my understanding changes.
+- As the FF, I resolve a goal as **changed course** with a reason, and it reads as the judgement it was rather than as a failure.
+- As the FF, I get Claude's connective narrative for a goal drafted from that goal's own material, and I edit and accept it — or leave it, and the client still sees the numbers.
+- As the FF, I export a branded PDF for a quarterly review, and the document we held the conversation over still reads that way a year later.
+
+**CF**
+- As a CF, I do all of the above on the client companies I am assigned to, including resolving a goal and accepting a narrative — they are my client relationship to judge.
+
+**VA**
+- As a VA, I record a measurement and export a PDF, because neither is a judgement about the relationship.
+- As a VA, I cannot resolve a goal or accept a narrative, and the endpoints refuse me rather than hiding the buttons.
+
+**FCC / ECC**
+- As a client, I open the report whenever I want — it is a place I can go, not a document someone remembered to send me.
+- As a client, I see per goal what we are moving, how far it has moved, what is still to come, and what my fractional says it adds up to.
+- As a client, I never see a draft narrative nobody has accepted, and I never see another company's goals.
+
+### Functional requirements
+
+**The anchor and what it covers**
+
+1. The report is organised **by goal, not by period**. It shows **all** of a client company's goals — **current first, historical below** — with no date range to choose and no period to scope.
+2. **Any single goal is openable on its own**, at its own URL. It is the unit a quarterly-review conversation actually walks through, one goal at a time.
+3. Goals come from two places and **the report does not distinguish them**: Phase 4's map-row conversion, and goals added by hand as the engagement runs. A goal added in month four reports exactly as well as one the engagement opened with.
+4. **Internal goals never appear** (ruling 10). A goal with no `client_company_id` is the practice's own work; the client value report is a client artifact and has nothing to say about it. This is a filter on the report, not a permission rule — tenant staff still see internal goals everywhere else.
+5. **FR-3.38's implementation is removed, not left alongside.** `Report.tsx`, `ProgressReportView` and the on-demand report endpoint go. Two answers to "how is it going" that disagree is worse than either.
+
+**What a goal carries**
+
+6. **A measurable of one of three kinds** (ruling 1, extended by **ruling A, 2026-09-21**), recorded in `measurable_kind`:
+   - **Numeric** — a name, an optional unit, a **baseline** (value and date), a **target**, a **direction of good**, and a dated measurement history.
+   - **Qualitative** — a **"how we'll know" sentence** in place of a number. *"Reduce supervisor overload"* is the ordinary case, not the exception.
+   - **None** — **deliberately not measurable**, chosen explicitly. The goal reports from its outcome statement and its milestones alone.
+6a. **Null is not a fourth kind: it means nobody has decided yet** (ruling A). A goal with no `measurable_kind` **carries a standing nudge** — on the goal and in the report's tenant-side view, **never to the client** — until one of the three is chosen, and reports as a `none` goal in the meantime. *"Not yet decided"* and *"decided: not measurable"* are different facts, and the nudge is the whole of what stops the first quietly becoming the second. **It nudges; it never blocks** — no save, conversion or report is refused for it.
+7. **A direction of good on every numeric measurable** — `up_is_good` or `down_is_good`, **stored explicitly** and set at conversion or creation (ruling 2). **Never inferred.** Inference is silently wrong when baseline and target are equal — a goal can be set to hold a number steady — and has nothing to work from at all before a target is set.
+8. **The unit drives display and never arithmetic.** "hours/week" and "%" are labels; no conversion, no scaling, no comparison across units.
+9. **A 30/60/90 horizon**, carried from the map row (`horizon_days`).
+10. **A short outcome statement** — the fractional's own sentence about what this goal is really for, in client language. It is **not the description**, which is internal scoping; this is the line a founder would repeat to their board. Hand-written and updatable as understanding changes. **FF and an assigned CF only — a VA may not write it** (**ruling H, 2026-09-21**, which ruling 6 had not reached): it is the sentence a founder repeats to their board, and it goes out under the fractional's name. Recording a reading is administration; saying what the work is for is not.
+11. **Optional milestones** — dated beats: *"area lead hired"*, *"inspection app live"*. A goal may have none.
+
+**Asking for the measurable without blocking on it**
+
+12. **The strategy session prompts for structure and accepts text; it never blocks on it.** A fractional mid-conversion with a prospect waiting must not be stopped by a form demanding a unit. Conversion asks for kind, name, unit, target and direction, takes a "how we'll know" sentence when the measure is not a number, and proceeds on what it is given. *(Phase 4 already lands the narrower half of this: the columns exist, and conversion refuses a numeric measurable with no baseline and no explicit "not measured yet".)*
+13. **A goal created by hand gets the same prompt, at creation** — kind, name, unit, baseline, target, direction — as **a three-way explicit choice with no default**: numeric, a "how we'll know" sentence, or **not measurable**. "Not measurable" sets `measurable_kind = 'none'` (ruling A) and is the explicit choice the owner asked for **rather than an empty field someone skipped**: an empty field records nothing about whether the question was considered; a deliberate choice records that it was.
+13a. **A goal may still end up with nothing filled in** — the sentence left blank, the kind never chosen, or a goal predating this module. Every one of those is a legitimate state and the report renders it (FR-4B.19), because refusing to display a goal until someone finishes a form is the failure mode this module exists to remove. **`none` and null render alike and are stored differently**, which is the entire point of ruling A.
+
+**Measurement**
+
+14. **Record measurement** is the one action that moves a numeric goal: a value, a date, an optional note. It **keeps a dated history** (`goal_measurement`) so the measure can be charted across the engagement.
+14a. **Two readings on the same date are allowed; the latest is current and both are kept** (**ruling C, 2026-09-21**). A second reading on a date is a correction or a second source, and refusing it would push the fractional into editing history — which is the one thing this module is built not to do. The series keeps both, and *latest* means the most recently recorded, not the higher or the better.
+15. **The current value is read from the latest measurement, never stored on the goal.** A denormalised "current value" column drifts the first time a measurement is corrected, and a number on a client's screen that disagrees with its own history is worse than no number.
+16. **A measurement records who took the reading and when it was taken** — `measured_at` is the date of the reading, not of the typing. A reading entered on Friday for Monday is Monday's.
+17. **The baseline is a measurement's peer, not one of them.** It lives on the goal (`baseline_value`, `baseline_at`) because it is what the number read when the engagement started and it must survive any later correction of the series.
+
+**Display, and the rule that governs it**
+
+18. **When a numeric measurable exists it is the headline**: **baseline → current → target**, with the direction of good making "better" unambiguous.
+19. **A qualitative goal's headline is its outcome statement** (ruling 1), with the "how we'll know" sentence beneath it and the milestones carrying the timeline. **A `none` goal and a goal whose kind is not yet decided read the same way**, outcome statement over timeline — the difference between them is a nudge the fractional sees (FR-4B.6a), never a difference the client reads.
+20. **Task and project completion is a secondary bar** — present, and clearly subordinate, in both kinds.
+21. **Never lead with percent-of-tasks-done.** This is a **product rule, not a layout preference**: it holds in the portal, in the PDF, and in any future digest that borrows from this module. The completion bar is not promoted to the headline just because the numeric slot is empty.
+22. **The measurement chart appears in both the portal and the PDF, from three readings up** (ruling 9). Below three it is not a chart, it is decoration over two points, and **baseline → current shows as text instead**. **The baseline counts toward the three when it is dated** (**ruling D, 2026-09-21**) — it is a reading, taken at the engagement's start — and does not count when `baseline_at` is null, because a point with no date cannot be placed on an axis.
+
+**Milestones**
+
+23. Milestones are **dated beats with an optional due date and an optional occurred date**. Occurred-versus-due is what lets the timeline show a beat as **hit, late, or ahead** without inventing a status vocabulary of its own.
+24. **Two ways to get one** (ruling 8): a **standalone milestone**, typed; or **a task marked as a milestone**, which derives its `occurred_at` from the task's completion so the fact is maintained once rather than in two places.
+24a. **Only a client-visible task in the goal's own tree may be marked as a milestone** (**ruling E, 2026-09-21**) — a task under one of the goal's projects, or filed directly under the goal. **Never an internal task.** A milestone is a beat on the client's timeline, so a task the client cannot see cannot be one: the title alone would leak the work. A task outside the tree is refused for a different reason — a goal's timeline is that goal's, not a place to gather anything dated.
+24b. **A task hidden after the fact takes its milestone with it.** If `is_client_visible` is turned off, or the task leaves the goal's tree, the milestone is **absent from the client's report** — deriving from a task means deriving all of it, visibility included. The row survives for the practice; the beat stops being told.
+25. **Un-completing the task clears the derived date.** A milestone must never claim a date that did not happen. A derived milestone's title and dates are not editable on the milestone — they belong to the task.
+
+**Resolution**
+
+26. A goal is resolved into exactly one of **achieved · changed course · paused · retired**. **An unresolved goal is current**; a resolved one moves to the historical section and keeps its measurements, milestones and history.
+27. **Each resolution requires a one-line reason**, `NOT NULL` at the database rather than by serializer convention.
+28. **Resolutions append; they never erase** (ruling 7). Resuming a paused goal appends. **Un-achieving an achieved goal is allowed** and appends a new line with its own reason. **No resolution line is ever edited or deleted** — the history of how the thinking changed is the part worth keeping. A goal's current state is its latest row; a goal with no rows is current.
+29. **"Changed course" is normal consulting**, and is frequently the most valuable judgement the fractional made all quarter. **The required reason line is the whole mechanism** that makes it read as judgement rather than as failure: a resolution vocabulary with no reason attached makes "changed course" indistinguishable from "gave up".
+30. **FF and an assigned CF may resolve a goal. A VA may not** (ruling 6) — it is a judgement about the client relationship, not administration of it. **Client roles never may**, on their own goals or any other.
+30a. **The client sees the resolution and its reason** (**ruling G, 2026-09-21**). There is no internal-only resolution and no visibility flag on the line: the reason is the mechanism that makes *changed course* read as judgement rather than as giving up (FR-4B.29), and a reason the client cannot read cannot do that job. **A resolution reason is written to be read by the client**, and the UI says so where it is typed.
+
+**The AI narrative**
+
+31. Claude drafts **the connective narrative for a goal** — **one living narrative per goal, not one per period** (**ruling B, 2026-09-21**) — from **that goal's own material only**: the client-facing lines on its task updates (FR-3.16), notes linked to its tasks, its milestones, and its measurements. The report has no period (FR-4B.1) and neither does its prose: what a client reads is the current account of the goal, redrafted as the goal moves.
+32. **It asserts nothing not present in that input** — the same constraint the digest carries (FR-3.24), tested the same way (AC-3.5). With measurements present it **may** state the distance travelled, because the baseline and the readings are in its input; with none, it may not.
+33. ⛔ **REVIEW QUEUE (R9a):** the fractional **edits and accepts**. A narrative is **never auto-published**, and an unaccepted draft is **absent from the client's API response**, not merely hidden in the UI — the same standard as internal comments (AC-3.4).
+33a. **Every acceptance writes a dated snapshot** (ruling B). The living narrative is what the client reads *now*; the snapshots are the record of what it said *then* — **append-only, never edited, never deleted**, each carrying its text, who accepted it and when. A redraft replaces what the client reads and takes nothing away from the record of what they were told before.
+33b. **An export cites the snapshot current at export** (FR-4B.39), so a PDF and the goal's version history still agree with each other a year later — which a live-rendered narrative inside a snapshot PDF would not.
+34. **The structural half shows regardless** (ruling 3). A goal whose narrative has not been accepted still shows its measurable, its progress, its milestones and its timeline. Holding the goal back until someone writes prose would make the report's availability depend on the fractional's backlog, which is the failure mode of the artifact it replaces.
+35. **FF and an assigned CF may accept a narrative; a VA may not** (ruling 6).
+36. **Every draft run writes an `ai_call`** with tenant, goal, tokens and cost, like every other Claude call in the product (assumption E1.7).
+
+**Where it appears**
+
+37. **Always available in the client portal**, not only when something was sent. A report a client can only see if it was emailed to them is a document; this is a place they can go. It requires a login — a cadence token does not reach it.
+38. **Exportable as a branded PDF**, one goal or all of them, using the **email layout's brand system** (`apps/crm/services/email_layout.py`, `templates/email/base.html`) and WeasyPrint, which Module 4 already establishes. **One brand system, not a third.**
+39. **The PDF is a snapshot at export** (ruling 4), kept as a `stored_file` and **listed on the goal and on the client company**, so the document a quarterly conversation was held over still reads the way it read that day — and so a year of them can be found from the account as well as from the goal. Exporting is not sending: the PDF reaches a client only through an ordinary Outbox message a person approves.
+39a. **Every export is kept. Nothing auto-deletes** (**ruling F, 2026-09-21**). There is no retention window and no cleanup job, deliberately: Notes has an audio retention setting because audio is large and its value decays, and neither is true here. An export is the practice's record of what a client was shown and when, and the cost of keeping a PDF is not a reason to lose that. Deleting one is a deliberate act by a person, and there is no scheduled process that can do it for them.
+
+**What updates itself, and what a person types**
+
+40. **Automatic — everything structural**: task and project completion, the goal tree, the timeline, and milestone dates as they are hit.
+41. **By hand — two things only**: the measurable's **current value**, through record-measurement; and the **outcome statement**.
+42. **Nothing else is hand-maintained.** Any field that would need the fractional to remember to update it, and would silently go stale if they did not, does not belong in this module.
+
+**What this module does not touch**
+
+43. **The weekly digest stays exactly as it is** (ruling 5). Two artifacts, two jobs: the digest is a weekly *what moved*; this is the periodic *where are we*. Whether the digest should eventually borrow the goal anchor is revisited **after real use**, not decided now. **FR-3.24b comes off the books** when this module lands: the measured sentence it defers — *"three of five sites now inspected weekly, up from one"* — is 4B's to write, from `goal.baseline_value` and the latest `goal_measurement`.
+44. **The client activity log (FR-3.41) is untouched.** It is the honest flat log and should stay flat; the mistake was having only that shape.
+
+### Out of scope for Beta
+
+1. **Cross-client roll-ups** — any view comparing goals across client companies, or scoring accounts against each other.
+2. **Targets with intermediate checkpoints** ("halfway by day 45"). The horizon and the milestones carry timing; a second schedule on the measurable is not earned yet.
+3. **Multiple measurables on one goal.** One goal, one measure. A goal needing two is two goals, and saying so is usually the more useful advice.
+4. **Client-recorded measurements.** The reading is the fractional's, and a client typing their own numbers into the report they are being shown changes what the artifact is.
+5. **Automatic measurement capture** from a connector (QBO, a dashboard, a spreadsheet). V1 at the earliest, and it waits on connectors.
+6. **Forecasting, trend lines, or projected completion dates** from the measurement series. Three readings do not support a projection, and a projection on a client's screen becomes a promise.
+7. **Per-client branding of the PDF.** One tenant brand in Beta, as everywhere else.
+8. **Scheduled or emailed delivery of the report.** It is a place in the portal plus an export; sending it is an ordinary Outbox message.
+9. **Comments on the report itself.** Comments live on the work (FR-3.12); a second comment surface on the same material would split the conversation.
+
+### Acceptance criteria
+
+**AC-4B.1 — The report is anchored on goals, not on a period.** Open a client company's report. Every goal for that company appears, current first and historical below, **with no date range to choose**. Confirm a goal whose tasks all sit outside any recent period still appears with its measurable and its history.
+
+**AC-4B.2 — A single goal opens on its own.** Open one goal at its own URL as an FCC. It renders the same content as its block in the full report, and nothing from any other goal.
+
+**AC-4B.3 — Internal goals never appear.** Create a goal with `client_company_id = null` and a goal for the client. **The report shows only the second**, and the internal goal is **absent from the API response**, not merely unrendered. Confirm it is still visible on the Work screen to tenant staff.
+
+**AC-4B.4 — Direction is stored, never inferred.** Create a numeric goal whose baseline and target are **equal** (hold the number steady) with `direction = down_is_good`. The report describes a later reading **below** both as better. Confirm no code path derives direction from baseline-versus-target: set direction to `up_is_good` on the same data and the same reading now reads as worse.
+
+**AC-4B.5 — The current value is read, never stored.** Record three measurements. Confirm the goal row carries **no current-value column**, the report shows the latest, and **correcting the middle reading** leaves the headline unchanged while the chart moves.
+
+**AC-4B.5a — Two readings on one date, both kept.** Record two readings for the same `measured_at` with different values. **Both rows exist**, the headline shows the **most recently recorded** one, and neither the database nor the API refuses the second. Confirm "latest" is by recording order, not by value: record the lower one second and it becomes current.
+
+**AC-4B.6 — The chart appears at three readings, not before, and the baseline is one of them.** With a **dated** baseline and one reading, the report and the PDF show **baseline → current as text and no chart**. Add a second reading — three points with the baseline — and **the chart appears in both**. Then clear `baseline_at` on a goal with the same three points: it falls back to two and **the chart disappears**, because an undated point cannot be placed on an axis.
+
+**AC-4B.7 — A numeric goal leads with its measure.** Confirm the headline is baseline → current → target, and that **percent-of-tasks-done appears nowhere as a headline figure** in the portal or the PDF. Search the generated PDF's own text: no percentage of tasks stands as the leading figure for any goal.
+
+**AC-4B.8 — A qualitative goal leads with its outcome statement.** Create a qualitative goal with a "how we'll know" sentence and three of five tasks done. The headline is the outcome statement, the sentence sits beneath it, and **the completion bar is subordinate — it is not promoted because the numeric slot is empty**. Repeat with a goal carrying no measurable at all: same shape.
+
+**AC-4B.9 — A goal created by hand gets the measurable prompt, three ways.** Create a goal through the UI. The form asks for the kind as **three choices with no default** — numeric, a "how we'll know" sentence, or **not measurable** — plus name, unit, baseline, target and direction. Choose *not measurable*: `measurable_kind = 'none'`. Choose the sentence and leave it blank: the goal still saves — **prompting is not blocking**. Create a goal by an API call that omits the kind entirely: it saves with **null**, which is a different stored value from `'none'`.
+
+**AC-4B.9a — A kind not yet decided is nudged, and only to the practice.** On the null-kind goal from AC-4B.9, confirm a **standing nudge** appears on the goal and in the tenant-side report, that it is **absent from the client's API response**, and that nothing — saving the goal, converting, recording a milestone, rendering the report — is refused because of it. Choose a kind: the nudge goes. Confirm a `'none'` goal **never** nudges.
+
+**AC-4B.10 — A resolution cannot be stored without its reason.** Attempt to insert a `goal_resolution` with a null reason **directly at the database**: it fails. Attempt it through the API: 400, with a sentence naming what is missing.
+
+**AC-4B.10a — The client reads the resolution and its reason.** Resolve a goal as **changed course** with a reason. As an FCC, fetch the goal: the resolution **and its reason text** are both in the response body. Confirm there is no visibility flag on a resolution and no code path that withholds a reason from a client.
+
+**AC-4B.11 — Resolutions append and the first survives.** Pause a goal with a reason, resume it, achieve it, then un-achieve it — each with its own reason. **All four lines are readable in full, in order**, the goal's current state is the latest, and **no endpoint exists that edits or deletes a resolution row**.
+
+**AC-4B.12 — Current versus historical follows the latest resolution.** A paused goal is historical; resuming it returns it to current **with its measurements, milestones and narrative intact**.
+
+**AC-4B.13 — A task marked as a milestone derives its date.** Mark a client-visible task in the goal's tree as a milestone and complete it: the milestone's `occurred_at` is the completion date. **Un-complete the task: the date clears** and the milestone claims nothing. Confirm the derived milestone's title and dates cannot be edited on the milestone itself.
+
+**AC-4B.13a — Only a client-visible task in the goal's tree is eligible.** Attempt to mark as a milestone: a task with `is_client_visible = false` (**refused**), a client-visible task under a *different* goal (**refused**), and a client-visible task filed directly under this goal (**accepted**). Then take the accepted one and **turn its visibility off**: the milestone is **absent from the client's response body** while remaining visible to the practice. Turn it back on: it returns.
+
+**AC-4B.14 — The narrative asserts nothing absent from its input.** Following AC-3.5: a goal with two task updates, one client-facing line, one note and **no measurements**. The draft may name the goal and the work; it must show **no number, no comparison to before, and no claim that the goal has advanced**. Add three measurements and re-draft: the distance travelled may now appear, because it is in the input.
+
+**AC-4B.15 — An unaccepted narrative is invisible to the client.** Draft a narrative and do not accept it. As an FCC, fetch the goal: the draft is **absent from the response body**. Accept it: it appears. Edit-then-accept: the client sees the edited text, never the draft.
+
+**AC-4B.15a — One living narrative, versioned on every acceptance.** Accept a narrative, redraft it, edit it and accept again. Confirm: **one narrative row for the goal** (a second accept does not create a second living narrative), **two dated snapshots** carrying their text, who accepted and when, **the client reads the later one**, the earlier one is **still readable in full** by the practice, and **no endpoint updates or deletes a snapshot**. Confirm no narrative anywhere is keyed to a period.
+
+**AC-4B.15b — An export cites the snapshot current at export.** Export a goal's PDF, then redraft and accept a new narrative. Re-open the stored export: it carries the **earlier** text, and the goal's version history names that snapshot as the one the export was built from.
+
+**AC-4B.16 — The structural half shows regardless.** With the narrative unaccepted, the client's response still carries the measurable, the readings, the completion bar, the milestones and the timeline.
+
+**AC-4B.17 — A VA may measure and export, and may not judge.** As a VA: record a measurement (2xx) and export a PDF (2xx); **write the outcome statement (403)**, resolve a goal (**403**) and accept a narrative (**403**), asserted against the API response. As a CF **not** assigned to the company: all are **404**.
+
+**AC-4B.18 — Client-company isolation, both ways.** An FCC at company A requests a goal, a measurement, a narrative and an export belonging to company B: **404** for each. Cross-tenant: **404**. Confirm the report endpoint for company B returns 404 rather than an empty report.
+
+**AC-4B.19 — The PDF is a snapshot, and every one is kept.** Export a goal's PDF. Record two more measurements and change the outcome statement. **Re-open the stored export: it is unchanged**, and a new export reflects the new state. **Both are listed on the goal and on the client company**, with their dates. Confirm **no scheduled job deletes an export** — there is no retention setting for them and no cleanup task that can reach them.
+
+**AC-4B.20 — Exporting is not sending.** Export a PDF and confirm the **Outbox is empty**. Send it and confirm one message, one attachment, and the contact's timeline showing it.
+
+**AC-4B.21 — The report requires a login.** Confirm the report is unreachable with only a `stakeholder_token` (a cadence link), and reachable by a signed-in FCC. *(This is AC-3.26's requirement, carried onto this module — FR-3.38's login rule outlives its implementation.)*
+
+**AC-4B.22 — Every narrative draft is costed.** Each draft run writes exactly one `ai_call` with tenant, goal, tokens and cost. Accepting, editing and exporting write none.
+
+**AC-4B.23 — FR-3.38 is gone, not shadowed.** The on-demand progress report endpoint and screen **do not exist**; no route serves them and no test asserts their behaviour.
 
 ---
 

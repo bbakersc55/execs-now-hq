@@ -766,22 +766,52 @@ re-running it is the next thing.
    have never met the real API in a real session, and their output quality is
    unmeasured: that is manual check 3's job, and the report on it will be **your
    judgement on N real sessions**, with N.
-2. **Checks 2, 3 and 4 ran as a dry run on 2026-09-19**, and **Check 5 ran on
-   2026-09-21 and failed** (both above). Check 5's three defects are fixed and
-   covered by tests, but **the owner has not re-run it**, and **Check 1 has never
-   run** (`phase4_manual_checks.md`, with the click paths). Check 1 — running a
-   real session with a real prospect — is the only honest test of this module.
+2. **Checks 2, 3 and 4 ran as a dry run on 2026-09-19**; **Check 5 failed on
+   2026-09-21, was fixed, and passed on the re-run the same day** (both above).
+   **Check 1 has never run** (`phase4_manual_checks.md`, with the click paths).
+   Check 1 — running a real session with a real prospect — is the only honest test
+   of this module, and it is what the sign-off below leaves open.
 3. **V1's template work is deferred, deliberately:** no reordering, no adding or
    deleting questions, no second discipline, no per-tenant worked example.
+
+### Phase 4 — signed off by the owner, 2026-09-21, with Check 1 open
+
+**Check 5 passed on the re-run**: work created per row, Noble Baker moved to Closed
+Won, the session converted. With Checks 2, 3 and 4 passed on the 2026-09-19 dry run,
+**four of the five manual checks are done and Module 4 is signed off.**
+
+**What the sign-off does not cover, stated so it cannot be read as more than it is:**
+
+- **Check 1 — a real strategy session with a real prospect — has not run**, and the
+  sign-off leaves it open rather than waiving it. It is the only check that tests this
+  module the way it will be used.
+- **The quality of Claude's drafting stands at N = 1**, the owner's sentence from the
+  dry run (above). Check 1 on real prospects is the only thing that raises N.
+
+**Two judgements recorded from the Check 5 run**, because both were open questions
+that only use could settle:
+
+1. **Nine "Not measured yet" ticks is acceptable friction for now** — revisited after
+   a real session, not designed around in advance.
+2. **An owner that stays as text with nobody assigned is correct**, confirmed in use.
+   FR-4.29a's refusal to guess reads as right on a real map rather than as a gap:
+   "Donna" and the blank owners landed as text, and that is the outcome wanted.
 
 ---
 
 ## Phase 4.5 — Module 4B: the client value report
 
 > **Scope approved by the owner 2026-09-16, with rulings on all eleven open questions
-> (recorded below). Still scope: nothing here is built or designed.** The module starts
-> when the owner says so, after Phase 4, and the full `FR-4B.x` write-up in `01_prd.md`
-> comes with it.
+> (recorded below).** The module starts when the owner says so, after Phase 4.
+>
+> **The specification is written and ruled on, 2026-09-21 — no code.** `01_prd.md` §6A
+> carries **FR-4B.1–44** and **AC-4B.1–23** (both with lettered sub-items, 29 criteria
+> in all); `02_data_model.md` §6A carries **six tables** and the three remaining `goal`
+> columns; `03_access_matrix.md` §10A carries **nineteen rows** and folds a sixth
+> weighted case into the role-boundary family. The eight questions the specification
+> opened beyond the approved scope were **all ruled by the owner the same day** and are
+> recorded with their answers below. **Nothing is open; the module is ready to build
+> on the owner's word.**
 
 ### Why this exists
 
@@ -1061,7 +1091,7 @@ honestly later.
 
 | # | The question | The ruling |
 |---|---|---|
-| 1 | Structured or free-text measurables | **Two kinds** (option c). **Numeric**: name, unit, baseline, target, dated measurement history; headline is baseline → current → target. **Qualitative**: a "how we'll know" sentence; headline falls back to the outcome statement. The strategy session **prompts for structure and accepts text; it never blocks on it** |
+| 1 | Structured or free-text measurables | **Two kinds** (option c) — **extended to three by ruling A, 2026-09-21: `none` joins them, and null means not yet decided.** **Numeric**: name, unit, baseline, target, dated measurement history; headline is baseline → current → target. **Qualitative**: a "how we'll know" sentence; headline falls back to the outcome statement. The strategy session **prompts for structure and accepts text; it never blocks on it** |
 | 2 | Direction of good | **Stored explicitly** — up-is-good / down-is-good, set at conversion or creation. **No inference** |
 | 3 | What a client sees before a narrative is accepted | **The structure shows.** A goal is never held back waiting for prose |
 | 4 | Live or snapshot PDF | **Snapshot on export**, kept as a `stored_file`, listed on the goal |
@@ -1095,19 +1125,43 @@ naming, because they moved the schema rather than picking between drafted option
 **Still genuinely open, and deliberately so:** whether the digest should eventually
 borrow the goal anchor (ruling 5 defers this to real use, not to a later guess).
 
+### Rulings A–H — the eight the specification opened, ruled by the owner 2026-09-21
+
+The approved scope settled eleven. Writing it out at the level a build needs opened
+eight more, each recorded with what the specification had assumed so that no silent
+assumption could end up built. **All eight are now ruled, and the three documents are
+amended to match.** The questions stay visible beside their answers, on the same
+principle as rulings 1–11: a decision without the alternative it was chosen over is
+hard to revisit honestly later.
+
+| # | The question | The ruling | What it changed |
+|---|---|---|---|
+| A | Is "not measurable numerically" the same as qualitative? | **A third value: `numeric · qualitative · none`. Null means *not yet decided*, and the goal is nudged until somebody decides** | The spec had assumed two kinds, which made *"decided: not measurable"* indistinguishable in the data from *"nobody looked"* — the exact distinction the added ruling exists to draw. FR-4B.6, **new FR-4B.6a**, FR-4B.13, 13a, 19; AC-4B.9 and **new AC-4B.9a**; the `measurable_kind` column. The nudge **never blocks and never reaches a client** |
+| B | What defines a narrative's period? | **There is no period. One living narrative per goal, versioned on accept with a dated snapshot per acceptance** | The right answer to a question the spec could only pose. The report has no period, so neither does its prose. `goal_narrative` loses its period columns and gains `U(tenant_id, goal_id)`; **a sixth table, `goal_narrative_version`**, appends a snapshot per acceptance; an export cites the version current at export, so a PDF and the history still agree a year later. FR-4B.31, **new 33a/33b**; **new AC-4B.15a/15b**; matrix row **10A.11a** — nobody edits a version |
+| C | Two readings on the same date | **Allowed. Latest is current, both are kept** | As specified, now ruled rather than assumed. "Latest" is **by recording order, never by value**. New AC-4B.5a |
+| D | Does the baseline count toward the chart's three? | **Yes, when it is dated** | As specified. An undated baseline does not count, because a point with no date cannot be placed on an axis. AC-4B.6 now tests both directions |
+| E | Which tasks may be marked as a milestone? | **Any client-visible task in the goal's own tree. Never internal** | Narrower than the spec's assumption of any task the user may edit. A milestone is a beat on the **client's** timeline, so an invisible task would leak the work in its title alone — and **a task hidden or moved out of the tree afterwards takes its milestone out of the client's response**. New FR-4B.24a/24b, new AC-4B.13a, matrix row 10A.8 |
+| F | Do exports have a retention rule? | **No. Every export is kept as a `stored_file`, listed on the goal *and* the company. No auto-deletion** | As specified, plus the company listing. Notes has audio retention because audio is large and decays in value; a record of what a client was shown is neither. **No cleanup job exists that could reach one.** FR-4B.39, **new 39a**, AC-4B.19 |
+| G | May a client see a resolution's reason? | **Yes** | As specified, now explicit: no internal-only resolution, no visibility flag on the line. A reason the client cannot read cannot make *changed course* read as judgement. New FR-4B.30a, new AC-4B.10a, matrix row 10A.10a |
+| H | May a VA write the outcome statement? | **No** | Confirms the call the spec made and flagged as its own rather than a ruling. FR-4B.10, matrix row 10A.6, AC-4B.17 |
+
+**Nothing is left open.** The specification is complete and the module is ready to
+build on the owner's word.
+
 ### Done means
 
-With the rulings settled the gate can be stated, and this is it. It becomes
-`FR-4B.x` in `01_prd.md` when the module is written up in full; the numbering is the
-only thing still to add.
+With the rulings settled the gate can be stated, and this is it. **Written up in full as
+`FR-4B.1–44` and `AC-4B.1–23` in `01_prd.md` §6A, 2026-09-21.**
 
-1. The `goal` columns and the **five** new tables migrated: `goal_measurement`,
-   `goal_milestone`, `goal_resolution`, `goal_narrative`, `goal_report_export`.
+1. The `goal` columns and the **six** new tables migrated: `goal_measurement`,
+   `goal_milestone`, `goal_resolution`, `goal_narrative`, **`goal_narrative_version`**
+   (ruling B) and `goal_report_export`.
 2. The portal report organised **by goal**, all of a client's goals, **current first,
    historical below**, with **any single goal openable on its own**.
-3. **Two kinds of measurable**, displayed by their own rules: numeric leads with
-   baseline → current → target; qualitative leads with the outcome statement over the
-   "how we'll know" sentence.
+3. **Three kinds of measurable** (ruling A), displayed by their own rules: numeric
+   leads with baseline → current → target; qualitative leads with the outcome
+   statement over the "how we'll know" sentence; **`none` leads with the outcome
+   statement alone**. **A kind not yet chosen is null, nudged, and never blocked.**
 4. **Direction of good stored, never inferred**, and required on every numeric measurable.
 5. **Task and project completion present and subordinate**, in both kinds. **No
    percent-of-tasks-done headline anywhere.**
@@ -1117,14 +1171,20 @@ only thing still to add.
    below that.
 8. **Resolution** into achieved / changed course / paused / retired, **append-only**,
    each line carrying a reason the database requires.
-9. **Milestones**, standalone or derived from a task marked as a milestone.
+9. **Milestones**, standalone or derived from **a client-visible task in the goal's
+   own tree** marked as a milestone (ruling E) — never an internal one, and a task
+   hidden afterwards takes its milestone out of the client's report.
 10. **The outcome statement**, hand-written and updatable.
 11. **The AI narrative** under the AC-3.5 faithfulness constraint, drafted from the
     goal's own material only, accept/edit, **never auto-published** — and the
-    structural half showing whether or not it has been accepted.
-12. **The branded PDF**, a snapshot at export, stored and listed on the goal.
-13. **A goal created by hand gets the measurable prompt at creation**, with "not
-    measurable numerically" an explicit choice.
+    structural half showing whether or not it has been accepted. **One living
+    narrative per goal, with a dated snapshot appended on every acceptance**
+    (ruling B).
+12. **The branded PDF**, a snapshot at export, **stored and listed on the goal and
+    the client company, never auto-deleted** (ruling F), citing the narrative version
+    current at export.
+13. **A goal created by hand gets the measurable prompt at creation** as a three-way
+    choice with no default, **"not measurable" storing `none`** (ruling A).
 14. **Internal goals never appear** in the report at all.
 15. **FR-3.38's implementation removed, not left alongside** — `Report.tsx` and
     `ProgressReportView` go.
@@ -1149,7 +1209,16 @@ exist, conversion carries measurable kind, name, unit, direction and horizon, an
   the task does not leave a milestone claiming a date that never happened.
 - **A VA cannot resolve a goal or accept a narrative**, and **a CF cannot on a client
   they are not assigned to** — asserted against the API body.
-- **The chart is absent below three readings** and present at three.
+- **The chart is absent below three readings** and present at three, **with a dated
+  baseline counting as one of them** and an undated one not (ruling D).
+- **Two readings on one date both persist**, and the current value is the most
+  recently *recorded*, not the higher (ruling C).
+- **An internal task cannot be marked as a milestone**, and a milestone whose task is
+  later hidden is absent from the client's response body (ruling E).
+- **A second acceptance appends a version and does not create a second narrative**,
+  and no route edits or deletes a version (ruling B).
+- **A null `measurable_kind` nudges the practice and never the client**, and blocks
+  nothing (ruling A).
 - **Percent-of-tasks-done never appears as a headline figure** in the portal or the
   PDF — worth an explicit test, because it is the thing most likely to creep back in.
 
@@ -1377,9 +1446,20 @@ In `CLAUDE.md`'s order, not started until Beta has run on your real practice for
 
 3. **Dynamic follow-up questions, beyond the fixed template.** Today a session asks
    exactly what the template holds, in the order it holds it. The next thing it should
-   do is **read the pre-call answers and the company profile and propose follow-ups**
-   — the question a good operator would ask *because* of what they just said, which a
-   fixed list cannot contain. The same rules as everything else Claude writes here:
+   do is **read the pre-call answers, the company profile and a short pre-call research
+   pass on the prospect, and propose follow-ups** — the question a good operator would
+   ask *because* of what they just said, which a fixed list cannot contain.
+   *(The research pass added by the owner, 2026-09-21.)* The research pass is the
+   homework a fractional does before a call and rarely has time for: **the prospect's
+   industry and their web presence** — what the business says it does, how it sells,
+   what its sector's ordinary bottlenecks are — so a follow-up can be specific to a
+   65-van HVAC contractor rather than generic to a business. **It changes the input,
+   not the rules**: everything the pass returns is input like any other, so the third
+   guardrail below means a follow-up may not assert what the research merely
+   suggested, and a fact found on a website is Claude repeating a website, not the
+   app knowing something. What it costs, where it is cached, and how stale is too
+   stale are questions for the specification; that the guardrails apply to it
+   unchanged is not. The same rules as everything else Claude writes here:
    proposed to the fractional, never asked automatically; asserting nothing the input
    does not carry; and never displacing a **★ must-ask**, which is the floor the
    template exists to guarantee. Where a follow-up's answer lands — against its parent

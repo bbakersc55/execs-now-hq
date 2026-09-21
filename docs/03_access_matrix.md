@@ -150,7 +150,7 @@
 | 7.12 | Add / remove stakeholders | ✅ | 🔸 | ✅ | ❌ | ❌ | Who gets emailed is the fractional's call |
 | 7.13 | Set a stakeholder's cadence | ✅ | 🔸 | ✅ | 🔸 | 🔸 | **Client: only their own**, via the signed token or the portal (FR-3.33a) |
 | 7.14 | Set a **status override** on a goal / project | ✅ | 🔸 | ✅ | ❌ | ❌ | FR-3.10 |
-| 7.15 | View the on-demand progress report | ✅ | 🔸 | ✅ | ✅ | ✅ | Requires a login; no email, no approval (FR-3.38) |
+| 7.15 | View the client's report | ✅ | 🔸 | ✅ | ✅ | ✅ | **Reworded 2026-09-21.** FR-3.38's on-demand progress report is replaced by the **client value report (Module 4B)**; the row survives the replacement because its rule does — **requires a login, no email, no approval**. The surface and its scopes are now §10A, rows 10A.1–10A.2 |
 | 7.16 | **View the activity feed** | ✅ | 🔸 | ✅ | ❌ | ❌ | **Reversed 2026-09-16** (FR-3.41a). It was the client's log; it is now the practice's, across every account. CF: `assigned` companies **plus contacts they own** — the FR-1.9c universe. A client is refused the endpoint and has no nav entry; their window into the work is the value report (Module 4B) |
 | 7.17 | Edit or delete an activity-feed entry | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody.** The endpoint has no write methods, and `apps/work/activity.py` has no function that writes |
 
@@ -208,6 +208,38 @@
 | 10.12 | Convert a session to goals / projects | ✅ | 🔸 | ❌ | — | — | R9; also fires the client invariant |
 | 10.13 | Complete the pre-call form | — | — | — | — | — | **Public tokenised page. The prospect has no role at all** (FR-4.6) |
 
+## 10A. Module 4B — Client value report
+
+> **Specified 2026-09-21, from ruling 6 of the Phase 4.5 scope, and amended the same day by rulings B, E, G and H.** The line this section draws: **judging the client relationship is FF-and-assigned-CF; administering it is a VA's too.** Resolving a goal and accepting a narrative are judgements. Recording a reading and exporting a PDF are not. **Client roles are read-only throughout** — the report is the one place in the product built for them to read, and there is nothing in it for them to write.
+
+| # | Action | FF | CF | VA | FCC | ECC | Notes |
+|---|---|---|---|---|---|---|---|
+| 10A.1 | View a client company's value report | ✅ | 🔸 | ✅ | 🔸 | 🔸 | CF: `assigned`. Client: `own-company`. **Requires a login** — a `stakeholder_token` does not reach it (AC-4B.21) |
+| 10A.2 | Open one goal's report | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Same scopes as 10A.1. Another company's goal is **404**, not 403 |
+| 10A.3 | See an **internal** goal in a report | — | — | — | — | — | **No surface for anyone** (ruling 10). A goal with no client company is absent from the response, not filtered in the UI (AC-4B.3) |
+| 10A.4 | Record a measurement | ✅ | 🔸 | ✅ | ❌ | ❌ | **A VA may**: taking a reading is administration, not judgement. **A client may not** — a client typing their own numbers into the report they are being shown changes what the artifact is |
+| 10A.5 | Correct or delete a measurement | ✅ | 🔸 | ✅ | ❌ | ❌ | A reading is a fact that can be wrong; correcting it moves the chart and never the headline (AC-4B.5) |
+| 10A.6 | Write / update the **outcome statement** | ✅ | 🔸 | ❌ | ❌ | ❌ | **VA 403 — ruling H, 2026-09-21**, which ruling 6 had not reached. It is the fractional's sentence about what the goal is for, in the client's language — the nearest thing in the product to speaking for the practice |
+| 10A.7 | Create / edit a standalone milestone | ✅ | 🔸 | ✅ | ❌ | ❌ | Dated beats are administration |
+| 10A.8 | Mark a task as a milestone | ✅ | 🔸 | ✅ | ❌ | ❌ | **Ruling E, 2026-09-21 — only a client-visible task in the goal's own tree, never an internal one.** Follows the task's own edit rights (row 7.4) on top of that; a client-editable task does **not** carry this, because the goal's timeline is not the client's to compose |
+| 10A.9 | Edit a **derived** milestone's title or dates | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody.** They belong to the task, and un-completing it clears the date (FR-4B.25). Two places to maintain one fact is what ruling 8 exists to prevent |
+| 10A.10 | **Resolve a goal** | ✅ | 🔸 | ❌ | ❌ | ❌ | **Ruling 6 — VA 403**, asserted against the API body. CF: `assigned`. A judgement about the relationship |
+| 10A.10a | See a resolution's **reason** | ✅ | 🔸 | ✅ | 🔸 | 🔸 | **Ruling G, 2026-09-21 — the client reads it.** No internal-only resolution and no visibility flag on the line: a reason the client cannot read cannot make *changed course* read as judgement (FR-4B.30a) |
+| 10A.11 | Edit or delete a resolution | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody, ever** (ruling 7). Append-only: no update or delete route exists. Reversing a resolution is appending another with its own reason |
+| 10A.11a | Edit or delete a **narrative version** | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody, ever** (ruling B). Each acceptance appends a dated snapshot; the living narrative is rewritten freely and **what the client was told is not** |
+| 10A.12 | Trigger a narrative draft | ✅ | 🔸 | ✅ | ❌ | ❌ | Costs money against the tenant key; writes an `ai_call`. A VA may **prepare**, exactly as with a digest (row 8.2) |
+| 10A.13 | **Accept / edit a narrative** | ✅ | 🔸 | ❌ | ❌ | ❌ | **Ruling 6 — VA 403.** R9a. Accepting is publishing to the client |
+| 10A.14 | Read an **unaccepted** draft | ✅ | 🔸 | ✅ | ❌ | ❌ | Must be **absent from the client's response body**, not hidden in the UI (AC-4B.15) — the AC-3.4 standard |
+| 10A.15 | Export the report as a PDF | ✅ | 🔸 | ✅ | ❌ | ❌ | Generating is not sending (row 10.9's precedent). **A client does not export**: the portal is their copy, always current |
+| 10A.16 | View a stored export | ✅ | 🔸 | ✅ | ❌ | ❌ | Snapshots are the practice's record of what was shown when (ruling 4) |
+| 10A.17 | **Send an export to the client** | ✅ | 🔸 | ❌ | — | — | Not a new verb: it is an ordinary Outbox message with an attachment, under §5's rules. **A VA may prepare and not approve** (row 5.4) |
+
+> **Row 10A.6 is the one that will look inconsistent, so here is why it is not.** A VA may record a measurement (10A.4) but not write the outcome statement. A reading is a number someone took; the outcome statement is the sentence a founder repeats to their board, and it goes out under the fractional's name. The test is not how much typing the action involves — it is whether being wrong is an administrative error or a wrong thing said to a client on the practice's behalf.
+
+> **Rows 10A.10 and 10A.13 are the 4B analogues of row 8.3** (approving a digest), and they fail the same way: a VA who may do them can publish a judgement about the engagement that the fractional never made. Both are asserted **against the API response body**, not by the absence of a button.
+
+> **The client columns are read-only in every row of this section**, which is deliberate and worth stating once. FR-3.35a gives a client tasks and projects of their own precisely so the portal is a working tool; the value report is the opposite kind of artifact — the practice's account of the engagement, which a client reads and does not co-author.
+
 ## 11. Module 5 — Meeting ingestion
 
 | # | Action | FF | CF | VA | FCC | ECC | Notes |
@@ -256,7 +288,7 @@ Per `CLAUDE.md` these are non-negotiable, and per assumption B3 they are a regis
 
 ### 14.1 Tenant isolation
 
-For **every** model in `02_data_model.md` §1–§8: create a row in tenant A and a row in tenant B, then assert that a user of tenant A gets **404** on read, update, and delete of B's row — through the API, through search, and through any timeline or aggregate view.
+For **every** model in `02_data_model.md` §1–§8 — **including §6A's six** (`goal_measurement`, `goal_milestone`, `goal_resolution`, `goal_narrative`, `goal_narrative_version`, `goal_report_export`): create a row in tenant A and a row in tenant B, then assert that a user of tenant A gets **404** on read, update, and delete of B's row — through the API, through search, and through any timeline or aggregate view.
 
 **The meta-test:** enumerate every concrete model inheriting `TenantScopedModel`; fail if any is absent from the registry. This is what stops the matrix and the code drifting apart.
 
@@ -268,9 +300,10 @@ Five cases carry the most weight and are called out so they are never merely inh
 
 1. **VA cannot approve or send** — rows 5.3, 8.3, 10.11, 12.4. Expect **403**, and assert the dev outbox is empty afterwards.
 2. **VA cannot reach financials** — row 13.5, including §9 investment fields (row 10.8) absent from the response body, not merely hidden in the UI.
-3. **ECC cannot reach anything outside their company** — rows 7.1–7.15 with a second client company in the *same* tenant. Expect **404**, never 403.
+3. **ECC cannot reach anything outside their company** — rows 7.1–7.15 **and 10A.1–10A.2** with a second client company in the *same* tenant. Expect **404**, never 403.
 4. **CF `assigned` scope is real** — every 🔸 CF row tested both in and out of assignment, with the assignment removed mid-test to confirm it takes effect on the next request (AC-1.13).
 5. **PIN gating is not a role** — row 6.4 tested as FF *without* the PIN, expecting the body to be absent (AC-2.3).
+6. **A VA may administer and may not judge** — rows 10A.6, 10A.10 and 10A.13. Expect **403**, asserted against the API response body, with rows 10A.4 and 10A.15 passing for the same VA in the same test so the boundary is shown to be a line and not a blanket refusal. *(Added 2026-09-21 with Module 4B.)*
 
 ### 14.3 Two assertions every send-related case must make
 
