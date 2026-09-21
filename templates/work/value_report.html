@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Value report — {{ company.name }}</title>
+<style>
+  @page { size: letter; margin: 18mm 16mm 20mm;
+          @bottom-center { content: "Page " counter(page) " of " counter(pages);
+                           font: 9pt "Helvetica Neue", Helvetica, Arial, sans-serif;
+                           color: #939598; } }
+  body { font: 11pt/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; }
+  h1 { font-size: 22pt; color: #0A3A65; margin: 0 0 4pt; }
+  h2 { font-size: 13pt; color: #0A3A65; margin: 20pt 0 6pt;
+       border-bottom: 1.5pt solid #F58220; padding-bottom: 3pt; }
+  h3 { font-size: 12pt; color: #0A3A65; margin: 0 0 2pt; }
+  .lede { color: #6D6E71; font-size: 10.5pt; margin: 0 0 16pt; }
+  .goal { page-break-inside: avoid; margin: 0 0 16pt; padding: 10pt 12pt;
+          border: 0.75pt solid #E6E6E6; border-left: 3pt solid #0A3A65; }
+  .goal.historical { border-left-color: #939598; }
+  .headline { font-size: 13pt; color: #0A3A65; margin: 2pt 0 6pt; }
+  .measure { background: #F5F8FB; padding: 8pt 10pt; margin: 6pt 0; }
+  .measure .figures { font-size: 14pt; color: #0A3A65; }
+  .measure .figures .to { color: #939598; padding: 0 4pt; }
+  .muted { color: #939598; font-size: 9.5pt; }
+  .narrative { margin: 6pt 0; }
+  .bar { background: #EFEFEF; height: 8pt; border-radius: 4pt; overflow: hidden;
+         width: 160pt; display: inline-block; vertical-align: middle; }
+  .bar span { display: block; height: 8pt; background: #939598; }
+  .secondary { font-size: 9.5pt; color: #6D6E71; margin: 4pt 0 0; }
+  table.beats { width: 100%; border-collapse: collapse; font-size: 9.5pt;
+                margin-top: 6pt; }
+  table.beats td { padding: 3pt 6pt 3pt 0; border-bottom: 0.5pt solid #F0F0F0;
+                   vertical-align: top; }
+  .pill { font-size: 8.5pt; color: #6D6E71; }
+  .resolution { margin-top: 6pt; padding-left: 8pt; border-left: 2pt solid #F58220;
+                font-size: 10pt; }
+  .timeline td { font-size: 9pt; padding: 2pt 6pt 2pt 0; vertical-align: top; }
+  .timeline .when { color: #939598; white-space: nowrap; width: 62pt; }
+  .timeline .which { color: #0A3A65; width: 120pt; }
+</style>
+</head>
+<body>
+  <h1>{% if is_single_goal %}{{ blocks.0.title }}{% else %}Where we are{% endif %}</h1>
+  <p class="lede">{{ company.name }} · {{ generated_on }}</p>
+
+  {% if timeline %}
+    <h2>The engagement, in order</h2>
+    <p class="muted">{{ timeline.from }} to {{ timeline.to }}</p>
+    <table class="timeline">
+      {% for mark in timeline.marks %}
+        <tr>
+          <td class="when">{{ mark.at }}</td>
+          <td class="which">{{ mark.goal_title }}</td>
+          <td>
+            {% if mark.kind == "start" %}Started{% endif %}
+            {% if mark.kind == "milestone" %}{{ mark.label }} <span class="pill">({{ mark.detail }})</span>{% endif %}
+            {% if mark.kind == "reading" %}Reading: {{ mark.label }}{% if mark.detail %} <span class="muted">— {{ mark.detail }}</span>{% endif %}{% endif %}
+            {% if mark.kind == "resolution" %}<strong>{{ mark.label }}</strong> — {{ mark.detail }}{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+
+  {% for block in blocks %}
+    {% if forloop.first and not is_single_goal %}<h2>The goals</h2>{% endif %}
+    <div class="goal{% if block.is_historical %} historical{% endif %}">
+      <h3>{{ block.title }}</h3>
+      <div class="headline">{{ block.headline.text }}</div>
+
+      {% if block.measure.kind == "numeric" and block.measure.current %}
+        <div class="measure">
+          <div class="figures">
+            {{ block.measure.baseline.value|default:"—" }}<span class="to">→</span>
+            <strong>{{ block.measure.current.value }}</strong>
+            {% if block.measure.target %}<span class="to">→</span>{{ block.measure.target }}{% endif %}
+            {% if block.measure.unit %}<span class="muted">{{ block.measure.unit }}</span>{% endif %}
+          </div>
+          <div class="muted">
+            {{ block.measure.measurable }}
+            {% if block.measure.movement %} · {{ block.measure.movement }}{% endif %}
+          </div>
+          {% if block.chart %}
+            <svg width="{{ block.chart.width }}" height="{{ block.chart.height }}"
+                 viewBox="0 0 {{ block.chart.width }} {{ block.chart.height }}"
+                 style="margin-top:6pt">
+              <polyline points="{{ block.chart.path }}" fill="none"
+                        stroke="#0A3A65" stroke-width="2"/>
+              {% for point in block.chart.points %}
+                <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3"
+                        fill="{% if point.is_baseline %}#F58220{% else %}#0A3A65{% endif %}"/>
+              {% endfor %}
+            </svg>
+            <div class="muted">{{ block.chart.low }} to {{ block.chart.high }}</div>
+          {% endif %}
+        </div>
+      {% elif block.measure.how_we_will_know %}
+        <div class="measure"><div class="muted">How we will know</div>
+          {{ block.measure.how_we_will_know }}</div>
+      {% endif %}
+
+      {% if block.narrative %}<div class="narrative">{{ block.narrative.body }}</div>{% endif %}
+
+      {% if block.milestones %}
+        <table class="beats">
+          {% for stone in block.milestones %}
+            <tr>
+              <td style="width:62pt" class="muted">{{ stone.occurred_at|default:stone.due_date|default:"—" }}</td>
+              <td>{{ stone.title }}</td>
+              <td style="width:50pt" class="pill">{{ stone.state }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% endif %}
+
+      {% if block.resolution %}
+        <div class="resolution">
+          <strong>{{ block.resolution.resolution }}</strong> — {{ block.resolution.reason }}
+        </div>
+      {% endif %}
+
+      {# The completion bar is present and subordinate, and never the headline
+         (FR-4B.20, FR-4B.21). #}
+      {% if block.completion.of %}
+        <p class="secondary">
+          Work completed:
+          <span class="bar"><span style="width: {{ block.completion.percent }}%"></span></span>
+          {{ block.completion.done }} of {{ block.completion.of }}
+        </p>
+      {% endif %}
+    </div>
+  {% empty %}
+    <p class="muted">No goals are being tracked for this company yet.</p>
+  {% endfor %}
+</body>
+</html>

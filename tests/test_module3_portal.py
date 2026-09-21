@@ -122,37 +122,49 @@ def test_ac_3_14_the_assignee_picker_lists_only_their_own_company(
 # --------------------------------------------------------- AC-3.15, AC-3.16
 
 @pytest.mark.django_db
-def test_ac_3_15_the_on_demand_report_renders_without_email_or_approval(
+def test_ac_3_15_the_client_report_renders_without_email_or_approval(
     seeded_tenant, ff, api, company, fcc, dev_outbox, in_tenant_a
 ):
+    """AC-3.15, carried onto Module 4B with FR-3.38's replacement.
+
+    What the client pulls changed; the rule did not — it renders on demand, and
+    pulling it sends nothing.
+    """
     from apps.work.services import apply_task_changes, create_task
 
+    goal = GoalFactory(tenant=seeded_tenant, title="Invoice automation",
+                       client_company=company)
     task = create_task(tenant=seeded_tenant, actor=ff.user, role="FF",
-                       title="Invoice automation", client_company=company)
+                       title="Invoice automation", client_company=company, goal=goal)
     apply_task_changes(task, actor=ff.user, role="FF",
                        changes={"status": S.WAITING_ON_CLIENT},
                        client_facing_line="We need your AP login to finish.")
 
-    report = api.as_(fcc).get("/api/progress-report/?days=30")
+    report = api.as_(fcc).get("/api/value-report/")
     assert report.status_code == 200
-    body = report.json()["body_text"]
-    assert "We need your AP login to finish." in body
-    assert "waiting_on_client" in body, "AC-3.16 — the distinction survives into the text."
-    assert "blocked" not in body
+    titles = [block["title"] for block in report.json()["current"]]
+    assert "Invoice automation" in titles
     assert dev_outbox == [], "A pulled report must send nothing."
 
 
 @pytest.mark.django_db
-def test_the_report_shows_only_client_visible_work(seeded_tenant, ff, api, company, fcc,
-                                                    in_tenant_a):
-    from apps.work.services import apply_task_changes, create_task
+def test_the_report_counts_only_client_visible_work(seeded_tenant, ff, api, company, fcc,
+                                                     in_tenant_a):
+    """The completion bar counts what the viewer may see (FR-4B.20), so a task
+    hidden from the client is not in their denominator — and its title is
+    nowhere in their response."""
+    from apps.work.services import create_task
 
-    hidden = create_task(tenant=seeded_tenant, actor=ff.user, role="FF", title="Fee review",
-                         client_company=company, is_client_visible=False)
-    apply_task_changes(hidden, actor=ff.user, role="FF", changes={"status": S.IN_PROGRESS},
-                       client_facing_line="Internal only.")
-    body = api.as_(fcc).get("/api/progress-report/?days=30").json()["body_text"]
-    assert "Fee review" not in body and "Internal only." not in body
+    goal = GoalFactory(tenant=seeded_tenant, title="Billing", client_company=company)
+    create_task(tenant=seeded_tenant, actor=ff.user, role="FF", title="Fee review",
+                client_company=company, goal=goal, is_client_visible=False)
+    create_task(tenant=seeded_tenant, actor=ff.user, role="FF", title="Shown work",
+                client_company=company, goal=goal)
+
+    body = api.as_(fcc).get("/api/value-report/").content.decode()
+    assert "Fee review" not in body
+    block = api.as_(fcc).get("/api/value-report/").json()["current"][0]
+    assert block["completion"]["of"] == 1
 
 
 # ---------------------------------------------------------------- AC-3.17

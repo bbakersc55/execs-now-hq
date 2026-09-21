@@ -13,12 +13,25 @@ router.register("checklist-items", views.ChecklistItemViewSet, basename="checkli
 router.register("comments", views.CommentViewSet, basename="comment")
 router.register("stakeholders", views.StakeholderViewSet, basename="stakeholder")
 router.register("digests", views.DigestViewSet, basename="digest")
-router.register("progress-report", views.ProgressReportView, basename="progress-report")
+# FR-3.38's on-demand progress report is **gone, not shadowed** (FR-4B.5,
+# AC-4B.23). It answered "what happened lately", which is the wrong question;
+# the client value report answers whether the work is working.
 router.register("client-activity", views.ClientActivityView, basename="client-activity")
 # Was "portal-activity", the client's own log (FR-3.41). The owner reversed that
 # on 2026-09-16: the feed is the practice's, and a client role is refused.
 router.register("activity", views.ActivityView, basename="activity")
 router.register("portal-access", views.PortalAccessViewSet, basename="portal-access")
 router.register("portal-people", views.AssignablePeopleView, basename="portal-people")
+
+# --- Module 4B — the client value report ---
+router.register("value-report", views.ValueReportViewSet, basename="value-report")
+router.register("goal-measurements", views.GoalMeasurementViewSet,
+                basename="goal-measurement")
+router.register("goal-milestones", views.GoalMilestoneViewSet,
+                basename="goal-milestone")
+router.register("goal-resolutions", views.GoalResolutionViewSet,
+                basename="goal-resolution")
+router.register("value-report-exports", views.GoalReportExportViewSet,
+                basename="value-report-export")
 
 urlpatterns = router.urls

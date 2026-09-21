@@ -152,3 +152,28 @@ def may_write(request, task) -> bool:
     if role in (Role.FF, Role.CF, Role.VA):
         return True
     return client_may_edit(request, task)
+
+
+# ------------------------------------------------ Module 4B — the value report
+#
+# Matrix §10A draws one line: **judging the client relationship is
+# FF-and-assigned-CF; administering it is a VA's too.** Recording a reading and
+# exporting a PDF are administration. Resolving a goal, accepting a narrative
+# and writing the outcome statement are judgements — a VA who could do them
+# could publish a verdict on the engagement that the fractional never reached.
+
+def may_judge(request, company_id) -> bool:
+    """Matrix 10A.6, 10A.10, 10A.13 — FF, or a CF assigned to that company."""
+    role = crm_perms.role_of(request)
+    if role == Role.FF:
+        return True
+    if role == Role.CF:
+        return company_id is not None and company_id in set(
+            crm_perms.assigned_company_ids(request))
+    return False
+
+
+def may_administer(request) -> bool:
+    """Matrix 10A.4, 10A.7, 10A.15 — any tenant role, never a client. Scope is
+    the queryset's job; this is only about the verb."""
+    return crm_perms.role_of(request) in (Role.FF, Role.CF, Role.VA)

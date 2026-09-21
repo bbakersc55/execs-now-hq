@@ -21,15 +21,21 @@ from rest_framework.response import Response
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Task
 from apps.crm.services import search as crm_search
-from apps.tenancy.models import CLIENT_ROLES, AuditEvent
+from apps.tenancy.models import CLIENT_ROLES, AuditEvent, Role
 from apps.work import permissions as work_perms
 from apps.work import serializers as work_serializers
 from apps.work import digests as digest_service
 from apps.work import portal
 from apps.work import services
 from apps.work import stakeholders as stakeholder_service
+from apps.work import milestones as milestone_service
+from apps.work import narratives as narrative_service
+from apps.work import value_pdf
+from apps.work import value_report
 from apps.work.models import (
-    Cadence, Comment, Digest, Goal, Project, Stakeholder, TaskChecklistItem, TaskUpdate,
+    Cadence, Comment, Digest, Goal, GoalMeasurement, GoalMilestone, GoalNarrative,
+    GoalNarrativeVersion, GoalReportExport, GoalResolution, Project, Stakeholder,
+    TaskChecklistItem, TaskUpdate,
 )
 
 LIST_LIMIT = 500
@@ -103,7 +109,14 @@ class GoalViewSet(WorkViewSet):
     scoper = staticmethod(work_perms.goal_queryset_for)
     kind = "goal"
     write_serializer = work_serializers.GoalSerializer
-    fields = PARENT_FIELDS
+    # Module 4B's measurable prompt is asked at creation and editable after
+    # (FR-4B.13). `outcome_statement` is in the list and gated in the
+    # serializer — a VA may set a baseline and may not write the sentence.
+    fields = PARENT_FIELDS + [
+        "measurable_kind", "measurable", "measurable_unit", "how_we_will_know",
+        "direction", "baseline_value", "baseline_at", "target_value", "horizon_days",
+        "outcome_statement",
+    ]
 
     def _represent(self, entity):
         return work_serializers.represent_parent(entity, request=self.request,
@@ -848,59 +861,6 @@ class DigestViewSet(WorkViewSet):
 
 # ------------------------------------------------- reports and client activity
 
-class ProgressReportView(viewsets.GenericViewSet):
-    """FR-3.38 — the same content as a digest, pulled rather than sent.
-
-    No email, no approval, and it consumes nothing: reading a report never eats
-    the Friday digest.
-    """
-
-    permission_classes = [permissions.IsAuthenticated]
-
-    def list(self, request):
-        from datetime import timedelta
-
-        if getattr(request, "membership", None) is None:
-            return Response({"detail": "No membership for this tenant."}, status=403)
-        try:
-            days = max(1, min(int(request.query_params.get("days", 7)), 365))
-        except (TypeError, ValueError):
-            return Response({"detail": "days must be a number."}, status=400)
-        since = timezone.now() - timedelta(days=days)
-
-        if crm_perms.role_of(request) in CLIENT_ROLES:
-            # A client's report is always their own company's. If they name a
-            # contact, it must be one of theirs — ignoring the parameter would
-            # answer a question about someone else with their own data.
-            asked = request.query_params.get("contact")
-            if asked:
-                from apps.crm.models import Contact
-
-                if not _is_uuid(asked) or not Contact.objects.filter(
-                    pk=asked, company_id=request.membership.client_company_id,
-                    deleted_at__isnull=True,
-                ).exists():
-                    raise Http404
-            report = digest_service.report_for_company(
-                request.tenant, company=request.membership.client_company, since=since)
-        else:
-            contact_id = request.query_params.get("contact")
-            if not _is_uuid(contact_id or ""):
-                return Response({"detail": "Ask for one contact."}, status=400)
-            from apps.crm.models import Contact
-
-            contact = crm_perms.contact_queryset_for(
-                request, Contact.objects.filter(pk=contact_id)).first()
-            if contact is None:
-                raise Http404
-            report = digest_service.report_for(request.tenant, contact=contact, since=since)
-        return Response({
-            "since": report["since"].isoformat(), "until": report["until"].isoformat(),
-            "body_text": report["body_text"],
-            "updates": [work_serializers.represent_update(u) for u in report["updates"]],
-        })
-
-
 class ClientActivityView(viewsets.GenericViewSet):
     """FR-3.40's in-app half: a feed of what clients did, built from the
     `task_update` rows already recorded (owner decision, 2026-09-11)."""
@@ -1165,3 +1125,390 @@ class AssignablePeopleView(viewsets.GenericViewSet):
              "company": str(row.client_company_id) if row.client_company_id else None}
             for row in rows.order_by("role", "user__email")
         ])
+
+
+# ==================================================== Module 4B — value report
+#
+# Matrix §10A. Out of scope is 404 (a 403 would confirm the row exists); in
+# scope but role-forbidden is 403 — including for a VA reaching a judgement
+# verb, which is asserted against the response body, not the absence of a button.
+
+class ValueReportBase(viewsets.GenericViewSet):
+    """Shared scoping for everything under the report.
+
+    A client's company is implied and never asked for: they have exactly one,
+    and accepting the parameter would invite the question of what happens when
+    they name someone else's.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(request, "membership", None) is None:
+            self.permission_denied(request, message="No membership for this tenant.")
+
+    def for_client(self) -> bool:
+        return work_perms.is_client(self.request)
+
+    def company_or_404(self, request):
+        from apps.crm.models import Company
+
+        if self.for_client():
+            # Their own company, and their membership is the authorisation.
+            # `company_queryset_for` is Module 1's staff scope and returns
+            # nothing for a client role — right there, wrong here.
+            company_id = request.membership.client_company_id
+            if company_id is None:
+                raise Http404
+            company = Company.objects.filter(pk=company_id,
+                                             deleted_at__isnull=True).first()
+        else:
+            company_id = request.query_params.get("client_company") \
+                or request.data.get("client_company")
+            if not _is_uuid(company_id or ""):
+                raise Http404
+            company = crm_perms.company_queryset_for(
+                request, Company.objects.filter(pk=company_id, deleted_at__isnull=True)
+            ).first()
+        if company is None:
+            raise Http404
+        return company
+
+    def goal_or_404(self, request, pk):
+        """**Internal goals are not reachable here at all** (FR-4B.4): the
+        report is a client artifact, and a goal with no client company has no
+        place in one — for any role."""
+        if not _is_uuid(pk or ""):
+            raise Http404
+        goal = work_perms.goal_queryset_for(
+            request, Goal.objects.filter(pk=pk, deleted_at__isnull=True,
+                                         client_company__isnull=False)
+        ).select_related("client_company", "client_owner_contact", "source_map_row").first()
+        if goal is None:
+            raise Http404
+        return goal
+
+    def judgement_or_403(self, request, goal):
+        """Ruling 6 and ruling H — resolving, accepting a narrative and writing
+        the outcome statement are the fractional's."""
+        if work_perms.may_judge(request, goal.client_company_id):
+            return None
+        return Response(
+            {"detail": "That is the fractional's call, not an administrative one. "
+                       "Recording a reading and exporting the report are yours; "
+                       "this is not."},
+            status=403)
+
+    def staff_or_403(self, request, message):
+        if work_perms.may_administer(request):
+            return None
+        return Response({"detail": message}, status=403)
+
+
+class ValueReportViewSet(ValueReportBase):
+    """FR-4B.1, FR-4B.2 — the whole report, and any single goal on its own."""
+
+    def list(self, request):
+        company = self.company_or_404(request)
+        return Response(value_report.report_for(
+            request, company=company, for_client=self.for_client()))
+
+    def retrieve(self, request, pk=None):
+        goal = self.goal_or_404(request, pk)
+        task_queryset = work_perms.task_queryset_for(request, Task.objects.all())
+        return Response(value_report.goal_block(
+            goal, request=request, for_client=self.for_client(),
+            task_queryset=task_queryset))
+
+    # ------------------------------------------------------------- narrative
+
+    @action(detail=True, methods=["post"], url_path="draft-narrative")
+    def draft_narrative(self, request, pk=None):
+        """Matrix 10A.12 — a VA may prepare, exactly as with a digest."""
+        goal = self.goal_or_404(request, pk)
+        if (refused := self.staff_or_403(
+                request, "The narrative is the practice's to draft.")) is not None:
+            return refused
+        narrative = narrative_service.draft(goal, trigger="button")
+        if narrative is None:
+            return Response({"detail": "Claude could not be reached. The call is "
+                                       "recorded on AI usage; the goal is unchanged."},
+                            status=502)
+        return Response(value_report.narrative_for(goal, for_client=False))
+
+    @action(detail=True, methods=["post"], url_path="accept-narrative")
+    def accept_narrative(self, request, pk=None):
+        """R9a — accepting is publishing to the client, and appends a dated
+        snapshot (ruling B)."""
+        goal = self.goal_or_404(request, pk)
+        if (refused := self.judgement_or_403(request, goal)) is not None:
+            return refused
+        body = request.data.get("body")
+        if body is None:
+            narrative = GoalNarrative.objects.filter(goal=goal).first()
+            body = narrative.proposed_body if narrative else ""
+        try:
+            narrative_service.accept(goal, body=body, actor=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="goal.narrative_accepted",
+            target_type="goal", target_id=goal.pk, payload={})
+        return Response(value_report.narrative_for(goal, for_client=False))
+
+    @action(detail=True, methods=["post"], url_path="discard-narrative")
+    def discard_narrative(self, request, pk=None):
+        goal = self.goal_or_404(request, pk)
+        if (refused := self.staff_or_403(
+                request, "The narrative is the practice's.")) is not None:
+            return refused
+        narrative_service.discard(goal)
+        return Response(value_report.narrative_for(goal, for_client=False))
+
+    @action(detail=True, methods=["get"], url_path="narrative-versions")
+    def narrative_versions(self, request, pk=None):
+        """What the client was told, and when. Append-only: there is no write
+        method here of any kind (matrix 10A.11a)."""
+        goal = self.goal_or_404(request, pk)
+        rows = GoalNarrativeVersion.objects.filter(goal=goal).select_related("accepted_by")
+        return Response([
+            {"id": str(v.pk), "body": v.body, "accepted_at": v.accepted_at.isoformat(),
+             "accepted_by": v.accepted_by.full_name if v.accepted_by else ""}
+            for v in rows
+        ])
+
+    # ------------------------------------------------------------------- PDF
+
+    @action(detail=False, methods=["get"], url_path="pdf")
+    def company_pdf(self, request):
+        return self._pdf(request, company=self.company_or_404(request), goal=None)
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def goal_pdf(self, request, pk=None):
+        goal = self.goal_or_404(request, pk)
+        return self._pdf(request, company=goal.client_company, goal=goal)
+
+    def _pdf(self, request, *, company, goal):
+        """A true preview: the same content the export is built from. Generating
+        is not exporting and neither is sending."""
+        from django.http import HttpResponse
+
+        if request.query_params.get("as") == "html":
+            return HttpResponse(value_pdf.render_html(request, company=company,
+                                                      goal=goal))
+        content = value_pdf.render_pdf(request, company=company, goal=goal)
+        response = HttpResponse(content, content_type="application/pdf")
+        response["Content-Disposition"] = 'inline; filename="value-report.pdf"'
+        return response
+
+
+class GoalReportExportViewSet(ValueReportBase):
+    """Ruling 4 — a snapshot at export, kept for good (ruling F)."""
+
+    def list(self, request):
+        if (refused := self.staff_or_403(
+                request, "The portal is your copy, and it is always current.")) is not None:
+            return refused
+        company = self.company_or_404(request)
+        rows = GoalReportExport.objects.filter(client_company=company).select_related(
+            "goal", "exported_by", "stored_file")
+        goal_id = request.query_params.get("goal")
+        if goal_id:
+            if not _is_uuid(goal_id):
+                return Response({"detail": "goal must be an id."}, status=400)
+            rows = rows.filter(goal_id=goal_id)
+        return Response([work_serializers.represent_export(r) for r in rows])
+
+    def create(self, request):
+        """Matrix 10A.15 — a VA may export; a client does not."""
+        if (refused := self.staff_or_403(
+                request, "The portal is your copy, and it is always current.")) is not None:
+            return refused
+        goal = None
+        if request.data.get("goal"):
+            goal = self.goal_or_404(request, request.data.get("goal"))
+            company = goal.client_company
+        else:
+            company = self.company_or_404(request)
+        row = value_pdf.export(request, company=company, goal=goal, actor=request.user)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="value_report.exported",
+            target_type="goal_report_export", target_id=row.pk,
+            payload={"goal": str(goal.pk) if goal else None,
+                     "company": str(company.pk)})
+        return Response(work_serializers.represent_export(row), status=201)
+
+    @action(detail=True, methods=["get"])
+    def file(self, request, pk=None):
+        from django.http import HttpResponse
+
+        from apps.tenancy import storage
+
+        if (refused := self.staff_or_403(request, "Not available.")) is not None:
+            return refused
+        if not _is_uuid(pk or ""):
+            raise Http404
+        row = GoalReportExport.objects.filter(pk=pk).select_related("stored_file").first()
+        if row is None or not work_perms.may_administer(request):
+            raise Http404
+        if crm_perms.role_of(request) == Role.CF and row.client_company_id not in set(
+                crm_perms.assigned_company_ids(request)):
+            raise Http404
+        response = HttpResponse(storage.read(row.stored_file),
+                                content_type="application/pdf")
+        response["Content-Disposition"] = 'inline; filename="value-report.pdf"'
+        return response
+
+
+class GoalMeasurementViewSet(ValueReportBase):
+    """FR-4B.14–17. Matrix 10A.4/10A.5 — a VA may; a client may not."""
+
+    def list(self, request):
+        goal = self.goal_or_404(request, request.query_params.get("goal"))
+        if self.for_client():
+            # A client reads the series through the report, where it is shaped.
+            raise Http404
+        return Response([work_serializers.represent_measurement(m)
+                         for m in value_report.measurements_of(goal)])
+
+    def create(self, request):
+        goal = self.goal_or_404(request, request.data.get("goal"))
+        if (refused := self.staff_or_403(
+                request, "Readings are the practice's to record.")) is not None:
+            return refused
+        serializer = work_serializers.GoalMeasurementSerializer(
+            data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        row = GoalMeasurement.objects.create(
+            tenant=request.tenant, goal=goal, recorded_by=request.user,
+            **serializer.validated_data)
+        return Response(work_serializers.represent_measurement(row), status=201)
+
+    def partial_update(self, request, pk=None):
+        row = self._row_or_404(request, pk)
+        if (refused := self.staff_or_403(
+                request, "Readings are the practice's.")) is not None:
+            return refused
+        serializer = work_serializers.GoalMeasurementSerializer(
+            instance=row, data=request.data, partial=True, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(row, field, value)
+        row.save(update_fields=list(serializer.validated_data) + ["updated_at"])
+        return Response(work_serializers.represent_measurement(row))
+
+    def destroy(self, request, pk=None):
+        row = self._row_or_404(request, pk)
+        if (refused := self.staff_or_403(
+                request, "Readings are the practice's.")) is not None:
+            return refused
+        row.delete()
+        return Response(status=204)
+
+    def _row_or_404(self, request, pk):
+        if not _is_uuid(pk or ""):
+            raise Http404
+        row = GoalMeasurement.objects.filter(pk=pk).select_related("goal").first()
+        if row is None:
+            raise Http404
+        self.goal_or_404(request, str(row.goal_id))     # scope through the goal
+        return row
+
+
+class GoalMilestoneViewSet(ValueReportBase):
+    """FR-4B.23–25 and ruling E. A derived milestone's dates belong to its task
+    and are not editable here (matrix 10A.9)."""
+
+    def create(self, request):
+        goal = self.goal_or_404(request, request.data.get("goal"))
+        if (refused := self.staff_or_403(
+                request, "The goal's timeline is the practice's to compose.")) is not None:
+            return refused
+        serializer = work_serializers.GoalMilestoneSerializer(
+            data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        task = data.pop("source_task", None)
+        if task is not None:
+            try:
+                milestone_service.check_eligible(task, goal)
+            except milestone_service.MilestoneRefused as exc:
+                return Response({"detail": str(exc)}, status=exc.status)
+            if GoalMilestone.objects.filter(source_task=task).exists():
+                return Response({"detail": "That task is already a milestone."},
+                                status=409)
+            # The date is derived from the task's completion, every time it is
+            # read (FR-4B.25). Storing it would need a sync path, and a sync
+            # path is a thing that drifts.
+            data["occurred_at"] = None
+            data.setdefault("title", task.title)
+            data["title"] = data.get("title") or task.title
+        row = GoalMilestone.objects.create(tenant=request.tenant, goal=goal,
+                                           source_task=task, **data)
+        return Response(work_serializers.represent_milestone(row), status=201)
+
+    def partial_update(self, request, pk=None):
+        row = self._row_or_404(request, pk)
+        if (refused := self.staff_or_403(
+                request, "The goal's timeline is the practice's.")) is not None:
+            return refused
+        if row.source_task_id is not None:
+            return Response(
+                {"detail": "This milestone is a task. Its title and its dates belong "
+                           "to the task, so that the same fact is not kept in two "
+                           "places — edit the task."},
+                status=409)
+        serializer = work_serializers.GoalMilestoneSerializer(
+            instance=row, data=request.data, partial=True, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        data.pop("source_task", None)
+        for field, value in data.items():
+            setattr(row, field, value)
+        row.save(update_fields=list(data) + ["updated_at"])
+        return Response(work_serializers.represent_milestone(row))
+
+    def destroy(self, request, pk=None):
+        row = self._row_or_404(request, pk)
+        if (refused := self.staff_or_403(
+                request, "The goal's timeline is the practice's.")) is not None:
+            return refused
+        row.delete()
+        return Response(status=204)
+
+    def _row_or_404(self, request, pk):
+        if not _is_uuid(pk or ""):
+            raise Http404
+        row = GoalMilestone.objects.filter(pk=pk).select_related(
+            "goal", "source_task", "source_task__project").first()
+        if row is None:
+            raise Http404
+        self.goal_or_404(request, str(row.goal_id))
+        return row
+
+
+class GoalResolutionViewSet(ValueReportBase):
+    """FR-4B.26–30, ruling 7. **Append-only: there is no update and no destroy
+    here**, and reversing a resolution is appending another with its own reason."""
+
+    def list(self, request):
+        goal = self.goal_or_404(request, request.query_params.get("goal"))
+        return Response([work_serializers.represent_resolution(r)
+                         for r in value_report.resolutions_of(goal)])
+
+    def create(self, request):
+        goal = self.goal_or_404(request, request.data.get("goal"))
+        if (refused := self.judgement_or_403(request, goal)) is not None:
+            return refused
+        serializer = work_serializers.GoalResolutionSerializer(
+            data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        row = GoalResolution.objects.create(
+            tenant=request.tenant, goal=goal, resolved_by=request.user,
+            **serializer.validated_data)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="goal.resolved",
+            target_type="goal", target_id=goal.pk,
+            payload={"resolution": row.resolution})
+        return Response(work_serializers.represent_resolution(row), status=201)

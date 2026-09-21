@@ -139,9 +139,237 @@ class Goal(WorkItem):
     source_map_row = models.ForeignKey("strategy.StrategyMapRow", null=True, blank=True,
                                        on_delete=models.SET_NULL, related_name="+")
 
+    # --- Module 4B ---------------------------------------------------------
+    #
+    # Ruling A (2026-09-21): three kinds, and **null is not one of them**. `NONE`
+    # is a decision — deliberately not measurable. Null is the absence of one,
+    # and the goal is nudged until somebody chooses (FR-4B.6a). Collapsing them
+    # would make the deliberate choice indistinguishable from the empty field it
+    # was meant to replace.
+    class MeasurableKind(models.TextChoices):
+        NUMERIC = "numeric", "A number we can track"
+        QUALITATIVE = "qualitative", "A sentence that says how we will know"
+        NONE = "none", "Not measurable"
+
+    measurable_kind = models.CharField(max_length=12, choices=MeasurableKind.choices,
+                                       blank=True, default="")
+    # Qualitative only. Blank is legitimate: prompting is not blocking (FR-4B.13a).
+    how_we_will_know = models.TextField(blank=True, default="")
+    # The fractional's client-facing sentence, and the headline for a goal with
+    # no number (FR-4B.10, FR-4B.19). Not the description, which is internal.
+    outcome_statement = models.TextField(blank=True, default="")
+
     class Meta(WorkItem.Meta):
         db_table = "goal"
         indexes = [models.Index(fields=["tenant", "client_company"])]
+
+    @property
+    def kind_is_undecided(self) -> bool:
+        """FR-4B.6a — *not yet decided*, which is a different fact from
+        *decided: not measurable*, and the only state that nudges."""
+        return not self.measurable_kind
+
+
+class GoalMeasurement(TenantScopedModel):
+    """One dated reading (FR-4B.14). The series the chart is drawn from, and the
+    only place a current value lives.
+
+    **No `U(goal, measured_at)`** — ruling C: two readings on one date is a
+    correction or a second source, both are kept, and the latest is current.
+    Refusing the second would push the fractional into editing history, which is
+    the one thing this module is built not to do. "Latest" is by recording
+    order, never by value.
+    """
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE,
+                             related_name="measurements")
+    value = models.DecimalField(max_digits=14, decimal_places=4)
+    # The date of the READING, not of the typing (FR-4B.16).
+    measured_at = models.DateField()
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    note = models.TextField(blank=True, default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_measurement"
+        ordering = ["-measured_at", "-created_at"]
+        indexes = [models.Index(fields=["tenant", "goal", "-measured_at"])]
+
+
+class GoalMilestone(TenantScopedModel):
+    """A dated beat (FR-4B.23–25).
+
+    `occurred_at` against `due_date` is the whole status vocabulary: hit, late
+    or ahead falls out of two dates, so no `status` column expresses what
+    subtraction already says.
+
+    **`source_task` is ruling 8**: a task marked as a milestone derives its date
+    from completion, so the fact is maintained once. Eligibility — client-visible
+    and in this goal's own tree (ruling E) — is enforced in the service, not by a
+    constraint: both `is_client_visible` and the tree are mutable, and a CHECK a
+    later edit can falsify is worse than a rule the read path applies every time.
+    """
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="milestones")
+    title = models.CharField(max_length=255)
+    due_date = models.DateField(null=True, blank=True)
+    # Null is "not yet", never "late". Late is a due date in the past with this null.
+    occurred_at = models.DateField(null=True, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+    source_task = models.ForeignKey("crm.Task", null=True, blank=True,
+                                    on_delete=models.CASCADE, related_name="milestones")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_milestone"
+        ordering = ["position", "due_date", "created_at"]
+        constraints = [
+            # One task yields at most one milestone — the fact lives in one place.
+            models.UniqueConstraint(fields=["tenant", "source_task"],
+                                    name="one_milestone_per_task"),
+        ]
+
+    @property
+    def is_derived(self) -> bool:
+        return self.source_task_id is not None
+
+
+class GoalResolution(TenantScopedModel):
+    """How a goal stopped being current, and why (FR-4B.26–29).
+
+    **Append-only** (ruling 7): a goal's state is its latest row, a goal with no
+    rows is current, and nothing here is ever edited or deleted. Resuming a
+    paused goal appends; un-achieving an achieved one appends. The history of how
+    the thinking changed is the part a client conversation is about.
+
+    `reason` is NOT NULL **and** non-blank at the database, because a NOT NULL
+    column that accepts `''` enforces nothing — and the reason is the whole
+    mechanism that makes "changed course" read as judgement (FR-4B.29).
+    """
+
+    class Resolution(models.TextChoices):
+        ACHIEVED = "achieved", "Achieved"
+        CHANGED_COURSE = "changed_course", "Changed course"
+        PAUSED = "paused", "Paused"
+        RETIRED = "retired", "Retired"
+        RESUMED = "resumed", "Resumed"
+
+    #: The four that make a goal historical. `RESUMED` returns it to current.
+    HISTORICAL = {Resolution.ACHIEVED, Resolution.CHANGED_COURSE,
+                  Resolution.PAUSED, Resolution.RETIRED}
+
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name="resolutions")
+    resolution = models.CharField(max_length=20, choices=Resolution.choices)
+    reason = models.TextField()
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    resolved_at = models.DateTimeField(default=timezone.now)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_resolution"
+        ordering = ["-resolved_at", "-created_at"]
+        constraints = [
+            models.CheckConstraint(check=~models.Q(reason=""),
+                                   name="goal_resolution_reason_not_blank"),
+        ]
+
+
+class GoalNarrative(TenantScopedModel):
+    """The connective prose for one goal (FR-4B.31–35).
+
+    **One living narrative per goal, not one per period** (ruling B). The report
+    has no period and neither does its prose: a client reads the current account
+    of the goal, redrafted as the goal moves. The unique constraint is what makes
+    that structural — a second accepted narrative cannot exist to disagree with
+    the first.
+
+    Two body columns, on the precedent of `note.proposed_summary` / `summary`:
+    the draft stays beside the accepted text so the fractional sees what they
+    changed, and **the client's serializer reads `body` and never
+    `proposed_body`** (AC-4B.15).
+    """
+
+    class State(models.TextChoices):
+        DRAFTING = "drafting", "Drafting"
+        PROPOSED = "proposed", "Proposed"
+        ACCEPTED = "accepted", "Accepted"
+        DISCARDED = "discarded", "Discarded"
+        FAILED = "failed", "Failed"
+
+    goal = models.OneToOneField(Goal, on_delete=models.CASCADE,
+                                related_name="narrative")
+    proposed_body = models.TextField(blank=True, default="")
+    body = models.TextField(blank=True, default="")
+    state = models.CharField(max_length=12, choices=State.choices,
+                             default=State.PROPOSED)
+    accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    ai_call = models.ForeignKey("tenancy.AiCall", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_narrative"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "goal"],
+                                    name="one_living_narrative_per_goal"),
+        ]
+
+
+class GoalNarrativeVersion(TenantScopedModel):
+    """A dated snapshot per acceptance (ruling B).
+
+    The reason the living narrative can be rewritten freely: **what the client
+    reads is replaced; what the client was told is not.** Append-only exactly as
+    `goal_resolution` is — no update or delete route exists.
+    """
+
+    narrative = models.ForeignKey(GoalNarrative, on_delete=models.CASCADE,
+                                  related_name="versions")
+    # Denormalised deliberately: the version log is read from the goal, and a
+    # join through the narrative to answer "what did we tell them in March" is a
+    # join for nothing.
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE,
+                             related_name="narrative_versions")
+    body = models.TextField()
+    accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    accepted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_narrative_version"
+        ordering = ["-accepted_at", "-created_at"]
+        indexes = [models.Index(fields=["tenant", "goal", "-accepted_at"])]
+
+
+class GoalReportExport(TenantScopedModel):
+    """A PDF as it read on the day it was exported (ruling 4, FR-4B.39).
+
+    **Every export is kept and nothing auto-deletes** (ruling F): no retention
+    window and no cleanup job. Notes carries audio retention because audio is
+    large and its value decays; a record of what a client was shown is neither.
+    """
+
+    # Null is an all-goals export for the company.
+    goal = models.ForeignKey(Goal, null=True, blank=True, on_delete=models.CASCADE,
+                             related_name="exports")
+    # Set on every row, including a single-goal export: an all-goals export has
+    # no goal to reach the company through.
+    client_company = models.ForeignKey("crm.Company", on_delete=models.PROTECT,
+                                       related_name="+")
+    stored_file = models.ForeignKey("tenancy.StoredFile", on_delete=models.PROTECT,
+                                    related_name="+")
+    # Which accepted text this PDF carries (FR-4B.33b), so the document and the
+    # version history still agree a year later.
+    narrative_version = models.ForeignKey(GoalNarrativeVersion, null=True, blank=True,
+                                          on_delete=models.SET_NULL, related_name="+")
+    exported_at = models.DateTimeField(default=timezone.now)
+    exported_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_report_export"
+        ordering = ["-exported_at"]
+        indexes = [models.Index(fields=["tenant", "client_company", "-exported_at"])]
 
 
 class Project(WorkItem):

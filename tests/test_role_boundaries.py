@@ -588,3 +588,161 @@ def test_a_client_user_naming_another_company_still_sees_only_their_own(seeded_t
     assert [t["title"] for t in viewer.get("/api/tasks/").json()] == ["Ours"]
     assert viewer.get(f"/api/tasks/?client_company={other.pk}").json() == []
     assert viewer.get("/api/tasks/?client_company=internal").json() == []
+
+
+# ================================================ §10A — Module 4B, value report
+#
+# The line this section draws, and the sixth weighted case in the matrix's
+# §14.2: **a VA may administer and may not judge.** Both halves are asserted in
+# the same test, against the API response body, so the boundary is shown to be a
+# line and not a blanket refusal.
+
+def _a_client_goal(tenant, company, **kwargs):
+    from .factories import GoalFactory
+
+    kwargs.setdefault("title", "Decisions stall waiting on the founder")
+    return GoalFactory(tenant=tenant, client_company=company, **kwargs)
+
+
+@pytest.mark.django_db
+def test_10a_a_va_may_administer_and_may_not_judge(seeded_tenant, api, fake_claude):
+    """Rows 10A.4, 10A.6, 10A.10, 10A.13 and 10A.15 in one case."""
+    import json
+
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    ff = MembershipFactory(tenant=seeded_tenant, role=Role.FF)
+    va = MembershipFactory(tenant=seeded_tenant, role=Role.VA)
+    goal = _a_client_goal(seeded_tenant, company)
+    api.as_(ff).post(f"/api/value-report/{goal.pk}/draft-narrative/")
+
+    # Administration: a reading and an export are the VA's.
+    assert api.as_(va).post("/api/goal-measurements/", json.dumps(
+        {"goal": str(goal.pk), "value": "9"}),
+        content_type="application/json").status_code == 201
+    assert api.as_(va).post("/api/value-report-exports/", json.dumps(
+        {"goal": str(goal.pk)}), content_type="application/json").status_code == 201
+
+    # Judgement: three refusals, in the response body.
+    resolved = api.as_(va).post("/api/goal-resolutions/", json.dumps(
+        {"goal": str(goal.pk), "resolution": "achieved", "reason": "Done."}),
+        content_type="application/json")
+    assert resolved.status_code == 403 and "fractional's call" in resolved.json()["detail"]
+
+    accepted = api.as_(va).post(f"/api/value-report/{goal.pk}/accept-narrative/",
+                                json.dumps({"body": "A VA's verdict."}),
+                                content_type="application/json")
+    assert accepted.status_code == 403
+
+    statement = api.as_(va).patch(f"/api/goals/{goal.pk}/", json.dumps(
+        {"outcome_statement": "A VA's sentence."}), content_type="application/json")
+    assert statement.status_code == 400
+    assert "fractional's sentence" in json.dumps(statement.json())
+
+    from apps.work.models import GoalNarrativeVersion, GoalResolution
+
+    assert GoalResolution.all_objects.filter(tenant=seeded_tenant).count() == 0
+    assert GoalNarrativeVersion.all_objects.filter(tenant=seeded_tenant).count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", sorted(CLIENT_ROLES))
+def test_10a_client_roles_are_read_only_throughout(role, seeded_tenant, api):
+    """Every row of §10A: a client reads the report and writes nothing in it.
+
+    FR-3.35a gives them tasks and projects of their own precisely so the portal
+    is a working tool; the value report is the opposite kind of artifact — the
+    practice's account of the engagement, which a client reads and does not
+    co-author.
+    """
+    import json
+
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    ff = MembershipFactory(tenant=seeded_tenant, role=Role.FF)
+    client_user = MembershipFactory(tenant=seeded_tenant, role=role,
+                                    client_company=company)
+    goal = _a_client_goal(seeded_tenant, company)
+
+    assert api.as_(client_user).get("/api/value-report/").status_code == 200
+    assert api.as_(client_user).get(f"/api/value-report/{goal.pk}/").status_code == 200
+
+    writes = [
+        ("/api/goal-measurements/", {"goal": str(goal.pk), "value": "9"}),
+        ("/api/goal-milestones/", {"goal": str(goal.pk), "title": "A beat"}),
+        ("/api/goal-resolutions/", {"goal": str(goal.pk), "resolution": "achieved",
+                                    "reason": "Done."}),
+        ("/api/value-report-exports/", {"goal": str(goal.pk)}),
+        (f"/api/value-report/{goal.pk}/draft-narrative/", {}),
+        (f"/api/value-report/{goal.pk}/accept-narrative/", {"body": "Mine now."}),
+    ]
+    for url, payload in writes:
+        response = api.as_(client_user).post(url, json.dumps(payload),
+                                             content_type="application/json")
+        assert response.status_code == 403, f"{url} as {role}: {response.status_code}"
+
+    # And the exports list is not theirs to read: the portal is their copy.
+    assert api.as_(client_user).get("/api/value-report-exports/").status_code == 403
+    assert api.as_(ff).get(
+        f"/api/value-report-exports/?client_company={company.pk}").status_code == 200
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", sorted(CLIENT_ROLES))
+def test_10a_a_client_reaches_nothing_of_another_company_in_the_same_tenant(
+    role, seeded_tenant, api
+):
+    """Matrix §14.2 case 3, extended to rows 10A.1–10A.2. **404, never 403.**"""
+    mine = ClientCompanyFactory(tenant=seeded_tenant, name="Mine")
+    theirs = ClientCompanyFactory(tenant=seeded_tenant, name="Theirs")
+    client_user = MembershipFactory(tenant=seeded_tenant, role=role, client_company=mine)
+    their_goal = _a_client_goal(seeded_tenant, theirs, title="Not yours")
+
+    assert api.as_(client_user).get(
+        f"/api/value-report/{their_goal.pk}/").status_code == 404
+    # Naming their company returns the client's own report, never an empty one
+    # and never theirs.
+    mine_report = api.as_(client_user).get(
+        f"/api/value-report/?client_company={theirs.pk}/")
+    assert mine_report.status_code == 200
+    assert "Not yours" not in mine_report.content.decode()
+
+
+@pytest.mark.django_db
+def test_10a_9_nobody_edits_a_derived_milestone_or_a_narrative_version(
+    seeded_tenant, api, fake_claude, in_tenant_a
+):
+    """Rows 10A.9 and 10A.11a — the two "nobody, ever" rows in §10A."""
+    import json
+
+    from apps.work.models import GoalMilestone
+
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    ff = MembershipFactory(tenant=seeded_tenant, role=Role.FF)
+    goal = _a_client_goal(seeded_tenant, company)
+
+    from apps.work.services import create_task
+
+    task = create_task(tenant=seeded_tenant, actor=ff.user, role="FF",
+                       title="Area lead hired", client_company=company, goal=goal)
+    made = api.as_(ff).post("/api/goal-milestones/", json.dumps(
+        {"goal": str(goal.pk), "source_task": str(task.pk)}),
+        content_type="application/json")
+    assert made.status_code == 201
+
+    refused = api.as_(ff).patch(f"/api/goal-milestones/{made.json()['id']}/",
+                                json.dumps({"title": "Renamed"}),
+                                content_type="application/json")
+    assert refused.status_code == 409, "even an FF: the fact belongs to the task"
+    assert GoalMilestone.all_objects.get(
+        pk=made.json()["id"]).title == "Area lead hired"
+
+    api.as_(ff).post(f"/api/value-report/{goal.pk}/draft-narrative/")
+    api.as_(ff).post(f"/api/value-report/{goal.pk}/accept-narrative/",
+                     json.dumps({"body": "What they were told."}),
+                     content_type="application/json")
+    versions = api.as_(ff).get(
+        f"/api/value-report/{goal.pk}/narrative-versions/").json()
+    assert len(versions) == 1
+    for method in ("post", "patch", "delete"):
+        response = getattr(api.as_(ff), method)(
+            f"/api/value-report/{goal.pk}/narrative-versions/")
+        assert response.status_code in (404, 405), method

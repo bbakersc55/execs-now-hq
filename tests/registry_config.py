@@ -19,8 +19,9 @@ from apps.crm.models import (
 )
 from apps.notes.models import Note, NotePinUnlock
 from apps.work.models import (
-    Comment, Digest, DigestItem, Goal, Project, Stakeholder, StakeholderToken,
-    TaskChecklistItem, TaskUpdate,
+    Comment, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
+    GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
+    Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.strategy.models import (
     StrategyAnswer, StrategyMapRow, StrategyQuestion, StrategySection,
@@ -82,6 +83,20 @@ register(Stakeholder, factories.StakeholderFactory)
 register(StakeholderToken, factories.StakeholderTokenFactory, api_exposed=False)
 register(Digest, factories.DigestFactory)
 register(DigestItem, factories.DigestItemFactory)
+
+# --- Module 4B — the client value report.
+register(GoalMeasurement, factories.GoalMeasurementFactory,
+         endpoints=("/api/goal-measurements/",))
+register(GoalMilestone, factories.GoalMilestoneFactory,
+         endpoints=("/api/goal-milestones/",))
+register(GoalResolution, factories.GoalResolutionFactory,
+         endpoints=("/api/goal-resolutions/",))
+register(GoalReportExport, factories.GoalReportExportFactory,
+         endpoints=("/api/value-report-exports/",))
+# Reached only through their goal — there is no endpoint that takes one by id.
+register(GoalNarrative, factories.GoalNarrativeFactory, api_exposed=False)
+register(GoalNarrativeVersion, factories.GoalNarrativeVersionFactory,
+         api_exposed=False)
 
 # --- Module 4 — the strategy session.
 register(StrategyTemplate, factories.StrategyTemplateFactory,

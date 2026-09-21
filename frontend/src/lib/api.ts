@@ -520,8 +520,96 @@ export interface PortalCandidates {
             role: string; refusal: string | null }[];
 }
 
-export interface ProgressReport {
-  since: string; until: string; body_text: string; updates: TaskUpdateRow[];
+// --- Module 4B — the client value report ------------------------------------
+
+export type MeasurableKind = "numeric" | "qualitative" | "none" | null;
+
+/** A goal's measure. `kind_is_undecided` is the practice's nudge (FR-4B.6a) and
+ *  is never true in a client's response: *not yet decided* is a fact about the
+ *  practice's work, not about the engagement. */
+export interface GoalMeasure {
+  kind: MeasurableKind;
+  kind_is_undecided: boolean;
+  measurable: string;
+  unit: string;
+  how_we_will_know: string;
+  direction: "" | "up_is_good" | "down_is_good";
+  baseline: { value: string | null; at: string | null };
+  current: { value: string; at: string; note: string } | null;
+  target: string | null;
+  movement: "" | "better" | "worse" | "level";
+  reading_count: number;
+  /** From three readings up, a dated baseline counting as one (ruling D). */
+  show_chart: boolean;
+  series: { at: string; value: string; is_baseline: boolean; note: string }[];
+}
+
+export interface GoalMilestoneRow {
+  id: string; title: string; due_date: string | null; occurred_at: string | null;
+  state: "hit" | "late" | "ahead" | "due";
+  is_derived: boolean; source_task: string | null;
+}
+
+export interface GoalResolutionRow {
+  id: string; resolution: string; reason: string; at: string; by: string;
+}
+
+export interface GoalNarrativeRow {
+  id?: string;
+  state?: "drafting" | "proposed" | "accepted" | "discarded" | "failed";
+  /** Absent from a client's response entirely — never merely unrendered. */
+  proposed_body?: string;
+  body: string;
+  accepted_at?: string | null;
+  accepted_by?: string;
+  version_count?: number;
+}
+
+export interface GoalBlock {
+  id: string;
+  title: string;
+  outcome_statement: string;
+  /** The product rule, decided on the server: a number leads, or the outcome
+   *  statement does. **Never percent-of-tasks-done** (FR-4B.21). */
+  headline: { kind: "measure" | "outcome"; text: string };
+  measure: GoalMeasure;
+  completion: { done: number; of: number; percent: number | null };
+  status: WorkStatus;
+  target_date: string | null;
+  horizon_days: number | null;
+  client_owner_contact: string;
+  is_historical: boolean;
+  resolution: GoalResolutionRow | null;
+  resolutions: GoalResolutionRow[];
+  milestones: GoalMilestoneRow[];
+  narrative: GoalNarrativeRow | null;
+  source_map_row: string | null;
+  measurements?: { id: string; value: string; measured_at: string; note: string;
+                   recorded_by: string }[];
+}
+
+/** One axis across the whole engagement (FR-4B.36a). Derived at read time. */
+export interface EngagementTimeline {
+  from: string; to: string; today: string;
+  spans: { goal: string; title: string; start: string; end: string;
+           is_historical: boolean }[];
+  marks: { goal: string; goal_title: string;
+           kind: "start" | "milestone" | "reading" | "resolution";
+           at: string; label: string; detail: string }[];
+}
+
+export interface ValueReport {
+  company: { id: string; name: string };
+  timeline: EngagementTimeline;
+  current: GoalBlock[];
+  historical: GoalBlock[];
+  generated_at: string;
+}
+
+export interface ValueReportExport {
+  id: string; goal: string | null; goal_title: string; client_company: string;
+  scope: "goal" | "all-goals"; byte_size: number;
+  narrative_version: string | null; exported_at: string; exported_by: Person;
 }
 
 // --- Module 4 — the strategy session ----------------------------------------

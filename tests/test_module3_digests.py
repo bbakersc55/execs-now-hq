@@ -606,7 +606,7 @@ def test_ac_3_25_the_cadence_link_works_without_a_session_and_grants_nothing_els
 
     # The token opens nothing else.
     for path in (f"/api/tasks/{task.pk}/", f"/api/digests/{digest.pk}/",
-                 "/api/stakeholders/", f"/api/progress-report/?contact={recipient.pk}"):
+                 "/api/stakeholders/", f"/api/value-report/?client_company={company.pk}"):
         assert client.get(path, HTTP_AUTHORIZATION=f"Bearer {token}").status_code in (401, 403)
 
     # Stopping mutes rather than deletes: the row is still the practice's record.
@@ -624,26 +624,32 @@ def test_ac_3_25_the_cadence_link_works_without_a_session_and_grants_nothing_els
 
 
 @pytest.mark.django_db
-def test_ac_3_26_the_on_demand_report_needs_a_login(seeded_tenant, ff, api, company,
-                                                     recipient, project, client, in_tenant_a):
+def test_ac_3_26_the_client_report_needs_a_login(seeded_tenant, ff, api, company,
+                                                  recipient, project, client, in_tenant_a):
+    """AC-3.26, carried onto FR-4B.37 when FR-3.38's screen was replaced.
+
+    The criterion outlives the screen it was written for: whatever the client
+    pulls, a cadence token must not reach it and a login must.
+    """
     task = a_task(seeded_tenant, company, ff=ff, project=project)
     stake(seeded_tenant, recipient, project=project)
     move(task, ff, S.IN_PROGRESS, "Pull me.")
 
-    assert client.get(f"/api/progress-report/?contact={recipient.pk}").status_code in (401, 403)
-    signed_in = api.as_(ff).get(f"/api/progress-report/?contact={recipient.pk}&days=30")
+    path = f"/api/value-report/?client_company={company.pk}"
+    assert client.get(path).status_code in (401, 403)
+    signed_in = api.as_(ff).get(path)
     assert signed_in.status_code == 200
-    assert "Pull me." in signed_in.json()["body_text"]
+    assert signed_in.json()["company"]["id"] == str(company.pk)
 
 
 @pytest.mark.django_db
-def test_the_on_demand_report_consumes_nothing(seeded_tenant, ff, api, company, recipient,
-                                                project, in_tenant_a):
-    """FR-3.38 — reading a report must never eat the Friday email."""
+def test_reading_the_report_consumes_nothing(seeded_tenant, ff, api, company, recipient,
+                                              project, in_tenant_a):
+    """Carried from FR-3.38 — reading a report must never eat the Friday email."""
     task = a_task(seeded_tenant, company, ff=ff, project=project)
     stake(seeded_tenant, recipient, project=project)
     move(task, ff, S.IN_PROGRESS, "Still owed.")
-    api.as_(ff).get(f"/api/progress-report/?contact={recipient.pk}&days=30")
+    api.as_(ff).get(f"/api/value-report/?client_company={company.pk}")
 
     assert DigestItem.all_objects.count() == 0
     owed = digest_service.owed_to(recipient.pk, tenant=seeded_tenant, cadence=Cadence.WEEKLY)

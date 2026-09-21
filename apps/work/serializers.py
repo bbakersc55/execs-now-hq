@@ -19,7 +19,8 @@ from apps.tenancy.models import CLIENT_ROLES
 from apps.work import permissions as work_perms
 from apps.work import status as status_service
 from apps.work.models import (
-    Cadence, Comment, Goal, Priority, Project, TaskChecklistItem, TaskUpdate,
+    Cadence, Comment, Goal, GoalResolution, Priority, Project, TaskChecklistItem,
+    TaskUpdate,
 )
 
 
@@ -122,6 +123,24 @@ def represent_parent(entity, *, request, kind: str) -> dict:
         "target_date": entity.target_date.isoformat() if entity.target_date else None,
         "created_at": entity.created_at.isoformat(),
     }
+    if kind == "goal":
+        # Module 4B — the measurable travels with the goal everywhere, so the
+        # Work screen and the report cannot disagree about it.
+        data.update({
+            "measurable_kind": entity.measurable_kind or None,
+            "kind_is_undecided": entity.kind_is_undecided,
+            "measurable": entity.measurable,
+            "measurable_unit": entity.measurable_unit,
+            "how_we_will_know": entity.how_we_will_know,
+            "direction": entity.direction,
+            "baseline_value": (str(entity.baseline_value)
+                               if entity.baseline_value is not None else None),
+            "baseline_at": entity.baseline_at.isoformat() if entity.baseline_at else None,
+            "target_value": (str(entity.target_value)
+                             if entity.target_value is not None else None),
+            "horizon_days": entity.horizon_days,
+            "outcome_statement": entity.outcome_statement,
+        })
     if kind == "project":
         data.update({
             "goal": str(entity.goal_id) if entity.goal_id else None,
@@ -184,9 +203,49 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
     target_date = serializers.DateField(required=False, allow_null=True)
     status_override = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
+    # --- Module 4B: the measurable prompt, asked at creation (FR-4B.13) ------
+    measurable_kind = serializers.ChoiceField(
+        choices=Goal.MeasurableKind.choices, required=False, allow_blank=True)
+    measurable = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    measurable_unit = serializers.CharField(max_length=40, required=False,
+                                            allow_blank=True)
+    how_we_will_know = serializers.CharField(required=False, allow_blank=True)
+    direction = serializers.ChoiceField(choices=Goal.Direction.choices, required=False,
+                                        allow_blank=True)
+    baseline_value = serializers.DecimalField(max_digits=14, decimal_places=4,
+                                              required=False, allow_null=True)
+    baseline_at = serializers.DateField(required=False, allow_null=True)
+    target_value = serializers.DecimalField(max_digits=14, decimal_places=4,
+                                            required=False, allow_null=True)
+    horizon_days = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    outcome_statement = serializers.CharField(required=False, allow_blank=True)
+
     def validate(self, attrs):
         if self.instance is None and not (attrs.get("title") or "").strip():
             raise serializers.ValidationError({"title": "A goal needs a title."})
+        # Ruling H — the outcome statement is the sentence that goes out under
+        # the fractional's name. A VA may record a reading and may not write it.
+        request = self.context["request"]
+        if "outcome_statement" in attrs:
+            company = attrs.get("client_company") or getattr(
+                self.instance, "client_company_id", None)
+            if not work_perms.may_judge(request, company):
+                raise serializers.ValidationError({
+                    "outcome_statement":
+                        "The outcome statement is the fractional's sentence about "
+                        "what this goal is for. Recording a reading is yours; this "
+                        "is not."})
+        # Ruling 2 — direction is required on a numeric measurable and never
+        # inferred, because inference is silently wrong when baseline and target
+        # are equal and has nothing to work from before a target is set.
+        kind = attrs.get("measurable_kind",
+                         getattr(self.instance, "measurable_kind", ""))
+        direction = attrs.get("direction", getattr(self.instance, "direction", ""))
+        if kind == Goal.MeasurableKind.NUMERIC and not direction:
+            raise serializers.ValidationError({
+                "direction": "A number needs a direction: say whether up is good or "
+                             "down is good. It is never inferred from the baseline "
+                             "and the target — a goal can be to hold a number steady."})
         return attrs
 
 
@@ -400,3 +459,130 @@ class StakeholderSerializer(ScopedFieldsMixin, serializers.Serializer):
                                 f"nowhere to send their updates."}
                 )
         return attrs
+
+
+# ================================================== Module 4B — the value report
+
+def represent_measurement(row) -> dict:
+    return {
+        "id": str(row.pk),
+        "goal": str(row.goal_id),
+        "value": str(row.value),
+        "measured_at": row.measured_at.isoformat(),
+        "note": row.note,
+        "recorded_by": _person(row.recorded_by),
+        "created_at": row.created_at.isoformat(),
+    }
+
+
+def represent_milestone(row) -> dict:
+    from django.utils import timezone
+
+    from apps.work import milestones as milestone_service
+
+    occurred = milestone_service.occurred_on(row)
+    return {
+        "id": str(row.pk),
+        "goal": str(row.goal_id),
+        "title": row.title,
+        "due_date": row.due_date.isoformat() if row.due_date else None,
+        # Derived for a task, stored otherwise — and un-completing the task
+        # clears it, because a milestone must never claim a date that did not
+        # happen (FR-4B.25).
+        "occurred_at": occurred.isoformat() if occurred else None,
+        "state": milestone_service.state_of(row, today=timezone.localdate()),
+        "position": row.position,
+        "is_derived": row.is_derived,
+        "source_task": str(row.source_task_id) if row.source_task_id else None,
+        "visible_to_client": milestone_service.is_visible_to_client(row),
+    }
+
+
+def represent_resolution(row) -> dict:
+    return {
+        "id": str(row.pk),
+        "goal": str(row.goal_id),
+        "resolution": row.resolution,
+        "resolution_label": row.get_resolution_display(),
+        # Ruling G — the client reads this.
+        "reason": row.reason,
+        "resolved_by": _person(row.resolved_by),
+        "resolved_at": row.resolved_at.isoformat(),
+    }
+
+
+def represent_export(row) -> dict:
+    return {
+        "id": str(row.pk),
+        "goal": str(row.goal_id) if row.goal_id else None,
+        "goal_title": row.goal.title if row.goal_id else "",
+        "client_company": str(row.client_company_id),
+        "scope": "goal" if row.goal_id else "all-goals",
+        "byte_size": row.stored_file.byte_size,
+        "narrative_version": (str(row.narrative_version_id)
+                              if row.narrative_version_id else None),
+        "exported_at": row.exported_at.isoformat(),
+        "exported_by": _person(row.exported_by),
+    }
+
+
+class GoalMeasurementSerializer(serializers.Serializer):
+    """A reading. `measured_at` is the date of the reading, not of the typing
+    (FR-4B.16) — a reading entered on Friday for Monday is Monday's."""
+
+    value = serializers.DecimalField(max_digits=14, decimal_places=4)
+    measured_at = serializers.DateField(required=False)
+    note = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        from django.utils import timezone
+
+        # Only on the way in. Defaulting it on a partial update would silently
+        # re-date a reading to today because somebody corrected its value —
+        # which moves a point on the chart and can change what is current.
+        if self.instance is None:
+            attrs.setdefault("measured_at", timezone.localdate())
+        return attrs
+
+
+class GoalMilestoneSerializer(ScopedFieldsMixin, serializers.Serializer):
+    title = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    due_date = serializers.DateField(required=False, allow_null=True)
+    occurred_at = serializers.DateField(required=False, allow_null=True)
+    position = serializers.IntegerField(required=False, min_value=0)
+    source_task = serializers.UUIDField(required=False, allow_null=True)
+
+    def validate_source_task(self, value):
+        """Scoped like every other FK a caller can set: a task they cannot see
+        is not a task they can pin to a timeline."""
+        return self._scoped(Task, value, scoper=work_perms.task_queryset_for,
+                            deleted_at__isnull=True)
+
+    def validate(self, attrs):
+        if self.instance is None and not attrs.get("source_task") and not (
+                attrs.get("title") or "").strip():
+            raise serializers.ValidationError(
+                {"title": "A milestone needs a title, or a task to take one from."})
+        return attrs
+
+
+class GoalResolutionSerializer(serializers.Serializer):
+    """Ruling 7 — append-only, and the reason is required at the database as
+    well as here. It is the whole mechanism that makes "changed course" read as
+    judgement rather than as giving up (FR-4B.29)."""
+
+    REASON_REQUIRED = (
+        "Say why in one line. The client reads it, and it is what makes a change of "
+        "course read as a judgement rather than as giving up.")
+
+    resolution = serializers.ChoiceField(choices=GoalResolution.Resolution.choices)
+    # The message is on the field, not in `validate_reason`: DRF trims
+    # whitespace first, so "   " is refused as blank before any validator of
+    # ours would run — and "This field may not be blank" says nothing useful
+    # about why the line matters.
+    reason = serializers.CharField(error_messages={
+        "blank": REASON_REQUIRED, "required": REASON_REQUIRED,
+        "null": REASON_REQUIRED})
+
+    def validate_reason(self, value):
+        return value.strip()

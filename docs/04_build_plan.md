@@ -1037,6 +1037,7 @@ Not proposed, deliberately: any stored "percent complete", any stored derived st
 | `goal_report_export` | the snapshot PDFs a quarterly conversation was held over | this |
 | `project` · `task` · status rollup (`apps/work/status.py`) | the secondary completion bar and the goal tree | 3 |
 | `task_update.client_facing_line` (FR-3.16) | the narrative's primary raw material | 3 |
+| `goal.outcome_statement` · `goal_resolution` · `strategy_map_row` | **what the goal set out to change** — narrative input, added 2026-09-21 | this / 4 |
 | `note` rows linked to the goal's tasks | narrative material the fractional already captured | 2 |
 | `strategy_map_row` via `source_map_row_id` | the measurable, the horizon, the original bottleneck and fix | 4 |
 | `ai_call` | the spend and audit trail for every narrative draft | 0.5 |
@@ -1158,6 +1159,10 @@ With the rulings settled the gate can be stated, and this is it. **Written up in
    (ruling B) and `goal_report_export`.
 2. The portal report organised **by goal**, all of a client's goals, **current first,
    historical below**, with **any single goal openable on its own**.
+2a. **An engagement timeline across all of a company's goals** *(owner, 2026-09-21)* —
+   goal starts, milestones, resolutions and dated readings on one axis, at the **top of
+   the all-goals report and in the all-goals PDF**, and nowhere else. Derived at read
+   time, carrying only what is already client-visible.
 3. **Three kinds of measurable** (ruling A), displayed by their own rules: numeric
    leads with baseline → current → target; qualitative leads with the outcome
    statement over the "how we'll know" sentence; **`none` leads with the outcome
@@ -1176,7 +1181,9 @@ With the rulings settled the gate can be stated, and this is it. **Written up in
    hidden afterwards takes its milestone out of the client's report.
 10. **The outcome statement**, hand-written and updatable.
 11. **The AI narrative** under the AC-3.5 faithfulness constraint, drafted from the
-    goal's own material only, accept/edit, **never auto-published** — and the
+    goal's own material only — **including its outcome statement, its resolution
+    history with reasons, and the source map row's bottleneck, root cause and fix**
+    *(owner, 2026-09-21: what the goal set out to change is part of what the goal is)* — accept/edit, **never auto-published** — and the
     structural half showing whether or not it has been accepted. **One living
     narrative per goal, with a dated snapshot appended on every acceptance**
     (ruling B).
@@ -1221,6 +1228,109 @@ exist, conversion carries measurable kind, name, unit, direction and horizon, an
   nothing (ruling A).
 - **Percent-of-tasks-done never appears as a headline figure** in the portal or the
   PDF — worth an explicit test, because it is the thing most likely to creep back in.
+
+### Report — Phase 4.5 status (2026-09-21): built and code-complete; **all four manual checks pending; not signed off**
+
+**Code-complete, and not a sign-off.** Every acceptance criterion passes in the
+automated suite and both mandatory families are green. **All four manual checks are
+outstanding**, no client has read a real value report, and the quality of Claude's
+narrative is deliberately **not** claimed here: it has met the test double and nothing
+else. Module 4B is done as code and unproven as a product.
+
+| | |
+|---|---|
+| Automated tests | **1170 passed**, 3 skipped, 2 xfailed (was 1098) |
+| — Module 4B file | **36** (`test_module4b_acceptance.py`) |
+| — tenant isolation | **291** (was 261; the six new tables add 30, driven by the registry) |
+| — role boundaries | **152** (was 146; matrix §10A adds 6, including the VA line asserted both ways) |
+| Frontend tests | **254 passed** (was 243; 11 new in `ValueReport.test.tsx`) |
+| Migration | **`work` 0005, purely additive**, applied — see the three checks below |
+| New dependency | none |
+
+**The migration, against the rule.** `work.0005_module_4b` is **purely additive**:
+three `ADD COLUMN` with their defaults dropped, six `CREATE TABLE`, and their indexes
+and constraints. **No column dropped, altered or rewritten, and no `RunPython`.** The
+full suite was run **after** the migration existed and is green on it, and
+`scripts/backup_db.sh` ran today (2026-09-21, 240 KB dump plus the media sync) before
+it was applied — the owner had not confirmed one, so one was taken rather than assumed.
+**It is applied.**
+
+#### AC-4B.1 to AC-4B.23
+
+| AC | What it demands | Status | What proves it |
+|---|---|---|---|
+| 4B.1 | Anchored on goals, not a period | ✅ | A goal whose only activity is 200 days old still carries its measure; no `since`/`until`/`days` in the payload |
+| 4B.2 | A single goal opens on its own | ✅ | Its own URL, and no other goal's title in the body |
+| 4B.3 | Internal goals never appear | ✅ | Absent from the response, 404 by id **for every role**, and still on the Work screen |
+| 4B.4 | Direction stored, never inferred | ✅ | Baseline = target, a lower reading reads "better"; flipping `direction` on the same data reads "worse". A numeric goal is refused without one |
+| 4B.5 | Current value read, never stored | ✅ | No column exists; correcting the middle reading moves the chart and not the headline |
+| 4B.5a | Two readings on one date (ruling C) | ✅ | Both rows kept; latest is **by recording order**, proved by recording the higher one last |
+| 4B.6 | Chart at three, baseline counted when dated (ruling D) | ✅ | Two points → figures, three → chart, **in the API and in the PDF**; clearing `baseline_at` takes the chart away again |
+| 4B.7 | A number leads; no percentage headline | ✅ | `headline` is the server's decision; in the PDF the measure precedes the count and no percentage stands alone |
+| 4B.8 | Everything without a number leads with the outcome statement | ✅ | Parametrised over `qualitative`, `none` and null — the bar stays subordinate at 60% done |
+| 4B.9 | The measurable prompt, three ways (ruling A) | ✅ | `none` stored on the explicit choice; a blank sentence still saves; an omitted kind stores **null**, which is not `'none'` |
+| 4B.9a | A null kind nudges, and only the practice | ✅ | Flag true for staff, **false in the client's payload**, and it blocks nothing |
+| 4B.10 | No resolution without its reason | ✅ | `CheckViolation` at the database, and a 400 that says why the line matters |
+| 4B.10a | The client reads the reason (ruling G) | ✅ | Reason in the client's body; no visibility flag on the model |
+| 4B.11 | Resolutions append; the first survives | ✅ | Paused → resumed → achieved → changed course, all four readable; no detail route exists to edit one |
+| 4B.12 | Current vs historical follows the latest | ✅ | Resuming returns it to current with measurements, milestones and both lines intact |
+| 4B.13 | A task milestone derives its date | ✅ | Completion sets it, un-completing **clears** it, and the milestone refuses its own edit |
+| 4B.13a | Only a client-visible task in the tree (ruling E) | ✅ | Hidden refused, out-of-tree refused, eligible accepted; hiding it afterwards removes it from the client's body and not the practice's |
+| 4B.14 | The narrative asserts nothing absent | ✅ | With no readings the prompt forbids a trend and carries none; with readings they are there |
+| 4B.14a | It may say what the goal set out to change | ✅ | Bottleneck, root cause, fix, outcome statement and the resolution reason all in the prompt — and three marker strings in non-inputs (a sibling's measurable, an internal comment, a locked note) are **not** |
+| 4B.15 | An unaccepted narrative is invisible | ✅ | Draft absent from the client's body; accepted text appears, the draft never does |
+| 4B.15a | One living narrative, versioned (ruling B) | ✅ | One row after two acceptances, two dated snapshots, client reads the later, no route edits one, no period column anywhere |
+| 4B.15b | An export cites the version current at export | ✅ | The stored PDF still carries March's text after September's is accepted |
+| 4B.16 | The structural half shows regardless | ✅ | Unaccepted narrative; measure, chart, bar and milestones all present |
+| 4B.17 | A VA measures and exports, and does not judge | ✅ | 201, 201 — then 400 on the outcome statement and 403 on resolving and accepting, in the body. An unassigned CF gets 404 for all of it |
+| 4B.18 | Client-company isolation, both ways | ✅ | 404 across the board, including writes; a client naming another company still gets their own |
+| 4B.19 | A snapshot, and every one kept (ruling F) | ✅ | The first export's bytes are unchanged after two readings and a rewritten statement; both listed on goal and company; **no `delete_after` on any of them** |
+| 4B.20 | Exporting is not sending | ✅ | Preview and export leave the Outbox empty |
+| 4B.20a | The engagement timeline (owner, 2026-09-21) | ✅ | Three goals on one axis with both milestones, three readings and the resolution **with its reason**, in date order; resolved span ends at its resolution; in the all-goals PDF, **absent from a single goal's page**; an internal goal contributes nothing; hiding a task's milestone removes that mark |
+| 4B.21 | The report requires a login | ✅ | Anonymous and cadence-token both refused; a signed-in FCC gets it |
+| 4B.22 | Every draft is costed | ✅ | One `ai_call` with tokens and cost; accepting, exporting and reading write none |
+| 4B.23 | FR-3.38 is gone, not shadowed | ✅ | The route 404s, `reverse()` raises, and neither `ProgressReportView` nor `report_for_company` exists |
+
+#### The two mandatory families
+
+- **Tenant isolation — 291 cases** (was 261). The six new tables are in the registry, so
+  the meta-test would have failed had one been left out.
+- **Role boundaries — 152** (was 146). Matrix §10A adds six, and the **sixth weighted
+  case** the matrix now names is asserted as a line rather than a blanket: the same VA
+  records a reading and exports a PDF (201, 201) and is refused the outcome statement,
+  the resolution and the narrative acceptance — all against the response body.
+
+#### Three bugs the acceptance tests caught before the owner could
+
+1. **Correcting a reading silently re-dated it to today**, because the serializer
+   defaulted `measured_at` on a partial update as well as on create. That moves a point
+   on the chart and can change which reading is current.
+2. **The completion denominator was `DISTINCT` over the status column**, so five tasks
+   in two statuses counted as two. A subordinate number, and still a wrong one on a
+   client's screen.
+3. **Two querysets OR'd together dropped tasks filed straight under a goal**, because
+   combining them merged the join through `project` as well as the conditions.
+
+#### What is built
+
+Six tables, three `goal` columns, the report by goal with the engagement timeline over
+it, a measurement history the current value is read from, milestones standalone or
+derived from a task, append-only resolutions, one living narrative per goal with a
+dated version per acceptance, and a branded snapshot PDF listed on the goal and the
+company. One screen, `Report.tsx`, replacing FR-3.38's — the client's "Where we are"
+and the practice's per-company view of the same thing.
+
+#### Gaps, stated plainly
+
+1. **Claude has met only the test double.** The narrative prompt has never run against
+   the real API on a real goal, and its quality is unmeasured — that is manual check 1's
+   job, and the report on it will be **your judgement on N real goals**, with N.
+2. **No client has opened it.** Every client-side assertion here is an API-shape
+   assertion; whether the page reads as value delivered is manual check 1.
+3. **None of the four manual checks has run** — in particular check 3, taking the PDF
+   into a real client conversation, which is the only honest test of the artifact.
+4. **The timeline is untested at scale.** Three goals with eight marks; a two-year
+   engagement with two hundred is a layout question nobody has looked at.
 
 ### Manual checks that will matter most
 

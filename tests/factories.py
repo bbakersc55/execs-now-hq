@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import decimal
+
 import factory
 from django.utils import timezone
 
@@ -16,8 +18,9 @@ from apps.crm.models import (
 )
 from apps.notes.models import Note, NotePinUnlock
 from apps.work.models import (
-    Comment, Digest, DigestItem, Goal, Project, Stakeholder, StakeholderToken,
-    TaskChecklistItem, TaskUpdate,
+    Comment, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
+    GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
+    Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.strategy.models import (
     StrategyAnswer, StrategyMapRow, StrategyQuestion, StrategySection,
@@ -582,3 +585,70 @@ class StrategyMapRowFactory(TenantScopedFactory):
     session = factory.SubFactory(StrategySessionFactory,
                                  tenant=factory.SelfAttribute("..tenant"))
     bottleneck = factory.Sequence(lambda n: f"Bottleneck {n}")
+
+
+# ---------------------------------------------- Module 4B — the value report
+
+class GoalMeasurementFactory(TenantScopedFactory):
+    class Meta:
+        model = GoalMeasurement
+
+    tenant = factory.SubFactory(TenantFactory)
+    goal = factory.SubFactory(GoalFactory, tenant=factory.SelfAttribute("..tenant"))
+    value = decimal.Decimal("7")
+    measured_at = factory.LazyFunction(lambda: timezone.localdate())
+
+
+class GoalMilestoneFactory(TenantScopedFactory):
+    class Meta:
+        model = GoalMilestone
+
+    tenant = factory.SubFactory(TenantFactory)
+    goal = factory.SubFactory(GoalFactory, tenant=factory.SelfAttribute("..tenant"))
+    title = factory.Sequence(lambda n: f"Milestone {n}")
+
+
+class GoalResolutionFactory(TenantScopedFactory):
+    class Meta:
+        model = GoalResolution
+
+    tenant = factory.SubFactory(TenantFactory)
+    goal = factory.SubFactory(GoalFactory, tenant=factory.SelfAttribute("..tenant"))
+    resolution = GoalResolution.Resolution.PAUSED
+    # Never blank: the database itself refuses one (AC-4B.10).
+    reason = "Paused while the client hires."
+
+
+class GoalNarrativeFactory(TenantScopedFactory):
+    class Meta:
+        model = GoalNarrative
+
+    tenant = factory.SubFactory(TenantFactory)
+    goal = factory.SubFactory(GoalFactory, tenant=factory.SelfAttribute("..tenant"))
+    proposed_body = "A draft nobody has accepted."
+
+
+class GoalNarrativeVersionFactory(TenantScopedFactory):
+    class Meta:
+        model = GoalNarrativeVersion
+
+    tenant = factory.SubFactory(TenantFactory)
+    narrative = factory.SubFactory(GoalNarrativeFactory,
+                                   tenant=factory.SelfAttribute("..tenant"))
+    goal = factory.SelfAttribute("narrative.goal")
+    body = "What the client was told."
+
+
+class GoalReportExportFactory(TenantScopedFactory):
+    class Meta:
+        model = GoalReportExport
+
+    tenant = factory.SubFactory(TenantFactory)
+    goal = factory.SubFactory(GoalFactory, tenant=factory.SelfAttribute("..tenant"))
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    stored_file = factory.SubFactory(StoredFileFactory,
+                                     tenant=factory.SelfAttribute("..tenant"),
+                                     purpose="value_report_pdf",
+                                     object_key=factory.Sequence(
+                                         lambda n: f"value-report/{n}.pdf"))

@@ -609,7 +609,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **AC-3.14 — Client assignment is bounded.** As FCC, open the assignee picker. It lists only users in your own company. Attempt via the API to assign a task to a user in another company and to a tenant user not on your account: both are rejected.
 
-**AC-3.15 — On-demand report needs no approval.** As FCC, open a progress report for last month. It renders immediately, matches the content rules of a digest, and sends no email.
+**AC-3.15 — The client's report needs no approval. (FR-3.38, carried onto FR-4B.37.)** As FCC, open the client value report. It renders immediately and **sends no email** — a client pulling a report has no outward effect. **The criterion outlives the screen it was written for**: FR-3.38's implementation is replaced by Module 4B, and this rule moves onto it unchanged.
 
 **AC-3.16 — "Waiting on client" is visibly distinct.** Set a task to Waiting on client. In the portal it is rendered distinctly from Blocked, and the distinction survives into the digest text.
 
@@ -919,7 +919,7 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 **The AI narrative**
 
-31. Claude drafts **the connective narrative for a goal** — **one living narrative per goal, not one per period** (**ruling B, 2026-09-21**) — from **that goal's own material only**: the client-facing lines on its task updates (FR-3.16), notes linked to its tasks, its milestones, and its measurements. The report has no period (FR-4B.1) and neither does its prose: what a client reads is the current account of the goal, redrafted as the goal moves.
+31. Claude drafts **the connective narrative for a goal** — **one living narrative per goal, not one per period** (**ruling B, 2026-09-21**) — from **that goal's own material only**: the client-facing lines on its task updates (FR-3.16), notes linked to its tasks, its milestones, its measurements, **its outcome statement, its resolution history with the reasons written on it, and — where the goal came from a strategy session — the source map row's bottleneck, root cause and fix** *(owner, 2026-09-21)*. **What the goal set out to change is part of what the goal is**, and a narrative that may not refer to it can only describe motion. The report has no period (FR-4B.1) and neither does its prose: what a client reads is the current account of the goal, redrafted as the goal moves.
 32. **It asserts nothing not present in that input** — the same constraint the digest carries (FR-3.24), tested the same way (AC-3.5). With measurements present it **may** state the distance travelled, because the baseline and the readings are in its input; with none, it may not.
 33. ⛔ **REVIEW QUEUE (R9a):** the fractional **edits and accepts**. A narrative is **never auto-published**, and an unaccepted draft is **absent from the client's API response**, not merely hidden in the UI — the same standard as internal comments (AC-3.4).
 33a. **Every acceptance writes a dated snapshot** (ruling B). The living narrative is what the client reads *now*; the snapshots are the record of what it said *then* — **append-only, never edited, never deleted**, each carrying its text, who accepted it and when. A redraft replaces what the client reads and takes nothing away from the record of what they were told before.
@@ -927,6 +927,14 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 34. **The structural half shows regardless** (ruling 3). A goal whose narrative has not been accepted still shows its measurable, its progress, its milestones and its timeline. Holding the goal back until someone writes prose would make the report's availability depend on the fractional's backlog, which is the failure mode of the artifact it replaces.
 35. **FF and an assigned CF may accept a narrative; a VA may not** (ruling 6).
 36. **Every draft run writes an `ai_call`** with tenant, goal, tokens and cost, like every other Claude call in the product (assumption E1.7).
+
+**The engagement timeline** *(owner, 2026-09-21)*
+
+36a. **The all-goals report opens with one timeline across the whole engagement** — every goal of that client company on a single axis: **goal starts, milestones, resolutions, and dated readings**. It is the view a quarterly conversation starts from, before anyone opens a goal: what has been going on here, in what order, across everything we are working on.
+36b. **It appears at the top of the all-goals report and in the all-goals PDF**, and nowhere else: a single goal's page is already a timeline of one goal, and a second copy of it there would say the same thing twice.
+36c. **A goal starts at the earliest date it has** — its `start_date` where one exists, else its baseline date, else its creation date — and **ends at its latest resolution**, if it has one. An unresolved goal runs to today.
+36d. **It carries only what is already client-visible.** A milestone absent from the client's report (FR-4B.24b) is absent from the timeline; a resolution's reason shows, because the client reads it (FR-4B.30a); and an internal goal is not there at all (FR-4B.4).
+36e. **It is derived, never stored.** No timeline table, no cached spans: every mark on it is a row that already exists, read at request time.
 
 **Where it appears**
 
@@ -996,6 +1004,8 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 **AC-4B.14 — The narrative asserts nothing absent from its input.** Following AC-3.5: a goal with two task updates, one client-facing line, one note and **no measurements**. The draft may name the goal and the work; it must show **no number, no comparison to before, and no claim that the goal has advanced**. Add three measurements and re-draft: the distance travelled may now appear, because it is in the input.
 
+**AC-4B.14a — The draft may say what the goal set out to change.** On a goal converted from a map row, with an outcome statement and one resolution, confirm the prompt carries **the outcome statement, the resolution and its reason, and the map row's bottleneck, root cause and fix**, and that the draft may refer to any of them. Then assert the constraint still binds: a **distinctive marker string placed in a field that is not an input** — a fractional-only note, an internal comment, a sibling goal's measurable — **does not appear in the draft**.
+
 **AC-4B.15 — An unaccepted narrative is invisible to the client.** Draft a narrative and do not accept it. As an FCC, fetch the goal: the draft is **absent from the response body**. Accept it: it appears. Edit-then-accept: the client sees the edited text, never the draft.
 
 **AC-4B.15a — One living narrative, versioned on every acceptance.** Accept a narrative, redraft it, edit it and accept again. Confirm: **one narrative row for the goal** (a second accept does not create a second living narrative), **two dated snapshots** carrying their text, who accepted and when, **the client reads the later one**, the earlier one is **still readable in full** by the practice, and **no endpoint updates or deletes a snapshot**. Confirm no narrative anywhere is keyed to a period.
@@ -1011,6 +1021,8 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 **AC-4B.19 — The PDF is a snapshot, and every one is kept.** Export a goal's PDF. Record two more measurements and change the outcome statement. **Re-open the stored export: it is unchanged**, and a new export reflects the new state. **Both are listed on the goal and on the client company**, with their dates. Confirm **no scheduled job deletes an export** — there is no retention setting for them and no cleanup task that can reach them.
 
 **AC-4B.20 — Exporting is not sending.** Export a PDF and confirm the **Outbox is empty**. Send it and confirm one message, one attachment, and the contact's timeline showing it.
+
+**AC-4B.20a — The engagement timeline spans the whole company.** Give a client company three goals: one from a map row with a `start_date` and two milestones, one with a dated baseline and three readings, and one resolved as *changed course* last month. Open the all-goals report: **one timeline** carries all three goals' spans, both milestones, the three readings and the resolution **with its reason**, in date order. Confirm the resolved goal's span **ends at its resolution** and the others run to today. Export the all-goals PDF: the same timeline is in it. Then confirm it is **absent from a single goal's page**, that an **internal** goal contributes nothing to it, and that hiding a milestone's task removes that mark from the client's response body.
 
 **AC-4B.21 — The report requires a login.** Confirm the report is unreachable with only a `stakeholder_token` (a cadence link), and reachable by a signed-in FCC. *(This is AC-3.26's requirement, carried onto this module — FR-3.38's login rule outlives its implementation.)*
 

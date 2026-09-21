@@ -945,19 +945,3 @@ def report_for(tenant, *, contact, since, until=None):
     owed = [(row, None) for row in rows]
     return {"body_text": deterministic_body(owed), "updates": rows,
             "since": since, "until": until}
-
-
-def report_for_company(tenant, *, company, since, until=None):
-    """The portal's report for a client user: their company's client-visible
-    work, whether or not they are a stakeholder on it."""
-    until = until or timezone.now()
-    task_ids = list(Task.objects.filter(
-        client_company=company, is_client_visible=True, deleted_at__isnull=True
-    ).values_list("pk", flat=True))
-    rows = TaskUpdate.objects.filter(
-        task_id__in=task_ids, created_at__gte=since, created_at__lt=until,
-    ).exclude(kind=K.COMMENT_ADDED, to_value=Comment.Visibility.INTERNAL).select_related(
-        "task", "actor").order_by("created_at")
-    owed = [(row, None) for row in rows]
-    return {"body_text": deterministic_body(owed), "updates": list(rows),
-            "since": since, "until": until}

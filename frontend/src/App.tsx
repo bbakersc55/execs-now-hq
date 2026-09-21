@@ -67,10 +67,14 @@ const NAV: { to: string; label: string; roles?: string[] }[] = [
   // the feed is the practice's view across every account, and a client is
   // refused the endpoint outright.
   { to: "/activity", label: "Activity", roles: TENANT },
+  // The practice reads the same report the client does, per company.
+  { to: "/report", label: "Value report", roles: TENANT },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT },
   { to: "/tasks", label: "Tasks", roles: CLIENT },
-  { to: "/report", label: "Progress report", roles: CLIENT },
+  // Module 4B — replaces FR-3.38's progress report. A place they can go,
+  // not a document somebody remembered to send.
+  { to: "/report", label: "Where we are", roles: CLIENT },
   { to: "/vendors", label: "Vendors", roles: TENANT },
   { to: "/outbox", label: "Outbox", roles: TENANT },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] },
@@ -210,6 +214,7 @@ export function App() {
             <Route path="/strategy/:id" element={<SessionDetail me={me} />} />
             <Route path="/digests" element={<Digests me={me} />} />
             <Route path="/report" element={<Report me={me} />} />
+            <Route path="/report/:id" element={<Report me={me} />} />
             <Route path="/activity" element={<Activity me={me} />} />
           </Routes>
         </ErrorBoundary>
