@@ -389,12 +389,48 @@ def _a_full_session(session, rows=9):
 
 
 @pytest.mark.django_db
-def test_the_sales_pdf_is_two_pages_with_a_full_nine_row_map(session):
+def test_the_sales_pdf_is_two_pages_at_its_fullest(session):
     """The brief is two pages. This is what holds the design to it — the page
-    count is measured, not eyeballed, so a later loosening of a truncation
-    limit fails here instead of in a prospect's inbox."""
-    _a_full_session(session)
+    count is measured, not eyeballed, so a later loosening of a truncation limit
+    or a widening of a margin fails here instead of in a prospect's inbox.
+
+    Deliberately the worst case a real session produces: eleven map rows, so a
+    horizon overflows into "also noted", and three accepted pros and cons on
+    each path, which is the ceiling the draft is allowed.
+    """
+    _a_full_session(session, rows=11)
+    for path in ("a", "b"):
+        for kind in ("pro", "con"):
+            for index in range(3):
+                StrategyPathNote.objects.create(
+                    tenant=session.tenant, session=session, path=path, kind=kind,
+                    position=index, state=StrategyPathNote.State.ACCEPTED,
+                    text="An outside operator is a real cost your current blended "
+                         "margin has to carry, and you would feel it in month one")
     assert pdf_service.page_count(session) <= 2
+
+
+@pytest.mark.django_db
+def test_the_document_has_margins_and_the_preview_looks_like_a_document(session):
+    """The browser preview ignores `@page`, so until the sheet wrapper existed
+    the preview ran its text to the window's edges while the PDF did not — the
+    preview was not showing what would be sent (owner, 2026-09-21)."""
+    _a_full_session(session)
+    html = pdf_service.render_html(session)
+
+    assert "@page { size: letter; margin: 16mm 16mm 17mm;" in html
+    # One sheet per page, and the break is a property of the content.
+    assert html.count('<section class="sheet">') == 2
+    assert ".sheet + .sheet { break-before: page; }" in html
+    # On screen: page-sized, on a neutral background, with the same margins.
+    assert "@media screen" in html
+    assert "width: 8.5in; min-height: 11in" in html
+    assert "padding: 16mm 16mm 17mm;" in html
+    assert "background: #E9ECEF;" in html
+    # And the sheet's padding is screen-only: in the PDF the page margin does it,
+    # and doubling them would indent every page by an inch and a quarter.
+    screen_block = html[html.index("@media screen"):]
+    assert screen_block.index("padding: 16mm") < screen_block.index("}")  + 400
 
 
 @pytest.mark.django_db
