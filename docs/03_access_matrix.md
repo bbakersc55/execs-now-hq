@@ -197,6 +197,7 @@
 | 10.1 | Edit the tenant's template | ✅ | ❌ | ❌ | — | — | FR-4.4 |
 | 10.2 | Create / schedule a session | ✅ | 🔸 | ✅ | — | — | CF: their own prospects |
 | 10.3 | Send the pre-call invite | ✅ | 🔸 | **✅** | — | — | H7a — see row 5.5 |
+| 10.3a | **Email the pre-call questions** (from their own address) | ✅ | 🔸 | ❌ | — | — | **VA 403** — the exception in 10.3 is H7a's, and it is for a template-only send. This one carries an intro a person wrote and goes from their address (FR-4.10c) |
 | 10.4 | Run the live session view | ✅ | 🔸 | ❌ | — | — | |
 | 10.5 | Trigger a Claude draft run | ✅ | 🔸 | ❌ | — | — | Costs money against the tenant key; writes an `ai_call` |
 | 10.6 | Accept / edit / discard map rows | ✅ | 🔸 | ❌ | — | — | R6 — the fractional's judgement |

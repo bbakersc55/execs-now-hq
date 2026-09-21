@@ -23,7 +23,12 @@ from apps.strategy.models import StrategySession
 from apps.tenancy.models import AuditEvent
 
 INVITE_SUBJECT = "Before our strategy session"
+QUESTIONS_SUBJECT = "A few questions before our strategy session"
 PDF_SUBJECT = "Your strategy map"
+
+#: Said once, above the six, rather than beside each of them.
+RATING_SCALE = ("Rate each one from 1 to 10 — 1 means it barely works today, "
+                "10 means it could not be better.")
 
 
 def precall_url(raw_token: str) -> str:
@@ -134,4 +139,128 @@ def send_strategy_pdf(session, *, actor=None, role=None, note=""):
         payload={"to": address, "outbox_message": str(message.pk),
                  "stored_file": str(stored.pk),
                  "include_flags": pdf_service.flags_of(session)})
+    return message
+
+
+# ------------------------------- the questions in the body (owner, 2026-09-21)
+#
+# The second way the pre-call goes out, for a prospect who will not click a
+# link: the questions themselves, in an email they can reply to. There is no
+# token, no form and nothing to sign in to — which is also why there is nothing
+# here to redact from the stored copy, unlike the invite.
+
+
+def default_intro(session) -> str:
+    """The intro the fractional starts from and then makes their own."""
+    merge = services.merge_context(session)
+    name = session.contact.first_name or "there"
+    when = merge.get("Session date", "")
+    return (
+        f"Hi {name},\n\n"
+        f"Ahead of our session{f' on {when}' if when else ''}, here are a few "
+        f"questions. Answer them straight back in a reply — no form, no login, "
+        f"and rough numbers are fine. It means we spend the call on what is "
+        f"actually in the way rather than on getting the background straight."
+    )
+
+
+def question_blocks(session):
+    """The pre-call questions, by section, with merge fields resolved.
+
+    **Nothing the fractional keeps to themselves goes in here.** A question
+    marked as their own observation is one they never ask aloud (FR-4.17), and
+    a financial question is a financial question (ruling 3) — neither belongs in
+    a prospect's inbox, and the exclusion is applied while the content is built
+    rather than hidden in the template.
+    """
+    merge = services.merge_context(session)
+    blocks: list[dict] = []
+    for section, question in services.questions_in(session.template_snapshot,
+                                                   ask_when="precall"):
+        if question.get("is_fractional_observation") or question.get("is_financial"):
+            continue
+        if not blocks or blocks[-1]["code"] != section["code"]:
+            blocks.append({"code": section["code"], "title": section["title"],
+                           "questions": [], "is_rating": False})
+        blocks[-1]["questions"].append(
+            services.render_prompt(question["prompt"], merge))
+        if question["response_schema"] == "rating_1_10":
+            blocks[-1]["is_rating"] = True
+    return blocks
+
+
+def _questions_body(session, intro: str) -> tuple[str, str]:
+    """`(text, html)` — one set, because there is no credential to withhold."""
+    merge = services.merge_context(session)
+    fractional = merge.get("Fractional name", "")
+    blocks = question_blocks(session)
+
+    lines = [intro.strip(), ""]
+    html = ["".join(f"<p>{escape(part)}</p>"
+                    for part in intro.strip().split("\n\n") if part.strip())]
+    for block in blocks:
+        lines += [block["title"].upper(), ""]
+        html.append(f"<h3 style=\"font-size:15px;margin:22px 0 6px;\">"
+                    f"{escape(block['title'])}</h3>")
+        if block["is_rating"]:
+            lines += [RATING_SCALE, ""]
+            html.append(f"<p style=\"margin:0 0 8px;\">{escape(RATING_SCALE)}</p>")
+        items = []
+        for index, prompt in enumerate(block["questions"], start=1):
+            lines.append(f"{index}. {prompt}")
+            items.append(f"<li style=\"margin:0 0 6px;\">{escape(prompt)}</li>")
+        lines.append("")
+        html.append(f"<ol style=\"margin:0 0 4px;padding-left:20px;\">"
+                    f"{''.join(items)}</ol>")
+
+    closing = "Just reply to this email with your answers."
+    lines.append(closing)
+    html.append(f"<p>{escape(closing)}</p>")
+    if fractional:
+        lines += ["", "Thanks,", fractional]
+        html.append(f"<p>Thanks,<br>{escape(fractional)}</p>")
+    return "\n".join(lines).strip(), "".join(html)
+
+
+def send_precall_questions(session, *, actor=None, role=None, intro=""):
+    """Send the questions themselves, from the fractional's own address.
+
+    **Their own address, not the practice alias** (FR-1.15c's `self`): the
+    prospect answers by hitting reply, and a reply has to land somewhere a
+    person reads. If they have no verified address of their own the resolver
+    falls back to the alias, which still reaches the practice.
+    """
+    from apps.crm.services import sender as sender_service
+    from apps.crm.models import MailPreference
+    from django.utils import timezone
+
+    address = session.contact.primary_email
+    if not address:
+        raise services.SessionError(
+            f"{session.contact.first_name} has no email address to send to.", status=400)
+    body_text, content_html = _questions_body(session, intro or default_intro(session))
+    message = outbox.create_message(
+        tenant=session.tenant, producer=OutboxMessage.Producer.PRECALL_QUESTIONS,
+        to_address=address, to_contact=session.contact, subject=QUESTIONS_SUBJECT,
+        body_text=body_text,
+        body_html=email_layout.document(
+            session.tenant, content_html=content_html, subject=QUESTIONS_SUBJECT,
+            preheader="A few questions before we talk — just reply."),
+        from_address=sender_service.resolve_from(
+            session.tenant, actor, OutboxMessage.Producer.PRECALL_QUESTIONS,
+            override=MailPreference.Sender.SELF),
+        actor=actor, role=role,
+        source_type="strategy_session", source_id=session.pk,
+    )
+    session.precall_questions_sent_at = timezone.now()
+    fields = ["precall_questions_sent_at", "updated_at"]
+    if session.state == StrategySession.State.DRAFT:
+        session.state = StrategySession.State.PRECALL_SENT
+        fields.append("state")
+    session.save(update_fields=fields)
+    AuditEvent.all_objects.create(
+        tenant=session.tenant, actor=actor, verb="strategy.precall_questions_sent",
+        target_type="strategy_session", target_id=session.pk,
+        payload={"to": address, "outbox_message": str(message.pk),
+                 "from": message.from_address})
     return message

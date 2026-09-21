@@ -198,6 +198,34 @@ multi-discipline work.
 
 ---
 
+## When the prospect will not click a link: email the questions
+
+**The session runs on the laptop, so the form's link only works on this
+machine.** For a prospect who will not click a link — or cannot reach one — the
+questions go in the body of an email instead.
+
+On the session, under **The pre-call questions**: *Or email the questions
+instead*. Edit the opening line, **Send the questions**.
+
+- It goes **from your own address**, not the practice alias, so their reply
+  lands in your inbox. If your send-as is not verified it falls back to the
+  alias, and the banner names the address it actually used.
+- It carries **every pre-call question** with the merge fields resolved, and the
+  **1–10 scale explained once** above the six components.
+- It carries **nothing you keep to yourself**: not the §3 alignment observation
+  you never ask aloud, and not §9's money.
+- **A VA cannot send this one**, though they can still send the form link. The
+  link is template-only; this has your words in it and goes from your address.
+
+**When the answers come back, type them into the live view** — the pre-call
+questions are editable there. They save as **yours** (`answered_by =
+fractional`), and each one is marked **"typed in · questions emailed"**. Read
+that marker as a fact about the session, not the sentence: it says the pre-call
+came back by email and you typed it. It does not claim a given line was copied
+out of a reply.
+
+---
+
 ## Customising the questions for one prospect, before his session
 
 **Read this first: in Beta there is one template for the whole practice.** There is

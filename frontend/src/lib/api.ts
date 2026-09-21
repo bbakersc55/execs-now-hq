@@ -673,6 +673,11 @@ export interface StrategySessionRow {
   current_section_at: string | null;
   precall_sent: boolean;
   precall_expires_at: string | null;
+  /** Set when the questions went out in the body of an email instead of as a
+   *  link (owner, 2026-09-21). */
+  precall_questions_sent_at?: string | null;
+  /** The opening line the fractional edits before that send. */
+  precall_default_intro?: string;
   mirror: { goal: string; unlocks: string };
   proposed_mirror: { goal: string; unlocks: string };
   pdf_include_flags: Record<string, boolean>;

@@ -235,6 +235,28 @@ class SessionViewSet(StrategyViewSet):
                            for n in path_notes],
         })
 
+    @action(detail=True, methods=["post"], url_path="send-questions")
+    def send_questions(self, request, pk=None):
+        """The questions in the body of an email, for a prospect who will not
+        click a link (owner, 2026-09-21).
+
+        **Not a VA's to send**, unlike the invite. H7a lets a VA send that one
+        because it is template-only with nothing discretionary in it; this
+        carries an intro a person wrote and goes from their own address.
+        """
+        session = self.load(pk)
+        if (refused := self._fractional_only(
+                "send the questions from your own address")) is not None:
+            return refused
+        try:
+            message = emails.send_precall_questions(
+                session, actor=request.user, role=self._role(),
+                intro=request.data.get("intro") or "")
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({"outbox_message": str(message.pk),
+                         "from_address": message.from_address}, status=201)
+
     @action(detail=True, methods=["post"], url_path="draft-rows")
     def draft_rows(self, request, pk=None):
         """Matrix 10.5 — the button. It costs money against the tenant's key."""

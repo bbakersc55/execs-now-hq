@@ -85,6 +85,10 @@ def represent_session(session, *, include_financial=True, full=False) -> dict:
         "budget_minutes": sum(s.get("time_budget_minutes") or 0
                               for s in session.template_snapshot.get("sections", [])),
         "precall_sent": bool(session.precall_token_hash),
+        # The other way the questions can go out, and the default opening line
+        # the fractional edits before it does (owner, 2026-09-21).
+        "precall_questions_sent_at": (session.precall_questions_sent_at.isoformat()
+                                      if session.precall_questions_sent_at else None),
         "precall_expires_at": (session.precall_expires_at.isoformat()
                                if session.precall_expires_at else None),
         "mirror": {"goal": session.mirror_goal, "unlocks": session.mirror_unlocks},
@@ -121,6 +125,9 @@ def represent_session(session, *, include_financial=True, full=False) -> dict:
                            .order_by("position", "created_at")]
     payload["path_notes"] = [represent_path_note(note) for note in
                              StrategyPathNote.objects.filter(session=session)]
+    from apps.strategy import emails as strategy_emails
+
+    payload["precall_default_intro"] = strategy_emails.default_intro(session)
     return payload
 
 

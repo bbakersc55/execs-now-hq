@@ -78,6 +78,12 @@ def _direct_to_sent(producer, role):
         # H7a — template-only, non-AI, from the tenant address. The one send a
         # VA may make directly.
         return True
+    if producer == P.PRECALL_QUESTIONS:
+        # Same rule as `manual`, and for the same reason: it goes from the
+        # fractional's own address and carries an intro they wrote. H7a lets a
+        # VA send the *invite* because it is template-only with nothing
+        # discretionary in it; this one is not that.
+        return role in (Role.FF, Role.CF)
     if producer == P.MANUAL:
         # FF/CF send as themselves; a VA's manual mail becomes a draft (FR-1.19a).
         return role in (Role.FF, Role.CF)

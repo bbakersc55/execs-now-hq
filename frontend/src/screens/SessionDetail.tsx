@@ -114,19 +114,27 @@ export function SessionDetail({ me }: { me: Me }) {
         </Banner>
       )}
 
-      <Card title="The pre-call form">
+      <Card title="The pre-call questions">
         <p className="small muted">
           {data.precall_sent
-            ? `Sent · the link works until ${when(data.precall_expires_at)}`
-            : "Not sent yet."}
+            ? `Form sent · the link works until ${when(data.precall_expires_at)}`
+            : "The form has not been sent."}
+          {data.precall_questions_sent_at
+            && ` · questions emailed ${when(data.precall_questions_sent_at)}`}
         </p>
-        <button onClick={() => invite.mutate()} disabled={invite.isPending}>
-          {data.precall_sent ? "Send it again" : "Send the form"}
-        </button>
+        <div className="row">
+          <button onClick={() => invite.mutate()} disabled={invite.isPending}>
+            {data.precall_sent ? "Send the form again" : "Send the form link"}
+          </button>
+        </div>
         {data.precall_sent && (
           <p className="small muted">
             Sending again issues a new link and retires the old one.
           </p>
+        )}
+        {mayRun && (
+          <QuestionsByEmail path={path} data={data} onSent={(text) => { setNote(text);
+                                                                        refresh(); }} />
         )}
       </Card>
 
@@ -175,6 +183,8 @@ export function SessionDetail({ me }: { me: Me }) {
               saved={answers[question.key]?.value ?? null}
               savedNote={answers[question.key]?.fractional_note ?? ""}
               answeredBy={answers[question.key]?.answered_by}
+              fromEmail={!!data.precall_questions_sent_at
+                && question.ask_when === "precall"}
               disabled={!mayRun}
               onSave={(value, fractional_note) =>
                 answer.mutate({ question_key: question.key, value, fractional_note })} />
@@ -394,9 +404,13 @@ function MapSection({ tray, map, mayRun, onDraft, onChanged }: {
   );
 }
 
-function QuestionRow({ question, saved, savedNote, answeredBy, disabled, onSave }: {
+function QuestionRow({ question, saved, savedNote, answeredBy, fromEmail, disabled,
+                      onSave }: {
   question: StrategyQuestion; saved: AnswerValue | null; savedNote: string;
   answeredBy?: "prospect" | "fractional";
+  /** The session's questions went out in an email, so a pre-call answer typed
+   *  here came back in a reply rather than through the form. */
+  fromEmail?: boolean;
   disabled: boolean; onSave: (value: AnswerValue, note?: string) => void;
 }) {
   const value = saved ?? {};
@@ -425,6 +439,11 @@ function QuestionRow({ question, saved, savedNote, answeredBy, disabled, onSave 
       {/* Whose answer this is. A prospect's answer is theirs until the
           fractional changes it, and the screen should say so. */}
       {answeredBy === "prospect" && <> <Pill kind="ok">from the form</Pill></>}
+      {/* Said about the session, not about the sentence: the questions went out
+          by email and the fractional typed this in. Nobody can know that a
+          given line was copied from a reply, so it does not claim that. */}
+      {fromEmail && answeredBy === "fractional"
+        && <> <Pill kind="ai">typed in · questions emailed</Pill></>}
     </label>
   );
 
@@ -821,5 +840,66 @@ function PathsSection({ notes, mayRun, onDraft, onChanged }: {
         {column("b")}
       </div>
     </>
+  );
+}
+
+
+/**
+ * The second way the pre-call goes out (owner, 2026-09-21): the questions
+ * themselves, in an email the prospect can reply to, for one who will not click
+ * a link.
+ *
+ * It goes **from the fractional's own address**, because a reply has to land
+ * somewhere a person reads — and it carries an intro they wrote, which is why
+ * it is theirs to send and not a VA's.
+ */
+function QuestionsByEmail({ path, data, onSent }: {
+  path: string; data: StrategySessionRow; onSent: (text: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // Seeded once from the default rather than falling back to it on every
+  // render: with a fallback, clearing the box silently refills it.
+  const [intro, setIntro] = useState(data.precall_default_intro ?? "");
+  const send = useMutation({
+    mutationFn: () => api.post<{ from_address: string }>(
+      `${path}send-questions/`, { intro }),
+    onSuccess: (result) => {
+      setOpen(false);
+      onSent(`The questions are on their way from ${result.from_address}. `
+        + "Their answers come back as a reply — type them in below as they do.");
+    },
+    onError: (e: Error) => onSent(e.message),
+  });
+
+  if (!open) {
+    return (
+      <p style={{ marginTop: ".6rem" }}>
+        <button className="ghost" onClick={() => setOpen(true)}>
+          {data.precall_questions_sent_at
+            ? "Email the questions again" : "Or email the questions instead"}
+        </button>{" "}
+        <span className="small muted">
+          For a prospect who will not click a link. They reply; you type the
+          answers in here.
+        </span>
+      </p>
+    );
+  }
+  return (
+    <div className="card" style={{ marginTop: ".6rem" }}>
+      <Field label="Your opening line — they read this before the questions">
+        <textarea aria-label="Intro to the questions email" rows={4}
+          value={intro} onChange={(e) => setIntro(e.target.value)} />
+      </Field>
+      <p className="small muted">
+        The questions themselves are added below your note, with the 1–10 scale
+        explained. It sends from your own address so their reply reaches you.
+      </p>
+      <div className="row">
+        <button className="primary" disabled={send.isPending}
+          onClick={() => send.mutate()}>Send the questions</button>
+        <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
   );
 }

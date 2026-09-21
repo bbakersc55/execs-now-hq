@@ -712,6 +712,11 @@ class OutboxMessage(TenantScopedModel):
         DIGEST = "digest", "Progress digest"
         STRATEGY_PDF = "strategy_pdf", "Strategy session PDF"
         PRECALL_INVITE = "precall_invite", "Pre-call invite"
+        # The questions in the body, for a prospect who will not click a link
+        # (owner, 2026-09-21). Its own producer, not a variant of the invite:
+        # the two differ in who may send them, what address they go from, and
+        # whether anything in them was written by a person.
+        PRECALL_QUESTIONS = "precall_questions", "Pre-call questions by email"
         MAGIC_LINK = "magic_link", "Magic link"
         NOTE_PIN_RESET = "note_pin_reset", "Note PIN reset"
         CLIENT_ACTIVITY = "client_activity", "Client activity notice"

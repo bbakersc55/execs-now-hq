@@ -40,6 +40,8 @@ function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionR
     scheduled_at: null, started_at: "2026-09-18T12:00:00Z", budget_minutes: 70,
     current_section: "", current_section_at: null,
     precall_sent: true, precall_expires_at: "2026-10-18T14:00:00Z",
+    precall_questions_sent_at: null,
+    precall_default_intro: "Hi Dana,\n\nAhead of our session, here are a few questions.",
     mirror: { goal: "", unlocks: "" },
     proposed_mirror: { goal: "Two branches by spring.", unlocks: "Supervisor cover." },
     pdf_include_flags: { fractional_notes: false, mechanics: false,
@@ -209,7 +211,7 @@ describe("the live session view", () => {
     expect(screen.queryByText("The PDF")).not.toBeInTheDocument();
     expect(screen.queryByText("Convert to work")).not.toBeInTheDocument();
     // It can still send the form — that is matrix 10.3.
-    expect(screen.getByRole("button", { name: /Send it again/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Send the form again/ })).toBeInTheDocument();
   });
 });
 
@@ -544,5 +546,51 @@ describe("the decision page's pros and cons", () => {
     expect(screen.queryByRole("button", { name: /Draft pros and cons/ }))
       .not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Accept "/ })).not.toBeInTheDocument();
+  });
+});
+
+
+describe("the questions by email", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  // Owner, 2026-09-21. The path for a prospect who will not click a link.
+  it("offers the intro, then sends it from the fractional's own address", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/send-questions/`]:
+        { from_address: "bryan@getexecutivesnow.test" },
+    });
+    await user.click(await screen.findByRole(
+      "button", { name: /Or email the questions instead/ }));
+
+    const intro = screen.getByLabelText("Intro to the questions email");
+    expect(intro).toHaveValue(
+      "Hi Dana,\n\nAhead of our session, here are a few questions.");
+    await user.clear(intro);
+    await user.type(intro, "Hi Dana, a few questions before Thursday.");
+    await user.click(screen.getByRole("button", { name: "Send the questions" }));
+
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.url.endsWith("/send-questions/"));
+      expect(posted?.body).toEqual({ intro: "Hi Dana, a few questions before Thursday." });
+    });
+    expect(await screen.findByText(/on their way from bryan@getexecutivesnow.test/))
+      .toBeInTheDocument();
+  });
+
+  it("marks a pre-call answer typed in after the questions were emailed", async () => {
+    showSession(aSession({ precall_questions_sent_at: "2026-09-21T10:00:00Z" }));
+    // `s2_data` is a pre-call question whose answer the fixture has as the
+    // prospect's: still theirs, still "from the form".
+    expect(await screen.findByText("from the form")).toBeInTheDocument();
+    expect(screen.getByText(/questions emailed/)).toBeInTheDocument();
+  });
+
+  it("matrix 10.3a — a VA may send the link and not the questions", async () => {
+    showSession(aSession(), aMe({ role: "VA" }));
+    expect(await screen.findByRole("button", { name: /Send the form again/ }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /email the questions/i }))
+      .not.toBeInTheDocument();
   });
 });

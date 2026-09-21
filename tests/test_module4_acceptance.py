@@ -705,6 +705,111 @@ def test_ac_4_10_nothing_is_emailed_until_someone_clicks_send(session, ff, api):
     assert AuditEvent.all_objects.filter(verb="strategy.pdf_sent").exists()
 
 
+# ------------------- the questions by email (owner, 2026-09-21)
+
+@pytest.mark.django_db
+def test_the_questions_email_carries_every_pre_call_question_and_nothing_private(
+    session, ff, api, dev_outbox
+):
+    """The path for a prospect who will not click a link.
+
+    Two assertions matter: **every** pre-call question is in the body — a
+    question the prospect never sees is one the call has to spend time on — and
+    **nothing the fractional keeps to themselves** is, which is the same rule
+    the PDF carries and is applied while the content is built.
+    """
+    sent = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/send-questions/",
+                            {"intro": "Hi Dana, a few questions before Thursday."},
+                            content_type="application/json")
+    assert sent.status_code == 201, sent.content
+
+    message = OutboxMessage.all_objects.get(
+        producer=OutboxMessage.Producer.PRECALL_QUESTIONS)
+    assert message.state == OutboxMessage.State.SENT      # direct-to-sent
+    assert message.to_address == "dana@acme.invalid"
+    body = f"{message.body_text}\n{message.body_html}"
+    assert "Hi Dana, a few questions before Thursday." in body
+
+    merge = services.merge_context(session)
+    asked, withheld = [], []
+    for _section, question in services.questions_in(session.template_snapshot,
+                                                    ask_when=AskWhen.PRECALL):
+        prompt = services.render_prompt(question["prompt"], merge)
+        (withheld if question.get("is_fractional_observation")
+         or question.get("is_financial") else asked).append(prompt)
+
+    assert len(asked) >= 13
+    for prompt in asked:
+        assert prompt in body, f"{prompt!r} is a pre-call question and is not in the email"
+    for prompt in withheld:
+        assert prompt not in body, f"{prompt!r} is the fractional's own and leaked"
+
+    # The scale is explained once, above the six, rather than beside each.
+    assert emails.RATING_SCALE in message.body_text
+    # No brace survives, exactly as on the form (FR-4.9).
+    assert "{" not in message.body_text
+    # And it says how to answer, because there is nothing to click.
+    assert "reply to this email" in message.body_text
+
+
+@pytest.mark.django_db
+def test_the_questions_email_goes_from_the_fractionals_own_address(session, ff, api,
+                                                                   seeded_tenant):
+    """A prospect answers by hitting reply, so it has to land somewhere a person
+    reads — not the practice alias the invite goes from."""
+    from apps.crm.models import GmailConnection
+
+    # `own` is only an address Gmail will accept — a connection whose send-as
+    # has been verified. Anything less falls back to the practice alias.
+    GmailConnection.objects.create(
+        tenant=seeded_tenant, user=ff.user, email_address="bryan@getexecutivesnow.test",
+        send_as_address="bryan@getexecutivesnow.test",
+        send_as_verified_at=timezone.now())
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/send-questions/",
+                     {}, content_type="application/json")
+    message = OutboxMessage.all_objects.get(
+        producer=OutboxMessage.Producer.PRECALL_QUESTIONS)
+    assert message.from_address == "bryan@getexecutivesnow.test"
+
+
+@pytest.mark.django_db
+def test_a_va_may_send_the_link_and_not_the_questions(session, va, api):
+    """H7a gives a VA the invite because it is template-only with nothing
+    discretionary in it. This one carries words a person wrote, from their
+    address — matrix 10.3a."""
+    assert api.as_(va).post(
+        f"/api/strategy-sessions/{session.pk}/send-invite/").status_code == 201
+    refused = api.as_(va).post(f"/api/strategy-sessions/{session.pk}/send-questions/",
+                               {}, content_type="application/json")
+    assert refused.status_code == 403
+    assert not OutboxMessage.all_objects.filter(
+        producer=OutboxMessage.Producer.PRECALL_QUESTIONS).exists()
+
+
+@pytest.mark.django_db
+def test_sending_the_questions_marks_the_session_and_the_answers_that_follow(
+    session, ff, api
+):
+    """What the marker does and does not claim: the session's pre-call came back
+    by email, and the fractional typed it in. It does not claim a given sentence
+    was copied from a reply — nobody can know that."""
+    assert session.precall_questions_sent_at is None
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/send-questions/",
+                     {}, content_type="application/json")
+    session.refresh_from_db()
+    assert session.precall_questions_sent_at is not None
+    assert session.state == StrategySession.State.PRECALL_SENT
+
+    # The fractional types an answer in the live view, as they would from a reply.
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/answers/",
+                     {"question_key": "s1_revenue", "value": {"text": "5m then 5.5m"}},
+                     content_type="application/json")
+    payload = strategy_serializers.represent_session(session, full=True)
+    answer = next(a for a in payload["answers"] if a["question_key"] == "s1_revenue")
+    assert answer["answered_by"] == FRACTIONAL
+    assert payload["precall_questions_sent_at"] is not None
+
+
 # ------------------------------------------------------------------ AC-4.11
 
 @pytest.mark.django_db

@@ -188,6 +188,11 @@ class StrategySession(TenantScopedModel):
     # stored, and it expires in 30 days.
     precall_token_hash = models.CharField(max_length=64, blank=True, default="")
     precall_expires_at = models.DateTimeField(null=True, blank=True)
+    # The second way the questions can go out (owner, 2026-09-21): in the body
+    # of an email, for a prospect who will not click a link. Set when that send
+    # happens, and it is what tells the live view the answers below were typed
+    # in from a reply rather than filled in by the prospect themselves.
+    precall_questions_sent_at = models.DateTimeField(null=True, blank=True)
     # FR-4.19 — what Claude drafted, held apart from what a person accepted.
     proposed_mirror_goal = models.TextField(blank=True, default="")
     proposed_mirror_unlocks = models.TextField(blank=True, default="")
