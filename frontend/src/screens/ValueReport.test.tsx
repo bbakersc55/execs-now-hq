@@ -119,6 +119,38 @@ describe("the client value report", () => {
     expect(chart.querySelectorAll("circle")).toHaveLength(3);
   });
 
+  it("never prints two labels on top of each other", async () => {
+    // Findings, round 1: three marks in the same week stacked their labels
+    // into an unreadable pile at the right-hand end.
+    const crowded = aReport({
+      timeline: {
+        from: "2026-07-01", to: "2026-09-21", today: "2026-09-21",
+        spans: [],
+        marks: ["2026-09-18", "2026-09-19", "2026-09-20", "2026-09-21"].map((at, i) => ({
+          goal: GOAL, goal_title: "Decisions stall waiting on the founder",
+          kind: "milestone" as const, at,
+          label: `A milestone with a long name ${i}`, detail: "hit",
+        })),
+      },
+    });
+    show(crowded, aMe({ role: "FCC" }));
+    const axis = await screen.findByRole("img", { name: /marks between/ });
+
+    // Every mark is still on the axis...
+    expect(axis.querySelectorAll(".mark")).toHaveLength(4);
+    // ...staggered above and below...
+    expect(axis.querySelectorAll(".mark.above").length).toBeGreaterThan(0);
+    expect(axis.querySelectorAll(".mark.below").length).toBeGreaterThan(0);
+    // ...and what cannot fit is a number, not a word printed over another.
+    const labels = [...axis.querySelectorAll(".lbl")].map((el) => el.textContent ?? "");
+    const words = labels.filter((text) => text.length > 3);
+    expect(words.length).toBeLessThan(4);
+    expect(labels.filter((text) => /^\d+$/.test(text)).length).toBeGreaterThan(0);
+
+    // And the list underneath numbers them, so a dropped label is findable.
+    expect(screen.getAllByText("1").length).toBeGreaterThan(0);
+  });
+
   it("opens with the engagement timeline across every goal", async () => {
     const user = userEvent.setup();
     show(aReport(), aMe({ role: "FCC" }));

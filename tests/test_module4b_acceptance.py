@@ -282,6 +282,42 @@ def test_ac_4b_7_a_numeric_goal_leads_with_its_measure_and_never_with_a_percenta
 
 
 @pytest.mark.django_db
+def test_a_headline_never_repeats_the_title_and_says_what_is_missing(
+    seeded_tenant, ff, api, company, client_user, in_tenant_a
+):
+    """Findings, 2026-09-21. A goal converted from a map row carries its
+    bottleneck as its title and nothing written about it yet; falling back to
+    the title printed every card's name twice."""
+    bare = GoalFactory(tenant=seeded_tenant, client_company=company,
+                       title="Decisions stall waiting on the founder",
+                       outcome_statement="")
+
+    block = api.as_(ff).get(f"/api/value-report/{bare.pk}/").json()
+    assert block["headline"] == {"kind": "none", "text": ""}
+    # And the card says what it is short of, rather than being an empty box.
+    assert block["awaiting"] == ["no measure recorded yet", "no outcome statement yet"]
+
+    # The client sees the goal, not the practice's unfinished admin.
+    as_client = api.as_(client_user).get(f"/api/value-report/{bare.pk}/").json()
+    assert as_client["headline"] == {"kind": "none", "text": ""}
+    assert as_client["awaiting"] == []
+
+    # An outcome statement that merely repeats the title is not a headline either.
+    bare.outcome_statement = "Decisions stall waiting on the founder"
+    bare.save(update_fields=["outcome_statement", "updated_at"])
+    assert api.as_(ff).get(
+        f"/api/value-report/{bare.pk}/").json()["headline"]["text"] == ""
+
+    # One that says something gets the slot.
+    bare.outcome_statement = "The founder stops being the bottleneck."
+    bare.save(update_fields=["outcome_statement", "updated_at"])
+    after = api.as_(ff).get(f"/api/value-report/{bare.pk}/").json()
+    assert after["headline"] == {"kind": "outcome",
+                                 "text": "The founder stops being the bottleneck."}
+    assert after["awaiting"] == ["no measure recorded yet"]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("kind,expected_text", [
     ("qualitative", "The founder stops being the bottleneck on day-to-day calls."),
     ("none", "The founder stops being the bottleneck on day-to-day calls."),

@@ -66,7 +66,9 @@
     {% if forloop.first and not is_single_goal %}<h2>The goals</h2>{% endif %}
     <div class="goal{% if block.is_historical %} historical{% endif %}">
       <h3>{{ block.title }}</h3>
-      <div class="headline">{{ block.headline.text }}</div>
+      {% if block.headline.text %}
+        <div class="headline">{{ block.headline.text }}</div>
+      {% endif %}
 
       {% if block.measure.kind == "numeric" and block.measure.current %}
         <div class="measure">

@@ -155,7 +155,7 @@ function TimelineCard({ timeline }: { timeline: EngagementTimeline }) {
         <ol style={{ listStyle: "none", padding: 0, margin: "var(--s3) 0 0" }}>
           {timeline.marks.map((mark, index) => (
             <li key={`${mark.goal}-${mark.kind}-${index}`} className="timeline-row small">
-              <span className="at">{mark.at}</span>
+              <span className="at"><span className="mark-n">{index + 1}</span> {mark.at}</span>
               <span className="which">{mark.goal_title}</span>
               <span>
                 {mark.kind === "start" && <>Started</>}
@@ -172,29 +172,59 @@ function TimelineCard({ timeline }: { timeline: EngagementTimeline }) {
   );
 }
 
-/** One horizontal axis. Every mark is placed by its own date between the two
- *  ends, so the gaps mean what they look like they mean. */
+/**
+ * One horizontal axis. Every mark is placed by its own date between the two
+ * ends, so the gaps mean what they look like they mean.
+ *
+ * **Labels never overprint** (findings, 2026-09-21). They stagger above and
+ * below the line, and a label that would still land on its neighbour is
+ * dropped: the dot keeps its number, and the number is what ties it to the
+ * list underneath. A month where six things happened is a row of numbered
+ * dots and six readable lines, not a stack of words on top of each other.
+ */
+const LABEL_GAP = 15;     // percent of the axis a label needs to itself
+
 function Axis({ from, to, marks }: {
   from: string; to: string;
   marks: { at: string; label: string; detail: string; tone: "hit" | "late" | "due" }[];
 }) {
   const start = Date.parse(from);
   const span = Math.max(Date.parse(to) - start, 1);
+  const placed = marks
+    .map((mark, index) => ({
+      ...mark,
+      n: index + 1,
+      left: Math.min(98, Math.max(2, 100 * (Date.parse(mark.at) - start) / span)),
+    }))
+    .sort((a, b) => a.left - b.left);
+
+  // Two lanes, one above the line and one below, each with its own last-used
+  // position: alternating buys twice the room before anything has to drop.
+  const lastLabel = [-Infinity, -Infinity];
+  const laid = placed.map((mark, index) => {
+    const lane = index % 2;
+    const showLabel = mark.left - lastLabel[lane] >= LABEL_GAP;
+    if (showLabel) lastLabel[lane] = mark.left;
+    // A dot that carries neither a word nor a number is an anonymous dot, so
+    // the number is always there when the label is not: it is two characters,
+    // and its neighbour in the same lane is twice the raw spacing away.
+    return { ...mark, lane, showLabel };
+  });
+
   return (
     <div className="axis" role="img"
       aria-label={`${marks.length} marks between ${from} and ${to}`}>
       <span className="line" />
-      {marks.map((mark, index) => {
-        const left = Math.min(98, Math.max(2, 100 * (Date.parse(mark.at) - start) / span));
-        return (
-          <span key={`${mark.at}-${index}`} className={`mark ${mark.tone}`}
-            style={{ left: `${left}%` }} title={mark.detail}>
-            <i />
-            {/* Every other label, so a busy month does not print on itself. */}
-            {index % 2 === 0 && <span>{mark.label.slice(0, 18)}</span>}
+      {laid.map((mark) => (
+        <span key={`${mark.at}-${mark.n}`}
+          className={`mark ${mark.tone} ${mark.lane === 0 ? "above" : "below"}`}
+          style={{ left: `${mark.left}%` }} title={`${mark.n}. ${mark.detail}`}>
+          <span className={mark.showLabel ? "lbl" : "lbl n"}>
+            {mark.showLabel ? mark.label : mark.n}
           </span>
-        );
-      })}
+          <i />
+        </span>
+      ))}
     </div>
   );
 }
@@ -348,8 +378,19 @@ function GoalCard({ block, me, onChanged, setNote }: {
               {block.client_owner_contact && <Avatar name={block.client_owner_contact} />}
             </span>
           }>
-      {/* The headline is the server's decision, not this screen's. */}
-      <p className="headline" style={{ margin: 0 }}>{block.headline.text}</p>
+      {/* The headline is the server's decision, not this screen's — including
+          the decision that there is nothing to say, which is what a goal
+          converted from a map row starts out as. */}
+      {block.headline.text && (
+        <p className="headline" style={{ margin: 0 }}>{block.headline.text}</p>
+      )}
+      {/* Staff only, and the server decides that too: a client is shown the
+          goal, not the practice's unfinished admin. */}
+      {(block.awaiting ?? []).length > 0 && (
+        <p className="small muted" style={{ margin: "var(--s1) 0 0" }}>
+          {block.awaiting!.join(" · ")}
+        </p>
+      )}
       {block.measure.kind_is_undecided && staff && (
         <Banner kind="info">
           Nobody has said how we will know this worked. Choose a number, a sentence,

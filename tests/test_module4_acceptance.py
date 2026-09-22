@@ -411,6 +411,40 @@ def test_the_sales_pdf_is_two_pages_at_its_fullest(session):
 
 
 @pytest.mark.django_db
+def test_two_pages_is_the_prospects_document_and_a_toggle_may_cost_a_third(
+    session, ff, api
+):
+    """Two pages is the rule **with the exclusions where they ship** — which is
+    what a prospect receives (FR-4.24: all five default off).
+
+    Turning one on puts something private on the page that was not there, and
+    that is the toggle's cost rather than a layout failure. Noble Baker's own
+    session runs to three pages with four of the five on, and to two with the
+    money off; this is that, written down.
+    """
+    _a_full_session(session, rows=11)
+    for path in ("a", "b"):
+        for kind in ("pro", "con"):
+            for index in range(3):
+                StrategyPathNote.objects.create(
+                    tenant=session.tenant, session=session, path=path, kind=kind,
+                    position=index, state=StrategyPathNote.State.ACCEPTED,
+                    text="An outside operator is a real cost your current blended "
+                         "margin has to carry, and you would feel it in month one")
+    assert pdf_service.page_count(session) <= 2
+
+    api.as_(ff).patch(f"/api/strategy-sessions/{session.pk}/pdf-flags/",
+                      {"investment": True, "mechanics": True,
+                       "diagnostic_observations": True, "alignment_observation": True},
+                      content_type="application/json")
+    session.refresh_from_db()
+    with_everything = pdf_service.page_count(session)
+    assert with_everything >= 2
+    # It grows by what was added, and not without bound.
+    assert with_everything <= 3
+
+
+@pytest.mark.django_db
 def test_the_document_has_margins_and_the_preview_looks_like_a_document(session):
     """The browser preview ignores `@page`, so until the sheet wrapper existed
     the preview ran its text to the window's edges while the PDF did not — the

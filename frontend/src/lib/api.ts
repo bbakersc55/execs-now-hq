@@ -585,7 +585,11 @@ export interface GoalBlock {
   outcome_statement: string;
   /** The product rule, decided on the server: a number leads, or the outcome
    *  statement does. **Never percent-of-tasks-done** (FR-4B.21). */
-  headline: { kind: "measure" | "outcome"; text: string };
+  /** `none` is a real answer: a goal converted from a map row has nothing
+   *  written about it yet, and repeating its title is not a headline. */
+  headline: { kind: "measure" | "outcome" | "none"; text: string };
+  /** Staff only — what this goal is still waiting for someone to write. */
+  awaiting?: string[];
   measure: GoalMeasure;
   completion: { done: number; of: number; percent: number | null };
   status: WorkStatus;

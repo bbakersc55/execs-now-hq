@@ -168,10 +168,36 @@ def headline_of(goal, measure) -> dict:
     qualitative, `none`, or a kind nobody has chosen — leads with the outcome
     statement. The completion bar is **never** the headline, and does not get
     promoted into the slot just because the numeric one is empty.
+
+    **A headline that repeats the title is not a headline** (findings,
+    2026-09-21). A goal converted from a map row has its bottleneck as its
+    title and nothing written about it yet, so falling back to the title
+    printed every card's name twice. When there is nothing distinct to say,
+    this says nothing and the card shows what it is waiting on instead.
     """
     if goal.measurable_kind == Goal.MeasurableKind.NUMERIC:
-        return {"kind": "measure", "text": goal.measurable or goal.outcome_statement}
-    return {"kind": "outcome", "text": goal.outcome_statement or goal.title}
+        text = goal.measurable or goal.outcome_statement
+        return {"kind": "measure", "text": "" if text.strip() == goal.title.strip()
+                else text}
+    outcome = (goal.outcome_statement or "").strip()
+    if outcome and outcome != goal.title.strip():
+        return {"kind": "outcome", "text": outcome}
+    return {"kind": "none", "text": ""}
+
+
+def _awaiting(goal, measure) -> list:
+    """The card says what it is short of rather than sitting there empty."""
+    missing = []
+    if measure["kind"] is None:
+        missing.append("no measure recorded yet")
+    elif measure["kind"] == Goal.MeasurableKind.NUMERIC and measure["current"] is None:
+        missing.append("no reading recorded yet")
+    elif measure["kind"] == Goal.MeasurableKind.QUALITATIVE \
+            and not goal.how_we_will_know.strip():
+        missing.append("no \u201chow we will know\u201d written yet")
+    if not (goal.outcome_statement or "").strip():
+        missing.append("no outcome statement yet")
+    return missing
 
 
 # ------------------------------------------------------------------- the report
@@ -211,6 +237,10 @@ def goal_block(goal, *, request, for_client: bool, task_queryset) -> dict:
         "title": goal.title,
         "outcome_statement": goal.outcome_statement,
         "headline": headline_of(goal, measure),
+        # What this goal is still waiting for somebody to write or record.
+        # **Staff only** — a client is shown the goal, not the practice's
+        # unfinished admin (findings, 2026-09-21).
+        "awaiting": [] if for_client else _awaiting(goal, measure),
         "measure": measure,
         "completion": completion_of(goal, task_queryset=task_queryset),
         "status": status_service.status_of(goal),

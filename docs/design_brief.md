@@ -86,6 +86,37 @@ gaining a chip bar, because the brief gives the filter bar to Tasks.
 session. 264 frontend tests pass, which says the markup behaves, not that it
 looks right.
 
+### Findings, round 1 — fixed 2026-09-21
+
+From the owner's browser pass. All four, and one thing the pass turned up that
+was not a fault.
+
+1. **The "+ New note" button did not collapse** and its text overflowed the
+   56px rail. It is a sidebar control like the others now, and collapses like
+   the others: the icon, and the tooltip.
+2. **A stray bullet beside every goal card.** The `list-style: none` on
+   `ul.work-tree` was lost in the Tier 1 rewrite and the browser's own marker
+   came back.
+3. **Every goal card printed its title twice.** The headline fell back to the
+   goal's own title, and a goal converted from a map row has its bottleneck as
+   its title and nothing written about it yet. **A headline that repeats the
+   title is not a headline**: the server now returns `kind: "none"` and the
+   card shows what it is waiting on — *"no measure recorded yet · no outcome
+   statement yet"* — **to staff only**. A client is shown the goal, not the
+   practice's unfinished admin. The same fix went into the PDF, which had the
+   same double-print.
+4. **Timeline labels overprinted** where marks bunched. They stagger above and
+   below the line now, and a label that would still land on its neighbour
+   leaves its **number** behind instead — the number the list under "Every
+   mark, in words" now carries, so nothing on the axis is anonymous and
+   nothing is lost.
+
+**Not a fault:** the strategy PDF runs to three pages on Noble Baker's session.
+Four of the five exclusion toggles are on there. Two pages is the rule *with the
+exclusions where they ship*, which is what a prospect receives; turning one on
+puts something private on the page that was not there, and that is the toggle's
+cost. There is now a test that says exactly this.
+
 ## Tier 2 (after the call)
 
 - **Dashboard** as the landing page: four stat tiles (tasks due this week, pending digests, pipeline movement this week, open goals), then panels: tasks due (by day), pending digests with approve, pipeline changes, client cards (one per client company, click to drill in). Calendar panel wired when Google Calendar integration lands.

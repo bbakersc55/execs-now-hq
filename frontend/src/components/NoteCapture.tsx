@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { FilePlus } from "lucide-react";
 
 import { NoteFull, api } from "../lib/api";
 import { saveAndUpload } from "../lib/pendingUploads";
@@ -93,8 +94,15 @@ export function NoteCapture({ defaults }: { defaults?: Partial<Links> }) {
   }
 
   if (!open) {
-    return <button className="primary" style={{ margin: "0 1.25rem 1rem", width: "calc(100% - 2.5rem)" }}
-      onClick={show} title="New note (n)">+ New note</button>;
+    // Collapsed, it is the icon and the tooltip, like every nav item beside
+    // it: at 56px there is no room for words, and the words were overflowing
+    // the rail rather than wrapping.
+    return (
+      <button className="primary capture-trigger" onClick={show} title="New note (n)">
+        <FilePlus size={18} strokeWidth={1.75} aria-hidden="true" />
+        <span className="label">New note</span>
+      </button>
+    );
   }
 
   return (
