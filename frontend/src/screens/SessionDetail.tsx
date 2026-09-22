@@ -4,11 +4,11 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 
-import { PageHead } from "../components/shell";
+import { PageHead, SendPreview } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import {
-  AnswerValue, ConversionRow, MapRow, Me, PathNote, PrepQuestion, SessionPrep,
-  StrategyQuestion, StrategySessionRow, api,
+  AnswerValue, ConversionRow, MapRow, Me, PathNote, PrepQuestion, SendPreview as Preview,
+  SessionPrep, StrategyQuestion, StrategySessionRow, api,
 } from "../lib/api";
 
 const CAN_RUN = ["FF", "CF"];
@@ -119,6 +119,11 @@ export function SessionDetail({ me }: { me: Me }) {
         )}
       </p>
       {note && <Banner kind="info">{note}</Banner>}
+      {/* The fractional's own note on this session — what happened, and what
+          to do about it on the call. Theirs: no prospect surface renders it. */}
+      {mayRun && data.fractional_note && (
+        <Banner kind="warn">{data.fractional_note}</Banner>
+      )}
       {!mayRun && (
         <Banner kind="info">
           You can read the session and send the pre-call form. Running the call,
@@ -137,11 +142,8 @@ export function SessionDetail({ me }: { me: Me }) {
           {data.precall_questions_sent_at
             && ` · questions emailed ${when(data.precall_questions_sent_at)}`}
         </p>
-        <div className="row">
-          <button onClick={() => invite.mutate()} disabled={invite.isPending}>
-            {data.precall_sent ? "Send the form again" : "Send the form link"}
-          </button>
-        </div>
+        <InvitePanel path={path} data={data} onSend={() => invite.mutate()}
+          sending={invite.isPending} />
         {data.precall_sent && (
           <p className="small muted">
             Sending again issues a new link and retires the old one.
@@ -579,7 +581,11 @@ function QuestionRow({ question, saved, savedNote, answeredBy, fromEmail, disabl
     </label>
   );
 
-  const noteField = question.has_fractional_note && (
+  // A rating always takes the fractional's own note: a number without the
+  // sentence beside it is the thing this product keeps saying is worth little,
+  // and it is where a prose answer from an email goes.
+  const takesNote = question.has_fractional_note || schema === "rating_1_10";
+  const noteField = takesNote && (
     <input aria-label={`Private note — ${question.prompt}`} value={note}
       placeholder="Private note — never shown to the prospect" disabled={disabled}
       onChange={(e) => setNote(e.target.value)}
@@ -592,7 +598,10 @@ function QuestionRow({ question, saved, savedNote, answeredBy, fromEmail, disabl
     if (schema === "agreed_note") return { agreed, notes };
     // Keep the prospect's own comment: changing the number must not silently
     // delete the sentence that explains it.
-    if (schema === "rating_1_10") return { rating: Number(text || 0), comment };
+    // A rating may have no number yet: a prospect who answered the six in
+    // prose by email has said something worth keeping, and the number is taken
+    // on the call (incident, 2026-09-22).
+    if (schema === "rating_1_10") return { rating: text ? Number(text) : null, comment };
     if (schema === "path_reaction") return { reaction: said, risk: cause, leaning: tried };
     return { text };
   }
@@ -674,7 +683,7 @@ function QuestionRow({ question, saved, savedNote, answeredBy, fromEmail, disabl
           <input aria-label={`${question.prompt} — comment`} value={comment}
             placeholder="What they said about it" disabled={disabled}
             onChange={(e) => setComment(e.target.value)}
-            onBlur={() => text && onSave(currentValue(), note)} />
+            onBlur={() => onSave(currentValue(), note)} />
         </div>
       )}
       {schema === "free_text" && (
@@ -694,6 +703,11 @@ function PdfCard({ data, path, onChanged, setNote }: {
   const flags = useMutation({
     mutationFn: (body: Record<string, boolean>) => api.patch(`${path}pdf-flags/`, body),
     onSuccess: onChanged,
+  });
+  const [showEmail, setShowEmail] = useState(true);
+  const emailPreview = useQuery<Preview>({
+    queryKey: ["send-preview", path, "pdf"],
+    queryFn: () => api.get<Preview>(`${path}send-preview/?which=pdf`),
   });
   const send = useMutation({
     mutationFn: () => api.post(`${path}send-pdf/`),
@@ -716,18 +730,30 @@ function PdfCard({ data, path, onChanged, setNote }: {
           Include {FLAG_LABEL[key]}
         </label>
       ))}
-      <div className="row" style={{ marginTop: ".75rem" }}>
+      <div className="row tight" style={{ marginTop: ".75rem" }}>
         <a className="btn ghost" href={`${path}pdf/?as=html`} target="_blank"
-           rel="noreferrer">Preview it</a>
+           rel="noreferrer">Preview the document</a>
         <a className="btn ghost" href={`${path}pdf/`} target="_blank" rel="noreferrer">
           Download the file
         </a>
-        <button className="primary" disabled={send.isPending} onClick={() => send.mutate()}>
+        <button onClick={() => setShowEmail(!showEmail)}>
+          {showEmail ? "Hide the email" : "Read the email it goes in"}
+        </button>
+      </div>
+      {/* The document has had a true preview since AC-4.10; the email it
+          travels in had none until 22 September. */}
+      {showEmail && (
+        <SendPreview preview={emailPreview.data} loading={emailPreview.isFetching} />
+      )}
+      <div className="row tight">
+        <button className="primary" disabled={send.isPending || !emailPreview.data}
+          onClick={() => send.mutate()}>
           Send it to {data.contact?.name}
         </button>
       </div>
       <p className="small muted">
-        Generating is not sending. Nothing leaves until you click send.
+        Generating is not sending. Nothing leaves until you click send, and the
+        send reads the email above.
       </p>
     </Card>
   );
@@ -992,6 +1018,14 @@ function QuestionsByEmail({ path, data, onSent }: {
   // Seeded once from the default rather than falling back to it on every
   // render: with a fallback, clearing the box silently refills it.
   const [intro, setIntro] = useState(data.precall_default_intro ?? "");
+  // Rendered by the server from the same builder the send uses, so the panel
+  // cannot show one thing and post another.
+  const preview = useQuery<Preview>({
+    queryKey: ["send-preview", path, "questions", intro],
+    queryFn: () => api.get<Preview>(
+      `${path}send-preview/?which=questions&intro=${encodeURIComponent(intro)}`),
+    enabled: open,
+  });
   const send = useMutation({
     mutationFn: () => api.post<{ from_address: string }>(
       `${path}send-questions/`, { intro }),
@@ -1023,13 +1057,50 @@ function QuestionsByEmail({ path, data, onSent }: {
         <textarea aria-label="Intro to the questions email" rows={4}
           value={intro} onChange={(e) => setIntro(e.target.value)} />
       </Field>
+      {/* The whole email, not the part you typed. On 22 September this panel
+          showed the opening line alone, and six broken questions went out
+          underneath it. */}
+      <SendPreview preview={preview.data} loading={preview.isFetching} />
       <p className="small muted">
-        The questions themselves are added below your note, with the 1–10 scale
-        explained. It sends from your own address so their reply reaches you.
+        It sends from your own address so their reply reaches you.
       </p>
-      <div className="row">
-        <button className="primary" disabled={send.isPending}
+      <div className="row tight">
+        <button className="primary" disabled={send.isPending || !preview.data}
           onClick={() => send.mutate()}>Send the questions</button>
+        <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/** "Send the form link", with the email it sends (incident, 2026-09-22). */
+function InvitePanel({ path, data, onSend, sending }: {
+  path: string; data: StrategySessionRow; onSend: () => void; sending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const preview = useQuery<Preview>({
+    queryKey: ["send-preview", path, "invite"],
+    queryFn: () => api.get<Preview>(`${path}send-preview/?which=invite`),
+    enabled: open,
+  });
+
+  if (!open) {
+    return (
+      <div className="row tight">
+        <button onClick={() => setOpen(true)}>
+          {data.precall_sent ? "Send the form again" : "Send the form link"}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="card">
+      <SendPreview preview={preview.data} loading={preview.isFetching} />
+      <div className="row tight">
+        <button className="primary" disabled={sending || !preview.data}
+          onClick={onSend}>
+          {data.precall_sent ? "Send it again" : "Send the form link"}
+        </button>
         <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </div>

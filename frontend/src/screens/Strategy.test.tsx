@@ -43,6 +43,7 @@ function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionR
     precall_questions_sent_at: null,
     prep: null,
     pinned_questions: [],
+    fractional_note: "",
     precall_default_intro: "Hi Dana,\n\nAhead of our session, here are a few questions.",
     mirror: { goal: "", unlocks: "" },
     proposed_mirror: { goal: "Two branches by spring.", unlocks: "Supervisor cover." },
@@ -710,5 +711,76 @@ describe("session prep", () => {
     showSession(aSession({ prep: null }), aMe({ role: "VA" }));
     await screen.findByText(/Running the call, drafting, sending/);
     expect(screen.queryByText("Prepare for this session")).not.toBeInTheDocument();
+  });
+});
+
+
+describe("nothing sends without the body on the screen", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  // The incident of 2026-09-22: the panel showed the opening line and not the
+  // questions under it, and six broken questions reached a prospect.
+  const PREVIEW = {
+    subject: "A few questions before our strategy session",
+    to_address: "dana@acme.invalid", from_address: "bryan@getexecutivesnow.test",
+    body_text: "Hi Dana,\n\nSNAPSHOT\n1. Revenue — last year / this year\n\n"
+      + "SIX KEY COMPONENTS\nRate each one from 1 to 10 — 1 means it barely works "
+      + "today, 10 means it could not be better.\n1. Vision\n2. People",
+    body_html: "<p>Hi Dana,</p>",
+  };
+
+  it("shows the whole email, and will not send until it has", async () => {
+    const user = userEvent.setup();
+    let answerPreview = false;
+    const fetchMock = showSession(aSession(), aMe(), {
+      [`GET /api/strategy-sessions/${SESSION_ID}/send-preview/`]: () =>
+        answerPreview ? { status: 200, body: PREVIEW } : { status: 200, body: null },
+      [`POST /api/strategy-sessions/${SESSION_ID}/send-questions/`]:
+        { from_address: "bryan@getexecutivesnow.test" },
+    });
+
+    await user.click(await screen.findByRole(
+      "button", { name: /Or email the questions instead/ }));
+    // No body yet, so no send.
+    expect(screen.getByRole("button", { name: "Send the questions" })).toBeDisabled();
+
+    answerPreview = true;
+    await user.type(screen.getByLabelText("Intro to the questions email"), "!");
+    const body = await screen.findByLabelText("The email as it will send");
+    // The part that was never on the screen before: the questions and the scale.
+    expect(body).toHaveTextContent("Rate each one from 1 to 10");
+    expect(body).toHaveTextContent("Vision");
+    expect(screen.getByText(/dana@acme.invalid/)).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "Send the questions" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Send the questions" }));
+    await waitFor(() => expect(fetchMock.calls.some(
+      (c) => c.url.endsWith("/send-questions/"))).toBe(true));
+  });
+
+  it("does the same for the form link", async () => {
+    const user = userEvent.setup();
+    showSession(aSession({ precall_sent: false }), aMe(), {
+      [`GET /api/strategy-sessions/${SESSION_ID}/send-preview/`]: PREVIEW,
+    });
+    await user.click(await screen.findByRole("button", { name: "Send the form link" }));
+    // Scoped to this panel: the map's covering email has one of its own.
+    const panel = screen.getByRole("button", { name: "Send the form link" })
+      .closest(".card") as HTMLElement;
+    expect(await within(panel).findByLabelText("The email as it will send"))
+      .toBeInTheDocument();
+  });
+
+  it("shows the fractional's note on the session", async () => {
+    showSession(aSession({ fractional_note: "Ratings to be taken on the call." }), aMe());
+    expect(await screen.findByText("Ratings to be taken on the call."))
+      .toBeInTheDocument();
+  });
+
+  it("gives a VA no note, because their payload carries none", async () => {
+    // The server sends a VA an empty string; the screen draws nothing from it.
+    showSession(aSession({ fractional_note: "" }), aMe({ role: "VA" }));
+    await screen.findByText(/Running the call, drafting, sending/);
+    expect(screen.queryByText("Ratings to be taken on the call.")).not.toBeInTheDocument();
   });
 });

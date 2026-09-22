@@ -75,6 +75,7 @@ def represent_prep(prep) -> dict:
         "summary": prep.summary,
         "bottlenecks": prep.bottlenecks,
         "rewordings": prep.rewordings,
+        "dropped_rewordings": prep.dropped_rewordings,
         "questions": [represent_prep_question(q) for q in
                       StrategyPrepQuestion.objects.filter(prep=prep)],
         "web_searches": prep.ai_call.web_searches if prep.ai_call_id else 0,
@@ -163,6 +164,9 @@ def represent_session(session, *, include_financial=True, full=False,
     prep = StrategySessionPrep.objects.filter(session=session).first() \
         if include_prep else None
     payload["prep"] = represent_prep(prep) if prep else None
+    # The fractional's own note on the session, on the same footing as prep:
+    # theirs, and no prospect surface renders it.
+    payload["fractional_note"] = session.fractional_note if include_prep else ""
     # Pinned prep questions ride beside the template's own, as prompts with a
     # note and no score (owner, 2026-09-21).
     payload["pinned_questions"] = [

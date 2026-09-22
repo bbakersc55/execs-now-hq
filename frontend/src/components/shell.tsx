@@ -121,3 +121,31 @@ export function useRemembered(key: string, fallback: boolean) {
   }, [key, value]);
   return [value, setValue] as const;
 }
+
+
+/**
+ * The whole email, as it will send, above the button that sends it.
+ *
+ * The incident of 2026-09-22: a panel showed the opening line the fractional
+ * had written and not the questions underneath it, and six broken questions
+ * reached a prospect. **A send panel shows the body or it does not send.**
+ */
+export function SendPreview({ preview, loading }: {
+  preview?: { subject: string; to_address: string; from_address: string;
+              body_text: string } | null;
+  loading?: boolean;
+}) {
+  if (loading) return <p className="small muted">Rendering the email…</p>;
+  if (!preview) return null;
+  return (
+    <div className="send-preview">
+      <p className="tiny muted" style={{ margin: 0 }}>
+        To {preview.to_address || "—"} · from {preview.from_address || "—"}
+      </p>
+      <p className="small" style={{ margin: "2px 0 8px", fontWeight: 600 }}>
+        {preview.subject}
+      </p>
+      <pre aria-label="The email as it will send">{preview.body_text}</pre>
+    </div>
+  );
+}

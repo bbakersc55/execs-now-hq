@@ -101,6 +101,24 @@ def send_precall_invite(session, *, actor=None, role=None):
     return message
 
 
+def _pdf_body(session, note: str) -> tuple[str, str]:
+    """The covering note the map travels with. Extracted so the send panel can
+    show it before it goes (incident, 2026-09-22)."""
+    name = session.contact.first_name or "there"
+    fractional = services.merge_context(session).get("Fractional name", "")
+    lines = [f"Hi {name},", "",
+             "Your strategy map from today is attached, along with the snapshot "
+             "and the notes we took together."]
+    if note.strip():
+        lines += ["", note.strip()]
+    if fractional:
+        lines += ["", "Thanks,", fractional]
+    return "\n".join(lines), email_layout.document(
+        session.tenant,
+        content_html="".join(f"<p>{escape(line)}</p>" for line in lines if line),
+        subject=PDF_SUBJECT, preheader="Your strategy map from today.")
+
+
 def send_strategy_pdf(session, *, actor=None, role=None, note=""):
     """Same-day: the map, as a PDF, to the prospect (R8, matrix 10.11).
 
@@ -112,20 +130,7 @@ def send_strategy_pdf(session, *, actor=None, role=None, note=""):
         raise services.SessionError(
             f"{session.contact.first_name} has no email address to send to.", status=400)
     stored = pdf_service.store_pdf(session)
-    name = session.contact.first_name or "there"
-    fractional = services.merge_context(session).get("Fractional name", "")
-    lines = [f"Hi {name},", "",
-             "Your strategy map from today is attached, along with the snapshot "
-             "and the notes we took together."]
-    if note.strip():
-        lines += ["", note.strip()]
-    if fractional:
-        lines += ["", "Thanks,", fractional]
-    text = "\n".join(lines)
-    html = email_layout.document(
-        session.tenant,
-        content_html="".join(f"<p>{escape(line)}</p>" for line in lines if line),
-        subject=PDF_SUBJECT, preheader="Your strategy map from today.")
+    text, html = _pdf_body(session, note)
     message = outbox.create_message(
         tenant=session.tenant, producer=OutboxMessage.Producer.STRATEGY_PDF,
         to_address=address, to_contact=session.contact, subject=PDF_SUBJECT,
@@ -264,3 +269,60 @@ def send_precall_questions(session, *, actor=None, role=None, intro=""):
         payload={"to": address, "outbox_message": str(message.pk),
                  "from": message.from_address})
     return message
+
+
+# --------------------------------- what will go out, before it goes out
+#
+# The incident of 2026-09-22: the send panel showed the fractional's opening
+# line and not the questions beneath it, so six broken questions went to a
+# prospect without anybody having seen them. **Nothing sends from a panel that
+# has not shown the whole body first**, and these are what the panels show.
+
+#: The link is issued when Send is pressed, not when the preview is drawn — a
+#: preview that minted a token would leave a live credential behind every time
+#: somebody looked.
+PREVIEW_LINK = "https://…/strategy/precall/… (the link is created when you send)"
+
+
+def _preview(session, *, subject, body_text, body_html, producer, actor):
+    from apps.crm.models import MailPreference
+    from apps.crm.services import sender as sender_service
+
+    return {
+        "subject": subject,
+        "to_address": session.contact.primary_email or "",
+        "from_address": sender_service.resolve_from(
+            session.tenant, actor, producer,
+            override=(MailPreference.Sender.SELF
+                      if producer == OutboxMessage.Producer.PRECALL_QUESTIONS else "")),
+        "body_text": body_text,
+        "body_html": body_html,
+    }
+
+
+def preview_precall_invite(session, *, actor=None):
+    _stored_text, _stored_html, sent_text, sent_html = _invite_body(session, PREVIEW_LINK)
+    return _preview(session, subject=INVITE_SUBJECT, body_text=sent_text,
+                    body_html=email_layout.document(
+                        session.tenant, content_html=sent_html, subject=INVITE_SUBJECT,
+                        preheader="A few questions before we talk."),
+                    producer=OutboxMessage.Producer.PRECALL_INVITE, actor=actor)
+
+
+def preview_precall_questions(session, *, intro="", actor=None):
+    body_text, content_html = _questions_body(session, intro or default_intro(session))
+    return _preview(session, subject=QUESTIONS_SUBJECT, body_text=body_text,
+                    body_html=email_layout.document(
+                        session.tenant, content_html=content_html,
+                        subject=QUESTIONS_SUBJECT,
+                        preheader="A few questions before we talk — just reply."),
+                    producer=OutboxMessage.Producer.PRECALL_QUESTIONS, actor=actor)
+
+
+def preview_strategy_pdf(session, *, note="", actor=None):
+    """The covering note only. The document itself has had its own true preview
+    since AC-4.10 — this is the email it travels in, which had none."""
+    body_text, body_html = _pdf_body(session, note)
+    return _preview(session, subject=PDF_SUBJECT, body_text=body_text,
+                    body_html=body_html,
+                    producer=OutboxMessage.Producer.STRATEGY_PDF, actor=actor)

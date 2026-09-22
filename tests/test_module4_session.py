@@ -198,7 +198,6 @@ def test_an_answer_is_validated_against_the_schema_in_the_snapshot(session, key,
     ("s2_vision", {"rating": 11}),
     ("s2_vision", {"rating": 0}),
     ("s2_vision", {"rating": "seven"}),
-    ("s2_vision", {"comment": "No rating at all."}),
     ("s1_revenue", {"text": "   "}),
     ("s9_start_date", {"agreed": "yes"}),
     ("s7_value_1", {"why": "Only the why."}),
@@ -249,10 +248,37 @@ def test_a_fractional_note_only_lands_where_the_question_allows_one(session):
                                      value={"text": "4.2m"}, answered_by=FRACTIONAL,
                                      fractional_note="Check against the P&L.")
     assert with_note.fractional_note == "Check against the P&L."
-    without = services.save_answer(session, question_key="s2_vision",
-                                   value={"rating": 6}, answered_by=FRACTIONAL,
+    # A question whose template says it has no note field still has none.
+    without = services.save_answer(session, question_key="s7_value_1",
+                                   value={"value": "Systems before they double."},
+                                   answered_by=FRACTIONAL,
                                    fractional_note="Nowhere to put this.")
     assert without.fractional_note == ""
+
+
+@pytest.mark.django_db
+def test_a_rating_always_takes_the_fractionals_note_and_needs_no_number_yet(session):
+    """Incident, 2026-09-22. A prospect answered the six in prose by email; the
+    app refused the sentence because there was no number with it, and the
+    sentence is the part worth keeping."""
+    prose = services.save_answer(
+        session, question_key="s2_vision", value={"comment": "No rating at all."},
+        answered_by=FRACTIONAL,
+        fractional_note="Answered in prose by email; take the number on the call.")
+    assert prose.value == {"rating": None, "comment": "No rating at all."}
+    assert prose.fractional_note.startswith("Answered in prose")
+
+    # Unrated is unanswered: it is not a zero, and it does not make the six
+    # complete or name a lowest score.
+    six = services.six_key_components(session)
+    assert six["answered"] == 0 and six["average"] is None and six["lowest"] is None
+
+    # And the number, when it is taken on the call, lands beside the sentence.
+    rated = services.save_answer(session, question_key="s2_vision",
+                                 value={"rating": 4, "comment": "No rating at all."},
+                                 answered_by=FRACTIONAL)
+    assert rated.value["rating"] == 4
+    assert services.six_key_components(session)["answered"] == 1
 
 
 # -------------------------------------------------------- Six Key Components

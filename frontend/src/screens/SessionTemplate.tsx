@@ -12,6 +12,16 @@ interface Template {
 
 type Edit = { prompt?: string; ask_when?: "precall" | "live"; must_ask?: boolean };
 
+/** What each shape is, in the words a person uses for it. */
+const SCHEMA_LABELS: Record<string, string> = {
+  rating_1_10: "rated 1–10",
+  free_text: "written answer",
+  diagnostic_triple: "said / cause / tried",
+  value_pair: "value and why",
+  agreed_note: "agreed, with a note",
+  path_reaction: "reaction to a path",
+};
+
 /**
  * Matrix 10.1 — the template, editable by the founder fractional only, and in
  * Beta only in the three ways a live practice actually needs mid-engagement:
@@ -125,8 +135,21 @@ export function SessionTemplate({ me }: { me: Me }) {
                     <label htmlFor={`prompt-${question.key}`}>
                       {question.key}
                       {question.area ? ` · ${question.area}` : ""}
+                      {/* What kind of question this is, beside the box that
+                          rewords it. Six ratings were reworded into essay
+                          questions on 22 September because nothing on this
+                          screen said they were ratings. */}
+                      {" "}<Pill kind={question.response_schema === "rating_1_10"
+                        ? "ai" : ""}>{SCHEMA_LABELS[question.response_schema]
+                          ?? question.response_schema}</Pill>
                       {question.is_financial && <> <Pill kind="bad">financial</Pill></>}
                     </label>
+                    {question.response_schema === "rating_1_10" && (
+                      <p className="tiny muted" style={{ margin: "0 0 4px" }}>
+                        Rated 1–10. Reword the lead-in if you like, but keep the
+                        component's name in it — that is the thing being rated.
+                      </p>
+                    )}
                     <textarea id={`prompt-${question.key}`} rows={2}
                       aria-label={`Wording of ${question.key}`}
                       value={edit.prompt ?? question.prompt_template ?? question.prompt}

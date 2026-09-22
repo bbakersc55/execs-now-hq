@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 import re
 
-from apps.strategy import services
+from apps.strategy import rewording, services
 from apps.strategy.models import StrategyPrepQuestion, StrategySessionPrep
 
 PREP_PURPOSE = "session_prep"
@@ -45,8 +45,16 @@ of this shape and size. These are the patterns of the trade, not claims about \
 this company.
 3. "rewordings": for EACH pre-call question you are given, a rewording in this \
 prospect's own vocabulary — their words for their work, their units, their \
-trade. Keep the question asking exactly what it asked before. If a question is \
-already right for them, return it unchanged and say so in "why".
+trade. Keep the question asking exactly what it asked before.
+
+**A rewording changes the words, never the shape.** A question marked \
+[rated 1-10] is a one-line lead-in to a number, not a question to answer in \
+prose: you may reword around it, but the component's name must stay in it \
+("Vision", "People", "Data", "Issues", "Process", "Traction"), it stays under \
+about a dozen words, and it does not become something open. Getting this wrong \
+sent a prospect six essay questions under the heading "rate each one from 1 to \
+10". If a question is already right for them, return it unchanged and say so in \
+"why".
 4. "questions": five extra questions worth asking live, that the template does \
 not cover and that only make sense because of what you have read.
 
@@ -79,7 +87,7 @@ def _payload(text: str):
 
 
 def precall_questions(session):
-    """[(key, rendered prompt)] — what the prospect is being asked today.
+    """[(key, rendered prompt, schema)] — what the prospect is being asked today.
 
     The fractional's own observations are left out: they are not asked aloud,
     so there is nothing to reword for a prospect who never sees them.
@@ -90,7 +98,8 @@ def precall_questions(session):
                                                     ask_when="precall"):
         if question.get("is_fractional_observation"):
             continue
-        out.append((question["key"], services.render_prompt(question["prompt"], merge)))
+        out.append((question["key"], services.render_prompt(question["prompt"], merge),
+                    question["response_schema"]))
     return out
 
 
@@ -106,8 +115,12 @@ def prep_input(session, *, website_url: str, notes: str) -> str:
         lines += ["", "WHAT THE FRACTIONAL ALREADY KNOWS "
                       "(pasted emails, call notes, anything):", notes.strip()]
     lines += ["", "THE PRE-CALL QUESTIONS, to reword one for one:"]
-    for key, prompt in precall_questions(session):
-        lines.append(f"  {key}: {prompt}")
+    for key, prompt, schema in precall_questions(session):
+        # The shape travels with the question, so the model can see which ones
+        # are a lead-in to a number rather than something to answer in prose.
+        shape = " [rated 1-10 — lead-in only, keep the component name]" \
+            if schema == rewording.RATING_SCHEMA else ""
+        lines.append(f"  {key}: {prompt}{shape}")
     return "\n".join(lines)
 
 
@@ -141,8 +154,8 @@ def prepare(session, *, website_url="", notes="", actor=None):
         prep.save(update_fields=["state", "ai_call", "updated_at"])
         return prep
 
-    current = dict(precall_questions(session))
-    rewordings = []
+    asked = {key: (prompt, schema) for key, prompt, schema in precall_questions(session)}
+    rewordings, dropped = [], []
     for raw in payload.get("rewordings") or []:
         if not isinstance(raw, dict):
             continue
@@ -150,19 +163,30 @@ def prepare(session, *, website_url="", notes="", actor=None):
         suggested = str(raw.get("suggested") or "").strip()
         # A rewording of a question this session does not ask is a rewording of
         # nothing: the snapshot is what the prospect will see.
-        if key not in current or not suggested:
+        if key not in asked or not suggested:
             continue
-        rewordings.append({"key": key, "current": current[key], "suggested": suggested,
+        current, schema = asked[key]
+        # **A rewording changes the words, never the shape** (incident,
+        # 2026-09-22). A suggestion that would turn a rating into an essay is
+        # dropped here rather than offered — the fractional should not have to
+        # be the check that catches it.
+        refusal = rewording.refusal(key, schema, suggested)
+        if refusal:
+            dropped.append(key)
+            continue
+        rewordings.append({"key": key, "current": current, "suggested": suggested,
                            "why": str(raw.get("why") or "").strip()})
+
 
     prep.summary = str(payload.get("summary") or "").strip()
     prep.bottlenecks = [str(item).strip() for item in (payload.get("bottlenecks") or [])
                         if str(item).strip()][:5]
     prep.rewordings = rewordings
+    prep.dropped_rewordings = dropped
     prep.ai_call = call
     prep.state = StrategySessionPrep.State.READY
-    prep.save(update_fields=["summary", "bottlenecks", "rewordings", "ai_call", "state",
-                             "updated_at"])
+    prep.save(update_fields=["summary", "bottlenecks", "rewordings",
+                             "dropped_rewordings", "ai_call", "state", "updated_at"])
 
     # The five extra questions are rows, because each one is pinned, noted
     # against and read on its own. A re-run replaces the ones nobody pinned and

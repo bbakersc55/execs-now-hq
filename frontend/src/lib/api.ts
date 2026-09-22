@@ -632,7 +632,9 @@ export interface ValueReportExport {
 
 // --- Module 4 — the strategy session ----------------------------------------
 
-export type AnswerValue = Record<string, string | number | boolean>;
+/** `null` is a real value: a rating whose number has not been taken yet
+ *  (incident, 2026-09-22). */
+export type AnswerValue = Record<string, string | number | boolean | null>;
 
 export interface StrategyQuestion {
   key: string;
@@ -692,8 +694,16 @@ export interface SessionPrep {
   /** One per pre-call question, with today's wording beside it. Never applied
    *  by the app: the fractional copies one into the template editor. */
   rewordings: { key: string; current: string; suggested: string; why: string }[];
+  /** Suggestions refused because they would have changed a question's shape. */
+  dropped_rewordings?: string[];
   questions: PrepQuestion[];
   web_searches: number;
+}
+
+/** What a send panel must show before it will send (incident, 2026-09-22). */
+export interface SendPreview {
+  subject: string; to_address: string; from_address: string;
+  body_text: string; body_html: string;
 }
 
 export interface StrategySessionRow {
@@ -729,6 +739,8 @@ export interface StrategySessionRow {
   map_rows?: MapRow[];
   path_notes?: PathNote[];
   prep?: SessionPrep | null;
+  /** The fractional's own note on this session. Fractional-only. */
+  fractional_note?: string;
   pinned_questions?: PrepQuestion[];
   six_key_components?: {
     scores: { key: string; rating: number; comment: string;

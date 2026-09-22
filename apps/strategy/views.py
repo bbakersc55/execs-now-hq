@@ -24,6 +24,7 @@ from apps.crm import permissions as crm_perms
 from apps.crm.models import Contact
 from apps.strategy import ai, conversion, emails, pdf as pdf_service
 from apps.strategy import prep as prep_service
+from apps.strategy import rewording
 from apps.strategy import services
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
@@ -269,6 +270,34 @@ class SessionViewSet(StrategyViewSet):
             payload={"website": result.website_url,
                      "searches": result.ai_call.web_searches if result.ai_call_id else 0})
         return Response(strategy_serializers.represent_prep(result), status=201)
+
+    @action(detail=True, methods=["get"], url_path="send-preview")
+    def send_preview(self, request, pk=None):
+        """What will go out, before it goes out (incident, 2026-09-22).
+
+        `which` is `questions`, `invite` or `pdf`. The panel shows the whole
+        body — not the part the fractional typed — because the part they did
+        not type is where the six broken questions were.
+        """
+        session = self.load(pk)
+        which = request.query_params.get("which", "questions")
+        if which == "questions":
+            if (refused := self._fractional_only("send the questions")) is not None:
+                return refused
+            return Response(emails.preview_precall_questions(
+                session, intro=request.query_params.get("intro") or "",
+                actor=request.user))
+        if which == "invite":
+            # Matrix 10.3 — a VA sends this one, so a VA may see it first.
+            return Response(emails.preview_precall_invite(session, actor=request.user))
+        if which == "pdf":
+            if (refused := self._fractional_only("send the map")) is not None:
+                return refused
+            return Response(emails.preview_strategy_pdf(
+                session, note=request.query_params.get("note") or "",
+                actor=request.user))
+        return Response({"detail": "which is 'questions', 'invite' or 'pdf'."},
+                        status=400)
 
     @action(detail=True, methods=["patch"], url_path="prep-rewordings")
     def prep_rewordings(self, request, pk=None):
@@ -654,8 +683,19 @@ class TemplateViewSet(StrategyViewSet):
                 if field == "ask_when" and edit[field] not in AskWhen.values:
                     return Response({"detail": "ask_when is 'precall' or 'live'."},
                                     status=400)
-                if field == "prompt" and not (edit[field] or "").strip():
-                    return Response({"detail": "A question needs a prompt."}, status=400)
+                if field == "prompt":
+                    if not (edit[field] or "").strip():
+                        return Response({"detail": "A question needs a prompt."},
+                                        status=400)
+                    # A rewording changes the words, never the shape (incident,
+                    # 2026-09-22). The same rule prep is held to, enforced here
+                    # as well, because the editor is the last gate before a
+                    # question reaches a prospect.
+                    refusal = rewording.refusal(question.key, question.response_schema,
+                                                edit[field])
+                    if refusal:
+                        return Response({"detail": refusal, "key": question.key},
+                                        status=400)
                 setattr(question, field, edit[field])
             question.save()
             changed.append(question.key)

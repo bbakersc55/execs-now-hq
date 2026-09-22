@@ -639,3 +639,17 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
   main { padding: var(--s6) var(--s4) var(--s8); }
   .page-head { flex-direction: column; }
 }
+
+
+/* The email, as it will send, above the button that sends it (incident,
+   2026-09-22). It is deliberately plain and scrollable: this is for reading
+   before pressing, not for admiring. */
+.send-preview {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--hover); padding: var(--s3); margin: var(--s3) 0;
+  max-height: 340px; overflow-y: auto;
+}
+.send-preview pre {
+  margin: 0; white-space: pre-wrap; font-family: var(--f); font-size: var(--t-13);
+  line-height: 1.5; color: var(--text);
+}

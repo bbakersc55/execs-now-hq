@@ -193,6 +193,10 @@ class StrategySession(TenantScopedModel):
     # happens, and it is what tells the live view the answers below were typed
     # in from a reply rather than filled in by the prospect themselves.
     precall_questions_sent_at = models.DateTimeField(null=True, blank=True)
+    #: The fractional's own note about this session — what happened, what to do
+    #: on the call. **Fractional-only**: it reaches no prospect surface, on the
+    #: same standard as the prep brief.
+    fractional_note = models.TextField(blank=True, default="")
     # FR-4.19 — what Claude drafted, held apart from what a person accepted.
     proposed_mirror_goal = models.TextField(blank=True, default="")
     proposed_mirror_unlocks = models.TextField(blank=True, default="")
@@ -288,6 +292,11 @@ class StrategySessionPrep(TenantScopedModel):
     #: per pre-call question. **Never applied by the app**: the fractional
     #: copies one into the template editor and saves it themselves.
     rewordings = models.JSONField(default=list, blank=True)
+    #: Keys whose suggestion was refused because it would have changed the
+    #: question's shape — a rating turned into an essay (incident, 2026-09-22).
+    #: Kept rather than dropped silently: the fractional should be told that
+    #: prep tried, and why it did not get its way.
+    dropped_rewordings = models.JSONField(default=list, blank=True)
     state = models.CharField(max_length=10, choices=State.choices,
                              default=State.DRAFTING)
     ai_call = models.ForeignKey("tenancy.AiCall", null=True, blank=True,

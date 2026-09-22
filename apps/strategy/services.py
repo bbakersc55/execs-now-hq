@@ -268,6 +268,14 @@ def clean_value(response_schema: str, value) -> dict:
         return {"text": _text(value, "text")}
     if response_schema == ResponseSchema.RATING_1_10:
         rating = value.get("rating")
+        # **A rating may arrive without its number** (incident, 2026-09-22).
+        # A prospect who answered the six in prose by email has said something
+        # worth keeping, and the number is then taken on the call; refusing the
+        # sentence until a number exists loses the sentence. An unrated
+        # component stays unanswered for the average and the lowest score,
+        # which `six_key_components` already decides by looking for an int.
+        if rating in (None, ""):
+            return {"rating": None, "comment": _text(value, "comment", required=False)}
         if isinstance(rating, bool) or not isinstance(rating, int):
             raise AnswerInvalid("rating must be a whole number from 1 to 10.")
         if not 1 <= rating <= 10:
@@ -313,7 +321,13 @@ def save_answer(session, *, question_key, value, answered_by, fractional_note=No
         tenant=session.tenant, session=session, question_key=question_key,
         defaults={"value": cleaned, "answered_by": answered_by},
     )
-    if fractional_note is not None and question["has_fractional_note"]:
+    # A rating always takes the fractional's own note, whatever the template
+    # says: the number is a number, and this product's whole argument is that a
+    # number without the sentence beside it is worth little. It is also how a
+    # prose answer typed in from an email is kept without inventing a score.
+    takes_note = question["has_fractional_note"] \
+        or question["response_schema"] == ResponseSchema.RATING_1_10
+    if fractional_note is not None and takes_note:
         answer.fractional_note = fractional_note
         answer.save(update_fields=["fractional_note", "updated_at"])
     return answer

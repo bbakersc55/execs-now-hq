@@ -739,6 +739,155 @@ def test_ac_4_10_nothing_is_emailed_until_someone_clicks_send(session, ff, api):
     assert AuditEvent.all_objects.filter(verb="strategy.pdf_sent").exists()
 
 
+# =============== the incident of 2026-09-22, and the three things that let it happen
+
+@pytest.mark.django_db
+def test_the_send_panel_can_show_the_whole_email_before_it_goes(session, ff, api):
+    """**Nothing sends from a panel that has not shown the body first.**
+
+    The panel showed the opening line the fractional had written; the six
+    broken questions were underneath it, and nobody saw them until a prospect
+    did.
+    """
+    preview = api.as_(ff).get(
+        f"/api/strategy-sessions/{session.pk}/send-preview/"
+        f"?which=questions&intro=Hi%20Dana%2C").json()
+
+    assert preview["subject"] == emails.QUESTIONS_SUBJECT
+    assert preview["to_address"] == "dana@acme.invalid"
+    assert preview["body_text"].startswith("Hi Dana,")
+    # Everything under the intro, which is the part that was not being shown.
+    assert emails.RATING_SCALE in preview["body_text"]
+    merge = services.merge_context(session)
+    for _s, question in services.questions_in(session.template_snapshot,
+                                              ask_when=AskWhen.PRECALL):
+        if question.get("is_fractional_observation") or question.get("is_financial"):
+            continue
+        assert services.render_prompt(question["prompt"], merge) in preview["body_text"]
+
+    # The preview and the send are the same words, because they are the same
+    # builder — a panel that showed one thing and posted another would be worse
+    # than no panel.
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/send-questions/",
+                     {"intro": "Hi Dana,"}, content_type="application/json")
+    sent = OutboxMessage.all_objects.get(
+        producer=OutboxMessage.Producer.PRECALL_QUESTIONS)
+    assert sent.body_text == preview["body_text"]
+
+
+@pytest.mark.django_db
+def test_the_form_link_and_the_map_email_are_previewable_too(session, ff, va, api):
+    """The audit's other two panels (incident, 2026-09-22)."""
+    invite = api.as_(ff).get(
+        f"/api/strategy-sessions/{session.pk}/send-preview/?which=invite").json()
+    assert invite["subject"] == emails.INVITE_SUBJECT
+    assert "questions" in invite["body_text"]
+    # A preview never mints a credential: the link is created on the send.
+    assert emails.PREVIEW_LINK in invite["body_text"]
+    session.refresh_from_db()
+    assert session.precall_token_hash == ""
+
+    # A VA sends the invite (10.3), so a VA may read it first.
+    assert api.as_(va).get(
+        f"/api/strategy-sessions/{session.pk}/send-preview/?which=invite"
+    ).status_code == 200
+    # They do not send the questions, and do not preview them either.
+    assert api.as_(va).get(
+        f"/api/strategy-sessions/{session.pk}/send-preview/?which=questions"
+    ).status_code == 403
+
+    pdf_email = api.as_(ff).get(
+        f"/api/strategy-sessions/{session.pk}/send-preview/"
+        f"?which=pdf&note=One%20thing%20to%20read%20first.").json()
+    assert "One thing to read first." in pdf_email["body_text"]
+
+
+@pytest.mark.django_db
+def test_a_rewording_may_not_turn_a_rating_into_an_essay(session, ff, api, template):
+    """The rule, at the last gate before a prospect (incident, 2026-09-22)."""
+    refused = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+        "questions": [{"key": "s2_vision",
+                       "prompt": "Three years out, what does the company look like — "
+                                 "and are you building it to run without you or to "
+                                 "sell it?"}]}, content_type="application/json")
+    assert refused.status_code == 400
+    assert "Vision" in refused.json()["detail"]
+    assert StrategyQuestion.objects.get(key="s2_vision").prompt == "Vision"
+
+    # Too long, even with the component's name in it.
+    long_one = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+        "questions": [{"key": "s2_data", "prompt": "Data — " + "and then some more " * 8}]},
+        content_type="application/json")
+    assert long_one.status_code == 400
+    assert "lead-in" in long_one.json()["detail"]
+
+    # A lead-in that keeps the component is fine, which is the whole point.
+    ok = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+        "questions": [{"key": "s2_vision", "prompt": "Vision — where this is going"}]},
+        content_type="application/json")
+    assert ok.status_code == 200
+    assert StrategyQuestion.objects.get(key="s2_vision").prompt == (
+        "Vision — where this is going")
+
+    # And every other shape is still free to be reworded.
+    assert api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+        "questions": [{"key": "s1_revenue",
+                       "prompt": "What was revenue last year? Where will you land "
+                                 "this year, and how much of it is contract work?"}]},
+        content_type="application/json").status_code == 200
+
+
+@pytest.mark.django_db
+def test_prep_drops_a_suggestion_that_would_change_a_questions_shape(session, ff, api,
+                                                                     fake_claude):
+    """Prep is held to the same rule, so the fractional never has to be the
+    check that catches it."""
+    fake_claude.reply = json.dumps({
+        "summary": "Their site says they clean kitchens.",
+        "bottlenecks": [],
+        "rewordings": [
+            {"key": "s2_vision", "suggested": "Three years out, what does the company "
+                                              "look like and who runs it?", "why": ""},
+            {"key": "s2_data", "suggested": "Data — the numbers you look at weekly",
+             "why": "Their words."},
+            {"key": "s1_revenue", "suggested": "Revenue last year and this?", "why": ""},
+        ],
+        "questions": [],
+    })
+    prep = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                            content_type="application/json").json()
+
+    offered = {row["key"] for row in prep["rewordings"]}
+    assert "s2_vision" not in offered, "an essay under 'rate it 1 to 10' is not offered"
+    assert offered == {"s2_data", "s1_revenue"}
+    # And it says it tried, rather than dropping it silently.
+    assert prep["dropped_rewordings"] == ["s2_vision"]
+    # The model was told the shape of each question in the first place.
+    assert "[rated 1-10" in json.dumps(fake_claude.requests[-1])
+
+
+@pytest.mark.django_db
+def test_the_fractionals_note_on_a_session_reaches_no_prospect(session, ff, api,
+                                                               client, dev_outbox):
+    """Where "answered in prose by email; take the ratings on the call" lives."""
+    session.fractional_note = "MARKERSESSIONNOTE — ratings to be taken on the call."
+    session.save(update_fields=["fractional_note", "updated_at"])
+
+    assert "MARKERSESSIONNOTE" in api.as_(ff).get(
+        f"/api/strategy-sessions/{session.pk}/").content.decode()
+
+    raw = services.issue_precall_token(session)
+    assert "MARKERSESSIONNOTE" not in client.get(
+        f"/api/strategy/precall/{raw}").content.decode()
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/send-questions/", {},
+                     content_type="application/json")
+    message = OutboxMessage.all_objects.get(
+        producer=OutboxMessage.Producer.PRECALL_QUESTIONS)
+    assert "MARKERSESSIONNOTE" not in f"{message.body_text}{message.body_html}"
+    assert "MARKERSESSIONNOTE" not in pdf_service.render_html(session)
+    assert b"MARKERSESSIONNOTE" not in pdf_service.render_pdf(session)
+
+
 # ------------------------------- session prep (owner, 2026-09-21)
 
 PREP_REPLY = json.dumps({
