@@ -775,3 +775,75 @@ def test_10a_6a_only_the_fractional_accepts_a_pro_or_a_con(role, expected, seede
     assert response.status_code == expected
     note.refresh_from_db()
     assert (note.state == "accepted") is (expected == 200)
+
+
+# ================================================= §11 — Module 5, the queue
+
+MODULE5_ENDPOINTS = [
+    ("/api/meeting-proposals/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/drive-watch/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,expected", MODULE5_ENDPOINTS,
+                         ids=[u for u, _ in MODULE5_ENDPOINTS])
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_module5_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
+    """Matrix §11 — **no client-facing surface exists in this module at all**,
+    including for a meeting about their own company. What reaches them is the
+    task, once a person has approved it."""
+    company = ClientCompanyFactory(tenant=seeded_tenant) if role in ("FCC", "ECC") else None
+    membership = MembershipFactory(tenant=seeded_tenant, role=role, client_company=company)
+    assert api.as_(membership).get(url).status_code == expected[role], url
+
+
+@pytest.mark.django_db
+def test_11_3_the_vas_broad_rights_here_are_deliberate(seeded_tenant, api, in_tenant_a):
+    """Clearing this queue is the VA's job, and **every action in it creates
+    records rather than sending mail** — the send is a separate, gated step
+    (FR-5.19). So the VA may approve, and the outbox stays empty."""
+    import json as _json
+
+    from apps.crm.models import Contact, OutboxMessage
+    from apps.meetings.models import MeetingProposal, ProposalItem
+
+    from .factories import MeetingProposalFactory
+
+    va = MembershipFactory(tenant=seeded_tenant, role=Role.VA)
+    proposal = MeetingProposalFactory(tenant=seeded_tenant)
+    item = ProposalItem.objects.create(
+        tenant=seeded_tenant, proposal=proposal,
+        kind=ProposalItem.Kind.PARTICIPANT, source_excerpt="Nina was there.",
+        payload={"parsed_name": "Nina Ruiz", "parsed_email": "",
+                 "proposed_contact_type": "prospect",
+                 "new_contact_candidate": {"first_name": "Nina", "last_name": "Ruiz"},
+                 "existing_candidates": []})
+
+    made = api.as_(va).post(f"/api/proposal-items/{item.pk}/approve/",
+                            _json.dumps({"contact_type": "prospect"}),
+                            content_type="application/json")
+    assert made.status_code == 201, made.content
+    assert Contact.objects.filter(first_name="Nina").exists()
+    assert OutboxMessage.all_objects.filter(state="sent").count() == 0
+    assert MeetingProposal.objects.get(pk=proposal.pk).state == "actioned"
+
+
+@pytest.mark.django_db
+def test_11_1_an_unmatched_proposal_is_not_a_cfs_by_default(seeded_tenant, api,
+                                                             in_tenant_a):
+    """The reasoning behind `proposal-scope`, as a test: a CF is not assigned
+    to the FF's prospects, and an unreviewed document with no company on it is
+    FF and VA only."""
+    from .factories import MeetingProposalFactory, MeetingSourceFileFactory
+
+    cf = MembershipFactory(tenant=seeded_tenant, role=Role.CF)
+    cf.user.email = "cf@practice.test"
+    cf.user.save(update_fields=["email"])
+    source = MeetingSourceFileFactory(tenant=seeded_tenant,
+                                      drive_file_owner_email="ff@practice.test")
+    MeetingProposalFactory(tenant=seeded_tenant, source_file=source)
+
+    assert api.as_(cf).get("/api/meeting-proposals/?state=all").json() == []
+    ff = MembershipFactory(tenant=seeded_tenant, role=Role.FF)
+    assert len(api.as_(ff).get("/api/meeting-proposals/?state=all").json()) == 1

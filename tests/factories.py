@@ -16,6 +16,10 @@ from apps.crm.models import (
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
+from apps.meetings.models import (
+    DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
+    ProposalItem,
+)
 from apps.notes.models import Note, NotePinUnlock
 from apps.work.models import (
     Comment, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
@@ -686,3 +690,65 @@ class StrategyPrepQuestionFactory(TenantScopedFactory):
                               tenant=factory.SelfAttribute("..tenant"))
     session = factory.SelfAttribute("prep.session")
     text = factory.Sequence(lambda n: f"A question {n}")
+
+
+# ------------------------------------------------ Module 5 — meeting ingestion
+
+class DriveWatchFactory(TenantScopedFactory):
+    class Meta:
+        model = DriveWatch
+
+    tenant = factory.SubFactory(TenantFactory)
+    folder_id = factory.Sequence(lambda n: f"folder-{n}")
+
+
+class MeetingSourceFileFactory(TenantScopedFactory):
+    class Meta:
+        model = MeetingSourceFile
+
+    tenant = factory.SubFactory(TenantFactory)
+    drive_file_id = factory.Sequence(lambda n: f"file-{n}")
+    drive_version = "1"
+    name = factory.Sequence(lambda n: f"Meeting notes {n}")
+    mime_type = "application/vnd.google-apps.document"
+    drive_file_owner_email = "bryan@getexecutivesnow.test"
+    text = "Dana said she would send the margin breakdown."
+
+
+class MeetingProposalFactory(TenantScopedFactory):
+    class Meta:
+        model = MeetingProposal
+
+    tenant = factory.SubFactory(TenantFactory)
+    source_file = factory.SubFactory(MeetingSourceFileFactory,
+                                     tenant=factory.SelfAttribute("..tenant"))
+    title = factory.Sequence(lambda n: f"A meeting {n}")
+
+
+class ProposalItemFactory(TenantScopedFactory):
+    class Meta:
+        model = ProposalItem
+
+    tenant = factory.SubFactory(TenantFactory)
+    proposal = factory.SubFactory(MeetingProposalFactory,
+                                  tenant=factory.SelfAttribute("..tenant"))
+    kind = ProposalItem.Kind.ACTION_ITEM
+    source_excerpt = "Dana said she would send the margin breakdown."
+    payload = factory.LazyFunction(lambda: {"text": "Send the margin breakdown"})
+
+
+class MeetingFactory(TenantScopedFactory):
+    class Meta:
+        model = Meeting
+
+    tenant = factory.SubFactory(TenantFactory)
+    title = factory.Sequence(lambda n: f"A meeting {n}")
+
+
+class MeetingParticipantFactory(TenantScopedFactory):
+    class Meta:
+        model = MeetingParticipant
+
+    tenant = factory.SubFactory(TenantFactory)
+    meeting = factory.SubFactory(MeetingFactory, tenant=factory.SelfAttribute("..tenant"))
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))

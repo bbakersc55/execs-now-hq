@@ -41,6 +41,17 @@ TIER1_SCOPES = [
     "https://www.googleapis.com/auth/gmail.settings.basic",
 ]
 
+#: Module 5 reads one folder of meeting notes. **`drive.readonly` is a
+#: restricted scope** and is asked for separately, not folded into Tier 1: a
+#: practice that never turns on meeting ingestion should not be asked for its
+#: Drive, and the verification story for a restricted scope is its own
+#: (`docs/05_dev_environment.md`).
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+
+def scopes_for(*, drive: bool = False) -> list[str]:
+    return TIER1_SCOPES + (DRIVE_SCOPES if drive else [])
+
 STATE_SESSION_KEY = "gmail_oauth_state"
 
 
@@ -73,7 +84,8 @@ def workspace_domain(email: str) -> str:
     return email.split("@", 1)[-1].strip().lower() if "@" in (email or "") else ""
 
 
-def authorization_url(state: str, *, login_hint: str = "", hd: str = "") -> str:
+def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
+                      drive: bool = False) -> str:
     """The consent URL.
 
     `login_hint` + `hd` exist because the browser, not the app, chooses which
@@ -90,7 +102,7 @@ def authorization_url(state: str, *, login_hint: str = "", hd: str = "") -> str:
         "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": " ".join(TIER1_SCOPES),
+        "scope": " ".join(scopes_for(drive=drive)),
         "access_type": "offline",
         "prompt": "select_account consent",
         "include_granted_scopes": "true",

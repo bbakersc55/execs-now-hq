@@ -23,6 +23,10 @@ from apps.work.models import (
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
+from apps.meetings.models import (
+    DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
+    ProposalItem,
+)
 from apps.strategy.models import (
     StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
     StrategyQuestion, StrategySection, StrategySession, StrategySessionPrep,
@@ -98,6 +102,16 @@ register(GoalReportExport, factories.GoalReportExportFactory,
 register(GoalNarrative, factories.GoalNarrativeFactory, api_exposed=False)
 register(GoalNarrativeVersion, factories.GoalNarrativeVersionFactory,
          api_exposed=False)
+
+# --- Module 5 — meeting ingestion.
+register(DriveWatch, factories.DriveWatchFactory, endpoints=("/api/drive-watch/",))
+register(MeetingSourceFile, factories.MeetingSourceFileFactory, api_exposed=False)
+register(MeetingProposal, factories.MeetingProposalFactory,
+         endpoints=("/api/meeting-proposals/",))
+register(ProposalItem, factories.ProposalItemFactory,
+         endpoints=("/api/proposal-items/",))
+register(Meeting, factories.MeetingFactory, api_exposed=False)
+register(MeetingParticipant, factories.MeetingParticipantFactory, api_exposed=False)
 
 # --- Module 4 — the strategy session.
 register(StrategyTemplate, factories.StrategyTemplateFactory,

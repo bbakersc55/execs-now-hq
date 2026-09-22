@@ -1,6 +1,7 @@
 import { Fragment, useEffect } from "react";
 import {
-  Activity as ActivityIcon, BarChart3, Building2, CheckSquare, ClipboardList,
+  Activity as ActivityIcon, BarChart3, Building2, CalendarCheck, CheckSquare,
+  ClipboardList,
   Contact as ContactIcon, FileText, Inbox, Mail, PanelLeftClose, PanelLeftOpen,
   Sparkles, Store, Target, Upload, UserCog, Users, Workflow,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
 import { NoteDetail } from "./screens/NoteDetail";
+import { Meetings } from "./screens/Meetings";
 import { Notes } from "./screens/Notes";
 import { PinReset } from "./screens/PinReset";
 import { CadenceLink } from "./screens/CadenceLink";
@@ -84,6 +86,8 @@ const NAV: NavItem[] = [
   // Module 4. A VA sets a session up and sends the form; the call itself is the
   // fractional's, and the screen says so rather than hiding controls (§10).
   { to: "/strategy", label: "Strategy", roles: TENANT , icon: ClipboardList },
+  // Module 5 — the queue. No client-facing surface exists (matrix §11).
+  { to: "/meetings", label: "Meeting queue", roles: TENANT, icon: CalendarCheck },
   // Was the client's own log (FR-3.41). The owner reversed that on 2026-09-16:
   // the feed is the practice's view across every account, and a client is
   // refused the endpoint outright.
@@ -252,6 +256,7 @@ export function App() {
             <Route path="/work" element={<Work me={me} />} />
             <Route path="/work/goals/:id" element={<WorkParentDetail me={me} kind="goal" />} />
             <Route path="/work/projects/:id" element={<WorkParentDetail me={me} kind="project" />} />
+            <Route path="/meetings" element={<Meetings me={me} />} />
             <Route path="/strategy" element={<Sessions me={me} />} />
             <Route path="/strategy/template" element={<SessionTemplate me={me} />} />
             <Route path="/strategy/:id" element={<SessionDetail me={me} />} />

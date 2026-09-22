@@ -45,6 +45,10 @@ SCHEDULES = [
     # client-activity notice. FR-3.23's timing lives in the code, not here, so
     # a tenant's own send day and hour govern it.
     ("work.tick", "apps.work.tasks.tick", Schedule.MINUTES, 1, None),
+    # Module 5 — the folder poll (FR-5.2). Ten minutes, cursor-based, so a
+    # laptop that was shut for three days catches up rather than missing three
+    # days of notes.
+    ("meetings.poll_drive", "apps.meetings.tasks.poll_drive", Schedule.MINUTES, 10, None),
     # Module 2.
     ("notes.process", "apps.notes.tasks.process_notes", Schedule.MINUTES, 1, None),
     ("notes.purge_expired_audio", "apps.notes.tasks.purge_expired_audio",

@@ -766,3 +766,48 @@ export interface PreCallForm {
   }[] }[];
   answered: number; of: number; complete: boolean;
 }
+
+
+// --- Module 5 — meeting ingestion -------------------------------------------
+
+/** One proposed thing. **Nothing here exists yet**: approving is what creates
+ *  it, and every item carries the passage it was drawn from (FR-5.14). */
+export interface ProposalItem {
+  id: string;
+  kind: "participant" | "action_item" | "deliverable";
+  state: "pending" | "approved" | "rejected";
+  source_excerpt: string;
+  position: number;
+  created_record_type: string;
+  created_record_id: string | null;
+  actioned_at: string | null;
+  payload: {
+    parsed_name?: string; parsed_email?: string; parsed_title?: string;
+    parsed_company?: string; proposed_contact_type?: string;
+    new_contact_candidate?: Record<string, string>;
+    existing_candidates?: { contact_id: string; name: string; company: string;
+                            email: string; match_reason: string; confidence: number;
+                            rank: number }[];
+    service_categories?: string[];
+    text?: string; proposed_owner_text?: string;
+    proposed_owner_contact_id?: string | null; proposed_due_date?: string | null;
+    proposed_stakeholders?: { contact_id: string; cadence: string }[];
+  };
+}
+
+export interface MeetingProposal {
+  id: string;
+  state: "pending" | "partially_actioned" | "actioned" | "rejected" | "superseded";
+  title: string;
+  meeting_date: string | null;
+  proposed_summary: string;
+  summary: string;
+  summary_discarded: boolean;
+  source_file: { id: string; name: string; mime_type: string; state: string;
+                 skip_reason: string; error: string; owner_email: string;
+                 web_view_link: string; fetched_at: string | null };
+  meeting: string | null;
+  counts: { pending: number; approved: number; rejected: number };
+  items?: ProposalItem[];
+  source_text?: string;
+}
