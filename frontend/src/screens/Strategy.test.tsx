@@ -637,18 +637,62 @@ describe("session prep", () => {
     expect(await screen.findByText(/3 searches/)).toBeInTheDocument();
   });
 
-  it("shows a rewording beside today's wording, and only offers to copy it", async () => {
+  it("shows a rewording beside today's wording, editable before it is applied", async () => {
     showSession(aSession({ prep: PREP }), aMe());
     expect(await screen.findByText(/Their site says they clean commercial kitchens/))
       .toBeInTheDocument();
     expect(screen.getByText(/Revenue — last year \/ this year/)).toBeInTheDocument();
-    expect(screen.getByText(/contract versus one-off/)).toBeInTheDocument();
+    // The suggestion is a box, because the fractional simplifies a few first.
+    expect(screen.getByLabelText("Suggested wording for s1_revenue"))
+      .toHaveValue("Revenue last year and this — contract versus one-off");
+    // Nothing is selected, so nothing can be applied yet.
+    expect(screen.getByRole("button", { name: /Apply .*selected/ })).toBeDisabled();
+  });
 
-    // The only thing offered is a link into the editor — nothing applies it here.
-    const copy = screen.getByRole("link", { name: "Copy to the editor" });
-    expect(copy).toHaveAttribute(
-      "href", `/strategy/template?session=${SESSION_ID}&prefill=s1_revenue`);
-    expect(screen.queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
+  it("applies a selection in one step, carrying the edits", async () => {
+    const user = userEvent.setup();
+    const two = {
+      ...PREP,
+      rewordings: [
+        PREP.rewordings[0],
+        { key: "s1_sites", current: "Active customer sites (or active accounts)",
+          suggested: "How many kitchens are you in each week?", why: "" },
+      ],
+    };
+    const fetchMock = showSession(aSession({ prep: two }), aMe(), {
+      [`PATCH /api/strategy-sessions/${SESSION_ID}/prep-rewordings/`]: two,
+    });
+
+    // Simplify one, tick both, apply once.
+    const box = await screen.findByLabelText("Suggested wording for s1_revenue");
+    await user.clear(box);
+    await user.type(box, "Revenue last year and this");
+    await user.click(screen.getByLabelText("Apply the rewording of s1_revenue"));
+    await user.click(screen.getByLabelText("Apply the rewording of s1_sites"));
+    await user.click(screen.getByRole("button", { name: "Apply 2 selected to the template" }));
+
+    await waitFor(() => {
+      const patched = fetchMock.calls.find((c) => c.url.endsWith("/prep-rewordings/"));
+      // The fractional's version travels, not the one Claude wrote.
+      expect(patched?.body).toEqual({ rewordings: [
+        { key: "s1_revenue", suggested: "Revenue last year and this" },
+        { key: "s1_sites", suggested: "How many kitchens are you in each week?" },
+      ]});
+    });
+  });
+
+  it("still copies one on its own", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession({ prep: PREP }), aMe(), {
+      [`PATCH /api/strategy-sessions/${SESSION_ID}/prep-rewordings/`]: PREP,
+    });
+    await user.click(await screen.findByRole("button",
+                                             { name: "Copy this one to the editor" }));
+    await waitFor(() => {
+      const patched = fetchMock.calls.find((c) => c.url.endsWith("/prep-rewordings/"));
+      expect((patched?.body as { rewordings: { key: string }[] }).rewordings)
+        .toHaveLength(1);
+    });
   });
 
   it("shows a pinned question in the live view with a note of its own", async () => {

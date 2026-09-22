@@ -206,10 +206,12 @@ the web open reads the site and comes back with what they do and how they sell,
 where a business of that shape usually breaks, a rewording of **each** pre-call
 question in their own words, and **five extra questions** to ask live.
 
-**Nothing it suggests is applied.** A rewording has a **Copy to the editor**
-button, which opens the template editor with that question's box filled in and
-**not saved** — you still press Save, and the usual order applies: edit the
-template, *then* start his session. An extra question shows in the live view only
+**Nothing it suggests is applied.** Tick the rewordings you want — **edit any of
+them in the box first** if you want it simpler — and **Apply selected to the
+template**. They all arrive in the template editor as unsaved changes, and you
+press Save **once**. A single one can still be copied on its own, and it carries
+your edit with it. The usual order applies either way: edit the template, *then*
+start his session. An extra question shows in the live view only
 once you **pin** it, under **Your questions**, as a prompt with a note field of
 your own. It is never scored and never joins the template.
 

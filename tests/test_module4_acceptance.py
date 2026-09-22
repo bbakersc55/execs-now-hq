@@ -915,6 +915,49 @@ def test_nothing_prep_suggests_is_applied_until_a_person_applies_it(session, ff,
 
 
 @pytest.mark.django_db
+def test_an_edited_suggestion_is_kept_and_still_changes_nothing(session, ff, api,
+                                                                fake_claude):
+    """The fractional simplifies a suggestion before applying it, and the edit
+    has to survive the trip to the template editor — which reads the prep
+    rather than being handed text in a URL.
+
+    **Keeping an edit is not applying it**: the template and the session's
+    snapshot are untouched either way.
+    """
+    fake_claude.reply = PREP_REPLY
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                     content_type="application/json")
+
+    edited = api.as_(ff).patch(
+        f"/api/strategy-sessions/{session.pk}/prep-rewordings/",
+        {"rewordings": [{"key": "s1_revenue", "suggested": "Revenue last year and this"}]},
+        content_type="application/json")
+    assert edited.status_code == 200
+    kept = {row["key"]: row["suggested"] for row in edited.json()["rewordings"]}
+    assert kept["s1_revenue"] == "Revenue last year and this"
+    # The one they did not touch is as Claude wrote it.
+    assert kept["s1_sites"] == "How many kitchens are you in each week?"
+
+    # And the template still asks what it asked.
+    assert StrategyQuestion.objects.get(key="s1_revenue").prompt == (
+        "Revenue — last year / this year")
+    assert services.question_in(session.template_snapshot, "s1_revenue")["prompt"] == (
+        "Revenue — last year / this year")
+
+
+@pytest.mark.django_db
+def test_a_va_cannot_edit_a_prep_suggestion(session, ff, va, api, fake_claude):
+    fake_claude.reply = PREP_REPLY
+    api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},
+                     content_type="application/json")
+    refused = api.as_(va).patch(
+        f"/api/strategy-sessions/{session.pk}/prep-rewordings/",
+        {"rewordings": [{"key": "s1_revenue", "suggested": "Mine now"}]},
+        content_type="application/json")
+    assert refused.status_code == 403
+
+
+@pytest.mark.django_db
 def test_a_second_prep_run_leaves_a_pinned_question_alone(session, ff, api, fake_claude):
     fake_claude.reply = PREP_REPLY
     first = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/prepare/", {},

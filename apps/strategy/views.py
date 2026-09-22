@@ -270,6 +270,31 @@ class SessionViewSet(StrategyViewSet):
                      "searches": result.ai_call.web_searches if result.ai_call_id else 0})
         return Response(strategy_serializers.represent_prep(result), status=201)
 
+    @action(detail=True, methods=["patch"], url_path="prep-rewordings")
+    def prep_rewordings(self, request, pk=None):
+        """Keep the fractional's edit of a suggested rewording.
+
+        They simplify a few before applying them, and the edit has to survive
+        the trip to the template editor — which reads the prep rather than
+        being handed text in a URL. **Still not applied**: this changes what
+        prep suggests, never what the template says.
+        """
+        session = self.load(pk)
+        if (refused := self._fractional_only("edit a prep suggestion")) is not None:
+            return refused
+        prep = StrategySessionPrep.objects.filter(session=session).first()
+        if prep is None:
+            raise Http404
+        edits = {str(row.get("key")): str(row.get("suggested") or "").strip()
+                 for row in (request.data.get("rewordings") or [])
+                 if isinstance(row, dict) and row.get("key")}
+        prep.rewordings = [
+            {**row, "suggested": edits.get(row["key"]) or row["suggested"]}
+            for row in prep.rewordings
+        ]
+        prep.save(update_fields=["rewordings", "updated_at"])
+        return Response(strategy_serializers.represent_prep(prep))
+
     @action(detail=True, methods=["post"], url_path="send-questions")
     def send_questions(self, request, pk=None):
         """The questions in the body of an email, for a prospect who will not

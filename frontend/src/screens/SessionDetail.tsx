@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 
@@ -1111,29 +1111,8 @@ function PrepCard({ id, path, data, onChanged, setNote }: {
           )}
 
           {prep.rewordings.length > 0 && (
-            <>
-              <h4>Their words for your questions</h4>
-              <p className="small muted">
-                Copying one opens the template editor with it filled in. It is
-                not saved until you save it there.
-              </p>
-              {prep.rewordings.map((row) => (
-                <div className="card" key={row.key}>
-                  <p className="tiny muted" style={{ margin: 0 }}>{row.key}</p>
-                  <p className="small" style={{ margin: "var(--s1) 0" }}>
-                    <span className="muted">Now: </span>{row.current}
-                  </p>
-                  <p className="small" style={{ margin: "var(--s1) 0" }}>
-                    <span className="muted">Suggested: </span><strong>{row.suggested}</strong>
-                  </p>
-                  {row.why && <p className="tiny muted" style={{ margin: 0 }}>{row.why}</p>}
-                  <Link className="btn small" style={{ marginTop: "var(--s2)" }}
-                    to={`/strategy/template?session=${id}&prefill=${row.key}`}>
-                    Copy to the editor
-                  </Link>
-                </div>
-              ))}
-            </>
+            <Rewordings id={id} path={path} prep={prep} onChanged={onChanged}
+              setNote={setNote} />
           )}
 
           {prep.questions.length > 0 && (
@@ -1182,5 +1161,85 @@ function PinnedQuestion({ question, onChanged, compact }: {
           onBlur={() => note !== question.note && save.mutate({ note })} />
       )}
     </div>
+  );
+}
+
+
+/**
+ * The suggested rewordings, as a selection rather than a queue (owner,
+ * 2026-09-21).
+ *
+ * Copying them one at a time meant a trip to the editor, a save, and a walk
+ * back, per question. Now: tick the ones you want, simplify any of them in
+ * place, and **apply the selection in one step** — which fills them all into
+ * the template editor as pending changes and leaves you one Save. Copying a
+ * single one still works, and carries your edit with it.
+ *
+ * **Still nothing is applied by the app.** This writes into the editor's boxes;
+ * the template only changes when the fractional saves it there.
+ */
+function Rewordings({ id, path, prep, onChanged, setNote }: {
+  id: string; path: string; prep: SessionPrep; onChanged: () => void;
+  setNote: (text: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const textFor = (key: string, fallback: string) => edited[key] ?? fallback;
+
+  // The editor reads the prep rather than being handed text in a URL, so an
+  // edit has to be kept before the trip — otherwise it is the suggestion that
+  // arrives, not the fractional's version of it.
+  const apply = useMutation({
+    mutationFn: (keys: string[]) => api.patch(`${path}prep-rewordings/`, {
+      rewordings: prep.rewordings
+        .filter((row) => keys.includes(row.key))
+        .map((row) => ({ key: row.key, suggested: textFor(row.key, row.suggested) })),
+    }).then(() => keys),
+    onSuccess: (keys) => {
+      onChanged();
+      navigate(`/strategy/template?session=${id}&prefill=${keys.join(",")}`);
+    },
+    onError: (e: Error) => setNote(e.message),
+  });
+
+  return (
+    <>
+      <h4>Their words for your questions</h4>
+      <p className="small muted">
+        Tick the ones you want, change any of them here first, then apply them
+        together. They arrive in the template editor as unsaved changes — you
+        still press Save there.
+      </p>
+      {prep.rewordings.map((row) => (
+        <div className="card" key={row.key}>
+          <label className="inline" style={{ marginBottom: "var(--s2)" }}>
+            <input type="checkbox" checked={chosen.includes(row.key)}
+              aria-label={`Apply the rewording of ${row.key}`}
+              onChange={(e) => setChosen(e.target.checked
+                ? [...chosen, row.key] : chosen.filter((k) => k !== row.key))} />
+            <span className="tiny muted">{row.key}</span>
+          </label>
+          <p className="small" style={{ margin: "var(--s1) 0" }}>
+            <span className="muted">Now: </span>{row.current}
+          </p>
+          <Field label="Suggested — edit it here if you want it simpler">
+            <textarea rows={2} aria-label={`Suggested wording for ${row.key}`}
+              value={textFor(row.key, row.suggested)}
+              onChange={(e) => setEdited({ ...edited, [row.key]: e.target.value })} />
+          </Field>
+          {row.why && <p className="tiny muted" style={{ margin: 0 }}>{row.why}</p>}
+          <button className="small" style={{ marginTop: "var(--s2)" }}
+            disabled={apply.isPending}
+            onClick={() => apply.mutate([row.key])}>
+            Copy this one to the editor
+          </button>
+        </div>
+      ))}
+      <button className="primary" disabled={chosen.length === 0 || apply.isPending}
+        onClick={() => apply.mutate(chosen)}>
+        Apply {chosen.length || ""} selected to the template
+      </button>
+    </>
   );
 }

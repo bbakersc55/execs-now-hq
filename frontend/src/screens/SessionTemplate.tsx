@@ -33,7 +33,10 @@ export function SessionTemplate({ me }: { me: Me }) {
   // applying.
   const [params, setParams] = useSearchParams();
   const fromSession = params.get("session");
-  const prefillKey = params.get("prefill");
+  // One key, or several: applying a selection is one trip, not one per
+  // question (owner, 2026-09-21).
+  const prefillKeys = (params.get("prefill") ?? "").split(",").filter(Boolean);
+  const prefillKey = prefillKeys.join(",");
   const session = useQuery<StrategySessionRow>({
     queryKey: ["strategy-session", fromSession],
     queryFn: () => api.get<StrategySessionRow>(`/api/strategy-sessions/${fromSession}/`),
@@ -41,11 +44,16 @@ export function SessionTemplate({ me }: { me: Me }) {
   });
   useEffect(() => {
     if (!prefillKey || !session.data?.prep) return;
-    const row = session.data.prep.rewordings.find((r) => r.key === prefillKey);
-    if (!row) return;
-    setEdits((current) => ({ ...current, [prefillKey]: { prompt: row.suggested } }));
-    setNote(`Filled in from your prep for ${session.data?.contact?.name ?? "the session"}.`
-      + " Nothing is saved until you press Save.");
+    const wanted = prefillKey.split(",");
+    const rows = session.data.prep.rewordings.filter((r) => wanted.includes(r.key));
+    if (rows.length === 0) return;
+    setEdits((current) => ({
+      ...current,
+      ...Object.fromEntries(rows.map((row) => [row.key, { prompt: row.suggested }])),
+    }));
+    setNote(`Filled in ${rows.length} question${rows.length === 1 ? "" : "s"} from your `
+      + `prep for ${session.data?.contact?.name ?? "the session"}. `
+      + "Nothing is saved until you press Save.");
     setParams({}, { replace: true });
   }, [prefillKey, session.data, setParams]);
 
