@@ -299,18 +299,31 @@ gcloud config configurations activate execs-now-hq
 # 1. Back up first. Cheap, and it means an experiment is never irreversible.
 ./scripts/backup_db.sh
 
-# 2. Django                                   [terminal 1]
+# 2. Install dependencies AFTER ANY PULL. Not only when something looks wrong:
+#    a commit that adds a package leaves your venv one package short, and most
+#    of them are imported deep inside a feature, so nothing says so until you
+#    use it. `runserver` and `qcluster` now refuse to start and name what is
+#    missing (§9), but this is what stops them having to.
+.venv/bin/pip install -r requirements-dev.txt
+npm install --prefix frontend
+
+# 3. Django                                   [terminal 1]
 .venv/bin/python manage.py runserver 8100
 
-# 3. Background jobs                          [terminal 2]
+# 4. Background jobs                          [terminal 2]
 .venv/bin/python manage.py qcluster
 
-# 4. Frontend                                 [terminal 3]
+# 5. Frontend                                 [terminal 3]
 npm run dev            # Vite on 5200
 
-# 5. Dev outbox                               [terminal 4]
+# 6. Dev outbox                               [terminal 4]
 mailpit --smtp localhost:1025 --listen localhost:8125
 ```
+
+> **`requirements-dev.txt` includes `requirements.txt`**, so the one command
+> covers both. On Railway, the build installs `requirements.txt` for you —
+> which is exactly why a package that is on this laptop and not in that file
+> works here and nowhere else.
 
 Then open **http://localhost:5200** for the app and **http://localhost:8125** for mail.
 
@@ -741,7 +754,9 @@ Done. No address in this database can receive mail.
 | Transcription fails: "Speech-to-Text could not start" | API disabled, key lacks `roles/speech.client`, or offline | §5b; the audio is kept — use **Retry transcription** |
 | Summary shows "Claude could not draft a summary" | No Anthropic key, a rejected key, or offline | Sidebar → AI usage → Anthropic API key; then **Draft another summary** |
 | Yellow "recording waiting to upload" banner | The upload never reached the server | It is held in this browser; **Retry upload now**, or download it |
-| WeasyPrint import error | Missing Pango/Cairo | The `apt install` line in §1 |
+| `runserver` or `qcluster` refuses to start, naming a package | Your venv is behind the code — usually a pull that added a dependency | **`.venv/bin/pip install -r requirements-dev.txt`.** The refusal names the package, what it breaks, and this command. It is a check, not a failure: nothing started and nothing is broken |
+| A feature dies with `ModuleNotFoundError` in the browser | A package imported deep inside that feature is missing, and the process started before this check existed | Same fix. If the package was never in `requirements.txt`, add it — `pytest tests/test_runtime_dependencies.py` is what enforces that |
+| WeasyPrint import error | Missing Pango/Cairo | The `apt install` line in §1. The startup check surfaces this one too: it catches any import failure, not only a missing package |
 | Google sign-in refused | No membership for that address | Correct — invite-only (C1) |
 
 ---

@@ -8,3 +8,7 @@ class TenancyConfig(AppConfig):
 
     def ready(self):
         from apps.tenancy import acting  # noqa: F401  (registers the receivers)
+
+        # Registers the startup check that `runserver` and `qcluster` run
+        # before they begin. Importing it is what registers it.
+        from config import checks  # noqa: F401
