@@ -1403,6 +1403,7 @@ judgement on N real goals**, with N — never as a pass.
 
 ### Done means
 
+0. **Connecting the folder, on the meeting queue screen** — the Drive consent, the folder taken as a URL or an id, verified live and shown before it is saved, and Disconnect. FF only. *(Added 2026-09-22: Phase 5 shipped a queue with no control that led anywhere, so setup was blocked. FR-5.1a, AC-5.1a, matrix 11.10–11.12.)*
 1. `DriveWatch` cursor polling every 10 minutes, "Sync now", health screen, `drive_file_owner_email` captured.
 2. `MeetingSourceFile` idempotent on `(tenant, file, version)`; two-step commit; cursor never advances past unprocessed work.
 3. Claude parse producing participants, action items, deliverables, and a **drafted summary**.
@@ -1421,9 +1422,11 @@ judgement on N real goals**, with N — never as a pass.
   - **AC-5.3** — nothing created before approval.
   - **AC-5.8** — approving a deliverable creates records and **sends nothing**.
   - **AC-5.10** — a parse failure does not advance the cursor.
+  - **AC-5.1a** — the folder is verified before it is watched, and only the FF may connect one.
 
 ### Manual checks
 
+0. **Connect the folder from the meeting queue** (AC-5.1a): grant Drive access, paste the folder's full Drive URL, read back its name and file count, confirm. Then try a file's URL and a dud id and confirm each is refused with a reason.
 1. Point it at your **real** Gemini notes folder and let a week of real meetings accumulate.
 2. Close the laptop for two days. Confirm nothing is lost.
 3. Review a queue of real proposals. **Are the extracted action items ones you would actually have written down?** If precision is poor, the prompt is a Phase 5 bug.

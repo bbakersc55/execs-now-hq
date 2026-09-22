@@ -14,7 +14,8 @@ from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.meetings import approval, ingest, parsing
+from apps.crm.services import gmail_oauth
+from apps.meetings import approval, drive as drive_service, ingest, parsing
 from apps.meetings import permissions as meeting_perms
 from apps.meetings import serializers as meeting_serializers
 from apps.meetings.models import DriveWatch, MeetingProposal, ProposalItem
@@ -44,27 +45,116 @@ class MeetingViewSetBase(viewsets.GenericViewSet):
 
 
 class DriveWatchViewSet(MeetingViewSetBase):
-    """The folder, its cursor, and its health (FR-5.1, FR-5.7)."""
+    """The folder: connecting it, its cursor, and its health (FR-5.1, FR-5.7).
+
+    Connecting has **two steps that fail separately**, so they are two calls:
+    `consent` grants the app `drive.readonly` on the FF's Google account, and
+    `check`/`create` point it at one folder. A screen that folded them into a
+    single button would have to report "it didn't work" for two quite different
+    problems with two quite different fixes.
+    """
+
+    def require_founder(self, request):
+        if not meeting_perms.may_connect(request):
+            self.permission_denied(request, message=(
+                "Connecting the notes folder is the founder's. "
+                "Everything else in the queue is yours."))
 
     def list(self, request):
         return Response(ingest.health(request.tenant))
 
+    @action(detail=False, methods=["post"], url_path="consent")
+    def consent(self, request):
+        """Step one — hand back the Google consent URL for `drive.readonly`.
+
+        It asks for the Gmail scopes **as well**: `include_granted_scopes` plus
+        the full list means re-consenting for Drive re-grants sending rather
+        than replacing it, so an FF who does this does not stop being able to
+        send mail halfway through the afternoon.
+        """
+        self.require_founder(request)
+        if not gmail_oauth.is_configured():
+            return Response({"detail": (
+                "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are not set, "
+                "so there is nothing to connect to. See docs/05_dev_environment.md §5a."
+            )}, status=400)
+        state = gmail_oauth.new_state()
+        request.session[gmail_oauth.STATE_SESSION_KEY] = state
+        request.session[gmail_oauth.RETURN_SESSION_KEY] = "meetings"
+        request.session[gmail_oauth.DRIVE_SESSION_KEY] = True
+        email = request.user.email
+        return Response({
+            "authorization_url": gmail_oauth.authorization_url(
+                state, login_hint=email, hd=gmail_oauth.workspace_domain(email),
+                drive=True),
+            "redirect_uri": gmail_oauth.redirect_uri(),
+        })
+
+    @action(detail=False, methods=["post"], url_path="check")
+    def check(self, request):
+        """Step two, dry — read the folder and say what it is. Saves nothing."""
+        self.require_founder(request)
+        return self._describe(request, save=False)
+
     def create(self, request):
-        """Connect a folder. One per tenant in Beta."""
-        folder_id = (request.data.get("folder_id") or "").strip()
+        """Step two, committed — the same read, then the watch. One per tenant."""
+        self.require_founder(request)
+        return self._describe(request, save=True)
+
+    def _describe(self, request, *, save: bool):
+        raw = request.data.get("folder") or request.data.get("folder_id") or ""
+        folder_id = drive_service.folder_id_from(raw)
         if not folder_id:
-            return Response({"detail": "Which folder? Paste its id from the Drive URL."},
-                            status=400)
+            return Response({"detail": (
+                "That does not look like a Drive folder. Open the folder in "
+                "Drive and paste its web address."
+            )}, status=400)
+        try:
+            info = ingest.describe_folder(request.tenant, folder_id)
+        except ingest.NotConnected as exc:
+            return Response({"detail": str(exc)}, status=409)
+        except drive_service.DriveUnavailable as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        found = {"folder_id": info.folder_id, "name": info.name, "files": info.files,
+                 "readable": info.readable, "truncated": info.truncated}
+        if not save:
+            return Response(found)
+
+        watch = DriveWatch.objects.filter(tenant=request.tenant).first()
+        # A different folder means the old cursor describes a run we are no
+        # longer doing; the same folder keeps its place, so reconnecting after
+        # a disconnect picks up where it left off rather than replaying.
+        moved = watch is not None and watch.folder_id != folder_id
         watch, _ = DriveWatch.objects.update_or_create(
             tenant=request.tenant,
-            defaults={"folder_id": folder_id, "is_active": True,
-                      "folder_name": (request.data.get("folder_name") or "").strip()},
+            defaults={"folder_id": folder_id, "folder_name": info.name,
+                      "is_active": True, "last_error": "",
+                      **({"page_token": ""} if moved or watch is None else {})},
         )
         AuditEvent.all_objects.create(
             tenant=request.tenant, actor=request.user, verb="drive.folder_connected",
             target_type="drive_watch", target_id=watch.pk,
-            payload={"folder_id": folder_id})
-        return Response(ingest.health(request.tenant), status=201)
+            payload={"folder_id": folder_id, "folder_name": info.name,
+                     "files": info.files, "readable": info.readable,
+                     "cursor_reset": moved})
+        return Response({**ingest.health(request.tenant), "found": found}, status=201)
+
+    @action(detail=False, methods=["post"], url_path="disconnect")
+    def disconnect(self, request):
+        """Stop watching. **Keeps the cursor and every proposal already made** —
+        this is "stop looking", not "forget what you read"."""
+        self.require_founder(request)
+        watch = DriveWatch.objects.filter(tenant=request.tenant).first()
+        if watch is None:
+            return Response({"detail": "No folder is connected."}, status=400)
+        watch.is_active = False
+        watch.save(update_fields=["is_active", "updated_at"])
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="drive.folder_disconnected",
+            target_type="drive_watch", target_id=watch.pk,
+            payload={"folder_id": watch.folder_id})
+        return Response(ingest.health(request.tenant))
 
     @action(detail=False, methods=["post"], url_path="sync")
     def sync(self, request):

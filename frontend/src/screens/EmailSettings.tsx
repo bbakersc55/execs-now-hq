@@ -11,6 +11,9 @@ const SCOPE_LABELS: Record<string, string> = {
   "https://www.googleapis.com/auth/gmail.send": "Send mail as you",
   "https://www.googleapis.com/auth/gmail.settings.basic": "Read your send-as list",
   "https://www.googleapis.com/auth/gmail.readonly": "Read your mailbox (Tier 2)",
+  // Granted from the meeting queue, not here — but it shows here, because
+  // this is the screen that lists what the app may do with the account.
+  "https://www.googleapis.com/auth/drive.readonly": "Read your meeting-notes folder in Drive",
   openid: "Identify the account",
   email: "Identify the account",
 };

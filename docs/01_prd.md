@@ -1081,6 +1081,11 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 **Connection and polling**
 
 1. A tenant connects a Google Drive folder, stored as a **`DriveWatch`** with folder id, `page_token`, `last_polled_at`, and `last_error`.
+1a. **Connecting the folder happens on the meeting queue screen, in two steps that fail separately.** *(Added 2026-09-22, after Phase 5 shipped a queue with no way to point it at a folder.)*
+   - **Step one — Drive access.** The FF grants the app `drive.readonly` on their Google connection. It is asked for **separately from the Gmail scopes** (assumption C1) and alongside them, so re-consenting for Drive re-grants sending rather than replacing it. A practice can have a healthy mail connection that Drive refuses, and the screen says which of the two is missing rather than "it didn't work".
+   - **Step two — the folder.** The FF pastes the folder's **web address or its id**; the app extracts the id. Before any watch is saved it **reads the folder live** and shows its name, how many files are in it, and **how many of those can be read as notes** — a folder of twelve PDFs is a connected folder that will never produce a proposal, and that is worth learning now rather than from an empty queue tomorrow. Nothing is saved until the fractional confirms that folder.
+   - **Disconnect** stops the ten-minute check and **keeps the cursor and every proposal already made**. Reconnecting the same folder resumes; connecting a different one starts a fresh cursor.
+   - **FF only** (matrix 11.10–11.11). Pointing the app at a folder grants a standing read of a whole Drive. Every staff role sees the folder's name, last poll and last error (11.12), because a queue that is empty and a queue that is asleep look identical to whoever has to clear it.
 2. A scheduled job every 10 minutes calls Drive's `changes.list` from the stored cursor and advances it **only after each file is durably recorded**.
 3. **A "Sync now" control** runs the same job on demand.
 4. Every file seen becomes a **`MeetingSourceFile`**, unique on `(tenant, drive_file_id, drive_version)` — re-polling never yields a second proposal for the same file version.
@@ -1124,6 +1129,8 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 ### Acceptance criteria
 
 **AC-5.1 — Cursor survives downtime.** Note the cursor. Stop the app. Add three documents to the folder. Wait past two poll intervals. Start the app. **All three are ingested**, in order, exactly once.
+
+**AC-5.1a — Connecting the folder, from the queue screen.** As the FF, on a tenant with no `DriveWatch`: the meeting queue shows the two steps. Grant Drive access and return; step one shows the account. Paste the folder's **full Drive URL including `?usp=sharing`**; the check names the folder and reports its file count and readable count, and **no watch exists yet**. Confirm; the watch is saved with the name Drive gave. Paste a file's URL instead of a folder's, and a folder id that does not exist, and confirm each is refused with a reason and saves nothing. Disconnect, and confirm proposals already made are still listed and reconnecting the same folder does not re-read it. As a CF and as a VA, confirm the folder's state is visible and **no connect control is**.
 
 **AC-5.2 — Idempotency.** Force three consecutive polls over an unchanged folder. No duplicate `MeetingSourceFile` and no duplicate proposal is created.
 

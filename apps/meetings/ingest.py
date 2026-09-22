@@ -29,15 +29,45 @@ def watch_for(tenant):
     return DriveWatch.objects.filter(tenant=tenant, is_active=True).first()
 
 
+def drive_connection(tenant):
+    """The connection that may actually read Drive, or `None`.
+
+    **A connection is not automatically a Drive connection.** `drive.readonly`
+    is asked for separately (assumption C1), so a practice can have a perfectly
+    healthy Gmail connection that Drive will refuse — and in a tenant with
+    several connected accounts, the one that granted Drive is not necessarily
+    the first one made. Prefer a connection that holds the scope.
+    """
+    from apps.crm.models import GmailConnection
+    from apps.crm.services.gmail_oauth import DRIVE_SCOPES
+
+    connections = list(GmailConnection.objects.filter(tenant=tenant))
+    for connection in connections:
+        if set(DRIVE_SCOPES) <= set(connection.scopes or []):
+            return connection
+    return None
+
+
 def client_for(tenant):
     """The Drive client for this tenant's connection, or a refusal that says
     what is missing rather than a stack trace."""
     from apps.crm.models import GmailConnection
 
-    connection = GmailConnection.objects.filter(tenant=tenant).first()
-    if connection is None:
-        raise NotConnected("No Google account is connected for this practice.")
-    return drive_service.DriveClient(connection)
+    connection = drive_connection(tenant)
+    if connection is not None:
+        return drive_service.DriveClient(connection)
+    if GmailConnection.objects.filter(tenant=tenant).exists():
+        # The failure the folder screen exists to prevent: a connection that
+        # sends mail perfectly well and cannot see a single file.
+        raise NotConnected(
+            "The connected Google account has not granted access to Drive. "
+            "Allow Drive access on the meeting queue, then try again.")
+    raise NotConnected("No Google account is connected for this practice.")
+
+
+def describe_folder(tenant, folder_id, *, client=None):
+    """What that folder is, read live (FR-5.1a). Raises rather than guessing."""
+    return (client or client_for(tenant)).describe_folder(folder_id)
 
 
 @transaction.atomic
@@ -129,12 +159,20 @@ def poll(tenant, *, client=None, parse=True) -> dict:
 
 def health(tenant) -> dict:
     """One screen's worth: where we are, when we last looked, what is stuck."""
+    from apps.crm.models import GmailConnection
+
     watch = watch_for(tenant)
+    connection = drive_connection(tenant)
     pending = MeetingSourceFile.objects.filter(
         state__in=[MeetingSourceFile.State.RECORDED, MeetingSourceFile.State.PARSING,
                    MeetingSourceFile.State.FAILED]).count()
     return {
         "connected": watch is not None,
+        # The two steps of connecting, reported separately, because they fail
+        # separately and the screen has to say which one is not done.
+        "google_connected": GmailConnection.objects.filter(tenant=tenant).exists(),
+        "drive_access": connection is not None,
+        "drive_account": connection.email_address if connection else "",
         "folder_id": watch.folder_id if watch else "",
         "folder_name": watch.folder_name if watch else "",
         "last_polled_at": watch.last_polled_at.isoformat()

@@ -13,6 +13,7 @@ The three that carry the most risk, and which the rest lean on:
 from __future__ import annotations
 
 import json
+from urllib.parse import quote
 
 import pytest
 from django.utils import timezone
@@ -23,12 +24,15 @@ from apps.meetings.models import (
     DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
     ProposalItem,
 )
+from apps.tenancy.models import AuditEvent
 
 from . import registry_config  # noqa: F401
 from .factories import (
     ClientCompanyFactory, CompanyFactory, ContactEmailFactory, ContactFactory,
-    MembershipFactory,
+    GmailConnectionFactory, MembershipFactory,
 )
+
+DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 
 FF_EMAIL = "bryan@getexecutivesnow.test"
 CF_EMAIL = "cf@getexecutivesnow.test"
@@ -46,6 +50,8 @@ class FakeDrive:
         self.texts = texts or {}
         self.calls = []
         self.fail = None
+        self.described = []
+        self.folder_fail = None
 
     def start_token(self):
         return "start"
@@ -61,6 +67,13 @@ class FakeDrive:
 
     def text_of(self, drive_file):
         return self.texts.get(drive_file.file_id, "")
+
+    def describe_folder(self, folder_id):
+        self.described.append(folder_id)
+        if self.folder_fail:
+            raise drive.DriveUnavailable(self.folder_fail)
+        return drive.FolderInfo(folder_id=folder_id, name="Gemini meeting notes",
+                                files=14, readable=12)
 
 
 def a_file(file_id, *, version="1", name=None, mime=drive.GOOGLE_DOC,
@@ -634,3 +647,236 @@ def test_a_reparse_supersedes_and_leaves_approved_items_alone(
     assert approved.state == ProposalItem.State.APPROVED, "a decision already made stands"
     assert Task.objects.count() == 1, "and its record was not made twice"
     assert MeetingProposal.objects.count() == 2
+
+
+# ================================================ connecting the folder (FR-5.1a)
+#
+# The gap this closes: Module 5 shipped with a queue and no way to point it at
+# a folder. Connecting has **two steps that fail separately** — granting the
+# app `drive.readonly`, and naming the folder — so the screen and the API both
+# keep them apart, and a practice stuck on one is never told about the other.
+
+
+@pytest.fixture
+def fake_client(monkeypatch):
+    """Stand in for Drive at `ingest.client_for`, which is the one place the
+    views reach Google through."""
+    client = FakeDrive()
+    monkeypatch.setattr(ingest, "client_for", lambda tenant: client)
+    return client
+
+
+@pytest.fixture
+def drive_granted(seeded_tenant, ff_user):
+    """A Google connection that has actually been granted Drive."""
+    return GmailConnectionFactory(
+        tenant=seeded_tenant, user=ff_user.user, email_address=FF_EMAIL,
+        scopes=["https://www.googleapis.com/auth/gmail.send", DRIVE_SCOPE])
+
+
+@pytest.mark.parametrize("pasted,expected", [
+    # The address bar, which is what a person actually has.
+    ("https://drive.google.com/drive/folders/1AbCdEfGh_1", "1AbCdEfGh_1"),
+    ("https://drive.google.com/drive/folders/1AbCdEfGh_1?usp=sharing", "1AbCdEfGh_1"),
+    ("https://drive.google.com/drive/u/0/folders/1AbCdEfGh_1", "1AbCdEfGh_1"),
+    ("https://drive.google.com/drive/folders/1AbCdEfGh_1/", "1AbCdEfGh_1"),
+    ("drive.google.com/drive/folders/1AbCdEfGh_1", "1AbCdEfGh_1"),
+    # The older "Get link" form.
+    ("https://drive.google.com/open?id=1AbCdEfGh_1", "1AbCdEfGh_1"),
+    # The id on its own still works.
+    ("1AbCdEfGh_1", "1AbCdEfGh_1"),
+    ("  1AbCdEfGh_1  ", "1AbCdEfGh_1"),
+    # And what is not a folder at all fails here, before anything is saved.
+    ("", ""),
+    ("https://drive.google.com/file/d/1AbCdEfGh_1/view", ""),
+    ("my meeting notes", ""),
+    ("https://example.invalid/", ""),
+])
+def test_the_folder_id_comes_out_of_whatever_was_pasted(pasted, expected):
+    """FR-5.1a. **Nobody has the id; everybody has the address.** Asking a
+    person to cut the id out of a URL by hand is asking for `?usp=sharing` to
+    come with it."""
+    assert drive.folder_id_from(pasted) == expected
+
+
+@pytest.mark.django_db
+def test_checking_a_folder_reads_it_and_saves_nothing(
+    seeded_tenant, ff_user, api, fake_client, drive_granted, in_tenant_a
+):
+    """Step two, dry. The whole pasted URL goes to the server, which is why the
+    id never has to survive a copy-paste."""
+    response = api.as_(ff_user).post("/api/drive-watch/check/", {
+        "folder": "https://drive.google.com/drive/folders/1AbCdEfGh_1?usp=sharing"})
+
+    assert response.status_code == 200, response.data
+    assert response.data == {"folder_id": "1AbCdEfGh_1", "name": "Gemini meeting notes",
+                             "files": 14, "readable": 12, "truncated": False}
+    assert fake_client.described == ["1AbCdEfGh_1"]
+    # Checking is not connecting.
+    assert not DriveWatch.objects.exists()
+
+
+@pytest.mark.django_db
+def test_connecting_verifies_the_folder_before_it_saves_the_watch(
+    seeded_tenant, ff_user, api, fake_client, drive_granted, in_tenant_a
+):
+    """FR-5.1a — a watch is never created on an unread folder. The name shown
+    on the screen afterwards is the one Drive gave, not one we invented."""
+    response = api.as_(ff_user).post("/api/drive-watch/", {
+        "folder": "https://drive.google.com/drive/folders/1AbCdEfGh_1"})
+
+    assert response.status_code == 201, response.data
+    watch = DriveWatch.objects.get()
+    assert watch.folder_id == "1AbCdEfGh_1"
+    assert watch.folder_name == "Gemini meeting notes"
+    assert watch.is_active
+    assert response.data["connected"] is True
+    assert response.data["folder_name"] == "Gemini meeting notes"
+    assert AuditEvent.all_objects.filter(verb="drive.folder_connected").exists()
+
+
+@pytest.mark.django_db
+def test_a_folder_drive_refuses_is_refused_here(
+    seeded_tenant, ff_user, api, fake_client, drive_granted, in_tenant_a
+):
+    """The failure this whole step exists to prevent: a watch that quietly
+    returns nothing every ten minutes because the id was a typo."""
+    fake_client.folder_fail = "That folder is in the Drive bin."
+
+    response = api.as_(ff_user).post("/api/drive-watch/", {"folder": "1AbCdEfGh_1"})
+
+    assert response.status_code == 400
+    assert response.data["detail"] == "That folder is in the Drive bin."
+    assert not DriveWatch.objects.exists()
+
+
+@pytest.mark.django_db
+def test_nonsense_is_refused_without_troubling_drive(
+    seeded_tenant, ff_user, api, fake_client, drive_granted, in_tenant_a
+):
+    response = api.as_(ff_user).post("/api/drive-watch/", {"folder": "my notes folder"})
+
+    assert response.status_code == 400
+    assert "Drive folder" in response.data["detail"]
+    assert fake_client.described == []
+
+
+@pytest.mark.django_db
+def test_without_the_drive_scope_connecting_says_which_half_is_missing(
+    seeded_tenant, ff_user, api, in_tenant_a
+):
+    """A connection that sends mail perfectly well and cannot see a single
+    file. **The two halves fail separately**, so the message names the half."""
+    GmailConnectionFactory(tenant=seeded_tenant, user=ff_user.user,
+                           email_address=FF_EMAIL, scopes=["gmail.send"])
+
+    response = api.as_(ff_user).post("/api/drive-watch/", {"folder": "1AbCdEfGh_1"})
+
+    assert response.status_code == 409
+    assert "has not granted access to Drive" in response.data["detail"]
+
+    health = api.as_(ff_user).get("/api/drive-watch/").data
+    assert health["google_connected"] is True
+    assert health["drive_access"] is False
+
+
+@pytest.mark.django_db
+def test_health_names_the_account_that_holds_the_drive_grant(
+    seeded_tenant, ff_user, api, drive_granted, in_tenant_a
+):
+    """In a practice with several connected accounts, the one that granted
+    Drive is not necessarily the first one made."""
+    GmailConnectionFactory(tenant=seeded_tenant, email_address="cf@x.test",
+                           scopes=["gmail.send"])
+
+    health = api.as_(ff_user).get("/api/drive-watch/").data
+
+    assert health["drive_access"] is True
+    assert health["drive_account"] == FF_EMAIL
+    assert health["connected"] is False           # Drive, yes. A folder, not yet.
+
+
+@pytest.mark.django_db
+def test_the_consent_url_asks_for_drive_and_keeps_gmail_send(
+    seeded_tenant, ff_user, api, settings, in_tenant_a
+):
+    """Re-consenting for Drive must not cost the practice its ability to send
+    mail halfway through the afternoon."""
+    settings.GOOGLE_OAUTH_CLIENT_ID = "client-id"
+    settings.GOOGLE_OAUTH_CLIENT_SECRET = "secret"
+
+    response = api.as_(ff_user).post("/api/drive-watch/consent/")
+
+    assert response.status_code == 200
+    url = response.data["authorization_url"]
+    assert quote(DRIVE_SCOPE, safe="") in url
+    assert quote("https://www.googleapis.com/auth/gmail.send", safe="") in url
+    assert "include_granted_scopes=true" in url
+
+
+@pytest.mark.django_db
+def test_disconnecting_stops_looking_and_forgets_nothing(
+    seeded_tenant, ff_user, api, watch, in_tenant_a
+):
+    """"Stop looking", not "forget what you read": the cursor and every
+    proposal already made survive, so reconnecting the same folder picks up
+    where it left off instead of replaying it."""
+    watch.page_token = "cursor-42"
+    watch.save(update_fields=["page_token"])
+
+    response = api.as_(ff_user).post("/api/drive-watch/disconnect/")
+
+    assert response.status_code == 200
+    assert response.data["connected"] is False
+    watch.refresh_from_db()
+    assert watch.is_active is False
+    assert watch.page_token == "cursor-42"
+    assert AuditEvent.all_objects.filter(verb="drive.folder_disconnected").exists()
+
+
+@pytest.mark.django_db
+def test_reconnecting_the_same_folder_keeps_its_place_a_different_one_starts_over(
+    seeded_tenant, ff_user, api, watch, fake_client, drive_granted, in_tenant_a
+):
+    """An old cursor describes a run we are still doing only if the folder is
+    the same one."""
+    watch.page_token = "cursor-42"
+    watch.is_active = False
+    watch.save(update_fields=["page_token", "is_active"])
+
+    api.as_(ff_user).post("/api/drive-watch/", {"folder": watch.folder_id})
+    watch.refresh_from_db()
+    assert watch.page_token == "cursor-42"
+    assert watch.is_active is True
+
+    api.as_(ff_user).post("/api/drive-watch/", {"folder": "1AbCdEfGh_1"})
+    watch.refresh_from_db()
+    assert watch.folder_id == "1AbCdEfGh_1"
+    assert watch.page_token == ""
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 201), ("CF", 403), ("VA", 403)])
+def test_11_10_connecting_the_folder_is_the_founders(
+    role, expected, seeded_tenant, ff_user, api, fake_client, drive_granted, in_tenant_a
+):
+    """Matrix 11.10 — narrower than *using* the queue, which is the VA's job.
+    Pointing the app at a folder grants it a standing read of a Drive, and that
+    decision belongs with the person who answers for the practice's data."""
+    membership = ff_user if role == "FF" else MembershipFactory(tenant=seeded_tenant,
+                                                                role=role)
+    response = api.as_(membership).post("/api/drive-watch/", {"folder": "1AbCdEfGh_1"})
+    assert response.status_code == expected
+    assert DriveWatch.objects.exists() is (expected == 201)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", ["/api/drive-watch/", "/api/drive-watch/check/",
+                                 "/api/drive-watch/consent/",
+                                 "/api/drive-watch/disconnect/"])
+@pytest.mark.parametrize("role", ["CF", "VA"])
+def test_only_the_founder_reaches_any_connect_route(
+    url, role, seeded_tenant, api, in_tenant_a
+):
+    membership = MembershipFactory(tenant=seeded_tenant, role=role)
+    assert api.as_(membership).post(url, {"folder": "1AbCdEfGh_1"}).status_code == 403

@@ -798,6 +798,30 @@ def test_module5_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
     assert api.as_(membership).get(url).status_code == expected[role], url
 
 
+CONNECT_ROUTES = ["/api/drive-watch/", "/api/drive-watch/check/",
+                  "/api/drive-watch/consent/", "/api/drive-watch/disconnect/"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", CONNECT_ROUTES, ids=CONNECT_ROUTES)
+@pytest.mark.parametrize("role", ["CF", "VA", "FCC", "ECC"])
+def test_11_10_only_the_founder_connects_the_notes_folder(
+    url, role, seeded_tenant, api
+):
+    """Matrix 11.10 — **narrower than using the queue.** A VA clears this queue
+    and a CF's own meetings are in it, but pointing the app at a folder grants
+    a standing read of a whole Drive, and that decision sits with the person
+    who answers for the practice's data.
+
+    Note the asymmetry with the GET above: every staff role may *see* where the
+    folder has got to, because a queue that is empty and a queue that is asleep
+    look identical to whoever has to clear it.
+    """
+    company = ClientCompanyFactory(tenant=seeded_tenant) if role in ("FCC", "ECC") else None
+    membership = MembershipFactory(tenant=seeded_tenant, role=role, client_company=company)
+    assert api.as_(membership).post(url, {"folder": "1AbCdEfGh_1"}).status_code == 403
+
+
 @pytest.mark.django_db
 def test_11_3_the_vas_broad_rights_here_are_deliberate(seeded_tenant, api, in_tenant_a):
     """Clearing this queue is the VA's job, and **every action in it creates

@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Check, FileText, FolderSync, RefreshCw, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, FileText, FolderOpen, FolderSync, Link2, RefreshCw, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { Me, MeetingProposal, ProposalItem, api } from "../lib/api";
+import { DriveHealth, DriveFolder, Me, MeetingProposal, ProposalItem, api } from "../lib/api";
 
 /**
  * Module 5 — the review queue (PRD §7).
@@ -20,9 +21,23 @@ export function Meetings({ me }: { me: Me }) {
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState("");
 
-  const health = useQuery<{ connected: boolean; folder_id: string; last_polled_at: string | null;
-                            last_error: string; files_pending: number; files_failed: number;
-                            files_skipped: number }>({
+  const [params, setParams] = useSearchParams();
+  const [problem, setProblem] = useState("");
+
+  // The Drive consent is a browser redirect, so its outcome comes back in the
+  // query string rather than as a response we could have awaited.
+  useEffect(() => {
+    const connected = params.get("drive_connected");
+    const failed = params.get("drive_error") || params.get("drive_warning");
+    if (connected) setNote(`Drive access granted for ${connected}. Now choose the folder.`);
+    if (failed) setProblem(failed);
+    if (connected || failed) {
+      setParams({}, { replace: true });
+      qc.invalidateQueries({ queryKey: ["drive-watch"] });
+    }
+  }, [params, setParams, qc]);
+
+  const health = useQuery<DriveHealth>({
     queryKey: ["drive-watch"], queryFn: () => api.get("/api/drive-watch/"),
   });
   const proposals = useQuery<MeetingProposal[]>({
@@ -60,22 +75,10 @@ export function Meetings({ me }: { me: Me }) {
         } />
 
       {note && <Banner kind="info">{note}</Banner>}
-      {health.data && !health.data.connected && (
-        <Banner kind="warn">
-          No folder is connected yet. Paste the folder's id from its Drive URL
-          on the settings screen to start watching it.
-        </Banner>
-      )}
-      {health.data?.last_error && (
-        <Banner kind="bad">{health.data.last_error}</Banner>
-      )}
-      {health.data?.connected && (
-        <p className="small muted">
-          Last looked {health.data.last_polled_at ? when(health.data.last_polled_at) : "never"}
-          {" · "}{health.data.files_pending} waiting
-          {health.data.files_failed > 0 && ` · ${health.data.files_failed} failed`}
-          {health.data.files_skipped > 0 && ` · ${health.data.files_skipped} skipped`}
-        </p>
+      {problem && <Banner kind="bad">{problem}</Banner>}
+      {health.data && (
+        <Folder health={health.data} me={me} refresh={refresh}
+          setNote={setNote} setProblem={setProblem} />
       )}
 
       {rows.length === 0 && (
@@ -105,6 +108,183 @@ export function Meetings({ me }: { me: Me }) {
         </Card>
       ))}
     </>
+  );
+}
+
+/**
+ * The folder behind the queue: connecting it, and its health once connected
+ * (FR-5.1, FR-5.1a).
+ *
+ * **Connecting has two steps that fail separately**, so the screen shows two.
+ * Granting the app `drive.readonly` on the founder's Google account is one
+ * thing; pointing it at a folder is another, and an FF who has done the first
+ * and not the second is in a different position from one who has done
+ * neither. Folding both into a single "Connect" button would leave the screen
+ * unable to say which half is missing — which is exactly the state this panel
+ * was built to end.
+ *
+ * Only the FF connects (matrix 11.10). Everyone else sees where the folder has
+ * got to, because a CF or VA clearing this queue still needs to know whether
+ * it is empty or merely asleep.
+ */
+function Folder({ health, me, refresh, setNote, setProblem }: {
+  health: DriveHealth; me: Me; refresh: () => void;
+  setNote: (text: string) => void; setProblem: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [pasted, setPasted] = useState("");
+  const [found, setFound] = useState<DriveFolder | null>(null);
+  const mine = me.role === "FF";
+
+  const consent = useMutation({
+    mutationFn: () => api.post<{ authorization_url: string }>("/api/drive-watch/consent/"),
+    // Google's consent screen, not ours: we hand the browser the URL and get
+    // the answer back on the redirect.
+    onSuccess: (data) => { window.location.href = data.authorization_url; },
+    onError: (e: Error) => setProblem(e.message),
+  });
+
+  const check = useMutation({
+    mutationFn: () => api.post<DriveFolder>("/api/drive-watch/check/", { folder: pasted }),
+    onSuccess: (data) => { setFound(data); setProblem(""); },
+    onError: (e: Error) => { setFound(null); setProblem(e.message); },
+  });
+
+  const connect = useMutation({
+    mutationFn: () => api.post<DriveHealth>("/api/drive-watch/", { folder: pasted }),
+    onSuccess: (data) => {
+      qc.setQueryData(["drive-watch"], data);
+      setFound(null);
+      setPasted("");
+      setProblem("");
+      setNote(`Watching “${data.folder_name || data.folder_id}”. `
+        + "Sync now to read what is already in it.");
+      refresh();
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: () => api.post<DriveHealth>("/api/drive-watch/disconnect/"),
+    onSuccess: (data) => {
+      qc.setQueryData(["drive-watch"], data);
+      setNote("Stopped watching. Everything already read stays in the queue, "
+        + "and reconnecting the same folder picks up where it left off.");
+      setProblem("");
+      refresh();
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
+
+  if (health.connected) {
+    return (
+      <Card title={health.folder_name || health.folder_id}
+        actions={mine && (
+          <button className="small" disabled={disconnect.isPending}
+            onClick={() => disconnect.mutate()}>Disconnect</button>
+        )}>
+        <p className="small muted">
+          <FolderOpen size={12} /> Watched folder
+          {" · "}last looked {health.last_polled_at ? when(health.last_polled_at) : "never"}
+          {" · "}{health.files_pending} waiting
+          {health.files_failed > 0 && ` · ${health.files_failed} failed`}
+          {health.files_skipped > 0 && ` · ${health.files_skipped} skipped`}
+        </p>
+        {health.last_error && <Banner kind="bad">{health.last_error}</Banner>}
+        {!health.drive_access && (
+          <Banner kind="bad">
+            The connected Google account no longer has Drive access, so this
+            folder cannot be read.
+            {mine && <> <button className="link" disabled={consent.isPending}
+              onClick={() => consent.mutate()}>Allow Drive access again</button>.</>}
+          </Banner>
+        )}
+      </Card>
+    );
+  }
+
+  if (!mine) {
+    return (
+      <Banner kind="warn">
+        No notes folder is connected yet, so nothing is being read. The founder
+        fractional connects it.
+      </Banner>
+    );
+  }
+
+  return (
+    <Card title="Connect your notes folder">
+      <p className="small muted">
+        Two steps, once. After this the folder is checked every ten minutes and
+        everything found lands here for you to approve.
+      </p>
+
+      <div className="connect-step">
+        <h4>1. Let the app read your Drive</h4>
+        {!health.google_connected ? (
+          <p className="small">
+            Connect your Google account first, on{" "}
+            <Link to="/settings/email">Email settings</Link>.
+          </p>
+        ) : health.drive_access ? (
+          <p className="small granted">
+            <Check size={14} /> Granted for {health.drive_account}.
+          </p>
+        ) : (
+          <>
+            <p className="small">
+              Google will ask for read-only access to your Drive. Sending mail
+              as you is asked for again at the same time and is not replaced.
+            </p>
+            <button className="primary" disabled={consent.isPending}
+              onClick={() => consent.mutate()}>
+              <Link2 size={16} /> {consent.isPending ? "Opening Google…" : "Allow Drive access"}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="connect-step">
+        <h4>2. Choose the folder</h4>
+        <Field label="Drive folder link">
+          <input aria-label="Drive folder link" value={pasted}
+            disabled={!health.drive_access}
+            placeholder="https://drive.google.com/drive/folders/…"
+            onChange={(e) => { setPasted(e.target.value); setFound(null); }} />
+        </Field>
+        <p className="small muted">
+          Open the folder in Drive and paste its web address. The id on its own
+          works too.
+        </p>
+        <div className="row tight">
+          <button disabled={!health.drive_access || !pasted.trim() || check.isPending}
+            onClick={() => check.mutate()}>
+            {check.isPending ? "Looking…" : "Check folder"}
+          </button>
+        </div>
+        {found && (
+          // Nothing is saved until this is confirmed: the point of checking
+          // first is to find out it is the wrong folder before it is watched.
+          <div className="found-folder">
+            <p><strong>{found.name}</strong></p>
+            <p className="small muted">
+              {found.files}{found.truncated && "+"} file{found.files === 1 ? "" : "s"}
+              {" · "}{found.readable} readable as meeting notes
+            </p>
+            {found.readable === 0 && (
+              <Banner kind="warn">
+                Nothing in there can be read as notes. Docs, .txt and .docx are
+                read; PDFs and recordings are not.
+              </Banner>
+            )}
+            <button className="primary" disabled={connect.isPending}
+              onClick={() => connect.mutate()}>
+              {connect.isPending ? "Saving…" : "Watch this folder"}
+            </button>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

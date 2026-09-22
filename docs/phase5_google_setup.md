@@ -10,6 +10,10 @@ enabling; the app reads one folder and never writes.
 
 ## 2. Add the Drive scope to the consent screen
 
+*(You do steps 2–4 from the app itself — the **meeting queue** screen has a
+"Connect your notes folder" panel that runs the consent and takes the folder.
+This section is what has to be true on the Google side for it to work.)*
+
 The OAuth client already exists — it is the one Module 1 uses to send mail.
 Meeting ingestion adds **one scope** to it:
 
@@ -38,9 +42,17 @@ practice's own meeting notes, nominated by the practice, and never writes.*
 ## 3. Re-consent once
 
 An existing connection was granted without the Drive scope, so it cannot read
-Drive no matter what the code asks for. Disconnect and reconnect the Google
-account on **Email settings** once, after this ships. The consent screen will
-list Drive alongside Gmail; approving it is what makes the folder readable.
+Drive no matter what the code asks for.
+
+**Do this from the meeting queue**, not from Email settings: step one of
+"Connect your notes folder" is an **Allow Drive access** button that sends you
+to Google and brings you back to the same screen. It asks for the Gmail scopes
+again at the same time, so **sending mail is re-granted, not replaced** — you
+will not lose the ability to send halfway through.
+
+Google lets you untick a scope on that screen. If you untick Drive, the app
+says so plainly and keeps the mail connection working; it does not pretend
+nothing was stored.
 
 If you would rather see the scopes before agreeing, the authorisation URL the
 app builds carries them in its `scope=` parameter.
@@ -53,8 +65,16 @@ Open the Gemini notes folder in Drive. The URL ends in the id:
 https://drive.google.com/drive/folders/1AbCdEfGh...   ← everything after /folders/
 ```
 
-Paste that into the meeting queue's connect box. **One folder per tenant in
-Beta** — the schema enforces it.
+Paste **the whole address** into step two of the connect panel — the app takes
+the id out of it, `?usp=sharing` and all. The id on its own works too.
+
+It then opens the folder and tells you its name, how many files are in it and
+how many of those it can read, **before** it saves anything. Confirm, and it
+starts watching. **One folder per tenant in Beta** — the schema enforces it.
+
+Only the founder fractional can connect or disconnect the folder (matrix
+11.10). A CF or VA sees which folder is watched and when it was last read, and
+no connect controls.
 
 ## 5. What the app will and will not do with it
 

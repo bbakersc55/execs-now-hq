@@ -53,6 +53,18 @@ def scopes_for(*, drive: bool = False) -> list[str]:
     return TIER1_SCOPES + (DRIVE_SCOPES if drive else [])
 
 STATE_SESSION_KEY = "gmail_oauth_state"
+#: Which screen started the consent, so Google's redirect lands back on it.
+#: The callback is a browser redirect and cannot return JSON, so where to go
+#: afterwards has to be remembered here rather than passed through Google.
+RETURN_SESSION_KEY = "gmail_oauth_return"
+DRIVE_SESSION_KEY = "gmail_oauth_drive"
+
+RETURN_PATHS = {"email": "/settings/email", "meetings": "/meetings"}
+
+
+def drive_granted(payload: dict) -> bool:
+    """Google lets a person untick a scope. Asking is not being granted."""
+    return set(DRIVE_SCOPES) <= set(granted_scopes(payload))
 
 
 class GmailOAuthError(Exception):

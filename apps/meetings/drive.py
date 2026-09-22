@@ -12,7 +12,9 @@ tests that matter run against a fake that returns pages, not against Google.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from urllib.parse import parse_qs, urlparse
 
 #: What Beta can read (FR-5.6). Anything else is recorded and skipped **with a
 #: reason**, because a file that vanished silently is a file the fractional
@@ -21,6 +23,50 @@ GOOGLE_DOC = "application/vnd.google-apps.document"
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PLAIN = "text/plain"
 SUPPORTED = {GOOGLE_DOC, DOCX, PLAIN}
+
+FOLDER = "application/vnd.google-apps.folder"
+
+#: A Drive id is a URL-safe string. The point of the check is not to validate
+#: against Google — only Google can do that — but to tell "the id" apart from
+#: "a whole web address the fractional pasted" and from "nothing useful",
+#: so the screen can say which of those went wrong.
+ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{6,128}")
+
+#: `describe_folder` counts what is in the folder. A folder with thousands of
+#: files is a folder the fractional pointed at by mistake, and paging to the
+#: end of it to say so helps nobody.
+MAX_COUNT_PAGES = 10
+
+
+def folder_id_from(value: str) -> str:
+    """The folder id out of whatever was pasted, or `""`.
+
+    **Nobody has the id; everybody has the address.** The id is a substring of
+    a URL in the address bar, and asking a person to cut it out by hand is
+    asking for the trailing `?usp=sharing` to come with it. So take either.
+    """
+    value = (value or "").strip().strip("<>").rstrip("/")
+    if not value:
+        return ""
+    if "/" in value or "?" in value or ":" in value:
+        parsed = urlparse(value if "//" in value else f"https://{value}")
+        parts = [p for p in parsed.path.split("/") if p]
+        if "folders" in parts:
+            candidate = parts[parts.index("folders") + 1:]
+            if candidate:
+                return _clean_id(candidate[0])
+        # The older `?id=` form, still what "Get link" gives for some folders.
+        for key in ("id", "folderId"):
+            found = parse_qs(parsed.query).get(key)
+            if found:
+                return _clean_id(found[0])
+        return ""
+    return _clean_id(value)
+
+
+def _clean_id(value: str) -> str:
+    value = (value or "").split("?")[0].split("#")[0].strip()
+    return value if ID_PATTERN.fullmatch(value) else ""
 
 SKIP_REASONS = {
     "application/pdf": "A PDF is not read in Beta — export the notes as a Doc or text.",
@@ -55,6 +101,22 @@ class DriveFile:
     owner_email: str = ""
     web_view_link: str = ""
     trashed: bool = False
+
+
+@dataclass
+class FolderInfo:
+    """What the folder turned out to be — shown before anything is saved.
+
+    `readable` is separate from `files` on purpose: a folder of twelve PDFs is
+    a connected folder that will never produce a proposal, and the fractional
+    should learn that now rather than from an empty queue tomorrow.
+    """
+
+    folder_id: str
+    name: str
+    files: int = 0
+    readable: int = 0
+    truncated: bool = False
 
 
 @dataclass
@@ -128,6 +190,54 @@ class DriveClient:
         return DrivePage(files=files,
                          next_page_token=response.get("nextPageToken", ""),
                          new_start_page_token=response.get("newStartPageToken", ""))
+
+    def describe_folder(self, folder_id: str) -> FolderInfo:
+        """Prove we can actually read it, and say what is in it (FR-5.1a).
+
+        Called **before** the watch is saved. A folder id that is a typo, or a
+        folder on an account this connection cannot see, fails here — on the
+        screen, with a reason — instead of becoming a watch that quietly
+        returns nothing every ten minutes.
+        """
+        service = self._service()
+        try:
+            meta = service.files().get(
+                fileId=folder_id, fields="id,name,mimeType,trashed").execute()
+        except Exception as exc:                     # pragma: no cover - network
+            raise DriveUnavailable(
+                "Drive would not open that folder. Check the link, and that the "
+                "folder is on the Google account you connected."
+            ) from exc
+        if meta.get("trashed"):
+            raise DriveUnavailable("That folder is in the Drive bin.")
+        if meta.get("mimeType") != FOLDER:
+            raise DriveUnavailable(
+                f"“{meta.get('name') or folder_id}” is a file, not a folder. "
+                "Open the folder that holds the notes and copy that address.")
+
+        files = readable = 0
+        token, truncated = "", False
+        try:
+            for _ in range(MAX_COUNT_PAGES):
+                response = service.files().list(
+                    q=f"'{folder_id}' in parents and trashed = false",
+                    fields="nextPageToken,files(id,mimeType)",
+                    pageSize=100, pageToken=token or None,
+                ).execute()
+                for row in response.get("files", []):
+                    files += 1
+                    if row.get("mimeType") in SUPPORTED:
+                        readable += 1
+                token = response.get("nextPageToken", "")
+                if not token:
+                    break
+            else:
+                truncated = bool(token)
+        except Exception as exc:                     # pragma: no cover - network
+            raise DriveUnavailable(
+                f"Opened “{meta.get('name')}” but could not list it: {exc}") from exc
+        return FolderInfo(folder_id=folder_id, name=meta.get("name", ""),
+                          files=files, readable=readable, truncated=truncated)
 
     def text_of(self, drive_file: DriveFile) -> str:
         """The document as text. A Doc is exported; a `.txt` is downloaded; a

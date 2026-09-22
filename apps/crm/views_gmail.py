@@ -33,10 +33,12 @@ TRANSPORT_LABELS = {
 }
 
 
-def _spa_url(**params):
+def _spa_url(where="email", **params):
+    """Back into the SPA, on the screen the consent was started from."""
     root = dj_settings.APP_ROOT_URL.rstrip("/")
+    path = gmail_oauth.RETURN_PATHS.get(where, gmail_oauth.RETURN_PATHS["email"])
     query = f"?{urlencode(params)}" if params else ""
-    return f"{root}/settings/email{query}"
+    return f"{root}{path}{query}"
 
 
 def _my_connection(request):
@@ -137,6 +139,10 @@ class GmailConnectionViewSet(viewsets.ViewSet):
             )}, status=400)
         state = gmail_oauth.new_state()
         request.session[gmail_oauth.STATE_SESSION_KEY] = state
+        # Set both every time: a Drive consent abandoned halfway must not leave
+        # keys behind that send the next ordinary connect to the wrong screen.
+        request.session[gmail_oauth.RETURN_SESSION_KEY] = "email"
+        request.session[gmail_oauth.DRIVE_SESSION_KEY] = False
         email = request.user.email
         return Response({
             "authorization_url": gmail_oauth.authorization_url(
@@ -186,44 +192,49 @@ class GmailConnectionViewSet(viewsets.ViewSet):
 @require_http_methods(["GET"])
 def gmail_callback(request):
     """Google's redirect target. Ends in the SPA, never in JSON."""
+    # Popped first, before any early return, so every refusal below lands on
+    # the screen the person was actually looking at.
+    where = request.session.pop(gmail_oauth.RETURN_SESSION_KEY, "email")
+    drive_wanted = bool(request.session.pop(gmail_oauth.DRIVE_SESSION_KEY, False))
+
     membership = getattr(request, "membership", None)
     if membership is None or membership.role not in ("FF", "CF"):
         # Covers signed-out (session expired mid-consent) and the H7 boundary.
-        return HttpResponseRedirect(_spa_url(gmail_error=(
+        return HttpResponseRedirect(_spa_url(where, gmail_error=(
             "You are not signed in as a fractional, so this connection was not stored."
         )))
 
     expected = request.session.pop(gmail_oauth.STATE_SESSION_KEY, None)
     supplied = request.GET.get("state")
     if not expected or not supplied or expected != supplied:
-        return HttpResponseRedirect(_spa_url(gmail_error=(
+        return HttpResponseRedirect(_spa_url(where, gmail_error=(
             "That consent did not match the request this browser started. "
             "Nothing was stored — click Connect Gmail again."
         )))
 
     if request.GET.get("error"):
-        return HttpResponseRedirect(_spa_url(gmail_error=(
+        return HttpResponseRedirect(_spa_url(where, gmail_error=(
             f"Google reported: {request.GET['error']}. Nothing was stored."
         )))
 
     code = request.GET.get("code", "")
     if not code:
         return HttpResponseRedirect(_spa_url(
-            gmail_error="Google returned no authorisation code. Nothing was stored."
+            where, gmail_error="Google returned no authorisation code. Nothing was stored."
         ))
 
     try:
         tokens = gmail_oauth.exchange_code(code)
         missing = gmail_oauth.missing_scopes(tokens)
         if missing:
-            return HttpResponseRedirect(_spa_url(gmail_error=(
+            return HttpResponseRedirect(_spa_url(where, gmail_error=(
                 "Consent was granted without "
                 f"{', '.join(s.rsplit('/', 1)[-1] for s in missing)}. "
                 "Nothing was stored — connect again and leave every box ticked."
             )))
         email_address = gmail_oauth.account_email(tokens["access_token"])
     except gmail_oauth.GmailOAuthError as exc:
-        return HttpResponseRedirect(_spa_url(gmail_error=str(exc)))
+        return HttpResponseRedirect(_spa_url(where, gmail_error=str(exc)))
 
     tenant = membership.tenant
     secret = secrets.write_secret(
@@ -250,9 +261,26 @@ def gmail_callback(request):
 
     # Verify the alias immediately: connecting and *then* discovering the alias
     # is missing is the same two-step the owner already has to do in Gmail.
+    warning = ""
     try:
         transport.verify_send_as(connection, tenant.from_address)
     except transport.TransportUnavailable as exc:
-        return HttpResponseRedirect(_spa_url(gmail_connected=email_address,
-                                             gmail_warning=str(exc)))
-    return HttpResponseRedirect(_spa_url(gmail_connected=email_address))
+        warning = str(exc)
+
+    if drive_wanted and not gmail_oauth.drive_granted(tokens):
+        # The Gmail half is stored and working; only Drive was refused, and
+        # saying "nothing was stored" here would be a lie.
+        return HttpResponseRedirect(_spa_url(where, drive_error=(
+            "Consent was granted without Drive access, so the notes folder "
+            "cannot be read. Sending mail still works. Allow Drive access "
+            "again and leave every box ticked."
+        )))
+    if where == "meetings":
+        params = {"drive_connected": email_address}
+        if warning:
+            params["drive_warning"] = warning
+        return HttpResponseRedirect(_spa_url(where, **params))
+    if warning:
+        return HttpResponseRedirect(_spa_url(where, gmail_connected=email_address,
+                                             gmail_warning=warning))
+    return HttpResponseRedirect(_spa_url(where, gmail_connected=email_address))

@@ -770,6 +770,36 @@ export interface PreCallForm {
 
 // --- Module 5 — meeting ingestion -------------------------------------------
 
+/** GET /api/drive-watch/ — the folder behind the queue, and its health.
+ *
+ *  `google_connected` and `drive_access` are separate because they fail
+ *  separately: a practice can have a Google account connected for sending mail
+ *  that has never been asked for Drive. */
+export interface DriveHealth {
+  connected: boolean;
+  google_connected: boolean;
+  drive_access: boolean;
+  drive_account: string;
+  folder_id: string;
+  folder_name: string;
+  last_polled_at: string | null;
+  last_error: string;
+  has_cursor: boolean;
+  files_pending: number;
+  files_failed: number;
+  files_skipped: number;
+}
+
+/** POST /api/drive-watch/check/ — what that folder turned out to be, read live
+ *  and saved nowhere until it is confirmed. */
+export interface DriveFolder {
+  folder_id: string;
+  name: string;
+  files: number;
+  readable: number;
+  truncated: boolean;
+}
+
 /** One proposed thing. **Nothing here exists yet**: approving is what creates
  *  it, and every item carries the passage it was drawn from (FR-5.14). */
 export interface ProposalItem {

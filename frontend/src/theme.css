@@ -595,6 +595,16 @@ ul.work-tree > li { margin: 0; }
 .stepper .step.on { background: var(--navy); color: #fff; border-color: var(--navy); }
 .stepper .step.done { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-line); }
 
+/* Module 5 — the two steps of connecting a notes folder. Numbered because
+   the order is real: the folder cannot be read before Drive access is granted. */
+.connect-step { padding-block: var(--s3); border-top: 1px solid var(--line); }
+.connect-step:first-of-type { border-top: 0; }
+.connect-step h4 { margin: 0 0 var(--s2); font-size: var(--t-14); }
+.connect-step .granted { display: flex; align-items: center; gap: var(--s1); color: var(--ok); }
+.found-folder { margin-top: var(--s3); padding: var(--s3); border-radius: var(--radius-sm);
+                border: 1px solid var(--line); background: var(--surface-2); }
+.found-folder p { margin: 0 0 var(--s2); }
+
 .richtext {
   min-height: 9rem; padding: var(--s2) var(--s3); border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm); background: var(--surface); font-size: var(--t-14);

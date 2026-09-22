@@ -42,6 +42,19 @@ def may_use(request) -> bool:
     return role in (Role.FF, Role.CF, Role.VA)
 
 
+def may_connect(request) -> bool:
+    """Connecting the folder is the FF's (matrix 11.10).
+
+    Narrower than using the queue on purpose. Clearing the queue is the VA's
+    job, but **pointing the app at a folder grants it a standing read of a
+    Drive**, and choosing which folder that is belongs with the person who
+    answers for the practice's data. A CF is not refused because they are less
+    trusted — their own meetings are in there — but because there is one
+    folder per practice and one owner of the decision.
+    """
+    return crm_perms.role_of(request) == Role.FF
+
+
 def source_files_for(request, queryset=None):
     queryset = MeetingSourceFile.objects.all() if queryset is None else queryset
     role = crm_perms.role_of(request)

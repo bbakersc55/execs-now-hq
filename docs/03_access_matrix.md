@@ -257,7 +257,12 @@
 | 11.7 | Reject a proposal item | ✅ | 🔸 | ✅ | ❌ | ❌ | |
 | 11.8 | Re-parse a source file | ✅ | 🔸 | ✅ | ❌ | ❌ | Writes an `ai_call` |
 | 11.9 | View meetings on a contact timeline | ✅ | 🔸 | ✅ | ❌ | ❌ | Client users see tasks, never meeting records |
+| 11.10 | Connect / disconnect the notes folder | ✅ | ❌ | ❌ | ❌ | ❌ | **FF only.** Grants the app a standing read of a Drive |
+| 11.11 | Grant Drive access (`drive.readonly` consent) | ✅ | ❌ | ❌ | ❌ | ❌ | FF only; on the FF's own Google connection |
+| 11.12 | See the folder's name, last poll and last error | ✅ | ✅ | ✅ | ❌ | ❌ | Read-only for CF and VA |
 
+> **Connecting is narrower than using (11.10–11.12).** Clearing this queue is the VA's job and a CF's own meetings are in it, so both act on proposals freely. But pointing the app at a folder grants it a standing read of a whole Google Drive, and there is one folder per practice — so choosing it belongs with the person who answers for the practice's data. The asymmetry with 11.12 is deliberate too: every staff role may *see* where the folder has got to, because a queue that is empty and a queue that is asleep look identical to whoever has to clear it.
+>
 > **The VA's broad rights here are deliberate.** Clearing this queue is the VA's job, and every action in it creates records rather than sending mail — the send is a separate, gated step (FR-5.19, row 5.3).
 >
 > **Why `proposal-scope` is not simply "all tenant staff".** A meeting proposal usually *precedes* any company link — matching participants is the point of the queue — so an unmatched proposal has no company to scope by. The tempting fix is to show unmatched proposals to everyone. That is wrong: **a CF is not assigned to the FF's prospects, and must not read the FF's prospect meeting notes before anyone has decided they should.** So the scope has a second limb — **the CF owns the source Drive file**, i.e. it was their own meeting — which covers the legitimate case without opening the FF's pipeline. A proposal that is neither matched to an assigned company nor from the CF's own file is visible to FF and VA only, which is the correct default for an unreviewed document.
