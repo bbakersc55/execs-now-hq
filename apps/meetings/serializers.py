@@ -22,6 +22,33 @@ def represent_item(item) -> dict:
     }
 
 
+def represent_backfill(backfill) -> dict | None:
+    """The import's state, with the estimate kept beside the real figure.
+
+    An estimate that turned out badly wrong should be visible afterwards, not
+    quietly replaced by what it actually cost.
+    """
+    if backfill is None:
+        return None
+    return {
+        "id": str(backfill.pk),
+        "scope": backfill.scope,
+        "since": backfill.since.isoformat() if backfill.since else None,
+        "state": backfill.state,
+        "running": backfill.is_running,
+        "planned": backfill.planned,
+        "done": backfill.done,
+        "skipped": backfill.skipped,
+        "failed": backfill.failed,
+        "remaining": backfill.remaining,
+        "estimated_cost_usd": str(backfill.estimated_cost_usd),
+        "cost_usd": str(backfill.cost_usd),
+        "last_error": backfill.last_error,
+        "started_at": backfill.created_at.isoformat(),
+        "finished_at": backfill.finished_at.isoformat() if backfill.finished_at else None,
+    }
+
+
 def represent_source_file(source_file) -> dict:
     return {
         "id": str(source_file.pk),

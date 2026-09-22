@@ -5,7 +5,10 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { DriveHealth, DriveFolder, Me, MeetingProposal, ProposalItem, api } from "../lib/api";
+import {
+  Backfill, BackfillPlan, DriveFolder, DriveHealth, FolderPast, Me, MeetingProposal,
+  ProposalItem, api,
+} from "../lib/api";
 
 /**
  * Module 5 — the review queue (PRD §7).
@@ -39,6 +42,10 @@ export function Meetings({ me }: { me: Me }) {
 
   const health = useQuery<DriveHealth>({
     queryKey: ["drive-watch"], queryFn: () => api.get("/api/drive-watch/"),
+    // While the folder is being imported this screen is a progress bar, so it
+    // has to move. Otherwise it is a static header and polling it is waste.
+    refetchInterval: (query) =>
+      query.state.data?.backfill?.running ? 15_000 : false,
   });
   const proposals = useQuery<MeetingProposal[]>({
     queryKey: ["meeting-proposals"],
@@ -79,6 +86,9 @@ export function Meetings({ me }: { me: Me }) {
       {health.data && (
         <Folder health={health.data} me={me} refresh={refresh}
           setNote={setNote} setProblem={setProblem} />
+      )}
+      {health.data?.connected && me.role === "FF" && (
+        <Past health={health.data} setProblem={setProblem} />
       )}
 
       {rows.length === 0 && (
@@ -285,6 +295,175 @@ function Folder({ health, me, refresh, setNote, setProblem }: {
         )}
       </div>
     </Card>
+  );
+}
+
+/**
+ * The folder's past — a choice, never a default (FR-5.1b).
+ *
+ * **Drive's cursor starts at "now".** A folder holding six months of notes is,
+ * to the poller, empty until the next meeting happens; that is what produced
+ * "0 waiting" on 167 real notes. Reading the past is a different thing from
+ * watching the future: it costs one Claude call per note and fills the review
+ * queue with months of work, most of it possibly long settled.
+ *
+ * So this panel states what is there, what each option would take and what it
+ * would cost **before** anything starts, and treats "only new notes" as an
+ * answer rather than as the absence of one.
+ */
+function Past({ health, setProblem }: {
+  health: DriveHealth; setProblem: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [scope, setScope] = useState<Backfill["scope"]>("all");
+  const [since, setSince] = useState("");
+  const backfill = health.backfill;
+
+  const past = useQuery<{ folder: FolderPast; backfill: Backfill | null }>({
+    queryKey: ["drive-backfill"],
+    queryFn: () => api.get("/api/drive-watch/backfill/"),
+    // Only worth a Drive listing while the decision is still open.
+    enabled: !backfill,
+  });
+
+  // Asked again each time the date changes: a count and a cost the fractional
+  // has not seen is a cost they have not agreed to.
+  const plan = useQuery<BackfillPlan>({
+    queryKey: ["drive-backfill-plan", since],
+    queryFn: () => api.post<BackfillPlan>("/api/drive-watch/backfill/plan/", { since }),
+    enabled: scope === "since" && /^\d{4}-\d{2}-\d{2}$/.test(since),
+  });
+
+  const choose = useMutation({
+    mutationFn: () => api.post<Backfill>("/api/drive-watch/backfill/",
+      { scope, since: scope === "since" ? since : null }),
+    onSuccess: () => { setProblem(""); qc.invalidateQueries({ queryKey: ["drive-watch"] }); },
+    onError: (e: Error) => setProblem(e.message),
+  });
+
+  const stop = useMutation({
+    mutationFn: () => api.post<Backfill>("/api/drive-watch/backfill/stop/"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["drive-watch"] }),
+    onError: (e: Error) => setProblem(e.message),
+  });
+
+  if (backfill?.running) {
+    const read = backfill.done + backfill.skipped + backfill.failed;
+    return (
+      <Card title="Importing the folder's notes"
+        actions={<button className="small" disabled={stop.isPending}
+          onClick={() => stop.mutate()}>Stop</button>}>
+        <Progress done={read} total={backfill.planned} />
+        <p className="small muted">
+          {backfill.done} read of {backfill.planned}
+          {backfill.skipped > 0 && ` · ${backfill.skipped} skipped`}
+          {backfill.failed > 0 && ` · ${backfill.failed} failed`}
+          {" · "}<strong>${backfill.cost_usd.slice(0, 6)} spent so far</strong>
+          {" "}of about ${backfill.estimated_cost_usd}
+        </p>
+        <p className="small muted">
+          A few a minute, oldest first, so the rest of the app keeps working.
+          Each one lands in the queue below as it is read. Stopping keeps
+          everything already read.
+        </p>
+        {backfill.last_error && <Banner kind="warn">{backfill.last_error}</Banner>}
+      </Card>
+    );
+  }
+
+  if (backfill && backfill.state !== "declined") {
+    if (backfill.done === 0) return null;
+    return (
+      <Banner kind="info">
+        Imported {backfill.done} note{backfill.done === 1 ? "" : "s"} from this
+        folder{backfill.state === "cancelled" && " before you stopped it"}, for
+        ${backfill.cost_usd.slice(0, 6)}. New notes arrive on their own from now on.
+      </Banner>
+    );
+  }
+  if (backfill) return null;                 // "From now on" — asked and answered.
+
+  if (past.isLoading) return <p className="small muted">Looking in the folder…</p>;
+  if (!past.data) return null;
+  const found = past.data.folder;
+  if (found.outstanding === 0) return null;
+
+  const chosen = scope === "since" ? plan.data : found;
+  return (
+    <Card title="This folder already holds notes">
+      <p>
+        <strong>{found.outstanding} readable note{found.outstanding === 1 ? "" : "s"}</strong>
+        {found.oldest && <> are already in it, from {found.oldest} to {found.newest}</>}.
+        {" "}
+        {/* The thing that is not obvious and causes the confusion: watching
+            starts now, so none of these will appear on their own. */}
+        Watching starts from now, so none of them will appear in the queue
+        unless you import them.
+      </p>
+      {found.subfolders.length > 0 && (
+        <p className="small muted">
+          Including {found.readable_in_subfolders} in{" "}
+          {found.subfolders.map((s) => s.name).join(", ")} — subfolders are read too,
+          one level down.
+        </p>
+      )}
+
+      <fieldset className="choices">
+        <legend className="small muted">What should happen to them?</legend>
+        {([
+          ["now", "Start from now — only new notes"],
+          ["since", "Also import notes since"],
+          ["all", `Import everything — all ${found.outstanding}`],
+        ] as const).map(([value, label]) => (
+          <label key={value} className="choice">
+            <input type="radio" name="backfill-scope" value={value}
+              checked={scope === value} onChange={() => setScope(value)} />
+            <span>{label}</span>
+            {value === "since" && (
+              <input type="date" aria-label="Import notes since" value={since}
+                max={found.newest || undefined} min={found.oldest || undefined}
+                onChange={(e) => { setSince(e.target.value); setScope("since"); }} />
+            )}
+          </label>
+        ))}
+      </fieldset>
+
+      {scope !== "now" && (
+        // Shown before confirming, always. An estimate nobody saw is a cost
+        // nobody agreed to.
+        <p className="small">
+          {plan.isFetching && scope === "since" ? "Counting…" : chosen ? (
+            <>
+              <strong>{chosen.outstanding} note{chosen.outstanding === 1 ? "" : "s"}</strong>,
+              about <strong>${chosen.estimate_usd}</strong> of AI
+              {" "}({found.per_note_is_measured
+                ? `$${found.per_note_usd} each, your average so far`
+                : `about $${found.per_note_usd} each, estimated`}),
+              roughly {chosen.minutes} minute{chosen.minutes === 1 ? "" : "s"} to read.
+            </>
+          ) : "Pick a date to see the count and the cost."}
+        </p>
+      )}
+
+      <button className="primary"
+        disabled={choose.isPending || (scope === "since" && !plan.data)}
+        onClick={() => choose.mutate()}>
+        {choose.isPending ? "Starting…"
+          : scope === "now" ? "Start from now"
+          : `Import ${chosen?.outstanding ?? ""} notes`}
+      </button>
+    </Card>
+  );
+}
+
+/** A bar, because "42 of 167" is a number and this is a wait. */
+function Progress({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  return (
+    <div className="progress" role="progressbar" aria-valuenow={pct}
+      aria-valuemin={0} aria-valuemax={100} aria-label="Import progress">
+      <span style={{ width: `${pct}%` }} />
+    </div>
   );
 }
 

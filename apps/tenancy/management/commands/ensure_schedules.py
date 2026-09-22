@@ -49,6 +49,10 @@ SCHEDULES = [
     # laptop that was shut for three days catches up rather than missing three
     # days of notes.
     ("meetings.poll_drive", "apps.meetings.tasks.poll_drive", Schedule.MINUTES, 10, None),
+    # FR-5.1b: the folder backfill, paced. Every minute, and a no-op unless a
+    # backfill is running — which is the normal state.
+    ("meetings.run_backfill", "apps.meetings.tasks.run_backfill",
+     Schedule.MINUTES, 1, None),
     # Module 2.
     ("notes.process", "apps.notes.tasks.process_notes", Schedule.MINUTES, 1, None),
     ("notes.purge_expired_audio", "apps.notes.tasks.purge_expired_audio",

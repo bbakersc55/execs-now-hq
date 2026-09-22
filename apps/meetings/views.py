@@ -15,11 +15,28 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.crm.services import gmail_oauth
-from apps.meetings import approval, drive as drive_service, ingest, parsing
+from apps.meetings import (
+    approval, backfill as backfill_service, drive as drive_service, ingest, parsing,
+)
 from apps.meetings import permissions as meeting_perms
 from apps.meetings import serializers as meeting_serializers
-from apps.meetings.models import DriveWatch, MeetingProposal, ProposalItem
+from apps.meetings.models import (
+    DriveBackfill, DriveWatch, MeetingProposal, ProposalItem,
+)
 from apps.tenancy.models import AuditEvent
+
+
+def _as_date(value):
+    """A date from the wire, or None. Never today as a silent default — this
+    one decides how much history gets read and what it costs."""
+    from datetime import date
+
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_uuid(value) -> bool:
@@ -139,6 +156,79 @@ class DriveWatchViewSet(MeetingViewSetBase):
                      "files": info.files, "readable": info.readable,
                      "cursor_reset": moved})
         return Response({**ingest.health(request.tenant), "found": found}, status=201)
+
+    @action(detail=False, methods=["get", "post"], url_path="backfill")
+    def backfill(self, request):
+        """What is already in the folder, and the choice about it (FR-5.1b).
+
+        **GET states the position; POST records the decision.** The counts and
+        the cost are shown before anything starts, because a cost nobody has
+        seen is a cost nobody has agreed to.
+        """
+        self.require_founder(request)
+        if request.method == "GET":
+            try:
+                found = backfill_service.survey(request.tenant)
+            except backfill_service.BackfillRefused as exc:
+                return Response({"detail": str(exc)}, status=exc.status)
+            except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
+                return Response({"detail": str(exc)}, status=409)
+            return Response({
+                "folder": found,
+                "backfill": meeting_serializers.represent_backfill(
+                    backfill_service.current(request.tenant)),
+            })
+
+        since = _as_date(request.data.get("since"))
+        if request.data.get("scope") == DriveBackfill.Scope.SINCE and since is None:
+            return Response({"detail": "Since when? Give a date to import from."},
+                            status=400)
+        try:
+            started = backfill_service.start(
+                request.tenant, scope=request.data.get("scope") or "",
+                since=since, actor=request.user)
+        except backfill_service.BackfillRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
+            return Response({"detail": str(exc)}, status=409)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="drive.backfill_chosen",
+            target_type="drive_backfill", target_id=started.pk,
+            payload={"scope": started.scope,
+                     "since": started.since.isoformat() if started.since else None,
+                     "planned": started.planned,
+                     "estimate_usd": str(started.estimated_cost_usd)})
+        return Response(meeting_serializers.represent_backfill(started), status=201)
+
+    @action(detail=False, methods=["post"], url_path="backfill/plan")
+    def backfill_plan(self, request):
+        """The count and the cost for one cut-off date, asked again each time
+        the date changes."""
+        self.require_founder(request)
+        since = _as_date(request.data.get("since"))
+        if since is None:
+            return Response({"detail": "Give a date to import from."}, status=400)
+        try:
+            return Response(backfill_service.plan(request.tenant, since))
+        except backfill_service.BackfillRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
+            return Response({"detail": str(exc)}, status=409)
+
+    @action(detail=False, methods=["post"], url_path="backfill/stop")
+    def backfill_stop(self, request):
+        """Stop the import. What has been read stays read."""
+        self.require_founder(request)
+        running = DriveBackfill.objects.filter(
+            state=DriveBackfill.State.RUNNING).first()
+        if running is None:
+            return Response({"detail": "No import is running."}, status=400)
+        backfill_service.cancel(running, actor=request.user)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="drive.backfill_stopped",
+            target_type="drive_backfill", target_id=running.pk,
+            payload={"done": running.done, "cost_usd": str(running.cost_usd)})
+        return Response(meeting_serializers.represent_backfill(running))
 
     @action(detail=False, methods=["post"], url_path="disconnect")
     def disconnect(self, request):

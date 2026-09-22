@@ -47,6 +47,72 @@ class DriveWatch(TenantScopedModel):
         ]
 
 
+class DriveBackfill(TenantScopedModel):
+    """Reading what was already in the folder — a choice, never a default.
+
+    **The poll cannot see the past.** Drive's `changes.list` starts from a
+    token that means "now", so a folder of six months of notes is, to a fresh
+    watch, empty until the next meeting. Importing that history is a real
+    decision: it costs one Claude call per note and fills the review queue with
+    months of work. So the app states what is there, what it would cost, and
+    lets the fractional choose — `NOW` is a recorded decision not to, which is
+    why it is a row rather than an absence.
+
+    Paced rather than queued all at once: `after_created_time` walks the folder
+    oldest first, a few notes a minute, so the cluster keeps serving the app and
+    **the spend is visible while it happens** rather than after it.
+    """
+
+    class Scope(models.TextChoices):
+        NOW = "now", "Only new notes from now on"
+        SINCE = "since", "Also notes since a date"
+        ALL = "all", "Everything in the folder"
+
+    class State(models.TextChoices):
+        DECLINED = "declined", "Starting from now"
+        RUNNING = "running", "Importing"
+        DONE = "done", "Imported"
+        CANCELLED = "cancelled", "Stopped"
+        FAILED = "failed", "Stopped by an error"
+
+    watch = models.ForeignKey("meetings.DriveWatch", on_delete=models.CASCADE,
+                              related_name="backfills")
+    scope = models.CharField(max_length=8, choices=Scope.choices)
+    since = models.DateField(null=True, blank=True)
+    state = models.CharField(max_length=10, choices=State.choices,
+                             default=State.RUNNING, db_index=True)
+    #: What the survey counted when the choice was made, and what it thought it
+    #: would cost. Both are kept beside the real figures so an estimate that was
+    #: badly wrong is visible afterwards rather than quietly replaced.
+    planned = models.IntegerField(default=0)
+    estimated_cost_usd = models.DecimalField(max_digits=10, decimal_places=4, default=0)
+    done = models.IntegerField(default=0)
+    skipped = models.IntegerField(default=0)
+    failed = models.IntegerField(default=0)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    #: RFC 3339, the `createdTime` of the last file this has walked past. The
+    #: cursor is a timestamp rather than a page token because the walk is
+    #: oldest-first over a fixed set, and a timestamp survives a restart.
+    after_created_time = models.CharField(max_length=40, blank=True, default="")
+    last_error = models.TextField(blank=True, default="")
+    started_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "drive_backfill"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["tenant", "state"])]
+
+    @property
+    def is_running(self) -> bool:
+        return self.state == self.State.RUNNING
+
+    @property
+    def remaining(self) -> int:
+        return max(self.planned - self.done - self.skipped - self.failed, 0)
+
+
 class MeetingSourceFile(TenantScopedModel):
     """One version of one file we have seen (FR-5.4)."""
 

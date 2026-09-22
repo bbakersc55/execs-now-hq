@@ -79,7 +79,11 @@ no connect controls.
 ## 5. What the app will and will not do with it
 
 - It calls `changes.list` from a stored cursor every ten minutes, and on
-  "Sync now".
+  "Sync now". **That cursor starts at "now"**, so the poll sees notes added
+  from the moment you connect and none of what is already there — importing
+  the folder's past is a separate, priced choice the queue offers you once.
+- It reads the folder **and one level of subfolders**, naming them when it
+  finds any.
 - It reads **Google Docs, `.txt` and `.docx`** in that folder, exporting each
   as text. A PDF, a video or a Google Sheet is **recorded and skipped with a
   reason on the screen** — never silently ignored.

@@ -13,16 +13,17 @@ The three that carry the most risk, and which the rest lean on:
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from urllib.parse import quote
 
 import pytest
 from django.utils import timezone
 
 from apps.crm.models import Contact, ContactEmail, OutboxMessage, Task
-from apps.meetings import approval, drive, ingest, matching, parsing
+from apps.meetings import approval, backfill, drive, ingest, matching, parsing
 from apps.meetings.models import (
-    DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
-    ProposalItem,
+    DriveBackfill, DriveWatch, Meeting, MeetingParticipant, MeetingProposal,
+    MeetingSourceFile, ProposalItem,
 )
 from apps.tenancy.models import AuditEvent
 
@@ -52,12 +53,16 @@ class FakeDrive:
         self.fail = None
         self.described = []
         self.folder_fail = None
+        self.watched = []
+        self.subfolders = []
+        self.listing = []
 
     def start_token(self):
         return "start"
 
-    def changes(self, page_token, *, folder_id):
+    def changes(self, page_token, *, folder_ids):
         self.calls.append(page_token)
+        self.watched = list(folder_ids)
         if self.fail:
             raise drive.DriveUnavailable(self.fail)
         for token, page in self.pages:
@@ -73,7 +78,18 @@ class FakeDrive:
         if self.folder_fail:
             raise drive.DriveUnavailable(self.folder_fail)
         return drive.FolderInfo(folder_id=folder_id, name="Gemini meeting notes",
-                                files=14, readable=12)
+                                files=14, readable=12,
+                                subfolders=list(self.subfolders),
+                                oldest="2026-03-30T18:44:48.635Z",
+                                newest="2026-09-11T06:05:27.282Z")
+
+    def files_in(self, folder_ids, *, created_from="", page_size=50, max_pages=1):
+        """Oldest first, filtered the way Drive's own query would be."""
+        wanted = set(folder_ids)
+        found = [f for f in self.listing
+                 if f.created_time >= created_from and getattr(f, "parent", None)
+                 in wanted | {None}]
+        return sorted(found, key=lambda f: f.created_time)[:page_size * max_pages]
 
 
 def a_file(file_id, *, version="1", name=None, mime=drive.GOOGLE_DOC,
@@ -880,3 +896,307 @@ def test_only_the_founder_reaches_any_connect_route(
 ):
     membership = MembershipFactory(tenant=seeded_tenant, role=role)
     assert api.as_(membership).post(url, {"folder": "1AbCdEfGh_1"}).status_code == 403
+
+
+# ============================================== the folder's past (FR-5.1b)
+#
+# The gap this closes, found on the owner's own folder: "Sync now" reported
+# **0 waiting** on 167 readable notes. Drive's `changes.list` starts from a
+# token meaning "now", so a freshly connected folder is, to the poller, empty
+# until the next meeting happens. Reading the past is a separate, paid,
+# consented thing.
+
+
+def a_note(file_id, *, created, parent=None, mime=drive.GOOGLE_DOC):
+    row = drive.DriveFile(file_id=file_id, version="1", name=f"{file_id} notes",
+                          mime_type=mime, owner_email=FF_EMAIL,
+                          web_view_link=f"https://d/{file_id}",
+                          created_time=created)
+    row.parent = parent
+    return row
+
+
+@pytest.fixture
+def folder_of_notes(fake_client):
+    """Six months of notes already sitting in the folder, oldest first."""
+    fake_client.listing = [
+        a_note(f"note{n}", created=f"2026-0{3 + n}-01T09:00:00.000Z")
+        for n in range(1, 6)
+    ]
+    fake_client.texts = {f"note{n}": NOTES for n in range(1, 6)}
+    return fake_client
+
+
+@pytest.mark.django_db
+def test_a_fresh_watch_sees_none_of_the_folders_past(
+    seeded_tenant, watch, fake_client, in_tenant_a
+):
+    """The bug itself, pinned. A poll of a folder full of notes records
+    **nothing**, because the cursor Drive hands out means "from now on"."""
+    fake_client.listing = [a_note("old", created="2026-03-01T09:00:00.000Z")]
+    # `changes` returns an empty page for the start token — which is exactly
+    # what Drive does for files that predate it.
+    report = ingest.poll(seeded_tenant, client=fake_client)
+
+    assert report["recorded"] == []
+    assert MeetingSourceFile.objects.count() == 0
+    # And that is not a failure: nothing errored, the cursor advanced.
+    assert report["error"] == ""
+
+
+@pytest.mark.django_db
+def test_the_survey_says_what_is_there_and_what_reading_it_would_cost(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch, in_tenant_a
+):
+    """AC-5.1b — counts and cost **before** anything is chosen."""
+    response = api.as_(ff_user).get("/api/drive-watch/backfill/")
+
+    assert response.status_code == 200, response.data
+    found = response.data["folder"]
+    assert found["outstanding"] == 5
+    assert found["oldest"] == "2026-03-30" and found["newest"] == "2026-09-11"
+    # No history yet, so the estimate is the modelled one and says so.
+    assert found["per_note_is_measured"] is False
+    assert Decimal(found["estimate_usd"]) > 0
+    # Paced, and the screen can say roughly how long.
+    assert found["minutes"] == 2
+    assert response.data["backfill"] is None
+
+
+@pytest.mark.django_db
+def test_starting_from_now_is_recorded_as_a_decision_and_reads_nothing(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch, in_tenant_a
+):
+    """Option (a). **A decision, not an absence** — six months later, "why did
+    the queue start empty" has an answer with a date and a name on it."""
+    response = api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "now"})
+
+    assert response.status_code == 201
+    assert response.data["state"] == "declined"
+    assert MeetingSourceFile.objects.count() == 0
+    chosen = DriveBackfill.objects.get()
+    assert chosen.started_by_id == ff_user.user_id
+    assert AuditEvent.all_objects.filter(verb="drive.backfill_chosen").exists()
+
+
+@pytest.mark.django_db
+def test_importing_since_a_date_takes_only_what_is_after_it(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    """Option (b). The cut-off is the fractional's, and the count they were
+    shown is the count that runs."""
+    fake_claude.reply = PARSED
+    planned = api.as_(ff_user).post("/api/drive-watch/backfill/plan/",
+                                    {"since": "2026-06-01"})
+    assert planned.status_code == 200
+    # June, July and August — **the date is included**, which is what "since"
+    # means to the person typing it.
+    assert planned.data["outstanding"] == 3
+
+    started = api.as_(ff_user).post("/api/drive-watch/backfill/",
+                                    {"scope": "since", "since": "2026-06-01"})
+    assert started.status_code == 201
+    assert started.data["planned"] == 3
+
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=10)
+
+    read = sorted(MeetingSourceFile.objects.values_list("drive_file_id", flat=True))
+    assert read == ["note3", "note4", "note5"]
+
+
+@pytest.mark.django_db
+def test_since_without_a_date_is_refused_rather_than_defaulted_to_today(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch, in_tenant_a
+):
+    """This one decides how much history is read and what it costs. A silent
+    default of "today" would read nothing and look like success."""
+    response = api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "since"})
+
+    assert response.status_code == 400
+    assert "Since when" in response.data["detail"]
+    assert not DriveBackfill.objects.exists()
+
+
+@pytest.mark.django_db
+def test_everything_ingests_oldest_first_a_few_at_a_time(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    """Option (c), and the pacing. **Oldest first**, so a queue half-built is
+    the first half of the engagement rather than a scatter of it."""
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+
+    first = backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+    assert first["read"] == 2
+    assert list(MeetingSourceFile.objects.order_by("created_at")
+                .values_list("drive_file_id", flat=True)) == ["note1", "note2"]
+    assert first["running"] is True
+
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+    last = backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+
+    assert sorted(MeetingSourceFile.objects.values_list("drive_file_id", flat=True)) == [
+        "note1", "note2", "note3", "note4", "note5"]
+    assert last["running"] is False
+    row = DriveBackfill.objects.get()
+    assert row.state == DriveBackfill.State.DONE
+    assert row.done == 5
+
+
+@pytest.mark.django_db
+def test_every_backfilled_note_lands_in_the_same_review_queue(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, dev_outbox, in_tenant_a
+):
+    """The promise the whole module rests on holds for imported notes too:
+    proposals, and **nothing created or sent**."""
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=5)
+
+    assert MeetingProposal.objects.count() == 5
+    assert all(p.state == MeetingProposal.State.PENDING
+               for p in MeetingProposal.objects.all())
+    assert ProposalItem.objects.filter(
+        state=ProposalItem.State.APPROVED).count() == 0
+    from apps.crm.models import Contact
+
+    assert Contact.objects.count() == 0
+    assert dev_outbox == []
+
+
+@pytest.mark.django_db
+def test_the_spend_is_visible_while_it_runs_not_after(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    """The reason for pacing at all: a hundred calls landing at once turns the
+    cost into something you read about afterwards."""
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+    midway = api.as_(ff_user).get("/api/drive-watch/").data["backfill"]
+
+    assert midway["running"] is True
+    assert midway["done"] == 2 and midway["remaining"] == 3
+    # The estimate is kept beside the real figure rather than replaced by it.
+    assert Decimal(midway["estimated_cost_usd"]) > 0
+    assert "cost_usd" in midway
+
+
+@pytest.mark.django_db
+def test_stopping_keeps_what_was_already_read(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    """The proposals already in the queue are somebody's work, not this job's
+    property."""
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+
+    response = api.as_(ff_user).post("/api/drive-watch/backfill/stop/")
+
+    assert response.status_code == 200
+    assert response.data["state"] == "cancelled"
+    assert MeetingProposal.objects.count() == 2
+    assert backfill.step(seeded_tenant, client=folder_of_notes)["running"] is False
+
+
+@pytest.mark.django_db
+def test_a_second_run_only_picks_up_what_was_left_out(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    """Idempotent on the same rule the poll uses — `(tenant, file, version)` —
+    so a stopped import resumed later cannot read anything twice."""
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+    api.as_(ff_user).post("/api/drive-watch/backfill/stop/")
+
+    again = api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    assert again.data["planned"] == 3          # Not 5.
+
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=5)
+    assert MeetingSourceFile.objects.count() == 5
+    assert MeetingProposal.objects.count() == 5
+
+
+@pytest.mark.django_db
+def test_a_drive_failure_mid_import_retries_the_same_files(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    """The same promise FR-5.5 makes about the poll: a failure leaves the
+    cursor where it was rather than walking past unread work."""
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    folder_of_notes.folder_fail = "Drive is unreachable."
+
+    report = backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+
+    assert report["error"] == "Drive is unreachable."
+    assert report["running"] is True
+    assert MeetingSourceFile.objects.count() == 0
+    row = DriveBackfill.objects.get()
+    assert row.after_created_time == ""
+    assert row.last_error == "Drive is unreachable."
+
+    folder_of_notes.folder_fail = None
+    assert backfill.step(seeded_tenant, client=folder_of_notes, limit=2)["read"] == 2
+
+
+@pytest.mark.django_db
+def test_two_imports_cannot_run_at_once(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch, in_tenant_a
+):
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    second = api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+
+    assert second.status_code == 409
+    assert DriveBackfill.objects.count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", ["/api/drive-watch/backfill/",
+                                 "/api/drive-watch/backfill/plan/",
+                                 "/api/drive-watch/backfill/stop/"])
+@pytest.mark.parametrize("role", ["CF", "VA"])
+def test_the_backfill_is_the_founders_like_the_folder(
+    url, role, seeded_tenant, api, watch, in_tenant_a
+):
+    """Matrix 11.10 — it spends the practice's money against the practice's
+    own Drive. Same hand as connecting."""
+    membership = MembershipFactory(tenant=seeded_tenant, role=role)
+    assert api.as_(membership).post(url, {"scope": "all"}).status_code == 403
+
+
+@pytest.mark.django_db
+def test_the_watcher_descends_one_level_into_subfolders(
+    seeded_tenant, watch, fake_client, in_tenant_a
+):
+    """FR-5.1c — a folder per client or per month is a normal way to keep
+    them, and a watcher reading only direct children finds nothing in those."""
+    fake_client.subfolders = [drive.SubFolder(folder_id="sub-1", name="Acme",
+                                              files=4, readable=4)]
+    ingest.poll(seeded_tenant, client=fake_client, parse=False)
+
+    assert fake_client.watched == [watch.folder_id, "sub-1"]
+
+
+@pytest.mark.django_db
+def test_the_survey_names_the_subfolders_it_found(
+    seeded_tenant, ff_user, api, fake_client, drive_granted, watch, in_tenant_a
+):
+    """Named, not merely counted: "nothing is being read" must never be the
+    first way somebody learns their notes are a level down."""
+    fake_client.subfolders = [drive.SubFolder(folder_id="sub-1", name="Acme",
+                                              files=4, readable=4)]
+    found = api.as_(ff_user).get("/api/drive-watch/backfill/").data["folder"]
+
+    assert found["subfolders"] == [{"name": "Acme", "readable": 4}]
+    assert found["readable_in_subfolders"] == 4

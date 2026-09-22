@@ -24,7 +24,7 @@ from apps.work.models import (
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.meetings.models import (
-    DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
+    DriveBackfill, DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
     ProposalItem,
 )
 from apps.strategy.models import (
@@ -105,6 +105,8 @@ register(GoalNarrativeVersion, factories.GoalNarrativeVersionFactory,
 
 # --- Module 5 — meeting ingestion.
 register(DriveWatch, factories.DriveWatchFactory, endpoints=("/api/drive-watch/",))
+# Read through the folder's own routes, never by id.
+register(DriveBackfill, factories.DriveBackfillFactory, api_exposed=False)
 register(MeetingSourceFile, factories.MeetingSourceFileFactory, api_exposed=False)
 register(MeetingProposal, factories.MeetingProposalFactory,
          endpoints=("/api/meeting-proposals/",))

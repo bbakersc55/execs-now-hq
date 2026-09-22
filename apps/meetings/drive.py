@@ -101,6 +101,18 @@ class DriveFile:
     owner_email: str = ""
     web_view_link: str = ""
     trashed: bool = False
+    #: RFC 3339. Only the backfill needs it — it walks the folder oldest first.
+    created_time: str = ""
+
+
+@dataclass
+class SubFolder:
+    """A folder inside the watched one. Beta descends exactly one level."""
+
+    folder_id: str
+    name: str
+    files: int = 0
+    readable: int = 0
 
 
 @dataclass
@@ -117,6 +129,25 @@ class FolderInfo:
     files: int = 0
     readable: int = 0
     truncated: bool = False
+    #: One level down, because that is where some practices keep them — a
+    #: folder per client, or per month. Named on the screen either way, so
+    #: "nothing is being read" is never the first way you find out.
+    subfolders: list = field(default_factory=list)
+    oldest: str = ""
+    newest: str = ""
+
+    @property
+    def readable_below(self) -> int:
+        return sum(sub.readable for sub in self.subfolders)
+
+    @property
+    def readable_total(self) -> int:
+        return self.readable + self.readable_below
+
+    @property
+    def folder_ids(self) -> list[str]:
+        """Everything the watcher reads: this folder and one level below."""
+        return [self.folder_id] + [sub.folder_id for sub in self.subfolders]
 
 
 @dataclass
@@ -159,14 +190,18 @@ class DriveClient:
         except Exception as exc:                     # pragma: no cover - network
             raise DriveUnavailable(str(exc)) from exc
 
-    def changes(self, page_token: str, *, folder_id: str) -> DrivePage:
-        """One page of changes, filtered to the watched folder."""
+    def changes(self, page_token: str, *, folder_ids) -> DrivePage:
+        """One page of changes, filtered to the watched folder **and one level
+        below it** — some practices keep a folder per client or per month, and
+        a watcher that reads only direct children finds nothing in those."""
+        wanted = set(folder_ids)
         try:
             response = self._service().changes().list(
                 pageToken=page_token, spaces="drive",
                 fields=("nextPageToken,newStartPageToken,"
                         "changes(fileId,removed,file(id,name,mimeType,version,"
-                        "trashed,parents,webViewLink,owners(emailAddress)))"),
+                        "trashed,parents,webViewLink,createdTime,"
+                        "owners(emailAddress)))"),
                 pageSize=100,
             ).execute()
         except Exception as exc:                     # pragma: no cover - network
@@ -177,7 +212,7 @@ class DriveClient:
             raw = change.get("file") or {}
             if change.get("removed") or not raw:
                 continue
-            if folder_id not in (raw.get("parents") or []):
+            if not wanted & set(raw.get("parents") or []):
                 continue
             owners = raw.get("owners") or [{}]
             files.append(DriveFile(
@@ -186,6 +221,7 @@ class DriveClient:
                 owner_email=(owners[0] or {}).get("emailAddress", ""),
                 web_view_link=raw.get("webViewLink", ""),
                 trashed=bool(raw.get("trashed")),
+                created_time=raw.get("createdTime", ""),
             ))
         return DrivePage(files=files,
                          next_page_token=response.get("nextPageToken", ""),
@@ -215,29 +251,101 @@ class DriveClient:
                 f"“{meta.get('name') or folder_id}” is a file, not a folder. "
                 "Open the folder that holds the notes and copy that address.")
 
-        files = readable = 0
-        token, truncated = "", False
         try:
-            for _ in range(MAX_COUNT_PAGES):
-                response = service.files().list(
-                    q=f"'{folder_id}' in parents and trashed = false",
-                    fields="nextPageToken,files(id,mimeType)",
-                    pageSize=100, pageToken=token or None,
-                ).execute()
-                for row in response.get("files", []):
-                    files += 1
-                    if row.get("mimeType") in SUPPORTED:
-                        readable += 1
-                token = response.get("nextPageToken", "")
-                if not token:
-                    break
-            else:
-                truncated = bool(token)
+            here = self._count(service, folder_id)
+            subfolders, dates = [], [here["oldest"], here["newest"]]
+            # One level, and one only. Two would be a crawl of somebody's whole
+            # Drive from a single pasted link.
+            for child in here.pop("folders"):
+                below = self._count(service, child["id"])
+                subfolders.append(SubFolder(folder_id=child["id"],
+                                            name=child.get("name", ""),
+                                            files=below["files"],
+                                            readable=below["readable"]))
+                dates += [below["oldest"], below["newest"]]
+            dates = sorted(d for d in dates if d)
+            here["oldest"], here["newest"] = (dates[0], dates[-1]) if dates else ("", "")
+        except DriveUnavailable:
+            raise
         except Exception as exc:                     # pragma: no cover - network
             raise DriveUnavailable(
                 f"Opened “{meta.get('name')}” but could not list it: {exc}") from exc
         return FolderInfo(folder_id=folder_id, name=meta.get("name", ""),
-                          files=files, readable=readable, truncated=truncated)
+                          files=here["files"], readable=here["readable"],
+                          truncated=here["truncated"], subfolders=subfolders,
+                          oldest=here["oldest"], newest=here["newest"])
+
+    def _count(self, service, folder_id: str) -> dict:
+        """One folder's direct children: how many, how many readable, the date
+        range, and the folders among them."""
+        files = readable = 0
+        folders, oldest, newest = [], "", ""
+        token, truncated = "", False
+        for _ in range(MAX_COUNT_PAGES):
+            response = service.files().list(
+                q=f"'{folder_id}' in parents and trashed = false",
+                fields="nextPageToken,files(id,name,mimeType,createdTime)",
+                pageSize=100, pageToken=token or None,
+            ).execute()
+            for row in response.get("files", []):
+                if row.get("mimeType") == FOLDER:
+                    folders.append(row)
+                    continue
+                files += 1
+                if row.get("mimeType") in SUPPORTED:
+                    readable += 1
+                    created = row.get("createdTime", "")
+                    oldest = min(oldest or created, created) if created else oldest
+                    newest = max(newest, created)
+            token = response.get("nextPageToken", "")
+            if not token:
+                break
+        else:
+            truncated = bool(token)
+        return {"files": files, "readable": readable, "folders": folders,
+                "oldest": oldest, "newest": newest, "truncated": truncated}
+
+    def files_in(self, folder_ids, *, created_from: str = "",
+                 page_size: int = 50, max_pages: int = 1) -> list[DriveFile]:
+        """Readable files in these folders, **oldest first** (FR-5.1b).
+
+        The backfill walks the folder in the order the meetings happened, so a
+        queue half-built is the first half of the engagement rather than a
+        random scatter of it.
+        """
+        service = self._service()
+        clause = " or ".join(f"'{fid}' in parents" for fid in folder_ids)
+        query = f"({clause}) and trashed = false"
+        if created_from:
+            query += f" and createdTime >= '{created_from}'"
+        found, token = [], None
+        for _ in range(max_pages):
+            try:
+                response = service.files().list(
+                    q=query, orderBy="createdTime", pageSize=page_size,
+                    pageToken=token,
+                    fields=("nextPageToken,files(id,name,mimeType,version,trashed,"
+                            "createdTime,webViewLink,owners(emailAddress))"),
+                ).execute()
+            except Exception as exc:                 # pragma: no cover - network
+                raise DriveUnavailable(
+                    f"Drive would not list the folder: {exc}") from exc
+            for raw in response.get("files", []):
+                if raw.get("mimeType") == FOLDER:
+                    continue
+                owners = raw.get("owners") or [{}]
+                found.append(DriveFile(
+                    file_id=raw.get("id", ""), version=str(raw.get("version", "")),
+                    name=raw.get("name", ""), mime_type=raw.get("mimeType", ""),
+                    owner_email=(owners[0] or {}).get("emailAddress", ""),
+                    web_view_link=raw.get("webViewLink", ""),
+                    trashed=bool(raw.get("trashed")),
+                    created_time=raw.get("createdTime", ""),
+                ))
+            token = response.get("nextPageToken")
+            if not token:
+                break
+        return found
 
     def text_of(self, drive_file: DriveFile) -> str:
         """The document as text. A Doc is exported; a `.txt` is downloaded; a

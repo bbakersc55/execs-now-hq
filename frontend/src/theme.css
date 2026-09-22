@@ -605,6 +605,19 @@ ul.work-tree > li { margin: 0; }
                 border: 1px solid var(--line); background: var(--surface-2); }
 .found-folder p { margin: 0 0 var(--s2); }
 
+/* The backfill choice: three options that are not equal in consequence, so
+   they are a list to read rather than three buttons to click past. */
+.choices { border: 0; margin: var(--s3) 0; padding: 0; display: grid; gap: var(--s2); }
+.choices legend { padding: 0; margin-bottom: var(--s1); }
+.choice { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-14); }
+.choice input[type="date"] { width: auto; }
+
+.progress { height: 6px; border-radius: 999px; background: var(--line);
+            overflow: hidden; margin-bottom: var(--s2); }
+.progress > span { display: block; height: 100%; background: var(--orange);
+                   transition: width .4s ease; }
+@media (prefers-reduced-motion: reduce) { .progress > span { transition: none; } }
+
 .richtext {
   min-height: 9rem; padding: var(--s2) var(--s3); border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm); background: var(--surface); font-size: var(--t-14);

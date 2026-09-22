@@ -21,6 +21,10 @@ from apps.meetings import drive as drive_service
 from apps.meetings.models import DriveWatch, MeetingSourceFile
 
 
+#: How many files one poll will parse. See the note at its use.
+PARSE_PER_POLL = 20
+
+
 class NotConnected(Exception):
     """No folder is being watched, so there is nothing to poll."""
 
@@ -99,6 +103,21 @@ def record(tenant, drive_file) -> tuple[MeetingSourceFile | None, bool]:
     return row, created
 
 
+def folder_ids_for(watch, client) -> list[str]:
+    """The watched folder, plus its direct subfolders (FR-5.1c).
+
+    **One level, and one only.** Some practices keep a folder per client or per
+    month, and a watcher reading only direct children finds nothing in those.
+    Two levels would be a crawl of somebody's whole Drive from a single link.
+    A listing failure here is not fatal: fall back to the folder itself rather
+    than skip the poll.
+    """
+    try:
+        return client.describe_folder(watch.folder_id).folder_ids
+    except drive_service.DriveUnavailable:
+        return [watch.folder_id]
+
+
 def poll(tenant, *, client=None, parse=True) -> dict:
     """One run of the poller. Also what "Sync now" calls (FR-5.3).
 
@@ -109,13 +128,16 @@ def poll(tenant, *, client=None, parse=True) -> dict:
     if watch is None:
         raise NotConnected("No folder is being watched for this practice.")
     client = client or client_for(tenant)
+    # The folder and one level below it, re-read each poll so a subfolder added
+    # last week is watched this week without anyone reconnecting anything.
+    folder_ids = folder_ids_for(watch, client)
 
     recorded, skipped, failed = [], [], []
     token = watch.page_token or client.start_token()
     safe_token = token
     try:
         while True:
-            page = client.changes(token, folder_id=watch.folder_id)
+            page = client.changes(token, folder_ids=folder_ids)
             for drive_file in page.files:
                 row, created = record(tenant, drive_file)
                 if row is None:
@@ -148,9 +170,13 @@ def poll(tenant, *, client=None, parse=True) -> dict:
         # Everything recorded and not yet parsed, including anything left over
         # from a previous run that failed — which is why a bad key costs a
         # retry and not a document.
+        # Capped. A backlog — a restored database, an interrupted backfill —
+        # must not turn one poll into a hundred Claude calls at once. What is
+        # left over is picked up by the next poll, oldest first.
         for row in MeetingSourceFile.objects.filter(
                 state__in=[MeetingSourceFile.State.RECORDED,
-                           MeetingSourceFile.State.FAILED]).order_by("created_at"):
+                           MeetingSourceFile.State.FAILED]
+                ).order_by("created_at")[:PARSE_PER_POLL]:
             proposal = parsing.parse(row, client=client)
             if proposal is None:
                 failed.append(row)
@@ -184,4 +210,15 @@ def health(tenant) -> dict:
             state=MeetingSourceFile.State.FAILED).count(),
         "files_skipped": MeetingSourceFile.objects.filter(
             state=MeetingSourceFile.State.SKIPPED).count(),
+        "backfill": _backfill_state(),
     }
+
+
+def _backfill_state():
+    """The folder import, if one has been decided (FR-5.1b). In `health` so
+    the queue screen learns about it in the call it already makes."""
+    from apps.meetings.models import DriveBackfill
+    from apps.meetings.serializers import represent_backfill
+
+    return represent_backfill(
+        DriveBackfill.objects.order_by("-created_at").first())

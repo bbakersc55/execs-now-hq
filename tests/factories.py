@@ -17,7 +17,7 @@ from apps.crm.models import (
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.meetings.models import (
-    DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
+    DriveBackfill, DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
     ProposalItem,
 )
 from apps.notes.models import Note, NotePinUnlock
@@ -700,6 +700,16 @@ class DriveWatchFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     folder_id = factory.Sequence(lambda n: f"folder-{n}")
+
+
+class DriveBackfillFactory(TenantScopedFactory):
+    class Meta:
+        model = DriveBackfill
+
+    tenant = factory.SubFactory(TenantFactory)
+    watch = factory.SubFactory(DriveWatchFactory,
+                               tenant=factory.SelfAttribute("..tenant"))
+    scope = "all"
 
 
 class MeetingSourceFileFactory(TenantScopedFactory):

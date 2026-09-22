@@ -788,6 +788,57 @@ export interface DriveHealth {
   files_pending: number;
   files_failed: number;
   files_skipped: number;
+  /** The folder's past: the decision made about it, or null if none yet. */
+  backfill: Backfill | null;
+}
+
+/** GET /api/drive-watch/backfill/ — what the folder already holds.
+ *
+ *  Drive's cursor starts at "now", so none of this is visible to the poller.
+ *  Reading it is a choice with a price, which is why the count and the
+ *  estimate are separate from the act of starting. */
+export interface FolderPast {
+  folder_name: string;
+  readable_here: number;
+  readable_in_subfolders: number;
+  subfolders: { name: string; readable: number }[];
+  readable_total: number;
+  /** What is left to read — already-imported notes are not counted twice. */
+  outstanding: number;
+  oldest: string;
+  newest: string;
+  per_note_usd: string;
+  /** True when the figure is this practice's own average rather than a model. */
+  per_note_is_measured: boolean;
+  estimate_usd: string;
+  minutes: number;
+}
+
+export interface BackfillPlan {
+  since: string;
+  outstanding: number;
+  per_note_usd: string;
+  per_note_is_measured: boolean;
+  estimate_usd: string;
+  minutes: number;
+}
+
+export interface Backfill {
+  id: string;
+  scope: "now" | "since" | "all";
+  since: string | null;
+  state: "declined" | "running" | "done" | "cancelled" | "failed";
+  running: boolean;
+  planned: number;
+  done: number;
+  skipped: number;
+  failed: number;
+  remaining: number;
+  estimated_cost_usd: string;
+  cost_usd: string;
+  last_error: string;
+  started_at: string;
+  finished_at: string | null;
 }
 
 /** POST /api/drive-watch/check/ — what that folder turned out to be, read live

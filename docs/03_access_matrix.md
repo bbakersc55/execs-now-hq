@@ -260,6 +260,7 @@
 | 11.10 | Connect / disconnect the notes folder | ✅ | ❌ | ❌ | ❌ | ❌ | **FF only.** Grants the app a standing read of a Drive |
 | 11.11 | Grant Drive access (`drive.readonly` consent) | ✅ | ❌ | ❌ | ❌ | ❌ | FF only; on the FF's own Google connection |
 | 11.12 | See the folder's name, last poll and last error | ✅ | ✅ | ✅ | ❌ | ❌ | Read-only for CF and VA |
+| 11.13 | Choose and run the folder backfill; stop it | ✅ | ❌ | ❌ | ❌ | ❌ | **FF only.** It spends the practice's money against the practice's own Drive |
 
 > **Connecting is narrower than using (11.10–11.12).** Clearing this queue is the VA's job and a CF's own meetings are in it, so both act on proposals freely. But pointing the app at a folder grants it a standing read of a whole Google Drive, and there is one folder per practice — so choosing it belongs with the person who answers for the practice's data. The asymmetry with 11.12 is deliberate too: every staff role may *see* where the folder has got to, because a queue that is empty and a queue that is asleep look identical to whoever has to clear it.
 >

@@ -887,6 +887,31 @@ Three columns, and only three — the rest arrived with Phase 4 (§5):
 ### `drive_watch`
 `id · tenant_id · folder_id · page_token · last_polled_at · last_error?` (FR-5.1).
 
+### `drive_backfill`
+
+*(Added 2026-09-22, FR-5.1b.)* One decision about a watched folder's past, and
+the progress of carrying it out.
+
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id` | uuid | |
+| `watch_id` | uuid | → `drive_watch` |
+| `scope` | varchar(8) | `now` / `since` / `all` |
+| `since` | date null | Required when `scope = since`; **never defaulted to today** |
+| `state` | varchar(10) | `declined` / `running` / `done` / `cancelled` / `failed` |
+| `planned` | int | What the survey counted when the choice was made |
+| `estimated_cost_usd` | numeric(10,4) | **Kept beside the real figure**, so an estimate that was badly wrong stays visible |
+| `done` / `skipped` / `failed` | int | |
+| `cost_usd` | numeric(10,6) | Accumulated from each parse's `ai_call` as it runs |
+| `after_created_time` | varchar(40) | RFC 3339 cursor — the walk is oldest-first over a fixed set, and a timestamp survives a restart where a page token would not |
+| `last_error` | text | |
+| `started_by_id` | uuid null | |
+| `finished_at` | timestamptz null | |
+
+**`scope = now` is a row, not the absence of one.** Recording that somebody
+decided to start from now is what makes an empty queue explicable six months
+later.
+
 ### `meeting_source_file`
 `id · tenant_id · drive_file_id · drive_version · name · mime_type · `**`drive_file_owner_email citext IX`**` · state (recorded|parsing|parsed|skipped|failed) · skip_reason? · fetched_at`
 

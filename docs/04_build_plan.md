@@ -1404,6 +1404,7 @@ judgement on N real goals**, with N — never as a pass.
 ### Done means
 
 0. **Connecting the folder, on the meeting queue screen** — the Drive consent, the folder taken as a URL or an id, verified live and shown before it is saved, and Disconnect. FF only. *(Added 2026-09-22: Phase 5 shipped a queue with no control that led anywhere, so setup was blocked. FR-5.1a, AC-5.1a, matrix 11.10–11.12.)*
+0a. **The folder's past, as a choice** — the survey, the three options with counts and estimated cost shown before confirming, the paced oldest-first import, and Stop. **Subfolders read one level down.** *(Added 2026-09-22: "Sync now" reported 0 waiting on 167 real notes, because Drive's cursor starts at "now". FR-5.1b–1c, AC-5.1b–1c, matrix 11.13.)*
 1. `DriveWatch` cursor polling every 10 minutes, "Sync now", health screen, `drive_file_owner_email` captured.
 2. `MeetingSourceFile` idempotent on `(tenant, file, version)`; two-step commit; cursor never advances past unprocessed work.
 3. Claude parse producing participants, action items, deliverables, and a **drafted summary**.
@@ -1423,9 +1424,11 @@ judgement on N real goals**, with N — never as a pass.
   - **AC-5.8** — approving a deliverable creates records and **sends nothing**.
   - **AC-5.10** — a parse failure does not advance the cursor.
   - **AC-5.1a** — the folder is verified before it is watched, and only the FF may connect one.
+  - **AC-5.1b** — a fresh watch sees none of the folder's past, and the import that fixes that is chosen, priced and paced.
 
 ### Manual checks
 
+0a. **Import the folder's past** (AC-5.1b): read the count and the estimate, choose *everything*, watch it arrive oldest first with the spend climbing, stop it midway, restart it, and confirm nothing is read twice.
 0. **Connect the folder from the meeting queue** (AC-5.1a): grant Drive access, paste the folder's full Drive URL, read back its name and file count, confirm. Then try a file's URL and a dud id and confirm each is refused with a reason.
 1. Point it at your **real** Gemini notes folder and let a week of real meetings accumulate.
 2. Close the laptop for two days. Confirm nothing is lost.

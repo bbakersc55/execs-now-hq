@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,11 +13,27 @@ const HEALTH = { connected: true, google_connected: true, drive_access: true,
                  drive_account: "bryan@x.test",
                  folder_id: "folder-1", folder_name: "Meeting notes",
                  last_polled_at: "2026-09-22T09:00:00Z", last_error: "",
-                 has_cursor: true, files_pending: 0, files_failed: 0, files_skipped: 1 };
+                 has_cursor: true, files_pending: 0, files_failed: 0, files_skipped: 1,
+                 backfill: null };
 
 /** Not connected, at each of the three points the flow can be stopped at. */
 const UNCONNECTED = { ...HEALTH, connected: false, folder_id: "", folder_name: "",
                       last_polled_at: null, has_cursor: false };
+
+/** What the owner's own folder actually looked like: six months of notes the
+ *  poller could not see. */
+const PAST = { folder_name: "Meet Recordings", readable_here: 167,
+               readable_in_subfolders: 0, subfolders: [], readable_total: 167,
+               outstanding: 167, oldest: "2026-03-30", newest: "2026-09-11",
+               per_note_usd: "0.0575", per_note_is_measured: false,
+               estimate_usd: "9.60", minutes: 56 };
+
+function aBackfill(overrides: Record<string, unknown> = {}) {
+  return { id: "b1", scope: "all", since: null, state: "running", running: true,
+           planned: 167, done: 42, skipped: 1, failed: 0, remaining: 124,
+           estimated_cost_usd: "9.60", cost_usd: "2.410000", last_error: "",
+           started_at: "2026-09-22T10:00:00Z", finished_at: null, ...overrides };
+}
 
 function aProposal(overrides: Partial<MeetingProposal> = {}): MeetingProposal {
   return {
@@ -57,6 +73,9 @@ function show(extra: Record<string, unknown> = {}, me = aMe()) {
   const fetchMock = mockApi({
     [`GET /api/meeting-proposals/${ID}/`]: aProposal(),
     "GET /api/meeting-proposals/": [aProposal()],
+    // The more specific path first: mockApi matches on the first key the URL
+    // starts with, so "/api/drive-watch/" would otherwise swallow this one.
+    "GET /api/drive-watch/backfill/": { folder: PAST, backfill: null },
     "GET /api/drive-watch/": HEALTH,
     ...extra,
   });
@@ -288,5 +307,136 @@ describe("connecting the notes folder", () => {
 
     expect(await screen.findByText(/Consent was granted without Drive access/))
       .toBeInTheDocument();
+  });
+});
+
+
+/**
+ * The folder's past (FR-5.1b).
+ *
+ * Diagnosed on the owner's real folder: "Sync now" reported 0 waiting on 167
+ * readable notes, because Drive's change cursor starts at "now". Reading the
+ * past is a separate decision with a price on it, and this panel is where it
+ * is made.
+ */
+describe("importing what the folder already holds", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("says what is there and that watching alone will not find it", async () => {
+    show();
+
+    expect(await screen.findByText(/167 readable notes/)).toBeInTheDocument();
+    // The thing that is not obvious, said plainly.
+    expect(screen.getByText(/Watching starts from now/)).toBeInTheDocument();
+    expect(screen.getByText(/from 2026-03-30 to 2026-09-11/)).toBeInTheDocument();
+  });
+
+  it("shows the count and the estimated cost before anything is confirmed", async () => {
+    const fetchMock = show();
+
+    expect(await screen.findByText(/\$9\.60/)).toBeInTheDocument();
+    expect(screen.getByText(/about \$0\.0575 each, estimated/)).toBeInTheDocument();
+    expect(screen.getByText(/roughly 56 minutes/)).toBeInTheDocument();
+    // Nothing has started.
+    expect(fetchMock.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("offers all three, and records starting from now as an answer", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({
+      "POST /api/drive-watch/backfill/": aBackfill({ state: "declined", running: false }),
+    });
+
+    await user.click(await screen.findByRole("radio", { name: /only new notes/ }));
+    // No cost line for the option that reads nothing.
+    expect(screen.queryByText(/of AI/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start from now" }));
+
+    await waitFor(() => {
+      const posted = fetchMock.calls.find(
+        (c) => c.method === "POST" && c.url.endsWith("/backfill/"));
+      expect(posted?.body).toEqual({ scope: "now", since: null });
+    });
+  });
+
+  it("re-counts and re-prices when the date changes, before confirming", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({
+      "POST /api/drive-watch/backfill/plan/": { since: "2026-07-01", outstanding: 24,
+                                                per_note_usd: "0.0575",
+                                                per_note_is_measured: false,
+                                                estimate_usd: "1.38", minutes: 8 },
+      "POST /api/drive-watch/backfill/": aBackfill({ scope: "since" }),
+    });
+
+    // `fireEvent.change` rather than typing: a date input takes its value as a
+    // whole, not a keystroke at a time.
+    fireEvent.change(await screen.findByLabelText("Import notes since"),
+                     { target: { value: "2026-07-01" } });
+
+    // The whole sentence, because the count, the price and the time are one
+    // statement and it is the statement that is being agreed to.
+    const priced = await screen.findByText(/of AI/);
+    expect(priced).toHaveTextContent("24 notes");
+    expect(priced).toHaveTextContent("$1.38");
+    expect(priced).toHaveTextContent("roughly 8 minutes");
+    await user.click(screen.getByRole("button", { name: /Import 24 notes/ }));
+
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.method === "POST"
+        && c.url.endsWith("/api/drive-watch/backfill/"));
+      expect(posted?.body).toEqual({ scope: "since", since: "2026-07-01" });
+    });
+  });
+
+  it("shows progress and the spend as it goes, with a way to stop", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({
+      "GET /api/drive-watch/": { ...HEALTH, backfill: aBackfill() },
+      "POST /api/drive-watch/backfill/stop/": aBackfill({ state: "cancelled",
+                                                          running: false }),
+    });
+
+    // The spend is visible while it runs — that is the reason for pacing.
+    expect(await screen.findByText(/42 read of 167/)).toBeInTheDocument();
+    expect(screen.getByText(/\$2\.4100 spent so far/)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Import progress" }))
+      .toHaveAttribute("aria-valuenow", "26");
+
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    await waitFor(() => expect(
+      fetchMock.calls.some((c) => c.url.endsWith("/backfill/stop/"))).toBe(true));
+  });
+
+  it("does not ask again once the question has been answered", async () => {
+    const fetchMock = show({
+      "GET /api/drive-watch/": { ...HEALTH,
+        backfill: aBackfill({ state: "declined", running: false, done: 0 }) },
+    });
+
+    expect(await screen.findByText("Meeting notes")).toBeInTheDocument();
+    expect(screen.queryByText(/already holds notes/)).not.toBeInTheDocument();
+    // And it does not spend a Drive listing re-asking.
+    expect(fetchMock.calls.some((c) => c.url.includes("/backfill/"))).toBe(false);
+  });
+
+  it("names the subfolders when that is where the notes live", async () => {
+    show({ "GET /api/drive-watch/backfill/": {
+      folder: { ...PAST, readable_here: 0, readable_in_subfolders: 167,
+                subfolders: [{ name: "Acme", readable: 120 },
+                             { name: "Northwind", readable: 47 }] },
+      backfill: null } });
+
+    expect(await screen.findByText(/Including 167 in Acme, Northwind/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/subfolders are read too, one level down/))
+      .toBeInTheDocument();
+  });
+
+  it("is the founder's, like the folder itself", async () => {
+    show({ "GET /api/drive-watch/": HEALTH }, aMe({ role: "VA" }));
+
+    expect(await screen.findByText("Meeting notes")).toBeInTheDocument();
+    expect(screen.queryByText(/already holds notes/)).not.toBeInTheDocument();
   });
 });
