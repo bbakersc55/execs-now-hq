@@ -22,7 +22,7 @@ from datetime import date
 from django.db import transaction
 from django.utils import timezone
 
-from apps.meetings import matching
+from apps.meetings import matching, practice
 from apps.meetings.models import MeetingProposal, MeetingSourceFile, ProposalItem
 
 PARSE_PURPOSE = "meeting_parse"
@@ -115,6 +115,7 @@ def _build(source_file, payload, call) -> MeetingProposal:
         ai_call=call, state=MeetingProposal.State.PENDING,
     )
 
+    roster = practice.staff(tenant)
     for position, raw in enumerate(payload.get("participants") or []):
         if not isinstance(raw, dict):
             continue
@@ -122,6 +123,26 @@ def _build(source_file, payload, call) -> MeetingProposal:
         email = str(raw.get("email") or "").strip()
         if not name and not email:
             continue
+
+        # FR-5.9e — our own side of the table is recognised, not asked about.
+        # The fractional is in every meeting; asking "what are they to us"
+        # about the practice itself is a question with no true answer.
+        ours = practice.recognise(tenant, name=name, email=email, roster=roster)
+        if ours is not None:
+            ProposalItem.objects.create(
+                tenant=tenant, proposal=proposal,
+                kind=ProposalItem.Kind.PARTICIPANT, position=position,
+                source_excerpt=str(raw.get("excerpt") or "").strip(),
+                # Approved on arrival because there is nothing to decide: no
+                # record is created, no type is added, no stage moves. It is
+                # already approved so that it never holds a proposal open.
+                state=ProposalItem.State.APPROVED,
+                created_record_type="contact" if ours.contact is not None else "",
+                created_record_id=ours.contact.pk if ours.contact is not None else None,
+                payload={"parsed_name": name, "parsed_email": email,
+                         **practice.payload_for(ours)})
+            continue
+
         proposed_type = str(raw.get("contact_type") or "").strip()
         ProposalItem.objects.create(
             tenant=tenant, proposal=proposal, kind=ProposalItem.Kind.PARTICIPANT,

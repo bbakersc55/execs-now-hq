@@ -20,7 +20,9 @@ import pytest
 from django.utils import timezone
 
 from apps.crm.models import Contact, ContactEmail, OutboxMessage, Task
-from apps.meetings import approval, backfill, drive, ingest, matching, parsing
+from apps.meetings import (
+    approval, backfill, drive, ingest, matching, parsing, practice,
+)
 from apps.meetings.models import (
     DriveBackfill, DriveWatch, Meeting, MeetingParticipant, MeetingProposal,
     MeetingSourceFile, ProposalItem,
@@ -1200,3 +1202,281 @@ def test_the_survey_names_the_subfolders_it_found(
 
     assert found["subfolders"] == [{"name": "Acme", "readable": 4}]
     assert found["readable_in_subfolders"] == 4
+
+
+# ========================================== our own side of the table (FR-5.9e)
+#
+# Found on real proposals: the FF came back as a participant in **every**
+# meeting, asking whether he was new and "what they are to us" with only the
+# five contact types offered. None of them is true — the practice is not a
+# prospect, a client, a referral partner, a vendor or a coworker of itself. The
+# question was wrong, not the answer.
+
+
+PARSED_WITH_STAFF = json.dumps({
+    "title": "Acme operations review",
+    "meeting_date": "2026-09-20",
+    "summary": "A review of Acme's operations.",
+    "participants": [
+        {"name": "Bryan Baker", "email": FF_EMAIL, "title": "Fractional COO",
+         "company": "Executives Now", "contact_type": "coworker",
+         "excerpt": "Attendees: Bryan Baker, Dana Reyes."},
+        {"name": "Casey Fields", "email": CF_EMAIL, "title": "Fractional",
+         "company": "Executives Now", "contact_type": "coworker",
+         "excerpt": "Attendees: Bryan Baker, Casey Fields, Dana Reyes."},
+        {"name": "Dana Reyes", "email": "dana@acme.invalid", "title": "COO",
+         "company": "Acme Facilities", "contact_type": "client",
+         "excerpt": "Attendees: Bryan Baker, Dana Reyes."},
+    ],
+    "action_items": [
+        {"text": "Send the Q3 margin breakdown", "owner": "Dana Reyes",
+         "due_date": "2026-09-25", "excerpt": "Dana said she would send it."},
+    ],
+    "deliverables": [],
+})
+
+
+@pytest.fixture
+def practice_staff(seeded_tenant, ff_user, in_tenant_a):
+    """An FF reached by his email, and a CF reached only by name — the two
+    shapes the rule has to handle, and both are real.
+
+    The FF's membership has **no linked contact**, exactly as the owner's does
+    not; he is found through the address on his contact row.
+    """
+    ff_contact = ContactFactory(tenant=seeded_tenant, first_name="Bryan",
+                                last_name="Baker")
+    ContactEmailFactory(tenant=seeded_tenant, contact=ff_contact, address=FF_EMAIL)
+    ff_user.user.full_name = "Bryan Baker"
+    ff_user.user.save(update_fields=["full_name"])
+
+    cf = MembershipFactory(tenant=seeded_tenant, role="CF")
+    cf.user.email = CF_EMAIL
+    cf.user.full_name = "Casey Fields"
+    cf.user.save(update_fields=["email", "full_name"])
+    cf_contact = ContactFactory(tenant=seeded_tenant, first_name="Casey",
+                                last_name="Fields")
+    cf.contact = cf_contact
+    cf.save(update_fields=["contact"])
+    return {"ff": ff_user, "ff_contact": ff_contact,
+            "cf": cf, "cf_contact": cf_contact}
+
+
+@pytest.mark.django_db
+def test_the_practice_is_recognised_by_email_then_name(
+    seeded_tenant, practice_staff, in_tenant_a
+):
+    """**Email, then name** — the same order and the same reason as contact
+    matching: an address is an identity, a name is a coincidence waiting."""
+    by_email = practice.recognise(seeded_tenant, name="", email=FF_EMAIL)
+    assert by_email is not None and by_email.matched_on == "email"
+    assert by_email.contact == practice_staff["ff_contact"]
+
+    by_name = practice.recognise(seeded_tenant, name="Casey Fields", email="")
+    assert by_name is not None and by_name.matched_on == "name"
+    assert by_name.contact == practice_staff["cf_contact"]
+
+    # And a stranger is still a stranger.
+    assert practice.recognise(seeded_tenant, name="Dana Reyes",
+                              email="dana@acme.invalid") is None
+
+
+@pytest.mark.django_db
+def test_a_name_that_could_be_two_people_is_not_a_match(
+    seeded_tenant, ff_user, in_tenant_a
+):
+    """The owner's own CRM holds two "Bryan Baker" rows. Picking either would
+    put a meeting on a stranger's timeline, so an ambiguous name resolves to
+    **no contact** — recognised as staff, attendance simply not pinned."""
+    ff_user.user.full_name = "Bryan Baker"
+    ff_user.user.email = "someone.else@elsewhere.invalid"
+    ff_user.user.save(update_fields=["full_name", "email"])
+    ContactFactory(tenant=seeded_tenant, first_name="Bryan", last_name="Baker")
+    ContactFactory(tenant=seeded_tenant, first_name="Bryan", last_name="Baker")
+
+    found = practice.recognise(seeded_tenant, name="Bryan Baker")
+
+    assert found is not None
+    assert found.contact is None
+
+
+@pytest.mark.django_db
+def test_a_client_user_is_never_the_practice(
+    seeded_tenant, ff_user, in_tenant_a
+):
+    """An FCC has a membership too, and is a client. Recognising them as the
+    practice would be wrong in a way that matters."""
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    contact = ContactFactory(tenant=seeded_tenant, first_name="Noble",
+                             last_name="Baker")
+    member = MembershipFactory(tenant=seeded_tenant, role="FCC",
+                               client_company=company, contact=contact)
+    member.user.full_name = "Noble Baker"
+    member.user.save(update_fields=["full_name"])
+
+    assert practice.recognise(seeded_tenant, name="Noble Baker",
+                              email=member.user.email) is None
+
+
+@pytest.mark.django_db
+def test_staff_participants_are_shown_not_asked_about(
+    seeded_tenant, practice_staff, watch, fake_claude, in_tenant_a
+):
+    """The finding itself. Two staff and one client in the notes: the client is
+    a question, the two of us are not."""
+    fake_claude.reply = PARSED_WITH_STAFF
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+
+    items = {(i.payload or {}).get("parsed_name"): i for i in
+             ProposalItem.objects.filter(kind=ProposalItem.Kind.PARTICIPANT)}
+    assert set(items) == {"Bryan Baker", "Casey Fields", "Dana Reyes"}
+
+    for who in ("Bryan Baker", "Casey Fields"):
+        item = items[who]
+        assert item.payload["is_practice"] is True
+        # No type, because none of the five is true.
+        assert "proposed_contact_type" not in item.payload
+        # No candidates, because there is nothing to pick between.
+        assert "existing_candidates" not in item.payload
+        # Approved on arrival: nothing to approve, and nothing to block on.
+        assert item.state == ProposalItem.State.APPROVED
+        assert item.actioned_by_id is None
+
+    stranger = items["Dana Reyes"]
+    assert stranger.state == ProposalItem.State.PENDING
+    assert stranger.payload["proposed_contact_type"] == "client"
+    assert stranger.payload["existing_candidates"] == []
+
+
+@pytest.mark.django_db
+def test_recognising_the_practice_creates_and_changes_nothing(
+    seeded_tenant, practice_staff, watch, fake_claude, dev_outbox, in_tenant_a
+):
+    """It narrows what is asked; it does not loosen what is created."""
+    from apps.crm.models import Contact
+
+    fake_claude.reply = PARSED_WITH_STAFF
+    before = set(Contact.objects.values_list("pk", flat=True))
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+
+    assert set(Contact.objects.values_list("pk", flat=True)) == before
+    assert list(practice_staff["ff_contact"].types.all()) == []
+    assert dev_outbox == []
+
+
+@pytest.mark.django_db
+def test_the_meeting_records_who_from_the_practice_attended(
+    seeded_tenant, practice_staff, api, watch, fake_claude, in_tenant_a
+):
+    """FR-5.8a and FR-5.9e together: the meeting goes on the client's timeline,
+    and carries our own side as attended-by."""
+    fake_claude.reply = PARSED_WITH_STAFF
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    client_item = ProposalItem.objects.get(
+        kind=ProposalItem.Kind.PARTICIPANT, state=ProposalItem.State.PENDING)
+
+    response = api.as_(practice_staff["ff"]).post(
+        f"/api/proposal-items/{client_item.pk}/approve/", {"contact_type": "client"})
+    assert response.status_code == 201, response.data
+
+    meeting = Meeting.objects.get()
+    rows = {p.contact_id: p for p in MeetingParticipant.objects.all()}
+    assert len(rows) == 3
+
+    ff_row = rows[practice_staff["ff_contact"].pk]
+    cf_row = rows[practice_staff["cf_contact"].pk]
+    assert ff_row.is_practice is True and cf_row.is_practice is True
+    assert str(ff_row.staff_user_id) == str(practice_staff["ff"].user_id)
+    assert str(cf_row.staff_user_id) == str(practice_staff["cf"].user_id)
+
+    # The client's own row is not the practice, and it is the client's company
+    # that the meeting belongs to.
+    theirs = [p for p in rows.values() if not p.is_practice]
+    assert len(theirs) == 1
+    assert meeting.title == "Acme operations review"
+
+
+@pytest.mark.django_db
+def test_a_staff_row_never_holds_a_proposal_open(
+    seeded_tenant, practice_staff, api, watch, fake_claude, in_tenant_a
+):
+    """The second half of the finding: eight proposals sat at
+    `partially_actioned` forever, each on a row nobody would ever action."""
+    fake_claude.reply = PARSED_WITH_STAFF
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    proposal = MeetingProposal.objects.get()
+    assert proposal.state == MeetingProposal.State.PENDING
+
+    for item in ProposalItem.objects.filter(state=ProposalItem.State.PENDING):
+        body = {"contact_type": "client"} if item.kind == "participant" else {}
+        api.as_(practice_staff["ff"]).post(
+            f"/api/proposal-items/{item.pk}/approve/", body)
+
+    proposal.refresh_from_db()
+    assert proposal.state == MeetingProposal.State.ACTIONED
+
+
+@pytest.mark.django_db
+def test_a_proposal_parsed_before_the_rule_settles_anyway(
+    seeded_tenant, practice_staff, api, watch, fake_claude, in_tenant_a
+):
+    """The eight already in the queue. Their payloads carry no `is_practice`,
+    so `settle` checks them live rather than leaving them stuck."""
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    proposal = MeetingProposal.objects.get()
+    # Rewrite one participant into the shape the old parser produced for the FF.
+    stale = ProposalItem.objects.filter(kind=ProposalItem.Kind.PARTICIPANT).first()
+    stale.payload = {"parsed_name": "Bryan Baker", "parsed_email": FF_EMAIL,
+                     "proposed_contact_type": "prospect", "existing_candidates": []}
+    stale.state = ProposalItem.State.PENDING
+    stale.save(update_fields=["payload", "state"])
+
+    for item in ProposalItem.objects.filter(
+            state=ProposalItem.State.PENDING).exclude(pk=stale.pk):
+        body = {"contact_type": "client"} if item.kind == "participant" else {}
+        api.as_(practice_staff["ff"]).post(
+            f"/api/proposal-items/{item.pk}/approve/", body)
+
+    proposal.refresh_from_db()
+    assert proposal.state == MeetingProposal.State.ACTIONED
+    # And the stale row is still there, untouched, for the repair command.
+    stale.refresh_from_db()
+    assert stale.state == ProposalItem.State.PENDING
+
+
+@pytest.mark.django_db
+def test_the_repair_command_writes_nothing_without_apply(
+    seeded_tenant, practice_staff, watch, fake_claude, in_tenant_a
+):
+    """Dry-run by default, like every repair in this project."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    stale = ProposalItem.objects.filter(kind=ProposalItem.Kind.PARTICIPANT).first()
+    stale.payload = {"parsed_name": "Bryan Baker", "parsed_email": FF_EMAIL}
+    stale.state = ProposalItem.State.PENDING
+    stale.save(update_fields=["payload", "state"])
+
+    out = StringIO()
+    call_command("recognise_practice_participants", tenant=seeded_tenant.slug,
+                 stdout=out)
+    assert "Dry run" in out.getvalue()
+    stale.refresh_from_db()
+    assert stale.state == ProposalItem.State.PENDING
+
+    call_command("recognise_practice_participants", tenant=seeded_tenant.slug,
+                 apply=True, stdout=StringIO())
+    stale.refresh_from_db()
+    assert stale.state == ProposalItem.State.APPROVED
+    assert stale.payload["is_practice"] is True
+    assert stale.created_record_id == practice_staff["ff_contact"].pk

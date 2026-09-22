@@ -1410,6 +1410,7 @@ judgement on N real goals**, with N — never as a pass.
 3. Claude parse producing participants, action items, deliverables, and a **drafted summary**.
 4. Matching in the order **email → email domain + name → name alone**, ranked, with the reason shown and both paths always offered.
 5. Proposed contact type per participant, with **referral → queued onboarding** and **vendor → inline categories**.
+5a. **The practice is recognised, not asked about** — staff participants shown with no type, no approval, recorded on the meeting as attended-by, and never holding a proposal open. *(Added 2026-09-22 from real proposals: the FF was a participant in every meeting and eight proposals sat at `partially_actioned` on his own name. FR-5.9e, AC-5.9e.)*
 6. **Partial approval**; rejection persists; re-parse supersedes.
 7. `Meeting` record on every approved participant's timeline.
 8. CF `proposal-scope` with both limbs.
@@ -1425,6 +1426,7 @@ judgement on N real goals**, with N — never as a pass.
   - **AC-5.10** — a parse failure does not advance the cursor.
   - **AC-5.1a** — the folder is verified before it is watched, and only the FF may connect one.
   - **AC-5.1b** — a fresh watch sees none of the folder's past, and the import that fixes that is chosen, priced and paced.
+  - **AC-5.9e** — the practice is shown and not asked about, with an FF and a CF, and a staff row never holds a proposal open.
 
 ### Manual checks
 

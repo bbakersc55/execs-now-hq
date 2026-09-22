@@ -862,7 +862,10 @@ export interface ProposalItem {
   created_record_type: string;
   created_record_id: string | null;
   actioned_at: string | null;
+  /** FR-5.9e — this participant is the practice: shown, never asked about. */
+  is_practice?: boolean;
   payload: {
+    practice_name?: string; practice_role?: string; is_practice?: boolean;
     parsed_name?: string; parsed_email?: string; parsed_title?: string;
     parsed_company?: string; proposed_contact_type?: string;
     new_contact_candidate?: Record<string, string>;

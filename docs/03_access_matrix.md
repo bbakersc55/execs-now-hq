@@ -262,6 +262,8 @@
 | 11.12 | See the folder's name, last poll and last error | ✅ | ✅ | ✅ | ❌ | ❌ | Read-only for CF and VA |
 | 11.13 | Choose and run the folder backfill; stop it | ✅ | ❌ | ❌ | ❌ | ❌ | **FF only.** It spends the practice's money against the practice's own Drive |
 
+> **Row 11.4 does not apply to our own staff (FR-5.9e).** A participant who matches somebody on the practice's staff is recognised rather than asked about: no type is offered, no approval is needed, and the row is excluded from whether the proposal is still open. There is nothing to authorise because nothing is created — so there is no role question here, for any role.
+>
 > **Connecting is narrower than using (11.10–11.12).** Clearing this queue is the VA's job and a CF's own meetings are in it, so both act on proposals freely. But pointing the app at a folder grants it a standing read of a whole Google Drive, and there is one folder per practice — so choosing it belongs with the person who answers for the practice's data. The asymmetry with 11.12 is deliberate too: every staff role may *see* where the folder has got to, because a queue that is empty and a queue that is asleep look identical to whoever has to clear it.
 >
 > **The VA's broad rights here are deliberate.** Clearing this queue is the VA's job, and every action in it creates records rather than sending mail — the send is a separate, gated step (FR-5.19, row 5.3).

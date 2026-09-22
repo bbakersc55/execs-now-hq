@@ -58,6 +58,14 @@ function aProposal(overrides: Partial<MeetingProposal> = {}): MeetingProposal {
                      { contact_id: "c1", name: "Dana Reyes", company: "Acme Facilities",
                        email: "dana@acme.invalid", match_reason: "email",
                        confidence: 0.98, rank: 1 }] } },
+      // FR-5.9e — our own side of the table: recognised, not asked about.
+      { id: "i0", kind: "participant", state: "approved", is_practice: true,
+        source_excerpt: "Attendees: Bryan Baker, Dana Reyes",
+        position: 0, created_record_type: "contact", created_record_id: "c9",
+        actioned_at: null,
+        payload: { parsed_name: "Bryan Baker", parsed_email: "bryan@x.test",
+                   is_practice: true, practice_name: "Bryan Baker",
+                   practice_role: "FF" } },
       { id: "i2", kind: "action_item", state: "pending",
         source_excerpt: "Dana said she would send the Q3 margin breakdown by Friday.",
         position: 0, created_record_type: "", created_record_id: null,
@@ -438,5 +446,35 @@ describe("importing what the folder already holds", () => {
 
     expect(await screen.findByText("Meeting notes")).toBeInTheDocument();
     expect(screen.queryByText(/already holds notes/)).not.toBeInTheDocument();
+  });
+});
+
+
+describe("our own side of the table", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("shows the practice as attending and asks nothing about them", async () => {
+    const user = userEvent.setup();
+    show();
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+
+    // Shown — who was in the room is the point of the record.
+    expect(await screen.findByText(/Bryan Baker · bryan@x.test/)).toBeInTheDocument();
+    expect(screen.getByText(/the practice\. Recorded as attending/))
+      .toBeInTheDocument();
+
+    // Not asked about: no type, no match picker, no approve, no reject.
+    expect(screen.queryByRole("combobox", { name: "Type for Bryan Baker" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Match for Bryan Baker" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve Bryan Baker" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject Bryan Baker" }))
+      .not.toBeInTheDocument();
+
+    // And the real participant is still a question.
+    expect(screen.getByRole("combobox", { name: "Type for Dana Reyes" }))
+      .toBeInTheDocument();
   });
 });

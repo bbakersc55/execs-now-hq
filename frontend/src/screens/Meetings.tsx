@@ -549,8 +549,12 @@ function ItemRow({ item, onChanged, setNote }: {
   });
 
   const decided = item.state !== "pending";
+  // FR-5.9e — our own side of the table. Shown, because who was in the room is
+  // the point of the record; not asked about, because the practice is not a
+  // prospect, a client, a referral partner, a vendor or a coworker of itself.
+  const ours = item.is_practice;
   return (
-    <div className="card" style={{ opacity: decided ? 0.6 : 1 }}>
+    <div className="card" style={{ opacity: decided && !ours ? 0.6 : 1 }}>
       <div className="spread" style={{ alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontWeight: 550 }}>
@@ -558,6 +562,12 @@ function ItemRow({ item, onChanged, setNote }: {
               ? `${payload.parsed_name}${payload.parsed_email ? ` · ${payload.parsed_email}` : ""}`
               : payload.text}
           </p>
+          {ours && (
+            <p className="tiny muted" style={{ margin: "2px 0 0" }}>
+              {payload.practice_name ?? "Your practice"} — the practice. Recorded
+              as attending; nothing to decide.
+            </p>
+          )}
           {/* FR-5.14 — what it was drawn from, so the claim is checkable. */}
           {item.source_excerpt && (
             <p className="tiny muted" style={{ margin: "2px 0 0", fontStyle: "italic" }}>
@@ -565,10 +575,11 @@ function ItemRow({ item, onChanged, setNote }: {
             </p>
           )}
         </div>
-        {decided && <Pill kind={item.state === "approved" ? "ok" : ""}>{item.state}</Pill>}
+        {ours ? <Pill kind="ok">us</Pill>
+          : decided && <Pill kind={item.state === "approved" ? "ok" : ""}>{item.state}</Pill>}
       </div>
 
-      {!decided && item.kind === "participant" && (
+      {!decided && !ours && item.kind === "participant" && (
         <div className="row" style={{ marginTop: "var(--s2)" }}>
           <Field label="Who is this">
             <select aria-label={`Match for ${payload.parsed_name}`} value={pick}
@@ -602,7 +613,7 @@ function ItemRow({ item, onChanged, setNote }: {
         </div>
       )}
 
-      {!decided && (
+      {!decided && !ours && (
         <div className="row tight" style={{ marginTop: "var(--s2)" }}>
           <button className="primary small" disabled={act.isPending}
             aria-label={`Approve ${payload.parsed_name ?? payload.text}`}

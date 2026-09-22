@@ -23,6 +23,7 @@ from django.utils import timezone
 from apps.crm.models import Company, Contact, ContactEmail, ContactType, ServiceCategory
 from apps.crm.models import ContactServiceCategory
 from apps.crm.services import referral
+from apps.meetings import practice
 from apps.meetings.models import (
     Meeting, MeetingParticipant, MeetingProposal, ProposalItem,
 )
@@ -167,13 +168,16 @@ def create_meeting(proposal, *, actor) -> Meeting:
     Created once: approving a second participant later joins them to the
     meeting that already exists rather than making another.
     """
-    contacts = [
-        Contact.objects.filter(pk=item.created_record_id).first()
-        for item in ProposalItem.objects.filter(
+    attended = []
+    for item in ProposalItem.objects.filter(
             proposal=proposal, kind=ProposalItem.Kind.PARTICIPANT,
-            state=ProposalItem.State.APPROVED, created_record_type="contact")
-    ]
-    contacts = [c for c in contacts if c is not None]
+            state=ProposalItem.State.APPROVED, created_record_type="contact"):
+        contact = Contact.objects.filter(pk=item.created_record_id).first()
+        if contact is not None:
+            attended.append((contact, item.payload or {}))
+    # The client's side only: the practice is in the room, not a party to the
+    # engagement, so it never decides which company the meeting belongs to.
+    contacts = [c for c, body in attended if not body.get("is_practice")]
 
     meeting = proposal.meeting
     if meeting is None:
@@ -193,9 +197,15 @@ def create_meeting(proposal, *, actor) -> Meeting:
         proposal.meeting = meeting
         proposal.save(update_fields=["meeting", "updated_at"])
 
-    for contact in contacts:
-        MeetingParticipant.objects.get_or_create(
-            tenant=proposal.tenant, meeting=meeting, contact=contact)
+    for contact, body in attended:
+        row, created = MeetingParticipant.objects.get_or_create(
+            tenant=proposal.tenant, meeting=meeting, contact=contact,
+            defaults={"is_practice": bool(body.get("is_practice")),
+                      "staff_user_id": body.get("practice_user_id")})
+        if not created and body.get("is_practice") and not row.is_practice:
+            row.is_practice = True
+            row.staff_user_id = body.get("practice_user_id")
+            row.save(update_fields=["is_practice", "staff_user", "updated_at"])
     return meeting
 
 
@@ -225,10 +235,33 @@ def reject(item, *, actor):
 
 def settle(proposal):
     """Where the proposal has got to, from its items. Derived, never stored
-    ahead of them."""
-    states = set(ProposalItem.objects.filter(proposal=proposal)
-                 .values_list("state", flat=True))
-    if not states or states == {ProposalItem.State.PENDING}:
+    ahead of them.
+
+    **A participant who is the practice is not an open question** (FR-5.9e),
+    so a pending one does not hold the proposal at `partially_actioned`. Items
+    parsed after that rule existed are approved on arrival and never reach
+    this; the live check is for the ones parsed before it — there were eight
+    in the owner's queue, each stuck on his own name.
+    """
+    items = list(ProposalItem.objects.filter(proposal=proposal))
+    roster = None
+    theirs = []
+    for item in items:
+        if item.kind == ProposalItem.Kind.PARTICIPANT:
+            if roster is None:
+                roster = practice.staff(proposal.tenant)
+            if practice.is_practice_item(item, tenant=proposal.tenant, roster=roster):
+                # Whatever its state. It is not a question that was answered,
+                # so it is not evidence the proposal has been worked on either.
+                continue
+        theirs.append(item)
+
+    states = {item.state for item in theirs}
+    if not theirs:
+        # Everything in it was us. Nothing for anybody to decide.
+        state = (MeetingProposal.State.ACTIONED if items
+                 else MeetingProposal.State.PENDING)
+    elif not states or states == {ProposalItem.State.PENDING}:
         state = MeetingProposal.State.PENDING
     elif ProposalItem.State.PENDING in states:
         state = MeetingProposal.State.PARTIALLY_ACTIONED

@@ -984,6 +984,16 @@ Created on approval (FR-5.8a). **This is the "update their profile with the meet
 
 ## 8. Module 6 — Communication
 
+*(Added 2026-09-22, FR-5.9e.)* Two columns for our own side of the table:
+
+| Column | Type | Notes |
+|---|---|---|
+| `is_practice` | boolean, default false | This attendee **is the practice**. No contact type, never approved by anybody — recognised |
+| `staff_user_id` | uuid null | Which member of staff. Null where the participant's contact row could not be resolved to one |
+
+The practice never decides which client company a meeting belongs to; only the
+client's own participants do.
+
 ### `email_thread`
 `id · tenant_id · thread_token (U, IX) · contact_id? · client_company_id? · gmail_thread_id? (IX) · subject · last_message_at`
 

@@ -19,6 +19,8 @@ def represent_item(item) -> dict:
         "created_record_id": (str(item.created_record_id)
                               if item.created_record_id else None),
         "actioned_at": item.actioned_at.isoformat() if item.actioned_at else None,
+        # FR-5.9e — the screen shows this one rather than asking about it.
+        "is_practice": bool((item.payload or {}).get("is_practice")),
     }
 
 

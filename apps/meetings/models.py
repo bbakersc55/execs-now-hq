@@ -273,6 +273,12 @@ class MeetingParticipant(TenantScopedModel):
                                 related_name="participants")
     contact = models.ForeignKey("crm.Contact", on_delete=models.CASCADE,
                                 related_name="meetings")
+    #: Our own side of the table (FR-5.9e). The practice attended; it is not a
+    #: party to itself, so this row carries no contact type and was never
+    #: approved by anybody — it was recognised.
+    is_practice = models.BooleanField(default=False)
+    staff_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "meeting_participant"
