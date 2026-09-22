@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 
+from django.core.management import call_command
+
 import pytest
 from django.utils import timezone
 
@@ -886,6 +888,62 @@ def test_the_fractionals_note_on_a_session_reaches_no_prospect(session, ff, api,
     assert "MARKERSESSIONNOTE" not in f"{message.body_text}{message.body_html}"
     assert "MARKERSESSIONNOTE" not in pdf_service.render_html(session)
     assert b"MARKERSESSIONNOTE" not in pdf_service.render_pdf(session)
+
+
+@pytest.mark.django_db
+def test_patching_a_snapshot_touches_the_six_and_nothing_else(session, ff, api):
+    """The one thing that reaches past AC-4.12, and how narrow it is.
+
+    Brett Murray's session was started from a template whose six ratings had
+    already been reworded into essays, so its snapshot preserves the mistake
+    faithfully. The owner asked for it put right; this is what "put right"
+    is allowed to mean.
+    """
+    from apps.strategy.management.commands.patch_session_rating_prompts import (
+        patch_snapshot,
+    )
+    from apps.tenancy.models import AuditEvent
+
+    broken = json.loads(json.dumps(session.template_snapshot))
+    for sec in broken["sections"]:
+        for q in sec["questions"]:
+            if q["key"] == "s2_vision":
+                q["prompt"] = "Three years out, what does the company look like?"
+            if q["key"] == "s1_revenue":
+                q["prompt"] = "What was revenue last year, and where will you land?"
+
+    patched, changed = patch_snapshot(broken)
+
+    # Only the rating, and only its wording.
+    assert [row["key"] for row in changed] == ["s2_vision"]
+    assert changed[0]["now"] == "Vision"
+    by_key = {q["key"]: q for sec in patched["sections"] for q in sec["questions"]}
+    assert by_key["s2_vision"]["prompt"] == "Vision"
+    assert by_key["s2_vision"]["response_schema"] == "rating_1_10"
+    # A free-text question that was reworded stays as this session asked it:
+    # the snapshot is not a licence to tidy everything up.
+    assert by_key["s1_revenue"]["prompt"] == (
+        "What was revenue last year, and where will you land?")
+    # Everything else about the snapshot is untouched.
+    assert patched["taken_at"] == broken["taken_at"]
+    assert [s["code"] for s in patched["sections"]] == [s["code"] for s in broken["sections"]]
+    assert len(by_key) == len({q["key"] for sec in broken["sections"]
+                               for q in sec["questions"]})
+
+    # Running it twice changes nothing the second time.
+    again, changed_again = patch_snapshot(patched)
+    assert changed_again == [] and again == patched
+
+    # And the real command audits what it did.
+    session.template_snapshot = broken
+    session.save(update_fields=["template_snapshot", "updated_at"])
+    call_command("patch_session_rating_prompts", str(session.pk), "--apply")
+    session.refresh_from_db()
+    assert services.question_in(session.template_snapshot, "s2_vision")["prompt"] == "Vision"
+    event = AuditEvent.all_objects.get(verb="strategy.session_snapshot_patched")
+    assert event.target_id == session.pk
+    assert event.payload["changed"][0]["was"].startswith("Three years out")
+    assert event.payload["reason"] == "incident 2026-09-22"
 
 
 # ------------------------------- session prep (owner, 2026-09-21)
