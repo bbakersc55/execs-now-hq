@@ -80,7 +80,7 @@ User × tenant × role. Exists as a table from migration 1; **enforced one-per-u
 | `user_id` | FK→`user` | |
 | `role` | text | `FF` · `CF` · `VA` · `FCC` · `ECC` |
 | `client_company_id` | FK→`company`? | **required when role is FCC/ECC, null otherwise** — the second scope layer (FR-0.2) |
-| `contact_id` | FK→`contact`? | the person this login belongs to (F1) |
+| `contact_id` | FK→`contact`? | the person this login belongs to (F1). **Set on every invite** — from the contact portal access was granted on, and since 2026-09-22 (FR-0.8a.1) from a staff invite's create-or-link too. Nullable only for memberships older than that |
 | `invited_by` / `invited_at` | FK→`user`? / timestamptz | |
 | `revoked_at` | timestamptz? | set on revoke; frees a seat (FR-3.33g) |
 
