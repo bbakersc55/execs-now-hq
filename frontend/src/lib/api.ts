@@ -770,6 +770,30 @@ export interface PreCallForm {
 
 // --- Module 5 — meeting ingestion -------------------------------------------
 
+/** GET /api/dashboard/ — the landing page (design brief, Tier 2).
+ *
+ *  One call rather than five, so the scoping rules cannot drift between this
+ *  screen and the screens it summarises. */
+export interface Dashboard {
+  window_days: number;
+  tiles: {
+    tasks_due: number;
+    /** Named separately from `tasks_due`, and included in it. */
+    tasks_overdue: number;
+    digests_pending: number;
+    pipeline_moves: number;
+    goals_open: number;
+  };
+  due_by_day: { date: string | null; label: string; count: number;
+                overdue: boolean }[];
+  digests: { id: string; contact: string; cadence: string; period_end: string;
+             ai_prose: boolean; stale: boolean }[];
+  pipeline: { id: string; contact: string; name: string; pipeline: string;
+              from: string; to: string; at: string }[];
+  clients: { id: string; name: string; open_tasks: number; overdue: number;
+             open_goals: number }[];
+}
+
 /** GET /api/meetings/?contact= | ?company= — call notes (FR-5.8d). */
 export interface MeetingNote {
   id: string;

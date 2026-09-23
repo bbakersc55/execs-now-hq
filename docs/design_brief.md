@@ -119,7 +119,11 @@ cost. There is now a test that says exactly this.
 
 ## Tier 2 (after the call)
 
-- **Dashboard** as the landing page: four stat tiles (tasks due this week, pending digests, pipeline movement this week, open goals), then panels: tasks due (by day), pending digests with approve, pipeline changes, client cards (one per client company, click to drill in). Calendar panel wired when Google Calendar integration lands.
+- ~~**Dashboard** as the landing page~~ — **built 2026-09-22.** Four tiles (tasks due, digests waiting, pipeline moves, open goals), then three panels (due by day, waiting for approval, pipeline this week) and a card per client company. Calendar panel still waiting on the Google Calendar integration.
+
+  **One deviation from this line, deliberate.** The brief says "pending digests **with approve**". FR-3.29 says the approval screen exists because *approving something you have not read* is the failure it prevents, and a dashboard panel cannot show the whole rendered digest. So the panel lists what is waiting — recipient, cadence, period, whether it is AI-drafted or stale — and each row links to the digest screen. Approving is still one click away; it is just a click that happens where the thing being approved is visible. **Owner: say the word if you would rather have the button and accept the trade.**
+
+  Three smaller decisions worth recording: the tile says how much of the total is **overdue** rather than folding it in silently; the by-day list shows **quiet days as zeros** rather than skipping them, because a list that skips them makes a light week look like a missing one; and "this week" is **the next seven days**, not the calendar week, so the number does not shrink as the week goes on.
 - **Contacts and Companies**: keep tables (they are records), add avatars, sortable headers, chip filters, instant search, row hover actions, and a right-side detail sheet on click before the full page.
 - **Notes**: panel layout (list on the left, note on the right). Stacks and notebooks are a data-model change and belong to the roadmap, not the pass.
 - Settings screens, Outbox, Digests, Activity: same tokens and components, no structural change.

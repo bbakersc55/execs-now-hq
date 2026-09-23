@@ -2,7 +2,8 @@ import { Fragment, useEffect } from "react";
 import {
   Activity as ActivityIcon, BarChart3, Building2, CalendarCheck, CheckSquare,
   ClipboardList,
-  Contact as ContactIcon, FileText, Inbox, Mail, PanelLeftClose, PanelLeftOpen,
+  Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail, PanelLeftClose,
+  PanelLeftOpen,
   Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -30,6 +31,7 @@ import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
 import { NoteDetail } from "./screens/NoteDetail";
+import { Dashboard } from "./screens/Dashboard";
 import { Meetings } from "./screens/Meetings";
 import { Replies } from "./screens/Replies";
 import { Notes } from "./screens/Notes";
@@ -75,6 +77,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   // Matrix 4.18 — Module 1 has no client-facing surface, so every CRM entry is
   // scoped to tenant staff. Without this, an FCC saw the whole sidebar.
+  { to: "/dashboard", label: "Dashboard", roles: TENANT, group: "Today", icon: LayoutGrid },
   { to: "/contacts", label: "Contacts", roles: TENANT , group: "Accounts" , icon: ContactIcon },
   { to: "/pipeline", label: "Pipeline", roles: TENANT , icon: Workflow },
   { to: "/companies", label: "Companies", roles: TENANT , icon: Building2 },
@@ -234,7 +237,12 @@ export function App() {
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
           <Routes>
-            <Route path="/" element={<Contacts me={me} />} />
+            {/* The landing page (design brief, Tier 2). A client user never
+                reaches it: their landing page is the portal. */}
+            <Route path="/" element={
+              me.role && TENANT.includes(me.role)
+                ? <Dashboard me={me} /> : <Contacts me={me} />} />
+            <Route path="/dashboard" element={<Dashboard me={me} />} />
             <Route path="/contacts" element={<Contacts me={me} />} />
             <Route path="/contacts/:id" element={<ContactDetail me={me} />} />
             <Route path="/merge/:aId/:bId" element={<Merge />} />

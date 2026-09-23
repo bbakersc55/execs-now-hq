@@ -54,6 +54,22 @@ def _is_uuid(value) -> bool:
         return False
 
 
+class DashboardView(viewsets.ViewSet):
+    """The landing page (design brief, Tier 2).
+
+    Staff only: a client user's landing page is their portal, and every figure
+    here spans the practice. One call rather than five, so the scoping rules
+    cannot drift between the screen and the screens it summarises.
+    """
+
+    permission_classes = [crm_perms.IsTenantStaff]
+
+    def list(self, request):
+        from apps.work import dashboard
+
+        return Response(dashboard.for_request(request))
+
+
 class WorkViewSet(viewsets.GenericViewSet):
     """Shared plumbing: tenant staff and client users both reach these routes,
     each scoped by `permissions`."""

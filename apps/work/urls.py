@@ -5,6 +5,7 @@ from django.urls import path
 from apps.work import views, views_cadence
 
 router = DefaultRouter()
+router.register("dashboard", views.DashboardView, basename="dashboard")
 router.register("goals", views.GoalViewSet, basename="goal")
 router.register("projects", views.ProjectViewSet, basename="project")
 # Module 3 owns /api/tasks/ now; Phase 1's read-only stand-in in apps.crm is gone.
