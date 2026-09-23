@@ -128,3 +128,38 @@ describe("the task editor", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });
+
+describe("the sidebar on a narrow window", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  /** jsdom has no layout, so `matchMedia` is the seam — which is also the
+   *  seam the real thing uses. */
+  function atWidth(narrow: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: narrow, media: query,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, onchange: null,
+      dispatchEvent: () => false,
+    }));
+  }
+
+  it("collapses itself when the window is narrow", async () => {
+    const { App } = await import("../App");
+    atWidth(true);
+    stubApp();
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+
+    expect(await screen.findByRole("button", { name: "Expand the menu" }))
+      .toBeInTheDocument();
+  });
+
+  it("leaves a wide window expanded", async () => {
+    const { App } = await import("../App");
+    atWidth(false);
+    stubApp();
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+
+    expect(await screen.findByRole("button", { name: "Collapse the menu" }))
+      .toBeInTheDocument();
+  });
+});

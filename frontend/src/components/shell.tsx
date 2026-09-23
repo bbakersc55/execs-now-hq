@@ -124,6 +124,34 @@ export function useRemembered(key: string, fallback: boolean) {
 
 
 /**
+ * Collapses the sidebar on a narrow window, and **gives it back** when the
+ * window widens again (design brief, Tier 2).
+ *
+ * It never overwrites the remembered choice: somebody who collapsed the
+ * sidebar on a wide screen keeps it collapsed, and somebody who narrowed their
+ * window to read a document gets their sidebar back when they widen it. The
+ * automatic state is held separately from the manual one and only ever adds to
+ * it — which is why this returns a flag rather than calling `setCollapsed`.
+ */
+export function useNarrowWindow(breakpoint = 1100) {
+  const [narrow, setNarrow] = useState(() => {
+    try { return window.matchMedia(`(max-width: ${breakpoint}px)`).matches; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    let query: MediaQueryList;
+    try { query = window.matchMedia(`(max-width: ${breakpoint}px)`); }
+    catch { return; }
+    const onChange = (event: MediaQueryListEvent) => setNarrow(event.matches);
+    setNarrow(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, [breakpoint]);
+  return narrow;
+}
+
+
+/**
  * The whole email, as it will send, above the button that sends it.
  *
  * The incident of 2026-09-22: a panel showed the opening line the fractional

@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
 import { ActAsColleague, ActingBanner } from "./components/ActAs";
-import { Avatar, useRemembered } from "./components/shell";
+import { Avatar, useNarrowWindow, useRemembered } from "./components/shell";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
@@ -30,7 +30,6 @@ import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
-import { NoteDetail } from "./screens/NoteDetail";
 import { Dashboard } from "./screens/Dashboard";
 import { Meetings } from "./screens/Meetings";
 import { Replies } from "./screens/Replies";
@@ -166,7 +165,11 @@ export function App() {
   });
   const staff = !!me?.role && TENANT.includes(me.role);
   // Manual only, and remembered in this browser (design brief, Tier 1).
-  const [collapsed, setCollapsed] = useRemembered("enhq.sidebar.collapsed", false);
+  const [chosen, setCollapsed] = useRemembered("enhq.sidebar.collapsed", false);
+  // Narrow windows collapse it; widening gives it back. The remembered choice
+  // is never overwritten, so a deliberate collapse survives both.
+  const narrow = useNarrowWindow();
+  const collapsed = chosen || narrow;
   const wordmark = (staff ? brand?.product_name : brand?.display_name) ?? "";
   const palette = brand?.palette;
 
@@ -217,8 +220,11 @@ export function App() {
             </Fragment>
           ))}
         </nav>
-        <button className="collapse" aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
-          onClick={() => setCollapsed(!collapsed)}>
+        <button className="collapse"
+          aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
+          // On a narrow window the toggle expands over the content rather than
+          // fighting the width: the choice it writes is still the manual one.
+          onClick={() => setCollapsed(!chosen)}>
           {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.75} />
             : <><PanelLeftClose size={18} strokeWidth={1.75} /> <span>Collapse</span></>}
         </button>
@@ -259,7 +265,9 @@ export function App() {
             <Route path="/ai-usage" element={<AiUsage />} />
             <Route path="/notes" element={<Notes me={me} />} />
             <Route path="/notes/pin-reset/:token" element={<PinReset />} />
-            <Route path="/notes/:id" element={<NoteDetail me={me} />} />
+            {/* The panel owns both: a link into one note still opens it, and
+                opens it beside the list rather than instead of it. */}
+            <Route path="/notes/:id" element={<Notes me={me} />} />
             <Route path="/tasks" element={<Tasks me={me} />} />
             {/* The editor is a panel over the board, not a page of its own
                 (design brief, Tier 1), so the task's URL renders the board

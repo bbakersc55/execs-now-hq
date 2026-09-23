@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -74,12 +75,10 @@ export function Digests({ me }: { me: Me }) {
 
   return (
     <>
-      <h2>Digests awaiting approval</h2>
-      <p className="sub">
-        Nothing here has been sent. Every digest waits for a person while
+      <PageHead title="Digests awaiting approval"
+        sub={<>Nothing here has been sent. Every digest waits for a person while
         <span className="mono"> hold_all_digests</span> is on, which is the default — and an
-        AI-written one waits even when it is off.
-      </p>
+        AI-written one waits even when it is off.</>} />
       {note && <Banner kind="info">{note}</Banner>}
 
       {tick.data?.stale && (

@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -52,11 +53,9 @@ export function Staff() {
 
   return (
     <>
-      <h2>Staff</h2>
-      <p className="sub">
-        Your practice's own people. Sign-in is invite-only — an address with no membership
-        here is refused at Google.
-      </p>
+      <PageHead title="Staff"
+        sub="Your practice's own people. Sign-in is invite-only — an address with no membership
+        here is refused at Google." />
 
       {note && <Banner kind="ok">{note}</Banner>}
       <Banner kind="info">

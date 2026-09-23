@@ -133,9 +133,10 @@ cost. There is now a test that says exactly this.
   **Sorting: blanks last in both directions.** An empty cell is absent information, not a low value, so a contact with no title does not lead the ascending sort. The column header's accessible name stays the column's name; the arrow is decorative and `aria-sort` carries the state.
 
   One rule re-checked on a new surface: matrix 9.5 says seat usage is not a VA's to see, and the peek sheet is a new place that number could appear. It does not, and a test says so.
-- **Notes**: panel layout (list on the left, note on the right). Stacks and notebooks are a data-model change and belong to the roadmap, not the pass.
-- Settings screens, Outbox, Digests, Activity: same tokens and components, no structural change.
-- Sidebar auto-collapse on narrow windows. Dark mode as an option.
+- ~~**Notes**: panel layout~~ — **built 2026-09-22.** List left, note right, every note still its own URL so a link into one opens it *beside* the list rather than instead of it. The open note is marked with the same orange rail the sidebar uses for the current page — one language for "this is where you are". Search is instant here too. Stacks and notebooks remain on the roadmap, as a data-model change.
+- ~~Settings screens, Outbox, Digests, Activity~~ — **built 2026-09-22.** Nine screens moved from an ad-hoc `<h2>` + `.sub` pair to `PageHead`, which is the only structural change: they now carry the same header, type scale and primary-action slot as everything else. No behaviour, copy or queue was touched.
+- ~~Sidebar auto-collapse on narrow windows~~ — **built 2026-09-22.** A narrow window collapses it and **widening gives it back**, because the automatic state is held separately from the remembered choice and only ever adds to it. Somebody who collapsed it deliberately keeps it collapsed at any width.
+- **Dark mode: not built, and the brief contradicts itself on it.** The direction paragraph says "Fask and Evernote for cleanliness, not for their dark theme; **dark mode is shelved**"; this list says "dark mode as an option". I have taken the direction paragraph as the decision and built nothing. *(Owner: if you do want it, it is a real piece of work rather than a token swap — every status and priority colour needs a second value that holds its meaning on a dark ground, and the PDF and email templates stay light either way.)*
 
 ## Recorded for the roadmap (not UI)
 

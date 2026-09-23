@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -27,11 +28,9 @@ export function AiUsage() {
 
   return (
     <>
-      <h2>AI usage</h2>
-      <p className="sub">
-        Every Claude call this practice has made, and what it cost. Visible to you only —
-        spend is financial.
-      </p>
+      <PageHead title="AI usage"
+        sub="Every Claude call this practice has made, and what it cost. Visible to you only —
+        spend is financial." />
 
       <AnthropicKey />
 

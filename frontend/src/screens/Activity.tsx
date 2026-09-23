@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -80,11 +81,9 @@ export function Activity({ me }: { me: Me }) {
 
   return (
     <>
-      <h2>Activity</h2>
-      <p className="sub">
-        Everything happening across your accounts, newest first — your team's work as well
-        as your own. Nobody can edit or remove an entry.
-      </p>
+      <PageHead title="Activity"
+        sub="Everything happening across your accounts, newest first — your team's work as well
+        as your own. Nobody can edit or remove an entry." />
 
       <Card actions={filtered
         ? <button className="ghost" onClick={clear}>Clear filters</button> : undefined}>

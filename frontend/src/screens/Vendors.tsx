@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -28,8 +29,8 @@ export function Vendors() {
 
   return (
     <>
-      <h2>Vendors</h2>
-      <p className="sub">Find a vendor by what they do, for when a client asks.</p>
+      <PageHead title="Vendors"
+        sub="Find a vendor by what they do, for when a client asks." />
 
       <Card title="Search by service category">
         <div className="row">

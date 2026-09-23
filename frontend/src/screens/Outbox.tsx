@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -108,11 +109,9 @@ export function Outbox() {
 
   return (
     <>
-      <h2>Outbox</h2>
-      <p className="sub">
-        Every email the app has produced — the approval queue and the complete send log
-        in one place. Drafts expire on their send-by date rather than sending.
-      </p>
+      <PageHead title="Outbox"
+        sub="Every email the app has produced — the approval queue and the complete send log
+        in one place. Drafts expire on their send-by date rather than sending." />
 
       {note && <Banner kind="ok">{note}</Banner>}
       {!canSend && (

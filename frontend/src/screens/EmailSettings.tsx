@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { GmailStatus, Me, api } from "../lib/api";
 import { DevAllowlist } from "./DevAllowlist";
@@ -81,7 +82,7 @@ export function EmailSettings({ me }: { me: Me }) {
     // and a generic "could not read" would hide the reason they are refused.
     return (
       <>
-        <h2>Email settings</h2>
+        <PageHead title="Email settings" />
         <Banner kind="bad">{(status.error as Error).message}</Banner>
       </>
     );
@@ -92,12 +93,11 @@ export function EmailSettings({ me }: { me: Me }) {
 
   return (
     <>
-      <h2>Email settings</h2>
-      <p className="sub">
-        In Beta every app-originated message — magic links, digests, referral touches —
-        is sent by a connected Gmail account with <strong>From</strong> set to the
-        practice alias. This is your own connection.
-      </p>
+      <PageHead title="Email settings"
+        sub={<>In Beta every app-originated message — magic links, digests,
+          referral touches — is sent by a connected Gmail account with{" "}
+          <strong>From</strong> set to the practice alias. This is your own
+          connection.</>} />
 
       {note && <Banner kind="ok">{note}</Banner>}
       {problem && <Banner kind="bad">{problem}</Banner>}

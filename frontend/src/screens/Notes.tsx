@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useParams } from "react-router-dom";
+import { FileText } from "lucide-react";
 
+import { PageHead, SearchField } from "../components/shell";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import { Me, Note, NotesSettings, api } from "../lib/api";
-import { LinkChips } from "./NoteDetail";
+import { LinkChips, NoteDetail } from "./NoteDetail";
 
 export function NoteRow({ note }: { note: Note }) {
   return (
@@ -17,32 +19,75 @@ export function NoteRow({ note }: { note: Note }) {
   );
 }
 
+/**
+ * Notes (design brief, Tier 2): **list on the left, note on the right.**
+ *
+ * A note is read in the context of the others — what did I write about this
+ * client, in what order — and the old full-page-per-note layout made that a
+ * round trip through a list each time. The panel keeps the list in view while
+ * a note is open, and every note is still its own URL, so a link into one
+ * still works and still opens it here.
+ *
+ * Stacks and notebooks are a data-model change and stay on the roadmap; this
+ * is layout only.
+ */
 export function Notes({ me }: { me: Me }) {
+  const { id } = useParams();
   const [term, setTerm] = useState("");
   const [active, setActive] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setActive(term.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [term]);
+
   const notes = useQuery<Note[]>({
     queryKey: ["notes", active],
     queryFn: () => api.get<Note[]>(active ? `/api/notes/?q=${encodeURIComponent(active)}` : "/api/notes/"),
   });
+  const rows = notes.data ?? [];
 
   return (
     <>
-      <h2>Notes</h2>
-      <p className="sub">
-        Press <span className="mono">n</span> anywhere to write one. Search covers titles, text,
-        and accepted summaries; a locked note is found by its title only.
-      </p>
-      <Card>
-        <form className="row" onSubmit={(e) => { e.preventDefault(); setActive(term.trim()); }}>
-          <input aria-label="Search notes" placeholder="Search notes…" value={term}
-            onChange={(e) => setTerm(e.target.value)} />
-          <button className="primary" type="submit">Search</button>
-          {active && <button className="ghost" type="button" onClick={() => { setTerm(""); setActive(""); }}>Clear</button>}
-        </form>
-        {(notes.data ?? []).length === 0
-          ? <Empty>{active ? "No notes match that search." : "No notes yet."}</Empty>
-          : <ul className="timeline">{notes.data!.map((n) => <NoteRow key={n.id} note={n} />)}</ul>}
-      </Card>
+      <PageHead title="Notes"
+        sub={<>Press <span className="mono">n</span> anywhere to write one. Search
+          covers titles, text and accepted summaries; a locked note is found by
+          its title only.</>} />
+
+      <div className="panel-split">
+        <div className="panel-list">
+          <SearchField label="Search notes" value={term} onChange={setTerm}
+            placeholder="Search notes…" />
+          {rows.length === 0 ? (
+            <Empty>{active ? "No notes match that search." : "No notes yet."}</Empty>
+          ) : (
+            <ul className="notelist">
+              {rows.map((note) => (
+                <li key={note.id}>
+                  <NavLink to={`/notes/${note.id}`}
+                    className={({ isActive }) => isActive ? "on" : ""}>
+                    <span className="notetitle">
+                      {note.is_locked && "🔒 "}{note.title}
+                    </span>
+                    <span className="tiny muted">{when(note.created_at)}</span>
+                    <LinkChips note={note} />
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="panel-body">
+          {id ? <NoteDetail me={me} inPanel /> : (
+            <Empty>
+              <FileText size={14} /> Choose a note to read it here, or press{" "}
+              <span className="mono">n</span> to write one.
+            </Empty>
+          )}
+        </div>
+      </div>
+
       {me.role === "FF" && <RecordingSettings />}
     </>
   );

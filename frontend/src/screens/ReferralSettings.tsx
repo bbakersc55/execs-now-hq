@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -85,11 +86,9 @@ export function ReferralSettings() {
 
   return (
     <>
-      <h2>Referral settings</h2>
-      <p className="sub">
-        The blurb is the substance of every touch. The flyer rides along on a partner's
-        first follow-up.
-      </p>
+      <PageHead title="Referral settings"
+        sub="The blurb is the substance of every touch. The flyer rides along on a partner's
+        first follow-up." />
 
       {note && <Banner kind="ok">{note}</Banner>}
       {stale && (

@@ -1,3 +1,4 @@
+import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -74,11 +75,9 @@ export function StageRules() {
 
   return (
     <>
-      <h2>Stage automations</h2>
-      <p className="sub">
-        What happens when a contact changes stage. A task is created immediately;
-        an email is only ever <strong>drafted into the Outbox</strong> for approval.
-      </p>
+      <PageHead title="Stage automations"
+        sub={<>What happens when a contact changes stage. A task is created immediately;
+        an email is only ever <strong>drafted into the Outbox</strong> for approval.</>} />
 
       <p className="sub">
         <strong>Rules belong to one pipeline.</strong> A “becomes Qualified” rule on Sales

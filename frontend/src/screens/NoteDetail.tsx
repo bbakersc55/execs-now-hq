@@ -20,7 +20,7 @@ export function LinkChips({ note }: { note: NoteStub | NoteFull }) {
     : <span className="small muted">Not linked to anything</span>;
 }
 
-export function NoteDetail(_props: { me: Me }) {
+export function NoteDetail({ inPanel = false }: { me: Me; inPanel?: boolean }) {
   const { id } = useParams();
   const qc = useQueryClient();
   const note = useQuery<Note>({
@@ -45,7 +45,9 @@ export function NoteDetail(_props: { me: Me }) {
 
   return (
     <>
-      <p className="small"><Link to="/notes">← Notes</Link></p>
+      {/* Inside the panel the list is already beside it, so a link back to
+          the list is a link to where you are. */}
+      {!inPanel && <p className="small"><Link to="/notes">← Notes</Link></p>}
       <h2>{n.is_locked && "🔒 "}{n.title}</h2>
       <p className="sub"><LinkChips note={n} /> · {when(n.created_at)}</p>
       {n.stub ? <LockedNote note={n} onUnlocked={refresh} /> : <OpenNote note={n} onChange={refresh} />}
