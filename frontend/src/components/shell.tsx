@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 /**
@@ -84,8 +84,8 @@ export function FilterBar({ children, onClearAll }: {
  * The focused panel the brief asks for: a right-side sheet, elevated, closed by
  * Escape or the button, with the page behind it left where it was.
  */
-export function Sheet({ title, onClose, children }: {
-  title: ReactNode; onClose: () => void; children: ReactNode;
+export function Sheet({ title, onClose, children, label = "Task" }: {
+  title: ReactNode; onClose: () => void; children: ReactNode; label?: string;
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -96,7 +96,7 @@ export function Sheet({ title, onClose, children }: {
   return (
     <>
       <div className="sheet-backdrop" onClick={onClose} aria-hidden="true" />
-      <aside className="sheet" role="dialog" aria-modal="true" aria-label="Task">
+      <aside className="sheet" role="dialog" aria-modal="true" aria-label={label}>
         <div className="sheet-head">
           <div style={{ minWidth: 0 }}>{title}</div>
           <button className="icon-button" aria-label="Close" onClick={onClose}>
@@ -148,4 +148,75 @@ export function SendPreview({ preview, loading }: {
       <pre aria-label="The email as it will send">{preview.body_text}</pre>
     </div>
   );
+}
+
+
+/**
+ * A real search field (Tier 1 foundations): an icon, instant results, and no
+ * Search button. The old pattern — type, then press Search — made every search
+ * two actions and made an empty result look like a slow one.
+ */
+export function SearchField({ label, value, onChange, placeholder }: {
+  label: string; value: string; onChange: (next: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="search">
+      <Search size={16} aria-hidden="true" />
+      <input type="search" aria-label={label} value={value}
+        placeholder={placeholder ?? label}
+        onChange={(event) => onChange(event.target.value)} />
+      {value && (
+        <button type="button" className="icon-button" aria-label={`Clear ${label.toLowerCase()}`}
+          onClick={() => onChange("")}><X size={14} /></button>
+      )}
+    </div>
+  );
+}
+
+export type Sort = { key: string; asc: boolean };
+
+/**
+ * A sortable column header.
+ *
+ * **The accessible name stays the column's name.** The arrow is decorative and
+ * hidden from assistive technology; `aria-sort` is what carries the state,
+ * which is also what stops a screen reader announcing "Name ▲" as a heading.
+ */
+export function SortHeader({ label, field, sort, onSort, className }: {
+  label: string; field: string; sort: Sort; onSort: (next: Sort) => void;
+  className?: string;
+}) {
+  const active = sort.key === field;
+  return (
+    <th className={className}
+      aria-sort={active ? (sort.asc ? "ascending" : "descending") : "none"}>
+      <button type="button" className="sorter"
+        onClick={() => onSort({ key: field, asc: active ? !sort.asc : true })}>
+        {label}
+        <span aria-hidden="true" className={`arrow${active ? " on" : ""}`}>
+          {active && !sort.asc ? "\u25BE" : "\u25B4"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+/** Sorts a copy, never the array it was given. Blank values sort last in both
+ *  directions: an empty cell is absent information, not a low value. */
+export function sorted<T>(rows: T[], sort: Sort, value: (row: T) => string | number) {
+  const copy = [...rows];
+  copy.sort((a, b) => {
+    const left = value(a), right = value(b);
+    const leftBlank = left === "" || left === null || left === undefined;
+    const rightBlank = right === "" || right === null || right === undefined;
+    if (leftBlank !== rightBlank) return leftBlank ? 1 : -1;
+    if (typeof left === "number" && typeof right === "number") {
+      return sort.asc ? left - right : right - left;
+    }
+    const compared = String(left).localeCompare(String(right), undefined,
+                                                { sensitivity: "base" });
+    return sort.asc ? compared : -compared;
+  });
+  return copy;
 }

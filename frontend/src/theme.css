@@ -595,6 +595,50 @@ ul.work-tree > li { margin: 0; }
 .stepper .step.on { background: var(--navy); color: #fff; border-color: var(--navy); }
 .stepper .step.done { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-line); }
 
+/* Record lists (Tier 2). Tables, because records are compared across rows —
+   which is a comparison a grid of cards makes impossible. Everything here is
+   what goes *around* the table. */
+.listbar { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap;
+           margin-bottom: var(--s3); }
+.listbar .search { flex: 1 1 280px; }
+.addfilter { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.addfilter select { width: auto; min-width: 10rem; }
+
+.search { display: flex; align-items: center; gap: var(--s2);
+          padding: 0 var(--s3); border: 1px solid var(--line-strong);
+          border-radius: var(--radius-sm); background: var(--surface); }
+.search > svg { color: var(--muted); flex: 0 0 auto; }
+.search input { border: 0; padding: var(--s2) 0; background: none; width: 100%; }
+.search input:focus { outline: none; }
+.search:focus-within { border-color: var(--navy-300);
+                       box-shadow: var(--focus); }
+
+th .sorter { display: inline-flex; align-items: center; gap: 4px; background: none;
+             border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+th .sorter:hover { color: var(--navy); }
+th .arrow { opacity: 0; font-size: 10px; }
+th .sorter:hover .arrow { opacity: .4; }
+th .arrow.on { opacity: 1; color: var(--orange); }
+
+.named { display: inline-flex; align-items: center; gap: var(--s2); }
+/* Row actions appear on hover, and on keyboard focus — a control that only
+   exists for a mouse is a control half the people cannot reach. */
+.records .rowactions { text-align: right; }
+.records .rowactions button { opacity: 0; transition: opacity .12s ease; }
+.records tr:hover .rowactions button,
+.records .rowactions button:focus-visible { opacity: 1; }
+@media (hover: none) { .records .rowactions button { opacity: 1; } }
+
+.facts { display: grid; grid-template-columns: 8rem 1fr; gap: var(--s2) var(--s3);
+         margin: 0 0 var(--s4); font-size: var(--t-14); }
+.facts dt { color: var(--muted); font-size: var(--t-13); }
+.facts dd { margin: 0; }
+a.button { display: inline-flex; align-items: center; gap: var(--s1);
+           padding: var(--s2) var(--s4); border-radius: var(--radius-sm);
+           text-decoration: none; font-size: var(--t-14); }
+a.button.primary { background: var(--orange); color: #fff; }
+a.button.primary:hover { background: var(--orange-600); }
+
 /* Dashboard (Tier 2). Four tiles, then panels. Everything is flat: elevation
    is reserved for the thing in focus, and nothing on a dashboard is. */
 .tiles { display: grid; gap: var(--s4); margin-bottom: var(--s6);

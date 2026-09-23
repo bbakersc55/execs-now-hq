@@ -124,7 +124,15 @@ cost. There is now a test that says exactly this.
   **One deviation from this line, deliberate.** The brief says "pending digests **with approve**". FR-3.29 says the approval screen exists because *approving something you have not read* is the failure it prevents, and a dashboard panel cannot show the whole rendered digest. So the panel lists what is waiting — recipient, cadence, period, whether it is AI-drafted or stale — and each row links to the digest screen. Approving is still one click away; it is just a click that happens where the thing being approved is visible. **Owner: say the word if you would rather have the button and accept the trade.**
 
   Three smaller decisions worth recording: the tile says how much of the total is **overdue** rather than folding it in silently; the by-day list shows **quiet days as zeros** rather than skipping them, because a list that skips them makes a light week look like a missing one; and "this week" is **the next seven days**, not the calendar week, so the number does not shrink as the week goes on.
-- **Contacts and Companies**: keep tables (they are records), add avatars, sortable headers, chip filters, instant search, row hover actions, and a right-side detail sheet on click before the full page.
+- ~~**Contacts and Companies**~~ — **built 2026-09-22.** Tables kept, with avatars, sortable headers, chip filters, instant search, row hover actions and a peek sheet.
+
+  **Instant search replaced type-then-press-Search**, debounced at 250ms so a five-letter name is one request and not five. The old pattern made every search two actions and made an empty result look like a slow one.
+
+  **Two targets per row, on purpose.** The name opens the record; a *Peek* action opens a right-side sheet with enough to decide whether to open it, and a link that does. Row actions appear on hover **and on keyboard focus** — a control that exists only for a mouse is a control half the people cannot reach — and are always visible on touch.
+
+  **Sorting: blanks last in both directions.** An empty cell is absent information, not a low value, so a contact with no title does not lead the ascending sort. The column header's accessible name stays the column's name; the arrow is decorative and `aria-sort` carries the state.
+
+  One rule re-checked on a new surface: matrix 9.5 says seat usage is not a VA's to see, and the peek sheet is a new place that number could appear. It does not, and a test says so.
 - **Notes**: panel layout (list on the left, note on the right). Stacks and notebooks are a data-model change and belong to the roadmap, not the pass.
 - Settings screens, Outbox, Digests, Activity: same tokens and components, no structural change.
 - Sidebar auto-collapse on narrow windows. Dark mode as an option.
