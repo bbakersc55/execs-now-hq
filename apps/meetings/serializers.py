@@ -91,3 +91,32 @@ def represent_proposal(proposal, *, full=False) -> dict:
         # The document itself, so a reviewer can read past the excerpt.
         payload["source_text"] = proposal.source_file.text
     return payload
+
+
+def represent_meeting(meeting, *, for_contact=None) -> dict:
+    """One call, as it reads on a contact or company page (FR-5.8d).
+
+    **The summary is the accepted one or nothing.** A discarded summary means a
+    Meeting with none (FR-5.8b), and inventing a fallback here would put back
+    exactly what somebody chose to throw away.
+    """
+    attendees = [
+        {"contact": str(row.contact_id),
+         "name": f"{row.contact.first_name} {row.contact.last_name}".strip(),
+         "is_practice": row.is_practice}
+        for row in meeting.participants.select_related("contact")
+    ]
+    return {
+        "id": str(meeting.pk),
+        "date": meeting.meeting_date.isoformat() if meeting.meeting_date else None,
+        "title": meeting.title,
+        "summary": meeting.summary,
+        "client_company": (str(meeting.client_company_id)
+                           if meeting.client_company_id else None),
+        # Everyone else who was there — the page you are on is not news to you.
+        "others": [row for row in attendees
+                   if str(row["contact"]) != str(for_contact or "")],
+        "practice": [row["name"] for row in attendees if row["is_practice"]],
+        "source_link": meeting.web_view_link,
+        "source_name": meeting.source_file.name if meeting.source_file_id else "",
+    }

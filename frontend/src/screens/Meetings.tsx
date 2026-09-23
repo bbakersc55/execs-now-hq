@@ -47,6 +47,14 @@ export function Meetings({ me }: { me: Me }) {
     refetchInterval: (query) =>
       query.state.data?.backfill?.running ? 15_000 : false,
   });
+  // Same key as the panel below, so react-query serves both from one call.
+  // The folder card needs the number to say what is *not* being read.
+  const past = useQuery<{ folder: FolderPast; backfill: Backfill | null }>({
+    queryKey: ["drive-backfill"],
+    queryFn: () => api.get("/api/drive-watch/backfill/"),
+    enabled: me.role === "FF" && !!health.data?.connected
+             && !health.data?.backfill?.running,
+  });
   const proposals = useQuery<MeetingProposal[]>({
     queryKey: ["meeting-proposals"],
     queryFn: () => api.get<MeetingProposal[]>("/api/meeting-proposals/"),
@@ -85,7 +93,8 @@ export function Meetings({ me }: { me: Me }) {
       {problem && <Banner kind="bad">{problem}</Banner>}
       {health.data && (
         <Folder health={health.data} me={me} refresh={refresh}
-          setNote={setNote} setProblem={setProblem} />
+          setNote={setNote} setProblem={setProblem}
+          unread={past.data?.folder.outstanding ?? 0} />
       )}
       {health.data?.connected && me.role === "FF" && (
         <Past health={health.data} setProblem={setProblem} />
@@ -137,9 +146,10 @@ export function Meetings({ me }: { me: Me }) {
  * got to, because a CF or VA clearing this queue still needs to know whether
  * it is empty or merely asleep.
  */
-function Folder({ health, me, refresh, setNote, setProblem }: {
+function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
   health: DriveHealth; me: Me; refresh: () => void;
   setNote: (text: string) => void; setProblem: (text: string) => void;
+  unread?: number;
 }) {
   const qc = useQueryClient();
   const [pasted, setPasted] = useState("");
@@ -200,6 +210,12 @@ function Folder({ health, me, refresh, setNote, setProblem }: {
           {health.files_failed > 0 && ` · ${health.files_failed} failed`}
           {health.files_skipped > 0 && ` · ${health.files_skipped} skipped`}
         </p>
+        {unread > 0 && (
+          <p className="small">
+            Watching for new notes; <strong>{unread} older note
+            {unread === 1 ? "" : "s"} not imported</strong> — import them below.
+          </p>
+        )}
         {health.last_error && <Banner kind="bad">{health.last_error}</Banner>}
         {!health.drive_access && (
           <Banner kind="bad">
@@ -319,11 +335,13 @@ function Past({ health, setProblem }: {
   const [since, setSince] = useState("");
   const backfill = health.backfill;
 
+  // Asked every time, not only before the first decision. An import that read
+  // 8 of 167 notes leaves 159 unread, and a panel that congratulates itself
+  // and disappears is how they stay that way.
   const past = useQuery<{ folder: FolderPast; backfill: Backfill | null }>({
     queryKey: ["drive-backfill"],
     queryFn: () => api.get("/api/drive-watch/backfill/"),
-    // Only worth a Drive listing while the decision is still open.
-    enabled: !backfill,
+    enabled: !backfill?.running,
   });
 
   // Asked again each time the date changes: a count and a cost the fractional
@@ -371,34 +389,44 @@ function Past({ health, setProblem }: {
     );
   }
 
-  if (backfill && backfill.state !== "declined") {
-    if (backfill.done === 0) return null;
-    return (
-      <Banner kind="info">
-        Imported {backfill.done} note{backfill.done === 1 ? "" : "s"} from this
-        folder{backfill.state === "cancelled" && " before you stopped it"}, for
-        ${backfill.cost_usd.slice(0, 6)}. New notes arrive on their own from now on.
-      </Banner>
-    );
-  }
-  if (backfill) return null;                 // "From now on" — asked and answered.
-
   if (past.isLoading) return <p className="small muted">Looking in the folder…</p>;
   if (!past.data) return null;
   const found = past.data.folder;
-  if (found.outstanding === 0) return null;
+  const done = backfill && backfill.state !== "declined" && backfill.done > 0;
+
+  // Nothing left unread: say what was imported, once, and stop asking.
+  if (found.outstanding === 0) {
+    if (!done) return null;
+    return (
+      <Banner kind="info">
+        Imported {backfill!.done} note{backfill!.done === 1 ? "" : "s"} from this
+        folder{backfill!.state === "cancelled" && " before you stopped it"}, for
+        ${backfill!.cost_usd.slice(0, 6)}. Nothing older is left unread, and new
+        notes arrive on their own.
+      </Banner>
+    );
+  }
 
   const chosen = scope === "since" ? plan.data : found;
   return (
-    <Card title="This folder already holds notes">
+    <Card title={done ? "Older notes are still unread" : "This folder already holds notes"}>
+      {done && (
+        <p className="small muted">
+          You imported {backfill!.done} last time
+          {backfill!.state === "cancelled" && " before stopping"}, for
+          ${backfill!.cost_usd.slice(0, 6)}.
+        </p>
+      )}
       <p>
         <strong>{found.outstanding} readable note{found.outstanding === 1 ? "" : "s"}</strong>
-        {found.oldest && <> are already in it, from {found.oldest} to {found.newest}</>}.
+        {found.oldest && <> {done ? "remain unread" : "are already in it"}, from{" "}
+          {found.oldest} to {found.newest}</>}.
         {" "}
         {/* The thing that is not obvious and causes the confusion: watching
-            starts now, so none of these will appear on their own. */}
-        Watching starts from now, so none of them will appear in the queue
-        unless you import them.
+            starts now, so none of these will appear on their own — and "Sync
+            now" will not bring them either. */}
+        Watching only picks up notes added from now on, so “Sync now” will not
+        find these. Importing them here is the only thing that will.
       </p>
       {found.subfolders.length > 0 && (
         <p className="small muted">
@@ -413,7 +441,8 @@ function Past({ health, setProblem }: {
         {([
           ["now", "Start from now — only new notes"],
           ["since", "Also import notes since"],
-          ["all", `Import everything — all ${found.outstanding}`],
+          ["all", done ? `Import the remaining ${found.outstanding}`
+                       : `Import everything — all ${found.outstanding}`],
         ] as const).map(([value, label]) => (
           <label key={value} className="choice">
             <input type="radio" name="backfill-scope" value={value}
@@ -540,6 +569,13 @@ function ItemRow({ item, onChanged, setNote }: {
   const [type, setType] = useState<string>(payload.proposed_contact_type ?? "prospect");
   const [pick, setPick] = useState<string>("");
   const [categories, setCategories] = useState("");
+  // FR-5.10a — "" is the best company we already hold, "new" creates the one
+  // the notes named, "none" leaves the contact without one.
+  const candidates = payload.company_candidates ?? [];
+  const [company, setCompany] = useState<string>(
+    candidates[0]?.company_id ?? (payload.parsed_company ? "new" : "none"));
+  const [companyName, setCompanyName] = useState(payload.parsed_company ?? "");
+  const [companyDomain, setCompanyDomain] = useState(payload.parsed_company_domain ?? "");
 
   const act = useMutation({
     mutationFn: ({ verb, body }: { verb: string; body?: object }) =>
@@ -603,6 +639,41 @@ function ItemRow({ item, onChanged, setNote }: {
               <option value="coworker">Coworker</option>
             </select>
           </Field>
+          {/* A contact created without its company is a contact somebody has
+              to go back and fix. So the company is asked for here, beside the
+              person, and not left to be noticed later. */}
+          {!pick && (payload.parsed_company || candidates.length > 0) && (
+            <Field label="Which company">
+              <select aria-label={`Company for ${payload.parsed_name}`} value={company}
+                onChange={(e) => setCompany(e.target.value)}>
+                {candidates.map((row) => (
+                  <option key={row.company_id} value={row.company_id}>
+                    {row.name} — {row.match_reason === "created_in_this_review"
+                      ? "created a moment ago in this review"
+                      : `matched on ${row.match_reason.replace(/_/g, " ")}`}
+                  </option>
+                ))}
+                {payload.parsed_company && (
+                  <option value="new">Create “{payload.parsed_company}”</option>
+                )}
+                <option value="none">No company</option>
+              </select>
+            </Field>
+          )}
+          {!pick && company === "new" && (
+            <>
+              <Field label="New company name">
+                <input aria-label={`New company name for ${payload.parsed_name}`}
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)} />
+              </Field>
+              <Field label="Email domain — optional">
+                <input aria-label={`New company domain for ${payload.parsed_name}`}
+                  value={companyDomain} placeholder="acme.com"
+                  onChange={(e) => setCompanyDomain(e.target.value)} />
+              </Field>
+            </>
+          )}
           {type === "vendor" && (
             <Field label="What they do — comma separated">
               <input aria-label={`Service categories for ${payload.parsed_name}`}
@@ -621,7 +692,14 @@ function ItemRow({ item, onChanged, setNote }: {
               ...(item.kind === "participant"
                 ? { contact_id: pick, contact_type: type,
                     service_categories: categories.split(",").map((c) => c.trim())
-                      .filter(Boolean) }
+                      .filter(Boolean),
+                    // Only ever one of the two, and neither when the reviewer
+                    // said the contact has no company.
+                    ...(pick || company === "none" ? {}
+                      : company === "new"
+                        ? { create_company: { name: companyName,
+                                              domain: companyDomain } }
+                        : { company_id: company }) }
                 : {}),
             } })}>
             <Check size={14} /> Approve

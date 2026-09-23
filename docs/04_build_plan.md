@@ -1404,12 +1404,15 @@ judgement on N real goals**, with N — never as a pass.
 ### Done means
 
 0. **Connecting the folder, on the meeting queue screen** — the Drive consent, the folder taken as a URL or an id, verified live and shown before it is saved, and Disconnect. FF only. *(Added 2026-09-22: Phase 5 shipped a queue with no control that led anywhere, so setup was blocked. FR-5.1a, AC-5.1a, matrix 11.10–11.12.)*
+0b. **The import offer persists while unread history remains**, and the folder card says what is not being read. *(Added 2026-09-22 from real use: 8 of 167 imported, 159 left, offer gone. AC-5.1b.1.)*
 0a. **The folder's past, as a choice** — the survey, the three options with counts and estimated cost shown before confirming, the paced oldest-first import, and Stop. **Subfolders read one level down.** *(Added 2026-09-22: "Sync now" reported 0 waiting on 167 real notes, because Drive's cursor starts at "now". FR-5.1b–1c, AC-5.1b–1c, matrix 11.13.)*
 1. `DriveWatch` cursor polling every 10 minutes, "Sync now", health screen, `drive_file_owner_email` captured.
 2. `MeetingSourceFile` idempotent on `(tenant, file, version)`; two-step commit; cursor never advances past unprocessed work.
 3. Claude parse producing participants, action items, deliverables, and a **drafted summary**.
 4. Matching in the order **email → email domain + name → name alone**, ranked, with the reason shown and both paths always offered.
 5. Proposed contact type per participant, with **referral → queued onboarding** and **vendor → inline categories**.
+5b. **A participant arrives with their company** — candidates by domain then name, a create path through `CompanySerializer`, one create covering the meeting. *(Added 2026-09-22 from real use. FR-5.9e1, AC-5.10a.)*
+5c. **Call notes readable on the contact and the company**, with the source Doc linked. *(Added 2026-09-22 from real use. FR-5.8d, AC-5.8d.)*
 5a. **The practice is recognised, not asked about** — staff participants shown with no type, no approval, recorded on the meeting as attended-by, and never holding a proposal open. *(Added 2026-09-22 from real proposals: the FF was a participant in every meeting and eight proposals sat at `partially_actioned` on his own name. FR-5.9e, AC-5.9e.)*
 6. **Partial approval**; rejection persists; re-parse supersedes.
 7. `Meeting` record on every approved participant's timeline.

@@ -4,6 +4,7 @@ from apps.meetings import views
 
 router = DefaultRouter()
 router.register("drive-watch", views.DriveWatchViewSet, basename="drive-watch")
+router.register("meetings", views.MeetingViewSet, basename="meeting")
 router.register("meeting-proposals", views.ProposalViewSet, basename="meeting-proposal")
 router.register("proposal-items", views.ProposalItemViewSet, basename="proposal-item")
 

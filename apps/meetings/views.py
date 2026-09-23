@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db.models import Q
 from django.http import Http404
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
@@ -21,7 +22,7 @@ from apps.meetings import (
 from apps.meetings import permissions as meeting_perms
 from apps.meetings import serializers as meeting_serializers
 from apps.meetings.models import (
-    DriveBackfill, DriveWatch, MeetingProposal, ProposalItem,
+    DriveBackfill, DriveWatch, Meeting, MeetingProposal, ProposalItem,
 )
 from apps.tenancy.models import AuditEvent
 
@@ -265,6 +266,42 @@ class DriveWatchViewSet(MeetingViewSetBase):
         })
 
 
+class MeetingViewSet(MeetingViewSetBase):
+    """Call notes on a contact and on a company (FR-5.8d).
+
+    **The meeting is the point, not only the tasks it produced.** Opening a
+    contact six months later should show the calls they were in, not merely
+    whatever survived them.
+
+    No client-facing surface, like the rest of this module (matrix 11.1): what
+    reaches a client is the task, once a person has approved it.
+    """
+
+    def list(self, request):
+        contact_id = request.query_params.get("contact")
+        company_id = request.query_params.get("company")
+        if not (_is_uuid(contact_id or "") or _is_uuid(company_id or "")):
+            return Response(
+                {"detail": "Ask for one contact's calls, or one company's."},
+                status=400)
+
+        meetings = Meeting.objects.select_related("source_file", "client_company")
+        if contact_id:
+            meetings = meetings.filter(participants__contact_id=contact_id)
+        else:
+            # A company's calls are its contacts' calls. Aggregated rather than
+            # stored on the company, so a contact moving takes their history.
+            from apps.crm.models import Contact
+
+            meetings = meetings.filter(
+                Q(client_company_id=company_id)
+                | Q(participants__contact__in=Contact.objects.filter(
+                    company_id=company_id, deleted_at__isnull=True)))
+        meetings = meetings.distinct().order_by("-meeting_date", "-created_at")[:100]
+        return Response([meeting_serializers.represent_meeting(
+            meeting, for_contact=contact_id) for meeting in meetings])
+
+
 class ProposalViewSet(MeetingViewSetBase):
     """The queue itself. Scoped by `proposal-scope` for a CF (matrix §11)."""
 
@@ -351,7 +388,8 @@ class ProposalItemViewSet(MeetingViewSetBase):
         try:
             if item.kind == ProposalItem.Kind.PARTICIPANT:
                 approval.approve_participant(item, actor=request.user, role=role,
-                                             choice=request.data or {})
+                                             choice=request.data or {},
+                                             request=request)
                 # FR-5.8a — the meeting appears on every approved participant's
                 # timeline, and is created once.
                 approval.create_meeting(item.proposal, actor=request.user)

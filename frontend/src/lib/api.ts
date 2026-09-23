@@ -770,6 +770,20 @@ export interface PreCallForm {
 
 // --- Module 5 — meeting ingestion -------------------------------------------
 
+/** GET /api/meetings/?contact= | ?company= — call notes (FR-5.8d). */
+export interface MeetingNote {
+  id: string;
+  date: string | null;
+  title: string;
+  /** The accepted summary, or empty when it was discarded. Never invented. */
+  summary: string;
+  client_company: string | null;
+  others: { contact: string; name: string; is_practice: boolean }[];
+  practice: string[];
+  source_link: string;
+  source_name: string;
+}
+
 /** Module 6 — the shared history (FR-6.7) and the unmatched queue (FR-6.8). */
 export interface EmailThreadRow {
   id: string;
@@ -922,6 +936,11 @@ export interface ProposalItem {
     existing_candidates?: { contact_id: string; name: string; company: string;
                             email: string; match_reason: string; confidence: number;
                             rank: number }[];
+    /** FR-5.10a — the company the notes named, what might already be it, and
+     *  the domain a new one would get (blank for a public mail provider). */
+    parsed_company_domain?: string;
+    company_candidates?: { company_id: string; name: string; match_reason: string;
+                           confidence: number; rank: number }[];
     service_categories?: string[];
     text?: string; proposed_owner_text?: string;
     proposed_owner_contact_id?: string | null; proposed_due_date?: string | null;

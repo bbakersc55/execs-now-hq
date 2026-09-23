@@ -334,8 +334,9 @@ describe("importing what the folder already holds", () => {
     show();
 
     expect(await screen.findByText(/167 readable notes/)).toBeInTheDocument();
-    // The thing that is not obvious, said plainly.
-    expect(screen.getByText(/Watching starts from now/)).toBeInTheDocument();
+    // The thing that is not obvious, said plainly — including that "Sync now"
+    // is not the control that will fetch them.
+    expect(screen.getByText(/“Sync now” will not find these/)).toBeInTheDocument();
     expect(screen.getByText(/from 2026-03-30 to 2026-09-11/)).toBeInTheDocument();
   });
 
@@ -416,16 +417,56 @@ describe("importing what the folder already holds", () => {
       fetchMock.calls.some((c) => c.url.endsWith("/backfill/stop/"))).toBe(true));
   });
 
-  it("does not ask again once the question has been answered", async () => {
-    const fetchMock = show({
+  it("keeps offering while older notes remain unread", async () => {
+    /* The finding: an import that read 8 of 167 left 159 unread, and the panel
+       congratulated itself and disappeared. */
+    show({
       "GET /api/drive-watch/": { ...HEALTH,
-        backfill: aBackfill({ state: "declined", running: false, done: 0 }) },
+        backfill: aBackfill({ state: "done", running: false, done: 8,
+                              planned: 8, cost_usd: "0.460000" }) },
+      "GET /api/drive-watch/backfill/": {
+        folder: { ...PAST, outstanding: 159, estimate_usd: "9.14", minutes: 53 },
+        backfill: null },
     });
 
-    expect(await screen.findByText("Meeting notes")).toBeInTheDocument();
-    expect(screen.queryByText(/already holds notes/)).not.toBeInTheDocument();
-    // And it does not spend a Drive listing re-asking.
-    expect(fetchMock.calls.some((c) => c.url.includes("/backfill/"))).toBe(false);
+    expect(await screen.findByText("Older notes are still unread")).toBeInTheDocument();
+    expect(screen.getByText(/159 readable notes/)).toBeInTheDocument();
+    expect(screen.getByText(/You imported 8 last time/)).toBeInTheDocument();
+    // The same three choices, and the third one counts what is left, not the
+    // original total.
+    expect(screen.getByRole("radio", { name: /only new notes/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /since/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Import the remaining 159/ }))
+      .toBeInTheDocument();
+    expect(screen.getByText(/\$9\.14/)).toBeInTheDocument();
+  });
+
+  it("says on the folder card what is not being read", async () => {
+    show({
+      "GET /api/drive-watch/": { ...HEALTH,
+        backfill: aBackfill({ state: "done", running: false, done: 8 }) },
+      "GET /api/drive-watch/backfill/": {
+        folder: { ...PAST, outstanding: 159 }, backfill: null },
+    });
+
+    // On the card that says the folder is being watched, because that is the
+    // card somebody reads when they wonder why nothing is arriving.
+    expect(await screen.findByText(/159 older notes not imported/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/Watching for new notes/)).toBeInTheDocument();
+  });
+
+  it("goes quiet only when nothing is left unread", async () => {
+    show({
+      "GET /api/drive-watch/": { ...HEALTH,
+        backfill: aBackfill({ state: "done", running: false, done: 167 }) },
+      "GET /api/drive-watch/backfill/": {
+        folder: { ...PAST, outstanding: 0 }, backfill: null },
+    });
+
+    expect(await screen.findByText(/Nothing older is left unread/)).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /only new notes/ }))
+      .not.toBeInTheDocument();
   });
 
   it("names the subfolders when that is where the notes live", async () => {

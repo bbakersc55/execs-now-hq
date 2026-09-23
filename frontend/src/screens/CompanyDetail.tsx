@@ -1,3 +1,4 @@
+import { CallNotes } from "../components/CallNotes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -123,6 +124,7 @@ export function CompanyDetail({ me }: { me: Me }) {
 
         <PortalAccessCard me={me} company={c} />
 
+        <CallNotes me={me} company={id!} />
         <Card title="Timeline">
           {(timeline.data ?? []).length === 0 ? <Empty>Nothing yet.</Empty> : (
             <ul className="timeline">

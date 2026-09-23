@@ -618,6 +618,16 @@ ul.work-tree > li { margin: 0; }
                    transition: width .4s ease; }
 @media (prefers-reduced-motion: reduce) { .progress > span { transition: none; } }
 
+/* Call notes on a contact or company (FR-5.8d). A list of calls, not cards:
+   they are read in sequence and the date is the thing being scanned. */
+.calls { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); }
+.calls > li { padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }
+.calls > li:last-child { padding-bottom: 0; border-bottom: 0; }
+.call-head { display: flex; justify-content: space-between; align-items: baseline;
+             gap: var(--s2); margin: 0 0 var(--s1); }
+.call-head .when { color: var(--muted); font-size: var(--t-13);
+                   font-variant-numeric: tabular-nums; }
+
 .richtext {
   min-height: 9rem; padding: var(--s2) var(--s3); border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm); background: var(--surface); font-size: var(--t-14);

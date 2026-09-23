@@ -27,6 +27,7 @@ from apps.meetings import practice
 from apps.meetings.models import (
     Meeting, MeetingParticipant, MeetingProposal, ProposalItem,
 )
+from apps.tenancy.models import AuditEvent
 from apps.work import services as work_services
 
 
@@ -42,11 +43,102 @@ def _company_for(tenant, name: str):
     name = (name or "").strip()
     if not name:
         return None
-    return Company.objects.filter(name__iexact=name).first()
+    return Company.objects.filter(name__iexact=name, deleted_at__isnull=True).first()
+
+
+def resolve_company(item, *, actor, choice: dict, request=None):
+    """The company a new contact belongs to (FR-5.10a).
+
+    **A contact created without its company is a contact somebody has to go
+    back and fix**, which is what happened to Mike Eller. Three ways, in the
+    order the screen offers them:
+
+    1. `company_id` — link to one we already hold.
+    2. `create_company` — make it, **through `CompanySerializer`**, so the Add
+       company form's rules apply here too: the duplicate-name refusal, the
+       domain rows, all of it. There is no second set of rules for companies
+       created from a meeting.
+    3. Nothing — the notes named no company, or the reviewer chose neither.
+
+    Returns `(company, created)`.
+    """
+    payload = item.payload or {}
+    tenant = item.tenant
+
+    company_id = (choice.get("company_id") or "").strip()
+    if company_id:
+        company = Company.objects.filter(pk=company_id,
+                                         deleted_at__isnull=True).first()
+        if company is None:
+            raise ApprovalRefused("That company is not in this practice.", status=404)
+        return company, False
+
+    asked = choice.get("create_company")
+    if not asked:
+        return _company_for(tenant, payload.get("parsed_company")), False
+
+    from apps.crm.serializers import CompanySerializer
+
+    name = (asked.get("name") if isinstance(asked, dict) else None) \
+        or payload.get("parsed_company") or ""
+    domain = (asked.get("domain") if isinstance(asked, dict) else None)
+    if domain is None:
+        domain = payload.get("parsed_company_domain") or ""
+    body = {"name": str(name).strip()}
+    if domain:
+        body["domains"] = [str(domain).strip().lower()]
+
+    serializer = CompanySerializer(data=body, context={"request": request})
+    if not serializer.is_valid():
+        # The Add company form's own words, including "already exists — open it
+        # instead of creating a second one".
+        detail = serializer.errors.get("name") or serializer.errors
+        raise ApprovalRefused(
+            detail[0] if isinstance(detail, list) else str(detail))
+    company = serializer.save(tenant=tenant)
+    AuditEvent.all_objects.create(
+        tenant=tenant, actor=actor, verb="company.created",
+        target_type="company", target_id=company.pk,
+        payload={"name": company.name, "from": "meeting proposal",
+                 "domains": body.get("domains", [])})
+    return company, True
+
+
+def _spread_company(item, company):
+    """One create covers the meeting (FR-5.10a).
+
+    Several people from the same company arrive in one set of notes. Having
+    made the company for the first of them, the rest should find it already
+    matched rather than offering to make it again — which is how you end up
+    with three Acmes.
+    """
+    named = (item.payload or {}).get("parsed_company", "").strip().lower()
+    if not named:
+        return 0
+    touched = 0
+    siblings = ProposalItem.objects.filter(
+        proposal=item.proposal, kind=ProposalItem.Kind.PARTICIPANT,
+        state=ProposalItem.State.PENDING).exclude(pk=item.pk)
+    for sibling in siblings:
+        payload = sibling.payload or {}
+        if (payload.get("parsed_company", "").strip().lower() != named):
+            continue
+        candidates = payload.get("company_candidates") or []
+        if any(row.get("company_id") == str(company.pk) for row in candidates):
+            continue
+        payload["company_candidates"] = [{
+            "company_id": str(company.pk), "name": company.name,
+            "match_reason": "created_in_this_review",
+            "confidence": 0.99, "rank": 0,
+        }] + candidates
+        sibling.payload = payload
+        sibling.save(update_fields=["payload", "updated_at"])
+        touched += 1
+    return touched
 
 
 @transaction.atomic
-def approve_participant(item, *, actor, role, choice: dict):
+def approve_participant(item, *, actor, role, choice: dict, request=None):
     """Create or link the contact the reviewer picked (FR-5.9, R10).
 
     `choice` is what the person decided: `contact_id` to link an existing one,
@@ -72,12 +164,16 @@ def approve_participant(item, *, actor, role, choice: dict):
         last = (candidate.get("last_name") or "").strip()
         if not first and not last:
             raise ApprovalRefused("A new contact needs a name.")
+        company, made = resolve_company(item, actor=actor, choice=choice,
+                                        request=request)
         contact = Contact.objects.create(
             tenant=tenant, first_name=first, last_name=last,
             title=(candidate.get("title") or "").strip(),
-            company=_company_for(tenant, candidate.get("company")),
+            company=company,
             source="meeting notes",
         )
+        if made and company is not None:
+            _spread_company(item, company)
         address = (candidate.get("email") or "").strip()
         if address:
             ContactEmail.objects.create(tenant=tenant, contact=contact,

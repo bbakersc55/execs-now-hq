@@ -166,6 +166,13 @@ def _build(source_file, payload, call) -> MeetingProposal:
                 },
                 "existing_candidates": matching.candidates_for(
                     tenant, name=name, email=email),
+                # FR-5.10a — the company the notes named, what we already hold
+                # that might be it, and the domain a new one would get. A
+                # contact created without its company is a contact somebody has
+                # to go back and fix.
+                "parsed_company_domain": matching.domain_for_new_company(email),
+                "company_candidates": matching.company_candidates_for(
+                    tenant, name=str(raw.get("company") or "").strip(), email=email),
                 "service_categories": [],
             })
 

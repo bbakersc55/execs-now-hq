@@ -1480,3 +1480,288 @@ def test_the_repair_command_writes_nothing_without_apply(
     assert stale.state == ProposalItem.State.APPROVED
     assert stale.payload["is_practice"] is True
     assert stale.created_record_id == practice_staff["ff_contact"].pk
+
+
+# ================================== the company a participant belongs to (FR-5.10a)
+#
+# The finding: approving Mike Eller created the contact and never the company,
+# even though the notes named one. A contact created without its company is a
+# contact somebody has to go back and fix.
+
+
+@pytest.mark.django_db
+def test_the_company_the_notes_named_is_offered_with_its_matches(
+    seeded_tenant, watch, fake_claude, in_tenant_a
+):
+    """Domain before name, for the same reason an address beats a name for a
+    person: an address places somebody whatever the notes called the place."""
+    from apps.crm.models import CompanyDomain
+
+    acme = CompanyFactory(tenant=seeded_tenant, name="Acme Facilities")
+    CompanyDomain.objects.create(tenant=seeded_tenant, company=acme,
+                                 domain="acme.invalid")
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+
+    dana = ProposalItem.objects.get(
+        kind=ProposalItem.Kind.PARTICIPANT, payload__parsed_name="Dana Reyes")
+
+    assert dana.payload["parsed_company"] == "Acme Facilities"
+    best = dana.payload["company_candidates"][0]
+    assert best["company_id"] == str(acme.pk)
+    assert best["match_reason"] == matching.COMPANY_DOMAIN
+    # And the domain a new one would get, for the create path.
+    assert dana.payload["parsed_company_domain"] == "acme.invalid"
+
+
+@pytest.mark.django_db
+def test_a_public_mail_domain_is_never_written_onto_a_company(
+    seeded_tenant, in_tenant_a
+):
+    """`gmail.com` on a company would make every Gmail user in the tenant
+    match it, which is the opposite of what a domain is for."""
+    assert matching.domain_for_new_company("mike@gmail.com") == ""
+    assert matching.domain_for_new_company("mike@elleroperations.com") \
+        == "elleroperations.com"
+
+
+@pytest.mark.django_db
+def test_approving_links_the_participant_to_an_existing_company(
+    seeded_tenant, ff_user, api, watch, fake_claude, in_tenant_a
+):
+    acme = CompanyFactory(tenant=seeded_tenant, name="Acme Facilities")
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                    payload__parsed_name="Dana Reyes")
+
+    response = api.as_(ff_user).post(f"/api/proposal-items/{item.pk}/approve/", {
+        "contact_type": "client", "company_id": str(acme.pk)})
+
+    assert response.status_code == 201, response.data
+    from apps.crm.models import Contact
+
+    contact = Contact.objects.get(first_name="Dana")
+    assert contact.company_id == acme.pk
+
+
+@pytest.mark.django_db
+def test_approving_creates_the_company_through_the_add_company_rules(
+    seeded_tenant, ff_user, api, watch, fake_claude, in_tenant_a
+):
+    """The finding itself. **Through `CompanySerializer`**, so the Add company
+    form's rules apply here too — there is no second set for companies created
+    from a meeting."""
+    from apps.crm.models import Company, CompanyDomain, Contact
+
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                    payload__parsed_name="Dana Reyes")
+
+    response = api.as_(ff_user).post(
+        f"/api/proposal-items/{item.pk}/approve/",
+        {"contact_type": "client",
+         "create_company": {"name": "Acme Facilities", "domain": "acme.invalid"}},
+        content_type="application/json")
+
+    assert response.status_code == 201, response.data
+    company = Company.objects.get(name="Acme Facilities")
+    assert Contact.objects.get(first_name="Dana").company_id == company.pk
+    # The domain goes on, because that is what makes the *next* participant
+    # match without anybody choosing.
+    assert CompanyDomain.objects.filter(company=company,
+                                        domain="acme.invalid").exists()
+    assert AuditEvent.all_objects.filter(verb="company.created").exists()
+
+
+@pytest.mark.django_db
+def test_creating_a_duplicate_company_is_refused_in_the_forms_own_words(
+    seeded_tenant, ff_user, api, watch, fake_claude, in_tenant_a
+):
+    from apps.crm.models import Company
+
+    CompanyFactory(tenant=seeded_tenant, name="Acme Facilities")
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                    payload__parsed_name="Dana Reyes")
+
+    response = api.as_(ff_user).post(
+        f"/api/proposal-items/{item.pk}/approve/",
+        {"contact_type": "client", "create_company": {"name": "Acme Facilities"}},
+        content_type="application/json")
+
+    assert response.status_code == 400
+    assert "already exists" in str(response.data["detail"])
+    assert Company.objects.filter(name__iexact="Acme Facilities").count() == 1
+    item.refresh_from_db()
+    assert item.state == ProposalItem.State.PENDING
+
+
+@pytest.mark.django_db
+def test_one_create_covers_everyone_from_that_company_in_the_review(
+    seeded_tenant, ff_user, api, watch, fake_claude, in_tenant_a
+):
+    """Three people from one meeting are three people from one company. Having
+    made it for the first of them, the rest must find it already matched —
+    which is how you avoid ending up with three Acmes."""
+    from apps.crm.models import Company
+
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    dana = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                    payload__parsed_name="Dana Reyes")
+    priya = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                     payload__parsed_name="Priya Shah")
+    assert priya.payload["company_candidates"] == []
+
+    api.as_(ff_user).post(
+        f"/api/proposal-items/{dana.pk}/approve/",
+        {"contact_type": "client",
+         "create_company": {"name": "Acme Facilities", "domain": "acme.invalid"}},
+        content_type="application/json")
+
+    priya.refresh_from_db()
+    made = Company.objects.get(name="Acme Facilities")
+    assert priya.payload["company_candidates"][0]["company_id"] == str(made.pk)
+    assert priya.payload["company_candidates"][0]["match_reason"] \
+        == "created_in_this_review"
+
+    # And approving her links, rather than making a second one.
+    api.as_(ff_user).post(f"/api/proposal-items/{priya.pk}/approve/", {
+        "contact_type": "client", "company_id": str(made.pk)})
+    assert Company.objects.filter(name="Acme Facilities").count() == 1
+    from apps.crm.models import Contact
+
+    assert Contact.objects.get(first_name="Priya").company_id == made.pk
+
+
+@pytest.mark.django_db
+def test_a_participant_with_no_company_named_still_approves(
+    seeded_tenant, ff_user, api, watch, fake_claude, in_tenant_a
+):
+    """Tom Okafor arrives with no company in the notes. Nothing is invented."""
+    from apps.crm.models import Contact
+
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                    payload__parsed_name="Tom Okafor")
+
+    response = api.as_(ff_user).post(f"/api/proposal-items/{item.pk}/approve/",
+                                     {"contact_type": "prospect"})
+
+    assert response.status_code == 201, response.data
+    assert Contact.objects.get(first_name="Tom").company_id is None
+
+
+# ==================================== call notes on the record (FR-5.8d)
+#
+# The finding: the Meeting existed on the timeline, but there was nowhere to
+# read what was said.
+
+
+@pytest.fixture
+def a_meeting(seeded_tenant, ff_user, api, watch, fake_claude, in_tenant_a):
+    """One approved meeting, with a client contact and the practice on it."""
+    from apps.crm.models import Company
+
+    fake_claude.reply = PARSED
+    ingest.poll(seeded_tenant, client=FakeDrive(one_page([a_file("f1")]),
+                                                {"f1": NOTES}))
+    dana = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                    payload__parsed_name="Dana Reyes")
+    api.as_(ff_user).post(f"/api/proposal-items/{dana.pk}/approve/", {
+        "contact_type": "client",
+        "create_company": {"name": "Acme Facilities"}},
+        content_type="application/json")
+    acme = Company.objects.get(name="Acme Facilities")
+
+    priya = ProposalItem.objects.get(kind=ProposalItem.Kind.PARTICIPANT,
+                                     payload__parsed_name="Priya Shah")
+    api.as_(ff_user).post(f"/api/proposal-items/{priya.pk}/approve/", {
+        "contact_type": "client", "company_id": str(acme.pk)})
+    return Meeting.objects.get()
+
+
+@pytest.mark.django_db
+def test_a_contacts_calls_are_readable_on_their_record(
+    seeded_tenant, ff_user, api, a_meeting, in_tenant_a
+):
+    from apps.crm.models import Contact
+
+    dana = Contact.objects.get(first_name="Dana")
+
+    rows = api.as_(ff_user).get(f"/api/meetings/?contact={dana.pk}").data
+
+    assert len(rows) == 1
+    call = rows[0]
+    assert call["date"] == "2026-09-20"
+    assert call["title"] == "Acme operations review"
+    assert "Dispatch and margin reporting" in call["summary"]
+    # Everyone else who was there — the page you are on is not news to you.
+    assert "Priya Shah" in [row["name"] for row in call["others"]]
+    assert dana.pk not in [row["contact"] for row in call["others"]]
+    # And a link back to the document, so the record is checkable.
+    assert call["source_link"] == "https://d/f1"
+
+
+@pytest.mark.django_db
+def test_a_discarded_summary_is_absent_rather_than_replaced(
+    seeded_tenant, ff_user, api, a_meeting, in_tenant_a
+):
+    """FR-5.8b — a discarded summary means a meeting with none. Inventing a
+    fallback here would put back exactly what somebody threw away."""
+    from apps.crm.models import Contact
+
+    a_meeting.summary = ""
+    a_meeting.save(update_fields=["summary"])
+    dana = Contact.objects.get(first_name="Dana")
+
+    call = api.as_(ff_user).get(f"/api/meetings/?contact={dana.pk}").data[0]
+
+    assert call["summary"] == ""
+
+
+@pytest.mark.django_db
+def test_a_companys_calls_are_its_contacts_calls(
+    seeded_tenant, ff_user, api, a_meeting, in_tenant_a
+):
+    """Aggregated rather than stored on the company, so a contact who moves
+    takes their history with them."""
+    from apps.crm.models import Company
+
+    acme = Company.objects.get(name="Acme Facilities")
+
+    rows = api.as_(ff_user).get(f"/api/meetings/?company={acme.pk}").data
+
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Acme operations review"
+
+
+@pytest.mark.django_db
+def test_asking_for_neither_is_refused(seeded_tenant, ff_user, api, in_tenant_a):
+    """There is no useful list of every call ever, and a route that answers
+    one is a route that leaks one."""
+    assert api.as_(ff_user).get("/api/meetings/").status_code == 400
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["FCC", "ECC"])
+def test_client_users_never_see_call_notes(role, seeded_tenant, api, in_tenant_a):
+    """Matrix 11.1 — including for a meeting about their own company. What
+    reaches them is the task, once a person has approved it."""
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    contact = ContactFactory(tenant=seeded_tenant, company=company)
+    membership = MembershipFactory(tenant=seeded_tenant, role=role,
+                                   client_company=company, contact=contact)
+
+    for query in (f"?contact={contact.pk}", f"?company={company.pk}"):
+        assert api.as_(membership).get(f"/api/meetings/{query}").status_code == 403

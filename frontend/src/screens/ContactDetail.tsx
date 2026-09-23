@@ -1,3 +1,4 @@
+import { CallNotes } from "../components/CallNotes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -271,6 +272,7 @@ export function ContactDetail({ me }: { me: Me }) {
         <div>
           <GrantPortalAccess me={me} contactId={id!} />
 
+          <CallNotes me={me} contact={id!} />
           <Card title="Timeline">
             {(timeline.data ?? []).length === 0 ? (
               <Empty>Nothing yet.</Empty>
