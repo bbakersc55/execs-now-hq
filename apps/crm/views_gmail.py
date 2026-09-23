@@ -144,9 +144,16 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         request.session[gmail_oauth.RETURN_SESSION_KEY] = "email"
         request.session[gmail_oauth.DRIVE_SESSION_KEY] = False
         email = request.user.email
+        # FR-6.3g — Tier 2 is **opt-in per connect**, never folded in. A
+        # practice that does not collect replies is never asked to let the app
+        # read its mail, and the screen says what the scope grants before the
+        # box is ticked.
+        inbound = bool(request.data.get("inbound"))
+        request.session[gmail_oauth.INBOUND_SESSION_KEY] = inbound
         return Response({
             "authorization_url": gmail_oauth.authorization_url(
                 state, login_hint=email, hd=gmail_oauth.workspace_domain(email),
+                inbound=inbound,
             ),
             "redirect_uri": gmail_oauth.redirect_uri(),
         })
@@ -196,6 +203,7 @@ def gmail_callback(request):
     # the screen the person was actually looking at.
     where = request.session.pop(gmail_oauth.RETURN_SESSION_KEY, "email")
     drive_wanted = bool(request.session.pop(gmail_oauth.DRIVE_SESSION_KEY, False))
+    inbound_wanted = bool(request.session.pop(gmail_oauth.INBOUND_SESSION_KEY, False))
 
     membership = getattr(request, "membership", None)
     if membership is None or membership.role not in ("FF", "CF"):
@@ -275,6 +283,13 @@ def gmail_callback(request):
             "cannot be read. Sending mail still works. Allow Drive access "
             "again and leave every box ticked."
         )))
+    if inbound_wanted and not gmail_oauth.inbound_granted(tokens):
+        # Sending still works; only the read half was refused. Saying "nothing
+        # was stored" here would be false.
+        return HttpResponseRedirect(_spa_url(where, gmail_warning=(
+            "Consent was granted without permission to read mail, so replies "
+            "cannot be collected. Sending still works. Connect again and leave "
+            "every box ticked."), gmail_connected=email_address))
     if where == "meetings":
         params = {"drive_connected": email_address}
         if warning:

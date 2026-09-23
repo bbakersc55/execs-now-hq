@@ -3,7 +3,7 @@ import {
   Activity as ActivityIcon, BarChart3, Building2, CalendarCheck, CheckSquare,
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, Mail, PanelLeftClose, PanelLeftOpen,
-  Sparkles, Store, Target, Upload, UserCog, Users, Workflow,
+  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
@@ -31,6 +31,7 @@ import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
 import { NoteDetail } from "./screens/NoteDetail";
 import { Meetings } from "./screens/Meetings";
+import { Replies } from "./screens/Replies";
 import { Notes } from "./screens/Notes";
 import { PinReset } from "./screens/PinReset";
 import { CadenceLink } from "./screens/CadenceLink";
@@ -88,6 +89,9 @@ const NAV: NavItem[] = [
   { to: "/strategy", label: "Strategy", roles: TENANT , icon: ClipboardList },
   // Module 5 — the queue. No client-facing surface exists (matrix §11).
   { to: "/meetings", label: "Meeting queue", roles: TENANT, icon: CalendarCheck },
+  // Module 6 — replies that came back. No client-facing surface either
+  // (matrix 12.5): these threads carry correspondence *about* a client.
+  { to: "/replies", label: "Replies", roles: TENANT, icon: Reply },
   // Was the client's own log (FR-3.41). The owner reversed that on 2026-09-16:
   // the feed is the practice's view across every account, and a client is
   // refused the endpoint outright.
@@ -257,6 +261,7 @@ export function App() {
             <Route path="/work/goals/:id" element={<WorkParentDetail me={me} kind="goal" />} />
             <Route path="/work/projects/:id" element={<WorkParentDetail me={me} kind="project" />} />
             <Route path="/meetings" element={<Meetings me={me} />} />
+            <Route path="/replies" element={<Replies me={me} />} />
             <Route path="/strategy" element={<Sessions me={me} />} />
             <Route path="/strategy/template" element={<SessionTemplate me={me} />} />
             <Route path="/strategy/:id" element={<SessionDetail me={me} />} />

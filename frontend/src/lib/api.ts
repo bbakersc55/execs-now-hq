@@ -770,6 +770,56 @@ export interface PreCallForm {
 
 // --- Module 5 — meeting ingestion -------------------------------------------
 
+/** Module 6 — the shared history (FR-6.7) and the unmatched queue (FR-6.8). */
+export interface EmailThreadRow {
+  id: string;
+  subject: string;
+  contact: string | null;
+  contact_name: string;
+  last_message_at: string | null;
+  message_count: number;
+  poll_error: string;
+  messages?: ThreadMessage[];
+}
+
+export interface ThreadMessage {
+  id: string;
+  direction: "inbound" | "outbound";
+  from_address: string;
+  to_addresses: string[];
+  subject: string;
+  /** Quoted history trimmed off for reading; the raw message is always kept. */
+  body: string;
+  has_more: boolean;
+  matched_by: string;
+  at: string;
+  attachments: { id: string; filename: string; content_type: string;
+                 byte_size: number }[];
+}
+
+export interface UnmatchedRow {
+  id: string;
+  from_address: string;
+  from_name: string;
+  subject: string;
+  body: string;
+  /** Why it could not be placed, in the words the queue shows. */
+  reason: string;
+  state: "pending" | "filed" | "discarded";
+  received_at: string | null;
+  filed_contact: string | null;
+}
+
+export interface InboundHealth {
+  can_read: boolean;
+  detail: string;
+  account: string;
+  threads_watched: number;
+  last_polled_at: string | null;
+  waiting: number;
+  errors: number;
+}
+
 /** GET /api/drive-watch/ — the folder behind the queue, and its health.
  *
  *  `google_connected` and `drive_access` are separate because they fail

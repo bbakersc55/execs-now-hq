@@ -1475,6 +1475,22 @@ AC-5.1–5.16, plus **extraction quality on N real meetings** with a count of pr
 
 Fixture results and live results **reported separately and labelled**. A replay pass is not evidence that mail is being delivered or ingested.
 
+> **Built 2026-09-22.** Eight fixtures, `manage.py replay_inbound`, the
+> 15-minute poll over threads the app started, the unmatched queue with filing,
+> quoted-history trimming with the raw message kept, and attachments stored.
+> `gmail.readonly` is **opt-in per connect** and never folded into the send
+> scopes; `docs/phase6_google_setup.md` states plainly that the grant is the
+> whole mailbox while the boundary is the app's code.
+>
+> **AC-6.7 was written for a webhook that no longer exists.** Under polling
+> there is no unauthenticated way in to reject: authenticity comes from
+> reading the practice's own mailbox over an authenticated call. The test
+> asserts the absence of the endpoint rather than a signature check.
+>
+> **Live checks are outstanding.** AC-6.12, AC-6.15 and the three manual
+> checks need a real reply on a real thread, which needs the re-consent in
+> §2 of the setup note.
+
 ---
 
 ## Design pass — frontend, all modules, before Beta exit

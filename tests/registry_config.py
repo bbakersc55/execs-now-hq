@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from apps.accounts.models import MagicLinkToken
 from apps.crm.models import (
-    Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
+    EmailAttachment, UnmatchedInbound, Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactServiceCategory, ContactType, ContactTypeLink, EmailMessage,
     ContactPipelinePosition, DevSendAllowlistEntry, EmailTemplate, EmailThread,
     MailPreference,
@@ -64,6 +64,10 @@ register(StageAutomation, factories.StageAutomationFactory)
 register(EmailTemplate, factories.EmailTemplateFactory)
 register(EmailThread, factories.EmailThreadFactory)
 register(EmailMessage, factories.EmailMessageFactory)
+# --- Module 6 — inbound.
+register(UnmatchedInbound, factories.UnmatchedInboundFactory,
+         endpoints=("/api/unmatched-inbound/",))
+register(EmailAttachment, factories.EmailAttachmentFactory, api_exposed=False)
 register(GmailConnection, factories.GmailConnectionFactory)
 register(DevSendAllowlistEntry, factories.DevSendAllowlistEntryFactory)
 register(MailPreference, factories.MailPreferenceFactory)

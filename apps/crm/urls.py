@@ -2,6 +2,7 @@ from rest_framework.routers import DefaultRouter
 
 from apps.crm import views
 from apps.crm import views_gmail
+from apps.crm import views_inbound
 
 router = DefaultRouter()
 router.register("contacts", views.ContactViewSet, basename="contact")
@@ -21,6 +22,10 @@ router.register("import-profiles", views.ImportMappingProfileViewSet,
                 basename="import-profile")
 router.register("email-templates", views.EmailTemplateViewSet, basename="email-template")
 router.register("referral-settings", views.ReferralSettingsView, basename="referral-settings")
+router.register("email-threads", views_inbound.EmailThreadViewSet,
+                basename="email-thread")
+router.register("unmatched-inbound", views_inbound.UnmatchedInboundViewSet,
+                basename="unmatched-inbound")
 router.register("gmail-connection", views_gmail.GmailConnectionViewSet,
                 basename="gmail-connection")
 

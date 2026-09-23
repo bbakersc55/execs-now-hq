@@ -43,3 +43,21 @@ def reindex_search(tenant_id: str) -> int:
         from apps.crm.models import Contact
 
         return Contact.objects.count()
+
+
+def poll_inbound(tenant_id: str) -> dict:
+    """Collect replies on the threads the app started (FR-6.5).
+
+    Every 15 minutes. It does nothing at all unless the practice has granted
+    the read scope, which is the normal state until somebody turns Tier 2 on —
+    and "not connected" is not an error.
+    """
+    from apps.crm.services import inbound_poll
+    from apps.tenancy.models import Tenant
+
+    with tenant_context(tenant_id):
+        tenant = Tenant.objects.get(pk=tenant_id)
+        try:
+            return inbound_poll.poll(tenant)
+        except inbound_poll.NotConnected as exc:
+            return {"connected": False, "detail": str(exc)}

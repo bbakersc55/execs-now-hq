@@ -1,0 +1,44 @@
+{
+  "id": "gmail-thread-unknown-3",
+  "messages": [
+    {
+      "id": "m-reply-4",
+      "threadId": "gmail-thread-unknown-3",
+      "internalDate": "1758518400000",
+      "payload": {
+        "mimeType": "multipart/mixed",
+        "headers": [
+          {
+            "name": "From",
+            "value": "Dana Reyes <dana@acme.invalid>"
+          },
+          {
+            "name": "To",
+            "value": "info@x.test"
+          },
+          {
+            "name": "Subject",
+            "value": "A new question"
+          },
+          {
+            "name": "Date",
+            "value": "Mon, 22 Sep 2026 10:08:00 +0000"
+          },
+          {
+            "name": "Message-ID",
+            "value": "<reply-4@acme.invalid>"
+          }
+        ],
+        "parts": [
+          {
+            "mimeType": "text/plain",
+            "body": {
+              "data": "UXVpY2sgb25lIOKAlCBhcmUgd2Ugc3RpbGwgb24gZm9yIEZyaWRheT8K",
+              "size": 40
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

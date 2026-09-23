@@ -99,6 +99,7 @@ class DriveWatchViewSet(MeetingViewSetBase):
         request.session[gmail_oauth.STATE_SESSION_KEY] = state
         request.session[gmail_oauth.RETURN_SESSION_KEY] = "meetings"
         request.session[gmail_oauth.DRIVE_SESSION_KEY] = True
+        request.session[gmail_oauth.INBOUND_SESSION_KEY] = False
         email = request.user.email
         return Response({
             "authorization_url": gmail_oauth.authorization_url(

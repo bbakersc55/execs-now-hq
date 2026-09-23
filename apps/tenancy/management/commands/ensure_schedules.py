@@ -53,6 +53,10 @@ SCHEDULES = [
     # backfill is running — which is the normal state.
     ("meetings.run_backfill", "apps.meetings.tasks.run_backfill",
      Schedule.MINUTES, 1, None),
+    # Module 6 — the inbound poll (FR-6.5). Fifteen minutes, over the threads
+    # the app started. Tolerant of a closed laptop: `threads.get` returns the
+    # whole thread, so catching up is the same operation as keeping up.
+    ("crm.poll_inbound", "apps.crm.tasks.poll_inbound", Schedule.MINUTES, 15, None),
     # Module 2.
     ("notes.process", "apps.notes.tasks.process_notes", Schedule.MINUTES, 1, None),
     ("notes.purge_expired_audio", "apps.notes.tasks.purge_expired_audio",

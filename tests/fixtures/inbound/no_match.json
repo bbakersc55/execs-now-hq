@@ -1,0 +1,44 @@
+{
+  "id": "gmail-thread-unknown-4",
+  "messages": [
+    {
+      "id": "m-reply-5",
+      "threadId": "gmail-thread-unknown-4",
+      "internalDate": "1758518400000",
+      "payload": {
+        "mimeType": "multipart/mixed",
+        "headers": [
+          {
+            "name": "From",
+            "value": "Someone Else <nobody@elsewhere.invalid>"
+          },
+          {
+            "name": "To",
+            "value": "info@x.test"
+          },
+          {
+            "name": "Subject",
+            "value": "Re: Your progress report"
+          },
+          {
+            "name": "Date",
+            "value": "Mon, 22 Sep 2026 10:09:00 +0000"
+          },
+          {
+            "name": "Message-ID",
+            "value": "<reply-5@elsewhere.invalid>"
+          }
+        ],
+        "parts": [
+          {
+            "mimeType": "text/plain",
+            "body": {
+              "data": "Rm9yd2FyZGluZyB0aGlzIG9uIOKAlCBjYW4geW91IHNlbmQgbWUgdGhlIGRldGFpbD8K",
+              "size": 49
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

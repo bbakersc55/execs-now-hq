@@ -999,6 +999,43 @@ client's own participants do.
 
 > Two match keys, per FR-6.6: `thread_token` (app mail and Tier 1 personal sends) and `gmail_thread_id` (Tier 2 ingestion).
 
+### `unmatched_inbound`
+
+*(Added 2026-09-22, FR-6.8, R13.)* A reply we could not place — **kept, never
+dropped**. A full stored message rather than a log line, because AC-6.4 turns
+on the difference: the thing a person files has to still exist when they get to
+it. Separate from `email_message` for one reason — an `EmailMessage` belongs to
+a thread, and the whole point of this row is that we do not know which.
+
+| Column | Type | Notes |
+|---|---|---|
+| `provider` / `provider_message_id` | text | **Unique per tenant.** Every poll re-reads the whole thread, so this is what stops the queue growing by one every 15 minutes |
+| `gmail_thread_id` | text | |
+| `from_address` / `from_name` / `to_addresses` / `subject` | | |
+| `body_text` / `body_html` / `body_stripped` / `raw` | text / jsonb | Trimming is for display; `raw` is the whole thing |
+| `reason` | text | Why it could not be matched, in the words the queue shows |
+| `state` | text | `pending` · `filed` · `discarded` |
+| `filed_contact_id` / `filed_thread_id` / `filed_message_id` / `filed_by` / `filed_at` | | What filing it produced |
+
+### `email_attachment`
+
+*(Added 2026-09-22, FR-6.10.)* A file that arrived on an inbound message.
+Stored rather than linked: Gmail's attachment ids are scoped to a message and a
+mailbox, so a link would break the day the account is reconnected. Anything not
+stored — over the limit, or undownloadable — is **named in the message body**
+rather than dropped.
+
+| Column | Type | Notes |
+|---|---|---|
+| `message_id` | uuid | → `email_message` |
+| `stored_file_id` | uuid | → `stored_file`, PROTECTed |
+| `filename` / `content_type` / `byte_size` | | |
+| `skipped_reason` | text | |
+
+**Two columns added to `email_thread`:** `last_polled_at` (the cursor — "which
+thread did we look at least recently", which cannot expire the way a Gmail
+`historyId` does) and `poll_error`.
+
 ### `email_message`
 
 | Column | Type | Notes |

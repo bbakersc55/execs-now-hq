@@ -311,6 +311,55 @@ class GmailTransport:
         }
 
 
+class GmailReader:
+    """The read half of the Gmail connection (FR-6.5).
+
+    Deliberately thin, and deliberately separate from `GmailTransport`: it
+    fetches JSON and nothing else, so every decision about what a reply means
+    lives in `inbound.py` and is exercised by fixtures rather than by Google.
+
+    **It reads only threads the app started.** The scope Google grants is
+    wider than that — `gmail.readonly` is the whole mailbox — so the boundary
+    is enforced here, by only ever asking for a `threadId` we stored
+    ourselves. That is worth saying out loud at the consent screen, and it is
+    said (FR-6 out-of-scope 1).
+    """
+
+    def __init__(self, connection):
+        self.connection = connection
+        self._token = None
+
+    def token(self):
+        if self._token is None:
+            self._token = access_token_for(self.connection)
+        return self._token
+
+    def thread(self, gmail_thread_id: str) -> dict:
+        response = requests.get(
+            f"{GMAIL_API}/threads/{gmail_thread_id}",
+            headers={"Authorization": f"Bearer {self.token()}"},
+            params={"format": "full"}, timeout=30,
+        )
+        if response.status_code == 404:
+            # Deleted in Gmail. Not an error: the thread simply has no more to
+            # tell us, and what we already ingested stays.
+            return {}
+        if not response.ok:
+            raise TransportUnavailable(
+                f"Gmail would not return thread {gmail_thread_id} "
+                f"({response.status_code}): {response.text[:200]}")
+        return response.json()
+
+    def attachment(self, message_id: str, attachment_id: str) -> str:
+        response = requests.get(
+            f"{GMAIL_API}/messages/{message_id}/attachments/{attachment_id}",
+            headers={"Authorization": f"Bearer {self.token()}"}, timeout=60,
+        )
+        if not response.ok:
+            return ""
+        return response.json().get("data", "")
+
+
 class PostmarkTransport:
     """V1. Kept so the transport seam is real rather than hypothetical."""
 

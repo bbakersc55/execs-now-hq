@@ -871,3 +871,93 @@ def test_11_1_an_unmatched_proposal_is_not_a_cfs_by_default(seeded_tenant, api,
     assert api.as_(cf).get("/api/meeting-proposals/?state=all").json() == []
     ff = MembershipFactory(tenant=seeded_tenant, role=Role.FF)
     assert len(api.as_(ff).get("/api/meeting-proposals/?state=all").json()) == 1
+
+
+# ============================================ §12 — Module 6, communication
+
+MODULE6_ENDPOINTS = [
+    ("/api/email-threads/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/unmatched-inbound/", {"FF": 200, "CF": 200, "VA": 200,
+                                 "FCC": 403, "ECC": 403}),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,expected", MODULE6_ENDPOINTS,
+                         ids=[u for u, _ in MODULE6_ENDPOINTS])
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_module6_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
+    """Matrix 12.5 — **client users reach no communication surface at all**,
+    not even for their own company. These threads carry the practice's
+    internal correspondence *about* them."""
+    company = ClientCompanyFactory(tenant=seeded_tenant) if role in ("FCC", "ECC") else None
+    membership = MembershipFactory(tenant=seeded_tenant, role=role, client_company=company)
+    assert api.as_(membership).get(url).status_code == expected[role], url
+
+
+@pytest.mark.django_db
+def test_12_3_a_va_may_file_unmatched_mail_and_it_sends_nothing(
+    seeded_tenant, api, dev_outbox, in_tenant_a
+):
+    """Matrix 12.3 — filing creates a record, which is why the VA may do it.
+    Row 12.4 is the line they do not cross, and it is a different verb."""
+    from apps.crm.models import EmailMessage, UnmatchedInbound
+
+    from .factories import ContactFactory, UnmatchedInboundFactory
+
+    va = MembershipFactory(tenant=seeded_tenant, role="VA")
+    contact = ContactFactory(tenant=seeded_tenant)
+    row = UnmatchedInboundFactory(tenant=seeded_tenant)
+
+    response = api.as_(va).post(f"/api/unmatched-inbound/{row.pk}/file/",
+                                {"contact": str(contact.pk)})
+
+    assert response.status_code == 201, response.data
+    assert EmailMessage.objects.filter(contact=contact,
+                                       direction="inbound").exists()
+    row.refresh_from_db()
+    assert row.state == UnmatchedInbound.State.FILED
+    # The whole reason a VA is trusted with this: it sends nothing.
+    assert dev_outbox == []
+
+
+@pytest.mark.django_db
+def test_12_2_reading_the_practices_mailbox_is_the_founders(
+    seeded_tenant, api, in_tenant_a
+):
+    """Running the poll is narrower than reading its results: it reaches into
+    the practice's own mailbox, so it sits with the same hand that granted the
+    scope."""
+    for role, expected in (("CF", 403), ("VA", 403)):
+        membership = MembershipFactory(tenant=seeded_tenant, role=role)
+        assert api.as_(membership).post("/api/unmatched-inbound/poll/").status_code \
+            == expected
+
+
+@pytest.mark.django_db
+def test_12_1_a_cf_sees_only_the_threads_of_contacts_they_can_see(
+    seeded_tenant, api, in_tenant_a
+):
+    """No second rule: it is `contact_queryset_for`, the same one that decides
+    whether they can see the contact at all."""
+    from apps.crm.models import EmailThread
+
+    from .factories import ClientAssignmentFactory, ContactFactory
+
+    cf = MembershipFactory(tenant=seeded_tenant, role="CF")
+    mine = ClientCompanyFactory(tenant=seeded_tenant)
+    ClientAssignmentFactory(tenant=seeded_tenant, user=cf.user, company=mine)
+    ours = ContactFactory(tenant=seeded_tenant, company=mine)
+    theirs = ContactFactory(tenant=seeded_tenant,
+                            company=ClientCompanyFactory(tenant=seeded_tenant))
+    for contact in (ours, theirs):
+        EmailThread.objects.create(tenant=seeded_tenant,
+                                   thread_token=EmailThread.new_token(),
+                                   contact=contact, subject="Hello")
+    # And one nobody has filed yet, which is FF and VA only.
+    EmailThread.objects.create(tenant=seeded_tenant,
+                               thread_token=EmailThread.new_token(), subject="Unfiled")
+
+    seen = api.as_(cf).get("/api/email-threads/").json()
+
+    assert {row["contact"] for row in seen} == {str(ours.pk)}

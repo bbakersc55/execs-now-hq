@@ -41,6 +41,14 @@ TIER1_SCOPES = [
     "https://www.googleapis.com/auth/gmail.settings.basic",
 ]
 
+#: Module 6 reads the threads the app started, to collect replies (FR-6.5).
+#: **`gmail.readonly` is a read over the whole mailbox** — Gmail has no
+#: narrower scope, and there is no "only threads I sent" grant to ask for. The
+#: boundary is in `GmailReader`, which never asks for a `threadId` the app did
+#: not store. That asymmetry is the thing to say plainly at the point of
+#: consent, and `docs/phase6_google_setup.md` says it.
+TIER2_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+
 #: Module 5 reads one folder of meeting notes. **`drive.readonly` is a
 #: restricted scope** and is asked for separately, not folded into Tier 1: a
 #: practice that never turns on meeting ingestion should not be asked for its
@@ -49,8 +57,12 @@ TIER1_SCOPES = [
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 
-def scopes_for(*, drive: bool = False) -> list[str]:
-    return TIER1_SCOPES + (DRIVE_SCOPES if drive else [])
+def scopes_for(*, drive: bool = False, inbound: bool = False) -> list[str]:
+    """Each restricted scope is asked for **separately** and only when its
+    feature is turned on: a practice that never collects replies should never
+    be asked to let the app read its mail."""
+    return (TIER1_SCOPES + (DRIVE_SCOPES if drive else [])
+            + (TIER2_SCOPES if inbound else []))
 
 STATE_SESSION_KEY = "gmail_oauth_state"
 #: Which screen started the consent, so Google's redirect lands back on it.
@@ -58,6 +70,7 @@ STATE_SESSION_KEY = "gmail_oauth_state"
 #: afterwards has to be remembered here rather than passed through Google.
 RETURN_SESSION_KEY = "gmail_oauth_return"
 DRIVE_SESSION_KEY = "gmail_oauth_drive"
+INBOUND_SESSION_KEY = "gmail_oauth_inbound"
 
 RETURN_PATHS = {"email": "/settings/email", "meetings": "/meetings"}
 
@@ -65,6 +78,10 @@ RETURN_PATHS = {"email": "/settings/email", "meetings": "/meetings"}
 def drive_granted(payload: dict) -> bool:
     """Google lets a person untick a scope. Asking is not being granted."""
     return set(DRIVE_SCOPES) <= set(granted_scopes(payload))
+
+
+def inbound_granted(payload: dict) -> bool:
+    return set(TIER2_SCOPES) <= set(granted_scopes(payload))
 
 
 class GmailOAuthError(Exception):
@@ -97,7 +114,7 @@ def workspace_domain(email: str) -> str:
 
 
 def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
-                      drive: bool = False) -> str:
+                      drive: bool = False, inbound: bool = False) -> str:
     """The consent URL.
 
     `login_hint` + `hd` exist because the browser, not the app, chooses which
@@ -114,7 +131,7 @@ def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
         "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": " ".join(scopes_for(drive=drive)),
+        "scope": " ".join(scopes_for(drive=drive, inbound=inbound)),
         "access_type": "offline",
         "prompt": "select_account consent",
         "include_granted_scopes": "true",

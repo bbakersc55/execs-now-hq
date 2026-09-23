@@ -1,0 +1,52 @@
+{
+  "id": "gmail-thread-unknown",
+  "messages": [
+    {
+      "id": "m-reply-2",
+      "threadId": "gmail-thread-unknown",
+      "internalDate": "1758518400000",
+      "payload": {
+        "mimeType": "multipart/mixed",
+        "headers": [
+          {
+            "name": "From",
+            "value": "Dana Reyes <dana@acme.invalid>"
+          },
+          {
+            "name": "To",
+            "value": "info@x.test"
+          },
+          {
+            "name": "Subject",
+            "value": "Re: Your progress report"
+          },
+          {
+            "name": "Date",
+            "value": "Mon, 22 Sep 2026 10:06:00 +0000"
+          },
+          {
+            "name": "Message-ID",
+            "value": "<reply-2@acme.invalid>"
+          },
+          {
+            "name": "In-Reply-To",
+            "value": "<TOKEN.abc123@x.test>"
+          },
+          {
+            "name": "References",
+            "value": "<TOKEN.abc123@x.test>"
+          }
+        ],
+        "parts": [
+          {
+            "mimeType": "text/plain",
+            "body": {
+              "data": "VGhhbmtzIEJyeWFuIOKAlCBGcmlkYXkgd29ya3MuIEknbGwgYnJpbmcgdGhlIG1hcmdpbiBudW1iZXJzLgo",
+              "size": 60
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -640,13 +640,15 @@ def test_ac_2_9_the_retention_job_is_scheduled(seeded_tenant):
     assert purge.schedule_type == Schedule.DAILY and purge.repeats == -1
     assert Schedule.objects.filter(name=f"notes.process:{seeded_tenant.slug}",
                                    minutes=1).exists()
-    # 3 Module 1, work.tick, Module 2's two, and Module 5's two: the ten-minute
-    # poll and the one-minute backfill tick.
-    assert Schedule.objects.count() == 8
+    # 3 Module 1, work.tick, Module 2's two, Module 5's two (the ten-minute
+    # poll and the one-minute backfill tick), and Module 6's inbound poll.
+    assert Schedule.objects.count() == 9
     assert Schedule.objects.filter(name=f"meetings.poll_drive:{seeded_tenant.slug}",
                                    minutes=10).exists()
     assert Schedule.objects.filter(name=f"meetings.run_backfill:{seeded_tenant.slug}",
                                    minutes=1).exists()
+    assert Schedule.objects.filter(name=f"crm.poll_inbound:{seeded_tenant.slug}",
+                                   minutes=15).exists()
 
 
 @pytest.mark.django_db

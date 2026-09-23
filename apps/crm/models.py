@@ -511,6 +511,13 @@ class EmailThread(TenantScopedModel):
     gmail_thread_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
     subject = models.CharField(max_length=255, blank=True, default="")
     last_message_at = models.DateTimeField(null=True, blank=True)
+    # Module 6's cursor (FR-6.5). Not a Gmail historyId: that expires after
+    # about a week, so a laptop shut for a fortnight would need a full resync.
+    # "Which thread did we look at least recently" survives any amount of
+    # downtime, and `threads.get` returns the whole thread every time, so
+    # catching up is the same operation as keeping up.
+    last_polled_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    poll_error = models.TextField(blank=True, default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "email_thread"
@@ -785,6 +792,97 @@ class OutboxAttachment(TenantScopedModel):
 
     class Meta(TenantScopedModel.Meta):
         db_table = "outbox_attachment"
+
+
+class EmailAttachment(TenantScopedModel):
+    """A file that arrived on an inbound message (FR-6.10).
+
+    Stored rather than linked: Gmail's attachment ids are scoped to a message
+    and a mailbox, so a link would break the day the account is reconnected.
+    """
+
+    message = models.ForeignKey(
+        EmailMessage, on_delete=models.CASCADE, related_name="attachments"
+    )
+    stored_file = models.ForeignKey(
+        "tenancy.StoredFile", on_delete=models.PROTECT, related_name="+"
+    )
+    filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=120, blank=True, default="")
+    byte_size = models.BigIntegerField(default=0)
+    #: Why a file that came with the message is not here. Recorded rather than
+    #: dropped, for the same reason an unreadable Drive file is (FR-5.6).
+    skipped_reason = models.TextField(blank=True, default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "email_attachment"
+        ordering = ["filename"]
+
+
+class UnmatchedInbound(TenantScopedModel):
+    """A reply we could not place — **kept, never dropped** (FR-6.8, R13).
+
+    A full stored message rather than a log line, because AC-6.4 turns on the
+    difference: the thing a person files has to still exist when they get to
+    it. It is a separate table from `email_message` for one reason — an
+    `EmailMessage` belongs to a thread, and the whole point of this row is that
+    we do not know which thread it belongs to.
+
+    Filing it creates the `EmailMessage`, which is the only path from here to a
+    contact's timeline.
+    """
+
+    class State(models.TextChoices):
+        PENDING = "pending", "Waiting to be filed"
+        FILED = "filed", "Filed"
+        DISCARDED = "discarded", "Discarded"
+
+    provider = models.CharField(max_length=16, default="gmail")
+    provider_message_id = models.CharField(max_length=255, db_index=True)
+    gmail_thread_id = models.CharField(max_length=120, blank=True, default="")
+    from_address = models.EmailField(blank=True, default="")
+    from_name = models.CharField(max_length=200, blank=True, default="")
+    to_addresses = models.JSONField(default=list, blank=True)
+    subject = models.CharField(max_length=255, blank=True, default="")
+    body_text = models.TextField(blank=True, default="")
+    body_html = models.TextField(blank=True, default="")
+    #: What the reviewer reads — quoted history trimmed off (FR-6.9). The raw
+    #: payload is kept beside it, so trimming is never lossy.
+    body_stripped = models.TextField(blank=True, default="")
+    raw = models.JSONField(default=dict, blank=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+    #: In the words the queue shows: "no thread, and no contact holds this
+    #: address". Saying why it could not be matched is most of filing it.
+    reason = models.CharField(max_length=120, blank=True, default="")
+    state = models.CharField(max_length=10, choices=State.choices,
+                             default=State.PENDING, db_index=True)
+    filed_contact = models.ForeignKey(
+        Contact, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    filed_thread = models.ForeignKey(
+        EmailThread, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    filed_message = models.ForeignKey(
+        EmailMessage, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    filed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+"
+    )
+    filed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "unmatched_inbound"
+        ordering = ["-received_at", "-created_at"]
+        constraints = [
+            # FR-6.12 — every poll re-reads the whole thread, so this is load
+            # bearing in a way it never was for a webhook.
+            models.UniqueConstraint(
+                fields=["tenant", "provider", "provider_message_id"],
+                name="unmatched_inbound_provider_id_unique",
+            )
+        ]
+        indexes = [models.Index(fields=["tenant", "state"])]
 
 
 # ------------------------------------------------------------------- import

@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.accounts.models import MagicLinkToken, User
 from apps.crm.models import (
-    Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
+    EmailAttachment, UnmatchedInbound, Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactPipelinePosition, ContactType, ContactTypeLink, ContactServiceCategory,
     DevSendAllowlistEntry, MailPreference,
     EmailMessage, EmailTemplate, EmailThread, GmailConnection, ImportBatch,
@@ -762,3 +762,29 @@ class MeetingParticipantFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     meeting = factory.SubFactory(MeetingFactory, tenant=factory.SelfAttribute("..tenant"))
     contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class UnmatchedInboundFactory(TenantScopedFactory):
+    class Meta:
+        model = UnmatchedInbound
+
+    tenant = factory.SubFactory(TenantFactory)
+    provider = "gmail"
+    provider_message_id = factory.Sequence(lambda n: f"unmatched-{n}")
+    from_address = factory.Sequence(lambda n: f"stranger{n}@elsewhere.invalid")
+    subject = "Re: Your progress report"
+    body_text = "Can you send me the detail?"
+    body_stripped = "Can you send me the detail?"
+    reason = "no thread, and no contact holds that address"
+
+
+class EmailAttachmentFactory(TenantScopedFactory):
+    class Meta:
+        model = EmailAttachment
+
+    tenant = factory.SubFactory(TenantFactory)
+    message = factory.SubFactory(EmailMessageFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    stored_file = factory.SubFactory(StoredFileFactory,
+                                     tenant=factory.SelfAttribute("..tenant"))
+    filename = "q3-margin.csv"
