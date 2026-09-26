@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
@@ -20,26 +20,51 @@ const STATE_LABEL: Record<string, string> = {
 export function Sessions({ me }: { me: Me }) {
   const qc = useQueryClient();
   const [note, setNote] = useState("");
+  // Archived is its own list, not a state (owner, 2026-09-26).
+  const [params, setParams] = useSearchParams();
+  const archived = params.get("archived") === "1";
   const sessions = useQuery<StrategySessionRow[]>({
-    queryKey: ["strategy-sessions"],
-    queryFn: () => api.get<StrategySessionRow[]>("/api/strategy-sessions/"),
+    queryKey: ["strategy-sessions", archived ? "archived" : "active"],
+    queryFn: () => api.get<StrategySessionRow[]>(
+      `/api/strategy-sessions/${archived ? "?archived=1" : ""}`),
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ["strategy-sessions"] });
+  const run = useMutation({
+    mutationFn: ({ id, suffix, method }: { id: string; suffix: string;
+                                           method?: "post" | "delete" }) =>
+      method === "delete" ? api.del(`/api/strategy-sessions/${id}/`)
+        : api.post(`/api/strategy-sessions/${id}/${suffix}`),
+    onError: (e: Error) => setNote(e.message),
+  });
 
   return (
     <>
       <h1>Strategy sessions</h1>
       {me.role === "FF" && (
         <p className="small muted">
-          <Link to="/strategy/template">Edit the template</Link> — wording, pre-call or
-          live, and must-asks. Sessions already under way are never affected.
+          <Link to="/strategy/template">Manage the templates</Link> — questions,
+          budgets, the practice default. Sessions already under way are never affected.
         </p>
       )}
       {note && <Banner kind="ok">{note}</Banner>}
-      <NewSession onDone={(text) => { setNote(text); refresh(); }} />
+      {!archived && (
+        <NewSession onDone={(text) => { setNote(text); refresh(); }}
+          initialTemplate={params.get("template") ?? ""}
+          initialContact={params.get("contact") ?? ""}
+          focus={params.get("new") === "1"} />
+      )}
+
+      <div className="row" role="group" aria-label="Which sessions">
+        <button className={archived ? "ghost" : "primary"} aria-pressed={!archived}
+          onClick={() => setParams({})}>Active</button>
+        <button className={archived ? "primary" : "ghost"} aria-pressed={archived}
+          onClick={() => setParams({ archived: "1" })}>Archived</button>
+      </div>
 
       {sessions.data?.length === 0 && (
-        <Empty>No sessions yet. Start one from a prospect above.</Empty>
+        archived
+          ? <Empty>Nothing archived.</Empty>
+          : <Empty>No sessions yet. Start one from a prospect above.</Empty>
       )}
       {(sessions.data ?? []).map((session) => (
         <Card key={session.id}
@@ -51,7 +76,31 @@ export function Sessions({ me }: { me: Me }) {
             {session.owner ? ` · ${session.owner}` : ""}
             {session.precall_sent ? " · pre-call form sent" : ""}
           </p>
-          <Link className="btn" to={`/strategy/${session.id}`}>Open the session</Link>
+          <div className="row">
+            <Link className="btn" to={`/strategy/${session.id}`}>Open the session</Link>
+            {archived && session.may_archive && (
+              <button disabled={run.isPending}
+                onClick={() => run.mutate({ id: session.id, suffix: "unarchive/" }, {
+                  onSuccess: () => { setNote("Restored to the sessions list."); refresh(); },
+                })}>Restore</button>
+            )}
+            {archived && session.may_delete && (
+              <button className="danger" disabled={run.isPending || !!session.delete_refusal}
+                title={session.delete_refusal || undefined}
+                onClick={() => {
+                  if (!confirm(`Delete the session with ${session.contact?.name ?? "this "
+                    + "prospect"} permanently? Its answers, strategy map, prep and notes `
+                    + "go with it, and it cannot be undone.")) return;
+                  run.mutate({ id: session.id, suffix: "", method: "delete" }, {
+                    onSuccess: () => { setNote("Deleted, and recorded in the audit log.");
+                                       refresh(); },
+                  });
+                }}>Delete permanently</button>
+            )}
+          </div>
+          {archived && session.may_delete && session.delete_refusal && (
+            <p className="small muted">{session.delete_refusal}</p>
+          )}
         </Card>
       ))}
       {!me.role && <Banner kind="info">Sign in to see your sessions.</Banner>}
@@ -59,9 +108,29 @@ export function Sessions({ me }: { me: Me }) {
   );
 }
 
-function NewSession({ onDone }: { onDone: (message: string) => void }) {
+function NewSession({ onDone, initialTemplate = "", initialContact = "", focus = false }: {
+  onDone: (message: string) => void; initialTemplate?: string; initialContact?: string;
+  focus?: boolean;
+}) {
   const [term, setTerm] = useState("");
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
+  // Arrived from a session's "Start a new session": the prospect, if named,
+  // is filled in, and the form is where the eye lands.
+  const fromContact = useQuery<Contact>({
+    queryKey: ["contact", initialContact],
+    queryFn: () => api.get<Contact>(`/api/contacts/${initialContact}/`),
+    enabled: !!initialContact,
+  });
+  useEffect(() => {
+    if (fromContact.data) {
+      setPicked({ id: fromContact.data.id,
+                  name: `${fromContact.data.first_name} ${fromContact.data.last_name}`.trim() });
+    }
+  }, [fromContact.data]);
+  const formRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus) formRef.current?.scrollIntoView?.({ block: "start" });
+  }, [focus]);
   const [scheduledAt, setScheduledAt] = useState("");
   // The template picker (owner, 2026-09-26): the practice default unless
   // somebody chooses otherwise. Archived ones are not offered.
@@ -70,7 +139,7 @@ function NewSession({ onDone }: { onDone: (message: string) => void }) {
     queryFn: () => api.get<StrategyTemplateRow[]>("/api/strategy-templates/"),
   });
   const offered = activeTemplates(templates.data);
-  const [templateId, setTemplateId] = useState("");
+  const [templateId, setTemplateId] = useState(initialTemplate);
   const chosenTemplate = offered.find((t) => t.id === templateId) ?? offered[0];
 
   const found = useQuery<{ contacts: Contact[] }>({
@@ -93,6 +162,7 @@ function NewSession({ onDone }: { onDone: (message: string) => void }) {
   });
 
   return (
+    <div ref={formRef}>
     <Card title="Start a session">
       <div className="row">
         <Field label="Find a prospect">
@@ -131,5 +201,6 @@ function NewSession({ onDone }: { onDone: (message: string) => void }) {
       )}
       {start.isError && <Banner kind="bad">{(start.error as Error).message}</Banner>}
     </Card>
+    </div>
   );
 }

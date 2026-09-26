@@ -64,6 +64,7 @@ def snapshot_of(template: StrategyTemplate) -> dict:
             "is_fractional_observation": question.is_fractional_observation,
             "has_fractional_note": question.has_fractional_note,
             "is_financial": question.is_financial,
+            "ask_if_time": question.ask_if_time,
             "position": question.position,
         })
     return {

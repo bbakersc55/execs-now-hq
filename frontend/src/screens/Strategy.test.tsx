@@ -324,7 +324,8 @@ describe("the template editor", () => {
       .toBeInTheDocument());
     const patched = fetchMock.calls.find((c) => c.method === "PATCH");
     expect(patched?.body).toEqual({ questions: [{ key: "s4_done_right",
-      prompt: "How do you know last night went well?", ask_when: "precall" }] });
+      prompt: "How do you know last night went well?", ask_when: "precall" }],
+      sections: [] });
   });
 
   it("is the founder fractional's alone", async () => {
@@ -908,7 +909,8 @@ describe("more than one template", () => {
 
     await user.click(screen.getByRole("button", { name: "Restore from seed" }));
     await waitFor(() => expect(fetchMock.calls.find((c) =>
-      c.url.endsWith("/restore-from-seed/"))?.body).toEqual({ name: "Operations — generic" }));
+      c.url.endsWith("/restore-from-seed/"))?.body).toEqual({ name: "Operations — generic",
+                                                               variant: "" }));
     // Restoring opens the new one, which is not the default yet.
     await user.click(await screen.findByRole("button",
                                              { name: "Make this the practice default" }));
@@ -949,5 +951,235 @@ describe("more than one template", () => {
       expect((posted?.body as { template: string }).template).toBe("t2");
     });
     expect(await screen.findByText(/from “Operations — generic”/)).toBeInTheDocument();
+  });
+});
+
+describe("managing a session", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const DRAFT = { state: "draft" as const, precall_sent: false, reset_refusal: "",
+                  may_archive: true, may_delete: true, delete_refusal: "",
+                  archived_at: null };
+  const TWO = [TEMPLATES[0], { ...TEMPLATES[0], id: "t2", name: "60-minute Operations",
+                               is_default: false }];
+
+  it("resets a draft's questions to a chosen template, after naming it", async () => {
+    const user = userEvent.setup();
+    const asked: string[] = [];
+    const fetchMock = showSession(aSession(DRAFT), aMe(), {
+      "GET /api/strategy-templates/": TWO,
+      [`POST /api/strategy-sessions/${SESSION_ID}/reset-questions/`]: aSession(DRAFT),
+    });
+    vi.stubGlobal("confirm", (text: string) => { asked.push(text); return true; });
+
+    await user.selectOptions(await screen.findByLabelText("Reset to the questions of"), "t2");
+    await user.click(screen.getByRole("button", { name: "Reset to default questions" }));
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.url.endsWith("/reset-questions/"));
+      expect(posted?.body).toEqual({ template: "t2" });
+    });
+    expect(asked[0]).toMatch(/Are you sure.*“60-minute Operations”/);
+  });
+
+  it("does nothing when the confirm is declined", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(DRAFT), aMe(),
+                                  { "GET /api/strategy-templates/": TWO });
+    vi.stubGlobal("confirm", () => false);
+    await user.click(await screen.findByRole("button", { name: "Reset to default questions" }));
+    expect(fetchMock.calls.some((c) => c.url.endsWith("/reset-questions/"))).toBe(false);
+  });
+
+  it("offers a new session instead, and says why, once someone has been asked",
+     async () => {
+    showSession(aSession({ ...DRAFT, state: "precall_sent",
+      reset_refusal: "The questions on a session are a record of what a real person "
+        + "was asked, so they are fixed once it has reached anyone." }), aMe());
+    const link = await screen.findByRole("link",
+                                         { name: "Start a new session from this template" });
+    expect(link.getAttribute("href")).toBe("/strategy?new=1&template=t1&contact=c1");
+    expect(screen.getByText(/what a real person was asked/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reset to default questions" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("has Start a new session on every session page", async () => {
+    showSession(aSession({ state: "complete" }), aMe({ role: "VA" }));
+    const link = await screen.findByRole("link", { name: "Start a new session" });
+    expect(link.getAttribute("href")).toBe("/strategy?new=1&template=t1");
+  });
+
+  it("archives, and deletes only from archived with the refusal shown", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession({ ...DRAFT, state: "complete",
+                                             reset_refusal: "fixed" }), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/archive/`]: aSession(),
+    });
+    expect(screen.queryByRole("button", { name: "Delete permanently" }))
+      .not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Archive this session" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.endsWith("/archive/")))
+      .toBe(true));
+  });
+
+  it("will not offer delete for a converted session, and says why", async () => {
+    showSession(aSession({ ...DRAFT, state: "converted", reset_refusal: "fixed",
+      archived_at: "2026-09-26T10:00:00Z",
+      delete_refusal: "This session was converted to work, and its goals, projects "
+        + "and tasks link back to its strategy map." }), aMe());
+    expect(await screen.findByRole("button", { name: "Delete permanently" })).toBeDisabled();
+    expect(screen.getByText(/link back to its strategy map/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore this session" })).toBeInTheDocument();
+  });
+
+  it("tags an ask-if-time question quietly in the live view", async () => {
+    const session = aSession();
+    session.sections![0].questions[0] = { ...session.sections![0].questions[0],
+                                          must_ask: false, ask_if_time: true };
+    showSession(session, aMe());
+    expect(await screen.findByText("if time")).toHaveClass("muted");
+  });
+});
+
+describe("the sessions list", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("opens the start form with the template and prospect already chosen", async () => {
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/strategy-templates/": [TEMPLATES[0], { ...TEMPLATES[0], id: "t2",
+        name: "Grime Fighters (Brett Murray)", is_default: false }],
+      "GET /api/contacts/c1/": { id: "c1", first_name: "Dana", last_name: "Reyes" },
+      "GET /api/strategy-sessions/": [],
+    }));
+    renderRoute(<Sessions me={aMe()} />, { path: "/strategy",
+                                           route: "/strategy?new=1&template=t2&contact=c1" });
+    await waitFor(() => expect(screen.getByLabelText("Template")).toHaveValue("t2"));
+    await waitFor(() => expect(screen.getByLabelText("Find a prospect"))
+      .toHaveValue("Dana Reyes"));
+  });
+
+  it("lists archived sessions separately, with restore and a warned delete", async () => {
+    const user = userEvent.setup();
+    const asked: string[] = [];
+    const archived = aSession({ archived_at: "2026-09-26T10:00:00Z", may_archive: true,
+                                may_delete: true, delete_refusal: "" });
+    const fetchMock = mockApi({
+      "GET /api/strategy-sessions/?archived=1": [archived],
+      [`DELETE /api/strategy-sessions/${SESSION_ID}/`]: { status: 204, body: null },
+      "GET /api/strategy-sessions/": [],
+      "GET /api/strategy-templates/": [TEMPLATES[0]],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("confirm", (text: string) => { asked.push(text); return true; });
+    renderRoute(<Sessions me={aMe()} />, { path: "/strategy", route: "/strategy" });
+
+    await user.click(await screen.findByRole("button", { name: "Archived" }));
+    expect(await screen.findByRole("button", { name: "Restore" })).toBeInTheDocument();
+    // The start form is for live work; it is not on the archived list.
+    expect(screen.queryByText("Start a session")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete permanently" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.method === "DELETE"))
+      .toBe(true));
+    expect(asked[0]).toMatch(/permanently.*cannot be undone/);
+  });
+});
+
+describe("editing a template's questions", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const WITH_TWO = { ...TEMPLATES[0], sections: [{ ...TEMPLATES[0].sections[0],
+    questions: [TEMPLATES[0].sections[0].questions[0],
+                { ...TEMPLATES[0].sections[0].questions[0], key: "s4_no_show",
+                  prompt: "If a frontline worker no-shows tonight?", must_ask: false,
+                  position: 1 }] }] };
+
+  it("adds a question with every field the request names", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/strategy-templates/t1/questions/": WITH_TWO,
+      "GET /api/strategy-templates/": [WITH_TWO],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<SessionTemplate me={aMe()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Add a question to Diagnostic" }));
+    await user.type(screen.getByLabelText("Wording of the new question in diagnostic"),
+                    "Who signs off a new hire?");
+    await user.selectOptions(screen.getByLabelText(
+      "Kind of answer (new question in diagnostic)"), "diagnostic_triple");
+    await user.type(screen.getByLabelText("Area (new question in diagnostic)"), "People");
+    await user.click(screen.getByLabelText("Must ask (new question in diagnostic)"));
+    await user.click(screen.getByLabelText("Fractional note (new question in diagnostic)"));
+    await user.click(screen.getByRole("button", { name: "Add the question" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/questions/"))
+      ?.body).toEqual({
+        section: "diagnostic", prompt: "Who signs off a new hire?",
+        response_schema: "diagnostic_triple", ask_when: "live", area: "People",
+        must_ask: true, is_financial: false, has_fractional_note: true,
+        ask_if_time: false }));
+  });
+
+  it("keeps a refused new question in the box", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({
+      "POST /api/strategy-templates/t1/questions/": () => ({ status: 400, body: {
+        detail: "This one is rated 1–10. “What” asks for an explanation." } }),
+      "GET /api/strategy-templates/": [WITH_TWO],
+    }));
+    renderRoute(<SessionTemplate me={aMe()} />);
+    await user.click(await screen.findByRole("button", { name: "Add a question to Diagnostic" }));
+    await user.type(screen.getByLabelText("Wording of the new question in diagnostic"),
+                    "What is it?");
+    await user.click(screen.getByRole("button", { name: "Add the question" }));
+    expect(await screen.findByText(/asks for an explanation/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Wording of the new question in diagnostic"))
+      .toHaveValue("What is it?");
+  });
+
+  it("removes (after a confirm), reorders, and saves a time budget", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/strategy-templates/t1/remove-question/": WITH_TWO,
+      "POST /api/strategy-templates/t1/reorder/": WITH_TWO,
+      "PATCH /api/strategy-templates/t1/": { changed: [], template: WITH_TWO },
+      "GET /api/strategy-templates/": [WITH_TWO],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("confirm", () => true);
+    renderRoute(<SessionTemplate me={aMe()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Move s4_no_show up" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/reorder/"))
+      ?.body).toEqual({ section: "diagnostic", keys: ["s4_no_show", "s4_done_right"] }));
+
+    await user.click(screen.getByRole("button", { name: "Remove s4_no_show" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) =>
+      c.url.endsWith("/remove-question/"))?.body).toEqual({ key: "s4_no_show" }));
+
+    const minutes = screen.getByLabelText("Minutes for Diagnostic");
+    await user.clear(minutes);
+    await user.type(minutes, "20");
+    await user.click(screen.getByLabelText("Ask s4_no_show only if time"));
+    await user.click(screen.getByRole("button", { name: /Save 2 changes/ }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+      .toEqual({ questions: [{ key: "s4_no_show", ask_if_time: true }],
+                 sections: [{ code: "diagnostic", time_budget_minutes: 20 }] }));
+  });
+
+  it("restores the 60-minute cut from the seed", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/strategy-templates/restore-from-seed/": { ...TEMPLATES[0], id: "t6",
+        name: "60-minute Operations", is_default: false },
+      "GET /api/strategy-templates/": [TEMPLATES[0]],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<SessionTemplate me={aMe()} />);
+    await user.selectOptions(await screen.findByLabelText("Which cut of the seed"), "sixty");
+    expect(screen.getByLabelText("Name for the template from the seed"))
+      .toHaveValue("60-minute Operations");
+    await user.click(screen.getByRole("button", { name: "Restore from seed" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+      .toEqual({ name: "60-minute Operations", variant: "sixty" }));
   });
 });

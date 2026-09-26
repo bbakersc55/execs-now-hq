@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 
@@ -111,7 +111,9 @@ export function SessionDetail({ me }: { me: Me }) {
   return (
     <>
       <PageHead title={`${data.contact?.name ?? ""}${data.company ? ` · ${data.company.name}` : ""}`}
-        crumbs={[{ to: "/strategy", label: "Strategy sessions" }]} />
+        crumbs={[{ to: "/strategy", label: "Strategy sessions" }]}
+        action={<Link className="btn" to={startUrl(data.template?.id ?? null)}>
+          Start a new session</Link>} />
       <p className="session-meta">
         {data.scheduled_at ? when(data.scheduled_at) : "Not scheduled"} · {data.owner}
         {data.must_ask && <> · <strong>{data.must_ask.answered} of {data.must_ask.of}</strong> must-asks answered</>}
@@ -120,6 +122,11 @@ export function SessionDetail({ me }: { me: Me }) {
         )}
       </p>
       {note && <Banner kind="info">{note}</Banner>}
+      {data.archived_at && (
+        <Banner kind="warn">This session is archived. It is out of the list, and
+          nothing about it has changed.</Banner>
+      )}
+      <SessionAdmin data={data} mayRun={mayRun} onChanged={refresh} setNote={setNote} />
       {/* The fractional's own note on this session — what happened, and what
           to do about it on the call. Theirs: no prospect surface renders it. */}
       {mayRun && data.fractional_note && (
@@ -571,6 +578,9 @@ function QuestionRow({ question, saved, savedNote, answeredBy, fromEmail, disabl
     <label htmlFor={question.key}>
       {question.prompt}
       {question.must_ask && <> <Pill kind="warn">must ask</Pill></>}
+      {/* The 60-minute template's unstarred questions: there if the call has
+          room, and quiet about it. */}
+      {question.ask_if_time && <> <span className="tiny muted">if time</span></>}
       {question.is_fractional_observation && <> <Pill>not asked aloud</Pill></>}
       {question.is_financial && <> <Pill kind="bad">financial</Pill></>}
       {/* Whose answer this is. A prospect's answer is theirs until the
@@ -1340,5 +1350,125 @@ function Rewordings({ id, path, prep, onChanged, setNote, sessionTemplateId }: {
         Apply {chosen.length || ""} selected to the template
       </button>
     </>
+  );
+}
+
+
+/** The start form, with the template (and, from a session, the prospect)
+ *  already chosen. */
+export function startUrl(templateId: string | null, contactId?: string) {
+  const params = new URLSearchParams({ new: "1" });
+  if (templateId) params.set("template", templateId);
+  if (contactId) params.set("contact", contactId);
+  return `/strategy?${params.toString()}`;
+}
+
+/**
+ * The session itself (owner, 2026-09-26): which template it runs, resetting
+ * its questions while nobody has been asked them, and archive / delete.
+ *
+ * **The snapshot records what a real person was asked.** Once the session has
+ * reached anyone, Reset is replaced by "Start a new session from this
+ * template", with the server's sentence saying why.
+ */
+function SessionAdmin({ data, mayRun, onChanged, setNote }: {
+  data: StrategySessionRow; mayRun: boolean; onChanged: () => void;
+  setNote: (text: string) => void;
+}) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const templates = useQuery<StrategyTemplateRow[]>({
+    queryKey: ["strategy-templates"],
+    queryFn: () => api.get<StrategyTemplateRow[]>("/api/strategy-templates/"),
+    enabled: mayRun && data.reset_refusal === "",
+  });
+  const offered = activeTemplates(templates.data);
+  const [picked, setPicked] = useState("");
+  const target = offered.find((t) => t.id === picked)
+    ?? offered.find((t) => t.is_default) ?? offered[0];
+  const base = `/api/strategy-sessions/${data.id}/`;
+
+  const run = useMutation({
+    mutationFn: ({ suffix, body, method }: { suffix: string; body?: object;
+                                             method?: "post" | "delete" }) =>
+      method === "delete" ? api.del(base) : api.post(`${base}${suffix}`, body ?? {}),
+    onError: (e: Error) => setNote(e.message),
+  });
+  const done = (message: string) => {
+    setNote(message);
+    qc.invalidateQueries({ queryKey: ["strategy-sessions"] });
+    onChanged();
+  };
+
+  const templateName = data.template?.name || "an earlier template";
+  return (
+    <Card title="This session">
+      <p className="small muted">Questions from <strong>{templateName}</strong>.</p>
+      {mayRun && data.reset_refusal === "" && target && (
+        <div className="row">
+          <Field label="Reset to the questions of">
+            <select aria-label="Reset to the questions of" value={target.id}
+              onChange={(e) => setPicked(e.target.value)}>
+              {offered.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}{t.is_default ? " (practice default)" : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <button disabled={run.isPending} onClick={() => {
+            if (!confirm(`Are you sure? This session's questions will be replaced with `
+              + `those of “${target.name}”. Nobody has been asked them yet, so nothing `
+              + "a person answered is lost.")) return;
+            run.mutate({ suffix: "reset-questions/", body: { template: target.id } },
+                       { onSuccess: () => done(`The questions are now those of “${target.name}”.`) });
+          }}>Reset to default questions</button>
+        </div>
+      )}
+      {mayRun && !!data.reset_refusal && (
+        <p className="small">
+          <Link to={startUrl(data.template?.id ?? null, data.contact?.id ?? undefined)}>
+            Start a new session from this template</Link>
+          <span className="muted"> — {data.reset_refusal}</span>
+        </p>
+      )}
+      <div className="row">
+        {data.may_archive && !data.archived_at && (
+          <button className="ghost" disabled={run.isPending}
+            onClick={() => run.mutate({ suffix: "archive/" },
+              { onSuccess: () => done("Archived. It is under Archived on the sessions "
+                                      + "list, and can be restored from there or here.") })}>
+            Archive this session
+          </button>
+        )}
+        {data.may_archive && data.archived_at && (
+          <button disabled={run.isPending}
+            onClick={() => run.mutate({ suffix: "unarchive/" },
+              { onSuccess: () => done("Restored to the sessions list.") })}>
+            Restore this session
+          </button>
+        )}
+        {data.may_delete && data.archived_at && (
+          <button className="danger" disabled={run.isPending || !!data.delete_refusal}
+            title={data.delete_refusal || undefined}
+            onClick={() => {
+              if (!confirm("Delete this session permanently? Its answers, strategy map, "
+                + "prep and notes go with it, and it cannot be undone. The audit log "
+                + "keeps a record that it existed.")) return;
+              run.mutate({ suffix: "", method: "delete" }, {
+                onSuccess: () => {
+                  qc.invalidateQueries({ queryKey: ["strategy-sessions"] });
+                  navigate("/strategy?archived=1");
+                },
+              });
+            }}>
+            Delete permanently
+          </button>
+        )}
+      </div>
+      {data.may_delete && data.archived_at && data.delete_refusal && (
+        <p className="small muted">{data.delete_refusal}</p>
+      )}
+    </Card>
   );
 }

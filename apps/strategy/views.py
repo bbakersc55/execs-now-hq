@@ -25,7 +25,7 @@ from apps.crm.models import Contact
 from apps.strategy import ai, conversion, emails, pdf as pdf_service
 from apps.strategy import prep as prep_service
 from apps.strategy import rewording
-from apps.strategy import services, template_admin
+from apps.strategy import services, session_admin, template_admin
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
     AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
@@ -87,16 +87,115 @@ class SessionViewSet(StrategyViewSet):
         qs = self.sessions()
         if state and state != "all":
             qs = qs.filter(state__in=state.split(","))
-        return Response([strategy_serializers.represent_session(s)
+        # Archived sessions are their own list, not a state: any session can be
+        # archived, whatever state it reached.
+        archived = request.query_params.get("archived") in ("1", "true")
+        qs = qs.filter(archived_at__isnull=not archived)
+        return Response([self._managed(strategy_serializers.represent_session(s), s)
                          for s in qs.order_by("-created_at")[:200]])
 
     def retrieve(self, request, pk=None):
         session = self.load(pk)
-        return Response(strategy_serializers.represent_session(
+        return Response(self._managed(strategy_serializers.represent_session(
             session, include_financial=_may_see_financial(request), full=True,
             # Prep is the fractional's preparation for their own call. A VA's
             # payload does not contain it at all, on the same standard as §9.
-            include_prep=_may_see_financial(request)))
+            include_prep=_may_see_financial(request)), session))
+
+    # --------------------------------------- archive, delete, reset questions
+
+    def _may_archive(self, session) -> bool:
+        """The FF, or a CF on a session they own."""
+        role = self._role()
+        return role == FF or (role == CF and session.owner_id == self.request.user.pk)
+
+    def _managed(self, payload, session):
+        """What this person may do to the session itself, said by the server
+        so the screen never offers a control the API would refuse."""
+        payload["archived_at"] = (session.archived_at.isoformat()
+                                  if session.archived_at else None)
+        payload["may_archive"] = self._may_archive(session)
+        payload["may_delete"] = self._role() == FF
+        payload["delete_refusal"] = session_admin.delete_refusal(session)
+        payload["reset_refusal"] = session_admin.reset_refusal(session)
+        return payload
+
+    def _session_audit(self, verb, session_id, payload):
+        AuditEvent.all_objects.create(
+            tenant=self.request.tenant, actor=self.request.user, verb=verb,
+            target_type="strategy_session", target_id=session_id, payload=payload)
+
+    @action(detail=True, methods=["post"])
+    def archive(self, request, pk=None):
+        session = self.load(pk)
+        if not self._may_archive(session):
+            return Response({"detail": "Only the founder fractional, or the fractional "
+                                       "who owns this session, may archive it."},
+                            status=403)
+        session_admin.archive(session)
+        self._session_audit("strategy.session_archived", session.pk,
+                            {"state": session.state})
+        return Response(self._managed(strategy_serializers.represent_session(session),
+                                      session))
+
+    @action(detail=True, methods=["post"])
+    def unarchive(self, request, pk=None):
+        session = self.load(pk)
+        if not self._may_archive(session):
+            return Response({"detail": "Only the founder fractional, or the fractional "
+                                       "who owns this session, may restore it."},
+                            status=403)
+        session_admin.unarchive(session)
+        self._session_audit("strategy.session_unarchived", session.pk,
+                            {"state": session.state})
+        return Response(self._managed(strategy_serializers.represent_session(session),
+                                      session))
+
+    def destroy(self, request, pk=None):
+        session = self.load(pk)
+        if self._role() != FF:
+            return Response({"detail": "Only the founder fractional may delete a "
+                                       "session."}, status=403)
+        session_id = session.pk
+        try:
+            record = session_admin.delete(session)
+        except services.SessionError as exc:
+            self._session_audit("strategy.session_delete_refused", session_id,
+                                {"reason": str(exc)})
+            return Response({"detail": str(exc)}, status=exc.status)
+        self._session_audit("strategy.session_deleted", session_id, record)
+        return Response(status=204)
+
+    @action(detail=True, methods=["post"], url_path="reset-questions")
+    def reset_questions(self, request, pk=None):
+        """Re-snapshot a draft nobody has been asked yet. Audited either way:
+        a refusal here is someone trying to change what a person was asked."""
+        session = self.load(pk)
+        if (refused := self._fractional_only("reset a session's questions")) is not None:
+            return refused
+        template = None
+        if request.data.get("template"):
+            template = StrategyTemplate.objects.filter(pk=request.data["template"]).first()
+            if template is None:
+                return Response({"detail": "That template is not in this practice."},
+                                status=404)
+        else:
+            template = template_admin.default_template()
+        if template is None:
+            return Response({"detail": "Choose a template."}, status=400)
+        was = (session.template_snapshot.get("template") or {}).get("name", "")
+        try:
+            session_admin.reset_questions(session, template)
+        except services.SessionError as exc:
+            self._session_audit("strategy.session_questions_reset_refused", session.pk,
+                                {"template": str(template.pk), "reason": str(exc)})
+            return Response({"detail": str(exc)}, status=exc.status)
+        self._session_audit("strategy.session_questions_reset", session.pk,
+                            {"was": was, "now": template.name,
+                             "template": str(template.pk)})
+        return Response(self._managed(strategy_serializers.represent_session(
+            session, include_financial=_may_see_financial(request), full=True,
+            include_prep=_may_see_financial(request)), session))
 
     def create(self, request):
         """Matrix 10.2 — a VA may set a session up; only the call itself is
@@ -548,12 +647,11 @@ class MapRowViewSet(StrategyViewSet):
         return Response({"ok": True})
 
 
-# Matrix 10.1 / FR-4.2 — what Beta's editor may change, and no more. Reordering,
-# adding and deleting questions, and the flags that carry privacy
-# (`is_financial`, `has_fractional_note`) are V1's, with the multi-discipline
-# work: Beta has one template, seeded correctly, and the risk of a half-built
-# editor rewriting it is worse than the inconvenience of an API call.
-EDITABLE_QUESTION_FIELDS = ("prompt", "ask_when", "must_ask")
+# Matrix 10.1 / FR-4.2 — what an existing question's row may have changed in
+# place. Adding, removing (archiving) and reordering have their own actions
+# (owner, 2026-09-26); the privacy flags (`is_financial`, `has_fractional_note`)
+# are set when a question is added, not flipped on one that has been asked.
+EDITABLE_QUESTION_FIELDS = ("prompt", "ask_when", "must_ask", "ask_if_time")
 
 
 class PrepQuestionViewSet(StrategyViewSet):
@@ -716,10 +814,60 @@ class TemplateViewSet(StrategyViewSet):
             return Response({"detail": "Only the founder fractional may manage the "
                                        "templates."}, status=403)
         name = request.data.get("name") or "Operations — generic"
-        return self._run(lambda: template_admin.restore_from_seed(request.tenant,
-                                                                  name=name),
+        variant = request.data.get("variant") or ""
+        return self._run(lambda: template_admin.restore_from_seed(
+                             request.tenant, name=name, variant=variant),
                          "strategy.template_restored_from_seed", None,
-                         {"source": "docs/strategy_session_seed.md"}, status=201)
+                         {"source": "docs/strategy_session_seed.md",
+                          "variant": variant}, status=201)
+
+    @action(detail=True, methods=["post"])
+    def questions(self, request, pk=None):
+        """Add a question. The rewording guard applies, as to any wording."""
+        template, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        data = request.data
+        fields = {f: data[f] for f in template_admin.QUESTION_FLAGS if f in data}
+        try:
+            question = template_admin.add_question(
+                template, section=data.get("section"), prompt=data.get("prompt"),
+                response_schema=data.get("response_schema") or "free_text",
+                ask_when=data.get("ask_when") or "live", area=data.get("area") or "",
+                **fields)
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        self._audit("strategy.template_question_added", template,
+                    {"key": question.key, "section": data.get("section")})
+        return Response(represent_template(template), status=201)
+
+    @action(detail=True, methods=["post"], url_path="remove-question")
+    def remove_question(self, request, pk=None):
+        template, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        try:
+            question = template_admin.remove_question(template,
+                                                      key=request.data.get("key"))
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        self._audit("strategy.template_question_removed", template,
+                    {"key": question.key, "prompt": question.prompt})
+        return Response(represent_template(template))
+
+    @action(detail=True, methods=["post"])
+    def reorder(self, request, pk=None):
+        template, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        try:
+            keys = template_admin.reorder(template, section=request.data.get("section"),
+                                          keys=request.data.get("keys"))
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        self._audit("strategy.template_reordered", template,
+                    {"section": request.data.get("section"), "keys": keys})
+        return Response(represent_template(template))
 
     @action(detail=True, methods=["post"], url_path="set-default")
     def set_default(self, request, pk=None):
@@ -762,6 +910,19 @@ class TemplateViewSet(StrategyViewSet):
             if template.name != was:
                 self._audit("strategy.template_renamed", template,
                             {"was": was, "now": template.name})
+        budgets = {}
+        for edit in request.data.get("sections") or []:
+            if "time_budget_minutes" not in edit:
+                continue
+            try:
+                section = template_admin.set_budget(
+                    template, section=edit.get("code"),
+                    minutes=edit["time_budget_minutes"])
+            except services.SessionError as exc:
+                return Response({"detail": str(exc)}, status=exc.status)
+            budgets[section.code] = section.time_budget_minutes
+        if budgets:
+            self._audit("strategy.template_budgets_edited", template, {"budgets": budgets})
         changed = []
         for edit in request.data.get("questions") or []:
             question = StrategyQuestion.objects.filter(

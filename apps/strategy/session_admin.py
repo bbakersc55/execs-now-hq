@@ -1,0 +1,105 @@
+"""Managing sessions themselves (owner, 2026-09-26): reset the questions while
+nobody has been asked them, archive and restore, and — rarely — delete.
+
+**The snapshot records what a real person was asked.** That is why a session's
+questions can be reset only while it is a draft that has reached nobody: no
+invite, no questions email, no answer from the prospect. After that the
+answer is a new session from the template, never a rewritten old one.
+"""
+
+from __future__ import annotations
+
+from django.db import transaction
+from django.utils import timezone
+
+from apps.strategy import services
+from apps.strategy.models import StrategyAnswer, StrategyMapRow, StrategySession
+from apps.strategy.services import SessionError
+
+WHY_FIXED = ("The questions on a session are a record of what a real person was "
+             "asked, so they are fixed once it has reached anyone.")
+
+
+def reset_refusal(session: StrategySession) -> str:
+    """Why this session's questions cannot be reset — or "" when they can."""
+    if session.archived_at is not None:
+        return "This session is archived. Restore it first."
+    if session.state != StrategySession.State.DRAFT:
+        return (f"{WHY_FIXED} This one is "
+                f"“{StrategySession.State(session.state).label.lower()}”.")
+    if session.precall_token_hash or session.precall_questions_sent_at:
+        return f"{WHY_FIXED} The pre-call questions have already gone to the prospect."
+    if StrategyAnswer.objects.filter(
+            session=session, answered_by=StrategyAnswer.AnsweredBy.PROSPECT).exists():
+        return f"{WHY_FIXED} The prospect has already answered some of them."
+    return ""
+
+
+@transaction.atomic
+def reset_questions(session: StrategySession, template) -> StrategySession:
+    """Re-snapshot from `template`. Refused unless `reset_refusal` is empty."""
+    refusal = reset_refusal(session)
+    if refusal:
+        raise SessionError(refusal, status=409)
+    if template.archived_at is not None:
+        raise SessionError(f"“{template.name}” is archived. Restore it, or choose "
+                           f"another template.", status=409)
+    session.template = template
+    session.template_snapshot = services.snapshot_of(template)
+    session.current_section = ""
+    session.current_section_at = None
+    session.save(update_fields=["template", "template_snapshot", "current_section",
+                                "current_section_at", "updated_at"])
+    return session
+
+
+def archive(session: StrategySession) -> StrategySession:
+    session.archived_at = session.archived_at or timezone.now()
+    session.save(update_fields=["archived_at", "updated_at"])
+    return session
+
+
+def unarchive(session: StrategySession) -> StrategySession:
+    session.archived_at = None
+    session.save(update_fields=["archived_at", "updated_at"])
+    return session
+
+
+def delete_refusal(session: StrategySession) -> str:
+    if session.archived_at is None:
+        return "Archive the session first. Permanent delete is only from Archived."
+    if (session.state == StrategySession.State.CONVERTED or session.converted_at
+            or _linked_work(session)):
+        return ("This session was converted to work, and its goals, projects and "
+                "tasks link back to its strategy map. It can be archived, not deleted.")
+    return ""
+
+
+def _linked_work(session) -> bool:
+    from apps.crm.models import Task
+    from apps.work.models import Goal, Project
+
+    rows = StrategyMapRow.objects.filter(session=session).values("pk")
+    return (Goal.objects.filter(source_map_row__in=rows).exists()
+            or Project.objects.filter(source_map_row__in=rows).exists()
+            or Task.objects.filter(source_map_row__in=rows).exists())
+
+
+@transaction.atomic
+def delete(session: StrategySession) -> dict:
+    """Gone, with its answers, map, prep and notes. Returns what the audit
+    event keeps of it, because afterwards that is all there is."""
+    refusal = delete_refusal(session)
+    if refusal:
+        raise SessionError(refusal, status=409)
+    record = {
+        "contact": services._contact_name(session.contact),
+        "company": session.company.name if session.company_id else "",
+        "state": session.state,
+        "template": (session.template_snapshot.get("template") or {}).get("name", ""),
+        "created_at": session.created_at.isoformat(),
+        "answers": StrategyAnswer.objects.filter(session=session).count(),
+        "map_rows": StrategyMapRow.objects.filter(session=session).count(),
+    }
+    session.delete()
+    return record

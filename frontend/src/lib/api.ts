@@ -648,6 +648,8 @@ export interface StrategyQuestion {
   is_fractional_observation: boolean;
   has_fractional_note: boolean;
   is_financial: boolean;
+  /** Asked only if the call has time — a muted tag in the live view. */
+  ask_if_time?: boolean;
   position: number;
 }
 
@@ -728,6 +730,13 @@ export interface StrategySessionRow {
     | "converted" | "lost";
   /** What it was started from, as its snapshot records it. */
   template: { id: string | null; name: string };
+  /** Session management (owner, 2026-09-26), said by the server so the screen
+   *  never offers what the API would refuse. "" means allowed. */
+  archived_at?: string | null;
+  may_archive?: boolean;
+  may_delete?: boolean;
+  delete_refusal?: string;
+  reset_refusal?: string;
   contact: Person | null;
   company: { id: string; name: string } | null;
   visionary: Person | null;

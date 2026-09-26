@@ -5,7 +5,8 @@ import { useSearchParams } from "react-router-dom";
 import { Banner, Card, Field, Pill } from "../components/ui";
 import { Me, StrategySessionRow, StrategyTemplateRow as Template, api } from "../lib/api";
 
-type Edit = { prompt?: string; ask_when?: "precall" | "live"; must_ask?: boolean };
+type Edit = { prompt?: string; ask_when?: "precall" | "live"; must_ask?: boolean;
+              ask_if_time?: boolean };
 
 /** What each shape is, in the words a person uses for it. */
 const SCHEMA_LABELS: Record<string, string> = {
@@ -73,16 +74,30 @@ export function SessionTemplate({ me }: { me: Me }) {
   const all = templates.data ?? [];
   const template = all.find((t) => t.id === pickedId)
     ?? all.find((t) => t.is_default) ?? all[0];
+  // Section time budgets, saved with the wording (owner, 2026-09-26).
+  const [budgets, setBudgets] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: (id: string) => api.patch<{ changed: string[] }>(
       `/api/strategy-templates/${id}/`,
-      { questions: Object.entries(edits).map(([key, edit]) => ({ key, ...edit })) }),
+      { questions: Object.entries(edits).map(([key, edit]) => ({ key, ...edit })),
+        sections: Object.entries(budgets).map(([code, minutes]) => ({
+          code, time_budget_minutes: minutes === "" ? null : Number(minutes) })) }),
     onSuccess: (result) => {
-      setNote(`Saved ${result.changed.length} question${result.changed.length === 1 ? "" : "s"}. `
-        + "Sessions already under way are untouched.");
+      const budgetCount = Object.keys(budgets).length;
+      setNote(`Saved ${result.changed.length} question${result.changed.length === 1 ? "" : "s"}`
+        + (budgetCount ? ` and ${budgetCount} time budget${budgetCount === 1 ? "" : "s"}` : "")
+        + ". Sessions already under way are untouched.");
       setEdits({});
+      setBudgets({});
       qc.invalidateQueries({ queryKey: ["strategy-templates"] });
     },
+    onError: (e: Error) => setNote(e.message),
+  });
+  // Add, remove, reorder: each its own call, each immediate and audited.
+  const shape = useMutation({
+    mutationFn: ({ suffix, body }: { suffix: string; body: object }) =>
+      api.post<Template>(`/api/strategy-templates/${template!.id}/${suffix}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["strategy-templates"] }),
     onError: (e: Error) => setNote(e.message),
   });
 
@@ -94,7 +109,7 @@ export function SessionTemplate({ me }: { me: Me }) {
       </Banner>
     );
   }
-  const pending = Object.keys(edits).length;
+  const pending = Object.keys(edits).length + Object.keys(budgets).length;
   const refresh = (picked?: Template, message?: string) => {
     if (picked) setPickedId(picked.id);
     if (message) setNote(message);
@@ -111,7 +126,7 @@ export function SessionTemplate({ me }: { me: Me }) {
             <div className="row">
               <Field label="Template">
                 <select aria-label="Template" value={template.id} disabled={pending > 0}
-                  onChange={(e) => { setPickedId(e.target.value); setEdits({}); }}>
+                  onChange={(e) => { setPickedId(e.target.value); setEdits({}); setBudgets({}); }}>
                   {all.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}{t.is_default ? " — practice default" : ""}
@@ -132,17 +147,19 @@ export function SessionTemplate({ me }: { me: Me }) {
               from it
             </p>
             <p className="small muted">
-              You can change the wording, move a question between the pre-call form
-              and the call, and set whether it is a must-ask. A session already
-              under way keeps the questions it started with — it renders from its own
-              copy, so nothing here can move under you mid-call.
+              Change the wording, move a question between the pre-call form and the
+              call, mark it must-ask or ask-if-time, add, remove and reorder, and set
+              each section's time. A session already under way keeps the questions
+              it started with — it renders from its own copy, so nothing here can
+              move under you mid-call.
             </p>
             <button className="primary" disabled={!pending || save.isPending}
               onClick={() => save.mutate(template.id)}>
               Save {pending || ""} change{pending === 1 ? "" : "s"}
             </button>
             {pending > 0 && (
-              <button className="ghost" onClick={() => setEdits({})}>Discard</button>
+              <button className="ghost" onClick={() => { setEdits({}); setBudgets({}); }}>
+                Discard</button>
             )}
           </Card>
 
@@ -150,17 +167,35 @@ export function SessionTemplate({ me }: { me: Me }) {
 
           {template.sections.map((section) => (
             <Card key={section.code} title={section.title}
-              actions={section.time_budget_minutes
-                ? <Pill>{section.time_budget_minutes} min</Pill> : undefined}>
+              actions={
+                <label className="small inline">
+                  <input type="number" min={0} max={240} style={{ width: "4.5rem" }}
+                    aria-label={`Minutes for ${section.title}`}
+                    value={budgets[section.code]
+                      ?? (section.time_budget_minutes === null ? ""
+                        : String(section.time_budget_minutes))}
+                    onChange={(e) => setBudgets({ ...budgets,
+                                                  [section.code]: e.target.value })} />
+                  {" "}min
+                </label>
+              }>
               {section.questions.length === 0 && (
                 <p className="small muted">
                   No questions here — this section's content lives on the session itself.
                 </p>
               )}
-              {section.questions.map((question) => {
+              {section.questions.map((question, index) => {
                 const edit = edits[question.key] ?? {};
                 const askWhen = edit.ask_when ?? question.ask_when;
                 const mustAsk = edit.must_ask ?? question.must_ask;
+                const ifTime = edit.ask_if_time ?? !!question.ask_if_time;
+                const keys = section.questions.map((q) => q.key);
+                const move = (to: number) => {
+                  const next = keys.filter((k) => k !== question.key);
+                  next.splice(to, 0, question.key);
+                  shape.mutate({ suffix: "reorder/",
+                                 body: { section: section.code, keys: next } });
+                };
                 return (
                   <div key={question.key} className="field" style={{ marginBottom: "1rem" }}>
                     <label htmlFor={`prompt-${question.key}`}>
@@ -201,10 +236,38 @@ export function SessionTemplate({ me }: { me: Me }) {
                             ...edit, must_ask: e.target.checked } })} />
                         Must ask
                       </label>
+                      <label className="small"
+                        style={{ display: "inline-flex", gap: ".4rem" }}>
+                        <input type="checkbox" style={{ width: "auto" }} checked={ifTime}
+                          aria-label={`Ask ${question.key} only if time`}
+                          onChange={(e) => setEdits({ ...edits, [question.key]: {
+                            ...edit, ask_if_time: e.target.checked } })} />
+                        If time
+                      </label>
+                      <button className="ghost small" disabled={index === 0 || shape.isPending}
+                        aria-label={`Move ${question.key} up`}
+                        onClick={() => move(index - 1)}>↑</button>
+                      <button className="ghost small"
+                        disabled={index === keys.length - 1 || shape.isPending}
+                        aria-label={`Move ${question.key} down`}
+                        onClick={() => move(index + 1)}>↓</button>
+                      <button className="ghost small" disabled={shape.isPending}
+                        aria-label={`Remove ${question.key}`}
+                        onClick={() => {
+                          if (!confirm("Remove this question from the template? It is "
+                            + "archived, not deleted: sessions that asked it keep it.")) return;
+                          shape.mutate({ suffix: "remove-question/",
+                                         body: { key: question.key } });
+                        }}>Remove</button>
                     </div>
                   </div>
                 );
               })}
+              <AddQuestion section={section.code} title={section.title}
+                busy={shape.isPending}
+                onAdd={(body, added) => shape.mutate(
+                  { suffix: "questions/", body: { section: section.code, ...body } },
+                  { onSuccess: added })} />
             </Card>
           ))}
         </>
@@ -222,6 +285,7 @@ function Manage({ template, onDone }: {
   const [name, setName] = useState(template.name);
   const [copyName, setCopyName] = useState("");
   const [seedName, setSeedName] = useState("Operations — generic");
+  const [variant, setVariant] = useState("");
   const [error, setError] = useState("");
   useEffect(() => { setName(template.name); setError(""); }, [template.id, template.name]);
 
@@ -302,13 +366,88 @@ function Manage({ template, onDone }: {
           <input aria-label="Name for the template from the seed" value={seedName}
             onChange={(e) => setSeedName(e.target.value)} />
         </Field>
+        <Field label="Cut">
+          <select aria-label="Which cut of the seed" value={variant}
+            onChange={(e) => {
+              setVariant(e.target.value);
+              setSeedName(e.target.value === "sixty" ? "60-minute Operations"
+                : "Operations — generic");
+            }}>
+            <option value="">The full seed (about 75 minutes)</option>
+            <option value="sixty">60 minutes — ★ kept, the rest if time</option>
+          </select>
+        </Field>
         <button disabled={run.isPending || !seedName.trim()}
           onClick={() => act("/api/strategy-templates/restore-from-seed/",
             (t) => `Made “${t.name}” from the seed. You are editing it now.`,
-            { name: seedName.trim() })}>
+            { name: seedName.trim(), variant })}>
           Restore from seed
         </button>
       </div>
     </Card>
+  );
+}
+
+const SCHEMAS = Object.keys(SCHEMA_LABELS);
+
+/** A new question in one section. The server holds it to the same rewording
+ *  guard as any wording — a new rating is a lead-in to a number. */
+function AddQuestion({ section, title, busy, onAdd }: {
+  section: string; title: string; busy: boolean;
+  /** `added` runs only once the server has accepted it: a refused wording
+   *  stays in the box to be fixed. */
+  onAdd: (body: Record<string, unknown>, added: () => void) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const blank = { prompt: "", response_schema: "free_text", ask_when: "live", area: "",
+                  must_ask: false, is_financial: false, has_fractional_note: false,
+                  ask_if_time: false };
+  const [form, setForm] = useState(blank);
+  if (!open) {
+    return <button className="ghost small" onClick={() => setOpen(true)}>
+      Add a question to {title}</button>;
+  }
+  const flag = (name: keyof typeof blank, label: string) => (
+    <label className="small" style={{ display: "inline-flex", gap: ".4rem" }}>
+      <input type="checkbox" style={{ width: "auto" }} checked={!!form[name]}
+        aria-label={`${label} (new question in ${section})`}
+        onChange={(e) => setForm({ ...form, [name]: e.target.checked })} />
+      {label}
+    </label>
+  );
+  return (
+    <div className="card">
+      <Field label="Wording">
+        <textarea rows={2} aria-label={`Wording of the new question in ${section}`}
+          value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} />
+      </Field>
+      <div className="row">
+        <select aria-label={`Kind of answer (new question in ${section})`}
+          value={form.response_schema}
+          onChange={(e) => setForm({ ...form, response_schema: e.target.value })}>
+          {SCHEMAS.map((k) => <option key={k} value={k}>{SCHEMA_LABELS[k]}</option>)}
+        </select>
+        <select aria-label={`When to ask (new question in ${section})`} value={form.ask_when}
+          onChange={(e) => setForm({ ...form, ask_when: e.target.value })}>
+          <option value="precall">On the pre-call form</option>
+          <option value="live">In the call</option>
+        </select>
+        <input aria-label={`Area (new question in ${section})`} placeholder="Area (optional)"
+          value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} />
+      </div>
+      <div className="row">
+        {flag("must_ask", "Must ask")}
+        {flag("ask_if_time", "If time")}
+        {flag("has_fractional_note", "Fractional note")}
+        {flag("is_financial", "Financial")}
+      </div>
+      <div className="row">
+        <button className="primary" disabled={busy || !form.prompt.trim()}
+          onClick={() => onAdd(form, () => { setForm(blank); setOpen(false); })}>
+          Add the question</button>
+        <button className="ghost" onClick={() => { setForm(blank); setOpen(false); }}>
+          Cancel</button>
+      </div>
+    </div>
   );
 }

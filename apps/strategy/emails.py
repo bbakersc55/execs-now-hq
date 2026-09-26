@@ -184,6 +184,10 @@ def question_blocks(session):
                                                    ask_when="precall"):
         if question.get("is_fractional_observation") or question.get("is_financial"):
             continue
+        # Asked only if the call has time (owner, 2026-09-26): not something to
+        # send a prospect ahead of it.
+        if question.get("ask_if_time"):
+            continue
         if not blocks or blocks[-1]["code"] != section["code"]:
             blocks.append({"code": section["code"], "title": section["title"],
                            "questions": [], "is_rating": False})

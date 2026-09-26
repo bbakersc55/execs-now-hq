@@ -134,6 +134,10 @@ class StrategyQuestion(TenantScopedModel):
     is_fractional_observation = models.BooleanField(default=False)   # FR-4.17
     has_fractional_note = models.BooleanField(default=False)
     is_financial = models.BooleanField(default=False)                # AC-4.13
+    #: Asked only if the call has time (owner, 2026-09-26) — the 60-minute
+    #: template's unstarred diagnostic questions. A muted "if time" tag in the
+    #: live view, and left out of the pre-call email.
+    ask_if_time = models.BooleanField(default=False)
     position = models.PositiveSmallIntegerField(default=0)
     # Questions are never hard-deleted: a reused key would change what a past
     # answer appears to answer.
@@ -221,6 +225,9 @@ class StrategySession(TenantScopedModel):
     # re-fire on every save once an area was full.
     drafted_areas = models.JSONField(default=list, blank=True)
     converted_at = models.DateTimeField(null=True, blank=True)
+    #: Out of the list, in any state, and restorable. Permanent delete is
+    #: only from here, by the FF, and never for a converted session.
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "strategy_session"

@@ -226,22 +226,49 @@ def seed_tenant(tenant, *, apps=None):
 
 
 
-def create_from_seed(tenant, *, name):
+#: The 60-minute cut (owner, 2026-09-26): the seed's 10/25/5/15/5/10 run as
+#: 10/20/5/10/5/10, in the flow's order — where they are going, diagnostic,
+#: mirror, map, two paths, what they value.
+SIXTY_MINUTE_BUDGETS = {
+    "where_they_want_to_go": 10, "diagnostic": 20, "mirror": 5,
+    "strategy_map": 10, "two_paths": 5, "what_they_value": 10,
+}
+#: What they value, trimmed to three. The other two are archived rather than
+#: left out, so their keys stay spent in this template as in every other.
+SIXTY_MINUTE_DROPPED = ("s7_value_4", "s7_value_5")
+SIXTY_MINUTE = "sixty"
+
+
+def create_from_seed(tenant, *, name, variant=""):
     """A **new** template, exactly as `strategy_session_seed.md` ships it.
 
     Never overwrites: this is "Restore from seed", and a template somebody has
     been editing is theirs. The caller has already checked the name is free.
+
+    `variant="sixty"` is the 60-minute Operations cut: budgets from
+    `SIXTY_MINUTE_BUDGETS`, all seven ★ kept, every unstarred diagnostic
+    question (seven) marked ask-if-time, and What they value trimmed to three.
     """
+    from django.utils import timezone
+
     from apps.strategy.models import StrategyQuestion, StrategySection, StrategyTemplate
 
+    sixty = variant == SIXTY_MINUTE
     template = StrategyTemplate.objects.create(
         tenant=tenant, name=name, version=1, discipline=DISCIPLINE, is_default=False)
     for position, (code, title, budget, questions) in enumerate(SECTIONS):
+        if sixty:
+            budget = SIXTY_MINUTE_BUDGETS.get(code, budget)
         section = StrategySection.objects.create(
             tenant=tenant, template=template, code=code, title=title,
             position=position, time_budget_minutes=budget)
         for q_position, question in enumerate(questions):
+            fields = {k: v for k, v in question.items() if k != "key"}
+            if sixty and code == "diagnostic" and not question["must_ask"]:
+                fields["ask_if_time"] = True
+            if sixty and question["key"] in SIXTY_MINUTE_DROPPED:
+                fields["deleted_at"] = timezone.now()
             StrategyQuestion.objects.create(
                 tenant=tenant, template=template, section=section, key=question["key"],
-                position=q_position, **{k: v for k, v in question.items() if k != "key"})
+                position=q_position, **fields)
     return template

@@ -18,8 +18,12 @@ from __future__ import annotations
 from django.db import transaction
 from django.utils import timezone
 
-from apps.strategy import seed
-from apps.strategy.models import StrategyQuestion, StrategySection, StrategyTemplate
+import uuid
+
+from apps.strategy import rewording, seed
+from apps.strategy.models import (
+    AskWhen, ResponseSchema, StrategyQuestion, StrategySection, StrategyTemplate,
+)
 from apps.strategy.services import SessionError
 
 
@@ -74,12 +78,15 @@ def duplicate(source: StrategyTemplate, *, name) -> StrategyTemplate:
 
 
 @transaction.atomic
-def restore_from_seed(tenant, *, name) -> StrategyTemplate:
+def restore_from_seed(tenant, *, name, variant="") -> StrategyTemplate:
     """The Operations template exactly as `strategy_session_seed.md` ships it,
-    as a new template. Never overwrites."""
+    as a new template. Never overwrites. `variant="sixty"` is the 60-minute
+    cut (`seed.create_from_seed`)."""
+    if variant not in ("", seed.SIXTY_MINUTE):
+        raise SessionError("variant is '' or 'sixty'.")
     name = _clean_name(name)
     _name_free(name)
-    return seed.create_from_seed(tenant, name=name)
+    return seed.create_from_seed(tenant, name=name, variant=variant)
 
 
 def rename(template: StrategyTemplate, *, name) -> StrategyTemplate:
@@ -117,3 +124,102 @@ def unarchive(template: StrategyTemplate) -> StrategyTemplate:
     template.archived_at = None
     template.save(update_fields=["archived_at", "updated_at"])
     return template
+
+
+# ------------------------------------------------ questions and sections
+#
+# Adding, removing and reordering (owner, 2026-09-26). None of it can reach a
+# session: each renders from the snapshot it took at start.
+
+QUESTION_FLAGS = ("must_ask", "is_financial", "has_fractional_note", "ask_if_time")
+
+
+def _section(template, code) -> StrategySection:
+    section = StrategySection.objects.filter(template=template, code=code).first()
+    if section is None:
+        raise SessionError("That section is not in this template.", status=404)
+    return section
+
+
+def _new_key(template, section) -> str:
+    """Never reused: checked against every key the template has ever had,
+    archived ones included, because a historical answer resolves by key."""
+    while True:
+        key = f"{section.code[:40]}_{uuid.uuid4().hex[:8]}"
+        if not StrategyQuestion.objects.filter(template=template, key=key).exists():
+            return key
+
+
+@transaction.atomic
+def add_question(template, *, section, prompt, response_schema=ResponseSchema.FREE_TEXT,
+                 ask_when=AskWhen.LIVE, area="", **flags) -> StrategyQuestion:
+    section = _section(template, section)
+    prompt = (prompt or "").strip()
+    if not prompt:
+        raise SessionError("A question needs a prompt.")
+    if response_schema not in ResponseSchema.values:
+        raise SessionError(f"response_schema is one of {', '.join(ResponseSchema.values)}.")
+    if ask_when not in AskWhen.values:
+        raise SessionError("ask_when is 'precall' or 'live'.")
+    unknown = set(flags) - set(QUESTION_FLAGS)
+    if unknown:
+        raise SessionError(f"Unknown flag: {', '.join(sorted(unknown))}.")
+    key = _new_key(template, section)
+    # The same rule a rewording is held to: a new rating is a lead-in to a
+    # number, not an essay question (incident, 2026-09-22).
+    refusal = rewording.refusal(key, response_schema, prompt)
+    if refusal:
+        raise SessionError(refusal)
+    last = (StrategyQuestion.objects.filter(section=section, deleted_at__isnull=True)
+            .order_by("-position").values_list("position", flat=True).first())
+    return StrategyQuestion.objects.create(
+        tenant=template.tenant, template=template, section=section, key=key,
+        prompt=prompt, response_schema=response_schema, ask_when=ask_when,
+        area=(area or "").strip()[:80], position=(last + 1) if last is not None else 0,
+        **{flag: bool(value) for flag, value in flags.items()})
+
+
+def remove_question(template, *, key) -> StrategyQuestion:
+    """Archived, never deleted: the key stays spent, and every snapshot that
+    asked it still does."""
+    question = StrategyQuestion.objects.filter(template=template, key=key,
+                                               deleted_at__isnull=True).first()
+    if question is None:
+        raise SessionError("That question is not in this template.", status=404)
+    question.deleted_at = timezone.now()
+    question.save(update_fields=["deleted_at", "updated_at"])
+    return question
+
+
+@transaction.atomic
+def reorder(template, *, section, keys) -> list[str]:
+    """Within one section. The list has to name every live question in it,
+    once — a partial list would leave the rest in an order nobody chose."""
+    section = _section(template, section)
+    live = list(StrategyQuestion.objects.filter(section=section, deleted_at__isnull=True))
+    if sorted(keys or []) != sorted(q.key for q in live):
+        raise SessionError("Send every question in the section, once each, in the "
+                           "order you want.")
+    by_key = {q.key: q for q in live}
+    for position, key in enumerate(keys):
+        question = by_key[key]
+        if question.position != position:
+            question.position = position
+            question.save(update_fields=["position", "updated_at"])
+    return list(keys)
+
+
+def set_budget(template, *, section, minutes) -> StrategySection:
+    section = _section(template, section)
+    if minutes in ("", None):
+        minutes = None
+    else:
+        try:
+            minutes = int(minutes)
+        except (TypeError, ValueError):
+            raise SessionError("A time budget is a whole number of minutes.") from None
+        if not 0 <= minutes <= 240:
+            raise SessionError("A time budget is between 0 and 240 minutes.")
+    section.time_budget_minutes = minutes
+    section.save(update_fields=["time_budget_minutes", "updated_at"])
+    return section
