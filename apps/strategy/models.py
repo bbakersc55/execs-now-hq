@@ -75,6 +75,10 @@ class StrategyTemplate(TenantScopedModel):
     discipline = models.CharField(max_length=40, default="operations")
     version = models.PositiveSmallIntegerField(default=1)
     is_default = models.BooleanField(default=False)
+    #: Retired from the picker, never deleted: a session's `template` link and
+    #: its snapshot's provenance both still name it. The default cannot be
+    #: archived — another has to take its place first.
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "strategy_template"

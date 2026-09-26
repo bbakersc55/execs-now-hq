@@ -3,7 +3,9 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { Contact, Me, StrategySessionRow, api } from "../lib/api";
+import {
+  Contact, Me, StrategySessionRow, StrategyTemplateRow, activeTemplates, api,
+} from "../lib/api";
 
 const STATE_LABEL: Record<string, string> = {
   draft: "Draft", precall_sent: "Form sent", precall_complete: "Form complete",
@@ -61,6 +63,15 @@ function NewSession({ onDone }: { onDone: (message: string) => void }) {
   const [term, setTerm] = useState("");
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
   const [scheduledAt, setScheduledAt] = useState("");
+  // The template picker (owner, 2026-09-26): the practice default unless
+  // somebody chooses otherwise. Archived ones are not offered.
+  const templates = useQuery<StrategyTemplateRow[]>({
+    queryKey: ["strategy-templates"],
+    queryFn: () => api.get<StrategyTemplateRow[]>("/api/strategy-templates/"),
+  });
+  const offered = activeTemplates(templates.data);
+  const [templateId, setTemplateId] = useState("");
+  const chosenTemplate = offered.find((t) => t.id === templateId) ?? offered[0];
 
   const found = useQuery<{ contacts: Contact[] }>({
     queryKey: ["contact-search", term],
@@ -71,10 +82,12 @@ function NewSession({ onDone }: { onDone: (message: string) => void }) {
   const start = useMutation({
     mutationFn: () => api.post<StrategySessionRow>("/api/strategy-sessions/", {
       contact: picked?.id,
+      template: chosenTemplate?.id ?? null,
       scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
     }),
     onSuccess: (session) => {
-      onDone(`Session started for ${session.contact?.name ?? "the prospect"}.`);
+      onDone(`Session started for ${session.contact?.name ?? "the prospect"}, `
+        + `from “${session.template.name}”.`);
       setPicked(null); setTerm(""); setScheduledAt("");
     },
   });
@@ -86,6 +99,16 @@ function NewSession({ onDone }: { onDone: (message: string) => void }) {
           <input aria-label="Find a prospect" value={picked ? picked.name : term}
             placeholder="Name or company"
             onChange={(e) => { setPicked(null); setTerm(e.target.value); }} />
+        </Field>
+        <Field label="Template">
+          <select aria-label="Template" value={chosenTemplate?.id ?? ""}
+            onChange={(e) => setTemplateId(e.target.value)}>
+            {offered.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}{t.is_default ? " (practice default)" : ""}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="When (optional)">
           <input aria-label="When" type="datetime-local" value={scheduledAt}

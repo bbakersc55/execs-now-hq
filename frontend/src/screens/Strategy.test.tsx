@@ -1,4 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,9 +10,23 @@ import { mockApi, renderRoute } from "../test/render";
 import { PreCallForm as PreCall } from "./PreCallForm";
 import { SessionDetail } from "./SessionDetail";
 import { SessionTemplate } from "./SessionTemplate";
+import { Sessions } from "./Sessions";
 
 const TOKEN = "a-public-token";
 const SESSION_ID = "11111111-2222-4333-8444-555555555555";
+
+const TEMPLATES = [{
+  id: "t1", name: "Operations — strategy session", discipline: "operations", version: 1,
+  is_default: true, archived_at: null as string | null, sessions: 1,
+  sections: [{ code: "diagnostic", title: "Diagnostic", position: 3,
+               time_budget_minutes: 25, questions: [
+    { key: "s4_done_right", prompt: "How do you know a site was done right?",
+      prompt_template: "How do you know a site was done right?", ask_when: "live" as const,
+      must_ask: true, area: "Operations & quality",
+      response_schema: "diagnostic_triple" as const, is_fractional_observation: false,
+      has_fractional_note: true, is_financial: false, position: 0 },
+  ]}],
+}];
 
 function aForm(overrides: Partial<PreCallForm> = {}): PreCallForm {
   return {
@@ -38,6 +54,7 @@ function aForm(overrides: Partial<PreCallForm> = {}): PreCallForm {
 function aSession(overrides: Partial<StrategySessionRow> = {}): StrategySessionRow {
   return {
     id: SESSION_ID, state: "in_call",
+    template: { id: "t1", name: "Operations — strategy session" },
     contact: { id: "c1", name: "Dana Reyes" },
     company: { id: "co1", name: "Acme Facilities" },
     visionary: null, integrator: null, owner: "Bryan Baker",
@@ -710,6 +727,53 @@ describe("session prep", () => {
     });
   });
 
+  it("asks which template when there is more than one, this session's first",
+     async () => {
+    const user = userEvent.setup();
+    const templates = [
+      { ...TEMPLATES[0], id: "t-default", name: "Operations — generic", is_default: true },
+      { ...TEMPLATES[0], id: "t1", name: "Grime Fighters (Brett Murray)",
+        is_default: false },
+    ];
+    const fetchMock = mockApi({
+      [`PATCH /api/strategy-sessions/${SESSION_ID}/prep-rewordings/`]: PREP,
+      "GET /api/strategy-templates/": templates,
+      [`GET /api/strategy-sessions/${SESSION_ID}/conversion-preview/`]: { rows: [] },
+      "GET /api/strategy-sessions/": aSession({ prep: PREP }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function Landed() {
+      const location = useLocation();
+      return <p>landed {location.search}</p>;
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[`/strategy/${SESSION_ID}`]}>
+          <Routes>
+            <Route path="/strategy/template" element={<Landed />} />
+            <Route path="/strategy/:id" element={<SessionDetail me={aMe()} />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const which = await screen.findByLabelText("Apply to which template?");
+    // The session was started from t1, so t1 is offered first.
+    expect(which).toHaveValue("t1");
+    await user.selectOptions(which, "t-default");
+    await user.click(screen.getByLabelText("Apply the rewording of s1_revenue"));
+    await user.click(screen.getByRole("button", { name: "Apply 1 selected to the template" }));
+    expect(await screen.findByText(/landed .*template=t-default/)).toBeInTheDocument();
+  });
+
+  it("does not ask when there is only one template", async () => {
+    showSession(aSession({ prep: PREP }), aMe(),
+                { "GET /api/strategy-templates/": [TEMPLATES[0]] });
+    await screen.findByLabelText("Suggested wording for s1_revenue");
+    expect(screen.queryByLabelText("Apply to which template?")).not.toBeInTheDocument();
+  });
+
   it("shows a pinned question in the live view with a note of its own", async () => {
     const pinned = { ...PREP.questions[0], is_pinned: true, note: "After the diagnostic." };
     showSession(aSession({ prep: { ...PREP, questions: [pinned] },
@@ -796,5 +860,94 @@ describe("nothing sends without the body on the screen", () => {
     showSession(aSession({ fractional_note: "" }), aMe({ role: "VA" }));
     await screen.findByText(/Running the call, drafting, sending/);
     expect(screen.queryByText("Ratings to be taken on the call.")).not.toBeInTheDocument();
+  });
+});
+
+
+describe("more than one template", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const GENERIC = { ...TEMPLATES[0], id: "t2", name: "Operations — generic",
+                    is_default: false, sessions: 0 };
+
+  it("opens the practice default, and switches to another", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({ "GET /api/strategy-templates/": [GENERIC, TEMPLATES[0]] }));
+    renderRoute(<SessionTemplate me={aMe()} />);
+    const picker = await screen.findByLabelText("Template");
+    expect(picker).toHaveValue("t1");
+    await user.selectOptions(picker, "t2");
+    expect(screen.getByLabelText("Template name")).toHaveValue("Operations — generic");
+  });
+
+  it("renames, duplicates, restores from seed, and sets the default", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "PATCH /api/strategy-templates/t1/": { changed: [], template: {
+        ...TEMPLATES[0], name: "Grime Fighters (Brett Murray)" } },
+      "POST /api/strategy-templates/t1/duplicate/": { ...GENERIC, id: "t3",
+                                                      name: "A copy" },
+      "POST /api/strategy-templates/restore-from-seed/": GENERIC,
+      "POST /api/strategy-templates/t2/set-default/": { ...GENERIC, is_default: true },
+      "GET /api/strategy-templates/": [TEMPLATES[0], GENERIC],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<SessionTemplate me={aMe()} />);
+
+    const name = await screen.findByLabelText("Template name");
+    await user.clear(name);
+    await user.type(name, "Grime Fighters (Brett Murray)");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(await screen.findByText(/Renamed to “Grime Fighters \(Brett Murray\)”/))
+      .toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Name for the copy"), "A copy");
+    await user.click(screen.getByRole("button", { name: "Duplicate" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/duplicate/"))
+      ?.body).toEqual({ name: "A copy" }));
+
+    await user.click(screen.getByRole("button", { name: "Restore from seed" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) =>
+      c.url.endsWith("/restore-from-seed/"))?.body).toEqual({ name: "Operations — generic" }));
+    // Restoring opens the new one, which is not the default yet.
+    await user.click(await screen.findByRole("button",
+                                             { name: "Make this the practice default" }));
+    expect(await screen.findByText(/is now the practice default/)).toBeInTheDocument();
+  });
+
+  it("will not archive the practice default", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/strategy-templates/": [TEMPLATES[0]] }));
+    renderRoute(<SessionTemplate me={aMe()} />);
+    expect(await screen.findByRole("button", { name: "Archive" })).toBeDisabled();
+  });
+
+  it("offers a template on Start a session, defaulting to the practice default",
+     async () => {
+    const user = userEvent.setup();
+    const archived = { ...GENERIC, id: "t9", name: "Old one", archived_at: "2026-09-01" };
+    const fetchMock = mockApi({
+      "GET /api/strategy-templates/": [GENERIC, archived, TEMPLATES[0]],
+      "GET /api/contacts/search/": { contacts: [
+        { id: "c1", first_name: "Dana", last_name: "Reyes" }] },
+      "POST /api/strategy-sessions/": aSession({ template: { id: "t2",
+                                                  name: "Operations — generic" } }),
+      "GET /api/strategy-sessions/": [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Sessions me={aMe()} />);
+
+    const picker = await screen.findByLabelText("Template");
+    await waitFor(() => expect(picker).toHaveValue("t1"));
+    // Archived ones are not offered.
+    expect(within(picker).queryByText(/Old one/)).not.toBeInTheDocument();
+    await user.selectOptions(picker, "t2");
+    await user.type(screen.getByLabelText("Find a prospect"), "Da");
+    await user.click(await screen.findByRole("button", { name: "Dana Reyes" }));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => {
+      const posted = fetchMock.calls.find((c) => c.method === "POST");
+      expect((posted?.body as { template: string }).template).toBe("t2");
+    });
+    expect(await screen.findByText(/from “Operations — generic”/)).toBeInTheDocument();
   });
 });

@@ -2,13 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { Banner, Card, Pill } from "../components/ui";
-import { Me, StrategySection, StrategySessionRow, api } from "../lib/api";
-
-interface Template {
-  id: string; name: string; discipline: string; version: number; is_default: boolean;
-  sections: StrategySection[];
-}
+import { Banner, Card, Field, Pill } from "../components/ui";
+import { Me, StrategySessionRow, StrategyTemplateRow as Template, api } from "../lib/api";
 
 type Edit = { prompt?: string; ask_when?: "precall" | "live"; must_ask?: boolean };
 
@@ -23,11 +18,12 @@ const SCHEMA_LABELS: Record<string, string> = {
 };
 
 /**
- * Matrix 10.1 — the template, editable by the founder fractional only, and in
- * Beta only in the three ways a live practice actually needs mid-engagement:
- * **the wording, whether it goes on the form or is asked in the call, and
- * whether it is a must-ask.** Reordering, adding and deleting questions come
- * with V1's multi-discipline work.
+ * Matrix 10.1 — the templates, managed by the founder fractional only.
+ *
+ * More than one (owner, 2026-09-26): pick one to edit, and rename, duplicate,
+ * make it the practice default or archive it; or restore a clean one from the
+ * seed. **Nothing overwrites** — Restore from seed and Duplicate both make a
+ * new template, and the one somebody has been editing stays theirs.
  *
  * Editing here cannot reach a session already under way: each session renders
  * from the snapshot it took when it started (FR-4.5).
@@ -71,6 +67,12 @@ export function SessionTemplate({ me }: { me: Me }) {
     queryKey: ["strategy-templates"],
     queryFn: () => api.get<Template[]>("/api/strategy-templates/"),
   });
+  // Which one is open: the one asked for (Apply from prep names it), else the
+  // practice default. Held in state so managing one does not lose the place.
+  const [pickedId, setPickedId] = useState<string>(params.get("template") ?? "");
+  const all = templates.data ?? [];
+  const template = all.find((t) => t.id === pickedId)
+    ?? all.find((t) => t.is_default) ?? all[0];
   const save = useMutation({
     mutationFn: (id: string) => api.patch<{ changed: string[] }>(
       `/api/strategy-templates/${id}/`,
@@ -92,8 +94,12 @@ export function SessionTemplate({ me }: { me: Me }) {
       </Banner>
     );
   }
-  const template = templates.data?.[0];
   const pending = Object.keys(edits).length;
+  const refresh = (picked?: Template, message?: string) => {
+    if (picked) setPickedId(picked.id);
+    if (message) setNote(message);
+    qc.invalidateQueries({ queryKey: ["strategy-templates"] });
+  };
 
   return (
     <>
@@ -102,8 +108,28 @@ export function SessionTemplate({ me }: { me: Me }) {
       {!template ? <p>Loading the template…</p> : (
         <>
           <Card>
+            <div className="row">
+              <Field label="Template">
+                <select aria-label="Template" value={template.id} disabled={pending > 0}
+                  onChange={(e) => { setPickedId(e.target.value); setEdits({}); }}>
+                  {all.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.is_default ? " — practice default" : ""}
+                      {t.archived_at ? " (archived)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            {pending > 0 && (
+              <p className="tiny muted">Save or discard your changes before switching.</p>
+            )}
             <p className="small muted">
               <strong>{template.name}</strong> · {template.discipline} · v{template.version}
+              {template.is_default && <> · <Pill kind="ok">practice default</Pill></>}
+              {template.archived_at && <> · <Pill kind="warn">archived</Pill></>}
+              {" "}· {template.sessions} session{template.sessions === 1 ? "" : "s"} started
+              from it
             </p>
             <p className="small muted">
               You can change the wording, move a question between the pre-call form
@@ -115,7 +141,12 @@ export function SessionTemplate({ me }: { me: Me }) {
               onClick={() => save.mutate(template.id)}>
               Save {pending || ""} change{pending === 1 ? "" : "s"}
             </button>
+            {pending > 0 && (
+              <button className="ghost" onClick={() => setEdits({})}>Discard</button>
+            )}
           </Card>
+
+          <Manage template={template} onDone={refresh} />
 
           {template.sections.map((section) => (
             <Card key={section.code} title={section.title}
@@ -179,5 +210,105 @@ export function SessionTemplate({ me }: { me: Me }) {
         </>
       )}
     </>
+  );
+}
+
+/** Rename, duplicate, default, archive — and Restore from seed, which makes a
+ *  new template rather than touching this one. Every one of them is audited
+ *  server-side, and none of them reaches a session already started. */
+function Manage({ template, onDone }: {
+  template: Template; onDone: (picked?: Template, message?: string) => void;
+}) {
+  const [name, setName] = useState(template.name);
+  const [copyName, setCopyName] = useState("");
+  const [seedName, setSeedName] = useState("Operations — generic");
+  const [error, setError] = useState("");
+  useEffect(() => { setName(template.name); setError(""); }, [template.id, template.name]);
+
+  const run = useMutation({
+    mutationFn: ({ url, body, method }: { url: string; body?: object;
+                                         method?: "post" | "patch" }) =>
+      method === "patch" ? api.patch<{ template: Template }>(url, body ?? {})
+        .then((r) => r.template)
+        : api.post<Template>(url, body ?? {}),
+    onError: (e: Error) => setError(e.message),
+  });
+  const base = `/api/strategy-templates/${template.id}/`;
+  const act = (url: string, message: (t: Template) => string, body?: object,
+               method?: "post" | "patch") => {
+    setError("");
+    run.mutate({ url, body, method }, {
+      onSuccess: (t) => onDone(t, message(t)),
+    });
+  };
+
+  return (
+    <Card title="Manage templates">
+      {error && <Banner kind="bad">{error}</Banner>}
+      <div className="row">
+        <Field label="Name">
+          <input aria-label="Template name" value={name}
+            onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <button disabled={run.isPending || !name.trim() || name.trim() === template.name}
+          onClick={() => act(base, (t) => `Renamed to “${t.name}”.`, { name }, "patch")}>
+          Rename
+        </button>
+      </div>
+      <div className="row">
+        <Field label="Duplicate as">
+          <input aria-label="Name for the copy" value={copyName}
+            placeholder={`${template.name} (copy)`}
+            onChange={(e) => setCopyName(e.target.value)} />
+        </Field>
+        <button disabled={run.isPending}
+          onClick={() => act(`${base}duplicate/`,
+            (t) => `Made “${t.name}”, a full copy. You are editing the copy now.`,
+            copyName.trim() ? { name: copyName.trim() } : {})}>
+          Duplicate
+        </button>
+      </div>
+      <div className="row">
+        {!template.is_default && !template.archived_at && (
+          <button disabled={run.isPending}
+            onClick={() => act(`${base}set-default/`,
+              (t) => `“${t.name}” is now the practice default for new sessions.`)}>
+            Make this the practice default
+          </button>
+        )}
+        {template.archived_at ? (
+          <button disabled={run.isPending}
+            onClick={() => act(`${base}unarchive/`, (t) => `“${t.name}” is back in the picker.`)}>
+            Restore from archive
+          </button>
+        ) : (
+          <button className="ghost" disabled={run.isPending || template.is_default}
+            title={template.is_default
+              ? "The practice default cannot be archived. Make another the default first."
+              : ""}
+            onClick={() => act(`${base}archive/`,
+              (t) => `“${t.name}” is archived. Sessions started from it are unchanged.`)}>
+            Archive
+          </button>
+        )}
+      </div>
+      <hr />
+      <p className="small muted">
+        <strong>Restore from seed</strong> makes a new template exactly as the
+        Operations seed ships it. It never overwrites a template you have edited.
+      </p>
+      <div className="row">
+        <Field label="New template's name">
+          <input aria-label="Name for the template from the seed" value={seedName}
+            onChange={(e) => setSeedName(e.target.value)} />
+        </Field>
+        <button disabled={run.isPending || !seedName.trim()}
+          onClick={() => act("/api/strategy-templates/restore-from-seed/",
+            (t) => `Made “${t.name}” from the seed. You are editing it now.`,
+            { name: seedName.trim() })}>
+          Restore from seed
+        </button>
+      </div>
+    </Card>
   );
 }

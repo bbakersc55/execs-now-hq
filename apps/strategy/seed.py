@@ -202,9 +202,13 @@ def seed_tenant(tenant, *, apps=None):
         StrategySection = apps.get_model("strategy", "StrategySection")
         StrategyQuestion = apps.get_model("strategy", "StrategyQuestion")
 
+    # The default only when there is none: a tenant that already chose one
+    # (multiple templates, 2026-09-26) keeps its choice.
+    has_default = StrategyTemplate.objects.filter(
+        tenant=tenant, discipline=DISCIPLINE, is_default=True).exists()
     template, _ = StrategyTemplate.objects.get_or_create(
         tenant=tenant, name=TEMPLATE_NAME, version=1,
-        defaults={"discipline": DISCIPLINE, "is_default": True},
+        defaults={"discipline": DISCIPLINE, "is_default": not has_default},
     )
     for position, (code, title, budget, questions) in enumerate(SECTIONS):
         section, _ = StrategySection.objects.get_or_create(
@@ -218,4 +222,26 @@ def seed_tenant(tenant, *, apps=None):
                 defaults={**{k: v for k, v in question.items() if k != "key"},
                           "section": section, "position": q_position},
             )
+    return template
+
+
+
+def create_from_seed(tenant, *, name):
+    """A **new** template, exactly as `strategy_session_seed.md` ships it.
+
+    Never overwrites: this is "Restore from seed", and a template somebody has
+    been editing is theirs. The caller has already checked the name is free.
+    """
+    from apps.strategy.models import StrategyQuestion, StrategySection, StrategyTemplate
+
+    template = StrategyTemplate.objects.create(
+        tenant=tenant, name=name, version=1, discipline=DISCIPLINE, is_default=False)
+    for position, (code, title, budget, questions) in enumerate(SECTIONS):
+        section = StrategySection.objects.create(
+            tenant=tenant, template=template, code=code, title=title,
+            position=position, time_budget_minutes=budget)
+        for q_position, question in enumerate(questions):
+            StrategyQuestion.objects.create(
+                tenant=tenant, template=template, section=section, key=question["key"],
+                position=q_position, **{k: v for k, v in question.items() if k != "key"})
     return template

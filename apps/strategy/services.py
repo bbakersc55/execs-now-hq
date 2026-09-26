@@ -190,11 +190,18 @@ def start(*, tenant, contact, template=None, owner=None, company=None,
     The snapshot is taken here, once. From this moment the live template can be
     edited, reordered or emptied and this session is untouched.
     """
+    # The template asked for, or the practice default — and never a quiet
+    # swap from one to the other: a session started "from A" that ran B's
+    # questions would be a record of a conversation that did not happen.
     if template is None:
-        template = (StrategyTemplate.objects.filter(is_default=True).order_by("-version")
-                    .first() or StrategyTemplate.objects.order_by("-version").first())
+        live = StrategyTemplate.objects.filter(archived_at__isnull=True)
+        template = (live.filter(is_default=True).order_by("-version").first()
+                    or live.order_by("-version").first())
     if template is None:
         raise SessionError("This tenant has no strategy template to run.", status=409)
+    if template.archived_at is not None:
+        raise SessionError(f"“{template.name}” is archived. Restore it, or start from "
+                           f"another template.", status=409)
     company = company if company is not None else contact.company
     # FR-4.9b — the Visionary defaults to the company's primary contact, and to
     # the prospect themselves when there is none. Both are editable.

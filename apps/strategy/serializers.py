@@ -100,6 +100,11 @@ def represent_session(session, *, include_financial=True, full=False,
     payload = {
         "id": str(session.pk),
         "state": session.state,
+        # What this session was started from, as its snapshot records it — the
+        # live template may since have been renamed or archived.
+        "template": {"id": (session.template_snapshot.get("template") or {}).get("id"),
+                     "name": (session.template_snapshot.get("template") or {}).get("name",
+                                                                                   "")},
         "contact": _contact(session.contact),
         "company": ({"id": str(session.company_id), "name": session.company.name}
                     if session.company_id else None),

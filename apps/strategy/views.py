@@ -25,7 +25,7 @@ from apps.crm.models import Contact
 from apps.strategy import ai, conversion, emails, pdf as pdf_service
 from apps.strategy import prep as prep_service
 from apps.strategy import rewording
-from apps.strategy import services
+from apps.strategy import services, template_admin
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
     AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
@@ -113,6 +113,11 @@ class SessionViewSet(StrategyViewSet):
         template = None
         if data.get("template"):
             template = StrategyTemplate.objects.filter(pk=data["template"]).first()
+            # Asked for one that is not here: say so, rather than start the
+            # session from the default and let it look like the one chosen.
+            if template is None:
+                return Response({"detail": "That template is not in this practice."},
+                                status=404)
         try:
             session = services.start(
                 tenant=request.tenant, contact=contact, template=template,
@@ -132,7 +137,8 @@ class SessionViewSet(StrategyViewSet):
         AuditEvent.all_objects.create(
             tenant=request.tenant, actor=request.user, verb="strategy.session_started",
             target_type="strategy_session", target_id=session.pk,
-            payload={"contact": str(contact.pk)})
+            payload={"contact": str(contact.pk), "template": str(session.template_id),
+                     "template_name": session.template_snapshot["template"]["name"]})
         return Response(strategy_serializers.represent_session(session, full=True),
                         status=201)
 
@@ -644,33 +650,118 @@ class PathNoteViewSet(StrategyViewSet):
         return Response(strategy_serializers.represent_path_note(note))
 
 
-class TemplateViewSet(StrategyViewSet):
-    """Matrix 10.1 — the template is the FF's to edit. Everyone else reads it,
-    because the live view has to render its own session.
+def represent_template(t) -> dict:
+    return {
+        "id": str(t.pk), "name": t.name, "discipline": t.discipline,
+        "version": t.version, "is_default": t.is_default,
+        "archived_at": t.archived_at.isoformat() if t.archived_at else None,
+        "sessions": t.sessions.count(),
+        "sections": services.snapshot_of(t)["sections"],
+    }
 
-    **Editing here can never reach a session already under way** (FR-4.5): a
-    session renders from the snapshot it took at `start`, and nothing in it
-    points at these rows.
+
+class TemplateViewSet(StrategyViewSet):
+    """Matrix 10.1 — the templates are the FF's to manage. Everyone else reads
+    them, because the live view has to render its own session and the start
+    form has to offer a choice.
+
+    **Nothing here can reach a session already under way** (FR-4.5): a session
+    renders from the snapshot it took at `start`, and nothing in it points at
+    these rows. Renaming, archiving or changing the default moves no session.
     """
 
     def list(self, request):
         if self._role() not in {FF, CF, VA}:
             raise Http404
-        return Response([{
-            "id": str(t.pk), "name": t.name, "discipline": t.discipline,
-            "version": t.version, "is_default": t.is_default,
-            "sections": services.snapshot_of(t)["sections"],
-        } for t in StrategyTemplate.objects.order_by("name", "version")])
+        return Response([represent_template(t) for t in StrategyTemplate.objects
+                         .order_by("archived_at", "-is_default", "name", "version")])
 
-    def partial_update(self, request, pk=None):
+    def _ff_template(self, pk):
+        """The FF's, or a refusal. Returns `(template, refusal)`."""
         if self._role() != FF:
-            return Response({"detail": "Only the founder fractional may edit the "
-                                       "template."}, status=403)
-        from apps.strategy.models import StrategyQuestion
-
+            return None, Response({"detail": "Only the founder fractional may manage "
+                                             "the templates."}, status=403)
         template = StrategyTemplate.objects.filter(pk=pk).first()
         if template is None:
             raise Http404
+        return template, None
+
+    def _audit(self, verb, template, payload=None):
+        AuditEvent.all_objects.create(
+            tenant=self.request.tenant, actor=self.request.user, verb=verb,
+            target_type="strategy_template", target_id=template.pk,
+            payload=payload or {})
+
+    def _run(self, fn, verb, template, payload=None, status=200):
+        try:
+            result = fn()
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        self._audit(verb, result, payload)
+        return Response(represent_template(result), status=status)
+
+    @action(detail=True, methods=["post"])
+    def duplicate(self, request, pk=None):
+        source, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        name = request.data.get("name") or f"{source.name} (copy)"
+        return self._run(lambda: template_admin.duplicate(source, name=name),
+                         "strategy.template_duplicated", source,
+                         {"from": str(source.pk), "from_name": source.name}, status=201)
+
+    @action(detail=False, methods=["post"], url_path="restore-from-seed")
+    def restore_from_seed(self, request):
+        if self._role() != FF:
+            return Response({"detail": "Only the founder fractional may manage the "
+                                       "templates."}, status=403)
+        name = request.data.get("name") or "Operations — generic"
+        return self._run(lambda: template_admin.restore_from_seed(request.tenant,
+                                                                  name=name),
+                         "strategy.template_restored_from_seed", None,
+                         {"source": "docs/strategy_session_seed.md"}, status=201)
+
+    @action(detail=True, methods=["post"], url_path="set-default")
+    def set_default(self, request, pk=None):
+        template, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        was = template_admin.default_template(template.discipline)
+        return self._run(lambda: template_admin.set_default(template),
+                         "strategy.template_set_default", template,
+                         {"was": str(was.pk) if was else None})
+
+    @action(detail=True, methods=["post"])
+    def archive(self, request, pk=None):
+        template, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        return self._run(lambda: template_admin.archive(template),
+                         "strategy.template_archived", template)
+
+    @action(detail=True, methods=["post"])
+    def unarchive(self, request, pk=None):
+        template, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        return self._run(lambda: template_admin.unarchive(template),
+                         "strategy.template_unarchived", template)
+
+    def partial_update(self, request, pk=None):
+        template, refused = self._ff_template(pk)
+        if refused:
+            return refused
+        from apps.strategy.models import StrategyQuestion
+
+        if "name" in request.data:
+            was = template.name
+            try:
+                template_admin.rename(template, name=request.data["name"])
+            except services.SessionError as exc:
+                return Response({"detail": str(exc)}, status=exc.status)
+            if template.name != was:
+                self._audit("strategy.template_renamed", template,
+                            {"was": was, "now": template.name})
         changed = []
         for edit in request.data.get("questions") or []:
             question = StrategyQuestion.objects.filter(
@@ -699,8 +790,6 @@ class TemplateViewSet(StrategyViewSet):
                 setattr(question, field, edit[field])
             question.save()
             changed.append(question.key)
-        AuditEvent.all_objects.create(
-            tenant=request.tenant, actor=request.user, verb="strategy.template_edited",
-            target_type="strategy_template", target_id=template.pk,
-            payload={"questions": changed})
-        return Response({"changed": changed})
+        if changed:
+            self._audit("strategy.template_edited", template, {"questions": changed})
+        return Response({"changed": changed, "template": represent_template(template)})

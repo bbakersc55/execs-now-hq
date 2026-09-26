@@ -8,7 +8,8 @@ import { PageHead, SendPreview } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import {
   AnswerValue, ConversionRow, MapRow, Me, PathNote, PrepQuestion, SendPreview as Preview,
-  SessionPrep, StrategyQuestion, StrategySessionRow, api,
+  SessionPrep, StrategyQuestion, StrategySessionRow, StrategyTemplateRow, activeTemplates,
+  api,
 } from "../lib/api";
 
 const CAN_RUN = ["FF", "CF"];
@@ -1185,7 +1186,7 @@ function PrepCard({ id, path, data, onChanged, setNote }: {
 
           {prep.rewordings.length > 0 && (
             <Rewordings id={id} path={path} prep={prep} onChanged={onChanged}
-              setNote={setNote} />
+              setNote={setNote} sessionTemplateId={data.template?.id ?? null} />
           )}
 
           {prep.questions.length > 0 && (
@@ -1251,11 +1252,22 @@ function PinnedQuestion({ question, onChanged, compact }: {
  * **Still nothing is applied by the app.** This writes into the editor's boxes;
  * the template only changes when the fractional saves it there.
  */
-function Rewordings({ id, path, prep, onChanged, setNote }: {
+function Rewordings({ id, path, prep, onChanged, setNote, sessionTemplateId }: {
   id: string; path: string; prep: SessionPrep; onChanged: () => void;
-  setNote: (text: string) => void;
+  setNote: (text: string) => void; sessionTemplateId: string | null;
 }) {
   const navigate = useNavigate();
+  // More than one template (owner, 2026-09-26): Apply asks which. The one this
+  // session was started from comes first, if it is still live; else the
+  // practice default.
+  const templates = useQuery<StrategyTemplateRow[]>({
+    queryKey: ["strategy-templates"],
+    queryFn: () => api.get<StrategyTemplateRow[]>("/api/strategy-templates/"),
+  });
+  const offered = activeTemplates(templates.data);
+  const [target, setTarget] = useState("");
+  const targetId = (offered.find((t) => t.id === target)
+    ?? offered.find((t) => t.id === sessionTemplateId) ?? offered[0])?.id;
   const [chosen, setChosen] = useState<string[]>([]);
   const [edited, setEdited] = useState<Record<string, string>>({});
   const textFor = (key: string, fallback: string) => edited[key] ?? fallback;
@@ -1271,7 +1283,8 @@ function Rewordings({ id, path, prep, onChanged, setNote }: {
     }).then(() => keys),
     onSuccess: (keys) => {
       onChanged();
-      navigate(`/strategy/template?session=${id}&prefill=${keys.join(",")}`);
+      navigate(`/strategy/template?session=${id}&prefill=${keys.join(",")}`
+        + (targetId ? `&template=${targetId}` : ""));
     },
     onError: (e: Error) => setNote(e.message),
   });
@@ -1309,6 +1322,19 @@ function Rewordings({ id, path, prep, onChanged, setNote }: {
           </button>
         </div>
       ))}
+      {offered.length > 1 && (
+        <Field label="Apply to which template?">
+          <select aria-label="Apply to which template?" value={targetId ?? ""}
+            onChange={(e) => setTarget(e.target.value)}>
+            {offered.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}{t.id === sessionTemplateId ? " (this session's)" : ""}
+                {t.is_default ? " (practice default)" : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <button className="primary" disabled={chosen.length === 0 || apply.isPending}
         onClick={() => apply.mutate(chosen)}>
         Apply {chosen.length || ""} selected to the template

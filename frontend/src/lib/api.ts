@@ -657,6 +657,22 @@ export interface StrategySection {
   questions: StrategyQuestion[];
 }
 
+/** GET /api/strategy-templates/ — every template, archived ones last. */
+export interface StrategyTemplateRow {
+  id: string; name: string; discipline: string; version: number; is_default: boolean;
+  archived_at: string | null;
+  /** How many sessions were started from it. */
+  sessions: number;
+  sections: StrategySection[];
+}
+
+/** The live ones, default first — what the start form and Apply offer. */
+export function activeTemplates(all: StrategyTemplateRow[] | undefined) {
+  return (all ?? []).filter((t) => !t.archived_at)
+    .sort((a, b) => Number(b.is_default) - Number(a.is_default)
+      || a.name.localeCompare(b.name));
+}
+
 export interface StrategyAnswerRow {
   question_key: string; value: AnswerValue; fractional_note: string;
   answered_by: "prospect" | "fractional"; updated_at: string;
@@ -710,6 +726,8 @@ export interface StrategySessionRow {
   id: string;
   state: "draft" | "precall_sent" | "precall_complete" | "in_call" | "complete"
     | "converted" | "lost";
+  /** What it was started from, as its snapshot records it. */
+  template: { id: string | null; name: string };
   contact: Person | null;
   company: { id: string; name: string } | null;
   visionary: Person | null;
