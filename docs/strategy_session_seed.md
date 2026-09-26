@@ -22,12 +22,14 @@ Fractional-only field per item: *Notes / follow-up* (never shown to the prospect
 
 Each rated 1–10 with an optional comment. The app computes the average and flags the lowest score ("lowest score = where to look first").
 
-1. Vision
-2. People
-3. Data
-4. Issues
-5. Process
-6. Traction
+Shown once above the six: *"Rate each one from 1 to 10 — 1 means it barely works today, 10 means it could not be better."*
+
+1. Vision — Is the 3-year picture clear, written down, and shared by the whole leadership team?
+2. People — Are the right people in the right seats, with every seat on the chart filled?
+3. Data — Do you run the business from a weekly scorecard of a handful of numbers?
+4. Issues — Are problems surfaced openly and solved for good, not managed around?
+5. Process — Are the core processes documented, simplified, and followed by everyone?
+6. Traction — Does everyone have quarterly priorities and a weekly meeting that keeps them on track?
 
 ## Section 3 — Where they want to go (`live`; items 1–3 may be flipped to `precall`)
 

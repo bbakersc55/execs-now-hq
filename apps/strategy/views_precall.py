@@ -23,7 +23,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from apps.strategy import services
+from apps.strategy import rewording, services
 from apps.strategy.models import StrategyAnswer, StrategySession
 from apps.tenancy.context import tenant_context
 
@@ -55,7 +55,12 @@ def _payload(session):
                 "value": (answer.value if answer is not None else None),
             })
         if questions:
+            is_rating = any(q["response_schema"] == rewording.RATING_SCHEMA
+                            for q in questions)
             sections.append({"code": section["code"], "title": section["title"],
+                             # The same scale line the email carries, once above
+                             # the six rather than beside each.
+                             "scale": rewording.RATING_SCALE if is_rating else "",
                              "questions": questions})
     return {
         "practice": email_layout.branding(session.tenant).display_name,

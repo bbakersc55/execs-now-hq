@@ -342,8 +342,10 @@ function SixKey({ summary, sections }: {
   summary: NonNullable<StrategySessionRow["six_key_components"]>;
   sections: StrategySessionRow["sections"];
 }) {
+  // The component's name, not the lead-in that follows it on the form: a
+  // line of question does not fit beside a score.
   const labels = Object.fromEntries((sections ?? [])
-    .flatMap((s) => s.questions).map((q) => [q.key, q.prompt]));
+    .flatMap((s) => s.questions).map((q) => [q.key, q.prompt.split(" — ")[0]]));
   return (
     <Card title="Six Key Components">
       <p className="small muted">

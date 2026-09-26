@@ -18,7 +18,7 @@ from django.utils.html import escape
 from apps.crm.models import OutboxMessage
 from apps.crm.services import email_layout, outbox
 from apps.strategy import pdf as pdf_service
-from apps.strategy import services
+from apps.strategy import rewording, services
 from apps.strategy.models import StrategySession
 from apps.tenancy.models import AuditEvent
 
@@ -26,9 +26,9 @@ INVITE_SUBJECT = "Before our strategy session"
 QUESTIONS_SUBJECT = "A few questions before our strategy session"
 PDF_SUBJECT = "Your strategy map"
 
-#: Said once, above the six, rather than beside each of them.
-RATING_SCALE = ("Rate each one from 1 to 10 — 1 means it barely works today, "
-                "10 means it could not be better.")
+#: Said once, above the six, rather than beside each of them. Held in
+#: `rewording` so the form, this email and the PDF say the same thing.
+RATING_SCALE = rewording.RATING_SCALE
 
 
 def precall_url(raw_token: str) -> str:

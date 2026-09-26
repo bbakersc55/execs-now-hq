@@ -39,6 +39,26 @@ def q(key, prompt, *, ask_when=LIVE, schema=FREE_TEXT, must_ask=False, area="",
     }
 
 
+#: The six ratings' lead-ins (owner, 2026-09-26). Each starts with the
+#: component it rates and asks something a score answers; the scale line sits
+#: once above all six (`rewording.RATING_SCALE`). `repair_rating_prompts` puts a
+#: template back to exactly these.
+RATING_LEAD_INS = {
+    "s2_vision": "Vision — Is the 3-year picture clear, written down, and shared by "
+                 "the whole leadership team?",
+    "s2_people": "People — Are the right people in the right seats, with every seat "
+                 "on the chart filled?",
+    "s2_data": "Data — Do you run the business from a weekly scorecard of a handful "
+               "of numbers?",
+    "s2_issues": "Issues — Are problems surfaced openly and solved for good, not "
+                 "managed around?",
+    "s2_process": "Process — Are the core processes documented, simplified, and "
+                  "followed by everyone?",
+    "s2_traction": "Traction — Does everyone have quarterly priorities and a weekly "
+                   "meeting that keeps them on track?",
+}
+
+
 # (code, title, time_budget_minutes, [question, ...])
 #
 # Time budgets are the seed's 10/25/5/15/5/10 (FR-4.15), laid on the six LIVE
@@ -66,12 +86,8 @@ SECTIONS = [
                          "instead of a system", ask_when=PRECALL, note=True),
     ]),
     ("six_key_components", "Six Key Components: self-rating", None, [
-        q("s2_vision", "Vision", ask_when=PRECALL, schema=RATING),
-        q("s2_people", "People", ask_when=PRECALL, schema=RATING),
-        q("s2_data", "Data", ask_when=PRECALL, schema=RATING),
-        q("s2_issues", "Issues", ask_when=PRECALL, schema=RATING),
-        q("s2_process", "Process", ask_when=PRECALL, schema=RATING),
-        q("s2_traction", "Traction", ask_when=PRECALL, schema=RATING),
+        q(key, prompt, ask_when=PRECALL, schema=RATING)
+        for key, prompt in RATING_LEAD_INS.items()
     ]),
     # "items 1–3 may be flipped to `precall`" — seeded LIVE, and the FF may
     # override `ask_when` per question (FR-4.2).

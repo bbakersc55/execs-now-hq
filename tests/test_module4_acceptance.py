@@ -18,13 +18,13 @@ import pytest
 from django.utils import timezone
 
 from apps.crm.models import Contact, OutboxMessage, Pipeline, PipelineStage, StageSemantic
-from apps.strategy import ai, conversion, emails, pdf as pdf_service, services
+from apps.strategy import ai, conversion, emails, pdf as pdf_service, rewording, services
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
     AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyQuestion,
     StrategySection, StrategySession,
 )
-from apps.strategy.seed import seed_tenant
+from apps.strategy.seed import RATING_LEAD_INS, seed_tenant
 from apps.tenancy.models import AiCall, AuditEvent
 from apps.work.models import Goal, Project
 
@@ -814,7 +814,8 @@ def test_a_rewording_may_not_turn_a_rating_into_an_essay(session, ff, api, templ
                                  "sell it?"}]}, content_type="application/json")
     assert refused.status_code == 400
     assert "Vision" in refused.json()["detail"]
-    assert StrategyQuestion.objects.get(key="s2_vision").prompt == "Vision"
+    assert StrategyQuestion.objects.get(key="s2_vision").prompt == \
+        RATING_LEAD_INS["s2_vision"]
 
     # Too long, even with the component's name in it.
     long_one = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
@@ -839,6 +840,107 @@ def test_a_rewording_may_not_turn_a_rating_into_an_essay(session, ff, api, templ
         content_type="application/json").status_code == 200
 
 
+#: The six as Brett Murray was sent them on 22 September, word for word from
+#: the audit event of the snapshot patch.
+GRIME_FIGHTERS_ESSAYS = {
+    "s2_vision": "Three years out, what does Grime Fighters look like — and are you "
+                 "building it to run without you or to sell it?",
+    "s2_people": "Who runs each division day-to-day, who leads the crews, and where "
+                 "is the gap?",
+    "s2_data": "What metrics do you actually look at each week (quotes out and quotes "
+               "won, jobs completed, revenue per crew day, callbacks and redos), and "
+               "where do they come from?",
+    "s2_issues": "What keeps coming back at you (callbacks and redos, weather "
+                 "reschedules, building access, crews waiting on approvals, slow "
+                 "payments from councils)? What is the one that costs you the most?",
+    "s2_process": "Walk me through your most manual process? Who touches it, and why "
+                  "isn't it automated?",
+    "s2_traction": "What are the two or three things that have to get done before next "
+                   "season turns over?  Who owns it, and how do you know they are on "
+                   "track?",
+}
+
+
+@pytest.mark.django_db
+def test_the_seeds_six_lead_ins_pass_the_editor(session, ff, api, template):
+    """A yes/no-shaped question scores on a scale, at any length under the cap
+    (owner, 2026-09-26) — so the seed's own wording is one the FF can save."""
+    for key, prompt in RATING_LEAD_INS.items():
+        assert rewording.refusal(key, "rating_1_10", prompt) == "", key
+        edited = prompt.replace(" — ", " — Honestly: ")
+        response = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+            "questions": [{"key": key, "prompt": edited}]},
+            content_type="application/json")
+        assert response.status_code == 200, (key, response.json())
+        assert StrategyQuestion.objects.get(key=key).prompt == edited
+
+
+@pytest.mark.django_db
+def test_the_22_september_essays_are_still_refused(session, ff, api, template):
+    for key, essay in GRIME_FIGHTERS_ESSAYS.items():
+        response = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
+            "questions": [{"key": key, "prompt": essay}]},
+            content_type="application/json")
+        assert response.status_code == 400, key
+        assert StrategyQuestion.objects.get(key=key).prompt == RATING_LEAD_INS[key]
+
+
+@pytest.mark.parametrize("prompt, why", [
+    ("Vision — What does your 3-year picture look like?", "“What”"),
+    ("Process — Walk me through the core process.", "“Walk me through”"),
+    ("Data — Which numbers do you look at weekly?", "“Which”"),
+    ("Issues — Describe the one that costs the most.", "“Describe”"),
+    ("Traction — List this quarter's priorities.", "“List”"),
+    ("People — how full is the chart?", "“how”"),
+    ("The whole team — is the Vision shared?", "start with “Vision”"),
+])
+def test_an_open_ended_cue_or_a_missing_component_is_refused(prompt, why):
+    key = "s2_" + prompt.split(" — ")[0].lower()
+    if key not in rewording.RATING_COMPONENTS:
+        key = "s2_vision"
+    assert why in rewording.refusal(key, "rating_1_10", prompt)
+
+
+def test_a_cue_is_a_word_not_a_fragment():
+    # "somewhat", "listed", "showhow" are not asking for an explanation.
+    assert rewording.refusal("s2_data", "rating_1_10",
+                             "Data — Are the numbers listed and somewhat trusted?") == ""
+
+
+@pytest.mark.django_db
+def test_restore_from_seed_puts_a_template_on_the_lead_ins(template):
+    """How the default template takes up the seed's lead-ins: named, audited,
+    and a second run is a no-op."""
+    StrategyQuestion.objects.filter(template=template, key="s2_data").update(prompt="Data")
+    call_command("repair_rating_prompts", "--apply", "--reason", "seed lead-ins")
+    assert StrategyQuestion.objects.get(template=template, key="s2_data").prompt == \
+        RATING_LEAD_INS["s2_data"]
+    event = AuditEvent.all_objects.get(verb="strategy.rating_prompts_repaired")
+    assert event.payload["keys"] == ["s2_data"]
+    assert event.payload["changed"][0]["was"] == "Data"
+    assert event.payload["reason"] == "seed lead-ins"
+    call_command("repair_rating_prompts", "--apply")
+    assert AuditEvent.all_objects.filter(verb="strategy.rating_prompts_repaired").count() == 1
+
+
+@pytest.mark.django_db
+def test_the_scale_line_is_on_the_form_and_the_pdf_names_the_component(session, ff,
+                                                                        client):
+    raw = services.issue_precall_token(session)
+    form = client.get(f"/api/strategy/precall/{raw}").json()
+    scales = {s["code"]: s["scale"] for s in form["sections"]}
+    assert scales["six_key_components"] == rewording.RATING_SCALE
+    assert scales["snapshot"] == ""
+
+    for key in RATING_LEAD_INS:
+        answer(session, key, {"rating": 6})
+    html = pdf_service.render_html(session)
+    assert rewording.RATING_SCALE_MEANING in html
+    # The chart is labelled with the component, never a line of question.
+    assert ">Vision</text>" in html
+    assert RATING_LEAD_INS["s2_vision"] not in html
+
+
 @pytest.mark.django_db
 def test_prep_drops_a_suggestion_that_would_change_a_questions_shape(session, ff, api,
                                                                      fake_claude):
@@ -853,6 +955,13 @@ def test_prep_drops_a_suggestion_that_would_change_a_questions_shape(session, ff
             {"key": "s2_data", "suggested": "Data — the numbers you look at weekly",
              "why": "Their words."},
             {"key": "s1_revenue", "suggested": "Revenue last year and this?", "why": ""},
+            # The component first is not enough: an open-ended cue is dropped too.
+            {"key": "s2_process", "suggested": "Process — walk me through the one "
+                                               "that breaks most?", "why": ""},
+            # And a long yes/no question under the cap is offered.
+            {"key": "s2_people", "suggested": "People — Is every crew led by someone "
+                                              "you would hire again tomorrow, at "
+                                              "every site?", "why": ""},
         ],
         "questions": [],
     })
@@ -861,9 +970,9 @@ def test_prep_drops_a_suggestion_that_would_change_a_questions_shape(session, ff
 
     offered = {row["key"] for row in prep["rewordings"]}
     assert "s2_vision" not in offered, "an essay under 'rate it 1 to 10' is not offered"
-    assert offered == {"s2_data", "s1_revenue"}
+    assert offered == {"s2_data", "s1_revenue", "s2_people"}
     # And it says it tried, rather than dropping it silently.
-    assert prep["dropped_rewordings"] == ["s2_vision"]
+    assert prep["dropped_rewordings"] == ["s2_vision", "s2_process"]
     # The model was told the shape of each question in the first place.
     assert "[rated 1-10" in json.dumps(fake_claude.requests[-1])
 
@@ -916,9 +1025,9 @@ def test_patching_a_snapshot_touches_the_six_and_nothing_else(session, ff, api):
 
     # Only the rating, and only its wording.
     assert [row["key"] for row in changed] == ["s2_vision"]
-    assert changed[0]["now"] == "Vision"
+    assert changed[0]["now"] == RATING_LEAD_INS["s2_vision"]
     by_key = {q["key"]: q for sec in patched["sections"] for q in sec["questions"]}
-    assert by_key["s2_vision"]["prompt"] == "Vision"
+    assert by_key["s2_vision"]["prompt"] == RATING_LEAD_INS["s2_vision"]
     assert by_key["s2_vision"]["response_schema"] == "rating_1_10"
     # A free-text question that was reworded stays as this session asked it:
     # the snapshot is not a licence to tidy everything up.
@@ -934,12 +1043,22 @@ def test_patching_a_snapshot_touches_the_six_and_nothing_else(session, ff, api):
     again, changed_again = patch_snapshot(patched)
     assert changed_again == [] and again == patched
 
+    # A snapshot already patched to the bare component names (Brett Murray's,
+    # 2026-09-22) is seed wording too, and stays exactly as it is.
+    named = json.loads(json.dumps(patched))
+    for sec in named["sections"]:
+        for q in sec["questions"]:
+            if q["key"] in rewording.RATING_COMPONENTS:
+                q["prompt"] = rewording.RATING_COMPONENTS[q["key"]]
+    assert patch_snapshot(named) == (named, [])
+
     # And the real command audits what it did.
     session.template_snapshot = broken
     session.save(update_fields=["template_snapshot", "updated_at"])
     call_command("patch_session_rating_prompts", str(session.pk), "--apply")
     session.refresh_from_db()
-    assert services.question_in(session.template_snapshot, "s2_vision")["prompt"] == "Vision"
+    assert services.question_in(session.template_snapshot, "s2_vision")["prompt"] == \
+        RATING_LEAD_INS["s2_vision"]
     event = AuditEvent.all_objects.get(verb="strategy.session_snapshot_patched")
     assert event.target_id == session.pk
     assert event.payload["changed"][0]["was"].startswith("Three years out")

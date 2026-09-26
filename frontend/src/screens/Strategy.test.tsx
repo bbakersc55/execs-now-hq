@@ -17,14 +17,18 @@ function aForm(overrides: Partial<PreCallForm> = {}): PreCallForm {
     practice: "Executives Now", company: "Acme Facilities", first_name: "Dana",
     answered: 0, of: 2, complete: false,
     sections: [
-      { code: "snapshot", title: "Snapshot: where they are today", questions: [
-        { key: "s1_revenue", prompt: "Revenue — last year / this year",
-          response_schema: "free_text", value: null },
-      ]},
-      { code: "six_key_components", title: "Six Key Components: self-rating",
+      { code: "snapshot", title: "Snapshot: where they are today", scale: "",
         questions: [
-          { key: "s2_vision", prompt: "Vision", response_schema: "rating_1_10",
-            value: null },
+          { key: "s1_revenue", prompt: "Revenue — last year / this year",
+            response_schema: "free_text", value: null },
+        ]},
+      { code: "six_key_components", title: "Six Key Components: self-rating",
+        scale: "Rate each one from 1 to 10 — 1 means it barely works today, 10 means "
+          + "it could not be better.",
+        questions: [
+          { key: "s2_vision", prompt: "Vision — Is the 3-year picture clear, written "
+            + "down, and shared by the whole leadership team?",
+            response_schema: "rating_1_10", value: null },
         ]},
     ],
     ...overrides,
@@ -125,6 +129,16 @@ describe("the pre-call form", () => {
     expect(await screen.findByText(/Revenue — last year/)).toBeInTheDocument();
     expect(screen.getByText(/Executives Now/)).toBeInTheDocument();
     expect(screen.getByText("0 of 2 answered")).toBeInTheDocument();
+  });
+
+  it("says the scale once, above the six, and leads each with its component", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`GET /api/strategy/precall/${TOKEN}`]: aForm() }));
+    renderRoute(<PreCall />, { path: "/strategy/precall/:token",
+                               route: `/strategy/precall/${TOKEN}` });
+    expect(await screen.findByText(/1 means it barely works today/)).toBeInTheDocument();
+    expect(screen.getAllByText(/barely works today/)).toHaveLength(1);
+    expect(screen.getByRole("combobox", { name: /^Vision — Is the 3-year picture clear/ }))
+      .toBeInTheDocument();
   });
 
   it("saves an answer as soon as the field is left, with no submit", async () => {

@@ -42,7 +42,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from apps.crm.services import email_layout
-from apps.strategy import services
+from apps.strategy import rewording, services
 from apps.strategy.models import PDF_FLAG_KEYS, StrategyMapRow, StrategyPathNote
 
 PDF_PURPOSE = "strategy_pdf"
@@ -117,7 +117,10 @@ def context_for(session) -> dict:
     for item in sections.get(SIX_KEY_SECTION, []):
         rating = (item["value"] or {}).get("rating")
         if isinstance(rating, int):
-            ratings.append({"label": item["prompt"], "rating": rating,
+            # The chart names the component, not the lead-in: the question
+            # was asked on the form, and a line of it will not fit a bar label.
+            ratings.append({"label": rewording.component_of(item["key"]) or item["prompt"],
+                            "rating": rating,
                             "comment": (item["value"].get("comment") or "").strip(),
                             "percent": rating * 10,
                             "is_lowest": False})
@@ -160,7 +163,8 @@ def context_for(session) -> dict:
         # number a prospect scans for.
         "snapshot": _chips(sections.get(SNAPSHOT_SECTION, [])),
         "six_key": {"ratings": ratings, "average": six_key["average"],
-                    "complete": six_key["complete"], "chart": _chart(ratings)},
+                    "complete": six_key["complete"], "chart": _chart(ratings),
+                    "scale": rewording.RATING_SCALE_MEANING},
         "destination": sections.get(DESTINATION_SECTION, []),
         "mirror_goal": session.mirror_goal,
         "mirror_unlocks": session.mirror_unlocks,

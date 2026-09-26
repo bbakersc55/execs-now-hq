@@ -146,8 +146,8 @@ export function SessionTemplate({ me }: { me: Me }) {
                     </label>
                     {question.response_schema === "rating_1_10" && (
                       <p className="tiny muted" style={{ margin: "0 0 4px" }}>
-                        Rated 1–10. Reword the lead-in if you like, but keep the
-                        component's name in it — that is the thing being rated.
+                        Rated 1–10. Reword the lead-in if you like, but start with
+                        the component's name and ask something a score answers.
                       </p>
                     )}
                     <textarea id={`prompt-${question.key}`} rows={2}

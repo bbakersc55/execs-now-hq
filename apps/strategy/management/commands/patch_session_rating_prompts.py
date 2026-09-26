@@ -26,6 +26,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.strategy.models import StrategySession
 from apps.strategy.rewording import RATING_COMPONENTS, RATING_SCHEMA
+from apps.strategy.seed import RATING_LEAD_INS
 from apps.tenancy.context import tenant_context
 from apps.tenancy.models import AuditEvent
 
@@ -38,9 +39,14 @@ def patch_snapshot(snapshot: dict) -> tuple[dict, list[dict]]:
     for section in snapshot.get("sections", []):
         questions = []
         for question in section.get("questions", []):
-            seeded = RATING_COMPONENTS.get(question.get("key", ""))
+            key = question.get("key", "")
+            seeded = RATING_LEAD_INS.get(key)
+            # Either seed wording stands: the bare component name this command
+            # restored on 2026-09-22 (Brett Murray's snapshot, left as it is),
+            # or the lead-in the seed has carried since 2026-09-26.
+            fine = {seeded, RATING_COMPONENTS.get(key)}
             if (seeded and question.get("response_schema") == RATING_SCHEMA
-                    and question.get("prompt") != seeded):
+                    and question.get("prompt") not in fine):
                 changed.append({"key": question["key"], "was": question["prompt"],
                                 "now": seeded})
                 question = {**question, "prompt": seeded}

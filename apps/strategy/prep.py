@@ -49,9 +49,11 @@ trade. Keep the question asking exactly what it asked before.
 
 **A rewording changes the words, never the shape.** A question marked \
 [rated 1-10] is a one-line lead-in to a number, not a question to answer in \
-prose: you may reword around it, but the component's name must stay in it \
-("Vision", "People", "Data", "Issues", "Process", "Traction"), it stays under \
-about a dozen words, and it does not become something open. Getting this wrong \
+prose: you may reword after it, but it must start with the component's name \
+("Vision", "People", "Data", "Issues", "Process", "Traction"), stay under 120 \
+characters, and ask something a score answers ("Is it clear...?", "Do you...?") \
+— never how, what, why, which, describe, tell me, walk me through, explain or \
+list. Getting this wrong \
 sent a prospect six essay questions under the heading "rate each one from 1 to \
 10". If a question is already right for them, return it unchanged and say so in \
 "why".
@@ -118,7 +120,7 @@ def prep_input(session, *, website_url: str, notes: str) -> str:
     for key, prompt, schema in precall_questions(session):
         # The shape travels with the question, so the model can see which ones
         # are a lead-in to a number rather than something to answer in prose.
-        shape = " [rated 1-10 — lead-in only, keep the component name]" \
+        shape = " [rated 1-10 — lead-in only, starts with the component name]" \
             if schema == rewording.RATING_SCHEMA else ""
         lines.append(f"  {key}: {prompt}{shape}")
     return "\n".join(lines)

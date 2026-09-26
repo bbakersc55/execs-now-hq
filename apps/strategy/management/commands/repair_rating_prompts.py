@@ -12,6 +12,9 @@ data rewrite is something the owner asks for out loud.
     manage.py repair_rating_prompts            # says what it would do
     manage.py repair_rating_prompts --apply    # does it
 
+It is also how a template takes up a change to the seed's lead-ins (owner,
+2026-09-26: the six went from bare component names to a scored question each).
+
 It is idempotent, it names every change, and it touches **only** questions whose
 schema is `rating_1_10` and whose wording is not already the seed's.
 """
@@ -21,7 +24,8 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand
 
 from apps.strategy.models import StrategyQuestion, StrategyTemplate
-from apps.strategy.rewording import RATING_COMPONENTS, RATING_SCHEMA
+from apps.strategy.rewording import RATING_SCHEMA
+from apps.strategy.seed import RATING_LEAD_INS
 from apps.tenancy.context import tenant_context
 from apps.tenancy.models import AuditEvent
 
@@ -32,6 +36,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true",
                             help="Write the changes. Without it, this is a dry run.")
+        parser.add_argument("--reason", default="incident 2026-09-22",
+                            help="Why, for the audit event.")
 
     def handle(self, *args, **options):
         apply_it = options["apply"]
@@ -39,7 +45,7 @@ class Command(BaseCommand):
         for template in StrategyTemplate.all_objects.all().order_by("name"):
             with tenant_context(template.tenant_id):
                 changed = []
-                for key, seeded in RATING_COMPONENTS.items():
+                for key, seeded in RATING_LEAD_INS.items():
                     question = StrategyQuestion.objects.filter(
                         template=template, key=key, response_schema=RATING_SCHEMA,
                         deleted_at__isnull=True).first()
@@ -63,7 +69,9 @@ class Command(BaseCommand):
                         verb="strategy.rating_prompts_repaired",
                         target_type="strategy_template", target_id=template.pk,
                         payload={"keys": [key for key, _w, _n in changed],
-                                 "reason": "incident 2026-09-22"})
+                                 "changed": [{"key": key, "was": was, "now": now}
+                                             for key, was, now in changed],
+                                 "reason": options["reason"]})
         if not apply_it and total:
             self.stdout.write(self.style.NOTICE(
                 f"\n{total} would change. Re-run with --apply to write them."))

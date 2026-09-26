@@ -760,7 +760,7 @@ export interface ConversionRow {
 
 export interface PreCallForm {
   practice: string; company: string; first_name: string;
-  sections: { code: string; title: string; questions: {
+  sections: { code: string; title: string; scale: string; questions: {
     key: string; prompt: string; response_schema: StrategyQuestion["response_schema"];
     value: AnswerValue | null;
   }[] }[];

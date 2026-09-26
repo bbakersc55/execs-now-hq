@@ -73,6 +73,7 @@ export function PreCallForm() {
 
       {data.sections.map((section) => (
         <Card key={section.code} title={section.title}>
+          {section.scale && <p className="small muted">{section.scale}</p>}
           {section.questions.map((question) => (
             <Question key={question.key} question={question}
               onSave={(value) => save.mutate({ question_key: question.key, value })} />
