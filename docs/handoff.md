@@ -16,7 +16,7 @@ Execs NOW HQ is a multi-tenant SaaS for fractional executives, built by the owne
 | 3 Tasks + client portal + digests + act-as + staff activity feed | Signed off 6/6 |
 | 4 Strategy session (template, pre-call form + email variant, live view with Claude tray, 2-page sales PDF, conversion, prep panel) | Signed off except Check 1 (first real prospect session) |
 | 4B Client value report (goal-anchored, measurables, milestones, resolutions, narrative, PDF) | Built, 4 manual checks pending (needs real goals with measurements) |
-| 5 Meeting ingestion (Drive folder → Claude → review queue) | Built, folder connected, backfill running; approve/reject tally pending |
+| 5 Meeting ingestion (Drive folder → Claude → review queue) | Built, folder connected, backfill running. First real meeting reviewed (dry run, 2026-09-26): **18 approved / 9 rejected** of 27 proposals (67% approved) |
 | 6 Inbound email (Gmail polling of app-started threads, unmatched queue) | Built; gmail.readonly granted; first real reply pending |
 | Design pass Tier 1 (shell, Work, Tasks board + editor, live view, portal, value report) | Done, round 1 fixes in |
 | Design pass Tier 2 (dashboard, contacts/companies, notes panel, settings) | CC building now, after a task-editor gap fix |
@@ -80,6 +80,11 @@ Campaign/sequence editor for referral partners and nurtured prospects; task depe
 - **GCP**: project execs-now-hq (org GetExecutivesNow); buckets execs-now-hq-db-backups and execs-now-hq-media; app runtime uses a service-account key at ~/.config/execs-now-hq/sa-app.json, not ADC; backups use the gcloud CLI. Named gcloud configuration `execs-now-hq` keeps it separate from the Aris project.
 - **Secrets**: FIELD_ENCRYPTION_KEY is in the owner's password manager; losing it loses every stored token and API key. Anthropic key stored in-app (Organization "Executives Now" on console.anthropic.com, prepaid credits).
 - **Test data**: Acme Facilities, Noble Baker, "Test Testing", "Testing again testing", "Hj hj", "Unknown 2 Unknown 2" are test rows. Clean up before any external demo that shows Contacts.
+
+**Meeting queue tally, for the record (owner, 2026-09-26 dry run):** first real
+meeting, 27 proposals, 18 approved and 9 rejected. That is one meeting's
+proposals reviewed with the rate reported, toward the exit criterion of 10 real
+proposals reviewed.
 
 ## Open threads at time of writing
 

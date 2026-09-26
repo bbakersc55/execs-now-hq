@@ -714,6 +714,33 @@ describe("session prep", () => {
     });
   });
 
+  it("ticks all, then unticks one, before applying", async () => {
+    const user = userEvent.setup();
+    const three = { ...PREP, rewordings: [
+      PREP.rewordings[0],
+      { key: "s1_sites", current: "Sites", suggested: "Kitchens a week", why: "" },
+      { key: "s1_team", current: "Team", suggested: "Crew size", why: "" },
+    ]};
+    const fetchMock = showSession(aSession({ prep: three }), aMe(), {
+      [`PATCH /api/strategy-sessions/${SESSION_ID}/prep-rewordings/`]: three,
+    });
+    await user.click(await screen.findByLabelText("Tick all rewordings"));
+    expect(screen.getByRole("button", { name: "Apply 3 selected to the template" }))
+      .toBeEnabled();
+    await user.click(screen.getByLabelText("Apply the rewording of s1_sites"));
+    expect(screen.getByLabelText("Tick all rewordings")).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Apply 2 selected to the template" }));
+    await waitFor(() => {
+      const patched = fetchMock.calls.find((c) => c.url.endsWith("/prep-rewordings/"));
+      expect((patched?.body as { rewordings: { key: string }[] }).rewordings
+        .map((r) => r.key)).toEqual(["s1_revenue", "s1_team"]);
+    });
+    // And unticking all clears it.
+    await user.click(screen.getByLabelText("Tick all rewordings"));
+    await user.click(screen.getByLabelText("Tick all rewordings"));
+    expect(screen.getByRole("button", { name: /Apply .*selected/ })).toBeDisabled();
+  });
+
   it("still copies one on its own", async () => {
     const user = userEvent.setup();
     const fetchMock = showSession(aSession({ prep: PREP }), aMe(), {
@@ -963,31 +990,94 @@ describe("managing a session", () => {
   const TWO = [TEMPLATES[0], { ...TEMPLATES[0], id: "t2", name: "60-minute Operations",
                                is_default: false }];
 
-  it("resets a draft's questions to a chosen template, after naming it", async () => {
+  const PREVIEW = { source: "60-minute Operations", changed_wording: ["s1_revenue",
+    "s1_sites"], added: [], removed: ["s7_value_4", "s7_value_5"], refusal: "" };
+
+  it("reloads a draft from a chosen template, naming it and counting the changes",
+     async () => {
     const user = userEvent.setup();
     const asked: string[] = [];
     const fetchMock = showSession(aSession(DRAFT), aMe(), {
       "GET /api/strategy-templates/": TWO,
+      [`GET /api/strategy-sessions/${SESSION_ID}/reset-preview/`]: PREVIEW,
       [`POST /api/strategy-sessions/${SESSION_ID}/reset-questions/`]: aSession(DRAFT),
     });
     vi.stubGlobal("confirm", (text: string) => { asked.push(text); return true; });
 
     await user.selectOptions(await screen.findByLabelText("Reset to the questions of"), "t2");
-    await user.click(screen.getByRole("button", { name: "Reset to default questions" }));
+    await user.click(screen.getByRole("button", { name: "Reload questions from template" }));
     await waitFor(() => {
       const posted = fetchMock.calls.find((c) => c.url.endsWith("/reset-questions/"));
       expect(posted?.body).toEqual({ template: "t2" });
     });
-    expect(asked[0]).toMatch(/Are you sure.*“60-minute Operations”/);
+    expect(fetchMock.calls.some((c) => c.url.endsWith("reset-preview/?template=t2")))
+      .toBe(true);
+    expect(asked[0]).toMatch(/Are you sure.*“60-minute Operations”: 2 questions change wording \(2 removed\)/);
+    expect(screen.queryByRole("button", { name: /Reset to default questions/ }))
+      .not.toBeInTheDocument();
   });
 
-  it("does nothing when the confirm is declined", async () => {
+  it("restores the seed's wording, confirmed, as a separate action", async () => {
     const user = userEvent.setup();
-    const fetchMock = showSession(aSession(DRAFT), aMe(),
-                                  { "GET /api/strategy-templates/": TWO });
-    vi.stubGlobal("confirm", () => false);
-    await user.click(await screen.findByRole("button", { name: "Reset to default questions" }));
+    const asked: string[] = [];
+    const fetchMock = showSession(aSession(DRAFT), aMe(), {
+      "GET /api/strategy-templates/": TWO,
+      [`GET /api/strategy-sessions/${SESSION_ID}/reset-preview/`]: {
+        ...PREVIEW, source: "Operations — seed wording", changed_wording: ["s1_revenue"],
+        removed: [] },
+      [`POST /api/strategy-sessions/${SESSION_ID}/restore-seed/`]: aSession(DRAFT),
+    });
+    vi.stubGlobal("confirm", (text: string) => { asked.push(text); return true; });
+    await user.click(await screen.findByRole("button", { name: "Restore seed wording" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.endsWith("/restore-seed/")))
+      .toBe(true));
+    expect(fetchMock.calls.some((c) => c.url.endsWith("reset-preview/?source=seed")))
+      .toBe(true);
+    expect(asked[0]).toMatch(/“Operations — seed wording”: 1 question change wording\./);
     expect(fetchMock.calls.some((c) => c.url.endsWith("/reset-questions/"))).toBe(false);
+  });
+
+  it("does nothing when either confirm is declined", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(DRAFT), aMe(), {
+      "GET /api/strategy-templates/": TWO,
+      [`GET /api/strategy-sessions/${SESSION_ID}/reset-preview/`]: PREVIEW,
+    });
+    vi.stubGlobal("confirm", () => false);
+    await user.click(await screen.findByRole("button",
+                                             { name: "Reload questions from template" }));
+    await user.click(screen.getByRole("button", { name: "Restore seed wording" }));
+    await waitFor(() => expect(fetchMock.calls.filter((c) =>
+      c.url.includes("reset-preview")).length).toBe(2));
+    expect(fetchMock.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("lands back from the template editor with the banner and the send card",
+     async () => {
+    const fetchMock = mockApi({
+      [`GET /api/strategy-sessions/${SESSION_ID}/conversion-preview/`]: { rows: [] },
+      "GET /api/strategy-sessions/": aSession(DRAFT),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const scrolled: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this.id); };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[{ pathname: `/strategy/${SESSION_ID}`,
+                                         state: { templateUpdated: true } }]}>
+          <Routes>
+            <Route path="/strategy/:id" element={<SessionDetail me={aMe()} />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/Template updated\. This draft still holds the old wording — reset it to pick up the changes\./))
+      .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Send the form/ })).toBeInTheDocument();
+    await waitFor(() => expect(scrolled).toContain("precall-card"));
+    Element.prototype.scrollIntoView = original;
   });
 
   it("offers a new session instead, and says why, once someone has been asked",
@@ -1181,5 +1271,49 @@ describe("editing a template's questions", () => {
     await user.click(screen.getByRole("button", { name: "Restore from seed" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
       .toEqual({ name: "60-minute Operations", variant: "sixty" }));
+  });
+});
+
+
+describe("from prep, through the editor, and back", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("Save returns to the session the prep came from", async () => {
+    const user = userEvent.setup();
+    const prep = { id: "prep1", state: "ready", website_url: "", notes: "", summary: "",
+      bottlenecks: [], questions: [], web_searches: 0,
+      rewordings: [{ key: "s4_done_right", current: "How do you know a site was done right?",
+                     suggested: "How do you know the kitchen was clean?", why: "" }] };
+    const fetchMock = mockApi({
+      [`GET /api/strategy-sessions/${SESSION_ID}/`]: aSession({ prep } as never),
+      "PATCH /api/strategy-templates/t1/": { changed: ["s4_done_right"],
+                                             template: TEMPLATES[0] },
+      "GET /api/strategy-templates/": TEMPLATES,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function Landed() {
+      const location = useLocation();
+      return <p>landed on {location.pathname}
+        {(location.state as { templateUpdated?: boolean })?.templateUpdated
+          ? " with the banner" : ""}</p>;
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[
+          `/strategy/template?session=${SESSION_ID}&prefill=s4_done_right&template=t1`]}>
+          <Routes>
+            <Route path="/strategy/template" element={<SessionTemplate me={aMe()} />} />
+            <Route path="/strategy/:id" element={<Landed />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByLabelText("Wording of s4_done_right"))
+      .toHaveValue("How do you know the kitchen was clean?"));
+    expect(screen.getByRole("link", { name: "Back to the session" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Save 1 change/ }));
+    expect(await screen.findByText(`landed on /strategy/${SESSION_ID} with the banner`))
+      .toBeInTheDocument();
   });
 });

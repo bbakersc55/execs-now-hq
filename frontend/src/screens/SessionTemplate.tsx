@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { Banner, Card, Field, Pill } from "../components/ui";
 import { Me, StrategySessionRow, StrategyTemplateRow as Template, api } from "../lib/api";
@@ -40,6 +40,10 @@ export function SessionTemplate({ me }: { me: Me }) {
   // applying.
   const [params, setParams] = useSearchParams();
   const fromSession = params.get("session");
+  // Kept past the prefill, which clears the URL: Save goes back to the session
+  // the prep came from, where the send controls are (dry run, 2026-09-26).
+  const [returnTo] = useState(params.get("prefill") ? fromSession : null);
+  const navigate = useNavigate();
   // One key, or several: applying a selection is one trip, not one per
   // question (owner, 2026-09-21).
   const prefillKeys = (params.get("prefill") ?? "").split(",").filter(Boolean);
@@ -90,6 +94,7 @@ export function SessionTemplate({ me }: { me: Me }) {
       setEdits({});
       setBudgets({});
       qc.invalidateQueries({ queryKey: ["strategy-templates"] });
+      if (returnTo) navigate(`/strategy/${returnTo}`, { state: { templateUpdated: true } });
     },
     onError: (e: Error) => setNote(e.message),
   });
@@ -118,7 +123,13 @@ export function SessionTemplate({ me }: { me: Me }) {
 
   return (
     <>
-      <h1>The session template</h1>
+      <h1>The session templates</h1>
+      {returnTo && (
+        <p className="small">
+          <Link to={`/strategy/${returnTo}`}>Back to the session</Link> — Save takes
+          you back there too.
+        </p>
+      )}
       {note && <Banner kind="ok">{note}</Banner>}
       {!template ? <p>Loading the template…</p> : (
         <>

@@ -166,6 +166,59 @@ class SessionViewSet(StrategyViewSet):
         self._session_audit("strategy.session_deleted", session_id, record)
         return Response(status=204)
 
+    @action(detail=True, methods=["get"], url_path="reset-preview")
+    def reset_preview(self, request, pk=None):
+        """What a reload or a seed restore would change, counted. Writes
+        nothing; the confirm reads it so it can say how many questions move."""
+        session = self.load(pk)
+        if (refused := self._fractional_only("reset a session's questions")) is not None:
+            return refused
+        from apps.strategy import seed
+
+        try:
+            if request.query_params.get("source") == "seed":
+                snapshot = seed.seed_snapshot(session_admin.seed_discipline(session))
+            else:
+                template = self._reset_template(request.query_params.get("template"))
+                snapshot = services.snapshot_of(template)
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({**session_admin.compare(session, snapshot),
+                         "refusal": session_admin.reset_refusal(session)})
+
+    def _reset_template(self, template_id):
+        if template_id:
+            template = StrategyTemplate.objects.filter(pk=template_id).first()
+            if template is None:
+                raise services.SessionError("That template is not in this practice.",
+                                            status=404)
+            return template
+        template = template_admin.default_template()
+        if template is None:
+            raise services.SessionError("Choose a template.")
+        return template
+
+    @action(detail=True, methods=["post"], url_path="restore-seed")
+    def restore_seed(self, request, pk=None):
+        """The seed's own wording for this session's discipline. Audited either
+        way, like a reload."""
+        session = self.load(pk)
+        if (refused := self._fractional_only("reset a session's questions")) is not None:
+            return refused
+        was = (session.template_snapshot.get("template") or {}).get("name", "")
+        try:
+            session_admin.restore_seed(session)
+        except services.SessionError as exc:
+            self._session_audit("strategy.session_seed_restore_refused", session.pk,
+                                {"reason": str(exc)})
+            return Response({"detail": str(exc)}, status=exc.status)
+        self._session_audit("strategy.session_seed_restored", session.pk,
+                            {"was": was,
+                             "now": session.template_snapshot["template"]["name"]})
+        return Response(self._managed(strategy_serializers.represent_session(
+            session, include_financial=_may_see_financial(request), full=True,
+            include_prep=_may_see_financial(request)), session))
+
     @action(detail=True, methods=["post"], url_path="reset-questions")
     def reset_questions(self, request, pk=None):
         """Re-snapshot a draft nobody has been asked yet. Audited either way:

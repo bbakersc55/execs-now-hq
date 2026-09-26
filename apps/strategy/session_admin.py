@@ -35,22 +35,63 @@ def reset_refusal(session: StrategySession) -> str:
     return ""
 
 
-@transaction.atomic
-def reset_questions(session: StrategySession, template) -> StrategySession:
-    """Re-snapshot from `template`. Refused unless `reset_refusal` is empty."""
-    refusal = reset_refusal(session)
-    if refusal:
-        raise SessionError(refusal, status=409)
+def _prompts(snapshot) -> dict:
+    return {q["key"]: q["prompt"] for _s, q in services.questions_in(snapshot)}
+
+
+def compare(session: StrategySession, snapshot: dict) -> dict:
+    """What replacing this session's questions with `snapshot` would change,
+    counted — so the confirm can say it in numbers rather than "are you sure"."""
+    now, then = _prompts(session.template_snapshot), _prompts(snapshot)
+    return {
+        "source": (snapshot.get("template") or {}).get("name", ""),
+        "changed_wording": sorted(k for k in now.keys() & then.keys()
+                                  if now[k] != then[k]),
+        "added": sorted(then.keys() - now.keys()),
+        "removed": sorted(now.keys() - then.keys()),
+    }
+
+
+def seed_discipline(session) -> str:
+    return (session.template_snapshot.get("template") or {}).get("discipline") \
+        or (session.template.discipline if session.template_id else "operations")
+
+
+def _check_template(template):
     if template.archived_at is not None:
         raise SessionError(f"“{template.name}” is archived. Restore it, or choose "
                            f"another template.", status=409)
+
+
+def _replace(session, snapshot, template) -> StrategySession:
+    refusal = reset_refusal(session)
+    if refusal:
+        raise SessionError(refusal, status=409)
     session.template = template
-    session.template_snapshot = services.snapshot_of(template)
+    session.template_snapshot = snapshot
     session.current_section = ""
     session.current_section_at = None
     session.save(update_fields=["template", "template_snapshot", "current_section",
                                 "current_section_at", "updated_at"])
     return session
+
+
+@transaction.atomic
+def reset_questions(session: StrategySession, template) -> StrategySession:
+    """"Reload questions from template": re-snapshot from `template` as it
+    stands today. Refused unless `reset_refusal` is empty."""
+    _check_template(template)
+    return _replace(session, services.snapshot_of(template), template)
+
+
+@transaction.atomic
+def restore_seed(session: StrategySession) -> StrategySession:
+    """"Restore seed wording": the seed's questions for this session's
+    discipline — not any template's edited version of them. The session no
+    longer points at a template, because its questions are no template's."""
+    from apps.strategy import seed
+
+    return _replace(session, seed.seed_snapshot(seed_discipline(session)), None)
 
 
 def archive(session: StrategySession) -> StrategySession:

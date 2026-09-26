@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 
@@ -59,6 +59,12 @@ export function SessionDetail({ me }: { me: Me }) {
   const qc = useQueryClient();
   const path = `/api/strategy-sessions/${id}/`;
   const [note, setNote] = useState("");
+  // Back from the template editor after applying prep's rewordings (dry run,
+  // 2026-09-26): say what that did and did not change, and land on the send
+  // controls rather than the top of the page.
+  const location = useLocation();
+  const fromTemplate = !!(location.state as { templateUpdated?: boolean } | null)
+    ?.templateUpdated;
   const [trayOpen, setTrayOpen] = useState(false);
   const mayRun = !!me.role && CAN_RUN.includes(me.role);
 
@@ -94,6 +100,12 @@ export function SessionDetail({ me }: { me: Me }) {
     onError: (e: Error) => setNote(e.message),
   });
 
+  useEffect(() => {
+    if (fromTemplate && session.data) {
+      document.getElementById("precall-card")?.scrollIntoView?.({ block: "start" });
+    }
+  }, [fromTemplate, session.data]);
+
   if (session.isLoading) return <p>Opening the session…</p>;
   if (session.isError) return <Banner kind="bad">{(session.error as Error).message}</Banner>;
   const data = session.data!;
@@ -122,6 +134,15 @@ export function SessionDetail({ me }: { me: Me }) {
         )}
       </p>
       {note && <Banner kind="info">{note}</Banner>}
+      {fromTemplate && (
+        <Banner kind="ok">
+          {data.reset_refusal === ""
+            ? "Template updated. This draft still holds the old wording — reset it "
+              + "to pick up the changes."
+            : "Template updated. This session keeps the wording it was sent with; "
+              + "start a new session from the template to use the changes."}
+        </Banner>
+      )}
       {data.archived_at && (
         <Banner kind="warn">This session is archived. It is out of the list, and
           nothing about it has changed.</Banner>
@@ -142,6 +163,7 @@ export function SessionDetail({ me }: { me: Me }) {
       {mayRun && <PrepCard id={id!} path={path} data={data} onChanged={refresh}
                            setNote={setNote} />}
 
+      <div id="precall-card" />
       <Card title="The pre-call questions">
         <p className="small muted">
           {data.precall_sent
@@ -1307,6 +1329,19 @@ function Rewordings({ id, path, prep, onChanged, setNote, sessionTemplateId }: {
         together. They arrive in the template editor as unsaved changes — you
         still press Save there.
       </p>
+      {/* Most of the time it is most of them (dry run, 2026-09-26): tick them
+          all, then untick the few that should stay as they are. */}
+      <label className="inline" style={{ marginBottom: "var(--s2)" }}>
+        <input type="checkbox" aria-label="Tick all rewordings"
+          checked={prep.rewordings.length > 0 && chosen.length === prep.rewordings.length}
+          ref={(box) => {
+            if (box) box.indeterminate = chosen.length > 0
+              && chosen.length < prep.rewordings.length;
+          }}
+          onChange={(e) => setChosen(e.target.checked
+            ? prep.rewordings.map((row) => row.key) : [])} />
+        <span className="small">Tick all</span>
+      </label>
       {prep.rewordings.map((row) => (
         <div className="card" key={row.key}>
           <label className="inline" style={{ marginBottom: "var(--s2)" }}>
@@ -1354,6 +1389,11 @@ function Rewordings({ id, path, prep, onChanged, setNote, sessionTemplateId }: {
 }
 
 
+interface ResetPreview {
+  source: string; changed_wording: string[]; added: string[]; removed: string[];
+  refusal: string;
+}
+
 /** The start form, with the template (and, from a session, the prospect)
  *  already chosen. */
 export function startUrl(templateId: string | null, contactId?: string) {
@@ -1399,6 +1439,29 @@ function SessionAdmin({ data, mayRun, onChanged, setNote }: {
     qc.invalidateQueries({ queryKey: ["strategy-sessions"] });
     onChanged();
   };
+  // Two ways to reset a draft, and they are easy to confuse (dry run,
+  // 2026-09-26): "Reload" takes the template as it reads today; "Restore seed
+  // wording" takes the seed. The confirm names the source and counts what
+  // changes, from the server's own comparison.
+  const confirmThen = async (preview: string, action: { suffix: string; body?: object },
+                             message: string) => {
+    let diff: ResetPreview;
+    try {
+      diff = await api.get<ResetPreview>(`${base}${preview}`);
+    } catch (e) {
+      setNote((e as Error).message);
+      return;
+    }
+    const n = diff.changed_wording.length;
+    const extra = [diff.added.length ? `${diff.added.length} added` : "",
+                   diff.removed.length ? `${diff.removed.length} removed` : ""]
+      .filter(Boolean).join(", ");
+    if (!confirm(`Are you sure? This draft's questions will be replaced with those of `
+      + `“${diff.source}”: ${n} question${n === 1 ? "" : "s"} change wording`
+      + (extra ? ` (${extra})` : "") + ". Nobody has been asked them yet, so nothing "
+      + "a person answered is lost.")) return;
+    run.mutate(action, { onSuccess: () => done(message) });
+  };
 
   const templateName = data.template?.name || "an earlier template";
   return (
@@ -1416,13 +1479,17 @@ function SessionAdmin({ data, mayRun, onChanged, setNote }: {
               ))}
             </select>
           </Field>
-          <button disabled={run.isPending} onClick={() => {
-            if (!confirm(`Are you sure? This session's questions will be replaced with `
-              + `those of “${target.name}”. Nobody has been asked them yet, so nothing `
-              + "a person answered is lost.")) return;
-            run.mutate({ suffix: "reset-questions/", body: { template: target.id } },
-                       { onSuccess: () => done(`The questions are now those of “${target.name}”.`) });
-          }}>Reset to default questions</button>
+          <button disabled={run.isPending} onClick={() => confirmThen(
+            `reset-preview/?template=${target.id}`,
+            { suffix: "reset-questions/", body: { template: target.id } },
+            `The questions are now those of “${target.name}”, as it reads today.`)}>
+            Reload questions from template
+          </button>
+          <button className="ghost" disabled={run.isPending} onClick={() => confirmThen(
+            "reset-preview/?source=seed", { suffix: "restore-seed/" },
+            "The questions are back to the seed's own wording.")}>
+            Restore seed wording
+          </button>
         </div>
       )}
       {mayRun && !!data.reset_refusal && (

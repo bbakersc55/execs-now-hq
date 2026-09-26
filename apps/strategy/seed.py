@@ -272,3 +272,34 @@ def create_from_seed(tenant, *, name, variant=""):
                 tenant=tenant, template=template, section=section, key=question["key"],
                 position=q_position, **fields)
     return template
+
+
+SEED_SOURCE_NAME = "Operations — seed wording"
+
+
+def seed_snapshot(discipline=DISCIPLINE) -> dict:
+    """A session snapshot straight from the seed, in the shape
+    `services.snapshot_of` gives a template — for "Restore seed wording" on a
+    draft (owner, 2026-09-26), which means *the seed*, not whatever a template
+    has been edited into since.
+
+    Operations is the only discipline with a seed in Beta.
+    """
+    from django.utils import timezone
+
+    from apps.strategy.services import SNAPSHOT_VERSION, SessionError
+
+    if discipline != DISCIPLINE:
+        raise SessionError(f"There is no seed for the {discipline} discipline yet.")
+    return {
+        "snapshot_version": SNAPSHOT_VERSION,
+        "taken_at": timezone.now().isoformat(),
+        "template": {"id": None, "name": SEED_SOURCE_NAME, "discipline": DISCIPLINE,
+                     "version": 1, "source": "seed"},
+        "sections": [{
+            "code": code, "title": title, "position": position,
+            "time_budget_minutes": budget,
+            "questions": [{**question, "ask_if_time": False, "position": q_position}
+                          for q_position, question in enumerate(questions)],
+        } for position, (code, title, budget, questions) in enumerate(SECTIONS)],
+    }

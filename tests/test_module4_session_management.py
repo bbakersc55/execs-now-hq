@@ -363,3 +363,73 @@ def test_a_client_user_reaches_none_of_it(session, template, fcc, api):
         assert post(api, fcc, f"/api/strategy-templates/{template.pk}/{suffix}"
                     ).status_code in (403, 404)
     assert api.as_(fcc).get("/api/strategy-sessions/?archived=1").json() == []
+
+
+# ------------------- reload from template vs restore seed wording (dry run)
+
+@pytest.mark.django_db
+def test_reload_from_template_counts_what_changes_and_takes_todays_wording(
+        session, template, ff, api):
+    StrategyQuestion.objects.filter(template=template, key="s1_revenue").update(
+        prompt="Revenue, in their words")
+    StrategyQuestion.objects.filter(template=template, key="s1_sites").update(
+        prompt="How many sites?")
+    base = f"/api/strategy-sessions/{session.pk}/"
+
+    preview = api.as_(ff).get(f"{base}reset-preview/?template={template.pk}").json()
+    assert preview["changed_wording"] == ["s1_revenue", "s1_sites"]
+    assert preview["added"] == [] and preview["removed"] == []
+    assert preview["source"] == template.name and preview["refusal"] == ""
+    # The preview writes nothing.
+    assert snapshot_prompt(session, "s1_revenue") == "Revenue — last year / this year"
+
+    assert post(api, ff, f"{base}reset-questions/", {"template": str(template.pk)}
+                ).status_code == 200
+    assert snapshot_prompt(session, "s1_revenue") == "Revenue, in their words"
+
+
+@pytest.mark.django_db
+def test_restore_seed_wording_is_the_seed_not_the_edited_template(session, template,
+                                                                  ff, api):
+    from apps.strategy.seed import SEED_SOURCE_NAME
+    base = f"/api/strategy-sessions/{session.pk}/"
+    # The template was edited, and the draft reloaded from it...
+    StrategyQuestion.objects.filter(template=template, key="s1_revenue").update(
+        prompt="Revenue, in their words")
+    post(api, ff, f"{base}reset-questions/", {"template": str(template.pk)})
+    assert snapshot_prompt(session, "s1_revenue") == "Revenue, in their words"
+
+    # ...and "back to the seed" means the seed.
+    preview = api.as_(ff).get(f"{base}reset-preview/?source=seed").json()
+    assert preview["changed_wording"] == ["s1_revenue"]
+    assert preview["source"] == SEED_SOURCE_NAME
+
+    restored = post(api, ff, f"{base}restore-seed/")
+    assert restored.status_code == 200, restored.json()
+    assert snapshot_prompt(session, "s1_revenue") == "Revenue — last year / this year"
+    session.refresh_from_db()
+    assert session.template_id is None
+    assert session.template_snapshot["template"]["name"] == SEED_SOURCE_NAME
+    assert len(list(services.questions_in(session.template_snapshot))) == 47
+    # The template itself is untouched by a restore on a session.
+    assert StrategyQuestion.objects.get(template=template, key="s1_revenue").prompt == \
+        "Revenue, in their words"
+    assert AuditEvent.all_objects.filter(verb="strategy.session_seed_restored",
+                                         target_id=session.pk).exists()
+
+
+@pytest.mark.django_db
+def test_restore_seed_wording_is_refused_once_someone_has_been_asked(session, ff, va,
+                                                                     api):
+    services.issue_precall_token(session)
+    before = StrategySession.objects.get(pk=session.pk).template_snapshot
+    refused = post(api, ff, f"/api/strategy-sessions/{session.pk}/restore-seed/")
+    assert refused.status_code == 409
+    assert "what a real person was asked" in refused.json()["detail"]
+    assert StrategySession.objects.get(pk=session.pk).template_snapshot == before
+    assert AuditEvent.all_objects.filter(
+        verb="strategy.session_seed_restore_refused").exists()
+    assert post(api, va, f"/api/strategy-sessions/{session.pk}/restore-seed/"
+                ).status_code == 403
+    assert api.as_(va).get(f"/api/strategy-sessions/{session.pk}/reset-preview/"
+                           ).status_code == 403
