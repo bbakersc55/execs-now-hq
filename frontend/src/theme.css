@@ -500,9 +500,19 @@ ul.work-tree > li { margin: 0; }
 
 /* --------------------------------------------------- the live session view */
 
+/* The call clock stays in view while the page scrolls (dry run 2). */
+.call-clock {
+  position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap;
+  gap: var(--s2) var(--s6); align-items: center; margin-bottom: var(--s4);
+  padding: var(--s2) var(--s4); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font-size: var(--t-13); font-variant-numeric: tabular-nums;
+}
+.call-clock strong { color: var(--navy); }
+.call-clock strong.over { color: var(--warn); }
 .session-layout { display: grid; grid-template-columns: 232px 1fr; gap: var(--s6);
                   align-items: start; }
-.rail { position: sticky; top: var(--s4); display: flex; flex-direction: column; gap: 2px; }
+.rail { position: sticky; top: calc(var(--s4) + 44px); display: flex; flex-direction: column; gap: 2px; }
 .rail button {
   justify-content: space-between; width: 100%; border: none; background: transparent;
   color: var(--muted); font-size: var(--t-13); padding: var(--s2) var(--s3);

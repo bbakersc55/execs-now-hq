@@ -38,7 +38,19 @@ def represent_map_row(row) -> dict:
         "state": row.state,
         "converted_to": row.converted_to,
         "from_ai": row.ai_call_id is not None,
+        # A consolidated row names what it merges, so the fractional can check
+        # it against the originals before accepting it.
+        "merged_from": _merged_from(row),
     }
+
+
+def _merged_from(row) -> list:
+    if not row.merged_from:
+        return []
+    by_id = {str(r.pk): r for r in StrategyMapRow.objects.filter(pk__in=row.merged_from)}
+    return [{"id": rid, "bottleneck": by_id[rid].bottleneck if rid in by_id else "",
+             "state": by_id[rid].state if rid in by_id else ""}
+            for rid in row.merged_from]
 
 
 def represent_path_note(note) -> dict:

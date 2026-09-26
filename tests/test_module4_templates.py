@@ -13,7 +13,9 @@ from django.test.utils import CaptureQueriesContext
 
 from apps.strategy import services
 from apps.strategy.models import StrategyQuestion, StrategySection, StrategyTemplate
-from apps.strategy.seed import SECTIONS, TEMPLATE_NAME, seed_tenant
+from apps.strategy.seed import (
+    SECTIONS, SERVICE_BUSINESS_KEYS, TEMPLATE_NAME, neutral_prompt, seed_tenant,
+)
 from apps.tenancy.models import AuditEvent
 
 from . import registry_config  # noqa: F401
@@ -64,11 +66,15 @@ def test_restore_from_seed_makes_a_new_template_and_never_overwrites(template, f
     assert [(s.code, s.title, s.time_budget_minutes) for s in sections] == [
         (code, title, budget) for code, title, budget, _q in SECTIONS]
     assert StrategyQuestion.objects.filter(template=fresh).count() == 47
+    # Every seed question, industry-neutral (dry run 2): the service-business
+    # three archived, and {Integrator} called {Second-in-command}.
     for code, _t, _b, questions in SECTIONS:
         for question in questions:
             row = StrategyQuestion.objects.get(template=fresh, key=question["key"])
             assert row.section.code == code
-            assert row.prompt == question["prompt"]
+            assert row.prompt == neutral_prompt(question["prompt"])
+            assert (row.deleted_at is not None) == (question["key"] in
+                                                     SERVICE_BUSINESS_KEYS)
     assert fresh.is_default is False
 
     # And the edited one is untouched.

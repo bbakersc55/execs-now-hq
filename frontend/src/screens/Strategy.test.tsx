@@ -39,11 +39,11 @@ function aForm(overrides: Partial<PreCallForm> = {}): PreCallForm {
             response_schema: "free_text", value: null },
         ]},
       { code: "six_key_components", title: "Six Key Components: self-rating",
-        scale: "Rate each one from 1 to 10 — 1 means it barely works today, 10 means "
-          + "it could not be better.",
+        scale: "Rate each one from 1 to 10 — 1 means not true today, 10 means "
+          + "completely true.",
         questions: [
-          { key: "s2_vision", prompt: "Vision — Is the 3-year picture clear, written "
-            + "down, and shared by the whole leadership team?",
+          { key: "s2_vision", prompt: "Vision — Our 3-year picture is clear, written "
+            + "down, and shared by the whole leadership team.",
             response_schema: "rating_1_10", value: null },
         ]},
     ],
@@ -152,9 +152,10 @@ describe("the pre-call form", () => {
     vi.stubGlobal("fetch", mockApi({ [`GET /api/strategy/precall/${TOKEN}`]: aForm() }));
     renderRoute(<PreCall />, { path: "/strategy/precall/:token",
                                route: `/strategy/precall/${TOKEN}` });
-    expect(await screen.findByText(/1 means it barely works today/)).toBeInTheDocument();
-    expect(screen.getAllByText(/barely works today/)).toHaveLength(1);
-    expect(screen.getByRole("combobox", { name: /^Vision — Is the 3-year picture clear/ }))
+    expect(await screen.findByText(/1 means not true today, 10 means completely true/))
+      .toBeInTheDocument();
+    expect(screen.getAllByText(/not true today/)).toHaveLength(1);
+    expect(screen.getByRole("combobox", { name: /^Vision — Our 3-year picture is clear/ }))
       .toBeInTheDocument();
   });
 
@@ -274,7 +275,8 @@ describe("per-section pacing", () => {
     const twelveMinutesAgo = new Date(Date.now() - 12 * 60_000).toISOString();
     showSession(aSession({ current_section: "diagnostic",
                            current_section_at: twelveMinutesAgo }));
-    expect(await screen.findByText("12 of 25 min")).toBeInTheDocument();
+    // On the section's own pill, and again on the call clock at the top.
+    expect(await screen.findAllByText("12 of 25 min")).toHaveLength(2);
     // The sections not being run show their budget and nothing else.
     expect(screen.getByText("15 min")).toBeInTheDocument();
   });
@@ -282,8 +284,33 @@ describe("per-section pacing", () => {
   it("flags a section that has run over", async () => {
     const longAgo = new Date(Date.now() - 40 * 60_000).toISOString();
     showSession(aSession({ current_section: "diagnostic", current_section_at: longAgo }));
-    const pill = await screen.findByText("40 of 25 min");
+    const [clock, pill] = await screen.findAllByText("40 of 25 min");
     expect(pill).toHaveClass("warn");
+    expect(clock).toHaveClass("over");
+  });
+
+  it("always shows the call clock, before and during the call", async () => {
+    showSession(aSession({ started_at: null }));
+    const clock = await screen.findByRole("status", { name: "Call clock" });
+    expect(clock).toHaveTextContent(/Call not started · 70 min planned/);
+  });
+
+  it("times the call against the template's total once it has started", async () => {
+    const tenAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+    showSession(aSession({ started_at: tenAgo, current_section: "diagnostic",
+                           current_section_at: tenAgo }));
+    const clock = await screen.findByRole("status", { name: "Call clock" });
+    expect(clock).toHaveTextContent("Call 10 of 70 min");
+    expect(clock).toHaveTextContent(/Diagnostic: where it's breaking 10 of 25 min/);
+  });
+
+  it("gives a pre-call section no Start control, and every live one a Start", async () => {
+    showSession(aSession());
+    await screen.findByRole("button", { name: /^Start Diagnostic/ });
+    // Six Key Components is all pre-call questions: answered before the call.
+    expect(screen.queryByRole("button", { name: /^Start Six Key Components/ }))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Start The mirror/ })).toBeInTheDocument();
   });
 });
 
@@ -830,8 +857,8 @@ describe("nothing sends without the body on the screen", () => {
     subject: "A few questions before our strategy session",
     to_address: "dana@acme.invalid", from_address: "bryan@getexecutivesnow.test",
     body_text: "Hi Dana,\n\nSNAPSHOT\n1. Revenue — last year / this year\n\n"
-      + "SIX KEY COMPONENTS\nRate each one from 1 to 10 — 1 means it barely works "
-      + "today, 10 means it could not be better.\n1. Vision\n2. People",
+      + "SIX KEY COMPONENTS\nRate each one from 1 to 10 — 1 means not true today, "
+      + "10 means completely true.\n1. Vision\n2. People",
     body_html: "<p>Hi Dana,</p>",
   };
 
@@ -1015,6 +1042,54 @@ describe("managing a session", () => {
     expect(asked[0]).toMatch(/Are you sure.*“60-minute Operations”: 2 questions change wording \(2 removed\)/);
     expect(screen.queryByRole("button", { name: /Reset to default questions/ }))
       .not.toBeInTheDocument();
+  });
+
+  it("shows the reloaded wording in the live view straight away", async () => {
+    const user = userEvent.setup();
+    const before = aSession(DRAFT);
+    const after = aSession(DRAFT);
+    after.sections![0].questions[0] = { ...after.sections![0].questions[0],
+                                        prompt: "How do you know the work was right?" };
+    let current = before;
+    const fetchMock = mockApi({
+      "GET /api/strategy-templates/": TWO,
+      [`GET /api/strategy-sessions/${SESSION_ID}/reset-preview/`]: {
+        ...PREVIEW, changed_wording: ["s4_done_right"], removed: [] },
+      [`POST /api/strategy-sessions/${SESSION_ID}/reset-questions/`]: () => {
+        current = after; return { body: after }; },
+      [`GET /api/strategy-sessions/${SESSION_ID}/conversion-preview/`]: { rows: [] },
+      "GET /api/strategy-sessions/": () => ({ body: current }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("confirm", () => true);
+    renderRoute(<SessionDetail me={aMe()} />, { path: "/strategy/:id",
+                                                route: `/strategy/${SESSION_ID}` });
+    expect(await screen.findByText(/How do you know a site was done right\?/))
+      .toBeInTheDocument();
+    await user.click(await screen.findByRole("button",
+                                             { name: "Reload questions from template" }));
+    expect(await screen.findByText("How do you know the work was right?"))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/How do you know a site was done right\?/))
+      .not.toBeInTheDocument();
+    expect(screen.getByText(/1 question changed wording/)).toBeInTheDocument();
+  });
+
+  it("says there is nothing to reload rather than confirming zero changes", async () => {
+    const user = userEvent.setup();
+    const asked: string[] = [];
+    const fetchMock = showSession(aSession(DRAFT), aMe(), {
+      "GET /api/strategy-templates/": TWO,
+      [`GET /api/strategy-sessions/${SESSION_ID}/reset-preview/`]: {
+        ...PREVIEW, changed_wording: [], removed: [] },
+    });
+    vi.stubGlobal("confirm", (text: string) => { asked.push(text); return true; });
+    await user.click(await screen.findByRole("button",
+                                             { name: "Reload questions from template" }));
+    expect(await screen.findByText(/Nothing to reload — this draft already has/))
+      .toBeInTheDocument();
+    expect(asked).toEqual([]);
+    expect(fetchMock.calls.some((c) => c.method === "POST")).toBe(false);
   });
 
   it("restores the seed's wording, confirmed, as a separate action", async () => {
@@ -1315,5 +1390,51 @@ describe("from prep, through the editor, and back", () => {
     await user.click(screen.getByRole("button", { name: /Save 1 change/ }));
     expect(await screen.findByText(`landed on /strategy/${SESSION_ID} with the banner`))
       .toBeInTheDocument();
+  });
+});
+
+describe("the map tray, after dry run 2", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const ROW = { id: "r1", position: 0, bottleneck: "Supervisor overload",
+    root_cause: "14 sites", the_fix: "Area lead per 8", owner_text: "Integrator",
+    horizon: 60, measurable: "Inspections per site", mechanics_note: "",
+    converted_to: "" as const, from_ai: true };
+
+  it("consolidates, and shows what a merged row merges", async () => {
+    const user = userEvent.setup();
+    const merged = { ...ROW, id: "r9", bottleneck: "Supervision does not scale",
+      state: "proposed" as const, merged_from: [
+        { id: "r1", bottleneck: "Supervisor overload", state: "accepted" },
+        { id: "r2", bottleneck: "One supervisor, 14 sites", state: "proposed" }] };
+    const fetchMock = showSession(aSession({ map_rows: [
+      { ...ROW, state: "accepted" }, { ...ROW, id: "r2", bottleneck: "One supervisor, "
+        + "14 sites", state: "proposed" }, merged] }), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/consolidate/`]: { drafted: [] },
+    });
+    expect(await screen.findByText(
+      "Merges 2: Supervisor overload (on the map) · One supervisor, 14 sites"))
+      .toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Consolidate with Claude" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.endsWith("/consolidate/")))
+      .toBe(true));
+  });
+
+  it("removes an accepted row from the map after a confirm", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession({ map_rows: [{ ...ROW, state: "accepted" }] }),
+                                  aMe(), { "POST /api/strategy-map-rows/r1/remove/": ROW });
+    vi.stubGlobal("confirm", () => true);
+    await user.click(await screen.findByRole("button",
+                                             { name: "Remove Supervisor overload from the map" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.endsWith("/r1/remove/")))
+      .toBe(true));
+  });
+
+  it("does not offer Remove on a converted row", async () => {
+    showSession(aSession({ map_rows: [{ ...ROW, state: "accepted", converted_to: "goal" }] }));
+    await screen.findByText(/1\. Supervisor overload/);
+    expect(screen.queryByRole("button", { name: /Remove Supervisor overload/ }))
+      .not.toBeInTheDocument();
   });
 });

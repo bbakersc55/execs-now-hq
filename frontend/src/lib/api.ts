@@ -686,6 +686,8 @@ export interface MapRow {
   state: "proposed" | "accepted" | "discarded";
   converted_to: "" | "goal" | "project";
   from_ai: boolean;
+  /** A consolidated row: the rows it merges, as Claude cited them. */
+  merged_from?: { id: string; bottleneck: string; state: string }[];
 }
 
 /** §8's tray (owner, 2026-09-21). A pro or a con on one of the two paths;

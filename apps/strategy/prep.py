@@ -51,7 +51,8 @@ trade. Keep the question asking exactly what it asked before.
 [rated 1-10] is a one-line lead-in to a number, not a question to answer in \
 prose: you may reword after it, but it must start with the component's name \
 ("Vision", "People", "Data", "Issues", "Process", "Traction"), stay under 120 \
-characters, and ask something a score answers ("Is it clear...?", "Do you...?") \
+characters, and be something a score answers — a statement rated for how true \
+it is ("Our plan is written down.") \
 — never how, what, why, which, who, where, when, describe, tell me, walk me \
 through, explain or list. Getting this wrong \
 sent a prospect six essay questions under the heading "rate each one from 1 to \

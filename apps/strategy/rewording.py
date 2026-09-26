@@ -32,8 +32,9 @@ RATING_COMPONENTS = {
 MAX_RATING_PROMPT = 120
 
 #: What makes a question ask for an explanation rather than a score (owner,
-#: 2026-09-26). A yes/no-shaped question of any length under the cap scores on
-#: a scale — "Is the 3-year picture clear and shared?" — and one that asks
+#: 2026-09-26). A statement to rate for how true it is — the six's own form
+#: since dry run 2 — needs no question mark; a yes/no-shaped question of any
+#: length under the cap scores on a scale too — "Is the 3-year picture clear and shared?" — and one that asks
 #: *what* or *how* does not: "What does your 3-year picture look like?". Every
 #: one of the six sent on 22 September carries at least one of these, or
 #: dropped its component's name. `who`, `where` and `when` added 2026-09-26:
@@ -43,9 +44,10 @@ OPEN_ENDED_CUES = ("how", "what", "why", "which", "who", "where", "when",
 _OPEN_ENDED = re.compile(r"\b(" + "|".join(re.escape(cue) for cue in OPEN_ENDED_CUES)
                          + r")\b", re.IGNORECASE)
 
-#: The scale, said once above the six. `RATING_SCALE_MEANING` is the half that
+#: The scale, said once above the six. The six are statements scored for how
+#: true they are (dry run 2, 2026-09-26). `RATING_SCALE_MEANING` is the half that
 #: still reads right on a page reporting the scores rather than asking for them.
-RATING_SCALE_MEANING = "1 means it barely works today, 10 means it could not be better"
+RATING_SCALE_MEANING = "1 means not true today, 10 means completely true"
 RATING_SCALE = f"Rate each one from 1 to 10 — {RATING_SCALE_MEANING}."
 
 RATING_SCHEMA = "rating_1_10"
@@ -80,8 +82,9 @@ def refusal(key: str, schema: str, prompt: str) -> str:
     cue = _OPEN_ENDED.search(text)
     if cue:
         return (f"This one is rated 1–10. “{cue.group(0)}” asks for an explanation, "
-                f"which is answered in prose — what the prospect did last time. Ask "
-                f"something a score can answer: “Is it clear…?”, “Do you…?”.")
+                f"which is answered in prose — what the prospect did last time. Write "
+                f"something a score can answer: a statement to rate for how true it "
+                f"is (“Our plan is written down.”), or a yes/no question.")
     return ""
 
 

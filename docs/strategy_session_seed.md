@@ -2,7 +2,9 @@
 
 This is the owner's actual strategy session structure, generalized from a real client session. Seed it verbatim as the default Operations template. Items in `{braces}` are merge fields filled per session (from the contact/company record or by the fractional when scheduling). Every question carries an `ask_when` value: **precall** (goes on the web form sent to the prospect ahead of the call) or **live** (captured in-app during the call). The fractional can override `ask_when` per question when editing their template.
 
-Session flow and timing (about 75 minutes): 1) Where you are, where you're going — 10 min. 2) Diagnostic — 25 min. 3) The mirror — 5 min. 4) Strategy Map — 15 min. 5) Two paths — 5 min. 6) What you value & next steps — 10 min.
+Session flow and timing (about 75 minutes): 1) Where you are, where you're going — 10 min. 2) Diagnostic — 25 min. 3) The mirror — 5 min. 4) Strategy Map — 15 min. 5) Two paths — 5 min. 6) What you value & next steps — 10 min. Scope agreement (Section 9) has its own 5 minutes (owner, 2026-09-26: every live section has a budget), so the app's total is 75. The 60-minute cut runs 10 / 20 / 5 / 10 / 5 / 10, plus Scope agreement's 5.
+
+**Industry-neutral templates (owner, 2026-09-26).** The templates made from this seed — "Operations — generic", "60-minute Operations", and Restore seed wording on a draft — are industry-neutral: they archive the three questions below marked *(service business)*, and they call the Integrator **your second-in-command** (merge field `{Second-in-command}`, filled from the same person). This document keeps the original wording; the Grime Fighters template keeps all of it. A **"multi-site service business" variant** that includes those three questions is a **V1 template**.
 
 ## Section 1 — Snapshot: where they are today (`precall`)
 
@@ -20,16 +22,16 @@ Fractional-only field per item: *Notes / follow-up* (never shown to the prospect
 
 ## Section 2 — Six Key Components: self-rating (`precall`)
 
-Each rated 1–10 with an optional comment. The app computes the average and flags the lowest score ("lowest score = where to look first").
+Each rated 1–10 with an optional comment. The app computes the average and flags the lowest score ("lowest score = where to look first"). Since 2026-09-26 (dry run 2) the six are statements, scored for how true they are.
 
-Shown once above the six: *"Rate each one from 1 to 10 — 1 means it barely works today, 10 means it could not be better."*
+Shown once above the six: *"Rate each one from 1 to 10 — 1 means not true today, 10 means completely true."*
 
-1. Vision — Is the 3-year picture clear, written down, and shared by the whole leadership team?
-2. People — Are the right people in the right seats, with every seat on the chart filled?
-3. Data — Do you run the business from a weekly scorecard of a handful of numbers?
-4. Issues — Are problems surfaced openly and solved for good, not managed around?
-5. Process — Are the core processes documented, simplified, and followed by everyone?
-6. Traction — Does everyone have quarterly priorities and a weekly meeting that keeps them on track?
+1. Vision — Our 3-year picture is clear, written down, and shared by the whole leadership team.
+2. People — We have the right people in the right seats, and every seat on the chart is filled.
+3. Data — We run the week from a short scorecard of numbers (utilization, pipeline, cash).
+4. Issues — Problems get raised openly and solved for good, not worked around.
+5. Process — Our core processes are documented, simplified, and followed by everyone.
+6. Traction — Everyone has quarterly priorities and a weekly meeting that keeps them on track.
 
 ## Section 3 — Where they want to go (`live`; items 1–3 may be flipped to `precall`)
 
@@ -57,11 +59,11 @@ Each question captures three fields: **What they said**, **Who or what causes it
 - If referrals stopped for 90 days?
 
 **Operations & quality**
-- ★ How do you know a site (job) was done right last night? Inspection cadence and tooling
-- Is `{Location B}` run the way `{Location A}` is?
+- ★ How do you know a site (job) was done right last night? Inspection cadence and tooling *(service business)*
+- Is `{Location B}` run the way `{Location A}` is? *(service business)*
 
 **Money**
-- ★ Gross margin by site / service line. Pricing method.
+- ★ Gross margin by site / service line. Pricing method. *(service business)*
 - Cash pinch points. Projects and supplies: profit centers or distractions?
 
 **Customer loss**

@@ -514,6 +514,20 @@ class SessionViewSet(StrategyViewSet):
         return Response({"drafted": [strategy_serializers.represent_map_row(r)
                                      for r in rows]}, status=201 if rows else 200)
 
+    @action(detail=True, methods=["post"])
+    def consolidate(self, request, pk=None):
+        """Merge the map and the tray into 3–5 main targets (10 at most), each
+        citing what it merges — **proposed into the tray**, never applied
+        (dry run 2, 2026-09-26). Costs money against the tenant's key."""
+        session = self.load(pk)
+        if (refused := self._fractional_only("run a Claude draft")) is not None:
+            return refused
+        rows = ai.consolidate_map_rows(session)
+        self._session_audit("strategy.map_consolidation_proposed", session.pk,
+                            {"proposed": [str(r.pk) for r in rows]})
+        return Response({"drafted": [strategy_serializers.represent_map_row(r)
+                                     for r in rows]}, status=201 if rows else 200)
+
     @action(detail=True, methods=["post"], url_path="draft-paths")
     def draft_paths(self, request, pk=None):
         """The pros and cons of the two paths, on demand (owner, 2026-09-21).
@@ -664,6 +678,30 @@ class MapRowViewSet(StrategyViewSet):
             return refused
         row.state = state
         row.save(update_fields=["state", "updated_at"])
+        return Response(strategy_serializers.represent_map_row(row))
+
+    @action(detail=True, methods=["post"])
+    def remove(self, request, pk=None):
+        """Take an accepted row off the map (dry run 2, 2026-09-26), so the map
+        can be pruned after a consolidation. It goes back to `discarded`, not
+        away: the row and its history stay. Refused once converted — a goal or
+        project links back to it."""
+        row = self.load_row(pk)
+        if (refused := self._fractional_only("remove a map row")) is not None:
+            return refused
+        if row.state != StrategyMapRow.State.ACCEPTED:
+            return Response({"detail": "Only a row on the map can be removed from it."},
+                            status=400)
+        if row.converted_to:
+            return Response({"detail": f"This row was converted to a {row.converted_to}, "
+                                       f"which links back to it. It stays on the map."},
+                            status=409)
+        row.state = StrategyMapRow.State.DISCARDED
+        row.save(update_fields=["state", "updated_at"])
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="strategy.map_row_removed",
+            target_type="strategy_map_row", target_id=row.pk,
+            payload={"session": str(row.session_id), "bottleneck": row.bottleneck})
         return Response(strategy_serializers.represent_map_row(row))
 
     def create(self, request):

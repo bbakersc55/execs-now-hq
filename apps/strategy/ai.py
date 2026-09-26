@@ -24,6 +24,14 @@ from apps.strategy import services
 from apps.strategy.models import StrategyMapRow, StrategyPathNote
 
 ROWS_PURPOSE = "strategy_rows"
+CONSOLIDATE_PURPOSE = "strategy_rows_consolidate"
+
+#: Per draft run (dry run 2, 2026-09-26: one session produced 45 candidates,
+#: many on the same theme).
+MAX_ROWS_PER_RUN = 5
+#: What Consolidate may propose: three to five main targets is the aim, ten
+#: the ceiling.
+MAX_CONSOLIDATED = 10
 MIRROR_PURPOSE = "strategy_mirror"
 PATHS_PURPOSE = "strategy_path_notes"
 
@@ -48,8 +56,12 @@ said, who or what causes it, and what they have already tried. You must not \
 assert any fact, figure, name, date or cause that is not in that input. Do not \
 invent a measurable the conversation does not support, do not estimate numbers, \
 and do not name an owner nobody mentioned: leave the owner empty instead. If an \
-area is thin, draft fewer rows. Three to five rows is the useful range; fewer is \
-better than padded.
+area is thin, draft fewer rows. Propose AT MOST FIVE rows; fewer is better than \
+padded.
+
+You may also be given the rows already on the map or waiting in the tray. Do not \
+propose a row on a theme one of them already covers, even in other words — a new \
+row has to be about a different bottleneck. If nothing new is left, reply [].
 
 The fix is what would actually be done, in the plain words an operator would \
 use. The measurable is how they would know it worked — a thing already being \
@@ -178,8 +190,31 @@ def _clean_row(raw) -> dict | None:
     }
 
 
+def _live_rows(session):
+    return list(StrategyMapRow.objects.filter(
+        session=session, state__in=[StrategyMapRow.State.ACCEPTED,
+                                    StrategyMapRow.State.PROPOSED])
+        .order_by("state", "position", "created_at"))
+
+
+def _already(session) -> str:
+    """The rows a new draft must not repeat, told to the model."""
+    rows = _live_rows(session)
+    if not rows:
+        return ""
+    lines = ["\nRows already on the map or in the tray — do not repeat their themes:"]
+    for row in rows:
+        where = "on the map" if row.state == StrategyMapRow.State.ACCEPTED else "in the tray"
+        lines.append(f"- ({where}) {row.bottleneck}"
+                     + (f" — fix: {row.the_fix}" if row.the_fix else ""))
+    return "\n".join(lines)
+
+
 def draft_map_rows(session, *, trigger="button"):
     """Append candidate rows to the tray. Never touches a row already there.
+
+    At most `MAX_ROWS_PER_RUN` a run, and the model is told the rows already
+    accepted or proposed so a second run finds new ground or nothing.
 
     Returns the rows created — possibly none, which is a legitimate answer when
     the diagnostic is still thin.
@@ -189,6 +224,7 @@ def draft_map_rows(session, *, trigger="button"):
     user_text = drafting_input(session)
     if not user_text:
         return []
+    user_text += _already(session)
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=ROWS_PURPOSE, system=ROWS_SYSTEM,
@@ -216,6 +252,98 @@ def draft_map_rows(session, *, trigger="button"):
             tenant=session.tenant, session=session, position=position,
             state=StrategyMapRow.State.PROPOSED, ai_call=call, **row))
         position += 1
+        if len(made) >= MAX_ROWS_PER_RUN:
+            break                        # the cap holds whatever the model sent
+    return made
+
+
+# --------------------------------------------- consolidation (dry run 2)
+
+CONSOLIDATE_SYSTEM = """\
+You are consolidating a fractional operations executive's Strategy Map. You are \
+given numbered rows — some already accepted onto the map, some proposed — each \
+with a bottleneck, root cause, fix, owner, horizon (30/60/90 days) and \
+measurable. Many repeat the same theme in different words.
+
+Merge them into three to five main targets (never more than ten). Each target \
+cites, in "merges", the numbers of the rows it combines; every target merges at \
+least one row, and a row may be cited by only one target.
+
+Use ONLY what the rows say. Do not assert any fact, figure, name, date, owner or \
+cause that is not in one of the rows it merges; do not estimate numbers; if the \
+merged rows name different owners or horizons, keep one they state or leave it \
+empty — never invent one. Plain operator's words.
+
+Reply with JSON only: a list of objects with the keys "bottleneck", \
+"root_cause", "the_fix", "owner_text", "horizon", "measurable", "merges". No \
+prose around it, no markdown fence."""
+
+
+def consolidation_input(rows) -> str:
+    """The rows as numbered text. The private mechanics note stays out, as the
+    fractional's notes stay out of every draft."""
+    lines = []
+    for number, row in enumerate(rows, start=1):
+        where = "accepted" if row.state == StrategyMapRow.State.ACCEPTED else "proposed"
+        lines.append(f"{number}. ({where}) bottleneck: {row.bottleneck}")
+        for field, label in (("root_cause", "root cause"), ("the_fix", "fix"),
+                             ("owner_text", "owner"), ("horizon", "horizon"),
+                             ("measurable", "measurable")):
+            value = getattr(row, field)
+            if value not in ("", None):
+                lines.append(f"   {label}: {value}")
+    return "\n".join(lines)
+
+
+def consolidate_map_rows(session):
+    """Propose 3–5 (at most 10) merged rows into the tray, each citing the
+    rows it merges. Proposals only: nothing on the map changes, and the
+    originals are untouched until a person prunes them.
+    """
+    from apps.tenancy import claude
+
+    rows = _live_rows(session)
+    if len(rows) < 2:
+        return []
+    try:
+        text, call = claude.complete_with_call(
+            tenant=session.tenant, purpose=CONSOLIDATE_PURPOSE, system=CONSOLIDATE_SYSTEM,
+            user_text=consolidation_input(rows), target_type="strategy_session",
+            target_id=session.pk, trigger="button", max_tokens=4000,
+        )
+    except (claude.ClaudeUnavailable, claude.ClaudeRefused):
+        return []
+    payload = _json_payload(text)
+    if isinstance(payload, dict):
+        payload = payload.get("rows")
+    if not isinstance(payload, list):
+        return []
+
+    position = StrategyMapRow.objects.filter(session=session).count()
+    cited: set = set()
+    made = []
+    for raw in payload:
+        row = _clean_row(raw)
+        if row is None:
+            continue
+        numbers = raw.get("merges") if isinstance(raw, dict) else None
+        merges = []
+        for n in numbers if isinstance(numbers, list) else []:
+            if isinstance(n, str) and n.strip().isdigit():
+                n = int(n.strip())
+            if isinstance(n, int) and 1 <= n <= len(rows) and n not in cited:
+                merges.append(n)
+        # A target that cites nothing it merges is a new claim, not a merge.
+        if not merges:
+            continue
+        cited.update(merges)
+        made.append(StrategyMapRow.objects.create(
+            tenant=session.tenant, session=session, position=position,
+            state=StrategyMapRow.State.PROPOSED, ai_call=call,
+            merged_from=[str(rows[n - 1].pk) for n in merges], **row))
+        position += 1
+        if len(made) >= MAX_CONSOLIDATED:
+            break
     return made
 
 

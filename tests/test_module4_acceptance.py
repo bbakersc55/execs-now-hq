@@ -246,7 +246,7 @@ def test_ac_4_6_the_call_clock_starts_when_the_call_does(session, ff, api):
     first = session.started_at
 
     payload = api.as_(ff).get(f"/api/strategy-sessions/{session.pk}/").json()
-    assert payload["budget_minutes"] == 70          # the seed's 10/25/5/15/10/5
+    assert payload["budget_minutes"] == 75          # 10/25/5/15/10/5, and §9's 5
     assert payload["started_at"] is not None
 
     api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/answers/",

@@ -1,7 +1,7 @@
 """The Operations template, seeded **verbatim** from `docs/strategy_session_seed.md`.
 
 Verbatim is the requirement, not a nicety: this is the owner's real session
-structure, generalised from a real client call, and a reworded prompt is a
+structure, generalized from a real client call, and a reworded prompt is a
 different question. Every `prompt` below is the seed document's own wording,
 including its `{merge fields}` and its ★ marks (carried as `must_ask`, not as
 punctuation).
@@ -39,32 +39,48 @@ def q(key, prompt, *, ask_when=LIVE, schema=FREE_TEXT, must_ask=False, area="",
     }
 
 
-#: The six ratings' lead-ins (owner, 2026-09-26). Each starts with the
-#: component it rates and asks something a score answers; the scale line sits
-#: once above all six (`rewording.RATING_SCALE`). `repair_rating_prompts` puts a
-#: template back to exactly these.
+#: The six ratings, as statements scored for how true they are (owner,
+#: 2026-09-26, dry run 2). Each starts with the component it rates; the scale
+#: line sits once above all six (`rewording.RATING_SCALE`: "1 means not true
+#: today, 10 means completely true").
 RATING_LEAD_INS = {
-    "s2_vision": "Vision — Is the 3-year picture clear, written down, and shared by "
-                 "the whole leadership team?",
-    "s2_people": "People — Are the right people in the right seats, with every seat "
-                 "on the chart filled?",
-    "s2_data": "Data — Do you run the business from a weekly scorecard of a handful "
-               "of numbers?",
-    "s2_issues": "Issues — Are problems surfaced openly and solved for good, not "
-                 "managed around?",
-    "s2_process": "Process — Are the core processes documented, simplified, and "
-                  "followed by everyone?",
-    "s2_traction": "Traction — Does everyone have quarterly priorities and a weekly "
-                   "meeting that keeps them on track?",
+    "s2_vision": "Vision — Our 3-year picture is clear, written down, and shared by "
+                 "the whole leadership team.",
+    "s2_people": "People — We have the right people in the right seats, and every "
+                 "seat on the chart is filled.",
+    "s2_data": "Data — We run the week from a short scorecard of numbers "
+               "(utilization, pipeline, cash).",
+    "s2_issues": "Issues — Problems get raised openly and solved for good, not "
+                 "worked around.",
+    "s2_process": "Process — Our core processes are documented, simplified, and "
+                  "followed by everyone.",
+    "s2_traction": "Traction — Everyone has quarterly priorities and a weekly "
+                   "meeting that keeps them on track.",
 }
+
+#: Industry-neutral (owner, 2026-09-26, dry run 2). The templates made from the
+#: seed — "Operations — generic", the 60-minute cut, and Restore seed wording
+#: on a draft — leave out three questions that only make sense for a
+#: multi-site service business, and call the Integrator "your
+#: second-in-command". The questions stay in `SECTIONS` (their keys are spent,
+#: and the Grime Fighters template still asks them); a "multi-site service
+#: business" variant that includes them is a V1 template.
+SERVICE_BUSINESS_KEYS = ("s4_done_right", "s4_location_parity", "s4_gross_margin")
+NEUTRAL_MERGE = {"{Integrator}": "{Second-in-command}"}
+
+
+def neutral_prompt(prompt: str) -> str:
+    for old, new in NEUTRAL_MERGE.items():
+        prompt = prompt.replace(old, new)
+    return prompt
 
 
 # (code, title, time_budget_minutes, [question, ...])
 #
 # Time budgets are the seed's 10/25/5/15/5/10 (FR-4.15), laid on the six LIVE
 # blocks of the stated flow. §1 and §2 go out on the pre-call form, so they hold
-# none; §9 runs inside §7's "what you value & next steps" block and holds none
-# of its own. See the open question raised with the owner on 2026-09-18.
+# none. §9 was first read as running inside §7's block (2026-09-18); the owner
+# ruled on 2026-09-26 that every live section has a budget, and §9 has 5.
 SECTIONS = [
     ("snapshot", "Snapshot: where they are today", None, [
         # "Fractional-only field per item: Notes / follow-up" — hence `note=True`
@@ -170,7 +186,7 @@ SECTIONS = [
           "weekly working sessions plus on-site days; 90-day sprints with "
           "measurables; execution load carried, not just advised.", schema=PATH),
     ]),
-    ("scope_agreement", "Scope agreement", None, [
+    ("scope_agreement", "Scope agreement", 5, [
         q("s9_scope", "Scope — which map rows are in the first 90 days", schema=AGREED),
         q("s9_start_date", "Start date", schema=AGREED),
         q("s9_cadence", "Sprint length / check-in cadence", schema=AGREED),
@@ -232,6 +248,8 @@ def seed_tenant(tenant, *, apps=None):
 SIXTY_MINUTE_BUDGETS = {
     "where_they_want_to_go": 10, "diagnostic": 20, "mirror": 5,
     "strategy_map": 10, "two_paths": 5, "what_they_value": 10,
+    # Every live section has a budget (owner, 2026-09-26, dry run 2).
+    "scope_agreement": 5,
 }
 #: What they value, trimmed to three. The other two are archived rather than
 #: left out, so their keys stay spent in this template as in every other.
@@ -240,7 +258,9 @@ SIXTY_MINUTE = "sixty"
 
 
 def create_from_seed(tenant, *, name, variant=""):
-    """A **new** template, exactly as `strategy_session_seed.md` ships it.
+    """A **new** template from `strategy_session_seed.md`, industry-neutral:
+    the three multi-site service-business questions archived and
+    `{Integrator}` called `{Second-in-command}` (dry run 2, 2026-09-26).
 
     Never overwrites: this is "Restore from seed", and a template somebody has
     been editing is theirs. The caller has already checked the name is free.
@@ -264,9 +284,12 @@ def create_from_seed(tenant, *, name, variant=""):
             position=position, time_budget_minutes=budget)
         for q_position, question in enumerate(questions):
             fields = {k: v for k, v in question.items() if k != "key"}
+            fields["prompt"] = neutral_prompt(fields["prompt"])
             if sixty and code == "diagnostic" and not question["must_ask"]:
                 fields["ask_if_time"] = True
-            if sixty and question["key"] in SIXTY_MINUTE_DROPPED:
+            # Archived, not left out, so the keys stay spent here as well.
+            if question["key"] in SERVICE_BUSINESS_KEYS or (
+                    sixty and question["key"] in SIXTY_MINUTE_DROPPED):
                 fields["deleted_at"] = timezone.now()
             StrategyQuestion.objects.create(
                 tenant=tenant, template=template, section=section, key=question["key"],
@@ -299,7 +322,9 @@ def seed_snapshot(discipline=DISCIPLINE) -> dict:
         "sections": [{
             "code": code, "title": title, "position": position,
             "time_budget_minutes": budget,
-            "questions": [{**question, "ask_if_time": False, "position": q_position}
-                          for q_position, question in enumerate(questions)],
+            "questions": [{**question, "prompt": neutral_prompt(question["prompt"]),
+                           "ask_if_time": False, "position": q_position}
+                          for q_position, question in enumerate(questions)
+                          if question["key"] not in SERVICE_BUSINESS_KEYS],
         } for position, (code, title, budget, questions) in enumerate(SECTIONS)],
     }

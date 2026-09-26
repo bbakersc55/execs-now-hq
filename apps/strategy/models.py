@@ -432,6 +432,10 @@ class StrategyMapRow(TenantScopedModel):
     # FR-4.28 — the per-row choice made at conversion.
     converted_to = models.CharField(max_length=8, choices=ConvertedTo.choices,
                                     blank=True, default="")
+    #: A consolidated row (dry run 2, 2026-09-26): the ids of the rows it
+    #: merges, as Claude cited them. Empty on an ordinary row. Accepting it
+    #: changes nothing about the originals — pruning them is a person's act.
+    merged_from = models.JSONField(default=list, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "strategy_map_row"

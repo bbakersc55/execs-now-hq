@@ -313,19 +313,21 @@ def test_the_sixty_minute_template(template, ff, api, prospect, seeded_tenant):
     budgets = dict(StrategySection.objects.filter(template=sixty)
                    .values_list("code", "time_budget_minutes"))
     assert [budgets[c] for c in ("where_they_want_to_go", "diagnostic", "mirror",
-                                 "strategy_map", "two_paths", "what_they_value")] == \
-        [10, 20, 5, 10, 5, 10]
-    assert sum(b or 0 for b in budgets.values()) == 60
+                                 "strategy_map", "two_paths", "what_they_value",
+                                 "scope_agreement")] == [10, 20, 5, 10, 5, 10, 5]
+    # The call's 60, plus Scope agreement's 5 (dry run 2).
+    assert sum(b or 0 for b in budgets.values()) == 65
 
     live = StrategyQuestion.objects.filter(template=sixty, deleted_at__isnull=True)
-    assert live.filter(must_ask=True).count() == 7
-    # Every unstarred diagnostic question — seven in the seed, though the
-    # request said six — and nothing else.
+    # Seven ★ in the seed; two of them are service-business questions the
+    # industry-neutral templates archive (dry run 2), so five are live.
+    assert live.filter(must_ask=True).count() == 5
+    # Every live unstarred diagnostic question is ask-if-time, and nothing else.
     diagnostic = live.filter(section__code="diagnostic")
-    assert diagnostic.filter(ask_if_time=True).count() == 7
-    assert diagnostic.filter(must_ask=False).count() == 7
+    assert diagnostic.filter(must_ask=False).count() == 6
+    assert diagnostic.filter(ask_if_time=True).count() == 6
     assert not diagnostic.filter(ask_if_time=True, must_ask=True).exists()
-    assert live.filter(ask_if_time=True).count() == 7
+    assert live.filter(ask_if_time=True).count() == 6
     assert sorted(live.filter(section__code="what_they_value")
                   .values_list("key", flat=True)) == ["s7_value_1", "s7_value_2",
                                                       "s7_value_3"]
@@ -391,7 +393,7 @@ def test_reload_from_template_counts_what_changes_and_takes_todays_wording(
 @pytest.mark.django_db
 def test_restore_seed_wording_is_the_seed_not_the_edited_template(session, template,
                                                                   ff, api):
-    from apps.strategy.seed import SEED_SOURCE_NAME
+    from apps.strategy.seed import SEED_SOURCE_NAME, SERVICE_BUSINESS_KEYS
     base = f"/api/strategy-sessions/{session.pk}/"
     # The template was edited, and the draft reloaded from it...
     StrategyQuestion.objects.filter(template=template, key="s1_revenue").update(
@@ -401,7 +403,12 @@ def test_restore_seed_wording_is_the_seed_not_the_edited_template(session, templ
 
     # ...and "back to the seed" means the seed.
     preview = api.as_(ff).get(f"{base}reset-preview/?source=seed").json()
-    assert preview["changed_wording"] == ["s1_revenue"]
+    # The edited question, and — since the seed went industry-neutral — the
+    # five that name the Integrator; the three service-business ones go.
+    assert "s1_revenue" in preview["changed_wording"]
+    assert "s4_integrator_owns" in preview["changed_wording"]
+    assert len(preview["changed_wording"]) == 6
+    assert preview["removed"] == sorted(SERVICE_BUSINESS_KEYS)
     assert preview["source"] == SEED_SOURCE_NAME
 
     restored = post(api, ff, f"{base}restore-seed/")
@@ -410,7 +417,9 @@ def test_restore_seed_wording_is_the_seed_not_the_edited_template(session, templ
     session.refresh_from_db()
     assert session.template_id is None
     assert session.template_snapshot["template"]["name"] == SEED_SOURCE_NAME
-    assert len(list(services.questions_in(session.template_snapshot))) == 47
+    # The seed, industry-neutral: 47 less the three service-business questions.
+    assert len(list(services.questions_in(session.template_snapshot))) == 44
+    assert services.question_in(session.template_snapshot, "s4_done_right") is None
     # The template itself is untouched by a restore on a session.
     assert StrategyQuestion.objects.get(template=template, key="s1_revenue").prompt == \
         "Revenue, in their words"
@@ -433,3 +442,104 @@ def test_restore_seed_wording_is_refused_once_someone_has_been_asked(session, ff
                 ).status_code == 403
     assert api.as_(va).get(f"/api/strategy-sessions/{session.pk}/reset-preview/"
                            ).status_code == 403
+
+
+@pytest.mark.django_db
+def test_a_reloaded_draft_shows_the_templates_new_wording_in_the_live_view(
+        session, template, ff, api):
+    """Dry run 2: change a template's wording, reload the draft, and the
+    session the live view reads carries the new wording."""
+    api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {"questions": [
+        {"key": "s4_done_right", "prompt": "How do you know the work was right?"}]},
+        content_type="application/json")
+    base = f"/api/strategy-sessions/{session.pk}/"
+    view = lambda: {q["key"]: q["prompt"] for sec in api.as_(ff).get(base).json()["sections"]
+                    for q in sec["questions"]}
+    assert view()["s4_done_right"].startswith("How do you know a site")
+
+    assert api.as_(ff).get(f"{base}reset-preview/?template={template.pk}").json()[
+        "changed_wording"] == ["s4_done_right"]
+    reloaded = post(api, ff, f"{base}reset-questions/", {"template": str(template.pk)})
+    # The response itself carries it, so the screen can show it at once...
+    assert {q["key"]: q["prompt"] for sec in reloaded.json()["sections"]
+            for q in sec["questions"]}["s4_done_right"] == \
+        "How do you know the work was right?"
+    # ...and so does a fresh read.
+    assert view()["s4_done_right"] == "How do you know the work was right?"
+
+
+
+@pytest.mark.django_db
+def test_every_live_section_has_a_budget_and_no_precall_one_does(template, ff, api):
+    sixty = post(api, ff, "/api/strategy-templates/restore-from-seed/",
+                 {"name": "60-minute Operations", "variant": "sixty"}).json()
+    for t in (template, StrategyTemplate.objects.get(pk=sixty["id"])):
+        s = services.snapshot_of(t)
+        for section in s["sections"]:
+            precall = bool(section["questions"]) and all(
+                q["ask_when"] == "precall" for q in section["questions"])
+            if precall:
+                assert section["time_budget_minutes"] is None, section["code"]
+            else:
+                assert section["time_budget_minutes"], (t.name, section["code"])
+        assert {x["code"]: x["time_budget_minutes"] for x in s["sections"]}[
+            "scope_agreement"] == 5
+
+
+
+# --------------------------------------------- industry-neutral (dry run 2)
+
+@pytest.mark.django_db
+def test_the_templates_from_the_seed_are_industry_neutral(template, ff, api,
+                                                          seeded_tenant, prospect):
+    from apps.strategy.seed import SERVICE_BUSINESS_KEYS
+    for variant in ("", "sixty"):
+        made = post(api, ff, "/api/strategy-templates/restore-from-seed/",
+                    {"name": f"Neutral {variant or 'generic'}", "variant": variant}).json()
+        t = StrategyTemplate.objects.get(pk=made["id"])
+        live = StrategyQuestion.objects.filter(template=t, deleted_at__isnull=True)
+        # The three service-business questions are archived, not deleted.
+        for key in SERVICE_BUSINESS_KEYS:
+            assert not live.filter(key=key).exists()
+            assert StrategyQuestion.objects.get(template=t, key=key).deleted_at
+        assert not live.filter(prompt__contains="{Integrator}").exists()
+        assert live.filter(prompt__contains="{Second-in-command}").count() == 5
+    # The template seeded for the tenant — Grime Fighters' ancestor — keeps them.
+    assert StrategyQuestion.objects.get(template=template, key="s4_done_right"
+                                        ).deleted_at is None
+
+    # With nobody named, the merge field reads "your second-in-command".
+    s = services.start(tenant=seeded_tenant, contact=prospect, template=t)
+    body = api.as_(ff).get(f"/api/strategy-sessions/{s.pk}/").json()
+    prompts = {q["key"]: q["prompt"] for sec in body["sections"] for q in sec["questions"]}
+    assert prompts["s4_integrator_owns"] == (
+        "What does your second-in-command own outright? Is your second-in-command "
+        "empowered to say no? (no second-in-command identified yet)")
+    # With someone named, their name.
+    s.integrator_contact = ContactFactory(tenant=seeded_tenant, first_name="Sam",
+                                          last_name="Lee")
+    s.save()
+    body = api.as_(ff).get(f"/api/strategy-sessions/{s.pk}/").json()
+    prompts = {q["key"]: q["prompt"] for sec in body["sections"] for q in sec["questions"]}
+    assert prompts["s3_three_year_picture"].endswith("Sam Lee's role")
+
+
+def test_the_integrator_template_still_reads_as_it_did():
+    """Brett Murray's session (Grime Fighters) keeps its own words on the call."""
+    assert services.render_prompt("{Integrator}'s role", {}) == (
+        "the Integrator's role (no Integrator identified yet)")
+
+
+@pytest.mark.django_db
+def test_the_six_statements_pass_the_guard_through_the_editor(template, ff, api):
+    from apps.strategy.seed import RATING_LEAD_INS
+    for key, prompt in RATING_LEAD_INS.items():
+        assert "?" not in prompt
+        assert api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/",
+                                 {"questions": [{"key": key, "prompt": prompt}]},
+                                 content_type="application/json").status_code == 200
+    # Statement form, same refusal words.
+    refused = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {"questions": [
+        {"key": "s2_data", "prompt": "Data — We track the numbers and know why they move."}]},
+        content_type="application/json")
+    assert refused.status_code == 400 and "“why”" in refused.json()["detail"]

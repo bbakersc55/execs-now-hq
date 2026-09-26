@@ -28,7 +28,7 @@ from apps.strategy.models import (
 
 PRECALL_TTL = timedelta(days=30)          # FR-4.6
 SNAPSHOT_VERSION = 1
-MERGE_FIELD = re.compile(r"\{([A-Za-z ]+)\}")
+MERGE_FIELD = re.compile(r"\{([A-Za-z -]+)\}")
 
 
 class SessionError(Exception):
@@ -120,6 +120,8 @@ def question_in(snapshot: dict, key: str):
 MISSING_NAME = {
     "Visionary": "the Visionary",
     "Integrator": "the Integrator",
+    # The same person, in the industry-neutral templates (dry run 2).
+    "Second-in-command": "your second-in-command",
     "Location A": "their first location",
     "Location B": "their second location",
     "Company": "their company",
@@ -129,6 +131,7 @@ MISSING_NAME = {
 MISSING_NOTE = {
     "Visionary": "no Visionary identified yet",
     "Integrator": "no Integrator identified yet",
+    "Second-in-command": "no second-in-command identified yet",
     "Location A": "no locations on file",
     "Location B": "no second location on file",
 }
@@ -149,6 +152,8 @@ def merge_context(session: StrategySession) -> dict:
     return {
         "Visionary": _contact_name(session.visionary_contact),
         "Integrator": _contact_name(session.integrator_contact),
+        # The industry-neutral templates' name for the same person.
+        "Second-in-command": _contact_name(session.integrator_contact),
         "Company": company.name if company is not None else "",
         "Location A": locations[0].name if len(locations) > 0 else "",
         "Location B": locations[1].name if len(locations) > 1 else "",

@@ -201,6 +201,8 @@ export function SessionDetail({ me }: { me: Me }) {
         </Card>
       )}
 
+      <CallClock data={data} elapsed={elapsed} onSection={onSection} />
+
       <div className="session-layout">
         {/* The rail navigates and nothing else. Starting a section is its own
             control, so reading ahead mid-call cannot move the pacing under
@@ -222,6 +224,8 @@ export function SessionDetail({ me }: { me: Me }) {
         <div>
       {(data.sections ?? []).map((section) => {
         const here = data.current_section === section.code;
+        // Answered before the call, so there is nothing to time (dry run 2).
+        const precall = isPrecall(section);
         const over = here && onSection !== null && section.time_budget_minutes !== null
           && onSection > section.time_budget_minutes;
         return (
@@ -236,7 +240,7 @@ export function SessionDetail({ me }: { me: Me }) {
                     : `${section.time_budget_minutes} min`}
                 </Pill>
               )}
-              {mayRun && (
+              {mayRun && !precall && (
                 <button className="small" aria-label={`${here ? "Stop" : "Start"} ${section.title}`}
                   onClick={() => setSection.mutate(here ? "" : section.code)}>
                   {here ? <><Square size={14} /> Stop</> : <><Play size={14} /> Start</>}
@@ -258,7 +262,9 @@ export function SessionDetail({ me }: { me: Me }) {
           )}
           {section.code === "strategy_map" && (
             <MapSection tray={tray} map={map} mayRun={mayRun}
-              onDraft={() => act.mutate({ suffix: "draft-rows/" })} onChanged={refresh} />
+              onDraft={() => act.mutate({ suffix: "draft-rows/" })}
+              onConsolidate={() => act.mutate({ suffix: "consolidate/" })}
+              busy={act.isPending} onChanged={refresh} />
           )}
           {section.questions.map((question) => (
             <QuestionRow key={question.key} question={question}
@@ -334,6 +340,7 @@ function TrayDrawer({ open, onToggle, rows, notes, onChanged }: {
           <p className="tiny muted" style={{ margin: "var(--s1) 0" }}>
             {row.the_fix}{row.horizon ? ` · ${row.horizon} days` : ""}
           </p>
+          <Merges row={row} />
           <div className="row tight">
             <button className="primary small" aria-label={`Accept ${row.bottleneck}`}
               onClick={() => act.mutate({ url: `/api/strategy-map-rows/${row.id}/accept/` })}>
@@ -451,9 +458,9 @@ function Mirror({ data, mayRun, onDraft, onAccept }: {
   );
 }
 
-function MapSection({ tray, map, mayRun, onDraft, onChanged }: {
+function MapSection({ tray, map, mayRun, onDraft, onConsolidate, busy, onChanged }: {
   tray: MapRow[]; map: MapRow[]; mayRun: boolean;
-  onDraft: () => void; onChanged: () => void;
+  onDraft: () => void; onConsolidate: () => void; busy: boolean; onChanged: () => void;
 }) {
   const act = useMutation({
     mutationFn: ({ row, suffix }: { row: string; suffix: string }) =>
@@ -482,9 +489,15 @@ function MapSection({ tray, map, mayRun, onDraft, onChanged }: {
     <>
       {mayRun && (
         <div className="row">
-          <button onClick={onDraft}>Draft rows with Claude</button>
+          <button onClick={onDraft} disabled={busy}>Draft rows with Claude</button>
+          {/* Dry run 2: 45 candidates, many on one theme. Consolidate proposes
+              3–5 main targets that each say what they merge; nothing on the
+              map changes until you accept one and prune the originals. */}
+          <button onClick={onConsolidate} disabled={busy || tray.length + map.length < 2}>
+            Consolidate with Claude</button>
           <span className="small muted">
-            Drafts land in the tray below. Nothing reaches the map until you accept it.
+            Drafts land in the tray below, five at most a run. Nothing reaches the map
+            until you accept it.
           </span>
         </div>
       )}
@@ -500,6 +513,7 @@ function MapSection({ tray, map, mayRun, onDraft, onChanged }: {
                 {row.horizon ? ` · ${row.horizon} days` : ""}
                 {row.measurable ? ` · ${row.measurable}` : ""}
               </p>
+              <Merges row={row} />
               {mayRun && (
                 <div className="row">
                   <button className="primary"
@@ -527,9 +541,19 @@ function MapSection({ tray, map, mayRun, onDraft, onChanged }: {
       {map.map((row, index) => (
         <div key={row.id} className="card" style={{ marginBottom: ".5rem" }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <strong>{index + 1}. {row.bottleneck}</strong>
+            <span><strong>{index + 1}. {row.bottleneck}</strong><Merges row={row} /></span>
             {mayRun && (
               <span className="row">
+                {/* Pruning after a consolidation (dry run 2). Back to discarded,
+                    audited; a converted row links to its goal and stays. */}
+                {!row.converted_to && (
+                  <button className="ghost small" aria-label={`Remove ${row.bottleneck} from the map`}
+                    onClick={() => {
+                      if (!confirm(`Take “${row.bottleneck}” off the map? It is kept as `
+                        + "discarded, and the change is recorded.")) return;
+                      act.mutate({ row: row.id, suffix: "remove/" });
+                    }}>Remove</button>
+                )}
                 <button className="ghost small" disabled={index === 0}
                   onClick={() => move(index, -1)} aria-label={`Move ${row.bottleneck} up`}>
                   ↑
@@ -1456,11 +1480,28 @@ function SessionAdmin({ data, mayRun, onChanged, setNote }: {
     const extra = [diff.added.length ? `${diff.added.length} added` : "",
                    diff.removed.length ? `${diff.removed.length} removed` : ""]
       .filter(Boolean).join(", ");
+    // Nothing to do is said, not confirmed (dry run 2, 2026-09-26): two
+    // reloads ran before the template was saved, the confirm asked "are you
+    // sure" about zero changes, and it read as a reload that did not work.
+    if (n === 0 && !extra) {
+      setNote(`Nothing to reload — this draft already has “${diff.source}”'s wording. `
+        + "If you have just edited the template, save it there first.");
+      return;
+    }
     if (!confirm(`Are you sure? This draft's questions will be replaced with those of `
       + `“${diff.source}”: ${n} question${n === 1 ? "" : "s"} change wording`
       + (extra ? ` (${extra})` : "") + ". Nobody has been asked them yet, so nothing "
       + "a person answered is lost.")) return;
-    run.mutate(action, { onSuccess: () => done(message) });
+    run.mutate(action, {
+      onSuccess: (session) => {
+        // The response is the re-snapshotted session: put it on screen now,
+        // and drop every preview built from the old questions (the email and
+        // invite panels cache theirs).
+        qc.setQueryData(["strategy-session", data.id], session);
+        qc.removeQueries({ queryKey: ["send-preview", base] });
+        done(`${message} ${n} question${n === 1 ? "" : "s"} changed wording.`);
+      },
+    });
   };
 
   const templateName = data.template?.name || "an earlier template";
@@ -1537,5 +1578,59 @@ function SessionAdmin({ data, mayRun, onChanged, setNote }: {
         <p className="small muted">{data.delete_refusal}</p>
       )}
     </Card>
+  );
+}
+
+
+/** A section whose questions all go on the pre-call form. */
+function isPrecall(section: { questions: { ask_when: string }[] }) {
+  return section.questions.length > 0
+    && section.questions.every((q) => q.ask_when === "precall");
+}
+
+/**
+ * The call clock, always in view at the top of the live view (dry run 2,
+ * 2026-09-26): the whole call against the template's total, and the current
+ * section against its own budget. Before the call starts it says so, rather
+ * than disappearing.
+ */
+function CallClock({ data, elapsed, onSection }: {
+  data: StrategySessionRow; elapsed: number | null; onSection: number | null;
+}) {
+  const current = (data.sections ?? []).find((s) => s.code === data.current_section);
+  const total = data.budget_minutes;
+  const over = elapsed !== null && total > 0 && elapsed > total;
+  const sectionOver = current && onSection !== null && current.time_budget_minutes !== null
+    && onSection > current.time_budget_minutes;
+  return (
+    <div className="call-clock" role="status" aria-label="Call clock">
+      <span>
+        Call{" "}
+        {elapsed === null
+          ? <strong>not started</strong>
+          : <strong className={over ? "over" : ""}>{elapsed} of {total} min</strong>}
+        {elapsed === null && <span className="muted"> · {total} min planned</span>}
+      </span>
+      {current && (
+        <span>
+          {current.title}{" "}
+          <strong className={sectionOver ? "over" : ""}>
+            {onSection ?? 0} of {current.time_budget_minutes ?? "—"} min</strong>
+        </span>
+      )}
+    </div>
+  );
+}
+
+
+/** What a consolidated row merges, so it can be checked against the
+ *  originals before it is accepted. Nothing for an ordinary row. */
+function Merges({ row }: { row: MapRow }) {
+  if (!row.merged_from?.length) return null;
+  return (
+    <p className="tiny muted" style={{ margin: "var(--s1) 0" }}>
+      Merges {row.merged_from.length}: {row.merged_from.map((m) => m.bottleneck
+        + (m.state === "accepted" ? " (on the map)" : "")).join(" · ")}
+    </p>
   );
 }
