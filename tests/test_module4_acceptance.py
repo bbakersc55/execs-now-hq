@@ -826,11 +826,11 @@ def test_a_rewording_may_not_turn_a_rating_into_an_essay(session, ff, api, templ
 
     # A lead-in that keeps the component is fine, which is the whole point.
     ok = api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
-        "questions": [{"key": "s2_vision", "prompt": "Vision — where this is going"}]},
+        "questions": [{"key": "s2_vision", "prompt": "Vision — the picture, written down"}]},
         content_type="application/json")
     assert ok.status_code == 200
     assert StrategyQuestion.objects.get(key="s2_vision").prompt == (
-        "Vision — where this is going")
+        "Vision — the picture, written down")
 
     # And every other shape is still free to be reworded.
     assert api.as_(ff).patch(f"/api/strategy-templates/{template.pk}/", {
@@ -892,6 +892,9 @@ def test_the_22_september_essays_are_still_refused(session, ff, api, template):
     ("Issues — Describe the one that costs the most.", "“Describe”"),
     ("Traction — List this quarter's priorities.", "“List”"),
     ("People — how full is the chart?", "“how”"),
+    ("People — Who runs each division day-to-day, and where is the gap?", "“Who”"),
+    ("People — Is the gap where the crews are?", "“where”"),
+    ("Traction — Do you know when the priorities are due?", "“when”"),
     ("The whole team — is the Vision shared?", "start with “Vision”"),
 ])
 def test_an_open_ended_cue_or_a_missing_component_is_refused(prompt, why):
@@ -902,9 +905,12 @@ def test_an_open_ended_cue_or_a_missing_component_is_refused(prompt, why):
 
 
 def test_a_cue_is_a_word_not_a_fragment():
-    # "somewhat", "listed", "showhow" are not asking for an explanation.
+    # "somewhat", "listed", "whole", "somewhere" are not asking for anything.
     assert rewording.refusal("s2_data", "rating_1_10",
                              "Data — Are the numbers listed and somewhat trusted?") == ""
+    assert rewording.refusal("s2_vision", "rating_1_10",
+                             "Vision — Is it shared by the whole team, somewhere "
+                             "everyone sees it?") == ""
 
 
 @pytest.mark.django_db

@@ -52,8 +52,8 @@ trade. Keep the question asking exactly what it asked before.
 prose: you may reword after it, but it must start with the component's name \
 ("Vision", "People", "Data", "Issues", "Process", "Traction"), stay under 120 \
 characters, and ask something a score answers ("Is it clear...?", "Do you...?") \
-— never how, what, why, which, describe, tell me, walk me through, explain or \
-list. Getting this wrong \
+— never how, what, why, which, who, where, when, describe, tell me, walk me \
+through, explain or list. Getting this wrong \
 sent a prospect six essay questions under the heading "rate each one from 1 to \
 10". If a question is already right for them, return it unchanged and say so in \
 "why".

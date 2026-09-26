@@ -36,9 +36,10 @@ MAX_RATING_PROMPT = 120
 #: a scale — "Is the 3-year picture clear and shared?" — and one that asks
 #: *what* or *how* does not: "What does your 3-year picture look like?". Every
 #: one of the six sent on 22 September carries at least one of these, or
-#: dropped its component's name.
-OPEN_ENDED_CUES = ("how", "what", "why", "which", "describe", "tell me",
-                   "walk me through", "explain", "list")
+#: dropped its component's name. `who`, `where` and `when` added 2026-09-26:
+#: without them "People — Who runs each division, and where is the gap?" passed.
+OPEN_ENDED_CUES = ("how", "what", "why", "which", "who", "where", "when",
+                   "describe", "tell me", "walk me through", "explain", "list")
 _OPEN_ENDED = re.compile(r"\b(" + "|".join(re.escape(cue) for cue in OPEN_ENDED_CUES)
                          + r")\b", re.IGNORECASE)
 
