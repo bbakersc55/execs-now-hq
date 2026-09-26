@@ -72,7 +72,7 @@ def test_restore_from_seed_makes_a_new_template_and_never_overwrites(template, f
         for question in questions:
             row = StrategyQuestion.objects.get(template=fresh, key=question["key"])
             assert row.section.code == code
-            assert row.prompt == neutral_prompt(question["prompt"])
+            assert row.prompt == neutral_prompt(question["prompt"], question["key"])
             assert (row.deleted_at is not None) == (question["key"] in
                                                      SERVICE_BUSINESS_KEYS)
     assert fresh.is_default is False

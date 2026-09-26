@@ -4,7 +4,7 @@ This is the owner's actual strategy session structure, generalized from a real c
 
 Session flow and timing (about 75 minutes): 1) Where you are, where you're going — 10 min. 2) Diagnostic — 25 min. 3) The mirror — 5 min. 4) Strategy Map — 15 min. 5) Two paths — 5 min. 6) What you value & next steps — 10 min. Scope agreement (Section 9) has its own 5 minutes (owner, 2026-09-26: every live section has a budget), so the app's total is 75. The 60-minute cut runs 10 / 20 / 5 / 10 / 5 / 10, plus Scope agreement's 5.
 
-**Industry-neutral templates (owner, 2026-09-26).** The templates made from this seed — "Operations — generic", "60-minute Operations", and Restore seed wording on a draft — are industry-neutral: they archive the three questions below marked *(service business)*, and they call the Integrator **your second-in-command** (merge field `{Second-in-command}`, filled from the same person). This document keeps the original wording; the Grime Fighters template keeps all of it. A **"multi-site service business" variant** that includes those three questions is a **V1 template**.
+**Industry-neutral templates (owner, 2026-09-26).** The templates made from this seed — "Operations — generic", "60-minute Operations", and Restore seed wording on a draft — are industry-neutral: they archive the three questions below marked *(service business)*, they call the Integrator **your second-in-command** (merge field `{Second-in-command}`, filled from the same person), and they say EOS terms in plain language with the term in brackets: "quarterly priorities (Rocks)", "weekly leadership meeting (L10)", "org chart (accountability chart)". Scope agreement has 5 minutes in every template, Grime Fighters included. This document keeps the original wording; the Grime Fighters template keeps all of it. A **"multi-site service business" variant** that includes those three questions is a **V1 template**.
 
 ## Section 1 — Snapshot: where they are today (`precall`)
 
@@ -84,7 +84,9 @@ Two fields: **Goal** (their stated destination, in their words) and **Unlocks mo
 
 Claude proposes candidate rows as diagnostic answers land; the fractional accepts, edits, discards, and reorders. Sequence check prompt: "What has to happen first for the rest to work? Renumber if needed."
 
-Worked example row (from the source sheet, keep as the in-app example): Supervisor overload → 1 supervisor covering 14 sites → Add area lead per 8 sites; move inspections to app → Integrator → 60 → Inspections per site per month → Window-cleaning co. hit this at the same size.
+Worked example row, as the app shows it (industry-neutral since 2026-09-26): Owner is the bottleneck on approvals → No decision rights written down → Write a one-page decision-rights list; owner stops approving under $X → Second-in-command → 30 → Approvals per week reaching the owner.
+
+*(The source sheet's original example, kept for the multi-site service business variant: Supervisor overload → 1 supervisor covering 14 sites → Add area lead per 8 sites; move inspections to app → Integrator → 60 → Inspections per site per month → Window-cleaning co. hit this at the same size.)*
 
 ## Section 7 — What they value (`live`)
 

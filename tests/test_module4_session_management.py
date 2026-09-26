@@ -404,10 +404,12 @@ def test_restore_seed_wording_is_the_seed_not_the_edited_template(session, templ
     # ...and "back to the seed" means the seed.
     preview = api.as_(ff).get(f"{base}reset-preview/?source=seed").json()
     # The edited question, and — since the seed went industry-neutral — the
-    # five that name the Integrator; the three service-business ones go.
+    # five that name the Integrator and the two that used EOS terms bare
+    # (Path A is both); the three service-business ones go.
     assert "s1_revenue" in preview["changed_wording"]
     assert "s4_integrator_owns" in preview["changed_wording"]
-    assert len(preview["changed_wording"]) == 6
+    assert "s3_current_rocks" in preview["changed_wording"]
+    assert len(preview["changed_wording"]) == 8
     assert preview["removed"] == sorted(SERVICE_BUSINESS_KEYS)
     assert preview["source"] == SEED_SOURCE_NAME
 
@@ -543,3 +545,31 @@ def test_the_six_statements_pass_the_guard_through_the_editor(template, ff, api)
         {"key": "s2_data", "prompt": "Data — We track the numbers and know why they move."}]},
         content_type="application/json")
     assert refused.status_code == 400 and "“why”" in refused.json()["detail"]
+
+
+
+@pytest.mark.django_db
+def test_neutral_templates_say_it_plainly_with_the_eos_term_in_brackets(template, ff,
+                                                                        api):
+    """Owner, 2026-09-26: "quarterly priorities (Rocks)", "weekly leadership
+    meeting (L10)", "org chart (accountability chart)". Grime Fighters — the
+    tenant's seeded template — keeps the EOS terms."""
+    import re
+    made = post(api, ff, "/api/strategy-templates/restore-from-seed/",
+                {"name": "Neutral", "variant": "sixty"}).json()
+    live = {q.key: q.prompt for q in StrategyQuestion.objects.filter(
+        template_id=made["id"], deleted_at__isnull=True)}
+    assert live["s3_current_rocks"].startswith("Current quarterly priorities (Rocks)")
+    assert "org chart (accountability chart)" in live["s4_accountability_chart"]
+    assert "quarterly priorities (Rocks)" in live["s3_current_rocks"]
+    assert "next quarter's priorities (Rocks)" in live["s8_path_a"]
+    assert "weekly leadership meeting (L10)" in live["s8_path_a"]
+    assert "{Second-in-command} owns the map" in live["s8_path_a"]
+    # No EOS term anywhere except inside brackets.
+    for key, prompt in live.items():
+        bare = re.sub(r"\([^)]*\)", "", prompt)
+        for term in ("Rocks", "L10", "Accountability Chart", "accountability chart"):
+            assert term not in bare, (key, prompt)
+    kept = {q.key: q.prompt for q in StrategyQuestion.objects.filter(template=template)}
+    assert kept["s3_current_rocks"].startswith("Current Rocks")
+    assert "reviewed at every L10" in kept["s8_path_a"]

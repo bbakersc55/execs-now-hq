@@ -196,7 +196,8 @@ describe("the live session view", () => {
 
   it("counts the must-asks and shows each section's budget", async () => {
     showSession();
-    expect(await screen.findByText(/0 of 7/)).toBeInTheDocument();
+    // Exact: the call clock's "N of 70 min" can contain "0 of 7" too.
+    expect(await screen.findByText("0 of 7")).toBeInTheDocument();
     expect(screen.getByText("25 min")).toBeInTheDocument();
     expect(screen.getByText("must ask")).toBeInTheDocument();
   });
@@ -208,8 +209,8 @@ describe("the live session view", () => {
     });
     expect(await screen.findByText(/Tray — 1 proposed rows/)).toBeInTheDocument();
     expect(screen.getByText(/The map — 0 rows/)).toBeInTheDocument();
-    // The worked example stands in for an empty map.
-    expect(screen.getByText(/1 supervisor covering 14 sites/)).toBeInTheDocument();
+    // The worked example stands in for an empty map — industry-neutral.
+    expect(screen.getByText(/Owner is the bottleneck on approvals/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(fetchMock.calls.some(

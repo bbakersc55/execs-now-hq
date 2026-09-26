@@ -37,9 +37,11 @@ function useElapsed(startedAt: string | null) {
 // The seed's own worked example, kept as copy rather than as a row: a map row
 // needs a session, and a fake session would show up in every list forever.
 // Owner's ruling, 2026-09-18.
-const EXAMPLE = "Supervisor overload → 1 supervisor covering 14 sites → Add area lead "
-  + "per 8 sites; move inspections to app → Integrator → 60 days → Inspections per "
-  + "site per month";
+// Industry-neutral since 2026-09-26 (the original was a window-cleaning
+// company's supervisor row, which read as a service-business template).
+const EXAMPLE = "Owner is the bottleneck on approvals → No decision rights written down "
+  + "→ Write a one-page decision-rights list; owner stops approving under $X "
+  + "→ Second-in-command → 30 days → Approvals per week reaching the owner";
 
 const FLAG_LABEL: Record<string, string> = {
   fractional_notes: "Your private notes",

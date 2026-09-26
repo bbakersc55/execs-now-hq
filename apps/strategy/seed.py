@@ -68,8 +68,27 @@ RATING_LEAD_INS = {
 SERVICE_BUSINESS_KEYS = ("s4_done_right", "s4_location_parity", "s4_gross_margin")
 NEUTRAL_MERGE = {"{Integrator}": "{Second-in-command}"}
 
+#: Plain language first, the EOS term in brackets (owner, 2026-09-26): the
+#: neutral templates should read to someone who has never run EOS. Whole
+#: prompts, by key, rather than find-and-replace on words — a phrase rewritten
+#: inside someone else's sentence is how a question quietly changes meaning.
+#: Written against the prompt *after* `NEUTRAL_MERGE`.
+NEUTRAL_PROMPTS = {
+    "s3_current_rocks":
+        "Current quarterly priorities (Rocks) — which is most at risk?",
+    "s4_accountability_chart":
+        "Is every seat on the org chart (accountability chart) filled — right "
+        "person, right seat?",
+    "s8_path_a":
+        "Path A — They run it: {Second-in-command} owns the map; rows become next "
+        "quarter's priorities (Rocks); reviewed at every weekly leadership meeting "
+        "(L10); progress depends on capacity they already have.",
+}
 
-def neutral_prompt(prompt: str) -> str:
+
+def neutral_prompt(prompt: str, key: str = "") -> str:
+    if key in NEUTRAL_PROMPTS:
+        return NEUTRAL_PROMPTS[key]
     for old, new in NEUTRAL_MERGE.items():
         prompt = prompt.replace(old, new)
     return prompt
@@ -259,8 +278,9 @@ SIXTY_MINUTE = "sixty"
 
 def create_from_seed(tenant, *, name, variant=""):
     """A **new** template from `strategy_session_seed.md`, industry-neutral:
-    the three multi-site service-business questions archived and
-    `{Integrator}` called `{Second-in-command}` (dry run 2, 2026-09-26).
+    the three multi-site service-business questions archived,
+    `{Integrator}` called `{Second-in-command}`, and the EOS terms given in
+    plain language with the term in brackets (dry run 2, 2026-09-26).
 
     Never overwrites: this is "Restore from seed", and a template somebody has
     been editing is theirs. The caller has already checked the name is free.
@@ -284,7 +304,7 @@ def create_from_seed(tenant, *, name, variant=""):
             position=position, time_budget_minutes=budget)
         for q_position, question in enumerate(questions):
             fields = {k: v for k, v in question.items() if k != "key"}
-            fields["prompt"] = neutral_prompt(fields["prompt"])
+            fields["prompt"] = neutral_prompt(fields["prompt"], question["key"])
             if sixty and code == "diagnostic" and not question["must_ask"]:
                 fields["ask_if_time"] = True
             # Archived, not left out, so the keys stay spent here as well.
@@ -322,7 +342,8 @@ def seed_snapshot(discipline=DISCIPLINE) -> dict:
         "sections": [{
             "code": code, "title": title, "position": position,
             "time_budget_minutes": budget,
-            "questions": [{**question, "prompt": neutral_prompt(question["prompt"]),
+            "questions": [{**question,
+                           "prompt": neutral_prompt(question["prompt"], question["key"]),
                            "ask_if_time": False, "position": q_position}
                           for q_position, question in enumerate(questions)
                           if question["key"] not in SERVICE_BUSINESS_KEYS],
