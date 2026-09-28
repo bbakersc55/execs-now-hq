@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { CommentsPanel } from "../components/CommentsPanel";
 import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { StatusChange } from "../components/StatusChange";
 import { StatusPill } from "../components/StatusPill";
 import { Sheet } from "../components/shell";
-import { Banner, Card, Empty, Field, Flash, useFlash, when } from "../components/ui";
+import { Banner, Card, Empty, Field, Flash, toast, useFlash, when } from "../components/ui";
 import {
   ChecklistItem, Me, Note, PortalPerson, Task, TaskUpdateRow, WorkParent, WorkStatus, api,
 } from "../lib/api";
@@ -121,21 +121,47 @@ const KIND_LABELS: Record<string, string> = {
  * board says "Saved". Everything else on the sheet — status, the client line,
  * steps, comments, stakeholders — is one change among several you might make,
  * so it confirms in place and leaves you there.
+ *
+ * **Every way out goes back to where you came from** — the board with its
+ * filters, Work, a company page — because the sheet was opened over it and
+ * closing a panel should not move you somewhere else. Only a sheet opened
+ * from a direct link, with nowhere in the app behind it, lands on the board.
  */
 export function TaskSheet({ me, id }: { me: Me; id: string }) {
-  const navigate = useNavigate();
+  const close = useCloseSheet();
   return (
-    <Sheet title={null} onClose={() => navigate("/tasks")}>
+    <Sheet title={null} onClose={close}>
       <TaskDetail me={me} taskId={id}
-        onEdited={() => navigate("/tasks", { state: { toast: "Saved" } })} />
+        onEdited={() => { toast("Saved"); close(); }}
+        onDeleted={() => { toast("Deleted"); close(); }} />
     </Sheet>
   );
 }
 
-export function TaskDetail({ me, taskId, onEdited }: {
+/**
+ * Back, when there is somewhere in the app to go back to. The first page a
+ * browser loads carries the router's "default" key; any page reached by
+ * navigating in the app does not. Back is what keeps the screen behind as it
+ * was — a fresh navigation to it would rebuild it with its filters reset.
+ *
+ * The fallback replaces rather than pushes, so Back from the board does not
+ * reopen the sheet that was just closed.
+ */
+function useCloseSheet() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return () => {
+    if (location.key === "default") navigate("/tasks", { replace: true });
+    else navigate(-1);
+  };
+}
+
+export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
   me: Me; taskId?: string;
   /** After "Save changes". Without it (the page on its own) it confirms inline. */
   onEdited?: () => void;
+  /** After a delete. Without it, the board. */
+  onDeleted?: () => void;
 }) {
   const routeId = useParams().id;
   const id = taskId ?? routeId;
@@ -378,7 +404,8 @@ export function TaskDetail({ me, taskId, onEdited }: {
           <button className="danger" onClick={async () => {
             await api.del(`/api/tasks/${id}/`);
             qc.invalidateQueries({ queryKey: ["tasks"] });
-            navigate("/work");
+            if (onDeleted) onDeleted();
+            else { toast("Deleted"); navigate("/tasks"); }
           }}>Delete this task</button>
         </Card>
       )}

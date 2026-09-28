@@ -99,8 +99,25 @@ export function Flash({ text }: { text: string }) {
   return <span className="flash" role="status">{text}</span>;
 }
 
-/** The same confirmation for a screen you have just been returned to. */
-export function Toast({ text }: { text: string }) {
+const toastListeners = new Set<(text: string) => void>();
+
+/**
+ * The same confirmation for a screen you have just been returned to — after
+ * the task sheet closes, say. Global rather than carried in the URL's state,
+ * because "returned to" is often a Back to wherever you came from, and Back
+ * cannot carry anything with it.
+ */
+export function toast(text: string) {
+  toastListeners.forEach((listener) => listener(text));
+}
+
+/** Where `toast()` shows. Mounted once, in the app shell. */
+export function ToastHost() {
+  const [text, flash] = useFlash();
+  useEffect(() => {
+    toastListeners.add(flash);
+    return () => { toastListeners.delete(flash); };
+  });
   if (!text) return null;
   return <div className="toast" role="status">{text}</div>;
 }

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
 import { CompanyFilter, INTERNAL, inCompany, useCompanyFilter } from "../components/CompanyFilter";
@@ -9,7 +9,7 @@ import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Avatar, Chip, FilterBar, PageHead, useRemembered } from "../components/shell";
-import { Banner, Toast, useFlash, when } from "../components/ui";
+import { Banner, when } from "../components/ui";
 import { TaskSheet } from "./TaskDetail";
 import { Me, PortalPerson, Task, WorkStatus, WorkParent, api } from "../lib/api";
 
@@ -25,7 +25,6 @@ export function Tasks({ me }: { me: Me }) {
   const [boardView, setBoardView] = useRemembered("enhq.tasks.board", true);
   const view = boardView ? "board" : "list";
   const { id: openTaskId } = useParams();
-  const saved = useReturnToast();
   const [search, setSearch] = useState("");
   const [priority, setPriority] = useState("");
   const [collapsedCols, setCollapsedCols] = useState<string[]>([]);
@@ -196,7 +195,6 @@ export function Tasks({ me }: { me: Me }) {
       {/* The editor is a panel over whatever you were looking at, and it has a
           URL, so a task can be linked and deep-opened (design brief, Tier 1). */}
       {openTaskId && <TaskSheet me={me} id={openTaskId} />}
-      <Toast text={saved} />
 
       <p className="small muted">Showing {rows.length} · {when(new Date().toISOString())}</p>
     </>
@@ -378,24 +376,4 @@ function ListView({ rows }: { rows: Task[] }) {
       ))}
     </>
   );
-}
-
-/**
- * The "Saved" the task sheet hands back when "Save changes" closes it. Taken
- * out of the history entry as soon as it is read, so a reload or Back does not
- * say it again for an edit made minutes ago.
- */
-function useReturnToast() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [text, flash] = useFlash();
-  const toast = (location.state as { toast?: string } | null)?.toast;
-  useEffect(() => {
-    if (!toast) return;
-    flash(toast);
-    navigate({ pathname: location.pathname, search: location.search },
-             { replace: true, state: null });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]);
-  return text;
 }

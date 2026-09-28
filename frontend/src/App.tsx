@@ -11,6 +11,7 @@ import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom
 
 import { ActAsColleague, ActingBanner } from "./components/ActAs";
 import { Avatar, useNarrowWindow, useRemembered } from "./components/shell";
+import { ToastHost } from "./components/ui";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
@@ -287,6 +288,7 @@ export function App() {
             <Route path="/activity" element={<Activity me={me} />} />
           </Routes>
         </ErrorBoundary>
+        <ToastHost />
       </main>
     </div>
   );
