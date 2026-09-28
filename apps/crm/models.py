@@ -736,6 +736,7 @@ class OutboxMessage(TenantScopedModel):
         PRECALL_COMPLETE = "precall_complete", "Pre-call form completed"
         CADENCE_CHANGE = "cadence_change", "Cadence change"
         INBOUND_FORWARD = "inbound_forward", "Inbound forward"
+        CAMPAIGN = "campaign", "Campaign"
         MANUAL = "manual", "Manual"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
@@ -1178,4 +1179,63 @@ class EmailSuppression(TenantScopedModel):
                 fields=["tenant", "address", "category"],
                 condition=models.Q(lifted_at__isnull=True, contact__isnull=True),
                 name="one_open_suppression_per_address"),
+        ]
+
+
+class Campaign(TenantScopedModel):
+    """A marketing email written once and sent to many (owner, 2026-09-28).
+
+    Composed in the rich editor, or as raw HTML with a rendered preview; the
+    practice's branded layout wraps it unless `send_as_is`. Merge fields
+    ({FirstName}, {Company}, {FractionalName}) are filled per recipient when
+    the campaign is queued, so each recipient's Outbox row is exactly what
+    they will get. "Enrol and queue" makes one `pending_approval` row per
+    recipient, category marketing: nothing leaves without approval.
+    """
+
+    class BodyMode(models.TextChoices):
+        RICH = "rich", "Written in the editor"
+        HTML = "html", "Raw HTML"
+
+    name = models.CharField(max_length=200)
+    subject = models.CharField(max_length=255, blank=True, default="")
+    #: "alias", "self", or a literal verified address — the Outbox's sender rules.
+    sender = models.CharField(max_length=254, blank=True, default="")
+    body_mode = models.CharField(max_length=8, choices=BodyMode.choices,
+                                 default=BodyMode.RICH)
+    body_html = models.TextField(blank=True, default="")
+    send_as_is = models.BooleanField(default=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "campaign"
+        ordering = ["-created_at"]
+
+
+class CampaignRecipient(TenantScopedModel):
+    """One contact enrolled in one campaign, and the email queued for them.
+
+    This is the campaign's enrolment: shown on the contact's "Enrolled in"
+    list, ended by unenrolling or by an unsubscribe from marketing.
+    """
+
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE,
+                                 related_name="recipients")
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE,
+                                related_name="campaign_recipients")
+    outbox_message = models.ForeignKey("crm.OutboxMessage", null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
+    enrolled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_reason = models.CharField(max_length=16, blank=True, default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "campaign_recipient"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "campaign", "contact"],
+                                    name="one_row_per_campaign_recipient"),
         ]

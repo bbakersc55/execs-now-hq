@@ -145,6 +145,16 @@ def enrollments_for(contact) -> list[dict]:
             "by": (row.enrolled_by.full_name or row.enrolled_by.email)
             if row.enrolled_by_id else "",
         })
+    from apps.crm.services import campaigns
+
+    for row in campaigns.active_for(contact).select_related("enrolled_by"):
+        rows.append({
+            "kind": "campaign", "id": str(row.pk),
+            "label": f"Campaign \u201c{row.campaign.name}\u201d",
+            "detail": "", "since": row.created_at.isoformat(),
+            "by": (row.enrolled_by.full_name or row.enrolled_by.email)
+            if row.enrolled_by_id else "",
+        })
     for row in Stakeholder.all_objects.filter(
             tenant_id=contact.tenant_id, contact=contact, is_muted=False
             ).select_related("task", "project", "goal"):

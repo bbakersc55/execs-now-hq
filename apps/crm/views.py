@@ -136,7 +136,17 @@ class ContactViewSet(TenantStaffViewSet):
         self._may_enroll(request)
         contact = self.get_object()
         stakeholder_id = request.data.get("stakeholder")
-        if stakeholder_id:
+        recipient_id = request.data.get("campaign_recipient")
+        if recipient_id:
+            from apps.crm.models import CampaignRecipient
+            from apps.crm.services import campaigns
+
+            row = CampaignRecipient.objects.filter(pk=recipient_id, contact=contact,
+                                                   ended_at__isnull=True).first()
+            if row is None:
+                return Response({"detail": "Not one of their campaigns."}, status=404)
+            campaigns.end(row, actor=request.user)
+        elif stakeholder_id:
             row = Stakeholder.objects.filter(pk=stakeholder_id, contact=contact).first()
             if row is None:
                 return Response({"detail": "Not one of their digests."}, status=404)

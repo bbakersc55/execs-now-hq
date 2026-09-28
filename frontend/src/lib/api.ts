@@ -1080,3 +1080,30 @@ export interface MeetingProposal {
   items?: ProposalItem[];
   source_text?: string;
 }
+
+
+/** Campaigns (owner, 2026-09-28): one marketing email, merged per person, queued
+ *  for approval as one Outbox row each. */
+export interface Campaign {
+  id: string;
+  name: string;
+  subject: string;
+  /** "alias" (the practice address), "self" (your own), or a verified address. */
+  sender: string;
+  body_mode: "rich" | "html";
+  body_html: string;
+  send_as_is: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string;
+  stats: { recipients: number; queued: number; sent: number; unsubscribed: number;
+           not_sent: number };
+}
+
+export interface CampaignCandidate {
+  id: string; name: string; email: string; company: string;
+  /** Why they cannot be queued ("no email address", …), or "". */
+  unsendable: string;
+}
+
+export const MERGE_FIELDS = ["{FirstName}", "{Company}", "{FractionalName}"] as const;

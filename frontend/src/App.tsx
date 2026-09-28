@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail, PanelLeftClose,
   PanelLeftOpen,
-  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow,
+  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
@@ -24,6 +24,7 @@ import { Companies } from "./screens/Companies";
 import { ImportWizard } from "./screens/ImportWizard";
 import { Merge } from "./screens/Merge";
 import { Outbox } from "./screens/Outbox";
+import { CampaignDetail, Campaigns } from "./screens/Campaigns";
 import { Pipeline } from "./screens/Pipeline";
 import { ReferralSettings } from "./screens/ReferralSettings";
 import { StageRules } from "./screens/StageRules";
@@ -109,6 +110,7 @@ const NAV: NavItem[] = [
   // not a document somebody remembered to send.
   { to: "/report", label: "Where we are", roles: CLIENT , icon: BarChart3 },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
+  { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
   { to: "/outbox", label: "Outbox", roles: TENANT , icon: Inbox },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] , icon: Upload },
   { to: "/settings/email", label: "Email settings", roles: ["FF", "CF"] , group: "Settings" , icon: Mail },
@@ -260,6 +262,8 @@ export function App() {
             <Route path="/companies" element={<Companies me={me} />} />
             <Route path="/companies/:id" element={<CompanyDetail me={me} />} />
             <Route path="/vendors" element={<Vendors />} />
+            <Route path="/campaigns" element={<Campaigns />} />
+            <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/outbox" element={<Outbox />} />
             <Route path="/import" element={<ImportWizard />} />
             <Route path="/settings/email" element={<EmailSettings me={me} />} />

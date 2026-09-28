@@ -45,6 +45,7 @@ BY_PRODUCER = {
     P.REFERRAL_ONBOARDING: MARKETING,
     P.STAGE_RULE: MARKETING,
     P.MANUAL: MARKETING,
+    P.CAMPAIGN: MARKETING,
     P.DIGEST: UPDATES,
     P.CLIENT_ACTIVITY: UPDATES,
     P.MAGIC_LINK: TRANSACTIONAL,
@@ -209,9 +210,13 @@ def unsubscribe(data: dict, *, category=None, message_id=None) -> EmailSuppressi
             warning=f"Suppressed: the recipient unsubscribed from {LABELS[category]}.",
             updated_at=timezone.now())
     if contact is not None and category == MARKETING:
+        from apps.crm.services import campaigns
+
         for program in enrollment.PROGRAMS.values:
             enrollment.unenroll(contact, program, actor=None,
                                 reason="unsubscribed")
+        for recipient in campaigns.active_for(contact):
+            campaigns.end(recipient, reason="unsubscribed")
     if contact is not None and category == UPDATES:
         from apps.work.models import Stakeholder
 

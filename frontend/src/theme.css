@@ -738,6 +738,26 @@ a.button.primary:hover { background: var(--orange-600); }
             margin-bottom: var(--s2); }
 .slot-bar .grow { flex: 1; }
 
+/* Campaigns (2026-09-28): the composer beside its preview, then recipients. */
+.field-action { flex: 0 0 auto; align-self: end; }
+.stat-row { display: grid; gap: var(--s3); margin-bottom: var(--s4);
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.stat { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s3) var(--s4);
+        border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.compose { display: grid; gap: var(--s4); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+           align-items: start; margin-bottom: var(--s4); }
+@media (max-width: 1100px) { .compose { grid-template-columns: 1fr; } }
+.merge-fields { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1);
+                margin: var(--s2) 0 var(--s3); }
+.tabs { display: flex; gap: var(--s1); border-bottom: 1px solid var(--line);
+        margin-bottom: var(--s3); }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+       padding: var(--s2) var(--s3); color: var(--muted); font-weight: 500; }
+.tab.on { color: var(--navy); border-bottom-color: var(--orange); }
+textarea.code { font-size: var(--t-13); line-height: 1.5; white-space: pre; tab-size: 2; }
+.email-preview { width: 100%; min-height: 560px; border: 1px solid var(--line);
+                 border-radius: var(--radius-sm); background: #fff; }
+
 /* Pages reached from an email with no sign-in: the unsubscribe page. */
 .public-page { padding: var(--s8) var(--s4); max-width: 36rem; margin: 0 auto;
                display: grid; gap: var(--s4); }
