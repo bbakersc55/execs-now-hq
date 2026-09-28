@@ -351,6 +351,7 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
          z-index: 60; padding: var(--s2) var(--s4); border-radius: var(--radius-sm);
          background: var(--navy); color: #fff; font-size: var(--t-14);
          box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
+.toast.bad { background: var(--bad); }
 .banner.info { background: var(--info-bg); border-color: var(--info-line); color: var(--navy); }
 
 /* ---------------------------------------------------------------- avatars */

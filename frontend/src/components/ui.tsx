@@ -99,7 +99,8 @@ export function Flash({ text }: { text: string }) {
   return <span className="flash" role="status">{text}</span>;
 }
 
-const toastListeners = new Set<(text: string) => void>();
+type ToastKind = "" | "bad";
+const toastListeners = new Set<(text: string, kind: ToastKind) => void>();
 
 /**
  * The same confirmation for a screen you have just been returned to — after
@@ -107,17 +108,22 @@ const toastListeners = new Set<(text: string) => void>();
  * because "returned to" is often a Back to wherever you came from, and Back
  * cannot carry anything with it.
  */
-export function toast(text: string) {
-  toastListeners.forEach((listener) => listener(text));
+export function toast(text: string, kind: ToastKind = "") {
+  toastListeners.forEach((listener) => listener(text, kind));
 }
 
 /** Where `toast()` shows. Mounted once, in the app shell. */
 export function ToastHost() {
-  const [text, flash] = useFlash();
+  const [text, flash] = useFlash(4000);
+  const [kind, setKind] = useState<ToastKind>("");
   useEffect(() => {
-    toastListeners.add(flash);
-    return () => { toastListeners.delete(flash); };
+    const show = (next: string, nextKind: ToastKind) => { setKind(nextKind); flash(next); };
+    toastListeners.add(show);
+    return () => { toastListeners.delete(show); };
   });
   if (!text) return null;
-  return <div className="toast" role="status">{text}</div>;
+  // An error is an alert: it is the thing that went wrong, not a receipt.
+  return kind === "bad"
+    ? <div className="toast bad" role="alert">{text}</div>
+    : <div className="toast" role="status">{text}</div>;
 }

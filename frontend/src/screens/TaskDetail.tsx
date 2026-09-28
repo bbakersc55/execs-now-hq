@@ -6,6 +6,7 @@ import { CommentsPanel } from "../components/CommentsPanel";
 import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { StatusChange } from "../components/StatusChange";
 import { StatusPill } from "../components/StatusPill";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Sheet } from "../components/shell";
 import { Banner, Card, Empty, Field, Flash, toast, useFlash, when } from "../components/ui";
 import {
@@ -131,9 +132,13 @@ export function TaskSheet({ me, id }: { me: Me; id: string }) {
   const close = useCloseSheet();
   return (
     <Sheet title={null} onClose={close}>
-      <TaskDetail me={me} taskId={id}
-        onEdited={() => { toast("Saved"); close(); }}
-        onDeleted={() => { toast("Deleted"); close(); }} />
+      {/* A task that cannot be drawn says so inside the sheet, rather than
+          taking the board down with it or leaving an empty panel. */}
+      <ErrorBoundary key={id}>
+        <TaskDetail me={me} taskId={id}
+          onEdited={() => { toast("Saved"); close(); }}
+          onDeleted={() => { toast("Deleted"); close(); }} />
+      </ErrorBoundary>
     </Sheet>
   );
 }
@@ -230,7 +235,19 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
   });
 
   if (task.isLoading) return <p>Loading…</p>;
-  if (task.isError) return <Banner kind="bad">That task is not available to you.</Banner>;
+  if (task.isError) {
+    // Said as it is. "Not available to you" is true of a 404 and a 403 and
+    // false of everything else, and a task that failed to load for another
+    // reason must not read as a permissions question.
+    const status = (task.error as Error & { status?: number }).status;
+    return (
+      <Banner kind="bad">
+        {status === 404 || status === 403
+          ? "That task is not available to you."
+          : `This task could not be opened: ${task.error.message}`}
+      </Banner>
+    );
+  }
   const t = task.data!;
 
   return (

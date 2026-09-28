@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
 import { CompanyFilter, INTERNAL, inCompany, useCompanyFilter } from "../components/CompanyFilter";
@@ -9,7 +9,7 @@ import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Avatar, Chip, FilterBar, PageHead, useRemembered } from "../components/shell";
-import { Banner, when } from "../components/ui";
+import { Banner, toast, when } from "../components/ui";
 import { TaskSheet } from "./TaskDetail";
 import { Me, PortalPerson, Task, WorkStatus, WorkParent, api } from "../lib/api";
 
@@ -283,13 +283,29 @@ function useBoardDrag({ isTenant, tasks }: { isTenant: boolean; tasks: Task[] })
  * title, the chips that are not the default, and who it belongs to. **Nothing
  * else** — the brief is explicit, and a card that carries everything carries
  * nothing.
+ *
+ * **The whole card opens the task**, not only its title. Until 2026-09-28 only
+ * the title line was a link, and the rest of the card showed a pointer and did
+ * nothing: on a one-line title like "Follow up" that was four fifths of the
+ * card, so a click there looked like a task that would not open. The title
+ * stays the link, for the keyboard and for opening in a new tab.
  */
 function TaskCard({ task, board }: { task: Task; board: ReturnType<typeof useBoardDrag> }) {
+  const navigate = useNavigate();
   const overdue = !!task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
     && task.status !== "done" && task.status !== "cancelled";
+  const open = (event: React.MouseEvent) => {
+    // The title link, and anything else on the card that acts, does its own thing.
+    if ((event.target as HTMLElement).closest("a, button, input, select, textarea")) return;
+    if (!task.id) {
+      toast("This task could not be opened: it came back without an id.", "bad");
+      return;
+    }
+    navigate(`/tasks/${task.id}`);
+  };
   return (
     <div className={`task-card status-${task.status}`}
-      draggable={task.may_edit !== false}
+      draggable={task.may_edit !== false} onClick={open}
       onDragStart={board.pickUp(task)} onDragEnd={board.drop}>
       <Link className="title" to={`/tasks/${task.id}`}>{task.title}</Link>
       {(task.priority > 1 || task.project_title || task.due_date) && (

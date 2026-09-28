@@ -38,6 +38,9 @@ function openSheet(routes: Record<string, unknown> = {},
     "/api/companies/": [],
     "/api/contacts/": [],
     "/api/goals/": [],
+    // Twice: first so a test's own routes are matched before the defaults
+    // (matching is by prefix, in order), and again so its values win.
+    ...routes,
   });
   vi.stubGlobal("fetch", fetchMock);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -227,5 +230,89 @@ describe("the task sheet: where closing it takes you", () => {
     expect(where()).toBe("/tasks");
     expect(await screen.findByRole("status")).toHaveTextContent("Deleted");
     expect(fetchMock.calls.some((c) => c.method === "DELETE")).toBe(true);
+  });
+});
+
+/**
+ * 2026-09-28 — three "Follow up" tasks made by the Phase 1 stage automation
+ * looked as if they would not open. The title line opened them; the rest of
+ * the card, four fifths of it on a one-line title, showed a pointer and did
+ * nothing. Every task opens from anywhere on its card, and a task that cannot
+ * be opened says so.
+ */
+describe("the task sheet: every task opens, or says why not", () => {
+  beforeEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+
+  /** Shaped as the stage automation makes it: internal, unassigned, no history. */
+  const FROM_AUTOMATION = aTask({
+    id: "t1", title: "Follow up", status: "not_started", due_date: "2026-09-14",
+    client_company: null, client_company_name: "", project: null, goal: null,
+    assignee: { id: null, name: "" }, client_owner_contact: { id: null, name: "" },
+    owner: { id: "u1", name: "Bryan Baker" }, is_client_visible: false,
+  });
+
+  function board(detail: unknown = FROM_AUTOMATION, list: unknown[] = [FROM_AUTOMATION]) {
+    return openSheet({
+      "/api/tasks/t1/updates/": [], "/api/tasks/t1/checklist/": [],
+      "/api/tasks/t1/": detail, "/api/tasks/": list,
+    }, ["/tasks"]);
+  }
+
+  it("opens from a click anywhere on the card, not only the title", async () => {
+    const user = userEvent.setup();
+    board();
+    await user.click(await screen.findByText("overdue 2026-09-14"));
+    await waitFor(() => expect(where()).toBe("/tasks/t1"));
+    expect(await within(sheet()!).findByRole("heading", { name: "Follow up" }))
+      .toBeInTheDocument();
+  });
+
+  it("opens from a double click on the card too", async () => {
+    const user = userEvent.setup();
+    board();
+    const card = (await screen.findByRole("link", { name: "Follow up" })).closest(".task-card")!;
+    await user.dblClick(card);
+    expect(await within(await waitFor(() => sheet()!))
+      .findByRole("heading", { name: "Follow up" })).toBeInTheDocument();
+  });
+
+  it("still opens from the title link", async () => {
+    const user = userEvent.setup();
+    board();
+    await user.click(await screen.findByRole("link", { name: "Follow up" }));
+    expect(await within(await waitFor(() => sheet()!))
+      .findByRole("heading", { name: "Follow up" })).toBeInTheDocument();
+  });
+
+  it("says why when the task fails to load, rather than calling it a permission", async () => {
+    const user = userEvent.setup();
+    openSheet({
+      "/api/tasks/t1/updates/": [], "/api/tasks/t1/checklist/": [],
+      "/api/tasks/t1/": () => ({ status: 500, body: { detail: "Server error" } }),
+      "/api/tasks/": [FROM_AUTOMATION],
+    }, ["/tasks"]);
+    await user.click(await screen.findByText("overdue 2026-09-14"));
+    expect(await within(await waitFor(() => sheet()!))
+      .findByText(/This task could not be opened/)).toBeInTheDocument();
+  });
+
+  it("shows a task that cannot be drawn as an error inside the sheet", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+    // No assignee object at all: the sheet cannot render this.
+    board({ ...FROM_AUTOMATION, assignee: null });
+    await user.click(await screen.findByText("overdue 2026-09-14"));
+    const panel = await waitFor(() => sheet()!);
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/failed to render/);
+    // The board behind it is still there.
+    expect(screen.getByLabelText("Board")).toBeInTheDocument();
+  });
+
+  it("says so when a card has no id to open", async () => {
+    const user = userEvent.setup();
+    board(FROM_AUTOMATION, [{ ...FROM_AUTOMATION, id: "" }]);
+    await user.click(await screen.findByText("overdue 2026-09-14"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not be opened/);
+    expect(sheet()).toBeNull();
   });
 });
