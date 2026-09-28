@@ -2,7 +2,8 @@ import { useState, type DragEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
-  ArrowDown, ArrowRight, ArrowUp, CheckSquare, GripVertical, Mail, Target, TrendingUp,
+  ArrowDown, ArrowRight, ArrowUp, CheckSquare, GripVertical, Hourglass, Mail, Target,
+  TrendingUp,
 } from "lucide-react";
 
 import { PageHead } from "../components/shell";
@@ -12,7 +13,7 @@ import { useRemembered } from "../lib/remembered";
 
 type Move = Board["pipeline"][number];
 
-const TILES = ["tasks", "digests", "pipeline", "goals"] as const;
+const TILES = ["tasks", "digests", "pipeline", "goals", "waiting"] as const;
 const PANELS = ["due", "approval", "pipeline", "finances", "clients"] as const;
 type TileId = (typeof TILES)[number];
 type PanelId = (typeof PANELS)[number];
@@ -22,7 +23,7 @@ const DEFAULT_LAYOUT: Layout = { tiles: [...TILES], panels: [...PANELS] };
 
 const TILE_NAMES: Record<TileId, string> = {
   tasks: "Tasks due", digests: "Digests waiting", pipeline: "Pipeline moves",
-  goals: "Open goals",
+  goals: "Open goals", waiting: "Waiting on others",
 };
 const PANEL_NAMES: Record<PanelId, string> = {
   due: "Due by day", approval: "Waiting for approval", pipeline: "Pipeline",
@@ -91,6 +92,14 @@ export function Dashboard({ me }: { me: Me }) {
     goals: (
       <Tile label="Open goals" value={tiles.goals_open} icon={Target}
         to="/work" note="across every client" />
+    ),
+    // Commitments by people outside the practice (2026-09-28), overdue named.
+    waiting: (
+      <Tile label="Waiting on others" value={board.data.waiting?.open ?? 0} icon={Hourglass}
+        to="/waiting"
+        note={(board.data.waiting?.overdue ?? 0) > 0
+          ? `${board.data.waiting!.overdue} overdue` : "none overdue"}
+        bad={(board.data.waiting?.overdue ?? 0) > 0} />
     ),
   };
 

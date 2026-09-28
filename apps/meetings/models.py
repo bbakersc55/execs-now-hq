@@ -390,3 +390,63 @@ class MeetingParticipant(TenantScopedModel):
             models.UniqueConstraint(fields=["tenant", "meeting", "contact"],
                                     name="one_participant_row_per_meeting"),
         ]
+
+
+class Commitment(TenantScopedModel):
+    """Something a person outside the practice said they would do (owner,
+    2026-09-28).
+
+    A meeting's action item owned by someone other than the practice is not
+    one of the practice's tasks. Approving it records it here, with one of
+    three outcomes the reviewer chose:
+
+    - **follow_up** — the practice gets a task to check it happened
+      (`task` is that follow-up task);
+    - **record_only** — kept on the person's record, no task for anyone;
+    - **portal** — a client user with a portal seat gets it as their own task
+      (`task`), and it shows as waiting on the client.
+
+    Open commitments are the "Waiting on others" screen.
+    """
+
+    class Outcome(models.TextChoices):
+        FOLLOW_UP = "follow_up", "Follow up"
+        RECORD_ONLY = "record_only", "Record only"
+        PORTAL = "portal", "Assigned in the portal"
+
+    class State(models.TextChoices):
+        OPEN = "open", "Open"
+        DONE = "done", "Done"
+
+    #: Who owes it. The contact when the name matched one; the name as the
+    #: notes gave it either way, so an unmatched third party still reads right.
+    contact = models.ForeignKey("crm.Contact", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="commitments")
+    owner_name = models.CharField(max_length=255, blank=True, default="")
+    #: client, prospect, vendor or third_party — how the owner relates.
+    owner_kind = models.CharField(max_length=16, blank=True, default="")
+    company = models.ForeignKey("crm.Company", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="commitments")
+    text = models.TextField()
+    due_date = models.DateField(null=True, blank=True)
+    follow_up_date = models.DateField(null=True, blank=True)
+    outcome = models.CharField(max_length=12, choices=Outcome.choices)
+    task = models.ForeignKey("crm.Task", null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="commitments")
+    meeting = models.ForeignKey("meetings.Meeting", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="commitments")
+    proposal_item = models.ForeignKey(ProposalItem, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    source_excerpt = models.TextField(blank=True, default="")
+    state = models.CharField(max_length=8, choices=State.choices, default=State.OPEN,
+                             db_index=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+    done_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "commitment"
+        ordering = ["follow_up_date", "due_date", "created_at"]
+        indexes = [models.Index(fields=["tenant", "state", "follow_up_date"])]

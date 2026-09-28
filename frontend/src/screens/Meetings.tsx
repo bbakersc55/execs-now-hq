@@ -1022,6 +1022,18 @@ function ItemRow({ item, onChanged, setNote }: {
     candidates[0]?.company_id ?? (payload.parsed_company ? "new" : "none"));
   const [companyName, setCompanyName] = useState(payload.parsed_company ?? "");
   const [companyDomain, setCompanyDomain] = useState(payload.parsed_company_domain ?? "");
+  // Whose action item it is (2026-09-28). Claude proposed; the reviewer confirms.
+  const [side, setSide] = useState<"practice" | "other">(
+    payload.owner_side === "other" ? "other" : "practice");
+  const [kind, setKind] = useState<string>(payload.owner_kind || "third_party");
+  const hasSeat = !!payload.owner_has_seat;
+  const [outcome, setOutcome] = useState<string>(payload.proposed_outcome
+    || (hasSeat ? "portal" : ["prospect", "third_party"].includes(kind) ? "follow_up"
+        : "record_only"));
+  const inAWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const [followUp, setFollowUp] = useState(payload.proposed_due_date ?? inAWeek);
+  const [notifyMe, setNotifyMe] = useState(true);
+  const ownerName = item.owner_contact_name || payload.proposed_owner_text || "";
 
   const act = useMutation({
     mutationFn: ({ verb, body }: { verb: string; body?: object }) =>
@@ -1060,6 +1072,74 @@ function ItemRow({ item, onChanged, setNote }: {
         {ours ? <Pill kind="ok">us</Pill>
           : decided && <Pill kind={item.state === "approved" ? "ok" : ""}>{item.state}</Pill>}
       </div>
+
+      {!decided && item.kind === "action_item" && (
+        <div className="ownership">
+          <p className="small" style={{ margin: 0 }}>
+            <strong>Owner:</strong>{" "}
+            {!ownerName ? "nobody named — the practice's to do"
+              : payload.owner_side === "practice"
+                ? `${payload.owner_practice_name || ownerName} — the practice`
+                : `${ownerName}${payload.owner_side === "other"
+                    ? ` — ${(payload.owner_kind || "someone else").replace("_", " ")}`
+                    + (hasSeat ? " · has a portal seat" : "") : ""}`}
+            {!payload.owner_side && ownerName && (
+              <span className="muted"> (not yet classified — confirm below)</span>)}
+          </p>
+          <div className="row tight">
+            <label className="choice">
+              <input type="radio" name={`side-${item.id}`} checked={side === "practice"}
+                onChange={() => setSide("practice")} />
+              <span>Ours — make it a task</span>
+            </label>
+            <label className="choice">
+              <input type="radio" name={`side-${item.id}`} checked={side === "other"}
+                disabled={!ownerName} onChange={() => setSide("other")} />
+              <span>{ownerName ? `${ownerName}'s — a commitment` : "Someone else's"}</span>
+            </label>
+            {side === "other" && (
+              <select aria-label={`What ${ownerName} is to us`} value={kind}
+                style={{ width: "auto" }} onChange={(e) => setKind(e.target.value)}>
+                <option value="client">Client</option>
+                <option value="prospect">Prospect</option>
+                <option value="vendor">Vendor</option>
+                <option value="third_party">Third party</option>
+              </select>
+            )}
+          </div>
+          {side === "other" && (
+            <fieldset className="choices">
+              <legend className="small muted">When approved</legend>
+              <label className="choice">
+                <input type="radio" name={`outcome-${item.id}`} checked={outcome === "follow_up"}
+                  onChange={() => setOutcome("follow_up")} />
+                <span>Follow up — a task for us to check it happened, on</span>
+                <input type="date" aria-label="Follow-up date" value={followUp}
+                  style={{ width: "auto" }}
+                  onChange={(e) => { setFollowUp(e.target.value); setOutcome("follow_up"); }} />
+              </label>
+              <label className="choice">
+                <input type="radio" name={`outcome-${item.id}`} checked={outcome === "record_only"}
+                  onChange={() => setOutcome("record_only")} />
+                <span>Record only — keep it on {ownerName}'s record, no task</span>
+              </label>
+              <label className="choice" title={hasSeat ? undefined : "Only for a client user with a portal seat"}>
+                <input type="radio" name={`outcome-${item.id}`} checked={outcome === "portal"}
+                  disabled={!hasSeat} onChange={() => setOutcome("portal")} />
+                <span>Assign in the portal — {hasSeat ? `${ownerName}'s task, waiting on the client`
+                  : "needs a portal seat"}</span>
+                {outcome === "portal" && (
+                  <label className="inline small">
+                    <input type="checkbox" style={{ width: "auto" }} checked={notifyMe}
+                      onChange={(e) => setNotifyMe(e.target.checked)} />
+                    tell me on every update
+                  </label>
+                )}
+              </label>
+            </fieldset>
+          )}
+        </div>
+      )}
 
       {!decided && !ours && item.kind === "participant" && (
         <div className="row" style={{ marginTop: "var(--s2)" }}>
@@ -1146,7 +1226,12 @@ function ItemRow({ item, onChanged, setNote }: {
                         ? { create_company: { name: companyName,
                                               domain: companyDomain } }
                         : { company_id: company }) }
-                : {}),
+                : item.kind === "action_item"
+                  ? { owner_side: side,
+                      ...(side === "other" ? { owner_kind: kind, outcome,
+                        ...(outcome === "follow_up" ? { follow_up_date: followUp } : {}),
+                        ...(outcome === "portal" ? { notify_me: notifyMe } : {}) } : {}) }
+                  : {}),
             } })}>
             <Check size={14} /> Approve
           </button>

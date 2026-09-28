@@ -784,6 +784,10 @@ textarea.code { font-size: var(--t-13); line-height: 1.5; white-space: pre; tab-
 .email-text { white-space: pre-wrap; font-size: var(--t-13); padding: var(--s3);
               border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 
+/* An action item's owner and what approving it does (2026-09-28). */
+.ownership { display: grid; gap: var(--s2); margin-top: var(--s2); padding-top: var(--s2);
+             border-top: 1px solid var(--line); }
+
 /* A section inside a card that needs setting apart — never a card in a card. */
 .subpanel { padding: var(--s3) var(--s4); margin-bottom: var(--s3);
             border: 1px solid var(--line); border-radius: var(--radius-sm);

@@ -69,7 +69,19 @@ def for_request(request) -> dict:
         "clients": _clients(request, tasks, goals),
         # AI spend is the FF's (FR-0.9): the finances slot shows it to them only.
         "ai": _ai_state(request),
+        "waiting": _waiting(request),
     }
+
+
+def _waiting(request):
+    """Commitments by people outside the practice (owner, 2026-09-28): how many
+    are open, and how many are past their follow-up date."""
+    from apps.meetings import commitments
+    from apps.meetings.models import Commitment
+
+    qs = commitments.scoped(request, Commitment.objects.filter(
+        state=Commitment.State.OPEN))
+    return {"open": qs.count(), "overdue": qs.filter(commitments.overdue_filter()).count()}
 
 
 def _ai_state(request):

@@ -24,8 +24,8 @@ from apps.work.models import (
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.meetings.models import (
-    DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting, MeetingParticipant,
-    MeetingProposal, MeetingSourceFile, ProposalItem,
+    Commitment, DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting,
+    MeetingParticipant, MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.strategy.models import (
     StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
@@ -120,6 +120,7 @@ register(DriveWatch, factories.DriveWatchFactory, endpoints=("/api/drive-watch/"
 register(DriveBackfill, factories.DriveBackfillFactory, api_exposed=False)
 # Both read through the folder card (`/api/drive-watch/`), never by id alone.
 register(DriveWatchFolder, factories.DriveWatchFolderFactory, api_exposed=False)
+register(Commitment, factories.CommitmentFactory, endpoints=("/api/commitments/",))
 register(DriveExclusion, factories.DriveExclusionFactory, api_exposed=False)
 register(MeetingSourceFile, factories.MeetingSourceFileFactory, api_exposed=False)
 register(MeetingProposal, factories.MeetingProposalFactory,

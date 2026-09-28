@@ -255,6 +255,117 @@ def approve_task_item(item, *, actor, role, choice: dict):
     return task
 
 
+# ------------------------------------------------------- someone else's item
+
+@transaction.atomic
+def approve_action_item(item, *, actor, role, choice: dict, request=None):
+    """An action item, by who owns it (owner, 2026-09-28).
+
+    The practice's own (or nobody named) is one of the practice's tasks, as it
+    always was. Someone else's is a commitment, with the outcome the reviewer
+    confirmed: a follow-up task for the practice, a record on the person, or —
+    only for a client user who holds a portal seat — their task in the portal.
+    """
+    from apps.meetings import ownership
+    from apps.meetings.models import Commitment
+
+    payload = item.payload or {}
+    side = choice.get("owner_side", payload.get("owner_side") or "")
+    if side != ownership.OTHER:
+        return approve_task_item(item, actor=actor, role=role, choice=choice)
+
+    owner_id = choice.get("owner_contact_id", payload.get("proposed_owner_contact_id"))
+    contact = (Contact.objects.filter(pk=owner_id, deleted_at__isnull=True)
+               .select_related("company").first() if owner_id else None)
+    seat = ownership.seat_for(contact)
+    kind = choice.get("owner_kind") or payload.get("owner_kind") or "third_party"
+    outcome = choice.get("outcome") or payload.get("proposed_outcome") or \
+        ownership.default_outcome(side, kind, seat is not None)
+    if outcome not in ownership.OUTCOMES:
+        raise ApprovalRefused("Choose what should happen: follow up, record only, or "
+                              "assign in the portal.")
+    text = (choice.get("title") or payload.get("text") or "").strip()
+    name = (f"{contact.first_name} {contact.last_name}".strip() if contact
+            else (payload.get("proposed_owner_text") or "").strip())
+    if not name:
+        raise ApprovalRefused("Say who owns it.")
+    due = _date(choice.get("due_date") or payload.get("proposed_due_date"))
+    company = contact.company if contact and contact.company_id else None
+    commitment = Commitment(
+        tenant=item.tenant, contact=contact, owner_name=name, owner_kind=kind,
+        company=company, text=text, due_date=due, outcome=outcome,
+        meeting=item.proposal.meeting, proposal_item=item,
+        source_excerpt=item.source_excerpt, created_by=actor)
+
+    if outcome == ownership.PORTAL:
+        if seat is None:
+            # Bounded to a real seat: without one there is nobody to hold it.
+            raise ApprovalRefused(
+                f"{name} has no portal seat, so the task cannot be theirs in the portal. "
+                "Follow up, or record it.")
+        from apps.crm.models import Task
+
+        task = work_services.create_task(
+            tenant=item.tenant, actor=actor, role=role, title=text[:255],
+            description=item.source_excerpt, client_company=seat.client_company,
+            client_owner_contact=contact, contact=contact, assignee=seat.user,
+            due_date=due, status=Task.Status.WAITING_ON_CLIENT)
+        if choice.get("notify_me"):
+            _attach_practice_stakeholder(task, actor)
+        commitment.task = task
+        commitment.follow_up_date = due
+    elif outcome == ownership.FOLLOW_UP:
+        follow_up = _date(choice.get("follow_up_date")) or ownership.default_follow_up(due)
+        task = work_services.create_task(
+            tenant=item.tenant, actor=actor, role=role,
+            title=f"Check that {name} {_lower_first(text)}"[:255],
+            description=(f"{name} committed to this in a meeting"
+                         + (f", due {due:%Y-%m-%d}" if due else "") + ".\n\n"
+                         + item.source_excerpt).strip(),
+            client_company=company, contact=contact, due_date=follow_up,
+            # The practice's own check, never shown to a client even when it
+            # is filed under their company.
+            is_client_visible=False)
+        commitment.task = task
+        commitment.follow_up_date = follow_up
+    else:
+        commitment.follow_up_date = due
+    commitment.save()
+    _mark(item, actor, "commitment", commitment.pk)
+    return commitment
+
+
+def _date(value):
+    from datetime import date
+
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _lower_first(text: str) -> str:
+    return (text[:1].lower() + text[1:]) if text else text
+
+
+def _attach_practice_stakeholder(task, actor):
+    """The reviewer hears about every update on the client's task — through
+    their own contact row, since stakeholders are contacts."""
+    from apps.meetings import practice
+    from apps.work.models import Cadence, Stakeholder
+
+    me = next((m for m in practice.staff(task.tenant) if m.user_id == str(actor.pk)), None)
+    if me is None or me.contact is None:
+        raise ApprovalRefused("You have no contact row to be notified through; attach "
+                              "yourself from the task instead.")
+    Stakeholder.objects.get_or_create(tenant=task.tenant, contact=me.contact, task=task,
+                                      defaults={"cadence": Cadence.EVERY_UPDATE})
+
+
 # ------------------------------------------------------------------- the meeting
 
 @transaction.atomic

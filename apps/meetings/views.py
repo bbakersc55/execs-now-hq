@@ -635,6 +635,11 @@ class ProposalItemViewSet(MeetingViewSetBase):
                 # FR-5.8a — the meeting appears on every approved participant's
                 # timeline, and is created once.
                 approval.create_meeting(item.proposal, actor=request.user)
+            elif item.kind == ProposalItem.Kind.ACTION_ITEM:
+                # By owner (2026-09-28): the practice's is a task; someone
+                # else's is a commitment with the confirmed outcome.
+                approval.approve_action_item(item, actor=request.user, role=role,
+                                             choice=request.data or {}, request=request)
             else:
                 approval.approve_task_item(item, actor=request.user, role=role,
                                            choice=request.data or {})

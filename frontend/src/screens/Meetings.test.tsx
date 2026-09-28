@@ -741,3 +741,69 @@ describe("an import past the estimated AI balance", () => {
       .toEqual([undefined, true]));
   });
 });
+
+
+/** 2026-09-28 — whose action item it is, and what approving it does. */
+describe("an action item owned by someone else", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const withOwner = (payload: Record<string, unknown>, name = "Dana Reyes") => {
+    const base = aProposal();
+    const items = (base.items ?? []).map((i) => i.id === "i2" ? {
+      ...i, owner_contact_name: name,
+      payload: { ...i.payload, proposed_owner_text: name, proposed_owner_contact_id: "c1",
+                 owner_side: "other", ...payload } } : i);
+    return aProposal({ items: items as never });
+  };
+
+  async function open(proposal: ReturnType<typeof aProposal>) {
+    const user = userEvent.setup();
+    const fetchMock = show({
+      [`GET /api/meeting-proposals/${ID}/`]: proposal,
+      "POST /api/proposal-items/i2/approve/": {},
+    });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    return { user, fetchMock };
+  }
+
+  it("proposes the portal for a client user with a seat and sends that choice", async () => {
+    const { user, fetchMock } = await open(withOwner({
+      owner_kind: "client", owner_has_seat: true, proposed_outcome: "portal" }));
+    expect(await screen.findByText(/Dana Reyes — client · has a portal seat/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Assign in the portal/ })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+      ?.body).toEqual({ owner_side: "other", owner_kind: "client", outcome: "portal",
+                        notify_me: true }));
+  });
+
+  it("cannot assign in the portal without a seat, and follows up by default", async () => {
+    const { user, fetchMock } = await open(withOwner({
+      owner_kind: "prospect", owner_has_seat: false, proposed_outcome: "follow_up" }));
+    expect(await screen.findByRole("radio", { name: /Assign in the portal/ })).toBeDisabled();
+    expect(screen.getByLabelText("Follow-up date")).toHaveValue("2026-09-25");
+    await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+      ?.body).toEqual({ owner_side: "other", owner_kind: "prospect", outcome: "follow_up",
+                        follow_up_date: "2026-09-25" }));
+  });
+
+  it("records only when chosen", async () => {
+    const { user, fetchMock } = await open(withOwner({
+      owner_kind: "vendor", proposed_outcome: "record_only" }));
+    await user.click(await screen.findByRole("radio", { name: /Record only/ }));
+    await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+      ?.body).toMatchObject({ owner_side: "other", outcome: "record_only" }));
+  });
+
+  it("lets the reviewer say it is ours after all", async () => {
+    const { user, fetchMock } = await open(withOwner({ owner_kind: "client" }));
+    await user.click(await screen.findByRole("radio", { name: /Ours — make it a task/ }));
+    await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+      ?.body).toEqual({ owner_side: "practice" }));
+  });
+});

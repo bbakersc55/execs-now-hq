@@ -88,7 +88,8 @@ describe("the dashboard", () => {
     show(aBoard({ tiles: { tasks_due: 3, tasks_overdue: 0, digests_pending: 0,
                            pipeline_moves: 0, goals_open: 2 } }));
 
-    expect(await screen.findByText("none overdue")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Tasks due/ }))
+      .toHaveTextContent("none overdue");
   });
 
   it("shows every day of the week, including the quiet ones", async () => {
@@ -277,5 +278,18 @@ describe("AI credit in the finances slot", () => {
     const slot = (await screen.findByRole("heading", { name: "Practice finances" }))
       .closest("section")!;
     expect(slot).not.toHaveTextContent("AI this month");
+  });
+});
+
+
+describe("the waiting-on-others tile", () => {
+  beforeEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+
+  it("counts open commitments and names the overdue ones", async () => {
+    show(aBoard({ waiting: { open: 5, overdue: 2 } }));
+    const tile = await screen.findByRole("link", { name: /Waiting on others/ });
+    expect(tile).toHaveAttribute("href", "/waiting");
+    expect(tile).toHaveTextContent("5");
+    expect(tile).toHaveTextContent("2 overdue");
   });
 });

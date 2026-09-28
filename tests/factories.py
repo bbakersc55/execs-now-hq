@@ -18,8 +18,8 @@ from apps.crm.models import (
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.meetings.models import (
-    DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting, MeetingParticipant,
-    MeetingProposal, MeetingSourceFile, ProposalItem,
+    Commitment, DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting,
+    MeetingParticipant, MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.notes.models import Note, NotePinUnlock
 from apps.work.models import (
@@ -807,6 +807,18 @@ class ProposalItemFactory(TenantScopedFactory):
     kind = ProposalItem.Kind.ACTION_ITEM
     source_excerpt = "Dana said she would send the margin breakdown."
     payload = factory.LazyFunction(lambda: {"text": "Send the margin breakdown"})
+
+
+class CommitmentFactory(TenantScopedFactory):
+    class Meta:
+        model = Commitment
+
+    tenant = factory.SubFactory(TenantFactory)
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    owner_name = "Dana Reyes"
+    owner_kind = "prospect"
+    text = "Send the Q3 margin breakdown"
+    outcome = "record_only"
 
 
 class MeetingFactory(TenantScopedFactory):

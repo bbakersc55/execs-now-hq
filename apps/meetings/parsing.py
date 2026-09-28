@@ -43,8 +43,12 @@ whatever the notes give — name, email, title, company — and nothing they do 
 Also propose "contact_type", one of prospect, client, referral_partner, vendor, \
 coworker, from how the notes describe them.
 4. "action_items": something somebody agreed to do, with "owner" as the notes \
-name them and "due_date" only if the notes give one. And "deliverables": \
-something promised TO the client that somebody outside the room is waiting on.
+name them and "due_date" only if the notes give one. For each, "owner_side": \
+"practice" when the owner is the fractional executive or someone on their team, \
+"other" when it is anyone else, "" when the notes name nobody; and when \
+"other", "owner_kind": one of client, prospect, vendor, third_party, from how \
+the notes describe them. And "deliverables": something promised TO the client \
+that somebody outside the room is waiting on.
 
 **Every item carries "excerpt": the sentence from the notes it came from**, \
 copied exactly, so the reviewer can check it. An item you cannot quote is an \
@@ -57,7 +61,7 @@ sentiment: participants, action items and deliverables only.
 Reply with JSON only: {"title": "", "meeting_date": null, "summary": "", \
 "participants": [{"name": "", "email": "", "title": "", "company": "", \
 "contact_type": "", "excerpt": ""}], "action_items": [{"text": "", "owner": "", \
-"due_date": null, "excerpt": ""}], "deliverables": [{"text": "", "owner": "", \
+"owner_side": "", "owner_kind": "", "due_date": null, "excerpt": ""}], "deliverables": [{"text": "", "owner": "", \
 "due_date": null, "excerpt": ""}]}. No prose around it, no markdown fence."""
 
 VALID_TYPES = {"prospect", "client", "referral_partner", "vendor", "coworker"}
@@ -195,6 +199,16 @@ def _build(source_file, payload, call) -> MeetingProposal:
             }
             if kind == ProposalItem.Kind.DELIVERABLE:
                 body["proposed_stakeholders"] = []
+            else:
+                # Who owns it (owner, 2026-09-28): Claude's reading, checked
+                # against the staff roster and the owner's own record.
+                from apps.meetings import ownership
+
+                body.update(ownership.classify(
+                    tenant, owner_text=owner,
+                    owner_contact_id=body["proposed_owner_contact_id"],
+                    claude_side=str(raw.get("owner_side") or "").strip().lower(),
+                    claude_kind=str(raw.get("owner_kind") or "").strip().lower()))
             ProposalItem.objects.create(
                 tenant=tenant, proposal=proposal, kind=kind, position=position,
                 source_excerpt=str(raw.get("excerpt") or "").strip(), payload=body)

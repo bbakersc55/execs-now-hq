@@ -21,7 +21,19 @@ def represent_item(item) -> dict:
         "actioned_at": item.actioned_at.isoformat() if item.actioned_at else None,
         # FR-5.9e — the screen shows this one rather than asking about it.
         "is_practice": bool((item.payload or {}).get("is_practice")),
+        # An action item's owner, by name, for the review screen (2026-09-28).
+        "owner_contact_name": _owner_name(item),
     }
+
+
+def _owner_name(item) -> str:
+    owner_id = (item.payload or {}).get("proposed_owner_contact_id")
+    if item.kind != ProposalItem.Kind.ACTION_ITEM or not owner_id:
+        return ""
+    from apps.crm.models import Contact
+
+    contact = Contact.objects.filter(pk=owner_id).only("first_name", "last_name").first()
+    return f"{contact.first_name} {contact.last_name}".strip() if contact else ""
 
 
 def represent_backfill(backfill) -> dict | None:

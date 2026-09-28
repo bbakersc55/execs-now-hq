@@ -825,6 +825,8 @@ export interface Dashboard {
              open_goals: number }[];
   /** AI credit and budget — the FF's only (FR-0.9); null for everyone else. */
   ai?: AiBudget | null;
+  /** Open commitments by people outside the practice, and how many are overdue. */
+  waiting?: { open: number; overdue: number };
 }
 
 /** GET /api/ai-budget/ (owner, 2026-09-28). The balance is an **estimate**:
@@ -1055,7 +1057,37 @@ export interface ProposalItem {
     text?: string; proposed_owner_text?: string;
     proposed_owner_contact_id?: string | null; proposed_due_date?: string | null;
     proposed_stakeholders?: { contact_id: string; cadence: string }[];
+    /** Who owns an action item (2026-09-28): the practice, someone else, or
+     *  "" when nobody was named. Missing on items parsed before it existed. */
+    owner_side?: "practice" | "other" | "";
+    owner_kind?: "client" | "prospect" | "vendor" | "third_party" | "";
+    owner_practice_name?: string;
+    owner_has_seat?: boolean;
+    proposed_outcome?: "follow_up" | "record_only" | "portal" | "";
   };
+  /** The owner's contact, by name, when the notes' owner matched one. */
+  owner_contact_name?: string;
+}
+
+/** Something a person outside the practice said they would do (2026-09-28). */
+export interface Commitment {
+  id: string;
+  state: "open" | "done";
+  outcome: "follow_up" | "record_only" | "portal";
+  outcome_label: string;
+  owner_name: string;
+  owner_kind: string;
+  contact: string | null;
+  company: string | null;
+  company_name: string;
+  text: string;
+  due_date: string | null;
+  follow_up_date: string | null;
+  overdue: boolean;
+  task: string | null;
+  meeting: { id: string; title: string; date: string | null } | null;
+  source_excerpt: string;
+  done_at: string | null;
 }
 
 export type DismissReason = "no_meeting" | "not_relevant" | "vendor_pitch" | "other";

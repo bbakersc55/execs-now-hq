@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail, PanelLeftClose,
   PanelLeftOpen,
-  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone, Send,
+  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone, Send, Hourglass,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
@@ -26,6 +26,7 @@ import { Merge } from "./screens/Merge";
 import { Outbox } from "./screens/Outbox";
 import { CampaignDetail, Campaigns } from "./screens/Campaigns";
 import { SendingQueue } from "./screens/SendingQueue";
+import { WaitingOnOthers } from "./screens/WaitingOnOthers";
 import { Pipeline } from "./screens/Pipeline";
 import { ReferralSettings } from "./screens/ReferralSettings";
 import { StageRules } from "./screens/StageRules";
@@ -89,6 +90,7 @@ const NAV: NavItem[] = [
   // Module 3. The client portal's own navigation arrives with done-item 10.
   { to: "/work", label: "Work", roles: TENANT , group: "The work" , icon: Target },
   { to: "/tasks", label: "Tasks", roles: TENANT , icon: CheckSquare },
+  { to: "/waiting", label: "Waiting on others", roles: TENANT , icon: Hourglass },
   { to: "/digests", label: "Digests", roles: TENANT , icon: Mail },
   // Module 4. A VA sets a session up and sends the form; the call itself is the
   // fractional's, and the screen says so rather than hiding controls (§10).
@@ -265,6 +267,7 @@ export function App() {
             <Route path="/companies/:id" element={<CompanyDetail me={me} />} />
             <Route path="/vendors" element={<Vendors />} />
             <Route path="/sending-queue" element={<SendingQueue me={me} />} />
+            <Route path="/waiting" element={<WaitingOnOthers />} />
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/outbox" element={<Outbox />} />
