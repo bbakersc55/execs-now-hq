@@ -864,6 +864,18 @@ def send(digest, *, actor=None):
         actor=actor, force_direct=True,
         source_type="digest", source_id=digest.pk,
     )
+    if message.state == OutboxMessage.State.SUPPRESSED:
+        # The recipient left updates (owner, 2026-09-28): nothing went, and
+        # the digest says so rather than claiming it was sent.
+        digest.state = Digest.State.SKIPPED
+        digest.outbox_message = message
+        digest.save(update_fields=["state", "outbox_message", "updated_at"])
+        AuditEvent.all_objects.create(
+            tenant=digest.tenant, actor=actor, verb="digest.suppressed",
+            target_type="digest", target_id=digest.pk,
+            payload={"to": address, "reason": message.warning,
+                     "outbox_message": str(message.pk)})
+        return message
     digest.state = Digest.State.SENT
     digest.outbox_message = message
     digest.save(update_fields=["state", "outbox_message", "updated_at"])

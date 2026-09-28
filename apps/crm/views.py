@@ -91,6 +91,23 @@ class ContactViewSet(TenantStaffViewSet):
 
         return Response(enrollment.enrollments_for(self.get_object()))
 
+    @action(detail=True, methods=["get"])
+    def suppressions(self, request, pk=None):
+        """What this person has unsubscribed from (owner, 2026-09-28). Shown,
+        not editable: only the recipient's own link takes them back."""
+        from django.utils import timezone
+
+        from apps.crm.models import EmailSuppression
+        from apps.crm.services import unsubscribe
+
+        rows = EmailSuppression.objects.filter(contact=self.get_object(),
+                                               lifted_at__isnull=True)
+        return Response([{"category": row.category,
+                          "label": unsubscribe.LABELS[row.category],
+                          "since": row.created_at.isoformat(),
+                          "date": timezone.localdate(row.created_at).isoformat()}
+                         for row in rows])
+
     @action(detail=True, methods=["post"])
     def enroll(self, request, pk=None):
         from apps.crm.services import enrollment

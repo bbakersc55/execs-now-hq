@@ -37,6 +37,7 @@ import { Replies } from "./screens/Replies";
 import { Notes } from "./screens/Notes";
 import { PinReset } from "./screens/PinReset";
 import { CadenceLink } from "./screens/CadenceLink";
+import { Unsubscribe } from "./screens/Unsubscribe";
 import { PreCallForm } from "./screens/PreCallForm";
 import { SessionDetail } from "./screens/SessionDetail";
 import { SessionTemplate } from "./screens/SessionTemplate";
@@ -140,12 +141,14 @@ export function App() {
   // correctly, with "this link has expired". That is the 2026-09-19 bug: a
   // valid token, a valid session, and a page that never sent it.
   const isPublic = matchPath("/updates/:token", location.pathname)
-    || matchPath("/strategy/precall/:token", location.pathname);
+    || matchPath("/strategy/precall/:token", location.pathname)
+    || matchPath("/unsubscribe/:token", location.pathname);
   if (isPublic) {
     return (
       <Routes>
         <Route path="/updates/:token" element={<CadenceLink />} />
         <Route path="/strategy/precall/:token" element={<PreCallForm />} />
+        <Route path="/unsubscribe/:token" element={<Unsubscribe />} />
       </Routes>
     );
   }

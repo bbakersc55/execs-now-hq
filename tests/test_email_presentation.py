@@ -311,7 +311,10 @@ def test_a_referral_touch_goes_out_in_the_personal_layout(seeded_tenant, ff, dev
     html = html_part(dev_outbox[0])
     assert 'data-enhq-email="personal"' in html and "#0A3A65" not in html
     assert 'href="https://example.com" style="color:#F58220' in html
-    assert dev_outbox[0].body == "Hi Maria,\n\nSee https://example.com\n\nBryan"
+    # The words as written, then (a touch is marketing, 2026-09-28) the link.
+    words, _, footer = dev_outbox[0].body.partition("\n\n—\n")
+    assert words == "Hi Maria,\n\nSee https://example.com\n\nBryan"
+    assert footer.startswith("Unsubscribe from marketing emails: ")
     message.refresh_from_db()
     assert message.body_html == "", "The draft keeps only its words; the layout is added at send."
 
@@ -332,7 +335,9 @@ def test_the_outbox_preview_is_exactly_what_sends_and_only_on_localhost(
     assert response.status_code == 200 and response["Content-Type"].startswith("text/html")
     assert response.content.decode() == email_layout.for_delivery(message)[0]
     text = api.as_(ff).get(f"/api/outbox/{message.pk}/preview/?part=text")
-    assert text["Content-Type"].startswith("text/plain") and text.content.decode() == "Hi Maria"
+    assert text["Content-Type"].startswith("text/plain")
+    assert text.content.decode() == email_layout.for_delivery(message)[1]
+    assert text.content.decode().startswith("Hi Maria\n\n—\nUnsubscribe from marketing")
 
     settings.IS_LOCAL = False
     assert api.as_(ff).get(f"/api/outbox/{message.pk}/preview/").status_code == 404
@@ -643,7 +648,7 @@ def test_mail_from_a_person_signs_off_with_the_mark_beside_the_contact_lines(
     preferences = MailPreference.all_objects.count()
 
     html, text = email_layout.for_delivery(message)
-    assert text == body, "The plain part is the words as written."
+    assert text.partition("\n\n—\n")[0] == body, "The plain part is the words as written."
     assert 'data-enhq-email="personal"' in html and "data-enhq-signature" in html
     assert '<strong style="font-size:15px;color:#0A3A65;">Bryan Baker</strong>' in html
     assert 'href="mailto:bryan.baker@getexecutivesnow.com"' in html

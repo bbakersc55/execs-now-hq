@@ -185,10 +185,15 @@ def for_delivery(message, *, body_text=None, body_html=None) -> tuple[str, str]:
     the layout its producer calls for, so the Outbox editor only ever holds the
     words and never the layout.
     """
+    from apps.crm.services import unsubscribe
+
     text = message.body_text if body_text is None else body_text
     html = message.body_html if body_html is None else body_html
     if is_document(html):
-        return html, text
+        # The unsubscribe link, for marketing and updates only — placed here so
+        # every send and every preview carries exactly the same one.
+        return unsubscribe.apply(message, html, text,
+                                 personal='data-enhq-email="personal"' in html)
     accent = branding(message.tenant).accent_color
     personal = message.producer in PERSONAL_PRODUCERS
     if (html or "").strip():
@@ -199,8 +204,9 @@ def for_delivery(message, *, body_text=None, body_html=None) -> tuple[str, str]:
             signature_block(message.tenant, signed) if signed else "")
     else:
         content = text_to_html(text, accent=accent)
-    return document(message.tenant, content_html=content, subject=message.subject,
-                    personal=personal), text
+    wrapped = document(message.tenant, content_html=content, subject=message.subject,
+                       personal=personal)
+    return unsubscribe.apply(message, wrapped, text, personal=personal)
 
 
 # ------------------------------------------------------------------ the sign-off

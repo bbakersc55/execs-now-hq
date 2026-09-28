@@ -96,7 +96,8 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
                    is_ai_generated=False, warning="", send_by=None,
                    from_address=None, sent_via="postmark", thread=None,
                    source_type="", source_id=None, attachments=(),
-                   deliver_body_text=None, force_direct=False, deliver_body_html=None):
+                   deliver_body_text=None, force_direct=False, deliver_body_html=None,
+                   category=None):
     """Single entry point. Nothing else in the codebase writes an OutboxMessage.
 
     `deliver_body_text` is for one-time links (magic links, PIN resets): it is
@@ -133,10 +134,15 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
         from apps.crm.services import sender as sender_service
 
         from_address = sender_service.resolve_from(tenant, actor, producer)
+    from apps.crm.services import unsubscribe
+
     message = OutboxMessage.all_objects.create(
         tenant=tenant,
         state=S.SENT if direct else S.PENDING_APPROVAL,
         producer=producer,
+        # Every email has a category (owner, 2026-09-28): it decides whether
+        # an unsubscribe link goes on it and whether a suppression stops it.
+        category=category or unsubscribe.category_for(producer),
         to_contact=to_contact,
         to_address=to_address,
         from_address=from_address,
@@ -199,6 +205,9 @@ def approve(message, *, actor, role):
         raise SendNotPermitted("Only a founder or contractor fractional may send.")
     if message.state not in (S.DRAFT, S.PENDING_APPROVAL):
         raise SendNotPermitted(f"Cannot approve a message in state {message.state}.")
+    reason = _suppress_if_unsubscribed(message, actor=actor)
+    if reason:
+        raise SendNotPermitted(reason)
 
     message.state = S.APPROVED
     message.approved_by = actor
@@ -246,6 +255,25 @@ def expire_due(tenant, *, now=None):
 
 # --------------------------------------------------------------- delivery
 
+def _suppress_if_unsubscribed(message, *, actor=None) -> str:
+    """Owner, 2026-09-28 — the Outbox refuses a category the recipient left,
+    and says why. The row is kept, marked suppressed with the reason."""
+    from apps.crm.services import unsubscribe
+
+    reason = unsubscribe.refusal(message)
+    if reason:
+        message.state = S.SUPPRESSED
+        message.warning = reason
+        message.save(update_fields=["state", "warning", "updated_at"])
+        AuditEvent.all_objects.create(
+            tenant=message.tenant, actor=actor, verb="email.suppressed",
+            target_type="outbox_message", target_id=message.pk,
+            payload={"reason": reason, "producer": message.producer,
+                     "category": unsubscribe.category_of(message),
+                     "to": message.to_address})
+    return reason
+
+
 def _deliver(message, *, actor=None, body_text=None, body_html=None):
     """The one path out of the app.
 
@@ -258,6 +286,11 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     from apps.crm.services.transport import (
         DevOutboxTransport, TransportUnavailable, get_transport,
     )
+
+    # Checked again here, because a direct-to-sent message (a digest) never
+    # passes through `approve`. A suppressed category does not leave.
+    if _suppress_if_unsubscribed(message, actor=actor):
+        return message
 
     dev_real = settings.IS_LOCAL and is_real_send_allowed(
         message.to_address, message.tenant

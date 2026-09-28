@@ -41,6 +41,12 @@ export function EnrolledIn({ contactId, me, isPartner }: {
       api.post(`/api/contacts/${contactId}/${path}/`, body),
     onSuccess: done,
   });
+  // What they have left, by their own link (owner, 2026-09-28). Shown so no
+  // one wonders why an email to them was refused; only their link undoes it.
+  const suppressions = useQuery<{ category: string; label: string; date: string }[]>({
+    queryKey: ["suppressions", contactId],
+    queryFn: () => api.get(`/api/contacts/${contactId}/suppressions/`),
+  });
   const list = rows.data ?? [];
   const onTouches = list.some((r) => r.kind === "referral_touches");
 
@@ -69,6 +75,12 @@ export function EnrolledIn({ contactId, me, isPartner }: {
           ))}
         </ul>
       )}
+      {(suppressions.data ?? []).map((row) => (
+        <Banner key={row.category} kind="warn">
+          Unsubscribed from {row.label} on {row.date}, by their own link. The app will not
+          send them {row.label}.
+        </Banner>
+      ))}
       {mayChange && isPartner && !onTouches && (
         <button onClick={() => change.mutate({ path: "enroll",
                                                 body: { program: "referral_touches" } })}

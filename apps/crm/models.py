@@ -780,6 +780,11 @@ class OutboxMessage(TenantScopedModel):
     source_type = models.CharField(max_length=40, blank=True, default="")
     source_id = models.UUIDField(null=True, blank=True)
 
+    #: Marketing, updates or transactional (owner, 2026-09-28). Set when the
+    #: row is made; rows from before it are read through `category_for`.
+    #: Marketing and updates carry an unsubscribe link; transactional never.
+    category = models.CharField(max_length=16, blank=True, default="")
+
     class Meta(TenantScopedModel.Meta):
         db_table = "outbox_message"
         indexes = [models.Index(fields=["tenant", "state", "send_by"])]
@@ -1136,3 +1141,41 @@ class Enrollment(TenantScopedModel):
                 name="one_open_enrollment_per_program"),
         ]
         indexes = [models.Index(fields=["tenant", "program", "ended_at"])]
+
+
+class EmailSuppression(TenantScopedModel):
+    """"Do not send this category to this person" (owner, 2026-09-28).
+
+    Written by the recipient's own unsubscribe link, one row per category,
+    so leaving marketing does not stop their project updates. Keyed on the
+    contact when there is one, and on the address when there is not (a staff
+    member's activity notices). The Outbox refuses a suppressed category and
+    says why. Lifting (the recipient's own "undo") keeps the row, dated.
+    """
+
+    class Category(models.TextChoices):
+        MARKETING = "marketing", "Marketing"
+        UPDATES = "updates", "Updates"
+
+    contact = models.ForeignKey(Contact, null=True, blank=True, on_delete=models.CASCADE,
+                                related_name="suppressions")
+    address = models.EmailField(blank=True, default="")
+    category = models.CharField(max_length=16, choices=Category.choices)
+    source = models.CharField(max_length=24, default="unsubscribe_link")
+    outbox_message = models.ForeignKey("crm.OutboxMessage", null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
+    lifted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "email_suppression"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "contact", "category"],
+                condition=models.Q(lifted_at__isnull=True, contact__isnull=False),
+                name="one_open_suppression_per_contact"),
+            models.UniqueConstraint(
+                fields=["tenant", "address", "category"],
+                condition=models.Q(lifted_at__isnull=True, contact__isnull=True),
+                name="one_open_suppression_per_address"),
+        ]

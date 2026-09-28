@@ -14,7 +14,8 @@ const ROWS = [
 ];
 
 function show(rows = ROWS, me = aMe(), isPartner = true, extra: Record<string, unknown> = {}) {
-  const fetchMock = mockApi({ ...extra, "GET /api/contacts/c1/enrollments/": rows });
+  const fetchMock = mockApi({ ...extra, "GET /api/contacts/c1/enrollments/": rows,
+                              "GET /api/contacts/c1/suppressions/": [] });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<EnrolledIn contactId="c1" me={me} isPartner={isPartner} />);
   return fetchMock;
@@ -53,5 +54,17 @@ describe("Enrolled in", () => {
     show(ROWS, aMe({ role: "VA" }));
     expect(await screen.findByText("Referral touches")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Unenrol/ })).not.toBeInTheDocument();
+  });
+
+  it("says what they unsubscribed from, and that only their link undoes it", async () => {
+    const fetchMock = mockApi({
+      "GET /api/contacts/c1/enrollments/": [],
+      "GET /api/contacts/c1/suppressions/": [
+        { category: "marketing", label: "marketing emails", date: "2026-09-28" }],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<EnrolledIn contactId="c1" me={aMe()} isPartner={false} />);
+    expect(await screen.findByText(/Unsubscribed from marketing emails on 2026-09-28/))
+      .toBeInTheDocument();
   });
 });

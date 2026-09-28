@@ -5,6 +5,7 @@ from apps.accounts import views as account_views
 from apps.crm import views_gmail
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
+from apps.crm import views_unsubscribe as crm_unsubscribe
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -36,6 +37,8 @@ urlpatterns = [
     # /api/ so the app's own page can render it (the dev proxy forwards /api);
     # the link in the email points at the app route that calls this.
     path("api/cadence/<str:token>", work_cadence.cadence_link, name="cadence-link"),
+    path("api/unsubscribe/<str:token>", crm_unsubscribe.unsubscribe_link,
+         name="unsubscribe-link"),
     # FR-4.6 / matrix 10.13 — the pre-call form. A public page authenticated by
     # one token, which can read and answer nothing but its own session's
     # pre-call questions.
