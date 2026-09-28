@@ -9,7 +9,7 @@ from apps.crm.models import (
     ContactType, ContactTypeLink, DevSendAllowlistEntry, EmailTemplate, ImportBatch,
     MailPreference, OutboxAttachment,
     ImportMappingProfile, ImportRow, OutboxMessage, Pipeline, PipelineStage,
-    ServiceCategory, StageAutomation, StageChange, Task,
+    ServiceCategory, StageAutomation, StageChange, StageSemantic, Task,
 )
 
 
@@ -412,9 +412,22 @@ class StageAutomationSerializer(serializers.ModelSerializer):
         model = StageAutomation
         fields = [
             "id", "pipeline", "from_stage", "to_stage", "action_type", "task_title_template",
-            "task_due_offset_days", "email_template", "send_by_offset_days",
-            "is_active", "summary",
+            "task_due_offset_days", "task_client_visible", "email_template",
+            "send_by_offset_days", "is_active", "summary",
         ]
+        extra_kwargs = {"task_client_visible": {"required": False}}
+
+    def create(self, validated_data):
+        """A new rule is internal unless the FF says otherwise — except on a
+        sales `won` stage, whose task is for the new client. Only the default
+        differs: whatever the FF sent is kept."""
+        if "task_client_visible" not in validated_data:
+            stage = validated_data["to_stage"]
+            validated_data["task_client_visible"] = (
+                stage.semantic == StageSemantic.WON
+                and stage.pipeline.kind == Pipeline.Kind.SALES
+            )
+        return super().create(validated_data)
 
     def get_summary(self, obj):
         """FR-1.13 — a plain-English summary of each rule."""
@@ -430,7 +443,9 @@ class StageAutomationSerializer(serializers.ModelSerializer):
                 f" due in {obj.task_due_offset_days} days"
                 if obj.task_due_offset_days is not None else ""
             )
-            return f"{trigger}, create task '{obj.task_title_template}'{due}."
+            seen = ("the client can see it" if obj.task_client_visible
+                    else "internal, hidden from the client")
+            return f"{trigger}, create task '{obj.task_title_template}'{due} ({seen})."
         return (
             f"{trigger}, draft an email into the Outbox for approval "
             f"(expires after {obj.send_by_offset_days} days)."

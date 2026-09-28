@@ -240,8 +240,9 @@ def _create_task(contact, rule, *, actor=None):
     2026-09-28): until then this path wrote no CREATED update, so a rule's task
     opened on an empty history, and it never had a client company, so it was
     hidden even when the contact worked for a client. It now files the task
-    under the contact's company **when that company is a client company**, and
-    the shared rule makes it client-visible exactly as a hand-made one would be.
+    under the contact's company **when that company is a client company**.
+    Whether the client sees it is the rule's own setting (`task_client_visible`,
+    internal by default), and never without a client company to see it through.
     The company is re-read rather than taken from `contact.company`: moving a
     contact to `client` marks their company a client company in this same
     transaction, just before the rules run.
@@ -273,6 +274,7 @@ def _create_task(contact, rule, *, actor=None):
             owner=contact.owner,
             contact=contact,
             client_company=client_company,
+            is_client_visible=rule.task_client_visible and client_company is not None,
             source_automation=rule,
         )
     AuditEvent.all_objects.create(

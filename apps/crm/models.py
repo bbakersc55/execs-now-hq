@@ -478,6 +478,12 @@ class StageAutomation(TenantScopedModel):
 
     task_title_template = models.CharField(max_length=255, blank=True, default="")
     task_due_offset_days = models.IntegerField(null=True, blank=True)
+    # Whether the client sees the task this rule makes, when it is filed under a
+    # client company (owner, 2026-09-28). Internal unless the FF ticks it: a
+    # sales follow-up is the practice's work, not the client's. The serializer
+    # defaults a new rule on a sales `won` stage to visible, because that task
+    # is for the new client.
+    task_client_visible = models.BooleanField(default=False)
     email_template = models.ForeignKey(
         EmailTemplate, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
