@@ -2232,3 +2232,203 @@ def test_locate_walks_up_and_stops():
     assert drive.locate(["b"], ["root"], lookup) == ("root", ["A", "B"])
     assert drive.locate(["loop"], ["root"], lookup) is None
     assert drive.locate(["nowhere"], ["root"], lookup) is None
+
+
+# ----------------------------------------------- 2026-09-28: Dismiss a proposal
+#
+# Closed with a reason, nothing created, never resurfacing, audited, and
+# reversible from the Archived filter. "Record as vendor and dismiss the rest"
+# for a vendor's pitch.
+
+def _one_proposal(tenant, fake_client, fake_claude, *, file_id="n1", text=NOTES):
+    fake_claude.reply = PARSED
+    fake_client.texts = {file_id: text}
+    fake_client.pages = one_page([a_file(file_id)])
+    ingest.poll(tenant, client=fake_client)
+    return MeetingProposal.objects.get(source_file__drive_file_id=file_id)
+
+
+def _nothing_created():
+    return (Task.objects.count(), Contact.objects.count(), Meeting.objects.count())
+
+
+@pytest.mark.django_db
+def test_dismissing_closes_it_with_a_reason_and_creates_nothing(
+    seeded_tenant, watch, ff_user, api, fake_client, fake_claude, in_tenant_a
+):
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    before = _nothing_created()
+    pending = ProposalItem.objects.filter(proposal=proposal, state="pending").count()
+    client = api.as_(ff_user)
+
+    response = client.post(f"/api/meeting-proposals/{proposal.pk}/dismiss/",
+                           {"reason": "no_meeting"})
+
+    assert response.status_code == 200, response.data
+    assert response.data["dismissed"]["reason_label"] == "No meeting happened"
+    proposal.refresh_from_db()
+    assert proposal.state == MeetingProposal.State.DISMISSED
+    assert proposal.state_before_dismissal == MeetingProposal.State.PENDING
+    assert _nothing_created() == before
+    # Items are left as they were: nothing approved or rejected on anyone's behalf.
+    assert ProposalItem.objects.filter(proposal=proposal, state="pending").count() == pending
+    assert proposal.source_file.dismissed_at is not None
+    audit = AuditEvent.all_objects.get(verb="meeting.proposal_dismissed")
+    assert audit.payload["reason"] == "no_meeting" and audit.actor_id == ff_user.user_id
+
+    open_queue = client.get("/api/meeting-proposals/").json()
+    archived = client.get("/api/meeting-proposals/?state=archived").json()
+    assert [p["id"] for p in open_queue] == []
+    assert [p["id"] for p in archived] == [str(proposal.pk)]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("body,status", [
+    ({"reason": "other"}, 400),                         # other needs a word on why
+    ({"reason": "because"}, 400),                       # not a reason
+    ({}, 400),
+])
+def test_a_dismissal_needs_a_real_reason(seeded_tenant, watch, ff_user, api, fake_client,
+                                         fake_claude, body, status, in_tenant_a):
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    response = api.as_(ff_user).post(f"/api/meeting-proposals/{proposal.pk}/dismiss/", body)
+    assert response.status_code == status
+    proposal.refresh_from_db()
+    assert proposal.state == MeetingProposal.State.PENDING
+
+
+@pytest.mark.django_db
+def test_other_with_a_note_is_accepted_and_kept(seeded_tenant, watch, ff_user, api,
+                                                fake_client, fake_claude, in_tenant_a):
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    response = api.as_(ff_user).post(f"/api/meeting-proposals/{proposal.pk}/dismiss/",
+                                     {"reason": "other", "note": "Personal call."})
+    assert response.status_code == 200
+    assert response.data["dismissed"]["note"] == "Personal call."
+
+
+@pytest.mark.django_db
+def test_a_dismissed_proposal_cannot_be_worked_until_restored(
+    seeded_tenant, watch, ff_user, api, fake_client, fake_claude, in_tenant_a
+):
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    client = api.as_(ff_user)
+    client.post(f"/api/meeting-proposals/{proposal.pk}/dismiss/", {"reason": "not_relevant"})
+    task_item = ProposalItem.objects.filter(proposal=proposal, kind="action_item").first()
+
+    assert client.post(f"/api/proposal-items/{task_item.pk}/approve/", {}).status_code == 409
+    assert client.post(f"/api/proposal-items/{task_item.pk}/reject/").status_code == 409
+    assert client.post(f"/api/meeting-proposals/{proposal.pk}/reparse/").status_code == 409
+    assert _parse_calls() == 1
+
+
+@pytest.mark.django_db
+def test_a_dismissed_file_never_resurfaces_at_a_later_version(
+    seeded_tenant, watch, ff_user, api, fake_client, fake_claude, in_tenant_a
+):
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    api.as_(ff_user).post(f"/api/meeting-proposals/{proposal.pk}/dismiss/",
+                          {"reason": "no_meeting"})
+    # Gemini edits the notes afterwards: new version, different words.
+    fake_client.texts = {"n1": NOTES + "\nAdded later."}
+    fake_client.pages = one_page([a_file("n1", version="2")], token="after")
+
+    ingest.poll(seeded_tenant, client=fake_client)
+
+    v2 = MeetingSourceFile.objects.get(drive_version="2")
+    assert v2.state == MeetingSourceFile.State.SKIPPED
+    assert v2.skip_reason.startswith("Dismissed on")
+    assert _parse_calls() == 1
+    assert MeetingProposal.objects.count() == 1
+    assert fake_client.fetched == ["n1"]            # only the first version, ever
+
+
+@pytest.mark.django_db
+def test_restoring_puts_it_back_where_it_was(seeded_tenant, watch, ff_user, api,
+                                             fake_client, fake_claude, in_tenant_a):
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    client = api.as_(ff_user)
+    client.post(f"/api/meeting-proposals/{proposal.pk}/dismiss/", {"reason": "not_relevant"})
+
+    response = client.post(f"/api/meeting-proposals/{proposal.pk}/restore/")
+
+    assert response.status_code == 200
+    proposal.refresh_from_db()
+    assert proposal.state == MeetingProposal.State.PENDING
+    assert (proposal.dismissed_reason, proposal.dismissed_at) == ("", None)
+    assert proposal.source_file.dismissed_at is None
+    restored = AuditEvent.all_objects.get(verb="meeting.proposal_restored")
+    assert restored.payload["was"]["reason"] == "not_relevant"
+    assert [p["id"] for p in client.get("/api/meeting-proposals/").json()] \
+        == [str(proposal.pk)]
+    # And it can be worked again.
+    task_item = ProposalItem.objects.filter(proposal=proposal, kind="action_item").first()
+    assert client.post(f"/api/proposal-items/{task_item.pk}/reject/").status_code == 200
+    # Restoring what is not dismissed is refused.
+    assert client.post(f"/api/meeting-proposals/{proposal.pk}/restore/").status_code == 409
+
+
+def _participant(proposal, name):
+    return next(i for i in ProposalItem.objects.filter(proposal=proposal, kind="participant")
+                if i.payload.get("parsed_name") == name)
+
+
+@pytest.mark.django_db
+def test_record_as_vendor_and_dismiss_the_rest(seeded_tenant, watch, ff_user, api,
+                                               fake_client, fake_claude, dev_outbox,
+                                               in_tenant_a):
+    from apps.crm.models import ContactServiceCategory
+
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    tom = _participant(proposal, "Tom Okafor")
+    tasks, meetings = Task.objects.count(), Meeting.objects.count()
+
+    response = api.as_(ff_user).post(f"/api/meeting-proposals/{proposal.pk}/dismiss/", {
+        "reason": "vendor_pitch",
+        "vendor": {"item": str(tom.pk), "service_categories": ["Duct cleaning", " "]},
+    }, content_type="application/json")
+
+    assert response.status_code == 200, response.data
+    proposal.refresh_from_db()
+    assert (proposal.state, proposal.dismissed_reason) == ("dismissed", "vendor_pitch")
+    tom.refresh_from_db()
+    assert tom.state == ProposalItem.State.APPROVED
+    vendor = Contact.objects.get(pk=tom.created_record_id)
+    assert vendor.type_links.filter(contact_type__code="vendor").exists()
+    assert list(ContactServiceCategory.objects.filter(contact=vendor)
+                .values_list("service_category__name", flat=True)) == ["Duct cleaning"]
+    # The rest is dismissed: no task, no meeting, and the task items untouched.
+    assert (Task.objects.count(), Meeting.objects.count()) == (tasks, meetings)
+    assert not ProposalItem.objects.filter(proposal=proposal, kind__in=[
+        "action_item", "deliverable"]).exclude(state="pending").exists()
+    assert "Tom Okafor" in proposal.dismissed_note
+    assert dev_outbox == []
+
+
+@pytest.mark.django_db
+def test_a_vendor_without_categories_is_refused_and_nothing_is_dismissed(
+    seeded_tenant, watch, ff_user, api, fake_client, fake_claude, in_tenant_a
+):
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    contacts = Contact.objects.count()
+    tom = _participant(proposal, "Tom Okafor")
+
+    response = api.as_(ff_user).post(f"/api/meeting-proposals/{proposal.pk}/dismiss/", {
+        "reason": "vendor_pitch", "vendor": {"item": str(tom.pk)}},
+        content_type="application/json")
+
+    assert response.status_code == 400
+    assert "service category" in response.data["detail"]
+    proposal.refresh_from_db()
+    assert proposal.state == MeetingProposal.State.PENDING
+    assert Contact.objects.count() == contacts
+
+
+@pytest.mark.django_db
+def test_the_va_who_clears_the_queue_can_dismiss(seeded_tenant, watch, api, fake_client,
+                                                 fake_claude, in_tenant_a):
+    va = MembershipFactory(tenant=seeded_tenant, role="VA")
+    proposal = _one_proposal(seeded_tenant, fake_client, fake_claude)
+    response = api.as_(va).post(f"/api/meeting-proposals/{proposal.pk}/dismiss/",
+                                {"reason": "no_meeting"})
+    assert response.status_code == 200

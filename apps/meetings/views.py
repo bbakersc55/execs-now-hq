@@ -17,7 +17,8 @@ from rest_framework.response import Response
 
 from apps.crm.services import gmail_oauth
 from apps.meetings import (
-    approval, backfill as backfill_service, drive as drive_service, ingest, parsing,
+    approval, backfill as backfill_service, dismissal, drive as drive_service, ingest,
+    parsing,
 )
 from apps.meetings import permissions as meeting_perms
 from apps.meetings import serializers as meeting_serializers
@@ -475,6 +476,12 @@ class ProposalViewSet(MeetingViewSetBase):
         if state == "open":
             qs = qs.filter(state__in=[MeetingProposal.State.PENDING,
                                       MeetingProposal.State.PARTIALLY_ACTIONED])
+        elif state == "archived":
+            # Dismissed, newest first — where a dismissal is undone.
+            return Response([meeting_serializers.represent_proposal(p) for p in
+                             qs.filter(state=MeetingProposal.State.DISMISSED)
+                             .select_related("dismissed_by")
+                             .order_by("-dismissed_at")[:200]])
         elif state != "all":
             qs = qs.filter(state=state)
         return Response([meeting_serializers.represent_proposal(p)
@@ -495,6 +502,47 @@ class ProposalViewSet(MeetingViewSetBase):
             fields.append("summary_discarded")
         if fields:
             proposal.save(update_fields=fields + ["updated_at"])
+        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+
+    @action(detail=True, methods=["post"])
+    def dismiss(self, request, pk=None):
+        """Close the proposal with a reason; create nothing (owner, 2026-09-28).
+
+        With `vendor` — `{"item": <participant item>, "contact_id"? ,
+        "new_contact"?, "service_categories": [...]}` — it is "Record as vendor
+        and dismiss the rest": that participant becomes a vendor contact and
+        the proposal is dismissed as a vendor pitch. Open to everyone who
+        clears the queue, like rejecting an item is.
+        """
+        proposal = self.load(pk)
+        reason = request.data.get("reason") or ""
+        note = request.data.get("note") or ""
+        vendor = request.data.get("vendor")
+        try:
+            if vendor:
+                if reason and reason != MeetingProposal.DismissReason.VENDOR_PITCH:
+                    return Response({"detail": "Recording a vendor dismisses the rest "
+                                               "as a vendor pitch."}, status=400)
+                dismissal.dismiss_as_vendor(
+                    proposal, actor=request.user, role=request.membership.role,
+                    item_id=str(vendor.get("item") or ""),
+                    choice={k: v for k, v in vendor.items() if k != "item"},
+                    note=note, request=request)
+            else:
+                dismissal.dismiss(proposal, actor=request.user, reason=reason, note=note)
+        except approval.ApprovalRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        proposal.refresh_from_db()
+        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+
+    @action(detail=True, methods=["post"])
+    def restore(self, request, pk=None):
+        """Undo a dismissal, from the Archived filter."""
+        proposal = self.load(pk)
+        try:
+            dismissal.restore(proposal, actor=request.user)
+        except approval.ApprovalRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
         return Response(meeting_serializers.represent_proposal(proposal, full=True))
 
     @action(detail=True, methods=["post"])
@@ -537,6 +585,9 @@ class ProposalViewSet(MeetingViewSetBase):
         """A fresh proposal that supersedes this one (FR-5.17). Approved items
         are untouched; it writes an `ai_call` like any other read."""
         proposal = self.load(pk)
+        if proposal.state == MeetingProposal.State.DISMISSED:
+            return Response({"detail": "That proposal is dismissed. Restore it first."},
+                            status=409)
         fresh = parsing.reparse(proposal, actor=request.user)
         if fresh is None:
             return Response({"detail": "The re-parse failed. The old proposal stands "
@@ -569,6 +620,9 @@ class ProposalItemViewSet(MeetingViewSetBase):
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         item = self.load_item(pk)
+        if item.proposal.state == MeetingProposal.State.DISMISSED:
+            return Response({"detail": "That proposal is dismissed. Restore it first."},
+                            status=409)
         if item.state != ProposalItem.State.PENDING:
             return Response({"detail": "That one has already been decided."}, status=409)
         role = request.membership.role
@@ -595,5 +649,8 @@ class ProposalItemViewSet(MeetingViewSetBase):
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
         item = self.load_item(pk)
+        if item.proposal.state == MeetingProposal.State.DISMISSED:
+            return Response({"detail": "That proposal is dismissed. Restore it first."},
+                            status=409)
         approval.reject(item, actor=request.user)
         return Response(meeting_serializers.represent_item(item))

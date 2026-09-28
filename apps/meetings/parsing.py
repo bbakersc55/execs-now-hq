@@ -262,6 +262,20 @@ def parse(source_file, *, client=None, trigger="auto",
     """
     from apps.tenancy import claude
 
+    # A file whose proposal was dismissed stays dismissed at every later
+    # version — not fetched, not read (owner, 2026-09-28). Restore clears it.
+    dismissed = (MeetingSourceFile.objects
+                 .filter(drive_file_id=source_file.drive_file_id,
+                         dismissed_at__isnull=False)
+                 .exclude(pk=source_file.pk).first()) if skip_unchanged else None
+    if dismissed is not None:
+        source_file.state = MeetingSourceFile.State.SKIPPED
+        source_file.skip_reason = (
+            f"Dismissed on {timezone.localdate(dismissed.dismissed_at):%Y-%m-%d}; "
+            "later versions of it are not read.")
+        source_file.save(update_fields=["state", "skip_reason", "updated_at"])
+        return None
+
     text = text_of(source_file, client=client)
     if not text.strip():
         source_file.state = MeetingSourceFile.State.FAILED

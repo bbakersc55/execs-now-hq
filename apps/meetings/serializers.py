@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apps.meetings.models import ProposalItem
+from apps.meetings.models import MeetingProposal, ProposalItem
 
 
 def represent_item(item) -> dict:
@@ -82,6 +82,14 @@ def represent_proposal(proposal, *, full=False) -> dict:
         "summary_discarded": proposal.summary_discarded,
         "source_file": represent_source_file(proposal.source_file),
         "meeting": str(proposal.meeting_id) if proposal.meeting_id else None,
+        "dismissed": ({
+            "reason": proposal.dismissed_reason,
+            "reason_label": proposal.get_dismissed_reason_display(),
+            "note": proposal.dismissed_note,
+            "by": (proposal.dismissed_by.full_name or proposal.dismissed_by.email)
+            if proposal.dismissed_by_id else "",
+            "at": proposal.dismissed_at.isoformat() if proposal.dismissed_at else None,
+        } if proposal.state == MeetingProposal.State.DISMISSED else None),
         "counts": {},
     }
     items = list(ProposalItem.objects.filter(proposal=proposal))

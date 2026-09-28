@@ -618,3 +618,83 @@ describe("meetingNameOf", () => {
     expect(meetingNameOf("Plain notes")).toBe("Plain notes");
   });
 });
+
+
+/** 2026-09-28 — Dismiss: a reason, nothing created, and a way back. */
+describe("dismissing a proposal", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const sent = (fetchMock: ReturnType<typeof mockApi>, end: string) =>
+    fetchMock.calls.find((c) => c.method === "POST" && c.url.endsWith(end))?.body;
+
+  async function openDismiss(extra: Record<string, unknown> = {}) {
+    const user = userEvent.setup();
+    const fetchMock = show({
+      [`POST /api/meeting-proposals/${ID}/dismiss/`]: aProposal({ state: "dismissed" }),
+      ...extra,
+    });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await user.click(await screen.findByRole("button", { name: /^Dismiss$/ }));
+    return { user, fetchMock };
+  }
+
+  it("sends the reason and the note", async () => {
+    const { user, fetchMock } = await openDismiss();
+    await user.click(screen.getByRole("radio", { name: "No meeting happened" }));
+    await user.type(screen.getByLabelText("Dismissal note"), "Calendar hold only.");
+    await user.click(screen.getByRole("button", { name: /^Dismiss$/ }));
+
+    await waitFor(() => expect(sent(fetchMock, "/dismiss/"))
+      .toEqual({ reason: "no_meeting", note: "Calendar hold only." }));
+  });
+
+  it("will not dismiss as Other without saying why", async () => {
+    const { user } = await openDismiss();
+    await user.click(screen.getByRole("radio", { name: "Other" }));
+    const dismiss = screen.getByRole("button", { name: /^Dismiss$/ });
+    expect(dismiss).toBeDisabled();
+    await user.type(screen.getByLabelText("Dismissal note"), "Personal call.");
+    expect(dismiss).toBeEnabled();
+  });
+
+  it("records the vendor with what they do and dismisses the rest", async () => {
+    const { user, fetchMock } = await openDismiss();
+    await user.click(screen.getByRole("radio", { name: "Vendor pitch" }));
+    const record = screen.getByRole("button", { name: "Record as vendor and dismiss the rest" });
+    expect(record).toBeDisabled();                       // needs a category first
+    await user.type(screen.getByLabelText("Vendor service categories"),
+                    "Duct cleaning, grease traps");
+    await user.click(record);
+
+    await waitFor(() => expect(sent(fetchMock, "/dismiss/")).toEqual({
+      reason: "vendor_pitch", note: "",
+      vendor: { item: "i1", service_categories: ["Duct cleaning", "grease traps"] },
+    }));
+  });
+
+  it("lists what was dismissed under Archived, with why, and restores it", async () => {
+    const user = userEvent.setup();
+    const dismissed = aProposal({ state: "dismissed", dismissed: {
+      reason: "vendor_pitch", reason_label: "Vendor pitch", note: "Recorded Tom as a vendor.",
+      by: "Bryan Baker", at: "2026-09-28T19:00:00Z" } });
+    // Its own routes, in order: the archived list must be matched before the
+    // open one its address starts with.
+    const fetchMock = mockApi({
+      "GET /api/meeting-proposals/?state=archived": [dismissed],
+      [`POST /api/meeting-proposals/${ID}/restore/`]: aProposal(),
+      "GET /api/meeting-proposals/": [],
+      "GET /api/drive-watch/backfill/": { folder: PAST, backfill: null },
+      "GET /api/drive-watch/": HEALTH,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Meetings me={aMe()} />, { path: "/meetings", route: "/meetings" });
+
+    await user.click(await screen.findByRole("button", { name: "Archived" }));
+    expect(await screen.findByText("Vendor pitch")).toBeInTheDocument();
+    expect(screen.getByText(/Recorded Tom as a vendor/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(fetchMock.calls.some((c) =>
+      c.method === "POST" && c.url.endsWith("/restore/"))).toBe(true));
+  });
+});

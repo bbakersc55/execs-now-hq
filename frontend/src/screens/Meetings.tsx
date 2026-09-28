@@ -8,8 +8,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
-  Backfill, BackfillPlan, DriveFolder, DriveHealth, FolderPast, Me, MeetingProposal,
-  WatchFolder,
+  Backfill, BackfillPlan, DismissReason, DriveFolder, DriveHealth, FolderPast, Me,
+  MeetingProposal, WatchFolder,
   ProposalItem, api,
 } from "../lib/api";
 
@@ -58,9 +58,13 @@ export function Meetings({ me }: { me: Me }) {
     enabled: me.role === "FF" && !!health.data?.connected
              && !health.data?.backfill?.running,
   });
+  // Open is the queue; Archived is what was dismissed, and where that is undone.
+  const [view, setView] = useState<"open" | "archived">("open");
   const proposals = useQuery<MeetingProposal[]>({
-    queryKey: ["meeting-proposals"],
-    queryFn: () => api.get<MeetingProposal[]>("/api/meeting-proposals/"),
+    queryKey: ["meeting-proposals", view],
+    queryFn: () => api.get<MeetingProposal[]>(
+      view === "archived" ? "/api/meeting-proposals/?state=archived"
+                          : "/api/meeting-proposals/"),
   });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["meeting-proposals"] });
@@ -109,10 +113,22 @@ export function Meetings({ me }: { me: Me }) {
         </>
       )}
 
-      {rows.length === 0 && (
+      <div className="row tight" role="group" aria-label="Which proposals"
+        style={{ marginBottom: "var(--s3)" }}>
+        {(["open", "archived"] as const).map((which) => (
+          <button key={which} className={view === which ? "primary small" : "ghost small"}
+            aria-pressed={view === which} onClick={() => { setView(which); setOpen(null); }}>
+            {which === "open" ? "Open" : "Archived"}
+          </button>
+        ))}
+      </div>
+
+      {view === "archived" ? (
+        <Archived rows={rows} onChanged={refresh} setNote={setNote} />
+      ) : rows.length === 0 ? (
         <Empty>Nothing waiting. New notes appear here within ten minutes.</Empty>
-      )}
-      {rows.map((proposal) => (
+      ) : null}
+      {view === "open" && rows.map((proposal) => (
         <Card key={proposal.id} title={proposal.title || proposal.source_file.name}
           actions={
             <span className="inline">
@@ -708,6 +724,151 @@ function Progress({ done, total }: { done: number; total: number }) {
   );
 }
 
+/** Dismissed proposals, with why, and the way back (owner, 2026-09-28). */
+function Archived({ rows, onChanged, setNote }: {
+  rows: MeetingProposal[]; onChanged: () => void; setNote: (text: string) => void;
+}) {
+  const restore = useMutation({
+    mutationFn: (id: string) => api.post(`/api/meeting-proposals/${id}/restore/`),
+    onSuccess: () => { setNote("Restored to the queue."); onChanged(); },
+    onError: (e: Error) => setNote(e.message),
+  });
+  if (rows.length === 0) return <Empty>Nothing has been dismissed.</Empty>;
+  return (
+    <>
+      {rows.map((proposal) => (
+        <Card key={proposal.id} title={proposal.title || proposal.source_file.name}
+          actions={<button className="small" disabled={restore.isPending}
+            onClick={() => restore.mutate(proposal.id)}>Restore</button>}>
+          <p className="small muted">
+            <Pill>{proposal.dismissed?.reason_label ?? "Dismissed"}</Pill>
+            {proposal.dismissed?.note && <> · {proposal.dismissed.note}</>}
+            {" · "}{proposal.dismissed?.by || "someone"}
+            {proposal.dismissed?.at && <>, {when(proposal.dismissed.at)}</>}
+            {" · "}<FileText size={12} /> {proposal.source_file.name}
+          </p>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+const DISMISS_REASONS: [DismissReason, string][] = [
+  ["no_meeting", "No meeting happened"],
+  ["not_relevant", "Not relevant"],
+  ["vendor_pitch", "Vendor pitch"],
+  ["other", "Other"],
+];
+
+/**
+ * Close the whole proposal with a reason; nothing is created (owner,
+ * 2026-09-28). For a vendor's pitch, the vendor can be recorded — as a vendor,
+ * with what they do — and everything else dismissed in the same step.
+ */
+function DismissPanel({ proposal, onDone, onCancel, setNote }: {
+  proposal: MeetingProposal; onDone: () => void; onCancel: () => void;
+  setNote: (text: string) => void;
+}) {
+  const [reason, setReason] = useState<DismissReason | "">("");
+  const [note, setNoteText] = useState("");
+  const people = (proposal.items ?? []).filter(
+    (i) => i.kind === "participant" && i.state === "pending");
+  const [who, setWho] = useState(people[0]?.id ?? "");
+  const [link, setLink] = useState("");            // "" = a new contact
+  const [categories, setCategories] = useState("");
+  const person = people.find((p) => p.id === who);
+  const candidates = person?.payload.existing_candidates ?? [];
+
+  const send = useMutation({
+    mutationFn: (asVendor: boolean) => api.post(
+      `/api/meeting-proposals/${proposal.id}/dismiss/`, {
+        reason, note,
+        ...(asVendor ? { vendor: {
+          item: who,
+          ...(link ? { contact_id: link } : {}),
+          service_categories: categories.split(",").map((c) => c.trim()).filter(Boolean),
+        } } : {}),
+      }),
+    onSuccess: (_data, asVendor) => {
+      setNote(asVendor
+        ? `Recorded ${person?.payload.parsed_name ?? "them"} as a vendor; the rest is `
+          + "dismissed. It is under Archived if you need it back."
+        : "Dismissed. Nothing was created; it is under Archived if you need it back.");
+      onDone();
+    },
+    onError: (e: Error) => setNote(e.message),
+  });
+
+  return (
+    <Card title="Dismiss this proposal"
+      actions={<button className="small" onClick={onCancel}>Cancel</button>}>
+      <fieldset className="choices">
+        <legend className="small muted">Why?</legend>
+        {DISMISS_REASONS.map(([value, label]) => (
+          <label key={value} className="choice">
+            <input type="radio" name={`dismiss-${proposal.id}`} value={value}
+              checked={reason === value} onChange={() => setReason(value)} />
+            <span>{label}</span>
+          </label>
+        ))}
+      </fieldset>
+      <Field label={reason === "other" ? "Why (needed for Other)" : "A note (optional)"}>
+        <textarea aria-label="Dismissal note" rows={2} value={note}
+          onChange={(e) => setNoteText(e.target.value)} />
+      </Field>
+
+      {reason === "vendor_pitch" && people.length > 0 && (
+        <div className="card" style={{ marginBottom: "var(--s3)" }}>
+          <h4 style={{ marginTop: 0 }}>Record as vendor and dismiss the rest</h4>
+          <div className="row">
+            <Field label="Who is the vendor">
+              <select aria-label="Who is the vendor" value={who}
+                onChange={(e) => { setWho(e.target.value); setLink(""); }}>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>{p.payload.parsed_name}</option>
+                ))}
+              </select>
+            </Field>
+            {candidates.length > 0 && (
+              <Field label="As">
+                <select aria-label="Vendor contact" value={link}
+                  onChange={(e) => setLink(e.target.value)}>
+                  <option value="">A new contact</option>
+                  {candidates.map((c) => (
+                    <option key={c.contact_id} value={c.contact_id}>
+                      {c.name}{c.company ? `, ${c.company}` : ""} (already a contact)
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+          <Field label="What they do (service categories, comma-separated)">
+            <input aria-label="Vendor service categories" value={categories}
+              placeholder="Duct cleaning, grease traps"
+              onChange={(e) => setCategories(e.target.value)} />
+          </Field>
+          <p className="small muted">
+            A vendor needs at least one category, so they can be found by what they
+            do. No tasks are created from this meeting.
+          </p>
+          <button className="primary"
+            disabled={send.isPending || !who || !categories.trim()}
+            onClick={() => send.mutate(true)}>
+            Record as vendor and dismiss the rest
+          </button>
+        </div>
+      )}
+
+      <button className={reason === "vendor_pitch" ? "" : "primary"}
+        disabled={send.isPending || !reason || (reason === "other" && !note.trim())}
+        onClick={() => send.mutate(false)}>
+        Dismiss{reason === "vendor_pitch" ? " without recording the vendor" : ""}
+      </button>
+    </Card>
+  );
+}
+
 /** The meeting's own name, as a starting pattern: Gemini names a file
  *  "<meeting> - 2026/09/24 17:35 MDT - Notes by Gemini". */
 export function meetingNameOf(fileName: string) {
@@ -719,6 +880,7 @@ function ProposalDetail({ id, onChanged, setNote, me }: {
 }) {
   const qc = useQueryClient();
   const [ignoring, setIgnoring] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState(false);
   const ignore = useMutation({
     mutationFn: (pattern: string) =>
       api.post(`/api/meeting-proposals/${id}/ignore/`, { pattern }),
@@ -774,6 +936,11 @@ function ProposalDetail({ id, onChanged, setNote, me }: {
           onClick={() => reparse.mutate()}>
           <RefreshCw size={14} /> Read it again
         </button>
+        {!dismissing && (
+          <button className="small" onClick={() => setDismissing(true)}>
+            <X size={14} /> Dismiss
+          </button>
+        )}
         {me.role === "FF" && ignoring === null && (
           <button className="small"
             onClick={() => setIgnoring(meetingNameOf(proposal.source_file.name))}>
@@ -781,6 +948,11 @@ function ProposalDetail({ id, onChanged, setNote, me }: {
           </button>
         )}
       </div>
+      {dismissing && (
+        <DismissPanel proposal={proposal} setNote={setNote}
+          onCancel={() => setDismissing(false)}
+          onDone={() => { setDismissing(false); onChanged(); }} />
+      )}
       {ignoring !== null && (
         <div className="row tight" style={{ marginTop: "var(--s2)" }}>
           <Field label="Never read meetings whose title or folder contains">

@@ -1026,11 +1026,17 @@ export interface ProposalItem {
   };
 }
 
+export type DismissReason = "no_meeting" | "not_relevant" | "vendor_pitch" | "other";
+
 export interface MeetingProposal {
   id: string;
-  state: "pending" | "partially_actioned" | "actioned" | "rejected" | "superseded";
+  state: "pending" | "partially_actioned" | "actioned" | "rejected" | "superseded"
+    | "dismissed";
   title: string;
   meeting_date: string | null;
+  /** Set only while dismissed (owner, 2026-09-28): why, by whom, when. */
+  dismissed?: { reason: DismissReason; reason_label: string; note: string;
+                by: string; at: string | null } | null;
   proposed_summary: string;
   summary: string;
   summary_discarded: boolean;

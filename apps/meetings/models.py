@@ -224,6 +224,10 @@ class MeetingSourceFile(TenantScopedModel):
     #: The exclusion that kept this from being read, when one did. Counted per
     #: folder on the folder card.
     excluded_by = models.CharField(max_length=255, blank=True, default="")
+    #: Set when its proposal is dismissed: a later version of the same Drive
+    #: file is recorded as skipped rather than read (it "never resurfaces").
+    #: Cleared by Restore.
+    dismissed_at = models.DateTimeField(null=True, blank=True)
     #: Which extra folder it came from; none for the watch's own folder.
     folder = models.ForeignKey("meetings.DriveWatchFolder", null=True, blank=True,
                                on_delete=models.SET_NULL, related_name="files")
@@ -258,6 +262,13 @@ class MeetingProposal(TenantScopedModel):
         ACTIONED = "actioned", "Actioned"
         REJECTED = "rejected", "Rejected"
         SUPERSEDED = "superseded", "Superseded by a re-parse"
+        DISMISSED = "dismissed", "Dismissed"
+
+    class DismissReason(models.TextChoices):
+        NO_MEETING = "no_meeting", "No meeting happened"
+        NOT_RELEVANT = "not_relevant", "Not relevant"
+        VENDOR_PITCH = "vendor_pitch", "Vendor pitch"
+        OTHER = "other", "Other"
 
     source_file = models.ForeignKey(MeetingSourceFile, on_delete=models.CASCADE,
                                     related_name="proposals")
@@ -275,6 +286,15 @@ class MeetingProposal(TenantScopedModel):
                                 on_delete=models.SET_NULL, related_name="+")
     meeting = models.ForeignKey("meetings.Meeting", null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="+")
+    # "Dismiss" (owner, 2026-09-28): closed with a reason, nothing created, and
+    # reversible — `state_before_dismissal` is what Restore puts back.
+    dismissed_reason = models.CharField(max_length=16, choices=DismissReason.choices,
+                                        blank=True, default="")
+    dismissed_note = models.TextField(blank=True, default="")
+    dismissed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name="+")
+    dismissed_at = models.DateTimeField(null=True, blank=True)
+    state_before_dismissal = models.CharField(max_length=20, blank=True, default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "meeting_proposal"
