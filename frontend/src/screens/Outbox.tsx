@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { BulkBar } from "../components/BulkBar";
 import { RichText, toPlainText } from "../components/RichText";
+import { Link } from "react-router-dom";
 import { Banner, Card, Pill, when } from "../components/ui";
 import { api, Me, OutboxMessage } from "../lib/api";
 
@@ -113,6 +114,10 @@ export function Outbox() {
         sub="Every email the app has produced — the approval queue and the complete send log
         in one place. Drafts expire on their send-by date rather than sending." />
 
+      <Banner kind="info">
+        Approving now happens in the <Link to="/sending-queue">sending queue</Link>, with
+        digests and every other kind of email in one list. This page is the send log.
+      </Banner>
       {note && <Banner kind="ok">{note}</Banner>}
       {!canSend && (
         <Banner kind="info">

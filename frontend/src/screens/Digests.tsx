@@ -2,6 +2,7 @@ import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { Link } from "react-router-dom";
 import { Banner, Card, Empty, Field, Pill, countdown, when } from "../components/ui";
 import { Contact, DigestRow, Me, TickStatus, UpcomingDigest, api } from "../lib/api";
 
@@ -79,6 +80,10 @@ export function Digests({ me }: { me: Me }) {
         sub={<>Nothing here has been sent. Every digest waits for a person while
         <span className="mono"> hold_all_digests</span> is on, which is the default — and an
         AI-written one waits even when it is off.</>} />
+      <Banner kind="info">
+        Digests are also in the <Link to="/sending-queue">sending queue</Link>, alongside
+        every other email waiting for approval. The rules here are unchanged.
+      </Banner>
       {note && <Banner kind="info">{note}</Banner>}
 
       {tick.data?.stale && (

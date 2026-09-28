@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail, PanelLeftClose,
   PanelLeftOpen,
-  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone,
+  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone, Send,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
@@ -25,6 +25,7 @@ import { ImportWizard } from "./screens/ImportWizard";
 import { Merge } from "./screens/Merge";
 import { Outbox } from "./screens/Outbox";
 import { CampaignDetail, Campaigns } from "./screens/Campaigns";
+import { SendingQueue } from "./screens/SendingQueue";
 import { Pipeline } from "./screens/Pipeline";
 import { ReferralSettings } from "./screens/ReferralSettings";
 import { StageRules } from "./screens/StageRules";
@@ -110,8 +111,9 @@ const NAV: NavItem[] = [
   // not a document somebody remembered to send.
   { to: "/report", label: "Where we are", roles: CLIENT , icon: BarChart3 },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
+  { to: "/sending-queue", label: "Sending queue", roles: TENANT , icon: Send },
   { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
-  { to: "/outbox", label: "Outbox", roles: TENANT , icon: Inbox },
+  { to: "/outbox", label: "Outbox (send log)", roles: TENANT , icon: Inbox },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] , icon: Upload },
   { to: "/settings/email", label: "Email settings", roles: ["FF", "CF"] , group: "Settings" , icon: Mail },
   { to: "/referrals", label: "Referral settings", roles: ["FF"] , icon: Users },
@@ -262,6 +264,7 @@ export function App() {
             <Route path="/companies" element={<Companies me={me} />} />
             <Route path="/companies/:id" element={<CompanyDetail me={me} />} />
             <Route path="/vendors" element={<Vendors />} />
+            <Route path="/sending-queue" element={<SendingQueue me={me} />} />
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/outbox" element={<Outbox />} />

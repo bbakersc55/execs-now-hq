@@ -758,6 +758,29 @@ textarea.code { font-size: var(--t-13); line-height: 1.5; white-space: pre; tab-
 .email-preview { width: 100%; min-height: 560px; border: 1px solid var(--line);
                  border-radius: var(--radius-sm); background: #fff; }
 
+/* The sending queue (2026-09-28): the list beside the one being read. */
+.queue-filters { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between;
+                 gap: var(--s3); margin-bottom: var(--s3); }
+.queue-filters .tabs { margin-bottom: 0; flex: 1; }
+.queue-filters input { max-width: 16rem; }
+.tab .count { color: var(--muted); font-weight: 400; margin-left: var(--s1); }
+.queue { display: grid; gap: var(--s4); grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+         align-items: start; }
+@media (max-width: 1100px) { .queue { grid-template-columns: 1fr; } }
+.queue-bar { padding-bottom: var(--s2); border-bottom: 1px solid var(--line);
+             margin-bottom: var(--s2); }
+.queue-list { list-style: none; margin: 0; padding: 0; }
+.queue-list > li { display: flex; align-items: flex-start; gap: var(--s2);
+                   padding: var(--s2); border-radius: var(--radius-sm); }
+.queue-list > li.on { background: var(--hover); }
+.queue-row { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left;
+             background: none; border: 0; padding: 0; color: inherit; }
+.queue-subject { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-editor { display: grid; gap: var(--s2); padding: var(--s3); margin-bottom: var(--s3);
+                border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.email-text { white-space: pre-wrap; font-size: var(--t-13); padding: var(--s3);
+              border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+
 /* Pages reached from an email with no sign-in: the unsubscribe page. */
 .public-page { padding: var(--s8) var(--s4); max-width: 36rem; margin: 0 auto;
                display: grid; gap: var(--s4); }
