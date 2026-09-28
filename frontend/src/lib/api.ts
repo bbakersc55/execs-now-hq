@@ -107,6 +107,8 @@ export interface Contact {
   referral_touch_mode: string;
   referral_next_touch_at: string | null;
   referral_onboarded_at: string | null;
+  /** On the touch cadence — only ever because someone enrolled them. */
+  referral_enrolled?: boolean;
   created_at?: string;
   updated_at?: string;
 }

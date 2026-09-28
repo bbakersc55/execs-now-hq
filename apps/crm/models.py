@@ -1089,3 +1089,50 @@ class Task(TenantScopedModel):
 
     def __str__(self):
         return self.title
+
+
+class Enrollment(TenantScopedModel):
+    """A contact deliberately put on a recurring email (owner, 2026-09-28).
+
+    **Nothing enrols anyone by itself.** Before this, giving a contact the
+    referral-partner type put them on the touch cadence then and there; now a
+    touch is drafted only for a partner the FF or CF has enrolled. Existing
+    partners have no row, so they start unenrolled — the FF enrols them.
+
+    A row is a period: it starts when enrolled and ends when unenrolled (or
+    unsubscribed), and a new period is a new row, so "who put them on it, and
+    when did it stop" stays answerable. At most one open period per contact
+    and program.
+
+    Digests are not here: a digest stakeholder's attachment to a task, project
+    or goal *is* their enrolment (`work.Stakeholder`), and the contact page
+    reads both.
+    """
+
+    class Program(models.TextChoices):
+        REFERRAL_TOUCHES = "referral_touches", "Referral touches"
+
+    class EndReason(models.TextChoices):
+        UNENROLLED = "unenrolled", "Unenrolled"
+        UNSUBSCRIBED = "unsubscribed", "Unsubscribed"
+
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="enrollments")
+    program = models.CharField(max_length=24, choices=Program.choices)
+    enrolled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="+")
+    ended_reason = models.CharField(max_length=16, choices=EndReason.choices,
+                                    blank=True, default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "enrollment"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "contact", "program"],
+                condition=models.Q(ended_at__isnull=True),
+                name="one_open_enrollment_per_program"),
+        ]
+        indexes = [models.Index(fields=["tenant", "program", "ended_at"])]

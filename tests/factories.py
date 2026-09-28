@@ -11,7 +11,7 @@ from apps.accounts.models import MagicLinkToken, User
 from apps.crm.models import (
     EmailAttachment, UnmatchedInbound, Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactPipelinePosition, ContactType, ContactTypeLink, ContactServiceCategory,
-    DevSendAllowlistEntry, MailPreference,
+    DevSendAllowlistEntry, Enrollment, MailPreference,
     EmailMessage, EmailTemplate, EmailThread, GmailConnection, ImportBatch,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
@@ -208,6 +208,16 @@ class ServiceCategoryFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     name = factory.Sequence(lambda n: f"Category {n}")
+
+
+class EnrollmentFactory(TenantScopedFactory):
+    class Meta:
+        model = Enrollment
+
+    tenant = factory.SubFactory(TenantFactory)
+    contact = factory.SubFactory("tests.factories.ContactFactory",
+                                 tenant=factory.SelfAttribute("..tenant"))
+    program = "referral_touches"
 
 
 class ContactFactory(TenantScopedFactory):

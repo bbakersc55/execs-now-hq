@@ -121,6 +121,17 @@ class ContactSerializer(serializers.ModelSerializer):
     #: Optional initial placement: {"pipeline": id-or-name, "stage": id-or-code}.
     placement = serializers.DictField(required=False, write_only=True)
 
+    #: Whether a touch will ever be drafted for them (owner, 2026-09-28).
+    #: Annotated on the list, looked up for a single contact.
+    referral_enrolled = serializers.SerializerMethodField()
+
+    def get_referral_enrolled(self, obj):
+        annotated = getattr(obj, "referral_enrolled_annotated", None)
+        if annotated is not None:
+            return annotated
+        return obj.enrollments.filter(program="referral_touches",
+                                      ended_at__isnull=True).exists()
+
     class Meta:
         model = Contact
         fields = [
@@ -129,7 +140,7 @@ class ContactSerializer(serializers.ModelSerializer):
             "emails", "phones", "type_codes", "pipeline_positions",
             "types", "company_name", "placement",
             "referral_fee_terms", "referral_cadence", "referral_touch_mode",
-            "referral_next_touch_at", "referral_onboarded_at",
+            "referral_next_touch_at", "referral_onboarded_at", "referral_enrolled",
             "merged_into", "created_at", "updated_at",
         ]
         read_only_fields = ["merged_into", "referral_onboarded_at"]

@@ -51,6 +51,27 @@ export function ReferralSettings() {
     onError: (e: Error) => setNote(e.message),
   });
 
+  // Enrolment is explicit (owner, 2026-09-28): a partner gets touches only
+  // once someone here has put them on the cadence.
+  const enrol = useMutation({
+    mutationFn: ({ ids, off }: { ids: string[]; off: boolean }) =>
+      api.post<{ changed_count: number; skipped: { name: string; detail: string }[] }>(
+        "/api/contacts/enroll-selected/",
+        { ids, program: "referral_touches", ...(off ? { unenroll: true } : {}) }),
+    onSuccess: (r, { off }) => {
+      const skipped = r.skipped.length
+        ? ` ${r.skipped.length} skipped: ${r.skipped.map((x) => `${x.name} (${x.detail})`).join(", ")}.`
+        : "";
+      setNote(off
+        ? `${r.changed_count} unenrolled. Their unapproved touches were withdrawn.${skipped}`
+        : `${r.changed_count} enrolled. Touches will be drafted for approval as each falls due.${skipped}`);
+      setPicked([]);
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["outbox"] });
+    },
+    onError: (e: Error) => setNote(e.message),
+  });
+
   const draftMany = useMutation({
     mutationFn: () => api.post<{ drafted_count: number; skipped: { name: string; detail: string }[] }>(
       "/api/contacts/draft-touches/", { ids: picked },
@@ -154,11 +175,26 @@ export function ReferralSettings() {
             onSelectAll={() => setPicked(partners.map((p) => p.id))}
             onClear={() => setPicked([])}
           >
-            <button className="primary" disabled={!picked.length || draftMany.isPending}
+            <button className="primary" disabled={!picked.length || enrol.isPending}
+              onClick={() => enrol.mutate({ ids: picked, off: false })}>
+              Enrol {picked.length || ""} selected
+            </button>
+            <button disabled={!picked.length || enrol.isPending}
+              onClick={() => enrol.mutate({ ids: picked, off: true })}>
+              Unenrol selected
+            </button>
+            <button disabled={!picked.length || draftMany.isPending}
               onClick={() => draftMany.mutate()}>
               Draft touch for {picked.length || ""} selected
             </button>
           </BulkBar>
+        )}
+        {partners.length > 0 && (
+          <p className="small muted">
+            <strong>{partners.filter((p) => p.referral_enrolled).length} of {partners.length}
+            {" "}enrolled.</strong> Touches are drafted only for enrolled partners — becoming a
+            partner, or being imported as one, does not enrol anyone.
+          </p>
         )}
         {partners.length === 0 ? (
           <Empty>
@@ -167,7 +203,7 @@ export function ReferralSettings() {
         ) : (
           <table>
             <thead>
-              <tr><th></th><th>Name</th><th>Cadence</th><th>Mode</th><th>Fee terms</th><th>Next touch</th><th></th></tr>
+              <tr><th></th><th>Name</th><th>Touches</th><th>Cadence</th><th>Mode</th><th>Fee terms</th><th>Next touch</th><th></th></tr>
             </thead>
             <tbody>
               {partners.map((p) => (
@@ -180,17 +216,29 @@ export function ReferralSettings() {
                         : picked.filter((x) => x !== p.id))} />
                   </td>
                   <td><Link to={`/contacts/${p.id}`}>{p.first_name} {p.last_name}</Link></td>
+                  <td>
+                    <span className="inline">
+                      {p.referral_enrolled
+                        ? <Pill kind="ok">enrolled</Pill> : <Pill>not enrolled</Pill>}
+                      <button className="small" disabled={enrol.isPending}
+                        aria-label={`${p.referral_enrolled ? "Unenrol" : "Enrol"} ${p.first_name} ${p.last_name}`}
+                        onClick={() => enrol.mutate({ ids: [p.id], off: !!p.referral_enrolled })}>
+                        {p.referral_enrolled ? "Unenrol" : "Enrol"}
+                      </button>
+                    </span>
+                  </td>
                   <td>{p.referral_cadence || "monthly"}</td>
                   <td>{p.referral_touch_mode === "ai"
                     ? <Pill kind="ai">AI-drafted</Pill> : <Pill>my template</Pill>}</td>
                   <td className="muted small">{p.referral_fee_terms || "—"}</td>
                   <td className="muted small">
-                    {p.referral_next_touch_at
-                      ? when(p.referral_next_touch_at)
-                      : <Pill kind="warn">none — scheduler will skip them</Pill>}
+                    {!p.referral_enrolled ? "—"
+                      : p.referral_next_touch_at ? when(p.referral_next_touch_at)
+                      : <Pill kind="warn">none set</Pill>}
                   </td>
                   <td className="right">
-                    <button disabled={draftTouch.isPending}
+                    <button disabled={draftTouch.isPending || !p.referral_enrolled}
+                      title={p.referral_enrolled ? undefined : "Enrol them first"}
                       aria-label={`Draft touch for ${p.first_name} ${p.last_name}`}
                       onClick={() => draftTouch.mutate(p.id)}>
                       Draft touch now

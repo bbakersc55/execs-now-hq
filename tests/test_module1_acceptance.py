@@ -460,6 +460,9 @@ def test_ac_1_19_stale_blurb_warns_but_does_not_block(seeded_tenant, ff):
         # Onboarding sets the cadence clock, so it must run BEFORE the due
         # date is forced forward — otherwise it overwrites it (FR-1.23c).
         referral.add_type(contact, "referral_partner")
+        # Touches draft only for an enrolled partner (2026-09-28).
+        from apps.crm.services import enrollment
+        enrollment.enroll(contact, "referral_touches", actor=None)
         contact.refresh_from_db()
         contact.referral_next_touch_at = timezone.now() + timezone.timedelta(days=1)
         contact.save()
@@ -713,6 +716,9 @@ def test_scheduled_jobs_run_with_no_request(seeded_tenant, ff, dev_outbox):
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        # Touches draft only for an enrolled partner (2026-09-28).
+        from apps.crm.services import enrollment
+        enrollment.enroll(contact, "referral_touches", actor=ff.user)
         contact.refresh_from_db()
         contact.referral_next_touch_at = timezone.now() + timezone.timedelta(days=1)
         contact.save()

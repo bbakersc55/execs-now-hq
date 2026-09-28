@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import { EnrolledIn } from "../components/EnrolledIn";
 import { GrantPortalAccess } from "../components/GrantPortalAccess";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
@@ -208,6 +209,9 @@ export function ContactDetail({ me }: { me: Me }) {
               onBlur={(e) => save.mutate({ background: e.target.value })}
             />
           </Card>
+
+          <EnrolledIn contactId={c.id} me={me}
+            isPartner={c.type_codes.includes("referral_partner")} />
 
           <Card title="Referral partner settings">
             {!c.type_codes.includes("referral_partner") ? (

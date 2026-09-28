@@ -74,7 +74,9 @@ def _blurb_warning(contact) -> str:
 def draft_due_touches(tenant, *, now=None):
     """FR-1.21 — a scheduled job drafts each due touch 3 days early.
 
-    The automation buys drafting time, not send authority.
+    The automation buys drafting time, not send authority. **Only enrolled
+    partners** (owner, 2026-09-28): a partner nobody has enrolled has nothing
+    drafted, whatever date is on their record.
     """
     now = now or timezone.now()
     horizon = now + timezone.timedelta(days=DRAFT_LEAD_DAYS)
@@ -87,6 +89,8 @@ def draft_due_touches(tenant, *, now=None):
         type_links__contact_type=partner,
         referral_next_touch_at__isnull=False,
         referral_next_touch_at__lte=horizon,
+        enrollments__program="referral_touches",
+        enrollments__ended_at__isnull=True,
     ).distinct()
 
     drafted = []
@@ -255,13 +259,13 @@ def ensure_touch_schedule(contact, *, from_when=None):
 
 
 def add_type(contact, code, *, actor=None, onboard=True):
-    """Adding `referral_partner` puts them on the touch cadence, and (unless
-    `onboard=False`) triggers onboarding (FR-1.23a, FR-5.9b).
+    """Adding `referral_partner` triggers onboarding (unless `onboard=False`)
+    — one draft, waiting for approval (FR-1.23a, FR-5.9b).
 
-    `onboard=False` is the CSV import's path: a backfill is a statement about
-    history, so it must not queue a first-touch email to forty partners the
-    fractional met years ago. It still sets the cadence, because a partner the
-    scheduler cannot see is the bug this fixes.
+    It does **not** put them on the touch cadence (owner, 2026-09-28): that is
+    an enrolment, and enrolment is something the FF or a CF does on purpose
+    (`services.enrollment`). `onboard=False` is the CSV import's path: a
+    backfill is a statement about history and queues nothing.
     """
     contact_type = ContactType.all_objects.filter(tenant=contact.tenant, code=code).first()
     if contact_type is None:
@@ -274,7 +278,6 @@ def add_type(contact, code, *, actor=None, onboard=True):
             # FR-1.23c — onboarding sets the clock from the draft date, so it
             # owns the schedule when it runs. Clock rules unchanged.
             onboard_referral_partner(contact, actor=actor)
-        ensure_touch_schedule(contact)
     return link
 
 

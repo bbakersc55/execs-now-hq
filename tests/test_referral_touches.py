@@ -27,24 +27,34 @@ def _partner(tenant, **kw):
     return contact
 
 
+def _enrol(contact, ff):
+    """Touches are drafted only for an enrolled partner (owner, 2026-09-28)."""
+    from apps.crm.services import enrollment
+
+    enrollment.enroll(contact, "referral_touches", actor=ff.user)
+
+
 # ------------------------------------------- (a) the schedule gets set at all
 
 @pytest.mark.django_db
-def test_assigning_the_type_by_hand_sets_cadence_and_next_touch(
+def test_assigning_the_type_by_hand_onboards_but_does_not_enrol(
     seeded_tenant, referrals, ff
 ):
+    """Owner, 2026-09-28: the type is not an enrolment. Onboarding still
+    queues its one draft for approval; the touch cadence waits to be chosen."""
+    from apps.crm.models import Enrollment
+
     with tenant_context(seeded_tenant.pk):
         contact = _partner(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
 
         contact.refresh_from_db()
-        assert contact.referral_cadence == "monthly"
-        assert contact.referral_next_touch_at is not None
         assert contact.referral_onboarded_at is not None  # onboarding still fires
+        assert not Enrollment.objects.filter(contact=contact).exists()
 
 
 @pytest.mark.django_db
-def test_an_imported_partner_gets_a_cadence_but_no_onboarding_email(
+def test_an_imported_partner_is_neither_enrolled_nor_onboarded(
     seeded_tenant, referrals, ff, dev_outbox
 ):
     """THE Check 4 bug: the importer wrote type links directly, so 40 partners
@@ -70,9 +80,9 @@ def test_an_imported_partner_gets_a_cadence_but_no_onboarding_email(
 
         contact = Contact.objects.get(first_name="Dana")
         assert "referral_partner" in [t.code for t in contact.types.all()]
-        # The fix: the scheduler can now see them.
-        assert contact.referral_cadence == "monthly"
-        assert contact.referral_next_touch_at is not None
+        # Not enrolled: an import is never a decision to email anyone
+        # (owner, 2026-09-28). The FF enrols them from the partner table.
+        assert not contact.enrollments.exists()
         # And the restraint: no onboarding email, no onboarding clock.
         assert contact.referral_onboarded_at is None
         assert OutboxMessage.objects.filter(producer=P.REFERRAL_ONBOARDING).count() == 0
@@ -80,15 +90,19 @@ def test_an_imported_partner_gets_a_cadence_but_no_onboarding_email(
 
 
 @pytest.mark.django_db
-def test_the_scheduler_now_finds_an_imported_partner(seeded_tenant, referrals, ff):
-    """The whole point: a partner with a cadence is one the job can draft for."""
+def test_the_scheduler_finds_a_partner_only_once_enrolled(seeded_tenant, referrals, ff):
+    """A due date alone drafts nothing; enrolment is what the job reads."""
     with tenant_context(seeded_tenant.pk):
         contact = _partner(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user, onboard=False)
-        # Bring their next touch inside the 3-day drafting horizon.
+        contact.referral_cadence = "monthly"
         contact.referral_next_touch_at = timezone.now() + timezone.timedelta(days=1)
-        contact.save(update_fields=["referral_next_touch_at"])
+        contact.save(update_fields=["referral_cadence", "referral_next_touch_at"])
 
+        assert referral.draft_due_touches(seeded_tenant) == []
+
+        _enrol(contact, ff)
+        contact.refresh_from_db()
         drafted = referral.draft_due_touches(seeded_tenant)
 
         assert len(drafted) == 1
@@ -116,6 +130,7 @@ def test_draft_touch_now_queues_a_pending_draft(seeded_tenant, referrals, ff, ap
     with tenant_context(seeded_tenant.pk):
         contact = _partner(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        _enrol(contact, ff)
         OutboxMessage.objects.all().delete()  # clear the onboarding draft
 
     response = api.as_(ff).post(f"/api/contacts/{contact.pk}/draft-touch/")
@@ -134,6 +149,7 @@ def test_drafting_now_does_not_move_the_scheduled_touch(seeded_tenant, referrals
     with tenant_context(seeded_tenant.pk):
         contact = _partner(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        _enrol(contact, ff)
         contact.refresh_from_db()
         due_before = contact.referral_next_touch_at
 
@@ -152,6 +168,7 @@ def test_the_on_demand_draft_uses_the_same_composer(seeded_tenant, referrals, ff
     with tenant_context(seeded_tenant.pk):
         contact = _partner(seeded_tenant, referral_fee_terms="10% of first 3 months")
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        _enrol(contact, ff)
         # Same actor the endpoint will use, so the signature matches.
         expected, _, _ = referral.compose_touch(contact, actor=ff.user)
 
@@ -165,6 +182,7 @@ def test_a_va_may_draft_a_touch(seeded_tenant, referrals, va, ff, api):
     with tenant_context(seeded_tenant.pk):
         contact = _partner(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        _enrol(contact, ff)
 
     assert api.as_(va).post(f"/api/contacts/{contact.pk}/draft-touch/").status_code == 201
 

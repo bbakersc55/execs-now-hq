@@ -13,7 +13,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.crm.models import (
     ContactEmail, ContactPhone, MailPreference, OutboxAttachment, OutboxMessage, Task,
 )
-from apps.crm.services import merge, referral, sender
+from apps.crm.services import enrollment, merge, referral, sender
 from apps.tenancy.context import tenant_context
 
 from . import registry_config  # noqa: F401
@@ -104,6 +104,8 @@ def test_the_onboarding_draft_carries_the_flyer(seeded_tenant, referrals, ff, ap
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        # Touches draft only for an enrolled partner (2026-09-28).
+        enrollment.enroll(contact, "referral_touches", actor=ff.user)
         message = OutboxMessage.objects.get(producer=P.REFERRAL_ONBOARDING)
         assert message.attachments.count() == 1
         assert message.warning == ""
@@ -133,6 +135,8 @@ def test_with_no_flyer_the_draft_omits_the_attached_sentence(
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        # Touches draft only for an enrolled partner (2026-09-28).
+        enrollment.enroll(contact, "referral_touches", actor=ff.user)
         message = OutboxMessage.objects.get(producer=P.REFERRAL_ONBOARDING)
 
         assert message.attachments.count() == 0
@@ -285,6 +289,8 @@ def test_a_draft_records_the_from_address_it_resolved(
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        # Touches draft only for an enrolled partner (2026-09-28).
+        enrollment.enroll(contact, "referral_touches", actor=ff.user)
 
     body = api.as_(ff).post(f"/api/contacts/{contact.pk}/draft-touch/").json()
     assert body["from_address"] == "bryan@getexecutivesnow.com"
@@ -297,6 +303,8 @@ def test_the_per_draft_override_wins(seeded_tenant, referrals, ff, connected_ff,
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant)
         referral.add_type(contact, "referral_partner", actor=ff.user)
+        # Touches draft only for an enrolled partner (2026-09-28).
+        enrollment.enroll(contact, "referral_touches", actor=ff.user)
     draft = api.as_(ff).post(f"/api/contacts/{contact.pk}/draft-touch/").json()
 
     edited = api.as_(ff).patch(
@@ -363,6 +371,8 @@ def test_drafting_touches_for_several_partners_makes_one_row_each(
         for _ in range(3):
             contact = _contact(seeded_tenant)
             referral.add_type(contact, "referral_partner", actor=ff.user)
+            # Touches draft only for an enrolled partner (2026-09-28).
+            enrollment.enroll(contact, "referral_touches", actor=ff.user)
             partners.append(contact)
         OutboxMessage.objects.filter(producer=P.REFERRAL_ONBOARDING).delete()
 
@@ -386,6 +396,8 @@ def test_bulk_touches_skip_non_partners_and_say_which(seeded_tenant, referrals, 
     with tenant_context(seeded_tenant.pk):
         partner = _contact(seeded_tenant)
         referral.add_type(partner, "referral_partner", actor=ff.user)
+        # Touches draft only for an enrolled partner (2026-09-28).
+        enrollment.enroll(partner, "referral_touches", actor=ff.user)
         stranger = _contact(seeded_tenant, first_name="Notapartner")
         OutboxMessage.objects.all().delete()
 

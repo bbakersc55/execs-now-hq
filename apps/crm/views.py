@@ -63,10 +63,102 @@ class ContactViewSet(TenantStaffViewSet):
     serializer_class = crm_serializers.ContactSerializer
 
     def get_queryset(self):
+        from django.db.models import Exists, OuterRef
+
+        from apps.crm.models import Enrollment
+
         qs = Contact.objects.filter(deleted_at__isnull=True).prefetch_related(
             "emails", "phones", "type_links__contact_type"
-        )
+        ).annotate(referral_enrolled_annotated=Exists(Enrollment.objects.filter(
+            contact=OuterRef("pk"), program=Enrollment.Program.REFERRAL_TOUCHES,
+            ended_at__isnull=True)))
         return crm_perms.contact_queryset_for(self.request, qs)
+
+    # ---------------------------------------------------------- enrolment
+
+    def _may_enroll(self, request):
+        """The FF or a CF (owner, 2026-09-28): putting someone on a recurring
+        email is a decision about the relationship, not data entry."""
+        if crm_perms.role_of(request) not in ("FF", "CF"):
+            self.permission_denied(request, message=(
+                "Enrolling someone in email is the founder's or a fractional's."))
+
+    @action(detail=True, methods=["get"])
+    def enrollments(self, request, pk=None):
+        """Everything this person is enrolled in — touches, digests — in one
+        list, each with the way off."""
+        from apps.crm.services import enrollment
+
+        return Response(enrollment.enrollments_for(self.get_object()))
+
+    @action(detail=True, methods=["post"])
+    def enroll(self, request, pk=None):
+        from apps.crm.services import enrollment
+
+        self._may_enroll(request)
+        contact = self.get_object()
+        try:
+            _row, created = enrollment.enroll(
+                contact, request.data.get("program") or "referral_touches",
+                actor=request.user)
+        except enrollment.EnrollmentRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        # Fresh, so the enrolled flag is read after the change, not before.
+        contact = self.get_queryset().get(pk=contact.pk)
+        return Response({"created": created,
+                         "enrollments": enrollment.enrollments_for(contact),
+                         "contact": self.get_serializer(contact).data},
+                        status=201 if created else 200)
+
+    @action(detail=True, methods=["post"])
+    def unenroll(self, request, pk=None):
+        """Off one program — or, with `stakeholder`, off one digest."""
+        from apps.crm.services import enrollment
+        from apps.work.models import Stakeholder
+
+        self._may_enroll(request)
+        contact = self.get_object()
+        stakeholder_id = request.data.get("stakeholder")
+        if stakeholder_id:
+            row = Stakeholder.objects.filter(pk=stakeholder_id, contact=contact).first()
+            if row is None:
+                return Response({"detail": "Not one of their digests."}, status=404)
+            enrollment.unenroll_digest(row, actor=request.user)
+        else:
+            enrollment.unenroll(contact, request.data.get("program") or "referral_touches",
+                                actor=request.user)
+        contact = self.get_queryset().get(pk=contact.pk)
+        return Response({"enrollments": enrollment.enrollments_for(contact),
+                         "contact": self.get_serializer(contact).data})
+
+    @action(detail=False, methods=["post"], url_path="enroll-selected")
+    def enroll_selected(self, request):
+        """Bulk, from the partner table. Each contact on its own terms: one who
+        is not a partner is skipped and named, not a reason to fail the rest."""
+        from apps.crm.services import enrollment
+
+        self._may_enroll(request)
+        ids = request.data.get("ids") or []
+        if not isinstance(ids, list) or not ids:
+            return Response({"detail": "Select at least one contact."}, status=400)
+        program = request.data.get("program") or "referral_touches"
+        leave = bool(request.data.get("unenroll"))
+        done, skipped = [], []
+        for contact in self.get_queryset().filter(pk__in=ids):
+            try:
+                if leave:
+                    changed = enrollment.unenroll(contact, program, actor=request.user)
+                else:
+                    changed = enrollment.enroll(contact, program, actor=request.user,
+                                                source="bulk")[1]
+            except enrollment.EnrollmentRefused as exc:
+                skipped.append({"contact": str(contact.pk),
+                                "name": f"{contact.first_name} {contact.last_name}".strip(),
+                                "detail": str(exc)})
+                continue
+            if changed:
+                done.append(str(contact.pk))
+        return Response({"changed": done, "changed_count": len(done), "skipped": skipped})
 
     def perform_destroy(self, instance):
         """D2 — soft delete. VA may delete (matrix 4.4)."""
@@ -161,6 +253,11 @@ class ContactViewSet(TenantStaffViewSet):
                 {"detail": f"{contact.first_name} has no email address to send to."},
                 status=400,
             )
+        if not contact.enrollments.filter(program="referral_touches",
+                                          ended_at__isnull=True).exists():
+            return Response({"detail": (
+                f"{contact.first_name} is not enrolled in referral touches. "
+                "Enrol them first.")}, status=400)
         message = referral.draft_touch_now(contact, actor=request.user)
         return Response(
             crm_serializers.OutboxMessageSerializer(
@@ -216,6 +313,12 @@ class ContactViewSet(TenantStaffViewSet):
                     skipped.append({"contact": str(contact.pk),
                                     "name": f"{contact.first_name} {contact.last_name}",
                                     "detail": "not a referral partner"})
+                    continue
+                if not contact.enrollments.filter(program="referral_touches",
+                                                  ended_at__isnull=True).exists():
+                    skipped.append({"contact": str(contact.pk),
+                                    "name": f"{contact.first_name} {contact.last_name}",
+                                    "detail": "not enrolled in referral touches"})
                     continue
                 message = referral.draft_touch_now(contact, actor=request.user)
             else:
