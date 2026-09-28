@@ -58,21 +58,61 @@ class FakeDrive:
         self.watched = []
         self.subfolders = []
         self.listing = []
+        #: folder id -> (name, parent id): enough Drive for `drive.locate`.
+        self.tree = {}
+        self.fetched = []
 
     def start_token(self):
         return "start"
 
-    def changes(self, page_token, *, folder_ids):
+    def open_folder(self, folder_id):
+        if self.folder_fail:
+            raise drive.DriveUnavailable(self.folder_fail)
+        return (self.tree.get(folder_id) or ("Google Meet", None))[0]
+
+    def folder_meta(self, folder_id):
+        meta = self.tree.get(folder_id)
+        return (meta[0], [meta[1]] if meta[1] else []) if meta else None
+
+    def _place(self, drive_file, folder_ids, deep_roots):
+        """What the real client keeps: a file in a watched folder, or found
+        under an any-depth one by the real `drive.locate`. A file the test
+        gave no parents is taken as in the watched folder, as before."""
+        if not drive_file.parents or set(drive_file.parents) & set(folder_ids):
+            return True
+        placed = drive.locate(drive_file.parents, deep_roots, self.folder_meta)
+        if placed is None:
+            return False
+        drive_file.root, drive_file.path_names = placed
+        return True
+
+    def changes(self, page_token, *, folder_ids, deep_roots=()):
         self.calls.append(page_token)
         self.watched = list(folder_ids)
         if self.fail:
             raise drive.DriveUnavailable(self.fail)
         for token, page in self.pages:
             if token == page_token:
-                return page
+                return drive.DrivePage(
+                    files=[f for f in page.files
+                           if self._place(f, folder_ids, deep_roots)],
+                    next_page_token=page.next_page_token,
+                    new_start_page_token=page.new_start_page_token)
         return drive.DrivePage(files=[], new_start_page_token=page_token)
 
+    def search(self, name_pattern, *, roots, created_from="", page_size=50,
+               max_pages=10):
+        found = []
+        for f in sorted(self.listing, key=lambda f: f.created_time):
+            if (f.mime_type == drive.GOOGLE_DOC
+                    and name_pattern.lower() in f.name.lower()
+                    and f.created_time >= created_from
+                    and self._place(f, [], roots) and f.root):
+                found.append(f)
+        return found[:page_size * max_pages]
+
     def text_of(self, drive_file):
+        self.fetched.append(drive_file.file_id)
         return self.texts.get(drive_file.file_id, "")
 
     def describe_folder(self, folder_id):
@@ -1934,3 +1974,261 @@ def test_stop_pressed_during_a_tick_stays_pressed_and_the_counts_add_up(
     assert row.done == 2 == _parse_calls()
     from apps.tenancy.models import AiCall
     assert row.cost_usd == sum(c.cost_usd for c in AiCall.objects.all())
+
+
+# ------------------------- 2026-09-28: Google Meet, any depth, and exclusions
+#
+# Since about 9/12 Google saves each meeting's Gemini notes in its own folder
+# under "Google Meet/", two levels below anything the one-level watcher saw.
+# The practice now watches Google Meet at any depth, reading only Docs named
+# like "Notes by Gemini", and an exclusion list keeps the owner's other work
+# (seeded: "AoA", "Academy of America") from ever reaching Claude.
+
+from apps.meetings.models import DriveExclusion, DriveWatchFolder  # noqa: E402
+
+GEMINI = "Notes by Gemini"
+
+
+@pytest.fixture
+def google_meet(watch, fake_client):
+    """Google Meet, watched at any depth, holding one folder per meeting."""
+    fake_client.tree = {
+        "gmeet": ("Google Meet", None),
+        "m-rick": ("30 Minutes w/ Bryan Baker (Rick Turner) - 2026/09/28 10:59 MDT", "gmeet"),
+        "m-aoa": ("AoA Planning Session - 2026/09/24 17:35 MDT", "gmeet"),
+        "elsewhere": ("Someone else's folder", None),
+        "m-other": ("A meeting not under Google Meet", "elsewhere"),
+    }
+    return DriveWatchFolder.objects.create(
+        tenant=watch.tenant, watch=watch, folder_id="gmeet", folder_name="Google Meet",
+        depth=DriveWatchFolder.Depth.ANY, name_pattern=GEMINI)
+
+
+def a_meet_file(file_id, name, parent, *, created="2026-09-28T17:35:40.000Z",
+                mime=drive.GOOGLE_DOC):
+    row = drive.DriveFile(file_id=file_id, version="1", name=name, mime_type=mime,
+                          owner_email=FF_EMAIL, web_view_link=f"https://d/{file_id}",
+                          created_time=created, parents=[parent])
+    return row
+
+
+RICK = "30 Minutes w/ Bryan Baker (Rick Turner) - 2026/09/28 10:59 MDT - Notes by Gemini"
+
+
+@pytest.mark.django_db
+def test_notes_two_levels_down_in_google_meet_are_picked_up(
+    seeded_tenant, watch, google_meet, fake_client, fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    fake_client.texts = {"rick": NOTES, "stray": NOTES}
+    fake_client.pages = one_page([
+        a_meet_file("rick", RICK, "m-rick"),
+        # Named right, but under a folder nobody watches.
+        a_meet_file("stray", f"Elsewhere - {GEMINI}", "m-other"),
+    ])
+
+    report = ingest.poll(seeded_tenant, client=fake_client)
+
+    row = MeetingSourceFile.objects.get()
+    assert row.drive_file_id == "rick"
+    assert row.folder == google_meet
+    assert row.state == MeetingSourceFile.State.PARSED
+    assert [r.pk for r in report["recorded"]] == [row.pk]
+    assert MeetingProposal.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_only_docs_named_like_the_pattern_are_read_from_google_meet(
+    seeded_tenant, watch, google_meet, fake_client, fake_claude, in_tenant_a
+):
+    """A meeting folder also holds the recording, the transcript and the chat;
+    those are not notes and are not even recorded."""
+    fake_claude.reply = PARSED
+    fake_client.texts = {"rick": NOTES, "transcript": NOTES}
+    fake_client.pages = one_page([
+        a_meet_file("rick", RICK, "m-rick"),
+        a_meet_file("transcript", "30 Minutes w/ Bryan Baker (Rick Turner) - Transcript",
+                    "m-rick"),
+        a_meet_file("video", "30 Minutes w/ Bryan Baker (Rick Turner).mp4", "m-rick",
+                    mime="video/mp4"),
+        # The pattern is a name *contains*, ignoring case.
+        a_meet_file("lower", "Standup - notes by gemini", "m-rick"),
+    ])
+
+    ingest.poll(seeded_tenant, client=fake_client)
+
+    assert sorted(MeetingSourceFile.objects.values_list("drive_file_id", flat=True)) \
+        == ["lower", "rick"]
+
+
+@pytest.mark.django_db
+def test_an_excluded_meeting_is_recorded_skipped_and_never_reaches_claude(
+    seeded_tenant, watch, google_meet, fake_client, fake_claude, in_tenant_a
+):
+    """The owner's other work shares the account. Matched on the meeting
+    folder's name as well as the file's, and never fetched or read."""
+    fake_claude.reply = PARSED
+    fake_client.texts = {"aoa": NOTES, "aoa-folder-only": NOTES}
+    fake_client.pages = one_page([
+        a_meet_file("aoa", f"AoA Planning Session - 2026/09/24 17:35 MDT - {GEMINI}",
+                    "m-aoa"),
+        # The file's own name is innocent; the folder it is in is not.
+        a_meet_file("aoa-folder-only", f"Planning - {GEMINI}", "m-aoa"),
+    ])
+
+    ingest.poll(seeded_tenant, client=fake_client)
+
+    rows = MeetingSourceFile.objects.order_by("drive_file_id")
+    assert [r.state for r in rows] == [MeetingSourceFile.State.SKIPPED] * 2
+    assert [r.excluded_by for r in rows] == ["AoA", "AoA"]
+    assert "exclusion list" in rows[0].skip_reason
+    assert fake_client.fetched == []                  # never fetched
+    assert _parse_calls() == 0                        # never sent to Claude
+    health = ingest.health(seeded_tenant)
+    assert health["folders"][0]["excluded"] == 2
+
+
+@pytest.mark.django_db
+def test_exclusions_match_whole_words_and_apply_to_the_first_folder_too(
+    seeded_tenant, watch, fake_client, fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    fake_client.texts = {"a": NOTES, "b": NOTES, "c": NOTES}
+    fake_client.pages = one_page([
+        a_file("a", name="Academy of America board - Notes by Gemini"),
+        a_file("b", name="Taoao Imports review"),       # "aoa" inside a word
+        a_file("c", name="AOA budget"),                  # the word, any case
+    ])
+
+    ingest.poll(seeded_tenant, client=fake_client)
+
+    states = dict(MeetingSourceFile.objects.values_list("drive_file_id", "excluded_by"))
+    assert states == {"a": "Academy of America", "b": "", "c": "AoA"}
+    assert fake_client.fetched == ["b"]
+    assert ingest.health(seeded_tenant)["excluded"] == 2
+
+
+@pytest.mark.django_db
+def test_the_starting_exclusions_are_put_on_once(seeded_tenant, watch, ff_user, api,
+                                                 in_tenant_a):
+    health = api.as_(ff_user).get("/api/drive-watch/").json()
+    assert [e["pattern"] for e in health["exclusions"]] == ["AoA", "Academy of America"]
+
+    aoa = health["exclusions"][0]["id"]
+    assert api.as_(ff_user).delete(f"/api/drive-watch/exclusions/{aoa}/").status_code == 200
+
+    # Removed stays removed: seeding is a one-time thing, not a default.
+    again = api.as_(ff_user).get("/api/drive-watch/").json()
+    assert [e["pattern"] for e in again["exclusions"]] == ["Academy of America"]
+
+
+@pytest.mark.django_db
+def test_importing_google_meet_since_a_date_reads_only_notes_under_it(
+    seeded_tenant, ff_user, api, watch, google_meet, fake_client, drive_granted,
+    fake_claude, in_tenant_a
+):
+    """The 9/12 import that brings the missed meetings in: matching notes
+    under Google Meet since the date, oldest first; the excluded one recorded
+    and skipped at no cost, and not in the estimate."""
+    fake_claude.reply = PARSED
+    fake_client.listing = [
+        a_meet_file("before", f"Old - {GEMINI}", "m-rick", created="2026-09-01T10:00:00.000Z"),
+        a_meet_file("melissa", f"Melissa Vining - {GEMINI}", "m-rick",
+                    created="2026-09-14T17:28:27.000Z"),
+        a_meet_file("aoa", f"AoA Planning Session - {GEMINI}", "m-aoa",
+                    created="2026-09-25T00:23:11.000Z"),
+        a_meet_file("rick", RICK, "m-rick"),
+        a_meet_file("outside", f"Elsewhere - {GEMINI}", "m-other",
+                    created="2026-09-20T10:00:00.000Z"),
+    ]
+    fake_client.texts = {f.file_id: NOTES for f in fake_client.listing}
+
+    planned = api.as_(ff_user).post("/api/drive-watch/backfill/plan/",
+                                    {"since": "2026-09-12", "folder": str(google_meet.pk)})
+    assert planned.status_code == 200, planned.data
+    assert planned.data["outstanding"] == 2 and planned.data["excluded"] == 1
+
+    started = api.as_(ff_user).post("/api/drive-watch/backfill/", {
+        "scope": "since", "since": "2026-09-12", "folder": str(google_meet.pk)})
+    assert started.status_code == 201, started.data
+    assert started.data["folder"] == str(google_meet.pk)
+    while backfill.step(seeded_tenant, client=fake_client, limit=10)["running"]:
+        pass
+
+    rows = {r.drive_file_id: r for r in MeetingSourceFile.objects.all()}
+    assert set(rows) == {"melissa", "aoa", "rick"}
+    assert rows["aoa"].state == MeetingSourceFile.State.SKIPPED
+    assert _parse_calls() == 2
+    assert "aoa" not in fake_client.fetched
+    run = DriveBackfill.objects.get(pk=started.data["id"])
+    assert (run.done, run.skipped, run.state) == (2, 1, DriveBackfill.State.DONE)
+
+
+@pytest.mark.django_db
+def test_ignore_this_file_adds_the_pattern_and_takes_the_proposal_out(
+    seeded_tenant, watch, ff_user, api, fake_client, fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    fake_client.texts = {"n1": NOTES}
+    fake_client.pages = one_page([a_file("n1", name="Board dinner - Notes by Gemini")])
+    ingest.poll(seeded_tenant, client=fake_client)
+    proposal = MeetingProposal.objects.get()
+
+    response = api.as_(ff_user).post(f"/api/meeting-proposals/{proposal.pk}/ignore/",
+                                     {"pattern": "Board dinner"})
+
+    assert response.status_code == 200, response.data
+    proposal.refresh_from_db()
+    assert proposal.state == MeetingProposal.State.REJECTED
+    assert not ProposalItem.objects.filter(proposal=proposal,
+                                           state=ProposalItem.State.PENDING).exists()
+    row = DriveExclusion.objects.get(pattern="Board dinner")
+    assert row.source == DriveExclusion.Source.IGNORED
+    assert AuditEvent.all_objects.filter(verb="drive.exclusion_added",
+                                         payload__proposal=str(proposal.pk)).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["CF", "VA"])
+def test_only_the_founder_changes_what_is_read(seeded_tenant, watch, api, role,
+                                               in_tenant_a):
+    member = MembershipFactory(tenant=seeded_tenant, role=role)
+    proposal_file = MeetingSourceFile.objects.create(
+        tenant=seeded_tenant, drive_file_id="x", drive_version="1", name="x",
+        mime_type=drive.GOOGLE_DOC, drive_file_owner_email=member.user.email)
+    proposal = MeetingProposal.objects.create(tenant=seeded_tenant,
+                                              source_file=proposal_file)
+    client = api.as_(member)
+
+    assert client.post("/api/drive-watch/exclusions/", {"pattern": "x"}).status_code == 403
+    assert client.post("/api/drive-watch/folders/", {"folder": "gmeet"}).status_code == 403
+    ignored = client.post(f"/api/meeting-proposals/{proposal.pk}/ignore/", {"pattern": "x"})
+    assert ignored.status_code in (403, 404)
+    assert not DriveExclusion.objects.filter(pattern="x").exists()
+
+
+@pytest.mark.django_db
+def test_adding_google_meet_needs_a_name_pattern_at_any_depth(
+    seeded_tenant, watch, ff_user, api, fake_client, drive_granted, in_tenant_a
+):
+    client = api.as_(ff_user)
+    meet_id = "1GoogleMeetFolderIdAbCdEfGhIjKlMn"
+    link = f"https://drive.google.com/drive/folders/{meet_id}"
+
+    refused = client.post("/api/drive-watch/folders/",
+                          {"folder": link, "depth": "any", "name_pattern": ""})
+    assert refused.status_code == 400
+
+    added = client.post("/api/drive-watch/folders/", {"folder": link, "depth": "any"})
+    assert added.status_code == 201, added.data
+    [folder] = added.data["folders"]
+    assert (folder["folder_id"], folder["depth"], folder["name_pattern"]) == \
+        (meet_id, "any", GEMINI)
+
+
+def test_locate_walks_up_and_stops():
+    tree = {"a": ("A", ["root"]), "b": ("B", ["a"]), "loop": ("L", ["loop"])}
+    lookup = tree.get
+    assert drive.locate(["b"], ["root"], lookup) == ("root", ["A", "B"])
+    assert drive.locate(["loop"], ["root"], lookup) is None
+    assert drive.locate(["nowhere"], ["root"], lookup) is None

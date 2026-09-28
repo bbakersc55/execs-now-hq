@@ -46,6 +46,10 @@ def represent_backfill(backfill) -> dict | None:
         "estimated_cost_usd": str(backfill.estimated_cost_usd),
         "cost_usd": str(backfill.cost_usd),
         "last_error": backfill.last_error,
+        "folder": str(backfill.folder_id) if backfill.folder_id else None,
+        "folder_name": (backfill.folder.folder_name if backfill.folder_id
+                        else backfill.watch.folder_name),
+        "correction_note": backfill.correction_note,
         "started_at": backfill.created_at.isoformat(),
         "finished_at": backfill.finished_at.isoformat() if backfill.finished_at else None,
     }

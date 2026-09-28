@@ -103,6 +103,50 @@ class DriveFile:
     trashed: bool = False
     #: RFC 3339. Only the backfill needs it — it walks the folder oldest first.
     created_time: str = ""
+    parents: list = field(default_factory=list)
+    #: For a file found under a folder watched at any depth: that folder's id,
+    #: and the names of the folders between it and the file, outermost first.
+    #: Exclusions match against these as well as the file's own name.
+    root: str = ""
+    path_names: list = field(default_factory=list)
+
+
+#: How far up a file's parents are followed looking for a watched folder.
+#: Google Meet notes sit two levels down; twelve is generous and still bounded.
+MAX_ANCESTRY = 12
+
+
+def locate(parents, roots, lookup, *, max_depth: int = MAX_ANCESTRY):
+    """Which watched folder, if any, a file sits under — at any depth.
+
+    `lookup(folder_id)` returns `(name, parents)` for a folder, or `None` when
+    it cannot be read. Returns `(root_id, path_names)`, with `path_names` the
+    folders between the root and the file, outermost first; or `None`.
+
+    Walks upward from the file's parents rather than downward from the root,
+    so a poll costs a lookup per *changed* file, not a listing of every
+    meeting folder Google Meet has ever made.
+    """
+    roots = set(roots)
+    frontier = [(parent, []) for parent in parents or []]
+    seen = set()
+    for _ in range(max_depth):
+        following = []
+        for folder_id, below in frontier:
+            if folder_id in roots:
+                return folder_id, below
+            if folder_id in seen:
+                continue
+            seen.add(folder_id)
+            meta = lookup(folder_id)
+            if not meta:
+                continue
+            name, grandparents = meta
+            following += [(up, [name] + below) for up in grandparents or []]
+        if not following:
+            return None
+        frontier = following
+    return None
 
 
 @dataclass
@@ -169,6 +213,7 @@ class DriveClient:
 
     def __init__(self, connection):
         self.connection = connection
+        self._folders: dict = {}
 
     def _service(self):
         from google.oauth2.credentials import Credentials
@@ -190,10 +235,26 @@ class DriveClient:
         except Exception as exc:                     # pragma: no cover - network
             raise DriveUnavailable(str(exc)) from exc
 
-    def changes(self, page_token: str, *, folder_ids) -> DrivePage:
+    def folder_meta(self, folder_id: str):
+        """`(name, parents)` for one folder, remembered for this client's life.
+        `None` when Drive will not say — a folder shared from elsewhere, say."""
+        if folder_id not in self._folders:
+            try:
+                meta = self._service().files().get(
+                    fileId=folder_id, fields="name,parents",
+                    supportsAllDrives=True).execute()
+                self._folders[folder_id] = (meta.get("name", ""), meta.get("parents") or [])
+            except Exception:                        # pragma: no cover - network
+                self._folders[folder_id] = None
+        return self._folders[folder_id]
+
+    def changes(self, page_token: str, *, folder_ids, deep_roots=()) -> DrivePage:
         """One page of changes, filtered to the watched folder **and one level
         below it** — some practices keep a folder per client or per month, and
-        a watcher that reads only direct children finds nothing in those."""
+        a watcher that reads only direct children finds nothing in those.
+
+        Files under a `deep_roots` folder are kept at any depth, found by
+        walking up from the file (`locate`)."""
         wanted = set(folder_ids)
         try:
             response = self._service().changes().list(
@@ -212,10 +273,19 @@ class DriveClient:
             raw = change.get("file") or {}
             if change.get("removed") or not raw:
                 continue
-            if not wanted & set(raw.get("parents") or []):
-                continue
+            parents = raw.get("parents") or []
+            placed = None
+            if not wanted & set(parents):
+                if not deep_roots or raw.get("mimeType") == FOLDER:
+                    continue
+                placed = locate(parents, deep_roots, self.folder_meta)
+                if placed is None:
+                    continue
             owners = raw.get("owners") or [{}]
             files.append(DriveFile(
+                parents=parents,
+                root=placed[0] if placed else "",
+                path_names=placed[1] if placed else [],
                 file_id=raw.get("id", ""), version=str(raw.get("version", "")),
                 name=raw.get("name", ""), mime_type=raw.get("mimeType", ""),
                 owner_email=(owners[0] or {}).get("emailAddress", ""),
@@ -226,6 +296,24 @@ class DriveClient:
         return DrivePage(files=files,
                          next_page_token=response.get("nextPageToken", ""),
                          new_start_page_token=response.get("newStartPageToken", ""))
+
+    def open_folder(self, folder_id: str) -> str:
+        """The folder's name, having proved it is a folder this account can
+        read. The cheap check, for a folder watched at any depth: describing
+        Google Meet would count every meeting folder it has ever made."""
+        try:
+            meta = self._service().files().get(
+                fileId=folder_id, fields="id,name,mimeType,trashed").execute()
+        except Exception as exc:                     # pragma: no cover - network
+            raise DriveUnavailable(
+                "Drive would not open that folder. Check the link, and that the "
+                "folder is on the Google account you connected.") from exc
+        if meta.get("trashed"):
+            raise DriveUnavailable("That folder is in the Drive bin.")
+        if meta.get("mimeType") != FOLDER:
+            raise DriveUnavailable(
+                f"\u201c{meta.get('name') or folder_id}\u201d is a file, not a folder.")
+        return meta.get("name", "")
 
     def describe_folder(self, folder_id: str) -> FolderInfo:
         """Prove we can actually read it, and say what is in it (FR-5.1a).
@@ -344,6 +432,56 @@ class DriveClient:
                 ))
             token = response.get("nextPageToken")
             if not token:
+                break
+        return found
+
+    def search(self, name_pattern: str, *, roots, created_from: str = "",
+               page_size: int = 50, max_pages: int = 10) -> list[DriveFile]:
+        """Google Docs named like `name_pattern`, under one of `roots` at any
+        depth, **oldest first** — the backfill's listing for a folder watched
+        at any depth.
+
+        Asked by name rather than by folder, because a folder watched at any
+        depth may hold hundreds of meeting folders and Drive's query language
+        cannot say "anywhere below". Each hit is then placed by `locate`.
+        """
+        service = self._service()
+        safe = name_pattern.replace("\\", "\\\\").replace("'", "\\'")
+        query = (f"name contains '{safe}' and mimeType = '{GOOGLE_DOC}' "
+                 "and trashed = false")
+        if created_from:
+            query += f" and createdTime >= '{created_from}'"
+        found, token = [], None
+        for _ in range(max_pages):
+            try:
+                response = service.files().list(
+                    q=query, orderBy="createdTime", pageSize=page_size,
+                    pageToken=token,
+                    fields=("nextPageToken,files(id,name,mimeType,version,trashed,"
+                            "createdTime,webViewLink,parents,owners(emailAddress))"),
+                ).execute()
+            except Exception as exc:                 # pragma: no cover - network
+                raise DriveUnavailable(f"Drive would not search: {exc}") from exc
+            for raw in response.get("files", []):
+                placed = locate(raw.get("parents") or [], roots, self.folder_meta)
+                if placed is None:
+                    continue
+                owners = raw.get("owners") or [{}]
+                found.append(DriveFile(
+                    file_id=raw.get("id", ""), version=str(raw.get("version", "")),
+                    name=raw.get("name", ""), mime_type=raw.get("mimeType", ""),
+                    owner_email=(owners[0] or {}).get("emailAddress", ""),
+                    web_view_link=raw.get("webViewLink", ""),
+                    trashed=bool(raw.get("trashed")),
+                    created_time=raw.get("createdTime", ""),
+                    parents=raw.get("parents") or [],
+                    root=placed[0], path_names=placed[1],
+                ))
+            token = response.get("nextPageToken")
+            # Hits outside the roots are dropped, so a page of Drive's is not a
+            # page of ours: keep asking until ours is full or Drive runs out.
+            # A short list therefore means the end, which the backfill relies on.
+            if not token or len(found) >= page_size:
                 break
         return found
 

@@ -37,7 +37,7 @@ from django.utils import timezone
 
 from apps.meetings import drive as drive_service
 from apps.meetings import ingest
-from apps.meetings.models import DriveBackfill, MeetingSourceFile
+from apps.meetings.models import DriveBackfill, DriveWatchFolder, MeetingSourceFile
 
 #: Files per tick, with the tick a minute apart. Deliberately unhurried: a
 #: hundred Claude calls landing at once would starve the digest tick and turn
@@ -89,38 +89,70 @@ def _minutes(count: int) -> int:
     return -(-count // PER_TICK) if count else 0
 
 
-def _readable_outstanding(tenant, client, info, since=None) -> list:
-    """Files this would actually read: readable, not trashed, not already in.
+def _listing(client, folder_id, folder, *, created_from="", page_size=50,
+             max_pages=1, info=None) -> list:
+    """What is in a folder to import, oldest first.
+
+    The watch's own folder, or an extra one-level folder, is listed by parent
+    as it always was. A folder watched **at any depth** is searched by its
+    name pattern instead and each hit placed under it (`drive.locate`) —
+    Drive cannot list "everything below" in one query.
+    """
+    if folder is not None and folder.depth == DriveWatchFolder.Depth.ANY:
+        return client.search(folder.name_pattern, roots=[folder.folder_id],
+                             created_from=created_from, page_size=page_size,
+                             max_pages=max_pages)
+    info = info or client.describe_folder(folder_id)
+    found = client.files_in(info.folder_ids, created_from=created_from,
+                            page_size=page_size, max_pages=max_pages)
+    return [f for f in found if ingest.name_matches(f, folder)]
+
+
+def _readable_outstanding(tenant, client, info, since=None, *, folder=None,
+                          watch=None) -> tuple[list, list]:
+    """Files this would actually read — readable, not trashed, not already in,
+    not excluded — and, separately, the ones the exclusion list keeps out.
 
     Filtering by what is already recorded is what makes the count honest after
     a first backfill, and what makes running a second one cheap to reason
-    about — it can only ever be the part that was left out.
+    about — it can only ever be the part that was left out. Excluded files cost
+    nothing (they are never read) and are counted apart, so the estimate is
+    only ever for what will reach Claude.
     """
     already = set(MeetingSourceFile.objects.values_list("drive_file_id", flat=True))
-    found = client.files_in(info.folder_ids,
-                            created_from=_iso(since) if since else "",
-                            page_size=1000, max_pages=10)
-    return [f for f in found
-            if not f.trashed
-            and not drive_service.skip_reason(f.mime_type)
-            and f.file_id not in already]
+    patterns = ingest.exclusions_for(watch) if watch else []
+    found = _listing(client, info.folder_id if info else folder.folder_id, folder,
+                     created_from=_iso(since) if since else "",
+                     page_size=1000, max_pages=10, info=info)
+    candidates = [f for f in found
+                  if not f.trashed
+                  and not drive_service.skip_reason(f.mime_type)
+                  and f.file_id not in already]
+    excluded = [f for f in candidates if ingest.excluded_by(f, patterns)]
+    return [f for f in candidates if f not in excluded], excluded
 
 
-def survey(tenant, *, client=None) -> dict:
+def survey(tenant, *, client=None, folder=None) -> dict:
     """What the folder holds and what reading all of it would cost.
 
     One Drive listing, nothing written. This is what the screen shows **before**
-    anything is chosen.
+    anything is chosen. `folder` is one of the watch's extra folders; none
+    means the watch's own.
     """
     watch = ingest.watch_for(tenant)
     if watch is None:
         raise BackfillRefused("No folder is connected.", status=409)
     client = client or ingest.client_for(tenant)
-    info = client.describe_folder(watch.folder_id)
-    outstanding = _readable_outstanding(tenant, client, info)
+    if folder is not None and folder.depth == DriveWatchFolder.Depth.ANY:
+        return _survey_deep(tenant, client, watch, folder)
+    info = client.describe_folder(folder.folder_id if folder else watch.folder_id)
+    outstanding, excluded = _readable_outstanding(tenant, client, info,
+                                                  folder=folder, watch=watch)
     per_note, measured = per_note_estimate(tenant)
 
     return {
+        "folder": str(folder.pk) if folder else None,
+        "excluded": len(excluded),
         "folder_name": info.name,
         "readable_here": info.readable,
         "readable_in_subfolders": info.readable_below,
@@ -139,7 +171,35 @@ def survey(tenant, *, client=None) -> dict:
     }
 
 
-def plan(tenant, since: date, *, client=None) -> dict:
+def _survey_deep(tenant, client, watch, folder) -> dict:
+    """The survey for a folder watched at any depth. There is no one-level
+    picture to draw of it — Google Meet holds a folder per meeting — so it is
+    the matching notes found under it, and their dates."""
+    outstanding, excluded = _readable_outstanding(tenant, client, None,
+                                                  folder=folder, watch=watch)
+    everything = _listing(client, folder.folder_id, folder, page_size=1000,
+                          max_pages=10)
+    dates = sorted(f.created_time for f in everything if f.created_time)
+    per_note, measured = per_note_estimate(tenant)
+    return {
+        "folder": str(folder.pk),
+        "excluded": len(excluded),
+        "folder_name": folder.folder_name,
+        "readable_here": 0,
+        "readable_in_subfolders": len(everything),
+        "subfolders": [],
+        "readable_total": len(everything),
+        "outstanding": len(outstanding),
+        "oldest": (dates[0] if dates else "")[:10],
+        "newest": (dates[-1] if dates else "")[:10],
+        "per_note_usd": str(per_note),
+        "per_note_is_measured": measured,
+        "estimate_usd": str((per_note * len(outstanding)).quantize(Decimal("0.01"))),
+        "minutes": _minutes(len(outstanding)),
+    }
+
+
+def plan(tenant, since: date, *, client=None, folder=None) -> dict:
     """The same numbers for one cut-off date — what option (b) would take.
 
     Asked again each time the date changes, because a count and a cost the
@@ -149,10 +209,15 @@ def plan(tenant, since: date, *, client=None) -> dict:
     if watch is None:
         raise BackfillRefused("No folder is connected.", status=409)
     client = client or ingest.client_for(tenant)
-    info = client.describe_folder(watch.folder_id)
-    outstanding = _readable_outstanding(tenant, client, info, since=since)
+    deep = folder is not None and folder.depth == DriveWatchFolder.Depth.ANY
+    info = None if deep else client.describe_folder(
+        folder.folder_id if folder else watch.folder_id)
+    outstanding, excluded = _readable_outstanding(tenant, client, info, since=since,
+                                                  folder=folder, watch=watch)
     per_note, measured = per_note_estimate(tenant)
     return {
+        "folder": str(folder.pk) if folder else None,
+        "excluded": len(excluded),
         "since": since.isoformat(),
         "outstanding": len(outstanding),
         "per_note_usd": str(per_note),
@@ -162,12 +227,14 @@ def plan(tenant, since: date, *, client=None) -> dict:
     }
 
 
-def current(tenant) -> DriveBackfill | None:
-    """The backfill running on this folder, or the last decision made about it."""
-    return DriveBackfill.objects.order_by("-created_at").first()
+def current(tenant, folder=None) -> DriveBackfill | None:
+    """The backfill running on this folder, or the last decision made about it.
+    `folder` is an extra folder; none means the watch's own."""
+    return DriveBackfill.objects.filter(folder=folder).order_by("-created_at").first()
 
 
-def start(tenant, *, scope: str, since=None, actor=None, client=None) -> DriveBackfill:
+def start(tenant, *, scope: str, since=None, actor=None, client=None,
+          folder=None) -> DriveBackfill:
     """Record the choice. `NOW` records it and reads nothing."""
     watch = ingest.watch_for(tenant)
     if watch is None:
@@ -184,14 +251,15 @@ def start(tenant, *, scope: str, since=None, actor=None, client=None) -> DriveBa
         # A decision, not an absence. Six months from now, "why did the queue
         # start empty" has an answer with a date and a name on it.
         return DriveBackfill.objects.create(
-            tenant=tenant, watch=watch, scope=scope,
+            tenant=tenant, watch=watch, scope=scope, folder=folder,
             state=DriveBackfill.State.DECLINED, started_by=actor,
             finished_at=timezone.now())
 
-    counts = (plan(tenant, since, client=client) if scope == DriveBackfill.Scope.SINCE
-              else survey(tenant, client=client))
+    counts = (plan(tenant, since, client=client, folder=folder)
+              if scope == DriveBackfill.Scope.SINCE
+              else survey(tenant, client=client, folder=folder))
     return DriveBackfill.objects.create(
-        tenant=tenant, watch=watch, scope=scope, since=since,
+        tenant=tenant, watch=watch, scope=scope, since=since, folder=folder,
         state=DriveBackfill.State.RUNNING, started_by=actor,
         planned=counts["outstanding"],
         estimated_cost_usd=Decimal(counts["estimate_usd"]),
@@ -261,15 +329,15 @@ def _step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
     page_size = max(limit * 4, 20)
     try:
         client = client or ingest.client_for(tenant)
-        info = client.describe_folder(backfill.watch.folder_id)
-        found = client.files_in(info.folder_ids,
-                                created_from=backfill.after_created_time,
-                                page_size=page_size)
+        found = _listing(client, backfill.watch.folder_id, backfill.folder,
+                         created_from=backfill.after_created_time,
+                         page_size=page_size)
     except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
         DriveBackfill.objects.filter(pk=backfill.pk).update(
             last_error=str(exc), updated_at=timezone.now())
         return {"running": True, "error": str(exc)}
 
+    patterns = ingest.exclusions_for(backfill.watch)
     read = skipped = failed = 0
     cost = Decimal(0)
     walked, seen = backfill.after_created_time, 0
@@ -283,11 +351,13 @@ def _step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
         walked = drive_file.created_time or walked
         if MeetingSourceFile.objects.filter(drive_file_id=drive_file.file_id).exists():
             continue                  # Already in, at some version.
-        row, created = ingest.record(tenant, drive_file)
+        row, created = ingest.record(
+            tenant, drive_file, folder=backfill.folder,
+            excluded=ingest.excluded_by(drive_file, patterns))
         if row is None or not created:
             continue
         if row.state == MeetingSourceFile.State.SKIPPED:
-            skipped += 1
+            skipped += 1          # an unsupported type, or excluded: never read
             continue
         if not parsing.claim(row):
             continue                  # The poll has it.

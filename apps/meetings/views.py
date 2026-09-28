@@ -21,8 +21,11 @@ from apps.meetings import (
 )
 from apps.meetings import permissions as meeting_perms
 from apps.meetings import serializers as meeting_serializers
+from django.utils import timezone
+
 from apps.meetings.models import (
-    DriveBackfill, DriveWatch, Meeting, MeetingProposal, ProposalItem,
+    DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting,
+    MeetingProposal, ProposalItem,
 )
 from apps.tenancy.models import AuditEvent
 
@@ -46,6 +49,23 @@ def _is_uuid(value) -> bool:
         return True
     except (ValueError, TypeError):
         return False
+
+
+def add_exclusion(watch, pattern, *, actor, source, extra=None):
+    """Put a pattern on the watch's exclusion list, once: the same words in a
+    different case are the same exclusion."""
+    ingest.exclusions_for(watch)       # the starting ones first, if never added
+    existing = (DriveExclusion.objects.filter(watch=watch, deleted_at__isnull=True,
+                                              pattern__iexact=pattern).first())
+    row = existing or DriveExclusion.objects.create(
+        tenant_id=watch.tenant_id, watch=watch, pattern=pattern, source=source,
+        created_by=actor)
+    AuditEvent.all_objects.create(
+        tenant_id=watch.tenant_id, actor=actor, verb="drive.exclusion_added",
+        target_type="drive_exclusion", target_id=row.pk,
+        payload={"pattern": pattern, "source": source, "already_listed": bool(existing),
+                 **(extra or {})})
+    return row
 
 
 class MeetingViewSetBase(viewsets.GenericViewSet):
@@ -79,6 +99,135 @@ class DriveWatchViewSet(MeetingViewSetBase):
                 "Everything else in the queue is yours."))
 
     def list(self, request):
+        return Response(ingest.health(request.tenant))
+
+    def _folder(self, request):
+        """An extra folder named on the request, or None for the watch's own.
+        A folder that is not this practice's is a 404, as everywhere here."""
+        ref = request.data.get("folder") if request.method != "GET" else None
+        ref = ref or request.query_params.get("folder")
+        if not ref:
+            return None
+        if not _is_uuid(ref):
+            raise Http404
+        found = DriveWatchFolder.objects.filter(pk=ref, is_active=True).first()
+        if found is None:
+            raise Http404
+        return found
+
+    # ---------------------------------------------------------- extra folders
+
+    @action(detail=False, methods=["post"], url_path="folders")
+    def add_folder(self, request):
+        """Watch another folder with the same watch (owner, 2026-09-28).
+
+        `depth=any` reads every folder below it and needs a name pattern —
+        Google Meet puts each meeting's notes in a folder of its own, and a
+        recursive watch with no pattern would read everything in it.
+        """
+        self.require_founder(request)
+        watch = ingest.watch_for(request.tenant)
+        if watch is None:
+            return Response({"detail": "Connect the first folder before adding another."},
+                            status=409)
+        folder_id = drive_service.folder_id_from(
+            request.data.get("folder") or request.data.get("folder_id") or "")
+        if not folder_id:
+            return Response({"detail": "That does not look like a Drive folder. "
+                                       "Paste the folder's web address."}, status=400)
+        if folder_id == watch.folder_id:
+            return Response({"detail": "That folder is already watched."}, status=400)
+        depth = request.data.get("depth") or DriveWatchFolder.Depth.ANY
+        if depth not in DriveWatchFolder.Depth.values:
+            return Response({"detail": "Depth is one level or any depth."}, status=400)
+        pattern = (request.data.get("name_pattern", "Notes by Gemini") or "").strip()
+        if depth == DriveWatchFolder.Depth.ANY and not pattern:
+            return Response({"detail": (
+                "A folder read at any depth needs a name to look for, or it would "
+                "read everything below it. The default is \u201cNotes by Gemini\u201d."
+            )}, status=400)
+        try:
+            name = ingest.client_for(request.tenant).open_folder(folder_id)
+        except ingest.NotConnected as exc:
+            return Response({"detail": str(exc)}, status=409)
+        except drive_service.DriveUnavailable as exc:
+            return Response({"detail": str(exc)}, status=400)
+        folder, _ = DriveWatchFolder.objects.update_or_create(
+            tenant=request.tenant, folder_id=folder_id,
+            defaults={"watch": watch, "folder_name": name, "depth": depth,
+                      "name_pattern": pattern, "is_active": True})
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="drive.folder_added",
+            target_type="drive_watch_folder", target_id=folder.pk,
+            payload={"folder_id": folder_id, "folder_name": name, "depth": depth,
+                     "name_pattern": pattern})
+        return Response(ingest.health(request.tenant), status=201)
+
+    @action(detail=False, methods=["patch", "delete"],
+            url_path=r"folders/(?P<folder_pk>[^/.]+)")
+    def change_folder(self, request, folder_pk=None):
+        """Change an extra folder's pattern or depth, or stop watching it.
+        Stopping keeps every file and proposal it brought in."""
+        self.require_founder(request)
+        if not _is_uuid(folder_pk):
+            raise Http404
+        folder = DriveWatchFolder.objects.filter(pk=folder_pk, is_active=True).first()
+        if folder is None:
+            raise Http404
+        if request.method == "DELETE":
+            folder.is_active = False
+            folder.save(update_fields=["is_active", "updated_at"])
+            verb, payload = "drive.folder_removed", {"folder_id": folder.folder_id}
+        else:
+            depth = request.data.get("depth", folder.depth)
+            pattern = (request.data.get("name_pattern", folder.name_pattern) or "").strip()
+            if depth not in DriveWatchFolder.Depth.values:
+                return Response({"detail": "Depth is one level or any depth."}, status=400)
+            if depth == DriveWatchFolder.Depth.ANY and not pattern:
+                return Response({"detail": "A folder read at any depth needs a name "
+                                           "to look for."}, status=400)
+            payload = {"from": {"depth": folder.depth, "name_pattern": folder.name_pattern},
+                       "to": {"depth": depth, "name_pattern": pattern}}
+            folder.depth, folder.name_pattern = depth, pattern
+            folder.save(update_fields=["depth", "name_pattern", "updated_at"])
+            verb = "drive.folder_changed"
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb=verb,
+            target_type="drive_watch_folder", target_id=folder.pk, payload=payload)
+        return Response(ingest.health(request.tenant))
+
+    # -------------------------------------------------------------- exclusions
+
+    @action(detail=False, methods=["post"], url_path="exclusions")
+    def add_exclusion(self, request):
+        """A title that is never read, in any watched folder."""
+        self.require_founder(request)
+        watch = ingest.watch_for(request.tenant)
+        if watch is None:
+            return Response({"detail": "No folder is connected."}, status=409)
+        pattern = (request.data.get("pattern") or "").strip()
+        if not pattern:
+            return Response({"detail": "Give a word or phrase to exclude."}, status=400)
+        add_exclusion(watch, pattern, actor=request.user,
+                      source=DriveExclusion.Source.MANUAL)
+        return Response(ingest.health(request.tenant), status=201)
+
+    @action(detail=False, methods=["delete"],
+            url_path=r"exclusions/(?P<exclusion_pk>[^/.]+)")
+    def remove_exclusion(self, request, exclusion_pk=None):
+        """Read that title again from now on. What it kept out stays skipped."""
+        self.require_founder(request)
+        if not _is_uuid(exclusion_pk):
+            raise Http404
+        row = DriveExclusion.objects.filter(pk=exclusion_pk, deleted_at__isnull=True).first()
+        if row is None:
+            raise Http404
+        row.deleted_at = timezone.now()
+        row.save(update_fields=["deleted_at", "updated_at"])
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="drive.exclusion_removed",
+            target_type="drive_exclusion", target_id=row.pk,
+            payload={"pattern": row.pattern})
         return Response(ingest.health(request.tenant))
 
     @action(detail=False, methods=["post"], url_path="consent")
@@ -169,8 +318,9 @@ class DriveWatchViewSet(MeetingViewSetBase):
         """
         self.require_founder(request)
         if request.method == "GET":
+            folder = self._folder(request)
             try:
-                found = backfill_service.survey(request.tenant)
+                found = backfill_service.survey(request.tenant, folder=folder)
             except backfill_service.BackfillRefused as exc:
                 return Response({"detail": str(exc)}, status=exc.status)
             except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
@@ -178,7 +328,7 @@ class DriveWatchViewSet(MeetingViewSetBase):
             return Response({
                 "folder": found,
                 "backfill": meeting_serializers.represent_backfill(
-                    backfill_service.current(request.tenant)),
+                    backfill_service.current(request.tenant, folder)),
             })
 
         since = _as_date(request.data.get("since"))
@@ -188,7 +338,7 @@ class DriveWatchViewSet(MeetingViewSetBase):
         try:
             started = backfill_service.start(
                 request.tenant, scope=request.data.get("scope") or "",
-                since=since, actor=request.user)
+                since=since, actor=request.user, folder=self._folder(request))
         except backfill_service.BackfillRefused as exc:
             return Response({"detail": str(exc)}, status=exc.status)
         except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
@@ -197,6 +347,7 @@ class DriveWatchViewSet(MeetingViewSetBase):
             tenant=request.tenant, actor=request.user, verb="drive.backfill_chosen",
             target_type="drive_backfill", target_id=started.pk,
             payload={"scope": started.scope,
+                     "folder": started.folder.folder_name if started.folder else None,
                      "since": started.since.isoformat() if started.since else None,
                      "planned": started.planned,
                      "estimate_usd": str(started.estimated_cost_usd)})
@@ -211,7 +362,8 @@ class DriveWatchViewSet(MeetingViewSetBase):
         if since is None:
             return Response({"detail": "Give a date to import from."}, status=400)
         try:
-            return Response(backfill_service.plan(request.tenant, since))
+            return Response(backfill_service.plan(request.tenant, since,
+                                                  folder=self._folder(request)))
         except backfill_service.BackfillRefused as exc:
             return Response({"detail": str(exc)}, status=exc.status)
         except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
@@ -343,6 +495,41 @@ class ProposalViewSet(MeetingViewSetBase):
             fields.append("summary_discarded")
         if fields:
             proposal.save(update_fields=fields + ["updated_at"])
+        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+
+    @action(detail=True, methods=["post"])
+    def ignore(self, request, pk=None):
+        """"Ignore this file" — never read titles like it again, and take this
+        proposal out of the queue (owner, 2026-09-28).
+
+        The FF's, like the rest of the exclusion list: it changes what the app
+        reads from Drive, not just this one proposal. The pattern is what the
+        person confirmed, usually the meeting's name; this file's own call to
+        Claude has already happened and stays on AI usage.
+        """
+        if not meeting_perms.may_connect(request):
+            self.permission_denied(request, message=(
+                "Ignoring a file changes what is read from Drive; that is the founder's."))
+        proposal = self.load(pk)
+        pattern = (request.data.get("pattern") or "").strip()
+        if not pattern:
+            return Response({"detail": "Give the word or phrase to ignore."}, status=400)
+        watch = ingest.watch_for(request.tenant)
+        if watch is None:
+            return Response({"detail": "No folder is connected."}, status=409)
+        add_exclusion(watch, pattern, actor=request.user,
+                      source=DriveExclusion.Source.IGNORED,
+                      extra={"proposal": str(proposal.pk),
+                             "file": proposal.source_file.name})
+        if proposal.state in (MeetingProposal.State.PENDING,
+                              MeetingProposal.State.PARTIALLY_ACTIONED):
+            ProposalItem.objects.filter(proposal=proposal,
+                                        state=ProposalItem.State.PENDING).update(
+                state=ProposalItem.State.REJECTED, actioned_at=timezone.now())
+            proposal.state = (MeetingProposal.State.REJECTED
+                              if proposal.state == MeetingProposal.State.PENDING
+                              else proposal.state)
+            proposal.save(update_fields=["state", "updated_at"])
         return Response(meeting_serializers.represent_proposal(proposal, full=True))
 
     @action(detail=True, methods=["post"])

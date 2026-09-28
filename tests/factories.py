@@ -17,8 +17,8 @@ from apps.crm.models import (
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.meetings.models import (
-    DriveBackfill, DriveWatch, Meeting, MeetingParticipant, MeetingProposal, MeetingSourceFile,
-    ProposalItem,
+    DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting, MeetingParticipant,
+    MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.notes.models import Note, NotePinUnlock
 from apps.work.models import (
@@ -710,6 +710,27 @@ class DriveBackfillFactory(TenantScopedFactory):
     watch = factory.SubFactory(DriveWatchFactory,
                                tenant=factory.SelfAttribute("..tenant"))
     scope = "all"
+
+
+class DriveWatchFolderFactory(TenantScopedFactory):
+    class Meta:
+        model = DriveWatchFolder
+
+    tenant = factory.SubFactory(TenantFactory)
+    watch = factory.SubFactory(DriveWatchFactory,
+                               tenant=factory.SelfAttribute("..tenant"))
+    folder_id = factory.Sequence(lambda n: f"meet-folder-{n}")
+    folder_name = "Google Meet"
+
+
+class DriveExclusionFactory(TenantScopedFactory):
+    class Meta:
+        model = DriveExclusion
+
+    tenant = factory.SubFactory(TenantFactory)
+    watch = factory.SubFactory(DriveWatchFactory,
+                               tenant=factory.SelfAttribute("..tenant"))
+    pattern = "AoA"
 
 
 class MeetingSourceFileFactory(TenantScopedFactory):

@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Check, FileText, FolderOpen, FolderSync, Link2, RefreshCw, X } from "lucide-react";
+import {
+  Check, EyeOff, FileText, FolderOpen, FolderSync, Link2, RefreshCw, X,
+} from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
   Backfill, BackfillPlan, DriveFolder, DriveHealth, FolderPast, Me, MeetingProposal,
+  WatchFolder,
   ProposalItem, api,
 } from "../lib/api";
 
@@ -97,7 +100,13 @@ export function Meetings({ me }: { me: Me }) {
           unread={past.data?.folder.outstanding ?? 0} />
       )}
       {health.data?.connected && me.role === "FF" && (
-        <Past health={health.data} setProblem={setProblem} />
+        <>
+          <Past health={health.data} folder={null} setProblem={setProblem} />
+          {(health.data.folders ?? []).map((folder) => (
+            <Past key={folder.id} health={health.data!} folder={folder}
+              setProblem={setProblem} />
+          ))}
+        </>
       )}
 
       {rows.length === 0 && (
@@ -198,6 +207,7 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
 
   if (health.connected) {
     return (
+      <>
       <Card title={health.folder_name || health.folder_id}
         actions={mine && (
           <button className="small" disabled={disconnect.isPending}
@@ -209,6 +219,7 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
           {" · "}{health.files_pending} waiting
           {health.files_failed > 0 && ` · ${health.files_failed} failed`}
           {health.files_skipped > 0 && ` · ${health.files_skipped} skipped`}
+          {(health.excluded ?? 0) > 0 && ` · ${health.excluded} excluded`}
         </p>
         {unread > 0 && (
           <p className="small">
@@ -226,6 +237,12 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
           </Banner>
         )}
       </Card>
+      {(health.folders ?? []).map((folder) => (
+        <ExtraFolder key={folder.id} folder={folder} mine={mine} setProblem={setProblem} />
+      ))}
+      {mine && <AddFolder setNote={setNote} setProblem={setProblem} />}
+      <Exclusions health={health} mine={mine} setProblem={setProblem} />
+      </>
     );
   }
 
@@ -315,6 +332,169 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
 }
 
 /**
+ * Another folder the same watch reads (owner, 2026-09-28). Google Meet keeps
+ * each meeting's notes in a folder of its own, so it is read at any depth —
+ * and only Docs named like the pattern, or it would read recordings and chat.
+ */
+function ExtraFolder({ folder, mine, setProblem }: {
+  folder: WatchFolder; mine: boolean; setProblem: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [pattern, setPattern] = useState(folder.name_pattern);
+  const change = useMutation({
+    mutationFn: (body: object | null) => body
+      ? api.patch<DriveHealth>(`/api/drive-watch/folders/${folder.id}/`, body)
+      : api.del<DriveHealth>(`/api/drive-watch/folders/${folder.id}/`),
+    onSuccess: (data) => { setProblem(""); qc.setQueryData(["drive-watch"], data); },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  return (
+    <Card title={folder.folder_name || folder.folder_id}
+      actions={mine && (
+        <button className="small" disabled={change.isPending}
+          onClick={() => change.mutate(null)}>Stop watching</button>
+      )}>
+      <p className="small muted">
+        <FolderOpen size={12} /> Also watched
+        {" · "}{folder.depth === "any" ? "every folder inside it" : "one level down"}
+        {folder.name_pattern && <> · only Google Docs named like “{folder.name_pattern}”</>}
+        {" · "}{folder.files_recorded} seen
+        {folder.excluded > 0 && ` · ${folder.excluded} excluded`}
+      </p>
+      {mine && (
+        <div className="row tight">
+          <input aria-label={`Name pattern for ${folder.folder_name}`} value={pattern}
+            onChange={(e) => setPattern(e.target.value)} />
+          <button className="small"
+            disabled={change.isPending || pattern.trim() === folder.name_pattern
+                      || (folder.depth === "any" && !pattern.trim())}
+            onClick={() => change.mutate({ name_pattern: pattern.trim() })}>
+            Save pattern
+          </button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function AddFolder({ setNote, setProblem }: {
+  setNote: (text: string) => void; setProblem: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [link, setLink] = useState("");
+  const [depth, setDepth] = useState<WatchFolder["depth"]>("any");
+  const [pattern, setPattern] = useState("Notes by Gemini");
+  const add = useMutation({
+    mutationFn: () => api.post<DriveHealth>("/api/drive-watch/folders/",
+      { folder: link, depth, name_pattern: pattern }),
+    onSuccess: (data) => {
+      setProblem(""); qc.setQueryData(["drive-watch"], data);
+      qc.invalidateQueries({ queryKey: ["drive-backfill"] });
+      setNote("Watching that folder too. New notes in it arrive on their own; "
+              + "anything already there can be imported below.");
+      setOpen(false); setLink("");
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  if (!open) {
+    return (
+      <p><button className="small" onClick={() => setOpen(true)}>
+        <FolderOpen size={14} /> Watch another folder
+      </button></p>
+    );
+  }
+  return (
+    <Card title="Watch another folder"
+      actions={<button className="small" onClick={() => setOpen(false)}>Cancel</button>}>
+      <Field label="Drive folder link">
+        <input aria-label="Another Drive folder link" value={link}
+          placeholder="https://drive.google.com/drive/folders/…"
+          onChange={(e) => setLink(e.target.value)} />
+      </Field>
+      <div className="row">
+        <Field label="How deep">
+          <select aria-label="How deep" value={depth}
+            onChange={(e) => setDepth(e.target.value as WatchFolder["depth"])}>
+            <option value="any">Every folder inside it</option>
+            <option value="one">This folder and one level down</option>
+          </select>
+        </Field>
+        <Field label="Only Google Docs named like">
+          <input aria-label="Only Google Docs named like" value={pattern}
+            onChange={(e) => setPattern(e.target.value)} />
+        </Field>
+      </div>
+      <p className="small muted">
+        Google Meet keeps each meeting's notes in a folder of their own, so read it
+        at every depth. The name keeps it to the notes: recordings, transcripts and
+        chat are left alone.
+      </p>
+      <button className="primary"
+        disabled={add.isPending || !link.trim() || (depth === "any" && !pattern.trim())}
+        onClick={() => add.mutate()}>
+        {add.isPending ? "Checking the folder…" : "Watch it"}
+      </button>
+    </Card>
+  );
+}
+
+/**
+ * Titles never read, in any watched folder (owner, 2026-09-28). A file whose
+ * name, or a folder it sits in, has one of these as a whole word is recorded
+ * as skipped and never sent to Claude.
+ */
+function Exclusions({ health, mine, setProblem }: {
+  health: DriveHealth; mine: boolean; setProblem: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [pattern, setPattern] = useState("");
+  const done = (data: DriveHealth) => { setProblem(""); qc.setQueryData(["drive-watch"], data); };
+  const add = useMutation({
+    mutationFn: () => api.post<DriveHealth>("/api/drive-watch/exclusions/", { pattern }),
+    onSuccess: (data) => { done(data); setPattern(""); },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.del<DriveHealth>(`/api/drive-watch/exclusions/${id}/`),
+    onSuccess: done,
+    onError: (e: Error) => setProblem(e.message),
+  });
+  const rows = health.exclusions ?? [];
+  return (
+    <Card title="Never read">
+      <p className="small muted">
+        Meetings whose title, or the folder they are in, contains one of these are
+        noted as skipped and never sent to Claude.
+      </p>
+      {rows.length === 0 ? <Empty>Nothing is excluded.</Empty> : (
+        <p className="inline" style={{ flexWrap: "wrap" }}>
+          {rows.map((row) => (
+            <span key={row.id} className="pill">
+              {row.pattern}
+              {mine && (
+                <button className="icon-button" aria-label={`Read ${row.pattern} again`}
+                  disabled={remove.isPending} onClick={() => remove.mutate(row.id)}>
+                  <X size={12} />
+                </button>
+              )}
+            </span>
+          ))}
+        </p>
+      )}
+      {mine && (
+        <div className="row tight">
+          <input aria-label="Exclude titles containing" value={pattern}
+            placeholder="A word or phrase" onChange={(e) => setPattern(e.target.value)} />
+          <button className="small" disabled={!pattern.trim() || add.isPending}
+            onClick={() => add.mutate()}>Exclude</button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/**
  * The folder's past — a choice, never a default (FR-5.1b).
  *
  * **Drive's cursor starts at "now".** A folder holding six months of notes is,
@@ -327,34 +507,43 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
  * would cost **before** anything starts, and treats "only new notes" as an
  * answer rather than as the absence of one.
  */
-function Past({ health, setProblem }: {
+function Past({ health, folder, setProblem }: {
   health: DriveHealth; setProblem: (text: string) => void;
+  /** One of the watch's extra folders, or null for the first one. */
+  folder: WatchFolder | null;
 }) {
   const qc = useQueryClient();
   const [scope, setScope] = useState<Backfill["scope"]>("all");
   const [since, setSince] = useState("");
-  const backfill = health.backfill;
+  // One import runs at a time across every folder; this panel shows it only
+  // when it is this folder's, and offers nothing while another folder's runs.
+  const latest = health.backfill;
+  const ours = !!latest && (latest.folder ?? null) === (folder?.id ?? null);
+  const backfill = ours ? latest : null;
+  const busyElsewhere = !!latest?.running && !ours;
+  const which = folder ? { folder: folder.id } : {};
 
   // Asked every time, not only before the first decision. An import that read
   // 8 of 167 notes leaves 159 unread, and a panel that congratulates itself
   // and disappears is how they stay that way.
   const past = useQuery<{ folder: FolderPast; backfill: Backfill | null }>({
-    queryKey: ["drive-backfill"],
-    queryFn: () => api.get("/api/drive-watch/backfill/"),
-    enabled: !backfill?.running,
+    queryKey: folder ? ["drive-backfill", folder.id] : ["drive-backfill"],
+    queryFn: () => api.get(`/api/drive-watch/backfill/${folder ? `?folder=${folder.id}` : ""}`),
+    enabled: !backfill?.running && !busyElsewhere,
   });
 
   // Asked again each time the date changes: a count and a cost the fractional
   // has not seen is a cost they have not agreed to.
   const plan = useQuery<BackfillPlan>({
-    queryKey: ["drive-backfill-plan", since],
-    queryFn: () => api.post<BackfillPlan>("/api/drive-watch/backfill/plan/", { since }),
+    queryKey: ["drive-backfill-plan", folder?.id ?? null, since],
+    queryFn: () => api.post<BackfillPlan>("/api/drive-watch/backfill/plan/",
+      { since, ...which }),
     enabled: scope === "since" && /^\d{4}-\d{2}-\d{2}$/.test(since),
   });
 
   const choose = useMutation({
     mutationFn: () => api.post<Backfill>("/api/drive-watch/backfill/",
-      { scope, since: scope === "since" ? since : null }),
+      { scope, since: scope === "since" ? since : null, ...which }),
     onSuccess: () => { setProblem(""); qc.invalidateQueries({ queryKey: ["drive-watch"] }); },
     onError: (e: Error) => setProblem(e.message),
   });
@@ -368,7 +557,7 @@ function Past({ health, setProblem }: {
   if (backfill?.running) {
     const read = backfill.done + backfill.skipped + backfill.failed;
     return (
-      <Card title="Importing the folder's notes"
+      <Card title={`Importing the notes in ${backfill.folder_name || "the folder"}`}
         actions={<button className="small" disabled={stop.isPending}
           onClick={() => stop.mutate()}>Stop</button>}>
         <Progress done={read} total={backfill.planned} />
@@ -389,34 +578,44 @@ function Past({ health, setProblem }: {
     );
   }
 
+  if (busyElsewhere) return null;
   if (past.isLoading) return <p className="small muted">Looking in the folder…</p>;
   if (!past.data) return null;
   const found = past.data.folder;
-  const done = backfill && backfill.state !== "declined" && backfill.done > 0;
+  // This folder's own last import, not whichever folder imported last.
+  const last = past.data.backfill;
+  const done = last && last.state !== "declined" && last.done > 0;
+  const name = folder?.folder_name || found.folder_name || "this folder";
+  const correction = last?.correction_note && (
+    <p className="small"><strong>Correction:</strong> {last.correction_note}</p>
+  );
 
   // Nothing left unread: say what was imported, once, and stop asking.
   if (found.outstanding === 0) {
     if (!done) return null;
     return (
       <Banner kind="info">
-        Imported {backfill!.done} note{backfill!.done === 1 ? "" : "s"} from this
-        folder{backfill!.state === "cancelled" && " before you stopped it"}, for
-        ${backfill!.cost_usd.slice(0, 6)}. Nothing older is left unread, and new
+        Imported {last!.done} note{last!.done === 1 ? "" : "s"} from {name}
+        {last!.state === "cancelled" && " before you stopped it"}, for
+        ${last!.cost_usd.slice(0, 6)}. Nothing older is left unread, and new
         notes arrive on their own.
+        {correction}
       </Banner>
     );
   }
 
   const chosen = scope === "since" ? plan.data : found;
   return (
-    <Card title={done ? "Older notes are still unread" : "This folder already holds notes"}>
+    <Card title={done ? `Older notes in ${name} are still unread`
+                      : `${name} already holds notes`}>
       {done && (
         <p className="small muted">
-          You imported {backfill!.done} last time
-          {backfill!.state === "cancelled" && " before stopping"}, for
-          ${backfill!.cost_usd.slice(0, 6)}.
+          You imported {last!.done} last time
+          {last!.state === "cancelled" && " before stopping"}, for
+          ${last!.cost_usd.slice(0, 6)}.
         </p>
       )}
+      {correction}
       <p>
         <strong>{found.outstanding} readable note{found.outstanding === 1 ? "" : "s"}</strong>
         {found.oldest && <> {done ? "remain unread" : "are already in it"}, from{" "}
@@ -428,6 +627,19 @@ function Past({ health, setProblem }: {
         Watching only picks up notes added from now on, so “Sync now” will not
         find these. Importing them here is the only thing that will.
       </p>
+      {(found.excluded ?? 0) > 0 && (
+        <p className="small muted">
+          {found.excluded} more {found.excluded === 1 ? "is" : "are"} on the exclusion
+          list: {found.excluded === 1 ? "it" : "they"} will be recorded as skipped and
+          never read, and {found.excluded === 1 ? "is" : "are"} not in the cost below.
+        </p>
+      )}
+      {folder?.depth === "any" && (
+        <p className="small muted">
+          Counted in every folder inside it, and only Google Docs named like
+          “{folder.name_pattern}”.
+        </p>
+      )}
       {found.subfolders.length > 0 && (
         <p className="small muted">
           Including {found.readable_in_subfolders} in{" "}
@@ -496,9 +708,29 @@ function Progress({ done, total }: { done: number; total: number }) {
   );
 }
 
-function ProposalDetail({ id, onChanged, setNote }: {
+/** The meeting's own name, as a starting pattern: Gemini names a file
+ *  "<meeting> - 2026/09/24 17:35 MDT - Notes by Gemini". */
+export function meetingNameOf(fileName: string) {
+  return fileName.split(/ - \d{4}\/\d{2}\/\d{2}/)[0].replace(/ - Notes by Gemini$/, "").trim();
+}
+
+function ProposalDetail({ id, onChanged, setNote, me }: {
   id: string; onChanged: () => void; setNote: (text: string) => void; me: Me;
 }) {
+  const qc = useQueryClient();
+  const [ignoring, setIgnoring] = useState<string | null>(null);
+  const ignore = useMutation({
+    mutationFn: (pattern: string) =>
+      api.post(`/api/meeting-proposals/${id}/ignore/`, { pattern }),
+    onSuccess: (_data, pattern) => {
+      setNote(`“${pattern}” is on the never-read list. This one is out of the queue, `
+              + "and meetings with that in their title or folder will not be read.");
+      setIgnoring(null);
+      qc.invalidateQueries({ queryKey: ["drive-watch"] });
+      onChanged();
+    },
+    onError: (e: Error) => setNote(e.message),
+  });
   const detail = useQuery<MeetingProposal>({
     queryKey: ["meeting-proposal", id],
     queryFn: () => api.get<MeetingProposal>(`/api/meeting-proposals/${id}/`),
@@ -542,7 +774,24 @@ function ProposalDetail({ id, onChanged, setNote }: {
           onClick={() => reparse.mutate()}>
           <RefreshCw size={14} /> Read it again
         </button>
+        {me.role === "FF" && ignoring === null && (
+          <button className="small"
+            onClick={() => setIgnoring(meetingNameOf(proposal.source_file.name))}>
+            <EyeOff size={14} /> Ignore this file
+          </button>
+        )}
       </div>
+      {ignoring !== null && (
+        <div className="row tight" style={{ marginTop: "var(--s2)" }}>
+          <Field label="Never read meetings whose title or folder contains">
+            <input aria-label="Never read meetings whose title or folder contains"
+              value={ignoring} onChange={(e) => setIgnoring(e.target.value)} />
+          </Field>
+          <button className="primary small" disabled={!ignoring.trim() || ignore.isPending}
+            onClick={() => ignore.mutate(ignoring.trim())}>Ignore</button>
+          <button className="small" onClick={() => setIgnoring(null)}>Cancel</button>
+        </div>
+      )}
 
       {(["participant", "action_item", "deliverable"] as const).map((kind) => (
         of(kind).length > 0 && (

@@ -38,6 +38,9 @@ class DriveWatch(TenantScopedModel):
     last_polled_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="")
     is_active = models.BooleanField(default=True)
+    #: Whether the starting exclusions ("AoA", "Academy of America") have been
+    #: put on this watch. Once, so a pattern the FF removes stays removed.
+    exclusions_seeded = models.BooleanField(default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "drive_watch"
@@ -45,6 +48,74 @@ class DriveWatch(TenantScopedModel):
             # FR-5 out-of-scope 6: one folder per tenant in Beta.
             models.UniqueConstraint(fields=["tenant"], name="one_drive_watch_per_tenant"),
         ]
+
+
+class DriveWatchFolder(TenantScopedModel):
+    """Another folder the same watch reads (owner, 2026-09-28).
+
+    **One cursor, several folders.** Drive's change feed is per account, not
+    per folder, so the watch keeps its single `page_token` and each folder here
+    only widens what the poll keeps. The watch's own `folder_id` stays the
+    first folder and reads as it always has — itself and one level down.
+
+    Added because Google moved Gemini notes: since about 2026-09-12 each
+    meeting's notes sit in `Google Meet/<meeting>/`, two levels below a folder
+    the one-level watcher could see. `depth=any` reads every level below, and
+    because that can be a lot of Drive, it reads **only Google Docs whose name
+    contains `name_pattern`** — the one setting that keeps a recursive watch
+    from becoming a crawl.
+    """
+
+    class Depth(models.TextChoices):
+        ONE = "one", "This folder and one level down"
+        ANY = "any", "This folder and every folder inside it"
+
+    watch = models.ForeignKey(DriveWatch, on_delete=models.CASCADE, related_name="folders")
+    folder_id = models.CharField(max_length=128)
+    folder_name = models.CharField(max_length=255, blank=True, default="")
+    depth = models.CharField(max_length=4, choices=Depth.choices, default=Depth.ANY)
+    #: Case-insensitive "name contains". Required for `any` depth.
+    name_pattern = models.CharField(max_length=255, blank=True, default="Notes by Gemini")
+    is_active = models.BooleanField(default=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "drive_watch_folder"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "folder_id"],
+                                    name="one_row_per_watched_folder"),
+        ]
+
+
+class DriveExclusion(TenantScopedModel):
+    """A title that is never read (owner, 2026-09-28).
+
+    A file whose name — or the name of any folder it sits in below the watched
+    one — contains this as a whole word or phrase, ignoring case, is recorded
+    as **skipped with the reason** and never fetched or sent to Claude. The
+    practice's other work (a school, a board seat) shares the same Google
+    account and the same Meet folder; this is what keeps it out.
+
+    On the watch, so one list covers every folder it reads.
+    """
+
+    class Source(models.TextChoices):
+        SEED = "seed", "Set up with the folder"
+        MANUAL = "manual", "Added on the folder card"
+        IGNORED = "ignored", "From \u201cIgnore this file\u201d on a proposal"
+
+    watch = models.ForeignKey(DriveWatch, on_delete=models.CASCADE,
+                              related_name="exclusions")
+    pattern = models.CharField(max_length=255)
+    source = models.CharField(max_length=8, choices=Source.choices,
+                              default=Source.MANUAL)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "drive_exclusion"
+        ordering = ["created_at"]
 
 
 class DriveBackfill(TenantScopedModel):
@@ -94,6 +165,13 @@ class DriveBackfill(TenantScopedModel):
     #: cursor is a timestamp rather than a page token because the walk is
     #: oldest-first over a fixed set, and a timestamp survives a restart.
     after_created_time = models.CharField(max_length=40, blank=True, default="")
+    #: Which folder this imports: one of the watch's extra folders, or none for
+    #: the watch's own folder.
+    folder = models.ForeignKey("meetings.DriveWatchFolder", null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="backfills")
+    #: Appended, never replacing the figures above: when the recorded tally
+    #: turns out to be wrong, what was true and why (owner, 2026-09-28).
+    correction_note = models.TextField(blank=True, default="")
     last_error = models.TextField(blank=True, default="")
     started_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
@@ -143,6 +221,12 @@ class MeetingSourceFile(TenantScopedModel):
     state = models.CharField(max_length=10, choices=State.choices,
                              default=State.RECORDED, db_index=True)
     skip_reason = models.TextField(blank=True, default="")
+    #: The exclusion that kept this from being read, when one did. Counted per
+    #: folder on the folder card.
+    excluded_by = models.CharField(max_length=255, blank=True, default="")
+    #: Which extra folder it came from; none for the watch's own folder.
+    folder = models.ForeignKey("meetings.DriveWatchFolder", null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="files")
     error = models.TextField(blank=True, default="")
     fetched_at = models.DateTimeField(null=True, blank=True)
     #: Kept so a re-parse needs no second trip to Drive, and so the review

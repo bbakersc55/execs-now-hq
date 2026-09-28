@@ -14,11 +14,15 @@ The discipline that makes three days of a closed laptop lose nothing:
 
 from __future__ import annotations
 
+import re
+
 from django.db import transaction
 from django.utils import timezone
 
 from apps.meetings import drive as drive_service
-from apps.meetings.models import DriveWatch, MeetingSourceFile
+from apps.meetings.models import (
+    DriveExclusion, DriveWatch, DriveWatchFolder, MeetingSourceFile,
+)
 
 
 #: How many files one poll will parse. See the note at its use.
@@ -69,21 +73,91 @@ def client_for(tenant):
     raise NotConnected("No Google account is connected for this practice.")
 
 
+# ------------------------------------------------ folders, patterns, exclusions
+
+#: What every watch starts with (owner, 2026-09-28): the owner's other work
+#: shares this Google account and its Meet folder, and must never be read here.
+SEED_EXCLUSIONS = ("AoA", "Academy of America")
+
+
+def folders_for(watch) -> list:
+    """The watch's extra folders. The watch's own folder is not among them."""
+    return list(DriveWatchFolder.objects.filter(watch=watch, is_active=True))
+
+
+def exclusions_for(watch) -> list[str]:
+    """The live exclusion patterns, putting the starting ones on first if this
+    watch has never had them. Once only: a pattern the FF removes stays gone."""
+    if not watch.exclusions_seeded:
+        with transaction.atomic():
+            locked = DriveWatch.objects.select_for_update().get(pk=watch.pk)
+            if not locked.exclusions_seeded:
+                for pattern in SEED_EXCLUSIONS:
+                    DriveExclusion.objects.create(
+                        tenant_id=locked.tenant_id, watch=locked, pattern=pattern,
+                        source=DriveExclusion.Source.SEED)
+                locked.exclusions_seeded = True
+                locked.save(update_fields=["exclusions_seeded", "updated_at"])
+        watch.exclusions_seeded = True
+    return list(DriveExclusion.objects.filter(watch=watch, deleted_at__isnull=True)
+                .values_list("pattern", flat=True))
+
+
+def excluded_by(drive_file, patterns) -> str:
+    """The first pattern the file's name, or a folder it sits in, contains as
+    a whole word or phrase, ignoring case; `""` when none does.
+
+    Whole words, because "AoA" as a bare substring is inside other words, and
+    an exclusion that quietly swallows a client's meeting is worse than one
+    that misses. Folder names come from `path_names`, which is filled for
+    folders watched at any depth; for the watch's own folder it is the file's
+    name alone.
+    """
+    titles = [drive_file.name or "", *(drive_file.path_names or [])]
+    for pattern in patterns:
+        words = (pattern or "").strip()
+        if not words:
+            continue
+        rx = re.compile(r"(?<!\w)" + re.escape(words) + r"(?!\w)", re.IGNORECASE)
+        if any(rx.search(title) for title in titles):
+            return words
+    return ""
+
+
+def name_matches(drive_file, folder) -> bool:
+    """Whether an extra folder's name pattern lets this file in. The watch's
+    own folder (`folder is None`) has no pattern and reads every readable file,
+    as it always has."""
+    if folder is None or not folder.name_pattern:
+        return True
+    return (drive_file.mime_type == drive_service.GOOGLE_DOC
+            and folder.name_pattern.lower() in (drive_file.name or "").lower())
+
+
 def describe_folder(tenant, folder_id, *, client=None):
     """What that folder is, read live (FR-5.1a). Raises rather than guessing."""
     return (client or client_for(tenant)).describe_folder(folder_id)
 
 
 @transaction.atomic
-def record(tenant, drive_file) -> tuple[MeetingSourceFile | None, bool]:
+def record(tenant, drive_file, *, folder=None,
+           excluded: str = "") -> tuple[MeetingSourceFile | None, bool]:
     """Write one file down. Returns `(row, created)`.
 
     Idempotent on `(tenant, file, version)`: the second poll of an unchanged
     file finds the row and changes nothing.
+
+    `excluded` is the exclusion pattern that matched, if one did: the file is
+    recorded as skipped with that reason, so it is on the record and counted,
+    and **nothing downstream ever fetches it or sends it to Claude** — parsing
+    only ever picks up `recorded` and `failed` rows.
     """
     if drive_file.trashed:
         return None, False
     reason = drive_service.skip_reason(drive_file.mime_type)
+    if excluded:
+        reason = (f"Not read: \u201c{excluded}\u201d is on the exclusion list, "
+                  "and this file's title or a folder it sits in matches it.")
     row, created = MeetingSourceFile.objects.get_or_create(
         tenant=tenant, drive_file_id=drive_file.file_id,
         drive_version=str(drive_file.version),
@@ -97,10 +171,21 @@ def record(tenant, drive_file) -> tuple[MeetingSourceFile | None, bool]:
             "state": (MeetingSourceFile.State.SKIPPED if reason
                       else MeetingSourceFile.State.RECORDED),
             "skip_reason": reason,
+            "excluded_by": excluded,
+            "folder": folder,
             "fetched_at": timezone.now(),
         },
     )
     return row, created
+
+
+def ids_below(folder_id, client) -> list[str]:
+    """One folder and its direct subfolders, the way `folder_ids_for` reads the
+    watch's own folder. Falls back to the folder alone."""
+    try:
+        return client.describe_folder(folder_id).folder_ids
+    except drive_service.DriveUnavailable:
+        return [folder_id]
 
 
 def folder_ids_for(watch, client) -> list[str]:
@@ -131,15 +216,30 @@ def poll(tenant, *, client=None, parse=True) -> dict:
     # The folder and one level below it, re-read each poll so a subfolder added
     # last week is watched this week without anyone reconnecting anything.
     folder_ids = folder_ids_for(watch, client)
+    # Extra folders: one-level ones widen the same list; any-depth ones are
+    # found by walking up from each changed file, so a new meeting folder
+    # Google made this morning needs no listing to be seen.
+    extra = folders_for(watch)
+    shallow = {fid: f for f in extra if f.depth == DriveWatchFolder.Depth.ONE
+               for fid in ids_below(f.folder_id, client)}
+    deep = {f.folder_id: f for f in extra if f.depth == DriveWatchFolder.Depth.ANY}
+    patterns = exclusions_for(watch)
 
     recorded, skipped, failed = [], [], []
     token = watch.page_token or client.start_token()
     safe_token = token
     try:
         while True:
-            page = client.changes(token, folder_ids=folder_ids)
+            page = client.changes(token, folder_ids=folder_ids + list(shallow),
+                                  deep_roots=list(deep))
             for drive_file in page.files:
-                row, created = record(tenant, drive_file)
+                folder = (deep.get(drive_file.root) if drive_file.root else
+                          next((shallow[p] for p in drive_file.parents or []
+                                if p in shallow), None))
+                if not name_matches(drive_file, folder):
+                    continue      # Not notes: a recording, a transcript, a chat.
+                row, created = record(tenant, drive_file, folder=folder,
+                                      excluded=excluded_by(drive_file, patterns))
                 if row is None:
                     continue
                 if row.state == MeetingSourceFile.State.SKIPPED:
@@ -214,7 +314,30 @@ def health(tenant) -> dict:
         "files_skipped": MeetingSourceFile.objects.filter(
             state=MeetingSourceFile.State.SKIPPED).count(),
         "backfill": _backfill_state(),
+        # Kept out by the exclusion list, per folder: the watch's own here,
+        # each extra folder on its own row.
+        "excluded": MeetingSourceFile.objects.filter(
+            folder__isnull=True).exclude(excluded_by="").count(),
+        "folders": [_folder_state(f) for f in folders_for(watch)] if watch else [],
+        "exclusions": _exclusion_state(watch) if watch else [],
     }
+
+
+def _folder_state(folder) -> dict:
+    files = MeetingSourceFile.objects.filter(folder=folder)
+    return {
+        "id": str(folder.pk), "folder_id": folder.folder_id,
+        "folder_name": folder.folder_name, "depth": folder.depth,
+        "name_pattern": folder.name_pattern,
+        "files_recorded": files.count(),
+        "excluded": files.exclude(excluded_by="").count(),
+    }
+
+
+def _exclusion_state(watch) -> list[dict]:
+    exclusions_for(watch)          # puts the starting ones on, the first time
+    return [{"id": str(row.pk), "pattern": row.pattern, "source": row.source}
+            for row in DriveExclusion.objects.filter(watch=watch, deleted_at__isnull=True)]
 
 
 def _backfill_state():

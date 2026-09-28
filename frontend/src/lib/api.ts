@@ -907,6 +907,23 @@ export interface DriveHealth {
   files_skipped: number;
   /** The folder's past: the decision made about it, or null if none yet. */
   backfill: Backfill | null;
+  /** Kept out of the first folder by the exclusion list. */
+  excluded: number;
+  /** Further folders the same watch reads (owner, 2026-09-28). */
+  folders: WatchFolder[];
+  /** Titles never read, in any watched folder. */
+  exclusions: { id: string; pattern: string; source: "seed" | "manual" | "ignored" }[];
+}
+
+export interface WatchFolder {
+  id: string;
+  folder_id: string;
+  folder_name: string;
+  /** "any": every folder below it, reading only Docs named like the pattern. */
+  depth: "one" | "any";
+  name_pattern: string;
+  files_recorded: number;
+  excluded: number;
 }
 
 /** GET /api/drive-watch/backfill/ — what the folder already holds.
@@ -922,6 +939,8 @@ export interface FolderPast {
   readable_total: number;
   /** What is left to read — already-imported notes are not counted twice. */
   outstanding: number;
+  /** Kept out by the exclusion list: recorded as skipped, never read, not costed. */
+  excluded?: number;
   oldest: string;
   newest: string;
   per_note_usd: string;
@@ -934,6 +953,7 @@ export interface FolderPast {
 export interface BackfillPlan {
   since: string;
   outstanding: number;
+  excluded?: number;
   per_note_usd: string;
   per_note_is_measured: boolean;
   estimate_usd: string;
@@ -954,6 +974,11 @@ export interface Backfill {
   estimated_cost_usd: string;
   cost_usd: string;
   last_error: string;
+  /** Which extra folder this imports; null for the first folder. */
+  folder?: string | null;
+  folder_name?: string;
+  /** Appended when the recorded figures proved wrong; they are never rewritten. */
+  correction_note?: string;
   started_at: string;
   finished_at: string | null;
 }

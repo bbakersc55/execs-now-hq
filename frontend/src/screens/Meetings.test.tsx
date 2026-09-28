@@ -424,12 +424,16 @@ describe("importing what the folder already holds", () => {
       "GET /api/drive-watch/": { ...HEALTH,
         backfill: aBackfill({ state: "done", running: false, done: 8,
                               planned: 8, cost_usd: "0.460000" }) },
+      // The folder's own last import comes with its survey (2026-09-28): with
+      // more than one folder, the latest import may be another folder's.
       "GET /api/drive-watch/backfill/": {
         folder: { ...PAST, outstanding: 159, estimate_usd: "9.14", minutes: 53 },
-        backfill: null },
+        backfill: aBackfill({ state: "done", running: false, done: 8,
+                              planned: 8, cost_usd: "0.460000" }) },
     });
 
-    expect(await screen.findByText("Older notes are still unread")).toBeInTheDocument();
+    expect(await screen.findByText("Older notes in Meet Recordings are still unread"))
+      .toBeInTheDocument();
     expect(screen.getByText(/159 readable notes/)).toBeInTheDocument();
     expect(screen.getByText(/You imported 8 last time/)).toBeInTheDocument();
     // The same three choices, and the third one counts what is left, not the
@@ -461,7 +465,8 @@ describe("importing what the folder already holds", () => {
       "GET /api/drive-watch/": { ...HEALTH,
         backfill: aBackfill({ state: "done", running: false, done: 167 }) },
       "GET /api/drive-watch/backfill/": {
-        folder: { ...PAST, outstanding: 0 }, backfill: null },
+        folder: { ...PAST, outstanding: 0 },
+        backfill: aBackfill({ state: "done", running: false, done: 167 }) },
     });
 
     expect(await screen.findByText(/Nothing older is left unread/)).toBeInTheDocument();
@@ -517,5 +522,99 @@ describe("our own side of the table", () => {
     // And the real participant is still a question.
     expect(screen.getByRole("combobox", { name: "Type for Dana Reyes" }))
       .toBeInTheDocument();
+  });
+});
+
+
+/**
+ * 2026-09-28 — Google Meet watched at any depth, and titles that are never
+ * read. The folder card shows what each folder kept out.
+ */
+describe("more than one folder, and what is never read", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const MEET = { id: "wf1", folder_id: "gmeet", folder_name: "Google Meet", depth: "any",
+                 name_pattern: "Notes by Gemini", files_recorded: 6, excluded: 1 };
+  const EXCLUSIONS = [{ id: "x1", pattern: "AoA", source: "seed" },
+                      { id: "x2", pattern: "Academy of America", source: "seed" }];
+  const WITH_MEET = { ...HEALTH, excluded: 0, folders: [MEET], exclusions: EXCLUSIONS };
+
+  it("shows each folder with its depth, pattern and excluded count", async () => {
+    show({ "GET /api/drive-watch/": WITH_MEET });
+
+    const card = (await screen.findByRole("heading", { name: "Google Meet" }))
+      .closest("section")!;
+    expect(card).toHaveTextContent("every folder inside it");
+    expect(card).toHaveTextContent("only Google Docs named like “Notes by Gemini”");
+    expect(card).toHaveTextContent("1 excluded");
+  });
+
+  it("lists what is never read, and the founder can add to it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({
+      "GET /api/drive-watch/": WITH_MEET,
+      "POST /api/drive-watch/exclusions/": { ...WITH_MEET,
+        exclusions: [...EXCLUSIONS, { id: "x3", pattern: "Board dinner", source: "manual" }] },
+    }, aMe({ role: "FF" }));
+
+    expect(await screen.findByText("AoA")).toBeInTheDocument();
+    expect(screen.getByText("Academy of America")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Exclude titles containing"), "Board dinner");
+    await user.click(screen.getByRole("button", { name: "Exclude" }));
+
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+      .toEqual({ pattern: "Board dinner" }));
+    expect(await screen.findByText("Board dinner")).toBeInTheDocument();
+  });
+
+  it("shows the list but no controls to anyone but the founder", async () => {
+    show({ "GET /api/drive-watch/": WITH_MEET }, aMe({ role: "VA" }));
+
+    expect(await screen.findByText("AoA")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Exclude titles containing")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Read AoA again/ })).not.toBeInTheDocument();
+  });
+
+  it("Ignore this file starts from the meeting's name and sends what was confirmed",
+    async () => {
+      const user = userEvent.setup();
+      const proposal = aProposal({ source_file: { ...aProposal().source_file,
+        name: "AoA Planning Session - 2026/09/24 17:35 MDT - Notes by Gemini" } });
+      const fetchMock = show({
+        [`GET /api/meeting-proposals/${ID}/`]: proposal,
+        "GET /api/meeting-proposals/": [proposal],
+        [`POST /api/meeting-proposals/${ID}/ignore/`]: proposal,
+      }, aMe({ role: "FF" }));
+
+      await user.click(await screen.findByRole("button", { name: "Review" }));
+      await user.click(await screen.findByRole("button", { name: /Ignore this file/ }));
+      const pattern = screen.getByLabelText(/Never read meetings whose title/);
+      expect(pattern).toHaveValue("AoA Planning Session");
+      await user.clear(pattern);
+      await user.type(pattern, "AoA");
+      await user.click(screen.getByRole("button", { name: "Ignore" }));
+
+      await waitFor(() => expect(fetchMock.calls.find((c) =>
+        c.url.endsWith("/ignore/"))?.body).toEqual({ pattern: "AoA" }));
+    });
+
+  it("offers Ignore this file only to the founder", async () => {
+    const user = userEvent.setup();
+    show({}, aMe({ role: "VA" }));
+
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await screen.findByLabelText("Meeting summary");
+    expect(screen.queryByRole("button", { name: /Ignore this file/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("meetingNameOf", () => {
+  it("takes the meeting's own name from a Gemini file name", async () => {
+    const { meetingNameOf } = await import("./Meetings");
+    expect(meetingNameOf(
+      "30 Minutes w/ Bryan Baker (Rick Turner) - 2026/09/28 10:59 MDT - Notes by Gemini"))
+      .toBe("30 Minutes w/ Bryan Baker (Rick Turner)");
+    expect(meetingNameOf("Board dinner - Notes by Gemini")).toBe("Board dinner");
+    expect(meetingNameOf("Plain notes")).toBe("Plain notes");
   });
 });
