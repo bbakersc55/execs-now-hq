@@ -27,6 +27,12 @@ from apps.work.models import Digest, Goal, GoalResolution
 #: the week goes on and tells you less the longer you look at it.
 WINDOW_DAYS = 7
 
+#: The pipeline panel groups names into "This week" and "Last week", so it
+#: reads two windows back. The tile still counts one: it says "in the last week".
+PIPELINE_DAYS = 14
+#: Per pipeline, so a busy referral month cannot push every prospect off.
+PIPELINE_ROWS = 12
+
 OPEN_STATUSES = [Task.Status.NOT_STARTED, Task.Status.IN_PROGRESS,
                  Task.Status.BLOCKED, Task.Status.WAITING_ON_CLIENT]
 
@@ -41,7 +47,8 @@ def for_request(request) -> dict:
     due = tasks.filter(due_date__isnull=False, due_date__lte=until)
     goals = _open_goals(request)
     digests = _digests_for(request).filter(state=Digest.State.PENDING)
-    moves = _stage_changes_for(request).filter(created_at__gte=since)
+    changes = _stage_changes_for(request)
+    moves = changes.filter(created_at__gte=since)
 
     return {
         "window_days": WINDOW_DAYS,
@@ -57,8 +64,8 @@ def for_request(request) -> dict:
         "due_by_day": _by_day(due, today, until),
         "digests": [_digest_row(d) for d in
                     digests.select_related("contact").order_by("period_end")[:8]],
-        "pipeline": [_move_row(m) for m in moves.select_related(
-            "contact", "from_stage", "to_stage", "pipeline")[:8]],
+        "pipeline": _pipeline_rows(changes.filter(
+            created_at__gte=timezone.now() - timedelta(days=PIPELINE_DAYS))),
         "clients": _clients(request, tasks, goals),
     }
 
@@ -136,6 +143,20 @@ def _digest_row(digest) -> dict:
         "ai_prose": digest.is_ai_generated,
         "stale": digest.is_stale,
     }
+
+
+def _pipeline_rows(recent) -> list[dict]:
+    """The newest `PIPELINE_ROWS` changes **in each pipeline**, newest first.
+
+    One cap across all pipelines let whichever was busiest crowd the other
+    column out of the panel entirely.
+    """
+    rows = []
+    for pipeline_id in recent.order_by().values_list("pipeline_id", flat=True).distinct():
+        rows.extend(recent.filter(pipeline_id=pipeline_id).select_related(
+            "contact", "from_stage", "to_stage", "pipeline")[:PIPELINE_ROWS])
+    rows.sort(key=lambda change: change.created_at, reverse=True)
+    return [_move_row(change) for change in rows]
 
 
 def _move_row(change) -> dict:

@@ -95,28 +95,59 @@ def test_a_goal_resolved_is_not_open_and_a_resumed_one_is_again(
     assert api.as_(ff).get("/api/dashboard/").json()["tiles"]["goals_open"] == 1
 
 
+def _move(tenant, contact, pipeline, days_ago=0):
+    from apps.crm.models import PipelineStage, StageChange
+
+    stages = list(PipelineStage.objects.filter(pipeline=pipeline)[:2])
+    change = StageChange.objects.create(
+        tenant=tenant, contact=contact, pipeline=pipeline,
+        from_stage=stages[0], to_stage=stages[1])
+    if days_ago:
+        StageChange.objects.filter(pk=change.pk).update(
+            created_at=timezone.now() - timedelta(days=days_ago))
+    return change
+
+
 @pytest.mark.django_db
-def test_pipeline_movement_counts_only_the_last_week(seeded_tenant, ff, api, board):
-    from apps.crm.models import Pipeline, PipelineStage, StageChange
+def test_pipeline_lists_two_weeks_but_the_tile_counts_one(seeded_tenant, ff, api, board):
+    """The panel groups names into "This week" and "Last week", so it reads
+    fourteen days back; the tile says "in the last week" and counts seven."""
+    from apps.crm.models import Pipeline, PipelineStage
 
     contact = ContactFactory(tenant=seeded_tenant, first_name="Dana",
                              last_name="Reyes")
     pipeline = Pipeline.objects.first()
-    stages = list(PipelineStage.objects.filter(pipeline=pipeline)[:2])
-    recent = StageChange.objects.create(
-        tenant=seeded_tenant, contact=contact, pipeline=pipeline,
-        from_stage=stages[0], to_stage=stages[1])
-    old = StageChange.objects.create(
-        tenant=seeded_tenant, contact=contact, pipeline=pipeline,
-        from_stage=stages[0], to_stage=stages[1])
-    StageChange.objects.filter(pk=old.pk).update(
-        created_at=timezone.now() - timedelta(days=30))
+    recent = _move(seeded_tenant, contact, pipeline)
+    last_week = _move(seeded_tenant, contact, pipeline, days_ago=10)
+    _move(seeded_tenant, contact, pipeline, days_ago=30)
 
     body = api.as_(ff).get("/api/dashboard/").json()
 
     assert body["tiles"]["pipeline_moves"] == 1
-    assert [row["id"] for row in body["pipeline"]] == [str(recent.pk)]
-    assert body["pipeline"][0]["to"] == stages[1].label
+    assert [row["id"] for row in body["pipeline"]] == [str(recent.pk), str(last_week.pk)]
+    assert body["pipeline"][0]["to"] == PipelineStage.objects.filter(
+        pipeline=pipeline)[1].label
+
+
+@pytest.mark.django_db
+def test_pipeline_rows_are_capped_per_pipeline_not_in_total(
+    seeded_tenant, ff, api, board
+):
+    """One cap across both let a busy pipeline push the other off the panel."""
+    from apps.crm.models import Pipeline
+
+    sales = Pipeline.objects.get(kind=Pipeline.Kind.SALES)
+    referral = Pipeline.objects.get(kind=Pipeline.Kind.REFERRAL)
+    for n in range(15):
+        _move(seeded_tenant, ContactFactory(tenant=seeded_tenant), sales, days_ago=n % 13)
+    partner = _move(seeded_tenant, ContactFactory(tenant=seeded_tenant), referral,
+                    days_ago=12)
+
+    rows = api.as_(ff).get("/api/dashboard/").json()["pipeline"]
+
+    assert len([r for r in rows if r["pipeline"] == sales.name]) == 12
+    assert [r["id"] for r in rows if r["pipeline"] == referral.name] == [str(partner.pk)]
+    assert [r["at"] for r in rows] == sorted((r["at"] for r in rows), reverse=True)
 
 
 @pytest.mark.django_db
