@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { Check, Pencil, Search, SkipForward } from "lucide-react";
+
 import { RichText } from "../components/RichText";
-import { PageHead } from "../components/shell";
+import { FilterBar, PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, countdown } from "../components/ui";
 import { Me, api } from "../lib/api";
 
@@ -92,6 +94,13 @@ export function SendingQueue({ me }: { me: Me }) {
              digest approved here goes at its send window. The Outbox is the send log." />
       {note && <Banner kind="info">{note}</Banner>}
 
+      <FilterBar>
+        <span className="search">
+          <Search size={16} strokeWidth={1.75} />
+          <input aria-label="Filter by recipient" placeholder="Recipient"
+            value={recipient} onChange={(e) => { setRecipient(e.target.value); setPicked([]); }} />
+        </span>
+      </FilterBar>
       <div className="queue-filters">
         <div className="tabs" role="tablist" aria-label="Category">
           {CATEGORIES.map(([value, label]) => (
@@ -102,8 +111,6 @@ export function SendingQueue({ me }: { me: Me }) {
             </button>
           ))}
         </div>
-        <input aria-label="Filter by recipient" placeholder="Recipient"
-          value={recipient} onChange={(e) => { setRecipient(e.target.value); setPicked([]); }} />
       </div>
 
       <div className="queue">
@@ -118,14 +125,14 @@ export function SendingQueue({ me }: { me: Me }) {
             </span>
             <span className="inline">
               {mayApprove && (
-                <button className="primary small" disabled={!inView.length || act.isPending}
+                <button className="small" disabled={!inView.length || act.isPending}
                   onClick={() => act.mutate({ verb: "approve", keys: inView })}>
-                  Approve selected
+                  <Check size={16} /> Approve selected
                 </button>
               )}
               <button className="small" disabled={!inView.length || act.isPending}
                 onClick={() => act.mutate({ verb: "skip", keys: inView })}>
-                Skip selected
+                <SkipForward size={16} /> Skip selected
               </button>
             </span>
           </div>
@@ -185,14 +192,16 @@ function Detail({ item, mayApprove, busy, onAct, onSaved }: {
       actions={
         <span className="inline">
           {mayApprove && (
-            <button className="primary small" disabled={busy} onClick={() => onAct("approve")}>
-              Approve
+            <button className="primary" disabled={busy} onClick={() => onAct("approve")}>
+              <Check size={16} /> Approve
             </button>
           )}
-          <button className="small" disabled={busy} onClick={() => setEditing(!editing)}>
-            {editing ? "Close editor" : "Edit"}
+          <button disabled={busy} onClick={() => setEditing(!editing)}>
+            <Pencil size={16} /> {editing ? "Close editor" : "Edit"}
           </button>
-          <button className="small" disabled={busy} onClick={() => onAct("skip")}>Skip</button>
+          <button disabled={busy} onClick={() => onAct("skip")}>
+            <SkipForward size={16} /> Skip
+          </button>
         </span>
       }>
       <p className="small muted">

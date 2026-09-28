@@ -843,7 +843,7 @@ function DismissPanel({ proposal, onDone, onCancel, setNote }: {
       </Field>
 
       {reason === "vendor_pitch" && people.length > 0 && (
-        <div className="card" style={{ marginBottom: "var(--s3)" }}>
+        <div className="subpanel">
           <h4 style={{ marginTop: 0 }}>Record as vendor and dismiss the rest</h4>
           <div className="row">
             <Field label="Who is the vendor">

@@ -256,9 +256,13 @@ export function ContactDetail({ me }: { me: Me }) {
                   />
                 </Field>
                 <p className="muted small">
-                  Onboarded {when(c.referral_onboarded_at)} · next touch {when(c.referral_next_touch_at)}
+                  Onboarded {when(c.referral_onboarded_at)} ·{" "}
+                  {c.referral_enrolled
+                    ? <>next touch {when(c.referral_next_touch_at)}</>
+                    : "not enrolled in touches, so none are drafted"}
                 </p>
-                <button className="primary" disabled={draftTouch.isPending}
+                <button disabled={draftTouch.isPending || !c.referral_enrolled}
+                  title={c.referral_enrolled ? undefined : "Enrol them in referral touches first"}
                   onClick={() => draftTouch.mutate()}>
                   {draftTouch.isPending ? "Drafting…" : "Draft touch now"}
                 </button>

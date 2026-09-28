@@ -47,6 +47,9 @@ describe("the campaign composer", () => {
     const fetchMock = show({ "POST /api/campaigns/k1/queue/": { queued_count: 1, skipped: [] } });
     expect(await screen.findByLabelText("Include Left Early")).toBeDisabled();
     expect(screen.getByText("unsubscribed from marketing emails")).toBeInTheDocument();
+    // Nobody is chosen until someone chooses.
+    expect(screen.getByRole("button", { name: /Enrol and queue/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Select all 2" }));
     await user.click(screen.getByLabelText("Include Priya Shah"));
     await user.click(screen.getByRole("button", { name: "Enrol and queue 1" }));
 

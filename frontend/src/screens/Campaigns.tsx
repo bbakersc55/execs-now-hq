@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { Plus, Save, Search, Send, UserPlus } from "lucide-react";
+
 import { RichText } from "../components/RichText";
-import { PageHead } from "../components/shell";
+import { Chip, FilterBar, PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import {
   Campaign, CampaignCandidate, ContactType, MERGE_FIELDS, Pipeline, api,
@@ -17,12 +19,11 @@ import {
 export function Campaigns() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [name, setName] = useState("");
   const list = useQuery<Campaign[]>({
     queryKey: ["campaigns"], queryFn: () => api.get<Campaign[]>("/api/campaigns/"),
   });
   const create = useMutation({
-    mutationFn: () => api.post<Campaign>("/api/campaigns/", { name }),
+    mutationFn: () => api.post<Campaign>("/api/campaigns/", { name: "Untitled campaign" }),
     onSuccess: (made) => {
       qc.invalidateQueries({ queryKey: ["campaigns"] });
       navigate(`/campaigns/${made.id}`);
@@ -34,21 +35,14 @@ export function Campaigns() {
     <>
       <PageHead title="Campaigns"
         sub="One marketing email, written once, queued for each person you choose. Every copy
-             waits in the sending queue for approval." />
-      <Card title="New campaign">
-        <form className="row" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-          <Field label="Name (only you see this)">
-            <input aria-label="Campaign name" value={name} placeholder="Autumn check-in"
-              onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <div className="field-action">
-            <button className="primary" type="submit"
-              disabled={!name.trim() || create.isPending}>Create</button>
-          </div>
-        </form>
-        {create.isError && <Banner kind="bad">{(create.error as Error).message}</Banner>}
-      </Card>
-      <Card title="Campaigns">
+             waits in the sending queue for approval."
+        action={
+          <button className="primary" disabled={create.isPending} onClick={() => create.mutate()}>
+            <Plus size={16} /> New campaign
+          </button>
+        } />
+      {create.isError && <Banner kind="bad">{(create.error as Error).message}</Banner>}
+      <Card>
         {rows.length === 0 ? <Empty>No campaigns yet.</Empty> : (
           <table>
             <thead><tr><th>Name</th><th>Subject</th><th className="right">Recipients</th>
@@ -89,6 +83,22 @@ export function CampaignDetail() {
   });
   const [draft, setDraft] = useState<Partial<Campaign>>({});
   const [note, setNote] = useState("");
+  // The recipients' choice lives here so "Enrol and queue" can be the page's
+  // one primary action, top right, as the brief puts it.
+  const [chosen, setChosen] = useState<string[]>([]);
+  const queue = useMutation({
+    mutationFn: () => api.post<{ queued_count: number; skipped: { name: string; detail: string }[] }>(
+      `${path}queue/`, { ids: chosen }),
+    onSuccess: (r) => {
+      const skipped = r.skipped.length
+        ? ` ${r.skipped.length} skipped: ${r.skipped.map((s) => `${s.name} (${s.detail})`).join(", ")}.`
+        : "";
+      setNote(`${r.queued_count} queued in the sending queue, each waiting for approval.${skipped}`);
+      qc.invalidateQueries({ queryKey: ["campaign", id] });
+      qc.invalidateQueries({ queryKey: ["campaign-candidates", id] });
+    },
+    onError: (e: Error) => setNote(e.message),
+  });
   const c = campaign.data ? { ...campaign.data, ...draft } : null;
   const dirty = Object.keys(draft).length > 0;
 
@@ -116,11 +126,17 @@ export function CampaignDetail() {
         sub={`Created by ${c.created_by_name || "someone"} · ${when(c.created_at)}`}
         action={
           <span className="inline">
+            <button disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+              <Save size={16} /> {save.isPending ? "Saving…" : dirty ? "Save" : "Saved"}
+            </button>
             <button disabled={testSend.isPending || dirty}
               title={dirty ? "Save first" : undefined}
-              onClick={() => testSend.mutate()}>Send me a test</button>
-            <button className="primary" disabled={!dirty || save.isPending}
-              onClick={() => save.mutate()}>{save.isPending ? "Saving…" : "Save"}</button>
+              onClick={() => testSend.mutate()}><Send size={16} /> Send me a test</button>
+            <button className="primary" disabled={!chosen.length || queue.isPending || dirty}
+              title={dirty ? "Save the email first" : undefined}
+              onClick={() => queue.mutate()}>
+              <UserPlus size={16} /> Enrol and queue {chosen.length || ""}
+            </button>
           </span>
         } />
       {note && <Banner kind="info">{note}</Banner>}
@@ -193,7 +209,7 @@ export function CampaignDetail() {
         <Preview campaign={c} />
       </div>
 
-      <Recipients campaign={c} dirty={dirty} setNote={setNote} />
+      <Recipients campaign={c} onChosen={setChosen} />
     </>
   );
 }
@@ -229,12 +245,13 @@ function Preview({ campaign }: { campaign: Campaign }) {
   );
 }
 
-function Recipients({ campaign, dirty, setNote }: {
-  campaign: Campaign; dirty: boolean; setNote: (text: string) => void;
+function Recipients({ campaign, onChosen }: {
+  campaign: Campaign; onChosen: (ids: string[]) => void;
 }) {
-  const qc = useQueryClient();
   const [filters, setFilters] = useState({ type: "", stage: "", tag: "", enrolled: "" });
-  const [dropped, setDropped] = useState<string[]>([]);
+  // Nobody is chosen until someone chooses: an empty filter matches every
+  // contact, and one click should not queue a hundred emails by default.
+  const [picked, setPicked] = useState<string[]>([]);
   const types = useQuery<ContactType[]>({
     queryKey: ["contact-types"], queryFn: () => api.get<ContactType[]>("/api/contact-types/"),
   });
@@ -249,77 +266,70 @@ function Recipients({ campaign, dirty, setNote }: {
   });
   const rows = found.data ?? [];
   const sendable = rows.filter((r) => !r.unsendable);
-  const chosen = sendable.filter((r) => !dropped.includes(r.id));
-  const queue = useMutation({
-    mutationFn: () => api.post<{ queued_count: number; skipped: { name: string; detail: string }[] }>(
-      `/api/campaigns/${campaign.id}/queue/`, { ids: chosen.map((r) => r.id) }),
-    onSuccess: (r) => {
-      const skipped = r.skipped.length
-        ? ` ${r.skipped.length} skipped: ${r.skipped.map((s) => `${s.name} (${s.detail})`).join(", ")}.`
-        : "";
-      setNote(`${r.queued_count} queued in the sending queue, each waiting for approval.${skipped}`);
-      setDropped([]);
-      qc.invalidateQueries({ queryKey: ["campaign", campaign.id] });
-      qc.invalidateQueries({ queryKey: ["campaign-candidates", campaign.id] });
-    },
-    onError: (e: Error) => setNote(e.message),
-  });
+  const chosen = sendable.filter((r) => picked.includes(r.id));
+  const chosenKey = chosen.map((r) => r.id).join(",");
+  useEffect(() => { onChosen(chosen.map((r) => r.id)); }, [chosenKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const setFilter = (key: keyof typeof filters, value: string) => {
-    setFilters({ ...filters, [key]: value }); setDropped([]);
+    setFilters({ ...filters, [key]: value }); setPicked([]);
   };
+  const stages = (pipelines.data ?? []).flatMap((p) => p.stages.map((s) => ({ ...s, pipeline: p.name })));
+  const typeLabel = (types.data ?? []).find((t) => t.code === filters.type)?.label;
+  const stageLabel = stages.find((s) => s.id === filters.stage);
+  const ENROLMENT: Record<string, string> = {
+    referral_touches: "On referral touches", digest: "On a progress digest",
+    none: "Not enrolled in anything",
+  };
+  const any = Object.values(filters).some(Boolean);
 
   return (
     <Card title="Recipients">
-      <div className="row">
-        <Field label="Type">
-          <select aria-label="Filter by type" value={filters.type}
-            onChange={(e) => setFilter("type", e.target.value)}>
-            <option value="">Any</option>
-            {(types.data ?? []).map((t) => <option key={t.id} value={t.code}>{t.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Pipeline stage">
-          <select aria-label="Filter by stage" value={filters.stage}
-            onChange={(e) => setFilter("stage", e.target.value)}>
-            <option value="">Any</option>
-            {(pipelines.data ?? []).map((p) => (
-              <optgroup key={p.id} label={p.name}>
-                {p.stages.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </Field>
-        <Field label="Tag">
-          <input aria-label="Filter by tag" value={filters.tag}
-            onChange={(e) => setFilter("tag", e.target.value.trim())} />
-        </Field>
-        <Field label="Enrolment">
-          <select aria-label="Filter by enrolment" value={filters.enrolled}
-            onChange={(e) => setFilter("enrolled", e.target.value)}>
-            <option value="">Any</option>
-            <option value="referral_touches">On referral touches</option>
-            <option value="digest">On a progress digest</option>
-            <option value="none">Not enrolled in anything</option>
-          </select>
-        </Field>
-      </div>
-
-      <div className="spread" style={{ margin: "var(--s3) 0" }}>
-        <span className="small">
-          <strong>{chosen.length}</strong> of {sendable.length} chosen
-          {rows.length > sendable.length && <> · {rows.length - sendable.length} cannot be sent to</>}
-          {" · "}
-          <button className="link" onClick={() => setDropped([])}>Select all</button>
-          {" · "}
-          <button className="link" onClick={() => setDropped(sendable.map((r) => r.id))}>
-            Select none</button>
+      {/* The brief's filter bar: compact controls, then a chip for each filter
+          that is set, each clearing on its own. */}
+      <FilterBar onClearAll={any ? () => { setFilters({ type: "", stage: "", tag: "", enrolled: "" });
+                                           setPicked([]); } : undefined}>
+        <span className="search">
+          <Search size={16} strokeWidth={1.75} />
+          <input aria-label="Filter by tag" placeholder="Tag"
+            value={filters.tag} onChange={(e) => setFilter("tag", e.target.value.trim())} />
         </span>
-        <button className="primary" disabled={!chosen.length || queue.isPending || dirty}
-          title={dirty ? "Save the email first" : undefined}
-          onClick={() => queue.mutate()}>
-          Enrol and queue {chosen.length || ""}
-        </button>
-      </div>
+        <select aria-label="Filter by type" value={filters.type} className="filter-select"
+          onChange={(e) => setFilter("type", e.target.value)}>
+          <option value="">Any type</option>
+          {(types.data ?? []).map((t) => <option key={t.id} value={t.code}>{t.label}</option>)}
+        </select>
+        <select aria-label="Filter by stage" value={filters.stage} className="filter-select"
+          onChange={(e) => setFilter("stage", e.target.value)}>
+          <option value="">Any stage</option>
+          {(pipelines.data ?? []).map((p) => (
+            <optgroup key={p.id} label={p.name}>
+              {p.stages.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <select aria-label="Filter by enrolment" value={filters.enrolled} className="filter-select"
+          onChange={(e) => setFilter("enrolled", e.target.value)}>
+          <option value="">Any enrolment</option>
+          {Object.entries(ENROLMENT).map(([value, label]) =>
+            <option key={value} value={value}>{label}</option>)}
+        </select>
+        {filters.type && <Chip label={`Type: ${typeLabel ?? filters.type}`}
+          onClear={() => setFilter("type", "")} />}
+        {filters.stage && <Chip label={`Stage: ${stageLabel ? `${stageLabel.pipeline} · ${stageLabel.label}` : "—"}`}
+          onClear={() => setFilter("stage", "")} />}
+        {filters.tag && <Chip label={`Tag: ${filters.tag}`} onClear={() => setFilter("tag", "")} />}
+        {filters.enrolled && <Chip label={ENROLMENT[filters.enrolled]}
+          onClear={() => setFilter("enrolled", "")} />}
+      </FilterBar>
+
+      <p className="small recipients-count">
+        <strong className="tabular">{chosen.length}</strong> of {sendable.length} chosen
+        {rows.length > sendable.length && <> · {rows.length - sendable.length} cannot be sent to</>}
+        {" · "}
+        <button className="link" onClick={() => setPicked(sendable.map((r) => r.id))}>
+          Select all {sendable.length}</button>
+        {" · "}
+        <button className="link" onClick={() => setPicked([])}>Select none</button>
+      </p>
 
       {rows.length === 0 ? <Empty>No one matches these filters.</Empty> : (
         <table>
@@ -330,9 +340,9 @@ function Recipients({ campaign, dirty, setNote }: {
                 <td>
                   <input type="checkbox" aria-label={`Include ${r.name}`}
                     disabled={!!r.unsendable}
-                    checked={!r.unsendable && !dropped.includes(r.id)}
-                    onChange={(e) => setDropped(e.target.checked
-                      ? dropped.filter((x) => x !== r.id) : [...dropped, r.id])} />
+                    checked={!r.unsendable && picked.includes(r.id)}
+                    onChange={(e) => setPicked(e.target.checked
+                      ? [...picked, r.id] : picked.filter((x) => x !== r.id))} />
                 </td>
                 <td>{r.name}</td>
                 <td className="small">{r.email || "—"}</td>
