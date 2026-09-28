@@ -1765,3 +1765,172 @@ def test_client_users_never_see_call_notes(role, seeded_tenant, api, in_tenant_a
 
     for query in (f"?contact={contact.pk}", f"?company={company.pk}"):
         assert api.as_(membership).get(f"/api/meetings/{query}").status_code == 403
+
+
+# ------------------------------------------- 2026-09-28: nothing is read twice
+#
+# The "since 8/1" import re-read eleven September notes already imported on
+# 9/22: each had come back from Drive one version up with its text unchanged.
+# $1.54 and eleven duplicate proposals. The same day, one new note was read by
+# the backfill and the poll in the same minute, and overlapping backfill ticks
+# saved over each other's counters (14 notes and $1.65 reported; 29 calls and
+# $3.82 in the AI log).
+
+def _parse_calls():
+    from apps.tenancy.models import AiCall
+
+    return AiCall.objects.filter(purpose=parsing.PARSE_PURPOSE).count()
+
+
+def _run_all(api, ff_user, tenant, client):
+    started = api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    assert started.status_code == 201, started.data
+    while backfill.step(tenant, client=client, limit=10)["running"]:
+        pass
+    return started.data
+
+
+@pytest.mark.django_db
+def test_a_second_import_skips_notes_already_in_at_an_older_version(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    _run_all(api, ff_user, seeded_tenant, folder_of_notes)
+    calls, proposals = _parse_calls(), MeetingProposal.objects.count()
+    assert calls == 5
+
+    # Drive moves every note one version up without changing a word.
+    for note in folder_of_notes.listing:
+        note.version = "2"
+    second = _run_all(api, ff_user, seeded_tenant, folder_of_notes)
+
+    assert second["planned"] == 0                     # the count said so ...
+    assert _parse_calls() == calls                    # ... and the import agreed
+    assert MeetingProposal.objects.count() == proposals
+    assert not MeetingSourceFile.objects.filter(drive_version="2").exists()
+
+
+def _two_versions(fake_client, *, second_text):
+    """Version 1 on the first poll, version 2 on the next."""
+    fake_client.texts = {"n1": NOTES}
+    fake_client.pages = (one_page([a_file("n1", version="1")])
+                         + one_page([a_file("n1", version="2")], token="after"))
+
+    def texts_for_v2():
+        fake_client.texts = {"n1": second_text}
+    return texts_for_v2
+
+
+@pytest.mark.django_db
+def test_a_new_version_with_the_same_text_is_not_read_again(
+    seeded_tenant, watch, fake_client, fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    to_v2 = _two_versions(fake_client, second_text=NOTES)
+    ingest.poll(seeded_tenant, client=fake_client)
+    assert _parse_calls() == 1
+    to_v2()
+
+    report = ingest.poll(seeded_tenant, client=fake_client)
+
+    assert _parse_calls() == 1
+    assert MeetingProposal.objects.count() == 1
+    v2 = MeetingSourceFile.objects.get(drive_file_id="n1", drive_version="2")
+    assert v2.state == MeetingSourceFile.State.SKIPPED
+    assert "Unchanged since version 1" in v2.skip_reason
+    # Skipped, and said so — not a failure waiting to be retried.
+    assert v2 in report["skipped"] and report["failed"] == []
+
+
+@pytest.mark.django_db
+def test_a_new_version_with_different_text_is_still_read(
+    seeded_tenant, watch, fake_client, fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    to_v2 = _two_versions(fake_client, second_text=NOTES + "\nTom will call Dana on Monday.")
+    ingest.poll(seeded_tenant, client=fake_client)
+    to_v2()
+
+    ingest.poll(seeded_tenant, client=fake_client)
+
+    assert _parse_calls() == 2
+    assert MeetingSourceFile.objects.get(drive_version="2").state \
+        == MeetingSourceFile.State.PARSED
+
+
+@pytest.mark.django_db
+def test_asking_for_a_re_read_still_re_reads(seeded_tenant, watch, fake_client,
+                                             fake_claude, in_tenant_a):
+    """The guard is against the machine repeating itself, not the person."""
+    fake_claude.reply = PARSED
+    fake_client.texts = {"n1": NOTES}
+    fake_client.pages = one_page([a_file("n1")])
+    ingest.poll(seeded_tenant, client=fake_client)
+
+    assert parsing.reparse(MeetingProposal.objects.get()) is not None
+    assert _parse_calls() == 2
+
+
+@pytest.mark.django_db
+def test_the_poll_leaves_a_note_the_backfill_has_claimed(
+    seeded_tenant, watch, fake_client, fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    fake_client.texts = {"n1": NOTES}
+    fake_client.pages = one_page([a_file("n1")])
+    ingest.poll(seeded_tenant, client=fake_client, parse=False)
+    row = MeetingSourceFile.objects.get()
+
+    assert parsing.claim(row) is True                 # the backfill takes it
+    assert parsing.claim(row) is False                # nobody else can
+
+    ingest.poll(seeded_tenant, client=fake_client)
+    assert _parse_calls() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_tick_that_finds_another_running_does_nothing(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, in_tenant_a
+):
+    from django.db import connections
+
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    # Another worker's tick, holding the lock from its own connection.
+    other = connections.create_connection("default")
+    try:
+        with other.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_lock(hashtext(%s))",
+                           [f"meetings.backfill:{seeded_tenant.pk}"])
+        report = backfill.step(seeded_tenant, client=folder_of_notes, limit=10)
+    finally:
+        other.close()
+
+    assert report == {"running": True, "busy": True}
+    assert _parse_calls() == 0
+
+
+@pytest.mark.django_db
+def test_stop_pressed_during_a_tick_stays_pressed_and_the_counts_add_up(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch,
+    fake_claude, monkeypatch, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    api.as_(ff_user).post("/api/drive-watch/backfill/", {"scope": "all"})
+    real_parse = parsing.parse
+
+    def parse_and_stop(row, **kwargs):
+        # The fractional presses Stop while this tick is reading.
+        DriveBackfill.objects.update(state=DriveBackfill.State.CANCELLED)
+        return real_parse(row, **kwargs)
+    monkeypatch.setattr(parsing, "parse", parse_and_stop)
+
+    backfill.step(seeded_tenant, client=folder_of_notes, limit=2)
+
+    row = DriveBackfill.objects.get()
+    assert row.state == DriveBackfill.State.CANCELLED
+    assert row.done == 2 == _parse_calls()
+    from apps.tenancy.models import AiCall
+    assert row.cost_usd == sum(c.cost_usd for c in AiCall.objects.all())

@@ -216,11 +216,49 @@ def _owner_contact_id(tenant, owner_text: str):
     return named[0]["contact_id"] if len(named) == 1 else None
 
 
-def parse(source_file, *, client=None, trigger="auto") -> MeetingProposal | None:
+def claim(source_file) -> bool:
+    """Take a recorded file for parsing, or learn that someone else has.
+
+    The poll and the backfill both parse, on different schedules, and a file
+    the backfill has just recorded is `recorded` — so the poll would read it
+    too. On 2026-09-28 that is what happened to one note: two Claude calls in
+    the same minute and two proposals in the queue. One conditional UPDATE
+    decides which of them reads it.
+    """
+    taken = MeetingSourceFile.objects.filter(
+        pk=source_file.pk,
+        state__in=[MeetingSourceFile.State.RECORDED, MeetingSourceFile.State.FAILED],
+    ).update(state=MeetingSourceFile.State.PARSING, updated_at=timezone.now())
+    if taken:
+        source_file.state = MeetingSourceFile.State.PARSING
+    return bool(taken)
+
+
+def already_read(source_file, text: str) -> MeetingSourceFile | None:
+    """An earlier version of this same file, with this same text, already read.
+
+    Drive raises a file's version for changes that are not to its words —
+    sharing, moving, a rename — so a new version is not a new note. On
+    2026-09-28 eleven September notes came back one version up with their text
+    unchanged, and each was read again: $1.54 and eleven duplicate proposals.
+    """
+    return (MeetingSourceFile.objects
+            .filter(drive_file_id=source_file.drive_file_id, text=text,
+                    state=MeetingSourceFile.State.PARSED)
+            .exclude(pk=source_file.pk).order_by("created_at").first())
+
+
+def parse(source_file, *, client=None, trigger="auto",
+          skip_unchanged=True) -> MeetingProposal | None:
     """Read one file. Returns the proposal, or None and a recorded failure.
 
     **A failure leaves the file recorded and retryable** and does not touch the
     cursor (FR-5.5, AC-5.10).
+
+    A version whose text an earlier version already had is **not** read again:
+    it is marked skipped with the reason, and None comes back with the file in
+    state `skipped`, which callers count as skipped rather than failed. Only a
+    person asking for a re-read (`reparse`) passes `skip_unchanged=False`.
     """
     from apps.tenancy import claude
 
@@ -229,6 +267,15 @@ def parse(source_file, *, client=None, trigger="auto") -> MeetingProposal | None
         source_file.state = MeetingSourceFile.State.FAILED
         source_file.error = "The document could not be read, or is empty."
         source_file.save(update_fields=["state", "error", "updated_at"])
+        return None
+
+    earlier = already_read(source_file, text) if skip_unchanged else None
+    if earlier is not None:
+        source_file.state = MeetingSourceFile.State.SKIPPED
+        source_file.skip_reason = (
+            f"Unchanged since version {earlier.drive_version}, read on "
+            f"{timezone.localdate(earlier.created_at):%Y-%m-%d}. Not read again.")
+        source_file.save(update_fields=["state", "skip_reason", "updated_at"])
         return None
 
     source_file.state = MeetingSourceFile.State.PARSING
@@ -265,7 +312,7 @@ def reparse(proposal, *, actor=None) -> MeetingProposal | None:
     source_file = proposal.source_file
     source_file.state = MeetingSourceFile.State.RECORDED
     source_file.save(update_fields=["state", "updated_at"])
-    fresh = parse(source_file, trigger="button")
+    fresh = parse(source_file, trigger="button", skip_unchanged=False)
     if fresh is None:
         return None
     proposal.state = MeetingProposal.State.SUPERSEDED

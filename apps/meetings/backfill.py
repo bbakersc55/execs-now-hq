@@ -29,7 +29,10 @@ from __future__ import annotations
 from datetime import date, datetime, timezone as dt_timezone
 from decimal import Decimal
 
-from django.db.models import Avg
+from contextlib import contextmanager
+
+from django.db import connection
+from django.db.models import Avg, F
 from django.utils import timezone
 
 from apps.meetings import drive as drive_service
@@ -206,6 +209,28 @@ def cancel(backfill, *, actor=None) -> DriveBackfill:
     return backfill
 
 
+@contextmanager
+def _one_tick_at_a_time(tenant):
+    """Only one backfill tick per practice at once.
+
+    A tick is three Claude calls and can outlast the minute between ticks. On
+    2026-09-28 overlapping ticks each saved their own copy of the counters over
+    the other's: the import reported 14 notes and $1.65 when the AI log shows
+    29 calls and $3.82. A Postgres advisory lock, held for the tick and not in
+    a transaction, so a failure part-way keeps the proposals it paid for.
+    """
+    key = f"meetings.backfill:{tenant.pk}"
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_try_advisory_lock(hashtext(%s))", [key])
+        got = cursor.fetchone()[0]
+    try:
+        yield got
+    finally:
+        if got:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_unlock(hashtext(%s))", [key])
+
+
 def step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
     """One tick of the import: a few files, **recorded and then parsed**, in
     exactly the two steps and the same order the poll uses.
@@ -213,7 +238,19 @@ def step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
     A Drive failure ends the tick with the cursor where it was, so the next one
     retries those files rather than walking past them — the same promise
     FR-5.5 makes about the poll.
+
+    **It reads only files the app has never recorded, in any version.** The
+    survey counts that way, so the import now does what the count said; a new
+    version of a note already in is the poll's business, not history's. Before
+    2026-09-28 a version bump made an already-imported note look new here.
     """
+    with _one_tick_at_a_time(tenant) as ours:
+        if not ours:
+            return {"running": True, "busy": True}
+        return _step(tenant, client=client, limit=limit)
+
+
+def _step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
     from apps.meetings import parsing
 
     backfill = DriveBackfill.objects.filter(
@@ -229,11 +266,12 @@ def step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
                                 created_from=backfill.after_created_time,
                                 page_size=page_size)
     except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
-        backfill.last_error = str(exc)
-        backfill.save(update_fields=["last_error", "updated_at"])
+        DriveBackfill.objects.filter(pk=backfill.pk).update(
+            last_error=str(exc), updated_at=timezone.now())
         return {"running": True, "error": str(exc)}
 
     read = skipped = failed = 0
+    cost = Decimal(0)
     walked, seen = backfill.after_created_time, 0
     for drive_file in found:
         if read >= limit:
@@ -243,30 +281,41 @@ def step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
         # here has been looked at", which is true whether the file was read,
         # skipped, or had been recorded already.
         walked = drive_file.created_time or walked
+        if MeetingSourceFile.objects.filter(drive_file_id=drive_file.file_id).exists():
+            continue                  # Already in, at some version.
         row, created = ingest.record(tenant, drive_file)
         if row is None or not created:
             continue
         if row.state == MeetingSourceFile.State.SKIPPED:
             skipped += 1
             continue
+        if not parsing.claim(row):
+            continue                  # The poll has it.
         proposal = parsing.parse(row, client=client, trigger="backfill")
         if proposal is None:
-            failed += 1
+            if row.state == MeetingSourceFile.State.SKIPPED:
+                skipped += 1
+            else:
+                failed += 1
             continue
         read += 1
         if proposal.ai_call is not None:
-            backfill.cost_usd += proposal.ai_call.cost_usd
+            cost += proposal.ai_call.cost_usd
 
-    backfill.after_created_time = walked or backfill.after_created_time
-    backfill.done += read
-    backfill.skipped += skipped
-    backfill.failed += failed
-    backfill.last_error = ""
-    # Drive returned less than a full page and we reached the end of it, so
-    # there is nothing further back there to walk to.
-    if not found or (seen == len(found) < page_size):
-        backfill.state = DriveBackfill.State.DONE
-        backfill.finished_at = timezone.now()
-    backfill.save()
+    # Increments, not a save of this tick's copy: a Stop pressed during the
+    # tick must stay pressed, and no count is ever written over another.
+    finished = not found or (seen == len(found) < page_size)
+    DriveBackfill.objects.filter(pk=backfill.pk).update(
+        after_created_time=walked or backfill.after_created_time,
+        done=F("done") + read, skipped=F("skipped") + skipped,
+        failed=F("failed") + failed, cost_usd=F("cost_usd") + cost,
+        last_error="", updated_at=timezone.now())
+    if finished:
+        # Drive returned less than a full page and we reached the end of it, so
+        # there is nothing further back there to walk to.
+        DriveBackfill.objects.filter(pk=backfill.pk, state=DriveBackfill.State.RUNNING
+                                     ).update(state=DriveBackfill.State.DONE,
+                                              finished_at=timezone.now())
+    backfill.refresh_from_db()
     return {"running": backfill.is_running, "read": read, "skipped": skipped,
             "failed": failed, "cost": str(backfill.cost_usd)}

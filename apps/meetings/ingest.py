@@ -177,9 +177,12 @@ def poll(tenant, *, client=None, parse=True) -> dict:
                 state__in=[MeetingSourceFile.State.RECORDED,
                            MeetingSourceFile.State.FAILED]
                 ).order_by("created_at")[:PARSE_PER_POLL]:
+            if not parsing.claim(row):
+                continue          # The backfill has it.
             proposal = parsing.parse(row, client=client)
             if proposal is None:
-                failed.append(row)
+                (skipped if row.state == MeetingSourceFile.State.SKIPPED
+                 else failed).append(row)
     return {"recorded": recorded, "skipped": skipped, "failed": failed, "error": ""}
 
 
