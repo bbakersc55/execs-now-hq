@@ -345,6 +345,12 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
 .banner.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
 .banner.bad { background: var(--bad-bg); border-color: var(--bad-line); color: var(--bad); }
 .banner.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
+.flash { font-size: var(--t-13); color: var(--ok); font-weight: 550; }
+.flash:empty { display: none; }
+.toast { position: fixed; bottom: var(--s6); left: 50%; transform: translateX(-50%);
+         z-index: 60; padding: var(--s2) var(--s4); border-radius: var(--radius-sm);
+         background: var(--navy); color: #fff; font-size: var(--t-14);
+         box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
 .banner.info { background: var(--info-bg); border-color: var(--info-line); color: var(--navy); }
 
 /* ---------------------------------------------------------------- avatars */

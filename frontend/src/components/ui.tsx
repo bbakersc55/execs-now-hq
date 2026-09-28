@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 
 export function Card({ title, children, actions, tone }: {
   // A node, not only a string: a card's heading is sometimes the control that
@@ -75,4 +75,32 @@ export function countdown(value: string | null | undefined, now: number = Date.n
   const hours = Math.floor(minutes / 60);
   if (hours < 48) return `in ${hours} hour${hours === 1 ? "" : "s"}`;
   return `in ${Math.floor(hours / 24)} days`;
+}
+
+/**
+ * A confirmation that says so and then gets out of the way: "Saved" beside the
+ * thing that was saved, for a few seconds. An edit that keeps you where you
+ * are needs to tell you it landed; a banner that stays would be read as news.
+ */
+export function useFlash(ms = 2500): [string, (text: string) => void] {
+  const [text, setText] = useState("");
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const flash = (next: string) => {
+    clearTimeout(timer.current);
+    setText(next);
+    timer.current = setTimeout(() => setText(""), ms);
+  };
+  return [text, flash];
+}
+
+/** Where a `useFlash` confirmation shows, inline. Announced, not focused. */
+export function Flash({ text }: { text: string }) {
+  return <span className="flash" role="status">{text}</span>;
+}
+
+/** The same confirmation for a screen you have just been returned to. */
+export function Toast({ text }: { text: string }) {
+  if (!text) return null;
+  return <div className="toast" role="status">{text}</div>;
 }

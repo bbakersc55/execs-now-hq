@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Me, WorkComment, api } from "../lib/api";
-import { Banner, Card, Empty, when } from "./ui";
+import { Banner, Card, Empty, Flash, useFlash, when } from "./ui";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -21,6 +21,7 @@ export function CommentsPanel({ me, target, id }: {
   const qc = useQueryClient();
   const [body, setBody] = useState("");
   const [shared, setShared] = useState(false);
+  const [posted, flashPosted] = useFlash();
   const isTenant = !!me.role && TENANT.includes(me.role);
 
   const comments = useQuery<WorkComment[]>({
@@ -33,6 +34,7 @@ export function CommentsPanel({ me, target, id }: {
       [target]: id, body, ...(isTenant ? { visibility: shared ? "shared" : "internal" } : {}),
     }),
     onSuccess: () => {
+      flashPosted(shared && isTenant ? "Posted, shared with the client" : "Posted");
       setBody("");
       setShared(false);
       qc.invalidateQueries({ queryKey: ["comments", target, id] });
@@ -41,7 +43,7 @@ export function CommentsPanel({ me, target, id }: {
   });
 
   return (
-    <Card title="Comments">
+    <Card title="Comments" actions={<Flash text={posted} />}>
       {(comments.data ?? []).length === 0 ? <Empty>No comments yet.</Empty> : (
         <div>
           {comments.data!.map((c) => (

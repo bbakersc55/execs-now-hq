@@ -7,7 +7,7 @@ import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { StatusChange } from "../components/StatusChange";
 import { StatusPill } from "../components/StatusPill";
 import { Sheet } from "../components/shell";
-import { Banner, Card, Empty, Field, when } from "../components/ui";
+import { Banner, Card, Empty, Field, Flash, useFlash, when } from "../components/ui";
 import {
   ChecklistItem, Me, Note, PortalPerson, Task, TaskUpdateRow, WorkParent, WorkStatus, api,
 } from "../lib/api";
@@ -22,7 +22,10 @@ const TENANT = ["FF", "CF", "VA"];
  * task is not moved into another company's project.
  */
 function EditTask({ me, task, saving, onSave }: {
-  me: Me; task: Task; saving: boolean; onSave: (patch: Record<string, unknown>) => void;
+  me: Me; task: Task; saving: boolean;
+  /** `done` runs only once the server has taken it: a failed save keeps the
+   *  form open with what was typed, and the error above it. */
+  onSave: (patch: Record<string, unknown>, done: () => void) => void;
 }) {
   const [open, setOpen] = useState(false);
   const initial = {
@@ -59,7 +62,7 @@ function EditTask({ me, task, saving, onSave }: {
 
   return (
     <Card title="Edit task" actions={<button onClick={() => setOpen(false)}>Cancel</button>}>
-      <form onSubmit={(e) => { e.preventDefault(); onSave(patch); setOpen(false); }}>
+      <form onSubmit={(e) => { e.preventDefault(); onSave(patch, () => setOpen(false)); }}>
         <Field label="Title">
           <input aria-label="Title" value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -113,22 +116,35 @@ const KIND_LABELS: Record<string, string> = {
  * page of its own (design brief, Tier 1) — `TaskSheet` wraps this in the sheet
  * and `/tasks/:id` renders it there, so a task can be linked and deep-opened
  * and Escape puts you back where you were.
+ *
+ * **"Save changes" is the end of an edit, so it closes the sheet** and the
+ * board says "Saved". Everything else on the sheet — status, the client line,
+ * steps, comments, stakeholders — is one change among several you might make,
+ * so it confirms in place and leaves you there.
  */
 export function TaskSheet({ me, id }: { me: Me; id: string }) {
   const navigate = useNavigate();
   return (
     <Sheet title={null} onClose={() => navigate("/tasks")}>
-      <TaskDetail me={me} taskId={id} />
+      <TaskDetail me={me} taskId={id}
+        onEdited={() => navigate("/tasks", { state: { toast: "Saved" } })} />
     </Sheet>
   );
 }
 
-export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
+export function TaskDetail({ me, taskId, onEdited }: {
+  me: Me; taskId?: string;
+  /** After "Save changes". Without it (the page on its own) it confirms inline. */
+  onEdited?: () => void;
+}) {
   const routeId = useParams().id;
   const id = taskId ?? routeId;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [message, setMessage] = useState("");
+  const [detailSaved, flashDetail] = useFlash();
+  const [lineSaved, flashLine] = useFlash();
+  const [stepSaved, flashStep] = useFlash();
   const isTenant = !!me.role && TENANT.includes(me.role);
 
   const task = useQuery<Task>({
@@ -158,10 +174,16 @@ export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
     onSuccess: () => { setMessage(""); refresh(); },
     onError: (e: Error) => setMessage(e.message),
   });
+  /** An inline change: saved where it stands, confirmed beside it. */
+  const change = (patch: Record<string, unknown>) =>
+    save.mutate(patch, { onSuccess: () => flashDetail("Saved") });
 
   const addStep = useMutation({
     mutationFn: (text: string) => api.post(`/api/tasks/${id}/checklist/`, { text }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["checklist", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["checklist", id] });
+      flashStep("Step added");
+    },
   });
   const toggleStep = useMutation({
     mutationFn: (item: ChecklistItem) =>
@@ -169,6 +191,7 @@ export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist", id] });
       qc.invalidateQueries({ queryKey: ["task-updates", id] });
+      flashStep("Saved");
     },
   });
 
@@ -176,7 +199,7 @@ export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
   const [narrative, setNarrative] = useState("");
   const addNarrative = useMutation({
     mutationFn: () => api.post(`/api/tasks/${id}/narrative/`, { client_facing_line: narrative }),
-    onSuccess: () => { setNarrative(""); refresh(); },
+    onSuccess: () => { setNarrative(""); refresh(); flashLine("Added"); },
     onError: (e: Error) => setMessage(e.message),
   });
 
@@ -216,20 +239,20 @@ export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
         </Banner>
       )}
 
-      <Card title="Status and detail">
+      <Card title="Status and detail" actions={<Flash text={detailSaved} />}>
         <div className="row">
           <Field label="Status">
             <StatusChange status={t.status} disabled={!t.may_edit} askForLine={isTenant}
               onChange={(status: WorkStatus, line: string) =>
-                save.mutate({ status, ...(line ? { client_facing_line: line } : {}) })} />
+                change({ status, ...(line ? { client_facing_line: line } : {}) })} />
           </Field>
           <Field label="Due">
             <input aria-label="Due date" type="date" value={t.due_date ?? ""} disabled={!t.may_edit}
-              onChange={(e) => save.mutate({ due_date: e.target.value || null })} />
+              onChange={(e) => change({ due_date: e.target.value || null })} />
           </Field>
           <Field label="Priority">
             <select aria-label="Priority" value={t.priority} disabled={!t.may_edit}
-              onChange={(e) => save.mutate({ priority: Number(e.target.value) })}>
+              onChange={(e) => change({ priority: Number(e.target.value) })}>
               <option value={0}>Low</option>
               <option value={1}>Normal</option>
               <option value={2}>High</option>
@@ -251,7 +274,7 @@ export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
                   if (e.target.checked && !t.is_client_visible
                       && !confirm("Making this visible also shows the client everything already "
                                   + "recorded on it, including past shared comments. Continue?")) return;
-                  save.mutate({ is_client_visible: e.target.checked });
+                  change({ is_client_visible: e.target.checked });
                 }} />
               Visible to the client
             </label>
@@ -261,11 +284,17 @@ export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
 
       {t.may_edit && (
         <EditTask key={t.updated_at} me={me} task={t} saving={save.isPending}
-          onSave={(patch) => save.mutate(patch)} />
+          onSave={(patch, done) => save.mutate(patch, {
+            onSuccess: () => {
+              done();
+              if (onEdited) onEdited(); else flashDetail("Saved");
+            },
+          })} />
       )}
 
       {isTenant && (
-        <Card title="A line for the client, without changing status">
+        <Card title="A line for the client, without changing status"
+          actions={<Flash text={lineSaved} />}>
           <textarea aria-label="Client-facing line" rows={2} value={narrative}
             placeholder="What would you want them to read in Friday's report?"
             onChange={(e) => setNarrative(e.target.value)} />
@@ -274,7 +303,7 @@ export function TaskDetail({ me, taskId }: { me: Me; taskId?: string }) {
         </Card>
       )}
 
-      <Card title="Steps">
+      <Card title="Steps" actions={<Flash text={stepSaved} />}>
         {(checklist.data ?? []).length === 0 ? <Empty>No steps.</Empty> : (
           <ul style={{ listStyle: "none", paddingLeft: 0 }}>
             {checklist.data!.map((item) => (

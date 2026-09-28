@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Me, Stakeholder, StakeholderCandidates, api } from "../lib/api";
-import { Banner, Card, Empty, Field, when } from "./ui";
+import { Banner, Card, Empty, Field, Flash, useFlash, when } from "./ui";
 
 const TENANT = ["FF", "CF", "VA"];
 const CADENCES: Stakeholder["cadence"][] = ["every_update", "weekly", "monthly"];
@@ -31,6 +31,7 @@ export function StakeholdersPanel({ me, target, id }: {
   const [term, setTerm] = useState("");
   const [outside, setOutside] = useState(false);
   const [message, setMessage] = useState("");
+  const [saved, flashSaved] = useFlash();
   const isTenant = !!me.role && TENANT.includes(me.role);
 
   const rows = useQuery<Stakeholder[]>({
@@ -60,18 +61,18 @@ export function StakeholdersPanel({ me, target, id }: {
   const add = useMutation({
     mutationFn: (contact: string) =>
       api.post("/api/stakeholders/", { contact, [target]: id }),
-    onSuccess: () => { setTerm(""); setMessage(""); refresh(); },
+    onSuccess: () => { setTerm(""); setMessage(""); refresh(); flashSaved("Added"); },
     onError: (e: Error) => setMessage(e.message),
   });
   const change = useMutation({
     mutationFn: ({ row, cadence }: { row: Stakeholder; cadence: string }) =>
       api.patch(`/api/stakeholders/${row.id}/`, { cadence }),
-    onSuccess: refresh,
+    onSuccess: () => { refresh(); flashSaved("Saved"); },
     onError: (e: Error) => setMessage(e.message),
   });
   const remove = useMutation({
     mutationFn: (row: Stakeholder) => api.del(`/api/stakeholders/${row.id}/`),
-    onSuccess: refresh,
+    onSuccess: () => { refresh(); flashSaved("Removed"); },
     onError: (e: Error) => setMessage(e.message),
   });
 
@@ -83,7 +84,7 @@ export function StakeholdersPanel({ me, target, id }: {
   const searching = found.isFetching;
 
   return (
-    <Card title="Who hears about this">
+    <Card title="Who hears about this" actions={<Flash text={saved} />}>
       {message && <Banner kind="bad">{message}</Banner>}
       {(rows.data ?? []).length === 0 ? <Empty>Nobody yet.</Empty> : (
         <table>
