@@ -33,8 +33,12 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"{tenant.name}: {plan['items']} pending action items on "
                     f"{plan['proposals']} proposals. With Claude: {plan['proposals']} "
-                    f"calls, about ${plan['estimated_cost_usd']:.2f}. Without: free.")
+                    f"calls, about ${plan['estimated_cost_usd']:.2f} "
+                    f"({'measured from calls already made' if plan['measured'] else 'modelled'}). "
+                    "Without: free.")
                 if options["run"]:
                     result = ownership.reclassify(tenant, use_claude=not options["no_ai"])
                     self.stdout.write(f"  classified {result['items']} items; "
-                                      f"{result['claude_calls']} calls, ${result['cost_usd']}")
+                                      f"{result['claude_calls']} calls, ${result['cost_usd']}; "
+                                      f"{len(result['failed'])} proposals failed and stay "
+                                      "unclassified")

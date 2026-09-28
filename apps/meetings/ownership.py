@@ -143,8 +143,28 @@ def _classify_input(proposal, items) -> str:
     return "\n".join(lines)
 
 
+def _measured_per_item():
+    """What classifying one item has actually cost, from the calls already
+    made — or None before there are any. The first estimate (2026-09-28)
+    assumed about 25 output tokens an item; the model's own reasoning is
+    billed as output too, and real calls ran 100 to 375 an item."""
+    from django.db.models import Sum
+
+    from apps.meetings.models import ProposalItem
+    from apps.tenancy.models import AiCall
+
+    calls = AiCall.objects.filter(purpose=CLASSIFY_PURPOSE, succeeded=True)
+    if not calls.exists():
+        return None
+    items = ProposalItem.objects.filter(
+        proposal_id__in=calls.values("target_id"), kind=ProposalItem.Kind.ACTION_ITEM).count()
+    spent = calls.aggregate(s=Sum("cost_usd"))["s"] or 0
+    return (float(spent) / items) if items else None
+
+
 def plan_reclassification() -> dict:
-    """The count and the estimated cost, before anything runs."""
+    """The count and the estimated cost, before anything runs: from what real
+    calls have cost per item when there are any, from a model until then."""
     from django.conf import settings
 
     from apps.tenancy import claude
@@ -152,13 +172,19 @@ def plan_reclassification() -> dict:
     groups = {}
     for item in pending_to_classify():
         groups.setdefault(item.proposal, []).append(item)
-    cost = 0
-    for proposal, items in groups.items():
-        tokens_in = (len(CLASSIFY_SYSTEM) + len(_classify_input(proposal, items))) // 4 + 50
-        tokens_out = 25 * len(items) + 20
-        cost += claude.cost_of(settings.ANTHROPIC_MODEL, tokens_in, tokens_out)
-    return {"proposals": len(groups), "items": sum(len(v) for v in groups.values()),
-            "estimated_cost_usd": round(float(cost), 2), "groups": groups}
+    count = sum(len(v) for v in groups.values())
+    measured = _measured_per_item()
+    if measured is not None:
+        cost = measured * count
+    else:
+        cost = 0
+        for proposal, items in groups.items():
+            tokens_in = (len(CLASSIFY_SYSTEM) + len(_classify_input(proposal, items))) // 4 + 50
+            tokens_out = 250 * len(items) + 20
+            cost += float(claude.cost_of(settings.ANTHROPIC_MODEL, tokens_in, tokens_out))
+    return {"proposals": len(groups), "items": count,
+            "estimated_cost_usd": round(float(cost), 2),
+            "measured": measured is not None, "groups": groups}
 
 
 def reclassify(tenant, *, use_claude: bool, actor=None) -> dict:
@@ -171,15 +197,24 @@ def reclassify(tenant, *, use_claude: bool, actor=None) -> dict:
     from apps.tenancy import claude
 
     plan = plan_reclassification()
-    done, calls, cost = 0, 0, 0
+    done, calls, cost, failed = 0, 0, 0, []
     for proposal, items in plan["groups"].items():
         hints = {}
         if use_claude:
-            reply, call = claude.complete_with_call(
-                tenant=tenant, purpose=CLASSIFY_PURPOSE, system=CLASSIFY_SYSTEM,
-                user_text=_classify_input(proposal, items),
-                target_type="meeting_proposal", target_id=proposal.pk,
-                trigger="backfill", max_tokens=2000)
+            try:
+                # Room for the model's reasoning as well as the answer: at 2000
+                # one proposal's answer came back cut off (2026-09-28).
+                reply, call = claude.complete_with_call(
+                    tenant=tenant, purpose=CLASSIFY_PURPOSE, system=CLASSIFY_SYSTEM,
+                    user_text=_classify_input(proposal, items),
+                    target_type="meeting_proposal", target_id=proposal.pk,
+                    trigger="backfill", max_tokens=8000)
+            except (claude.ClaudeUnavailable, claude.ClaudeRefused) as exc:
+                # One proposal failing does not stop the rest; it stays
+                # unclassified, and is named, so a second run picks it up.
+                calls += 1
+                failed.append({"proposal": str(proposal.pk), "error": str(exc)})
+                continue
             calls += 1
             cost += call.cost_usd if call else 0
             try:
@@ -197,4 +232,4 @@ def reclassify(tenant, *, use_claude: bool, actor=None) -> dict:
             item.save(update_fields=["payload", "updated_at"])
             done += 1
     return {"proposals": plan["proposals"], "items": done, "claude_calls": calls,
-            "cost_usd": str(cost)}
+            "cost_usd": str(cost), "failed": failed}

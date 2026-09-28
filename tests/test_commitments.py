@@ -270,3 +270,33 @@ def test_reclassifying_without_claude_is_free(seeded_tenant, ff, people, fake_cl
     ownership.reclassify(seeded_tenant, use_claude=False)
     item.refresh_from_db()
     assert item.payload["owner_side"] == "practice" and fake_claude.requests == []
+
+
+
+@pytest.mark.django_db
+def test_one_failed_call_does_not_stop_the_run(seeded_tenant, ff, people, fake_claude,
+                                                monkeypatch):
+    from apps.tenancy import claude
+
+    first = ProposalItemFactory(tenant=seeded_tenant, payload={
+        "text": "a", "proposed_owner_text": "Lee"})
+    second = ProposalItemFactory(tenant=seeded_tenant, payload={
+        "text": "b", "proposed_owner_text": "Sam"})
+    real, seen = claude.complete_with_call, []
+
+    def flaky(**kwargs):
+        seen.append(kwargs["target_id"])
+        if len(seen) == 1:
+            raise claude.ClaudeUnavailable("cut off")
+        return real(**kwargs)
+    monkeypatch.setattr(claude, "complete_with_call", flaky)
+    fake_claude.reply = json.dumps([{"item": 1, "owner_side": "other",
+                                     "owner_kind": "vendor"}])
+
+    result = ownership.reclassify(seeded_tenant, use_claude=True)
+
+    assert result["claude_calls"] == 2 and len(result["failed"]) == 1
+    classified = [i for i in (first, second) if (i.refresh_from_db() or True)
+                  and "owner_side" in i.payload]
+    assert len(classified) == 1
+    assert ownership.plan_reclassification()["items"] == 1     # the failed one is left
