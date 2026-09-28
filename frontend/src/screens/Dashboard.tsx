@@ -1,10 +1,33 @@
+import { useState, type DragEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ArrowRight, CheckSquare, Mail, Target, TrendingUp } from "lucide-react";
+import {
+  ArrowDown, ArrowRight, ArrowUp, CheckSquare, GripVertical, Mail, Target, TrendingUp,
+} from "lucide-react";
 
 import { PageHead } from "../components/shell";
 import { Card, Empty, Pill, when } from "../components/ui";
-import { Dashboard as Board, Me, api } from "../lib/api";
+import { Dashboard as Board, Me, Pipeline, api } from "../lib/api";
+import { useRemembered } from "../lib/remembered";
+
+type Move = Board["pipeline"][number];
+
+const TILES = ["tasks", "digests", "pipeline", "goals"] as const;
+const PANELS = ["due", "approval", "pipeline", "finances", "clients"] as const;
+type TileId = (typeof TILES)[number];
+type PanelId = (typeof PANELS)[number];
+interface Layout { tiles: TileId[]; panels: PanelId[] }
+
+const DEFAULT_LAYOUT: Layout = { tiles: [...TILES], panels: [...PANELS] };
+
+const TILE_NAMES: Record<TileId, string> = {
+  tasks: "Tasks due", digests: "Digests waiting", pipeline: "Pipeline moves",
+  goals: "Open goals",
+};
+const PANEL_NAMES: Record<PanelId, string> = {
+  due: "Due by day", approval: "Waiting for approval", pipeline: "Pipeline",
+  finances: "Practice finances", clients: "Clients",
+};
 
 /**
  * The landing page (design brief, Tier 2).
@@ -17,124 +40,343 @@ import { Dashboard as Board, Me, api } from "../lib/api";
  * Elevation is spent on nothing here (Tier 1 foundations): these are all cards
  * at rest, and the one thing that stands out is whatever is overdue, marked in
  * colour rather than in shadow.
+ *
+ * **The order is the person's own.** "Arrange" lets them drag the tiles among
+ * the tiles and the panels among the panels, remembered per user in this
+ * browser like the other remembered choices. Tiles and panels stay in their
+ * own rows: a tile dropped among the panels would be a small card stranded in
+ * a grid built for wide ones.
  */
 export function Dashboard({ me }: { me: Me }) {
   const board = useQuery<Board>({
     queryKey: ["dashboard"], queryFn: () => api.get<Board>("/api/dashboard/"),
   });
+  // The dashboard carries each move's pipeline by *name*, which the FF can
+  // rename; `kind` is what behaviour keys on (FR-1.6), so it is looked up here.
+  const pipelines = useQuery<Pipeline[]>({
+    queryKey: ["pipelines"], queryFn: () => api.get<Pipeline[]>("/api/pipelines/"),
+  });
+  const [saved, remember] = useRemembered<Layout>(
+    `dashboard-layout:${me.email || "anon"}`, DEFAULT_LAYOUT);
+  const [arranging, setArranging] = useState(false);
 
   if (board.isLoading) return <p className="muted">Loading…</p>;
   if (!board.data) return null;
   const { tiles, due_by_day: days, digests, pipeline, clients } = board.data;
   const first = me.full_name.split(" ")[0];
 
+  const layout = normalise(saved);
+  // A VA has no financials (access matrix), so not even the empty slot.
+  const panels = layout.panels.filter((id) => id !== "finances" || me.role !== "VA");
+  const kinds = new Map((pipelines.data ?? []).map((p) => [p.name, p.kind]));
+
+  const tile: Record<TileId, ReactNode> = {
+    tasks: (
+      <Tile label="Tasks due" value={tiles.tasks_due} icon={CheckSquare}
+        to="/tasks"
+        // Folded into the total and named on its own: a number that hides
+        // how much of it is late is a number you stop reading.
+        note={tiles.tasks_overdue > 0
+          ? `${tiles.tasks_overdue} overdue` : "none overdue"}
+        bad={tiles.tasks_overdue > 0} />
+    ),
+    digests: (
+      <Tile label="Digests waiting" value={tiles.digests_pending} icon={Mail}
+        to="/digests" note="for your approval" />
+    ),
+    pipeline: (
+      <Tile label="Pipeline moves" value={tiles.pipeline_moves} icon={TrendingUp}
+        to="/pipeline" note="in the last week" />
+    ),
+    goals: (
+      <Tile label="Open goals" value={tiles.goals_open} icon={Target}
+        to="/work" note="across every client" />
+    ),
+  };
+
+  const panel: Record<PanelId, ReactNode> = {
+    due: (
+      <Card title="Due by day">
+        {days.every((day) => day.count === 0) ? (
+          <Empty>Nothing due this week.</Empty>
+        ) : (
+          <ul className="byday">
+            {days.map((day) => (
+              <li key={day.label} className={day.overdue ? "late" : ""}>
+                <span className="day">{day.label}</span>
+                {/* Quiet days are shown, not skipped: a list that hides them
+                    makes a light week look like a missing one. */}
+                <span className="bar" aria-hidden="true">
+                  <span style={{ width: `${Math.min(100, day.count * 20)}%` }} />
+                </span>
+                <span className="count">{day.count || "—"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    ),
+    approval: (
+      <Card title="Waiting for approval"
+        actions={digests.length > 0 &&
+          <Link className="small" to="/digests">All digests <ArrowRight size={12} /></Link>}>
+        {digests.length === 0 ? (
+          <Empty>Nothing waiting. Digests appear here before they send.</Empty>
+        ) : (
+          <ul className="moves">
+            {digests.map((digest) => (
+              <li key={digest.id}>
+                {/* FR-3.29 — **approving is a read, not a click.** The
+                    approval screen exists because approving something you
+                    have not read is the failure it prevents, and this panel
+                    cannot show the rendered digest. So it lists what is
+                    waiting and takes you there. */}
+                <Link to="/digests">{digest.contact}</Link>
+                <span className="small muted">
+                  {digest.cadence} · through {digest.period_end.slice(0, 10)}
+                  {digest.ai_prose && " · AI-drafted"}
+                  {digest.stale && " · out of date"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    ),
+    pipeline: (
+      <Card title="Pipeline"
+        actions={<Link className="small" to="/pipeline">Pipeline <ArrowRight size={12} /></Link>}>
+        {pipeline.length === 0 ? (
+          <Empty>No stage changes in the last week.</Empty>
+        ) : (
+          <div className="pipe-cols">
+            <PipelineColumn title="New prospects"
+              moves={pipeline.filter((m) => kinds.get(m.pipeline) === "sales")} />
+            <PipelineColumn title="New partners"
+              moves={pipeline.filter((m) => kinds.get(m.pipeline) === "referral")} />
+          </div>
+        )}
+      </Card>
+    ),
+    finances: (
+      <Card title="Practice finances">
+        {/* A reserved slot, so the layout has its home before the finance
+            module does. No figures until then — not even zeros, which would
+            read as a practice that earned nothing. */}
+        <Empty>Income, expenses and margin appear here once the finance module lands.</Empty>
+      </Card>
+    ),
+    clients: (
+      <>
+        <h3 className="section">Clients</h3>
+        {clients.length === 0 ? (
+          <Empty>No client companies yet.</Empty>
+        ) : (
+          <div className="clients">
+            {clients.map((client) => (
+              <Link key={client.id} className="client-card"
+                to={`/companies/${client.id}`}>
+                <strong>{client.name}</strong>
+                <span className="small muted">
+                  {client.open_tasks} open · {client.open_goals} goal
+                  {client.open_goals === 1 ? "" : "s"}
+                </span>
+                {client.overdue > 0 && <Pill kind="bad">{client.overdue} overdue</Pill>}
+              </Link>
+            ))}
+          </div>
+        )}
+      </>
+    ),
+  };
+
   return (
     <>
       <PageHead title={`Good to see you, ${first}`}
-        sub={`What needs you over the next ${board.data.window_days} days.`} />
+        sub={`What needs you over the next ${board.data.window_days} days.`}
+        action={
+          <span className="inline">
+            {arranging && (
+              <button className="ghost small" onClick={() => remember(DEFAULT_LAYOUT)}>
+                Reset layout
+              </button>
+            )}
+            <button className={arranging ? "primary small" : "ghost small"}
+              aria-pressed={arranging} onClick={() => setArranging(!arranging)}>
+              {arranging ? "Done" : "Arrange"}
+            </button>
+          </span>
+        } />
 
-      <div className="tiles">
-        <Tile label="Tasks due" value={tiles.tasks_due} icon={CheckSquare}
-          to="/tasks"
-          // Folded into the total and named on its own: a number that hides
-          // how much of it is late is a number you stop reading.
-          note={tiles.tasks_overdue > 0
-            ? `${tiles.tasks_overdue} overdue` : "none overdue"}
-          bad={tiles.tasks_overdue > 0} />
-        <Tile label="Digests waiting" value={tiles.digests_pending} icon={Mail}
-          to="/digests" note="for your approval" />
-        <Tile label="Pipeline moves" value={tiles.pipeline_moves} icon={TrendingUp}
-          to="/pipeline" note="in the last week" />
-        <Tile label="Open goals" value={tiles.goals_open} icon={Target}
-          to="/work" note="across every client" />
-      </div>
-
-      <div className="panels">
-        <Card title="Due by day">
-          {days.every((day) => day.count === 0) ? (
-            <Empty>Nothing due this week.</Empty>
-          ) : (
-            <ul className="byday">
-              {days.map((day) => (
-                <li key={day.label} className={day.overdue ? "late" : ""}>
-                  <span className="day">{day.label}</span>
-                  {/* Quiet days are shown, not skipped: a list that hides them
-                      makes a light week look like a missing one. */}
-                  <span className="bar" aria-hidden="true">
-                    <span style={{ width: `${Math.min(100, day.count * 20)}%` }} />
-                  </span>
-                  <span className="count">{day.count || "—"}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="Waiting for approval"
-          actions={digests.length > 0 &&
-            <Link className="small" to="/digests">All digests <ArrowRight size={12} /></Link>}>
-          {digests.length === 0 ? (
-            <Empty>Nothing waiting. Digests appear here before they send.</Empty>
-          ) : (
-            <ul className="moves">
-              {digests.map((digest) => (
-                <li key={digest.id}>
-                  {/* FR-3.29 — **approving is a read, not a click.** The
-                      approval screen exists because approving something you
-                      have not read is the failure it prevents, and this panel
-                      cannot show the rendered digest. So it lists what is
-                      waiting and takes you there. */}
-                  <Link to="/digests">{digest.contact}</Link>
-                  <span className="small muted">
-                    {digest.cadence} · through {digest.period_end.slice(0, 10)}
-                    {digest.ai_prose && " · AI-drafted"}
-                    {digest.stale && " · out of date"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="Pipeline this week">
-          {pipeline.length === 0 ? (
-            <Empty>No stage changes in the last week.</Empty>
-          ) : (
-            <ul className="moves">
-              {pipeline.map((move) => (
-                <li key={move.id}>
-                  <Link to={`/contacts/${move.contact}`}>{move.name}</Link>
-                  <span className="small muted">
-                    {move.from ? `${move.from} → ` : "entered "}
-                    <strong>{move.to}</strong> · {when(move.at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      <h3 className="section">Clients</h3>
-      {clients.length === 0 ? (
-        <Empty>No client companies yet.</Empty>
-      ) : (
-        <div className="clients">
-          {clients.map((client) => (
-            <Link key={client.id} className="client-card"
-              to={`/companies/${client.id}`}>
-              <strong>{client.name}</strong>
-              <span className="small muted">
-                {client.open_tasks} open · {client.open_goals} goal
-                {client.open_goals === 1 ? "" : "s"}
-              </span>
-              {client.overdue > 0 && <Pill kind="bad">{client.overdue} overdue</Pill>}
-            </Link>
-          ))}
-        </div>
+      {arranging && (
+        <p className="small muted arrange-hint">
+          Drag the tiles and panels into the order you want, or use the arrows.
+          Saved for you in this browser.
+        </p>
       )}
+
+      <Arrangeable className="tiles" group="tiles" arranging={arranging}
+        order={layout.tiles} names={TILE_NAMES}
+        onChange={(tiles) => remember({ ...layout, tiles })}
+        render={(id) => tile[id]} />
+
+      <Arrangeable className="panels" group="panels" arranging={arranging}
+        order={panels} names={PANEL_NAMES}
+        // The VA's hidden slot keeps its place in what is saved.
+        onChange={(order) => remember({ ...layout, panels: withHidden(order, layout.panels) })}
+        render={(id) => panel[id]}
+        wide={(id) => id === "clients"} />
     </>
   );
+}
+
+/**
+ * One pipeline's recent movement, as names grouped by week.
+ *
+ * Names only: the stage and the exact time are one hover away, because the
+ * question this panel answers is *who* is new, and a line of dates under every
+ * name made that harder to see. A contact who moved twice is listed once, at
+ * their latest move. "This week" is the last seven days, matching the rest of
+ * the dashboard (`WINDOW_DAYS`), not the calendar week.
+ */
+function PipelineColumn({ title, moves }: { title: string; moves: Move[] }) {
+  const latest = new Map<string, Move>();
+  for (const move of [...moves].sort((a, b) => b.at.localeCompare(a.at))) {
+    if (!latest.has(move.contact)) latest.set(move.contact, move);
+  }
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const age = (move: Move) => Date.now() - new Date(move.at).getTime();
+  const groups = [
+    { label: "This week", rows: [...latest.values()].filter((m) => age(m) < week) },
+    { label: "Last week",
+      rows: [...latest.values()].filter((m) => age(m) >= week && age(m) < 2 * week) },
+  ].filter((group) => group.rows.length > 0);
+
+  return (
+    <div className="pipe-col">
+      <h4>{title}</h4>
+      {groups.length === 0 ? (
+        <p className="small muted">None.</p>
+      ) : groups.map((group) => (
+        <div key={group.label}>
+          <div className="pipe-week">{group.label}</div>
+          <ul className="names">
+            {group.rows.map((move) => (
+              <li key={move.contact}>
+                <Link to={`/contacts/${move.contact}`}
+                  title={`${move.from ? `${move.from} → ` : "Entered "}${move.to} · ${when(move.at)}`}>
+                  {move.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A row of blocks the person can put in their own order.
+ *
+ * Dragging is the quick way; the arrow buttons are the same move for a
+ * keyboard, and for a screen with no drag at all. While arranging, the links
+ * inside the blocks are inert — a drag that ends as a click would leave the
+ * page halfway through arranging it.
+ */
+function Arrangeable<T extends string>({
+  className, group, arranging, order, names, onChange, render, wide,
+}: {
+  className: string; group: string; arranging: boolean; order: T[];
+  names: Record<T, string>; onChange: (order: T[]) => void;
+  render: (id: T) => ReactNode; wide?: (id: T) => boolean;
+}) {
+  const [dragging, setDragging] = useState<T | null>(null);
+  const [over, setOver] = useState<T | null>(null);
+
+  const moveTo = (id: T, index: number) => {
+    const next = order.filter((other) => other !== id);
+    next.splice(Math.max(0, Math.min(index, next.length)), 0, id);
+    if (next.join() !== order.join()) onChange(next);
+  };
+  const clear = () => { setDragging(null); setOver(null); };
+
+  return (
+    <div className={`${className}${arranging ? " arranging" : ""}`}>
+      {order.map((id, index) => {
+        const classes = ["slot",
+          wide?.(id) ? "wide" : "",
+          dragging === id ? "dragging" : "",
+          over === id && dragging !== id ? "drop-target" : ""].filter(Boolean).join(" ");
+        if (!arranging) {
+          return <div key={id} className={classes}>{render(id)}</div>;
+        }
+        return (
+          <div key={id} className={classes} data-testid={`slot-${id}`}
+            draggable
+            onDragStart={(event: DragEvent) => {
+              setDragging(id);
+              // Firefox will not start a drag without data on the transfer.
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", `${group}:${id}`);
+            }}
+            onDragOver={(event: DragEvent) => {
+              // Only this row's own blocks: a tile cannot land among panels.
+              if (dragging === null) return;
+              event.preventDefault();
+              if (over !== id) setOver(id);
+            }}
+            onDrop={(event: DragEvent) => {
+              event.preventDefault();
+              if (dragging !== null) moveTo(dragging, index);
+              clear();
+            }}
+            onDragEnd={clear}>
+            <div className="slot-bar">
+              <GripVertical size={14} aria-hidden="true" />
+              <span className="small">{names[id]}</span>
+              <span className="grow" />
+              <button className="icon-button" disabled={index === 0}
+                aria-label={`Move ${names[id]} earlier`}
+                onClick={() => moveTo(id, index - 1)}>
+                <ArrowUp size={14} />
+              </button>
+              <button className="icon-button" disabled={index === order.length - 1}
+                aria-label={`Move ${names[id]} later`}
+                onClick={() => moveTo(id, index + 1)}>
+                <ArrowDown size={14} />
+              </button>
+            </div>
+            <div className="slot-body">{render(id)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * What was saved, made safe to lay out: anything no longer on the dashboard is
+ * dropped, and anything new is added at the end — so a panel added in a later
+ * release (the finances slot, for one) appears for people who had already
+ * arranged theirs, rather than being hidden by an order saved before it existed.
+ */
+function normalise(saved: Partial<Layout> | null | undefined): Layout {
+  const fit = <T extends string>(ids: unknown, all: readonly T[]): T[] => {
+    const kept = (Array.isArray(ids) ? ids : [])
+      .filter((id, i, list): id is T => all.includes(id as T) && list.indexOf(id) === i);
+    return [...kept, ...all.filter((id) => !kept.includes(id))];
+  };
+  return { tiles: fit(saved?.tiles, TILES), panels: fit(saved?.panels, PANELS) };
+}
+
+/** Puts back any panel this person cannot see, where it was in the saved order. */
+function withHidden(visible: PanelId[], saved: PanelId[]): PanelId[] {
+  const next = [...visible];
+  saved.forEach((id, index) => {
+    if (!next.includes(id)) next.splice(Math.min(index, next.length), 0, id);
+  });
+  return next;
 }
 
 function Tile({ label, value, note, icon: Icon, to, bad }: {

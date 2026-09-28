@@ -707,6 +707,30 @@ a.button.primary:hover { background: var(--orange-600); }
 .moves { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
 .moves > li { display: grid; gap: 2px; font-size: var(--t-14); }
 
+/* Pipeline panel: prospects and partners side by side, names only. */
+.pipe-cols { display: grid; gap: var(--s4); grid-template-columns: 1fr 1fr; }
+.pipe-col h4 { margin: 0 0 var(--s2); }
+.pipe-week { font-size: var(--t-12); letter-spacing: .04em; text-transform: uppercase;
+             color: var(--muted); margin: var(--s2) 0 var(--s1); }
+.pipe-col .names { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s1);
+                   font-size: var(--t-14); }
+
+/* Arranging the dashboard. A slot is always there so the grid is the same
+   either way; only while arranging does it grow a handle bar. */
+.tiles > .slot { display: flex; flex-direction: column; }
+.tiles > .slot > .tile, .tiles > .slot > .slot-body { flex: 1; display: flex; flex-direction: column; }
+.tiles > .slot > .slot-body > .tile { flex: 1; }
+.slot.wide { grid-column: 1 / -1; }
+.arrange-hint { margin: 0 0 var(--s3); }
+.arranging > .slot { border: 1px dashed var(--navy-300); border-radius: var(--radius);
+                     padding: var(--s2); cursor: grab; background: var(--hover); }
+.arranging > .slot.dragging { opacity: .5; }
+.arranging > .slot.drop-target { border-color: var(--orange); border-style: solid; }
+.arranging a { pointer-events: none; }
+.slot-bar { display: flex; align-items: center; gap: var(--s1); color: var(--muted);
+            margin-bottom: var(--s2); }
+.slot-bar .grow { flex: 1; }
+
 h3.section { font-size: var(--t-16); margin: 0 0 var(--s3); }
 .clients { display: grid; gap: var(--s3);
            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
