@@ -26,6 +26,21 @@ GONE = {"detail": "This link is not one we recognise. If you meant to unsubscrib
 
 
 @csrf_exempt
+@require_http_methods(["POST"])
+def one_click(request, token: str):
+    """RFC 8058 one-click, from the List-Unsubscribe-Post header: the mail
+    client POSTs `List-Unsubscribe=One-Click` and expects the unsubscribe done,
+    with no page and nothing more to press. Same token, same category, same
+    effects as the link in the body."""
+    data = unsubscribe.read_token(token)
+    if data is None:
+        return JsonResponse(GONE, status=404)
+    with tenant_context(data["t"]):
+        unsubscribe.unsubscribe(data, source="one_click")
+    return JsonResponse({"unsubscribed": data["k"]})
+
+
+@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def unsubscribe_link(request, token: str):
     data = unsubscribe.read_token(token)

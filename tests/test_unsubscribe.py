@@ -86,7 +86,7 @@ def test_a_digest_carries_an_updates_link_beside_its_cadence_link(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("producer", sorted(
-    p for p, c in unsubscribe.BY_PRODUCER.items() if c == "transactional"))
+    p for p, c in unsubscribe.BY_PRODUCER.items() if c in unsubscribe.UNLISTED))
 def test_transactional_mail_never_carries_an_unsubscribe_link(
     seeded_tenant, ff, dev_outbox, producer, in_tenant_a
 ):
@@ -100,13 +100,14 @@ def test_transactional_mail_never_carries_an_unsubscribe_link(
             to_address="maria@partner.invalid", subject="Your link",
             body_text="Here it is.", body_html=body_html, actor=ff.user,
             force_direct=True)
-        assert message.category == "transactional"
+        assert message.category in ("transactional", "correspondence")
         html, text = email_layout.for_delivery(message)
         assert not LINK.search(html) and not LINK.search(text)
         assert "nsubscribe" not in html and unsubscribe.MARKER not in html
     for sent in dev_outbox:
         assert "nsubscribe" not in sent.body
         assert all("nsubscribe" not in part for part, _ in sent.alternatives)
+        assert "List-Unsubscribe" not in sent.extra_headers
 
 
 # ------------------------------------------------------------------ the token
@@ -191,7 +192,7 @@ def test_the_outbox_refuses_a_suppressed_category_and_says_why(
     contact = _contact(seeded_tenant)
     EmailSuppression.objects.create(tenant=seeded_tenant, contact=contact,
                                     category="marketing")
-    message = _draft(seeded_tenant, contact, P.MANUAL)
+    message = _draft(seeded_tenant, contact, P.STAGE_RULE)
 
     response = api.as_(ff).post(f"/api/outbox/{message.pk}/approve/")
 
@@ -249,3 +250,95 @@ def test_the_contact_page_shows_suppressions(seeded_tenant, ff, va, api, in_tena
                                     category="marketing")
     rows = api.as_(va).get(f"/api/contacts/{contact.pk}/suppressions/").json()
     assert [r["label"] for r in rows] == ["marketing emails"]
+
+
+# ------------------------------------- 2026-09-28 adjustments: correspondence
+
+@pytest.mark.django_db
+def test_one_person_writing_to_one_person_is_correspondence(seeded_tenant, ff, api,
+                                                            dev_outbox, in_tenant_a):
+    """Never suppressed by a marketing unsubscribe, and no link on it."""
+    contact = _contact(seeded_tenant)
+    EmailSuppression.objects.create(tenant=seeded_tenant, contact=contact,
+                                    category="marketing")
+    drafted = api.as_(ff).post("/api/contacts/draft-emails/", {
+        "ids": [str(contact.pk)], "subject": "Following up", "body_text": "Hi Maria"},
+        content_type="application/json").json()
+    message = OutboxMessage.objects.get(pk=drafted["drafted"][0])
+    assert message.category == "correspondence"
+
+    assert api.as_(ff).post(f"/api/outbox/{message.pk}/approve/").status_code == 200
+    assert len(dev_outbox) == 1
+    assert "nsubscribe" not in dev_outbox[0].body
+
+
+@pytest.mark.django_db
+def test_the_same_email_drafted_to_several_is_marketing(seeded_tenant, ff, api, in_tenant_a):
+    first, second = _contact(seeded_tenant), ContactFactory(tenant=seeded_tenant)
+    ContactEmailFactory(tenant=seeded_tenant, contact=second, address="b@x.invalid")
+    drafted = api.as_(ff).post("/api/contacts/draft-emails/", {
+        "ids": [str(first.pk), str(second.pk)], "subject": "News", "body_text": "Hi"},
+        content_type="application/json").json()
+    assert set(OutboxMessage.objects.filter(pk__in=drafted["drafted"])
+               .values_list("category", flat=True)) == {"marketing"}
+
+
+# -------------------------------- 2026-09-28 adjustments: one-click headers
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("producer,category", [(P.REFERRAL_TOUCH, "marketing"),
+                                               (P.CLIENT_ACTIVITY, "updates")])
+def test_marketing_and_updates_carry_the_one_click_headers(
+    seeded_tenant, ff, dev_outbox, producer, category, in_tenant_a
+):
+    contact = _contact(seeded_tenant)
+    message = _draft(seeded_tenant, contact, producer, force_direct=True)
+    headers = dev_outbox[0].extra_headers
+    assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    url = headers["List-Unsubscribe"]
+    assert url.startswith("<") and url.endswith("/one-click>")
+    token = url[1:-1].split("/api/unsubscribe/")[1].rsplit("/one-click", 1)[0]
+    assert unsubscribe.read_token(token)["k"] == category
+    # The same token the body's link carries.
+    assert token in email_layout.for_delivery(message)[0]
+
+
+@pytest.mark.django_db
+def test_the_gmail_mime_carries_them_too(seeded_tenant):
+    from apps.crm.services import transport
+
+    mime = transport.build_mime(
+        to_address="a@x.invalid", from_address="b@x.invalid", subject="s", body_text="t",
+        message_id="<m@x>", thread_token="tok",
+        headers={"List-Unsubscribe": "<https://x/api/unsubscribe/t/one-click>",
+                 "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"})
+    assert mime["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    assert mime["List-Unsubscribe"].endswith("/one-click>")
+
+
+@pytest.mark.django_db
+def test_one_click_unsubscribes_on_the_mail_clients_post(seeded_tenant, ff, client,
+                                                         in_tenant_a):
+    contact = _contact(seeded_tenant)
+    message = _draft(seeded_tenant, contact)
+    url = unsubscribe.headers_for(message)["List-Unsubscribe"][1:-1]
+    path = "/api/" + url.split("/api/", 1)[1]
+
+    assert client.get(path).status_code == 405          # a GET does nothing
+    response = client.post(path, "List-Unsubscribe=One-Click",
+                           content_type="application/x-www-form-urlencoded")
+
+    assert response.status_code == 200
+    row = EmailSuppression.objects.get()
+    assert (row.contact_id, row.category, row.source) == (contact.pk, "marketing", "one_click")
+    assert AuditEvent.all_objects.get(verb="email.unsubscribed").payload["source"] == "one_click"
+
+
+@pytest.mark.django_db
+def test_onboarding_is_still_drafted_automatically_for_approval(seeded_tenant, referrals,
+                                                                ff, in_tenant_a):
+    """Owner, 2026-09-28: one email, still approved by hand."""
+    contact = _contact(seeded_tenant)
+    referral.add_type(contact, "referral_partner", actor=ff.user)
+    onboarding = OutboxMessage.objects.get(producer=P.REFERRAL_ONBOARDING)
+    assert (onboarding.state, onboarding.category) == (S.PENDING_APPROVAL, "marketing")

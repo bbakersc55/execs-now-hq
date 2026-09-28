@@ -327,6 +327,9 @@ class ContactViewSet(TenantStaffViewSet):
                 template = EmailTemplate.objects.filter(pk=template_id).first()
 
         drafted, skipped = [], []
+        # One-off to one person: correspondence. To several at once: marketing,
+        # with the link, and stopped by a marketing unsubscribe (2026-09-28).
+        many = contacts.count() > 1
         for contact in contacts:
             if not contact.primary_email:
                 skipped.append({"contact": str(contact.pk),
@@ -356,6 +359,7 @@ class ContactViewSet(TenantStaffViewSet):
                     body_text=(request.data.get("body_text") or "").strip()
                     or (template.body if template else ""),
                     actor=request.user,
+                    category="marketing" if many else None,
                 )
             drafted.append(str(message.pk))
 

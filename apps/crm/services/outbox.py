@@ -274,6 +274,12 @@ def _suppress_if_unsubscribed(message, *, actor=None) -> str:
     return reason
 
 
+def _unsubscribe_headers(message) -> dict:
+    from apps.crm.services import unsubscribe
+
+    return unsubscribe.headers_for(message)
+
+
 def _deliver(message, *, actor=None, body_text=None, body_html=None):
     """The one path out of the app.
 
@@ -349,6 +355,8 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         attachments=attachments,
         inline_images=inline_images,
         from_address=message.from_address,
+        # Gmail's own unsubscribe button, for marketing and updates only.
+        headers=_unsubscribe_headers(message),
     )
 
     message.state = S.SENT
@@ -399,7 +407,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
 
 # ------------------------------------------------------------- producers
 
-def create_manual_draft(contact, *, subject, body_text, actor=None):
+def create_manual_draft(contact, *, subject, body_text, actor=None, category=None):
     """A one-off email to one contact, queued for approval.
 
     Deliberately NOT a direct-to-`sent` producer even though a human typed it:
@@ -419,6 +427,9 @@ def create_manual_draft(contact, *, subject, body_text, actor=None):
         body_text=body, actor=actor,
         send_by=timezone.now() + timezone.timedelta(days=7),
         source_type="contact", source_id=contact.pk,
+        # One person writing to one person is correspondence (the producer's
+        # default); the same draft to several at once is marketing.
+        category=category,
     )
 
 

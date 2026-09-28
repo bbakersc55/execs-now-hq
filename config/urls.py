@@ -37,6 +37,8 @@ urlpatterns = [
     # /api/ so the app's own page can render it (the dev proxy forwards /api);
     # the link in the email points at the app route that calls this.
     path("api/cadence/<str:token>", work_cadence.cadence_link, name="cadence-link"),
+    path("api/unsubscribe/<str:token>/one-click", crm_unsubscribe.one_click,
+         name="unsubscribe-one-click"),
     path("api/unsubscribe/<str:token>", crm_unsubscribe.unsubscribe_link,
          name="unsubscribe-link"),
     # FR-4.6 / matrix 10.13 — the pre-call form. A public page authenticated by

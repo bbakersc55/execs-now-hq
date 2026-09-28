@@ -73,13 +73,16 @@ def token_from_message_id(value: str) -> str:
 
 def build_mime(*, to_address, from_address, subject, body_text,
                message_id, thread_token, in_reply_to="", references="",
-               attachments=(), body_html="", inline_images=()):
+               attachments=(), body_html="", inline_images=(), headers=None):
     mime = MimeMessage()
     mime["To"] = to_address
     mime["From"] = from_address
     mime["Subject"] = subject
     mime["Message-ID"] = message_id
     mime[THREAD_HEADER] = thread_token
+    # List-Unsubscribe and its one-click partner, for marketing and updates.
+    for name, value in (headers or {}).items():
+        mime[name] = value
     if in_reply_to:
         mime["In-Reply-To"] = in_reply_to
         mime["References"] = (references + " " + in_reply_to).strip()
@@ -268,7 +271,7 @@ class GmailTransport:
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
-             inline_images=(), from_address=""):
+             inline_images=(), from_address="", headers=None):
         connection = sending_connection_for(tenant, from_address)
         token = access_token_for(connection)
 
@@ -284,7 +287,7 @@ class GmailTransport:
             subject=subject, body_text=body_text, message_id=message_id,
             thread_token=thread.thread_token, in_reply_to=in_reply_to,
             references=references, attachments=attachments, body_html=body_html,
-            inline_images=inline_images,
+            inline_images=inline_images, headers=headers,
         )
         payload = {"raw": base64.urlsafe_b64encode(mime.as_bytes()).decode()}
         if thread.gmail_thread_id:
@@ -383,7 +386,7 @@ class DevOutboxTransport:
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
-             inline_images=(), from_address=""):
+             inline_images=(), from_address="", headers=None):
         from django.core.mail import EmailMultiAlternatives
 
         message_id = message_id_for(tenant, thread)
@@ -392,7 +395,8 @@ class DevOutboxTransport:
             subject=subject, body=body_text, from_email=sender,
             to=[to_address],
             headers={"Message-ID": message_id, THREAD_HEADER: thread.thread_token,
-                     **({"In-Reply-To": in_reply_to} if in_reply_to else {})},
+                     **({"In-Reply-To": in_reply_to} if in_reply_to else {}),
+                     **(headers or {})},
         )
         if body_html:
             email.attach_alternative(body_html, "text/html")

@@ -35,16 +35,23 @@ P = OutboxMessage.Producer
 MARKETING = EmailSuppression.Category.MARKETING
 UPDATES = EmailSuppression.Category.UPDATES
 TRANSACTIONAL = "transactional"
-CATEGORIES = (MARKETING, UPDATES, TRANSACTIONAL)
+#: A person writing to one person (owner, 2026-09-28): not marketing, so no
+#: link and never stopped by a marketing unsubscribe. A one-off drafted to
+#: several contacts at once is marketing, and is made with that category.
+CORRESPONDENCE = "correspondence"
+CATEGORIES = (MARKETING, UPDATES, TRANSACTIONAL, CORRESPONDENCE)
+#: Never carries a link, never suppressed.
+UNLISTED = frozenset({TRANSACTIONAL, CORRESPONDENCE})
 
-#: The owner's list, plus the producers it does not name. Stage-rule and
-#: one-off ("manual") drafts are outreach to contacts, so they are marketing
-#: and carry the link; the app's notices to its own staff are transactional.
+#: The owner's list, plus the producers it does not name. Stage-rule drafts are
+#: outreach, so marketing; a one-off ("manual") email is correspondence unless
+#: it was drafted to several people at once; the app's notices to its own staff
+#: are transactional.
 BY_PRODUCER = {
     P.REFERRAL_TOUCH: MARKETING,
     P.REFERRAL_ONBOARDING: MARKETING,
     P.STAGE_RULE: MARKETING,
-    P.MANUAL: MARKETING,
+    P.MANUAL: CORRESPONDENCE,
     P.CAMPAIGN: MARKETING,
     P.DIGEST: UPDATES,
     P.CLIENT_ACTIVITY: UPDATES,
@@ -106,7 +113,7 @@ def _root() -> str:
 def url_for(message) -> str:
     """The message's unsubscribe link, or "" when it must not have one."""
     category = category_of(message)
-    if category == TRANSACTIONAL:
+    if category in UNLISTED:
         return ""
     if not message.to_contact_id and not message.to_address:
         return ""
@@ -151,7 +158,7 @@ def apply(message, html: str, text: str, *, personal: bool) -> tuple[str, str]:
 def suppression_for(message):
     """The open suppression that stops this message, if any."""
     category = category_of(message)
-    if category == TRANSACTIONAL:
+    if category in UNLISTED:
         return None
     rows = EmailSuppression.all_objects.filter(tenant_id=message.tenant_id,
                                                category=category, lifted_at__isnull=True)
@@ -172,7 +179,21 @@ def refusal(message) -> str:
             f"{timezone.localdate(row.created_at):%Y-%m-%d}.")
 
 
-def unsubscribe(data: dict, *, category=None, message_id=None) -> EmailSuppression:
+def headers_for(message) -> dict:
+    """RFC 2369 / RFC 8058 headers, so Gmail (and others) show their own
+    one-click unsubscribe. The same token and the same category as the link
+    in the body; the POST goes to the one-click endpoint, which needs no page.
+    Nothing for transactional mail or correspondence."""
+    url = url_for(message)
+    if not url:
+        return {}
+    token = url.rsplit("/unsubscribe/", 1)[1]
+    return {"List-Unsubscribe": f"<{_root()}/api/unsubscribe/{token}/one-click>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
+
+
+def unsubscribe(data: dict, *, category=None, message_id=None,
+                source="unsubscribe_link") -> EmailSuppression:
     """The recipient leaves one category. Idempotent; audited every time.
 
     Leaving marketing also ends their marketing enrolments; leaving updates
@@ -196,7 +217,7 @@ def unsubscribe(data: dict, *, category=None, message_id=None) -> EmailSuppressi
     if created:
         row = EmailSuppression.all_objects.create(
             tenant_id=tenant_id, contact=contact, address=address, category=category,
-            outbox_message_id=message_id)
+            outbox_message_id=message_id, source=source)
     # Waiting drafts first, so they read "suppressed" — the true reason —
     # rather than "withdrawn" by the unenrolment below.
     waiting = OutboxMessage.all_objects.filter(
@@ -227,7 +248,7 @@ def unsubscribe(data: dict, *, category=None, message_id=None) -> EmailSuppressi
         tenant_id=tenant_id, verb="email.unsubscribed", target_type="email_suppression",
         target_id=row.pk,
         payload={"category": category, "contact": str(contact.pk) if contact else None,
-                 "address": address, "already": not created,
+                 "address": address, "already": not created, "source": source,
                  "message": str(message_id) if message_id else None,
                  "held_drafts": [str(pk) for pk in held]})
     return row

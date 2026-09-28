@@ -8,7 +8,7 @@ import { FilterBar, PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, countdown } from "../components/ui";
 import { Me, api } from "../lib/api";
 
-type Category = "marketing" | "updates" | "transactional";
+type Category = "marketing" | "updates" | "transactional" | "correspondence";
 
 interface QueueItem {
   key: string;
@@ -34,11 +34,11 @@ interface Preview { subject: string; from: string; to: string; html: string; tex
 
 const CATEGORIES: [Category | "", string][] = [
   ["", "All"], ["marketing", "Marketing"], ["updates", "Updates"],
-  ["transactional", "Transactional"],
+  ["transactional", "Transactional"], ["correspondence", "Correspondence"],
 ];
 
 const CATEGORY_KIND: Record<Category, string> = {
-  marketing: "warn", updates: "ok", transactional: "",
+  marketing: "warn", updates: "ok", transactional: "", correspondence: "",
 };
 
 /**
