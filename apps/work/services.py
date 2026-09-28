@@ -42,14 +42,21 @@ def creator_of(task):
 
 
 @transaction.atomic
-def create_task(*, tenant, actor, role, client_facing_line="", **fields):
+def create_task(*, tenant, actor, role, client_facing_line="",
+                source=TaskUpdate.Source.USER, source_id=None, **fields):
     """FR-3.11 — client-visible by default when the task has a client company,
-    hidden otherwise. FR-3.37 — a client's own task is marked as theirs."""
+    hidden otherwise. FR-3.37 — a client's own task is marked as theirs.
+
+    Every path that makes a task comes through here — a person, a meeting
+    approval, a stage rule — so every task starts with its CREATED update and
+    the same visibility rule. `source` says which path it was.
+    """
     is_client = role in CLIENT_ROLES
     fields.setdefault("is_client_visible", fields.get("client_company") is not None)
     task = Task.objects.create(tenant=tenant, created_by_client=is_client, **fields)
     updates.record(task, K.CREATED, actor=actor, role=role,
-                   to_value=task.title, client_facing_line=client_facing_line)
+                   to_value=task.title, client_facing_line=client_facing_line,
+                   source=source, source_id=source_id)
     return task
 
 

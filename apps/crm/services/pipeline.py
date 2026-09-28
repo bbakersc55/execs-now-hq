@@ -235,21 +235,46 @@ def _create_task(contact, rule, *, actor=None):
     configured, creating an internal task from a template, is deterministic and
     has no effect outside the app. Anything that reaches a client's inbox is a
     different matter and stays behind the Outbox.
+
+    Made through `work.services.create_task`, like every other task (owner,
+    2026-09-28): until then this path wrote no CREATED update, so a rule's task
+    opened on an empty history, and it never had a client company, so it was
+    hidden even when the contact worked for a client. It now files the task
+    under the contact's company **when that company is a client company**, and
+    the shared rule makes it client-visible exactly as a hand-made one would be.
+    The company is re-read rather than taken from `contact.company`: moving a
+    contact to `client` marks their company a client company in this same
+    transaction, just before the rules run.
     """
-    from apps.crm.models import Task
+    from apps.crm.models import Company
+    from apps.tenancy.context import tenant_context
+    from apps.work import services as work_services
+    from apps.work.models import TaskUpdate
 
     due = None
     if rule.task_due_offset_days is not None:
         due = (timezone.now() + timezone.timedelta(days=rule.task_due_offset_days)).date()
 
-    task = Task.all_objects.create(
-        tenant=contact.tenant,
-        title=rule.task_title_template or "Follow up",
-        due_date=due,
-        owner=contact.owner,
-        contact=contact,
-        source_automation=rule,
-    )
+    client_company = None
+    if contact.company_id:
+        client_company = Company.all_objects.filter(
+            pk=contact.company_id, tenant=contact.tenant,
+            is_client_company=True, deleted_at__isnull=True,
+        ).first()
+
+    # A stage move can come from a request or from a job; bind the contact's
+    # tenant either way, because the shared service uses the scoped manager.
+    with tenant_context(contact.tenant_id):
+        task = work_services.create_task(
+            tenant=contact.tenant, actor=actor, role=None,
+            source=TaskUpdate.Source.STAGE_AUTOMATION, source_id=rule.pk,
+            title=rule.task_title_template or "Follow up",
+            due_date=due,
+            owner=contact.owner,
+            contact=contact,
+            client_company=client_company,
+            source_automation=rule,
+        )
     AuditEvent.all_objects.create(
         tenant=contact.tenant, actor=actor, verb="task.created_by_rule",
         target_type="task", target_id=task.pk,
