@@ -136,3 +136,75 @@ class AnthropicKeyView(viewsets.ViewSet):
             return Response({"detail": f"{exc} The existing key, if any, is unchanged."},
                             status=status.HTTP_400_BAD_REQUEST)
         return self.list(request)
+
+
+class AiBudgetView(viewsets.ViewSet):
+    """Credits on the Anthropic account, the monthly budget, and the estimate
+    (owner, 2026-09-28). Behind the same FF-only rule as the rest of AI spend
+    (FR-0.9): only the FF has the AI usage screen, and only the FF sets these.
+    """
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def list(self, request):
+        from apps.tenancy import ai_budget
+
+        return Response(ai_budget.state(request.tenant))
+
+    def create(self, request):
+        """Set what was sent: `credits_usd` with `credits_as_of`, and/or
+        `monthly_budget_usd` (null clears the budget)."""
+        from datetime import date
+        from decimal import Decimal, InvalidOperation
+
+        from django.utils import timezone
+
+        from apps.tenancy import ai_budget
+        from apps.tenancy.models import AuditEvent
+
+        tenant = request.tenant
+        before = {"credits_usd": str(tenant.ai_credits_usd),
+                  "credits_as_of": str(tenant.ai_credits_as_of),
+                  "monthly_budget_usd": str(tenant.ai_monthly_budget_usd)}
+
+        def money(value):
+            try:
+                amount = Decimal(str(value)).quantize(Decimal("0.01"))
+            except (InvalidOperation, ValueError):
+                return None
+            return amount if amount >= 0 else None
+
+        fields = []
+        if "credits_usd" in request.data:
+            amount = money(request.data.get("credits_usd"))
+            try:
+                as_of = date.fromisoformat(str(request.data.get("credits_as_of") or "")[:10])
+            except ValueError:
+                as_of = None
+            if amount is None or as_of is None:
+                return Response({"detail": "Give the credits on the account as an amount "
+                                           "in dollars, and the date you topped up."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if as_of > timezone.localdate():
+                return Response({"detail": "The top-up date cannot be in the future."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            tenant.ai_credits_usd, tenant.ai_credits_as_of = amount, as_of
+            fields += ["ai_credits_usd", "ai_credits_as_of"]
+        if "monthly_budget_usd" in request.data:
+            raw = request.data.get("monthly_budget_usd")
+            budget = None if raw in (None, "") else money(raw)
+            if raw not in (None, "") and budget is None:
+                return Response({"detail": "The monthly budget is an amount in dollars."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            tenant.ai_monthly_budget_usd = budget
+            fields.append("ai_monthly_budget_usd")
+        if fields:
+            tenant.save(update_fields=fields)
+            AuditEvent.all_objects.create(
+                tenant=tenant, actor=request.user, verb="ai.budget_changed",
+                target_type="tenant", target_id=tenant.pk,
+                payload={"before": before, "after": {
+                    "credits_usd": str(tenant.ai_credits_usd),
+                    "credits_as_of": str(tenant.ai_credits_as_of),
+                    "monthly_budget_usd": str(tenant.ai_monthly_budget_usd)}})
+        return Response(ai_budget.state(tenant))

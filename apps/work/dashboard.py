@@ -67,7 +67,17 @@ def for_request(request) -> dict:
         "pipeline": _pipeline_rows(changes.filter(
             created_at__gte=timezone.now() - timedelta(days=PIPELINE_DAYS))),
         "clients": _clients(request, tasks, goals),
+        # AI spend is the FF's (FR-0.9): the finances slot shows it to them only.
+        "ai": _ai_state(request),
     }
+
+
+def _ai_state(request):
+    from apps.tenancy import ai_budget
+
+    if getattr(getattr(request, "membership", None), "role", None) != "FF":
+        return None
+    return ai_budget.state(request.tenant)
 
 
 def _open_goals(request):

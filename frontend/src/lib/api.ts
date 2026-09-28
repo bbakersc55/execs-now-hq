@@ -821,6 +821,30 @@ export interface Dashboard {
               from: string; to: string; at: string }[];
   clients: { id: string; name: string; open_tasks: number; overdue: number;
              open_goals: number }[];
+  /** AI credit and budget — the FF's only (FR-0.9); null for everyone else. */
+  ai?: AiBudget | null;
+}
+
+/** GET /api/ai-budget/ (owner, 2026-09-28). The balance is an **estimate**:
+ *  credits the FF entered, less what this app has logged since that day. */
+export interface AiBudget {
+  console_url: string;
+  credits_usd: string | null;
+  credits_as_of: string | null;
+  spent_since_credits: string | null;
+  estimated_balance: string | null;
+  monthly_budget_usd: string | null;
+  month_spend: string;
+  month_start: string;
+  next_import: { remaining: number; cost_usd: string } | null;
+  warnings: { kind: "budget" | "balance"; message: string }[];
+}
+
+/** A 409 that is a question — "this would run past the estimated AI
+ *  balance; go ahead anyway?" — rather than a refusal. */
+export function asksToConfirm(error: unknown): boolean {
+  const e = error as { status?: number; data?: { needs_confirmation?: boolean } };
+  return e?.status === 409 && !!e.data?.needs_confirmation;
 }
 
 /** GET /api/meetings/?contact= | ?company= — call notes (FR-5.8d). */

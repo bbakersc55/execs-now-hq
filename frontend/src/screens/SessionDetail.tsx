@@ -9,7 +9,7 @@ import { Banner, Card, Field, Pill, when } from "../components/ui";
 import {
   AnswerValue, ConversionRow, MapRow, Me, PathNote, PrepQuestion, SendPreview as Preview,
   SessionPrep, StrategyQuestion, StrategySessionRow, StrategyTemplateRow, activeTemplates,
-  api,
+  api, asksToConfirm,
 } from "../lib/api";
 
 const CAN_RUN = ["FF", "CF"];
@@ -90,11 +90,15 @@ export function SessionDetail({ me }: { me: Me }) {
     onSuccess: () => refresh(),
     onError: (e: Error) => setNote(e.message),
   });
+  // A Consolidate past the estimated AI balance is a question, not a refusal
+  // (owner, 2026-09-28): asked here, with a way to go ahead.
+  const [ask, setAsk] = useState<{ suffix: string; detail: string } | null>(null);
   const act = useMutation({
     mutationFn: ({ suffix, body }: { suffix: string; body?: object }) =>
       api.post(`${path}${suffix}`, body),
-    onSuccess: () => { refresh(); },
-    onError: (e: Error) => setNote(e.message),
+    onSuccess: () => { setAsk(null); refresh(); },
+    onError: (e: Error, { suffix }) => asksToConfirm(e)
+      ? setAsk({ suffix, detail: e.message }) : setNote(e.message),
   });
   const invite = useMutation({
     mutationFn: () => api.post(`${path}send-invite/`),
@@ -261,6 +265,17 @@ export function SessionDetail({ me }: { me: Me }) {
             <PathsSection notes={data.path_notes ?? []} mayRun={mayRun}
               onDraft={() => act.mutate({ suffix: "draft-paths/" })}
               onChanged={refresh} />
+          )}
+          {section.code === "strategy_map" && ask && (
+            <Banner kind="warn">
+              {ask.detail}{" "}
+              <button className="small" disabled={act.isPending}
+                onClick={() => act.mutate({ suffix: ask.suffix,
+                                            body: { confirm_over_balance: true } })}>
+                Consolidate anyway
+              </button>{" "}
+              <button className="small" onClick={() => setAsk(null)}>Not now</button>
+            </Banner>
           )}
           {section.code === "strategy_map" && (
             <MapSection tray={tray} map={map} mayRun={mayRun}

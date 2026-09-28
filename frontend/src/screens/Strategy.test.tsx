@@ -1421,6 +1421,25 @@ describe("the map tray, after dry run 2", () => {
       .toBe(true));
   });
 
+  it("asks before a Consolidate that would pass the estimated AI balance", async () => {
+    const user = userEvent.setup();
+    let asked = 0;
+    const fetchMock = showSession(aSession({ map_rows: [
+      { ...ROW, state: "accepted" }, { ...ROW, id: "r2", state: "proposed" }] }), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/consolidate/`]: (body: unknown) =>
+        (asked++ === 0 && !(body as { confirm_over_balance?: boolean })?.confirm_over_balance)
+          ? { status: 409, body: { needs_confirmation: true, detail:
+              "Consolidating should cost about $0.40, more than the estimated $0.10 left." } }
+          : { status: 201, body: { drafted: [] } },
+    });
+    await user.click(await screen.findByRole("button", { name: "Consolidate with Claude" }));
+    expect(await screen.findByText(/more than the estimated \$0\.10 left/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Consolidate anyway" }));
+    await waitFor(() => expect(fetchMock.calls.filter((c) => c.url.endsWith("/consolidate/"))
+      .map((c) => c.body)).toEqual([undefined, { confirm_over_balance: true }]));
+  });
+
   it("removes an accepted row from the map after a confirm", async () => {
     const user = userEvent.setup();
     const fetchMock = showSession(aSession({ map_rows: [{ ...ROW, state: "accepted" }] }),

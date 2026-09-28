@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 import { PageHead } from "../components/shell";
-import { Card, Empty, Pill, when } from "../components/ui";
+import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { Dashboard as Board, Me, Pipeline, api } from "../lib/api";
 import { useRemembered } from "../lib/remembered";
 
@@ -160,6 +160,25 @@ export function Dashboard({ me }: { me: Me }) {
     ),
     finances: (
       <Card title="Practice finances">
+        {/* AI credit, the FF's only (FR-0.9): the one money figure the app
+            already has. A warning here is the same one the AI usage screen
+            shows (owner, 2026-09-28). */}
+        {board.data.ai && (
+          <>
+            {board.data.ai.warnings.map((w) => (
+              <Banner key={w.kind} kind="warn">{w.message}</Banner>
+            ))}
+            <p className="small">
+              AI this month <strong>${board.data.ai.month_spend}</strong>
+              {board.data.ai.monthly_budget_usd && <> of ${board.data.ai.monthly_budget_usd}</>}
+              {board.data.ai.estimated_balance !== null && (
+                <> · about <strong>${board.data.ai.estimated_balance}</strong> left on the
+                  account (estimate)</>
+              )}
+              {" · "}<Link to="/ai-usage">AI usage</Link>
+            </p>
+          </>
+        )}
         {/* A reserved slot, so the layout has its home before the finance
             module does. No figures until then — not even zeros, which would
             read as a practice that earned nothing. */}

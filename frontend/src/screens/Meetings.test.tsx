@@ -716,3 +716,28 @@ describe("a panel whose notes another folder offers too", () => {
       .toBeInTheDocument();
   });
 });
+
+
+describe("an import past the estimated AI balance", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("asks, and imports anyway only when told to", async () => {
+    const user = userEvent.setup();
+    let calls = 0;
+    const fetchMock = show({ "POST /api/drive-watch/backfill/": (body: unknown) =>
+      (calls++ === 0 && !(body as { confirm_over_balance?: boolean }).confirm_over_balance)
+        ? { status: 409, body: { needs_confirmation: true, estimated_balance: "1.00",
+            estimated_cost: "9.63", detail: "This import should cost about $9.63, more "
+              + "than the estimated $1.00 left on the Anthropic account. Import anyway?" } }
+        : { status: 201, body: {} } }, aMe({ role: "FF" }));
+
+    await user.click(await screen.findByRole("button", { name: /^Import/ }));
+    expect(await screen.findByText(/more than the estimated \$1\.00 left/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import anyway" }));
+
+    await waitFor(() => expect(fetchMock.calls
+      .filter((c) => c.method === "POST" && c.url.endsWith("/backfill/"))
+      .map((c) => (c.body as { confirm_over_balance?: boolean }).confirm_over_balance))
+      .toEqual([undefined, true]));
+  });
+});

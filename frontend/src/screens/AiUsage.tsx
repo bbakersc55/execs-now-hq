@@ -2,8 +2,10 @@ import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Banner, Card, Empty, Pill, when } from "../components/ui";
-import { api } from "../lib/api";
+import { ExternalLink } from "lucide-react";
+
+import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
+import { AiBudget, api } from "../lib/api";
 
 interface Call {
   id: string; purpose: string; model: string; input_tokens: number;
@@ -30,7 +32,15 @@ export function AiUsage() {
     <>
       <PageHead title="AI usage"
         sub="Every Claude call this practice has made, and what it cost. Visible to you only —
-        spend is financial." />
+        spend is financial."
+        action={
+          <a className="button" href="https://console.anthropic.com/" target="_blank"
+            rel="noopener noreferrer">
+            Manage your Anthropic account <ExternalLink size={14} />
+          </a>
+        } />
+
+      <Credits />
 
       <AnthropicKey />
 
@@ -78,6 +88,103 @@ export function AiUsage() {
             </tbody>
           </table>
         )}
+      </Card>
+    </>
+  );
+}
+
+/**
+ * Credits on the account, the monthly budget, and what is probably left
+ * (owner, 2026-09-28). Anthropic does not report the balance, so it is the
+ * credits entered at the last top-up less what this app has logged since —
+ * **an estimate**, and the screen says so every time it shows the figure.
+ */
+function Credits() {
+  const qc = useQueryClient();
+  const state = useQuery<AiBudget>({
+    queryKey: ["ai-budget"], queryFn: () => api.get<AiBudget>("/api/ai-budget/"),
+  });
+  const [credits, setCredits] = useState("");
+  const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
+  const [budget, setBudget] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: (body: object) => api.post<AiBudget>("/api/ai-budget/", body),
+    onSuccess: (data) => {
+      qc.setQueryData(["ai-budget"], data);
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      setCredits(""); setBudget(null);
+    },
+  });
+  const s = state.data;
+  if (!s) return null;
+  const budgetValue = budget ?? s.monthly_budget_usd ?? "";
+
+  return (
+    <>
+      {s.warnings.map((w) => <Banner key={w.kind} kind="warn">{w.message}</Banner>)}
+      <Card title="Credits and budget">
+        <div className="row">
+          <div>
+            <div className="tile-label">Estimated balance</div>
+            <div className="tile-value">
+              {s.estimated_balance !== null ? `$${s.estimated_balance}` : "—"}
+            </div>
+            <p className="small muted" style={{ margin: 0 }}>
+              {s.estimated_balance !== null ? (
+                <>An estimate: the ${s.credits_usd} you entered on {s.credits_as_of}, less
+                  the ${s.spent_since_credits} this app has logged since. Calls made with
+                  the same key elsewhere are not counted — the console has the real figure.</>
+              ) : "Enter the credits on your account below to see an estimate."}
+            </p>
+          </div>
+          <div>
+            <div className="tile-label">This month</div>
+            <div className="tile-value">${s.month_spend}</div>
+            <p className="small muted" style={{ margin: 0 }}>
+              {s.monthly_budget_usd ? `of a $${s.monthly_budget_usd} monthly budget`
+                                    : "No monthly budget set."}
+              {s.next_import && <> · the running import needs about
+                ${s.next_import.cost_usd} more</>}
+            </p>
+          </div>
+        </div>
+
+        <form className="row" style={{ marginTop: "var(--s3)" }}
+          onSubmit={(e) => { e.preventDefault();
+                             save.mutate({ credits_usd: credits, credits_as_of: asOf }); }}>
+          <Field label="Credits on account after topping up ($)">
+            <input aria-label="Credits on account" inputMode="decimal" value={credits}
+              placeholder={s.credits_usd ?? "50.00"} onChange={(e) => setCredits(e.target.value)} />
+          </Field>
+          <Field label="Topped up on">
+            <input aria-label="Topped up on" type="date" value={asOf}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setAsOf(e.target.value)} />
+          </Field>
+          <div style={{ flex: "0 0 auto", alignSelf: "end" }}>
+            <button type="submit" disabled={!credits.trim() || !asOf || save.isPending}>
+              Save credits
+            </button>
+          </div>
+        </form>
+        <form className="row"
+          onSubmit={(e) => { e.preventDefault();
+                             save.mutate({ monthly_budget_usd: budgetValue || null }); }}>
+          <Field label="Monthly budget ($)">
+            <input aria-label="Monthly budget" inputMode="decimal" value={budgetValue}
+              placeholder="None" onChange={(e) => setBudget(e.target.value)} />
+          </Field>
+          <div style={{ flex: "0 0 auto", alignSelf: "end" }}>
+            <button type="submit" disabled={save.isPending
+              || budgetValue === (s.monthly_budget_usd ?? "")}>Save budget</button>
+          </div>
+        </form>
+        <p className="small muted">
+          A warning shows here and on the dashboard at 80% of the monthly budget, and when
+          the estimate is less than the running import still needs. An import or a
+          Consolidate that would run past the estimate asks before it starts.
+        </p>
+        {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
       </Card>
     </>
   );

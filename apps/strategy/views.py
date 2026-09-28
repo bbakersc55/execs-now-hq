@@ -522,6 +522,22 @@ class SessionViewSet(StrategyViewSet):
         session = self.load(pk)
         if (refused := self._fractional_only("run a Claude draft")) is not None:
             return refused
+        # Past the estimated balance, ask first (owner, 2026-09-28). The
+        # figures are AI spend, which is the FF's (FR-0.9); a CF is asked the
+        # same question without them.
+        from apps.tenancy import ai_budget
+
+        ask = ai_budget.over_balance(request.tenant, ai_budget.call_estimate(
+            ai.CONSOLIDATE_PURPOSE, ai.CONSOLIDATE_ESTIMATE_TOKENS))
+        if ask and not request.data.get("confirm_over_balance"):
+            if request.membership.role == "FF":
+                return Response({**ask, "detail": (
+                    f"Consolidating should cost about ${ask['estimated_cost']}, more than "
+                    f"the estimated ${ask['estimated_balance']} left on the Anthropic "
+                    "account. Consolidate anyway?")}, status=409)
+            return Response({"needs_confirmation": True, "detail": (
+                "The practice's AI credit may be running low. Consolidate anyway?")},
+                status=409)
         rows = ai.consolidate_map_rows(session)
         self._session_audit("strategy.map_consolidation_proposed", session.pk,
                             {"proposed": [str(r.pk) for r in rows]})

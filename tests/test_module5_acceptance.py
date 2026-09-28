@@ -2547,3 +2547,24 @@ def test_each_panel_says_how_many_notes_the_other_offers_too(
     assert first["shared_with"] == [{"folder": str(google_meet.pk),
                                      "folder_name": "Google Meet", "count": 1}]
     assert meet["shared_with"][0]["count"] == 1
+
+
+@pytest.mark.django_db
+def test_an_import_past_the_estimated_balance_asks_first(
+    seeded_tenant, ff_user, api, folder_of_notes, drive_granted, watch, in_tenant_a
+):
+    """Owner, 2026-09-28: a question, not a refusal — the balance is a guess."""
+    seeded_tenant.ai_credits_usd = Decimal("0.05")
+    seeded_tenant.ai_credits_as_of = timezone.localdate()
+    seeded_tenant.save(update_fields=["ai_credits_usd", "ai_credits_as_of"])
+    client = api.as_(ff_user)
+
+    asked = client.post("/api/drive-watch/backfill/", {"scope": "all"})
+    assert asked.status_code == 409
+    assert asked.data["needs_confirmation"] is True
+    assert asked.data["estimated_balance"] == "0.05"
+    assert not DriveBackfill.objects.exists()
+
+    went = client.post("/api/drive-watch/backfill/",
+                       {"scope": "all", "confirm_over_balance": True}, format="json")
+    assert went.status_code == 201

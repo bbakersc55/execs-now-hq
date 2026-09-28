@@ -254,3 +254,28 @@ describe("arranging the dashboard", () => {
     expect(panelOrder()[0]).toBe("Due by day");
   });
 });
+
+
+describe("AI credit in the finances slot", () => {
+  beforeEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+
+  it("shows the founder this month's spend, the estimate, and any warning", async () => {
+    show(aBoard({ ai: { console_url: "", credits_usd: "50.00", credits_as_of: "2026-09-20",
+      spent_since_credits: "6.25", estimated_balance: "43.75", monthly_budget_usd: "10.00",
+      month_spend: "8.10", month_start: "2026-09-01", next_import: null,
+      warnings: [{ kind: "budget", message: "AI spend this month is $8.10 — 81% of the "
+                   + "$10.00 monthly budget." }] } }));
+
+    const slot = (await screen.findByRole("heading", { name: "Practice finances" }))
+      .closest("section")!;
+    expect(slot).toHaveTextContent("81% of the $10.00 monthly budget");
+    expect(slot).toHaveTextContent("about $43.75 left on the account (estimate)");
+  });
+
+  it("shows no AI money to anyone the server does not send it to", async () => {
+    show(aBoard({ ai: null }), aMe({ role: "CF" }));
+    const slot = (await screen.findByRole("heading", { name: "Practice finances" }))
+      .closest("section")!;
+    expect(slot).not.toHaveTextContent("AI this month");
+  });
+});

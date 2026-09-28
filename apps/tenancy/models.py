@@ -102,6 +102,14 @@ class Tenant(UUIDModel):
     digest_ai_prose_default = models.BooleanField(default=True)  # FR-3.24
     digest_send_day = models.PositiveSmallIntegerField(default=5)  # Friday
     digest_send_hour = models.PositiveSmallIntegerField(default=8)
+    # AI spend (owner, 2026-09-28). Anthropic does not tell us the account's
+    # balance, so the FF types what is on the account when they top up, and the
+    # app subtracts what it has logged since — an estimate, and labelled so.
+    ai_credits_usd = models.DecimalField(max_digits=10, decimal_places=2, null=True,
+                                         blank=True)
+    ai_credits_as_of = models.DateField(null=True, blank=True)
+    ai_monthly_budget_usd = models.DecimalField(max_digits=10, decimal_places=2,
+                                                null=True, blank=True)
     # Branding — the name, colours and logo every client-facing surface wears:
     # email (apps/crm/services/email_layout.py) and the portal, sign-in and
     # cadence pages through /api/branding. **White-label**: the defaults are a

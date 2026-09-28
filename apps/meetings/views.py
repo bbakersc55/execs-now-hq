@@ -339,9 +339,10 @@ class DriveWatchViewSet(MeetingViewSetBase):
         try:
             started = backfill_service.start(
                 request.tenant, scope=request.data.get("scope") or "",
-                since=since, actor=request.user, folder=self._folder(request))
+                since=since, actor=request.user, folder=self._folder(request),
+                confirmed=bool(request.data.get("confirm_over_balance")))
         except backfill_service.BackfillRefused as exc:
-            return Response({"detail": str(exc)}, status=exc.status)
+            return Response({"detail": str(exc), **exc.extra}, status=exc.status)
         except (ingest.NotConnected, drive_service.DriveUnavailable) as exc:
             return Response({"detail": str(exc)}, status=409)
         AuditEvent.all_objects.create(

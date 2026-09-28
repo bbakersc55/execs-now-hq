@@ -179,3 +179,53 @@ def test_a_converted_row_stays_on_the_map(session, ff, api):
     assert "links back" in refused.json()["detail"]
     tray = row(session, "Not on the map", PROPOSED)
     assert api.as_(ff).post(f"/api/strategy-map-rows/{tray.pk}/remove/").status_code == 400
+
+
+# ---------------------------- past the estimated balance, ask (2026-09-28)
+
+def _low_credit(tenant, usd="0.01"):
+    from django.utils import timezone
+    tenant.ai_credits_usd, tenant.ai_credits_as_of = usd, timezone.localdate()
+    tenant.save(update_fields=["ai_credits_usd", "ai_credits_as_of"])
+
+
+@pytest.mark.django_db
+def test_consolidate_past_the_balance_asks_the_founder_with_the_figures(
+    session, seeded_tenant, ff, api, fake_claude
+):
+    row(session, "A", PROPOSED)
+    row(session, "B", PROPOSED)
+    _low_credit(seeded_tenant)
+    fake_claude.reply = json.dumps([{"bottleneck": "A and B", "merges": [1, 2]}])
+    url = f"/api/strategy-sessions/{session.pk}/consolidate/"
+
+    asked = api.as_(ff).post(url)
+    assert asked.status_code == 409
+    assert asked.json()["needs_confirmation"] is True
+    assert asked.json()["estimated_balance"] == "0.01"
+    assert fake_claude.requests == []                       # nothing spent asking
+
+    went = api.as_(ff).post(url, {"confirm_over_balance": True}, format="json")
+    assert went.status_code == 201
+
+
+@pytest.mark.django_db
+def test_a_cf_is_asked_without_the_figures(session, seeded_tenant, cf, api, fake_claude):
+    session.owner = cf.user                 # a CF runs their own sessions
+    session.save(update_fields=["owner"])
+    row(session, "A", PROPOSED)
+    row(session, "B", PROPOSED)
+    _low_credit(seeded_tenant)
+    asked = api.as_(cf).post(f"/api/strategy-sessions/{session.pk}/consolidate/")
+    assert asked.status_code == 409
+    assert "estimated_balance" not in asked.json()
+    assert asked.json()["needs_confirmation"] is True
+
+
+@pytest.mark.django_db
+def test_with_no_credits_entered_consolidate_just_runs(session, ff, api, fake_claude):
+    row(session, "A", PROPOSED)
+    row(session, "B", PROPOSED)
+    fake_claude.reply = json.dumps([{"bottleneck": "A and B", "merges": [1, 2]}])
+    assert api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/consolidate/"
+                            ).status_code == 201

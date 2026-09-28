@@ -25,6 +25,9 @@ from apps.strategy.models import StrategyMapRow, StrategyPathNote
 
 ROWS_PURPOSE = "strategy_rows"
 CONSOLIDATE_PURPOSE = "strategy_rows_consolidate"
+#: What one Consolidate is estimated to use before the practice has made one:
+#: a full map and tray in, up to ten merged rows out.
+CONSOLIDATE_ESTIMATE_TOKENS = (6000, 2500)
 
 #: Per draft run (dry run 2, 2026-09-26: one session produced 45 candidates,
 #: many on the same theme).

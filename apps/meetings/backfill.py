@@ -52,9 +52,11 @@ ESTIMATE_TOKENS = (4000, 1500)
 
 
 class BackfillRefused(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, extra=None):
         super().__init__(message)
         self.status = status
+        #: More to say than the message — the over-balance question's figures.
+        self.extra = extra or {}
 
 
 def per_note_estimate(tenant) -> tuple[Decimal, bool]:
@@ -282,7 +284,7 @@ def current(tenant, folder=None) -> DriveBackfill | None:
 
 
 def start(tenant, *, scope: str, since=None, actor=None, client=None,
-          folder=None) -> DriveBackfill:
+          folder=None, confirmed: bool = False) -> DriveBackfill:
     """Record the choice. `NOW` records it and reads nothing."""
     watch = ingest.watch_for(tenant)
     if watch is None:
@@ -306,6 +308,16 @@ def start(tenant, *, scope: str, since=None, actor=None, client=None,
     counts = (plan(tenant, since, client=client, folder=folder)
               if scope == DriveBackfill.Scope.SINCE
               else survey(tenant, client=client, folder=folder))
+    # An import that would run past the estimated balance asks first
+    # (owner, 2026-09-28). A question, not a refusal: the balance is a guess.
+    from apps.tenancy import ai_budget
+
+    ask = ai_budget.over_balance(tenant, Decimal(counts["estimate_usd"]))
+    if ask and not confirmed:
+        raise BackfillRefused(
+            f"This import should cost about ${ask['estimated_cost']}, more than the "
+            f"estimated ${ask['estimated_balance']} left on the Anthropic account. "
+            "Import anyway?", status=409, extra=ask)
     return DriveBackfill.objects.create(
         tenant=tenant, watch=watch, scope=scope, since=since, folder=folder,
         state=DriveBackfill.State.RUNNING, started_by=actor,

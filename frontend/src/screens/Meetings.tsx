@@ -9,7 +9,7 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
   Backfill, BackfillPlan, DismissReason, DriveFolder, DriveHealth, FolderPast, Me,
-  MeetingProposal, WatchFolder,
+  MeetingProposal, WatchFolder, asksToConfirm,
   ProposalItem, api,
 } from "../lib/api";
 
@@ -557,11 +557,16 @@ function Past({ health, folder, setProblem }: {
     enabled: scope === "since" && /^\d{4}-\d{2}-\d{2}$/.test(since),
   });
 
+  // Past the estimated AI balance the server asks rather than starts
+  // (owner, 2026-09-28); the question is shown here, with a way to go ahead.
+  const [ask, setAsk] = useState("");
   const choose = useMutation({
-    mutationFn: () => api.post<Backfill>("/api/drive-watch/backfill/",
-      { scope, since: scope === "since" ? since : null, ...which }),
-    onSuccess: () => { setProblem(""); qc.invalidateQueries({ queryKey: ["drive-watch"] }); },
-    onError: (e: Error) => setProblem(e.message),
+    mutationFn: (confirmed: boolean) => api.post<Backfill>("/api/drive-watch/backfill/",
+      { scope, since: scope === "since" ? since : null, ...which,
+        ...(confirmed ? { confirm_over_balance: true } : {}) }),
+    onSuccess: () => { setProblem(""); setAsk("");
+                       qc.invalidateQueries({ queryKey: ["drive-watch"] }); },
+    onError: (e: Error) => asksToConfirm(e) ? setAsk(e.message) : setProblem(e.message),
   });
 
   const stop = useMutation({
@@ -714,9 +719,17 @@ function Past({ health, folder, setProblem }: {
         </p>
       )}
 
+      {ask && (
+        <Banner kind="warn">
+          {ask}{" "}
+          <button className="small" disabled={choose.isPending}
+            onClick={() => choose.mutate(true)}>Import anyway</button>{" "}
+          <button className="small" onClick={() => setAsk("")}>Not now</button>
+        </Banner>
+      )}
       <button className="primary"
         disabled={choose.isPending || (scope === "since" && !plan.data)}
-        onClick={() => choose.mutate()}>
+        onClick={() => choose.mutate(false)}>
         {choose.isPending ? "Starting…"
           : scope === "now" ? "Start from now"
           : `Import ${chosen?.outstanding ?? ""} notes`}
