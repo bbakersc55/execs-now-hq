@@ -2432,3 +2432,118 @@ def test_the_va_who_clears_the_queue_can_dismiss(seeded_tenant, watch, api, fake
     response = api.as_(va).post(f"/api/meeting-proposals/{proposal.pk}/dismiss/",
                                 {"reason": "no_meeting"})
     assert response.status_code == 200
+
+
+# ---------------------- 2026-09-28: one meeting, one read, whichever folder
+#
+# Google moved Meet Recordings inside Google Meet, so the same notes are under
+# both watched folders; the two panels offered 127 and 116, which is 127.
+
+def test_a_meeting_is_its_title_date_and_start_time():
+    key = ingest.meeting_key
+    assert key("Acme review - 2026/09/24 17:35 MDT - Notes by Gemini") \
+        == "acme review|2026-09-24|17:35"
+    # The same meeting's copy elsewhere, with different spacing and case.
+    assert key("ACME  review - 2026/09/24 17:35 MDT - notes by gemini") \
+        == key("Acme review - 2026/09/24 17:35 MDT - Notes by Gemini")
+    # Two untitled meetings on one day are two meetings.
+    assert key("Meeting started 2026/09/10 08:40 MDT - Notes by Gemini") \
+        != key("Meeting started 2026/09/10 08:57 MDT - Notes by Gemini")
+    assert key("ycs-isxt-awq (2026-08-03 11:00 GMT-6) - Transcript") \
+        == "ycs-isxt-awq|2026-08-03|11:00"
+    # No date, no claim to be anything's duplicate.
+    assert key("15 minutes with John Doe") is None
+
+
+ACME = "Acme review - 2026/09/24 17:35 MDT - Notes by Gemini"
+
+
+@pytest.fixture
+def nested(watch, google_meet, fake_client):
+    """Meet Recordings (the watch's own folder) now sits inside Google Meet."""
+    fake_client.tree["folder-1"] = ("Meet Recordings", "gmeet")
+    return fake_client
+
+
+@pytest.mark.django_db
+def test_the_same_meeting_is_not_read_again_from_another_folder(
+    seeded_tenant, ff_user, api, watch, google_meet, fake_client, drive_granted,
+    fake_claude, in_tenant_a
+):
+    fake_claude.reply = PARSED
+    first = a_note("acme-1", created="2026-09-24T23:40:00.000Z")
+    first.name = ACME
+    copy = a_meet_file("acme-2", ACME, "m-rick", created="2026-09-24T23:41:00.000Z")
+    fake_client.listing = [first, copy]
+    fake_client.texts = {"acme-1": NOTES, "acme-2": NOTES}
+
+    _run_all(api, ff_user, seeded_tenant, fake_client)             # the first folder
+    assert _parse_calls() == 1
+
+    panel = api.as_(ff_user).get(
+        f"/api/drive-watch/backfill/?folder={google_meet.pk}").json()["folder"]
+    assert (panel["outstanding"], panel["already_recorded"]) == (0, 1)
+    assert panel["estimate_usd"] == "0.00"
+
+    started = api.as_(ff_user).post("/api/drive-watch/backfill/", {
+        "scope": "all", "folder": str(google_meet.pk)})
+    assert started.status_code == 201
+    while backfill.step(seeded_tenant, client=fake_client, limit=10)["running"]:
+        pass
+    assert _parse_calls() == 1
+    assert not MeetingSourceFile.objects.filter(drive_file_id="acme-2").exists()
+
+
+@pytest.mark.django_db
+def test_two_meetings_on_one_day_are_both_read(
+    seeded_tenant, ff_user, api, watch, fake_client, drive_granted, fake_claude,
+    in_tenant_a
+):
+    fake_claude.reply = PARSED
+    early = a_note("m1", created="2026-09-10T14:41:00.000Z")
+    early.name = "Meeting started 2026/09/10 08:40 MDT - Notes by Gemini"
+    late = a_note("m2", created="2026-09-10T14:58:00.000Z")
+    late.name = "Meeting started 2026/09/10 08:57 MDT - Notes by Gemini"
+    fake_client.listing = [early, late]
+    fake_client.texts = {"m1": NOTES, "m2": NOTES}
+
+    assert _run_all(api, ff_user, seeded_tenant, fake_client)["planned"] == 2
+    assert _parse_calls() == 2
+
+
+@pytest.mark.django_db
+def test_one_meeting_twice_in_one_folder_is_counted_and_read_once(
+    seeded_tenant, ff_user, api, watch, fake_client, drive_granted, fake_claude,
+    in_tenant_a
+):
+    fake_claude.reply = PARSED
+    a, b = a_note("a", created="2026-09-24T23:40:00.000Z"), \
+        a_note("b", created="2026-09-24T23:45:00.000Z")
+    a.name = b.name = ACME
+    fake_client.listing = [a, b]
+    fake_client.texts = {"a": NOTES, "b": NOTES}
+
+    planned = _run_all(api, ff_user, seeded_tenant, fake_client)["planned"]
+
+    assert planned == 1
+    assert _parse_calls() == 1
+
+
+@pytest.mark.django_db
+def test_each_panel_says_how_many_notes_the_other_offers_too(
+    seeded_tenant, ff_user, api, watch, google_meet, nested, drive_granted, in_tenant_a
+):
+    """Both panels, before either is imported: the same file under both."""
+    shared = a_meet_file("s1", ACME, "folder-1", created="2026-09-24T23:40:00.000Z")
+    only_here = a_meet_file("t1", "abc-defg-hij (2026-05-27 10:54 GMT-6) - Transcript",
+                            "folder-1", created="2026-05-27T17:00:00.000Z")
+    nested.listing = [shared, only_here]
+
+    first = api.as_(ff_user).get("/api/drive-watch/backfill/").json()["folder"]
+    meet = api.as_(ff_user).get(
+        f"/api/drive-watch/backfill/?folder={google_meet.pk}").json()["folder"]
+
+    assert first["outstanding"] == 2 and meet["outstanding"] == 1
+    assert first["shared_with"] == [{"folder": str(google_meet.pk),
+                                     "folder_name": "Google Meet", "count": 1}]
+    assert meet["shared_with"][0]["count"] == 1

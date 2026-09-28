@@ -941,6 +941,12 @@ export interface FolderPast {
   outstanding: number;
   /** Kept out by the exclusion list: recorded as skipped, never read, not costed. */
   excluded?: number;
+  /** The same meeting as a note already recorded from any watched folder:
+   *  not read again, and not in the count or the cost. */
+  already_recorded?: number;
+  /** How many of these another folder's panel offers too — importing either
+   *  reads them once. */
+  shared_with?: { folder: string | null; folder_name: string; count: number }[];
   oldest: string;
   newest: string;
   per_note_usd: string;

@@ -698,3 +698,21 @@ describe("dismissing a proposal", () => {
       c.method === "POST" && c.url.endsWith("/restore/"))).toBe(true));
   });
 });
+
+
+describe("a panel whose notes another folder offers too", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("says how many are shared and how many are already recorded", async () => {
+    show({ "GET /api/drive-watch/backfill/": { backfill: null, folder: {
+      ...PAST, outstanding: 127, already_recorded: 2,
+      shared_with: [{ folder: "wf1", folder_name: "Google Meet", count: 116 }] } } });
+
+    expect(await screen.findByText(
+      /116 of these are the same notes the Google Meet panel offers/)).toBeInTheDocument();
+    expect(screen.getByText(/Import either one; the other then finds them already read/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/2 more are meetings already recorded from another folder/))
+      .toBeInTheDocument();
+  });
+});

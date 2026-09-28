@@ -109,9 +109,11 @@ def _listing(client, folder_id, folder, *, created_from="", page_size=50,
 
 
 def _readable_outstanding(tenant, client, info, since=None, *, folder=None,
-                          watch=None) -> tuple[list, list]:
+                          watch=None) -> tuple[list, list, list]:
     """Files this would actually read — readable, not trashed, not already in,
-    not excluded — and, separately, the ones the exclusion list keeps out.
+    not excluded, not a meeting already recorded — and, separately, the ones
+    the exclusion list keeps out and the ones that are the same meeting as a
+    note already recorded from any watched folder (or listed earlier here).
 
     Filtering by what is already recorded is what makes the count honest after
     a first backfill, and what makes running a second one cheap to reason
@@ -129,7 +131,18 @@ def _readable_outstanding(tenant, client, info, since=None, *, folder=None,
                   and not drive_service.skip_reason(f.mime_type)
                   and f.file_id not in already]
     excluded = [f for f in candidates if ingest.excluded_by(f, patterns)]
-    return [f for f in candidates if f not in excluded], excluded
+    seen = ingest.recorded_meeting_keys()
+    outstanding, same_meeting = [], []
+    for f in sorted((f for f in candidates if f not in excluded),
+                    key=lambda f: f.created_time):
+        key = ingest.meeting_key(f.name)
+        if key and key in seen:
+            same_meeting.append(f)
+            continue
+        if key:
+            seen.add(key)
+        outstanding.append(f)
+    return outstanding, excluded, same_meeting
 
 
 def survey(tenant, *, client=None, folder=None) -> dict:
@@ -146,13 +159,15 @@ def survey(tenant, *, client=None, folder=None) -> dict:
     if folder is not None and folder.depth == DriveWatchFolder.Depth.ANY:
         return _survey_deep(tenant, client, watch, folder)
     info = client.describe_folder(folder.folder_id if folder else watch.folder_id)
-    outstanding, excluded = _readable_outstanding(tenant, client, info,
-                                                  folder=folder, watch=watch)
+    outstanding, excluded, same = _readable_outstanding(tenant, client, info,
+                                                        folder=folder, watch=watch)
     per_note, measured = per_note_estimate(tenant)
 
     return {
         "folder": str(folder.pk) if folder else None,
         "excluded": len(excluded),
+        "already_recorded": len(same),
+        "shared_with": _shared_with_other_folders(tenant, client, watch, folder, outstanding),
         "folder_name": info.name,
         "readable_here": info.readable,
         "readable_in_subfolders": info.readable_below,
@@ -171,12 +186,42 @@ def survey(tenant, *, client=None, folder=None) -> dict:
     }
 
 
+def _shared_with_other_folders(tenant, client, watch, folder, outstanding) -> list[dict]:
+    """How many of these notes another watched folder's panel offers too.
+
+    Since Google moved Meet Recordings inside Google Meet, the same file is
+    under both, and two panels each saying "116 to read" read as 232. Whichever
+    is imported first, the other then finds them recorded and reads none of
+    them; this says so before anyone chooses. Matched by file, or by meeting.
+    """
+    mine_ids = {f.file_id for f in outstanding}
+    mine_keys = {k for k in (ingest.meeting_key(f.name) for f in outstanding) if k}
+    shared = []
+    others = [None] + ingest.folders_for(watch)
+    for other in others:
+        if (other is None and folder is None) or (other is not None and folder is not None
+                                                  and other.pk == folder.pk):
+            continue
+        deep = other is not None and other.depth == DriveWatchFolder.Depth.ANY
+        info = None if deep else client.describe_folder(
+            other.folder_id if other else watch.folder_id)
+        theirs, _, _ = _readable_outstanding(tenant, client, info, folder=other,
+                                             watch=watch)
+        count = sum(1 for f in theirs if f.file_id in mine_ids
+                    or (ingest.meeting_key(f.name) or "") in mine_keys)
+        if count:
+            shared.append({"folder": str(other.pk) if other else None,
+                           "folder_name": other.folder_name if other else watch.folder_name,
+                           "count": min(count, len(outstanding))})
+    return shared
+
+
 def _survey_deep(tenant, client, watch, folder) -> dict:
     """The survey for a folder watched at any depth. There is no one-level
     picture to draw of it — Google Meet holds a folder per meeting — so it is
     the matching notes found under it, and their dates."""
-    outstanding, excluded = _readable_outstanding(tenant, client, None,
-                                                  folder=folder, watch=watch)
+    outstanding, excluded, same = _readable_outstanding(tenant, client, None,
+                                                        folder=folder, watch=watch)
     everything = _listing(client, folder.folder_id, folder, page_size=1000,
                           max_pages=10)
     dates = sorted(f.created_time for f in everything if f.created_time)
@@ -184,6 +229,8 @@ def _survey_deep(tenant, client, watch, folder) -> dict:
     return {
         "folder": str(folder.pk),
         "excluded": len(excluded),
+        "already_recorded": len(same),
+        "shared_with": _shared_with_other_folders(tenant, client, watch, folder, outstanding),
         "folder_name": folder.folder_name,
         "readable_here": 0,
         "readable_in_subfolders": len(everything),
@@ -212,12 +259,13 @@ def plan(tenant, since: date, *, client=None, folder=None) -> dict:
     deep = folder is not None and folder.depth == DriveWatchFolder.Depth.ANY
     info = None if deep else client.describe_folder(
         folder.folder_id if folder else watch.folder_id)
-    outstanding, excluded = _readable_outstanding(tenant, client, info, since=since,
-                                                  folder=folder, watch=watch)
+    outstanding, excluded, same = _readable_outstanding(
+        tenant, client, info, since=since, folder=folder, watch=watch)
     per_note, measured = per_note_estimate(tenant)
     return {
         "folder": str(folder.pk) if folder else None,
         "excluded": len(excluded),
+        "already_recorded": len(same),
         "since": since.isoformat(),
         "outstanding": len(outstanding),
         "per_note_usd": str(per_note),
@@ -338,6 +386,7 @@ def _step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
         return {"running": True, "error": str(exc)}
 
     patterns = ingest.exclusions_for(backfill.watch)
+    meetings = ingest.recorded_meeting_keys()
     read = skipped = failed = 0
     cost = Decimal(0)
     walked, seen = backfill.after_created_time, 0
@@ -351,6 +400,11 @@ def _step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
         walked = drive_file.created_time or walked
         if MeetingSourceFile.objects.filter(drive_file_id=drive_file.file_id).exists():
             continue                  # Already in, at some version.
+        key = ingest.meeting_key(drive_file.name)
+        if key and key in meetings:
+            continue                  # The same meeting, recorded from another file.
+        if key:
+            meetings.add(key)
         row, created = ingest.record(
             tenant, drive_file, folder=backfill.folder,
             excluded=ingest.excluded_by(drive_file, patterns))

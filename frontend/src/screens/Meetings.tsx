@@ -643,6 +643,18 @@ function Past({ health, folder, setProblem }: {
         Watching only picks up notes added from now on, so “Sync now” will not
         find these. Importing them here is the only thing that will.
       </p>
+      {(found.already_recorded ?? 0) > 0 && (
+        <p className="small muted">
+          {found.already_recorded} more {found.already_recorded === 1 ? "is a meeting" : "are meetings"}
+          {" "}already recorded from another folder, so not counted or read again.
+        </p>
+      )}
+      {(found.shared_with ?? []).map((other) => (
+        <p key={other.folder ?? "first"} className="small">
+          <strong>{other.count} of these are the same notes the {other.folder_name} panel
+          offers.</strong> Import either one; the other then finds them already read.
+        </p>
+      ))}
       {(found.excluded ?? 0) > 0 && (
         <p className="small muted">
           {found.excluded} more {found.excluded === 1 ? "is" : "are"} on the exclusion

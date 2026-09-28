@@ -124,6 +124,41 @@ def excluded_by(drive_file, patterns) -> str:
     return ""
 
 
+_MEETING_DATE = re.compile(r"(\d{4})[/-](\d{2})[/-](\d{2})(?:\s+(\d{1,2}):(\d{2}))?")
+_KIND_SUFFIX = re.compile(r"\s*[-\u2013]\s*(notes by gemini|transcript)\s*$", re.IGNORECASE)
+
+
+def meeting_key(name: str) -> str | None:
+    """Which meeting a notes file is about, from its name: the title, the
+    date, and the start time when the name has one (owner, 2026-09-28).
+
+    Google names notes "<title> - 2026/09/24 17:35 MDT - Notes by Gemini", and
+    since it moved Meet Recordings inside Google Meet the same meeting can be
+    offered by two watched folders. The time is part of the key because
+    untitled meetings are all "Meeting started" — two of them on 9/10, at 08:40
+    and 08:57, are two meetings, not one. `None` when there is no date to go on:
+    such a file is never treated as a duplicate.
+    """
+    stem = re.sub(r"\.(txt|docx?)$", "", (name or "").strip(), flags=re.IGNORECASE)
+    stem = _KIND_SUFFIX.sub("", stem)
+    found = _MEETING_DATE.search(stem)
+    if not found:
+        return None
+    title = re.sub(r"[\s\-\u2013(]+$", "", stem[:found.start()])
+    title = re.sub(r"\s+", " ", title).strip().lower()
+    year, month, day, hour, minute = found.groups()
+    when = f"{int(hour):02d}:{minute}" if hour else ""
+    return f"{title}|{year}-{month}-{day}|{when}"
+
+
+def recorded_meeting_keys() -> set[str]:
+    """The meetings already recorded, from any watched folder, in any state —
+    read, skipped, excluded or dismissed alike: each is already accounted for."""
+    return {key for key in (meeting_key(name) for name in
+                            MeetingSourceFile.objects.values_list("name", flat=True))
+            if key}
+
+
 def name_matches(drive_file, folder) -> bool:
     """Whether an extra folder's name pattern lets this file in. The watch's
     own folder (`folder is None`) has no pattern and reads every readable file,
