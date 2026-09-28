@@ -300,3 +300,41 @@ def test_one_failed_call_does_not_stop_the_run(seeded_tenant, ff, people, fake_c
                   and "owner_side" in i.payload]
     assert len(classified) == 1
     assert ownership.plan_reclassification()["items"] == 1     # the failed one is left
+
+
+@pytest.mark.django_db
+def test_the_free_rules_place_what_they_can_and_claude_gets_the_rest_at_low_effort(
+    seeded_tenant, ff, people, fake_claude
+):
+    """Owner, 2026-09-28: staff names and exact contact matches with a known
+    kind are placed free; only the rest go to Claude, as a low-effort call."""
+    proposal = MeetingProposalFactory(tenant=seeded_tenant)
+    staff = ProposalItemFactory(tenant=seeded_tenant, proposal=proposal, payload={
+        "text": "Send the agenda", "proposed_owner_text": "Bryan Baker"})
+    exact = ProposalItemFactory(tenant=seeded_tenant, proposal=proposal, payload={
+        "text": "Sign the SOW", "proposed_owner_text": "Dana Reyes",
+        "proposed_owner_contact_id": str(people["seated"].pk)})
+    first_name_only = ProposalItemFactory(tenant=seeded_tenant, proposal=proposal, payload={
+        "text": "Send numbers", "proposed_owner_text": "Dana",
+        "proposed_owner_contact_id": str(people["seated"].pk)})
+    stranger = ProposalItemFactory(tenant=seeded_tenant, proposal=proposal, payload={
+        "text": "Call back", "proposed_owner_text": "Lee from the bank"})
+
+    plan = ownership.plan_reclassification()
+    assert (plan["placed_free"], plan["items"]) == (2, 2)
+
+    fake_claude.reply = json.dumps([
+        {"item": 1, "owner_side": "other", "owner_kind": "client"},
+        {"item": 2, "owner_side": "other", "owner_kind": "third_party"}])
+    result = ownership.reclassify(seeded_tenant, use_claude=True)
+
+    assert (result["placed_free"], result["claude_calls"]) == (2, 1)
+    sent = fake_claude.requests[0]
+    assert sent["output_config"] == {"effort": "low"}
+    assert "Sign the SOW" not in sent["messages"][0]["content"]      # placed free
+    for item in (staff, exact, first_name_only, stranger):
+        item.refresh_from_db()
+    assert staff.payload["owner_side"] == "practice"
+    assert exact.payload["proposed_outcome"] == "portal"
+    assert first_name_only.payload["owner_side"] == "other"
+    assert stranger.payload["proposed_outcome"] == "follow_up"

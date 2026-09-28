@@ -116,6 +116,41 @@ Reply with JSON only: [{"item": 1, "owner_side": "", "owner_kind": ""}], one \
 per item, in order. No prose, no markdown fence."""
 
 
+def _norm(value: str) -> str:
+    return " ".join((value or "").lower().split())
+
+
+def confident(tenant, payload: dict, *, roster=None):
+    """The classification the free rules can give with confidence, or None
+    when Claude is needed (owner, 2026-09-28): nobody named; a staff name; or
+    an exact match to a contact whose record (or portal seat) says what they
+    are. Anything else — a first name only, an unknown name, a contact the
+    records do not describe — goes to Claude."""
+    from apps.crm.models import Contact
+    from apps.meetings import practice
+
+    owner = (payload.get("proposed_owner_text") or "").strip()
+    if not owner:
+        return classify(tenant, owner_text="")
+    if practice.recognise(tenant, name=owner, roster=roster) is not None:
+        return classify(tenant, owner_text=owner, roster=roster)
+    contact_id = payload.get("proposed_owner_contact_id")
+    contact = (Contact.objects.filter(pk=contact_id, deleted_at__isnull=True)
+               .select_related("company").first() if contact_id else None)
+    if contact is None or _norm(f"{contact.first_name} {contact.last_name}") != _norm(owner):
+        return None
+    if seat_for(contact) is None and not _kind_from_record(contact):
+        return None
+    return classify(tenant, owner_text=owner, owner_contact_id=contact.pk, roster=roster)
+
+
+def tenant_of_context():
+    from apps.tenancy.context import require_current_tenant_id
+    from apps.tenancy.models import Tenant
+
+    return Tenant.objects.get(pk=require_current_tenant_id())
+
+
 def pending_to_classify():
     """Action items still waiting for review, on proposals still open, that
     have no owner classification yet. Reviewed meetings are left alone."""
@@ -169,8 +204,14 @@ def plan_reclassification() -> dict:
 
     from apps.tenancy import claude
 
-    groups = {}
+    from apps.meetings import practice
+
+    roster = practice.staff(tenant_of_context())
+    groups, placed = {}, 0
     for item in pending_to_classify():
+        if confident(item.tenant, item.payload, roster=roster) is not None:
+            placed += 1
+            continue
         groups.setdefault(item.proposal, []).append(item)
     count = sum(len(v) for v in groups.values())
     measured = _measured_per_item()
@@ -182,7 +223,7 @@ def plan_reclassification() -> dict:
             tokens_in = (len(CLASSIFY_SYSTEM) + len(_classify_input(proposal, items))) // 4 + 50
             tokens_out = 250 * len(items) + 20
             cost += float(claude.cost_of(settings.ANTHROPIC_MODEL, tokens_in, tokens_out))
-    return {"proposals": len(groups), "items": count,
+    return {"proposals": len(groups), "items": count, "placed_free": placed,
             "estimated_cost_usd": round(float(cost), 2),
             "measured": measured is not None, "groups": groups}
 
@@ -196,6 +237,17 @@ def reclassify(tenant, *, use_claude: bool, actor=None) -> dict:
 
     from apps.tenancy import claude
 
+    from apps.meetings import practice
+
+    roster = practice.staff(tenant)
+    # The free rules first, for everything they can place with confidence.
+    free = 0
+    for item in pending_to_classify():
+        placed = confident(tenant, item.payload, roster=roster)
+        if placed is not None:
+            item.payload = {**item.payload, **placed}
+            item.save(update_fields=["payload", "updated_at"])
+            free += 1
     plan = plan_reclassification()
     done, calls, cost, failed = 0, 0, 0, []
     for proposal, items in plan["groups"].items():
@@ -208,7 +260,9 @@ def reclassify(tenant, *, use_claude: bool, actor=None) -> dict:
                     tenant=tenant, purpose=CLASSIFY_PURPOSE, system=CLASSIFY_SYSTEM,
                     user_text=_classify_input(proposal, items),
                     target_type="meeting_proposal", target_id=proposal.pk,
-                    trigger="backfill", max_tokens=8000)
+                    trigger="backfill", max_tokens=8000,
+                    # A labelling job, not a judgment call: low effort.
+                    effort="low")
             except (claude.ClaudeUnavailable, claude.ClaudeRefused) as exc:
                 # One proposal failing does not stop the rest; it stays
                 # unclassified, and is named, so a second run picks it up.
@@ -231,5 +285,5 @@ def reclassify(tenant, *, use_claude: bool, actor=None) -> dict:
                 claude_kind=str(hint.get("owner_kind") or "").lower())}
             item.save(update_fields=["payload", "updated_at"])
             done += 1
-    return {"proposals": plan["proposals"], "items": done, "claude_calls": calls,
-            "cost_usd": str(cost), "failed": failed}
+    return {"proposals": plan["proposals"], "items": done, "placed_free": free,
+            "claude_calls": calls, "cost_usd": str(cost), "failed": failed}

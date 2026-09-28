@@ -145,7 +145,7 @@ WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_use
 
 def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
                        target_type: str = "", target_id=None, trigger: str = "auto",
-                       max_tokens: int = 16000, tools=None):
+                       max_tokens: int = 16000, tools=None, effort: str | None = None):
     """As `complete`, and also hands back the `AiCall` row it wrote.
 
     Module 4 needs it: a drafted map row records **which run produced it**, so a
@@ -156,6 +156,10 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
     cost is not in `cost_usd`**, which is the token cost, because Anthropic
     bills searches separately and a number that quietly under-reports spend is
     worse than one that admits what it covers.
+
+    `effort` ("low" … "max") sets how hard the model reasons, which is billed
+    as output. Left unset, the model's own default. A labelling job — the
+    owner classification — asks for "low" (2026-09-28).
     """
     import anthropic
 
@@ -186,6 +190,7 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
             betas=[FALLBACK_BETA],
             fallbacks="default",
             **({"tools": tools} if tools else {}),
+            **({"output_config": {"effort": effort}} if effort else {}),
         )
     except anthropic.AuthenticationError as exc:
         fail("Anthropic rejected the stored key. The founder fractional can replace it "

@@ -31,14 +31,16 @@ class Command(BaseCommand):
             with tenant_context(tenant.pk):
                 plan = ownership.plan_reclassification()
                 self.stdout.write(
-                    f"{tenant.name}: {plan['items']} pending action items on "
+                    f"{tenant.name}: {plan['placed_free']} placed by the free rules; "
+                    f"{plan['items']} need Claude, on "
                     f"{plan['proposals']} proposals. With Claude: {plan['proposals']} "
                     f"calls, about ${plan['estimated_cost_usd']:.2f} "
                     f"({'measured from calls already made' if plan['measured'] else 'modelled'}). "
                     "Without: free.")
                 if options["run"]:
                     result = ownership.reclassify(tenant, use_claude=not options["no_ai"])
-                    self.stdout.write(f"  classified {result['items']} items; "
+                    self.stdout.write(f"  {result['placed_free']} placed free; "
+                                      f"classified {result['items']} with Claude; "
                                       f"{result['claude_calls']} calls, ${result['cost_usd']}; "
                                       f"{len(result['failed'])} proposals failed and stay "
                                       "unclassified")
