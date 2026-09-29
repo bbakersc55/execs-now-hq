@@ -1445,6 +1445,88 @@ judgement on N real goals**, with N — never as a pass.
 
 AC-5.1–5.16, plus **extraction quality on N real meetings** with a count of proposals approved versus rejected — a rejection rate is the honest measure here, and I will report it whatever it is.
 
+#### The Phase 5 metric — the real queue, 2026-09-29 (Beta exit criterion 7, third limb)
+
+Read from the database at 2026-09-29 ~13:10 UTC, tenant Executives Now. The
+ingestion ran from 2026-09-22 to 2026-09-29, on real Gemini notes.
+**Superseded proposals (replaced by a re-parse) are excluded from every count
+below**; there were 11.
+
+**Proposals: 153 reviewed, 0 waiting.**
+
+| Outcome | Proposals |
+|---|---|
+| Actioned (approved in whole or part) | 94 |
+| Rejected outright | 20 |
+| Dismissed | 39 |
+
+**Dismissed, by reason:** not relevant 24 · no meeting happened 13 · other 2
+("Networking meeting. Too many people."; "Happened too long ago, meeting is no
+longer relevant.") · vendor pitch 0.
+
+**Action items** (the parse's `action_item` kind):
+
+| | Count |
+|---|---|
+| Approved | **204** |
+| — as the practice's own task | 111 |
+| — as someone else's commitment, **follow-up** | 11 |
+| — as someone else's commitment, **record-only** | 82 |
+| — as someone else's commitment, portal | 0 |
+| Rejected | **276** |
+| Left open inside dismissed proposals (closed by the dismissal, by design) | 104 |
+
+**Of the 480 action items a person actually decided on, 42.5% were approved and
+57.5% rejected.** Deliverables did worse: 18 approved (all became tasks), 67
+rejected, 26 left open by dismissals, so **21% of the 85 decided were
+approved**. Together: 222 of 565, **39.3% approved**. A rejection rate near 60%
+is a finding about extraction precision, the question Manual check 3 asks ("are
+these ones you would have written down?"), and **it is the number to improve
+before V1**, not one to explain away.
+
+**Participants:** 122 approved outside the practice, **78 created as new
+contacts and 44 matched to existing ones**. 29 were rejected and 74 were left
+open by dismissals. The practice itself was recognised 97 times (FR-5.9e, never
+asked). *Created vs matched is inferred:* a contact counts as created when its
+source is "meeting notes" and it was made within 30 seconds of the approval.
+The item does not store which path was taken.
+
+**Meetings recorded:** 98 (94 from actioned proposals, 4 from proposals that were
+partly actioned and then dismissed; the meeting and the approvals already made
+stay, as dismissal promises).
+
+**AI cost of ingestion: $37.67** (the token cost in `ai_call`, not reconciled
+against the Anthropic console).
+
+| Purpose | Calls | Failed | Cost |
+|---|---|---|---|
+| `meeting_parse` | 236 | 72 | $36.95 |
+| `meeting_owner_classify` | 94 | 1 | $0.72 |
+
+**$17.25 of the parse cost, 47%, was spent on the 72 failed calls.** Each failed
+with "Claude's answer was cut off or empty; nothing was kept." Those tokens were
+billed and produced nothing. After precision, this is the second finding.
+
+**Two defects surfaced by the metric; neither is fixed yet (no behaviour
+changes today):**
+
+1. **A new Drive version with unchanged text became a second proposal.** "Mike
+   Eller" v12 was read on 2026-09-22, and v13 on 2026-09-28 with identical text
+   (104,232 characters). It produced a second proposal, a second meeting and 8
+   duplicate tasks. One other file *was* skipped as "unchanged since version
+   4", so the check exists but did not catch this one.
+2. **A new contact was created when the matcher offered the existing one** (by
+   email, confidence 0.98) on that second proposal. Whether that was a click or
+   a default in the screen is not yet known.
+
+**At the time of reading, one source file was in `parsing`** ("Meeting started
+2026/05/15 10:59 MDT", updated 13:03:56 UTC today). This is probably a job the
+running worker had in hand. It is noted here because the cutover freeze checks
+for exactly this (runbook C6).
+
+**Exit criterion 7 (third limb), "10 real meeting proposals reviewed, with the
+approve/reject rate reported": met.** 153 were reviewed, and the rates are above.
+
 ---
 
 ## Phase 6 — Unified client communication
@@ -1577,6 +1659,21 @@ deliberately renamed.
 ---
 
 ## Phase 7 — The Railway move
+
+> **Preparation began 2026-09-29.** The step-by-step runbook (who does what, in
+> what order, with gates) is **`docs/phase7_cutover_runbook.md`**. Two changes
+> to this section, both from the owner, 2026-09-29:
+> - **Branching:** work happens on `dev`; `main` moves only when the owner says
+>   "release", with the full suite as the gate. Railway production deploys from
+>   `main`, as below.
+> - **A staging service with its own database is part of Phase 7**, not Phase 8+.
+>   It deploys from `dev` and hosts the rehearsal restore. The "scratch Railway
+>   database" below is that staging database. The Phase 8+ `staging` branch is
+>   no longer needed.
+>
+> The runbook also corrects one point of the owner's list: **the Anthropic key is
+> not a Railway variable.** Settings refuse `ANTHROPIC_API_KEY` off localhost,
+> and the tenant's key already travels encrypted in the database.
 
 ### The trigger
 
