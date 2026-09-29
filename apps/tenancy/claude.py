@@ -13,6 +13,10 @@ Three things every call gets, so no feature has to remember them:
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
+import functools
+
 from decimal import Decimal
 
 from django.conf import settings
@@ -39,6 +43,53 @@ class ClaudeUnavailable(Exception):
 
 class ClaudeRefused(Exception):
     """Every model in the fallback chain declined."""
+
+
+class ClaudeSkipped(ClaudeUnavailable):
+    """An unattended call not made (apps/tenancy/ai_guard.py): the day's cap is
+    reached, or this exact input has failed twice. Nothing was sent to
+    Anthropic and nothing was billed. `reason` is `ai_guard.DAILY_CAP` or
+    `ai_guard.FAILED_TWICE`. A subclass of ClaudeUnavailable, so every caller
+    that already survives an outage survives this; callers that should wait
+    for tomorrow rather than give up check for it."""
+
+    def __init__(self, message, reason):
+        super().__init__(message)
+        self.reason = reason
+
+
+# ------------------------------------------------------- who is asking
+
+#: The worker job making calls right now, or None in a web request. Set only by
+#: `unattended`, which every scheduled job entry point wears.
+_UNATTENDED: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "claude_unattended", default=None)
+
+
+@contextlib.contextmanager
+def unattended(job: str):
+    """Calls made inside are the worker's own, with nobody asking: they count
+    against the daily cap and stop after two failures (owner, 2026-09-29)."""
+    token = _UNATTENDED.set(job)
+    try:
+        yield
+    finally:
+        _UNATTENDED.reset(token)
+
+
+def unattended_job(job: str):
+    """The decorator form, for a scheduled task function."""
+    def wrap(fn):
+        @functools.wraps(fn)
+        def run(*args, **kwargs):
+            with unattended(job):
+                return fn(*args, **kwargs)
+        return run
+    return wrap
+
+
+def current_job() -> str | None:
+    return _UNATTENDED.get()
 
 
 def key_source(tenant) -> str | None:
@@ -171,9 +222,30 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
 
     from apps.tenancy.models import AiCall
 
+    job = current_job()
+    input_hash = ""
+    if job is not None:
+        import hashlib
+
+        from apps.tenancy import ai_guard
+
+        input_hash = hashlib.sha256(
+            "\x1f".join([purpose, system, user_text]).encode()).hexdigest()
+        reason = ai_guard.refusal(tenant, purpose=purpose, target_type=target_type,
+                                  target_id=target_id, input_hash=input_hash)
+        if reason is not None:
+            ai_guard.record_skip(tenant, reason=reason, purpose=purpose,
+                                 target_type=target_type, target_id=target_id, job=job)
+            raise ClaudeSkipped(
+                "Today's limit on automatic AI spend is reached; this waits until "
+                "tomorrow." if reason == ai_guard.DAILY_CAP else
+                "This failed twice on the same input, so it is not tried again "
+                "automatically until someone runs it.", reason)
+
     call = AiCall(
         tenant=tenant, purpose=purpose, target_type=target_type, target_id=target_id,
         model=settings.ANTHROPIC_MODEL, trigger=trigger,
+        unattended=job is not None, input_hash=input_hash,
     )
 
     def fail(message, exc=None):

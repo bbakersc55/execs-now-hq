@@ -6,9 +6,13 @@ explicit tenant_context because a background job has no request.
 
 from __future__ import annotations
 
+# Every job here is the worker's own: its Claude calls are capped per day and
+# stop after two failures on the same input (apps/tenancy/ai_guard.py).
+from apps.tenancy.claude import unattended_job
 from apps.tenancy.context import tenant_context
 
 
+@unattended_job("crm.draft_referral_touches")
 def draft_referral_touches(tenant_id: str) -> int:
     """FR-1.21 — drafts due touches 3 days early into the Outbox.
 
@@ -22,6 +26,7 @@ def draft_referral_touches(tenant_id: str) -> int:
         return len(draft_due_touches(tenant))
 
 
+@unattended_job("crm.expire_outbox")
 def expire_outbox(tenant_id: str) -> int:
     """FR-1.18 — an unapproved item past its send-by EXPIRES. It does not send."""
     from apps.crm.services.outbox import expire_due
@@ -32,6 +37,7 @@ def expire_outbox(tenant_id: str) -> int:
         return expire_due(tenant)
 
 
+@unattended_job("crm.reindex_search")
 def reindex_search(tenant_id: str) -> int:
     """FR-1.33 — refresh contact search vectors."""
     from apps.crm.services.search import reindex_tenant
@@ -45,6 +51,7 @@ def reindex_search(tenant_id: str) -> int:
         return Contact.objects.count()
 
 
+@unattended_job("crm.poll_inbound")
 def poll_inbound(tenant_id: str) -> dict:
     """Collect replies on the threads the app started (FR-6.5).
 

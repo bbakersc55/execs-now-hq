@@ -33,8 +33,9 @@ PARSE_PURPOSE = "meeting_parse"
 #: stays below the SDK's non-streaming ceiling.
 PARSE_MAX_TOKENS = 16000
 
-#: Billed automatic failures before the poll stops retrying a file.
-MAX_AUTO_PARSE_FAILURES = 3
+#: Billed automatic failures before the poll stops retrying a file: twice on
+#: the same input, the rule for every automatic job (owner, 2026-09-29).
+MAX_AUTO_PARSE_FAILURES = 2
 
 SYSTEM = """\
 You are reading the notes of one business meeting for a fractional operations \
@@ -385,6 +386,11 @@ def read_again(source_file, *, actor=None) -> MeetingSourceFile:
     source_file.auto_parse_failures = 0
     source_file.error = ""
     source_file.save(update_fields=["state", "auto_parse_failures", "error", "updated_at"])
+    from apps.tenancy import ai_guard
+
+    ai_guard.allow_again(source_file.tenant, purpose=PARSE_PURPOSE,
+                         target_type="meeting_source_file", target_id=source_file.pk,
+                         actor=actor)
     AuditEvent.all_objects.create(
         tenant_id=source_file.tenant_id, actor=actor, verb="meeting.file_read_again",
         target_type="meeting_source_file", target_id=source_file.pk,

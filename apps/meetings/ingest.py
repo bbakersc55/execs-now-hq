@@ -316,6 +316,8 @@ def poll(tenant, *, client=None, parse=True) -> dict:
                 | Q(state=MeetingSourceFile.State.FAILED,
                     auto_parse_failures__lt=parsing.MAX_AUTO_PARSE_FAILURES)
                 ).order_by("created_at")[:PARSE_PER_POLL]:
+            if paused_for_today(tenant):
+                break             # Recorded, and read tomorrow (ai_guard).
             if not parsing.claim(row):
                 continue          # The backfill has it.
             proposal = parsing.parse(row, client=client)
@@ -323,6 +325,15 @@ def poll(tenant, *, client=None, parse=True) -> dict:
                 (skipped if row.state == MeetingSourceFile.State.SKIPPED
                  else failed).append(row)
     return {"recorded": recorded, "skipped": skipped, "failed": failed, "error": ""}
+
+
+def paused_for_today(tenant) -> bool:
+    """The worker has reached today's cap on unattended AI spend (owner,
+    2026-09-29). New files are still recorded, so nothing is missed; they are
+    read tomorrow. "Sync now" from the screen is a person asking: never paused."""
+    from apps.tenancy import ai_guard, claude
+
+    return claude.current_job() is not None and ai_guard.cap_reached(tenant)
 
 
 def health(tenant) -> dict:

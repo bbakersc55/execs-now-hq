@@ -386,6 +386,19 @@ def _step(tenant, *, client=None, limit: int = PER_TICK) -> dict:
     if backfill is None:
         return {"running": False}
 
+    if ingest.paused_for_today(tenant):
+        # Paused, not stopped: the import resumes tomorrow where it is.
+        from apps.meetings.parsing import PARSE_PURPOSE
+        from apps.tenancy import ai_guard
+
+        ai_guard.record_skip(tenant, reason=ai_guard.DAILY_CAP, purpose=PARSE_PURPOSE,
+                             target_type="drive_backfill", target_id=backfill.pk,
+                             job="meetings.run_backfill")
+        DriveBackfill.objects.filter(pk=backfill.pk).update(
+            last_error="Paused for today: the daily limit on automatic AI spend is "
+                       "reached. It carries on tomorrow.", updated_at=timezone.now())
+        return {"running": True, "paused": ai_guard.DAILY_CAP}
+
     page_size = max(limit * 4, 20)
     try:
         client = client or ingest.client_for(tenant)

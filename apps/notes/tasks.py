@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from django.db import transaction
 
+# Every job here is the worker's own: its Claude calls are capped per day and
+# stop after two failures on the same input (apps/tenancy/ai_guard.py).
+from apps.tenancy.claude import unattended_job
 from apps.tenancy.context import tenant_context
 
 
+@unattended_job("notes.process_notes")
 def process_notes(tenant_id: str) -> dict:
     """Every minute: advance transcriptions, then draft queued summaries.
 
@@ -48,6 +52,7 @@ def process_notes(tenant_id: str) -> dict:
     return {"transcriptions_finished": finished, "summaries_drafted": drafted}
 
 
+@unattended_job("notes.purge_expired_audio")
 def purge_expired_audio(tenant_id: str) -> dict:
     """Daily: FR-2.19 retention, under the owner's rule (see recording.py)."""
     from apps.notes import recording

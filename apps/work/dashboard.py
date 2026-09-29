@@ -69,8 +69,19 @@ def for_request(request) -> dict:
         "clients": _clients(request, tasks, goals),
         # AI spend is the FF's (FR-0.9): the finances slot shows it to them only.
         "ai": _ai_state(request),
+        # Every staff role sees that automatic AI work is paused; only the FF
+        # sees the amounts (owner, 2026-09-29; FR-0.9).
+        "ai_paused": _ai_paused(request),
         "waiting": _waiting(request),
     }
+
+
+def _ai_paused(request):
+    from apps.tenancy import ai_guard
+
+    role = getattr(getattr(request, "membership", None), "role", None)
+    state = ai_guard.status(request.tenant, financial=role == "FF")
+    return state if state["paused"] or state["stopped_after_two_failures"] else None
 
 
 def _waiting(request):

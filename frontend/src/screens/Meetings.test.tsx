@@ -870,11 +870,11 @@ describe("notes that could not be read (owner, 2026-09-29)", () => {
 
   const FAILED = [
     { id: "f9", name: "Meeting started 2026/05/15 10:59 MDT - Notes by Gemini",
-      error: "Claude's answer was cut off or empty; nothing was kept. Failed 3 times "
+      error: "Claude's answer was cut off or empty; nothing was kept. Failed 2 times "
              + "automatically; not tried again until someone chooses Read again.",
-      web_view_link: "https://d/f9", automatic_failures: 3, retries_automatically: false,
+      web_view_link: "https://d/f9", automatic_failures: 2, retries_automatically: false,
       state: "failed", mime_type: "", skip_reason: "", owner_email: "", fetched_at: null },
-    { id: "f8", name: "Weekly sync", error: "Queued to be read again (1 of 3).",
+    { id: "f8", name: "Weekly sync", error: "Queued to be read again (1 of 2).",
       web_view_link: "", automatic_failures: 1, retries_automatically: true,
       state: "failed", mime_type: "", skip_reason: "", owner_email: "", fetched_at: null },
   ];
@@ -895,7 +895,7 @@ describe("notes that could not be read (owner, 2026-09-29)", () => {
       vi.stubGlobal("fetch", fetchMock);
       renderRoute(<Meetings me={aMe()} />, { path: "/meetings", route: "/meetings" });
       expect(await screen.findByText(/Meeting started 2026\/05\/15/)).toBeInTheDocument();
-      expect(screen.getByText("Retrying (1 of 3)")).toBeInTheDocument();
+      expect(screen.getByText("Retrying (1 of 2)")).toBeInTheDocument();
       const buttons = screen.getAllByRole("button", { name: /Read again/ });
       expect(buttons).toHaveLength(1);
       await user.click(buttons[0]);

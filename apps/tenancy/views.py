@@ -208,3 +208,41 @@ class AiBudgetView(viewsets.ViewSet):
                     "credits_as_of": str(tenant.ai_credits_as_of),
                     "monthly_budget_usd": str(tenant.ai_monthly_budget_usd)}})
         return Response(ai_budget.state(tenant))
+
+
+class AiGuardView(viewsets.ViewSet):
+    """The daily cap on unattended AI spend (owner, 2026-09-29). FF only, like
+    the rest of AI spend (FR-0.9). The pause itself, without amounts, reaches
+    every staff role through the dashboard."""
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def list(self, request):
+        from apps.tenancy import ai_guard
+
+        return Response(ai_guard.status(request.tenant, financial=True))
+
+    def create(self, request):
+        """`daily_cap_usd`: a dollar amount, zero or more. Zero stops all
+        unattended AI calls; it is allowed, and said to be allowed."""
+        from decimal import Decimal, InvalidOperation
+
+        from apps.tenancy import ai_guard
+        from apps.tenancy.models import AuditEvent
+
+        try:
+            cap = Decimal(str(request.data.get("daily_cap_usd"))).quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError):
+            cap = None
+        if cap is None or cap < 0:
+            return Response({"detail": "The daily limit is an amount in dollars, zero or more."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        tenant = request.tenant
+        before = str(tenant.ai_unattended_daily_cap_usd)
+        tenant.ai_unattended_daily_cap_usd = cap
+        tenant.save(update_fields=["ai_unattended_daily_cap_usd"])
+        AuditEvent.all_objects.create(
+            tenant=tenant, actor=request.user, verb="ai.daily_cap_changed",
+            target_type="tenant", target_id=tenant.pk,
+            payload={"before": before, "after": str(cap)})
+        return Response(ai_guard.status(tenant, financial=True))

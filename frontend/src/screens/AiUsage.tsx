@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { AiBudget, api } from "../lib/api";
+import { AiBudget, AiGuard, aiPausedMessage, api } from "../lib/api";
 
 interface Call {
   id: string; purpose: string; model: string; input_tokens: number;
@@ -39,6 +39,8 @@ export function AiUsage() {
             Manage your Anthropic account <ExternalLink size={14} />
           </a>
         } />
+
+      <DailyLimit />
 
       <Credits />
 
@@ -232,5 +234,79 @@ function AnthropicKey() {
         fails, nothing changes. It is stored encrypted and never shown again.</p>
       {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
     </Card>
+  );
+}
+
+const PURPOSES: Record<string, string> = {
+  meeting_parse: "Reading meeting notes", meeting_owner_classify: "Classifying owners",
+  digest_prose: "Digest prose", note_summary: "Note summary",
+};
+
+/**
+ * The daily cap on unattended AI spend (owner, 2026-09-29): what the worker
+ * may spend in a day with nobody asking. Anything a person runs is never
+ * counted or stopped.
+ */
+function DailyLimit() {
+  const qc = useQueryClient();
+  const state = useQuery<AiGuard>({
+    queryKey: ["ai-guard"], queryFn: () => api.get<AiGuard>("/api/ai-guard/"),
+  });
+  const [cap, setCap] = useState<string | null>(null);
+  const [problem, setProblem] = useState("");
+  const save = useMutation({
+    mutationFn: () => api.post<AiGuard>("/api/ai-guard/", { daily_cap_usd: cap }),
+    onSuccess: (data) => {
+      qc.setQueryData(["ai-guard"], data);
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      setCap(null); setProblem("");
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  const g = state.data;
+  if (!g) return null;
+  const message = aiPausedMessage(g);
+  return (
+    <>
+      {message && <Banner kind="warn">{message}</Banner>}
+      <Card title="Daily limit on automatic AI">
+        <p className="small muted">
+          What the worker may spend in one day with nobody asking: reading meeting notes,
+          digest prose, note summaries. When today's automatic spend reaches it, those wait
+          until tomorrow. The tray, Consolidate, prep and narrative drafts are never stopped.
+          Any automatic job that fails twice on the same input stops until someone runs it.
+        </p>
+        <p>
+          Today <strong>${g.spent_today_usd}</strong> of <strong>${g.cap_usd}</strong>
+          {g.paused && <> · <Pill kind="warn">paused until midnight</Pill></>}
+        </p>
+        {problem && <Banner kind="bad">{problem}</Banner>}
+        <div className="row tight">
+          <label className="inline small">
+            Daily limit $
+            <input aria-label="Daily limit on automatic AI, in dollars" inputMode="decimal"
+              style={{ width: "6rem" }} value={cap ?? g.cap_usd ?? ""}
+              onChange={(e) => setCap(e.target.value)} />
+          </label>
+          <button className="small" disabled={cap === null || save.isPending}
+            onClick={() => save.mutate()}>Save</button>
+        </div>
+        {(g.skipped ?? []).length > 0 && (
+          <>
+            <h4>Held back today</h4>
+            <ul className="timeline">
+              {g.skipped!.map((row, i) => (
+                <li key={i} className="small">
+                  {PURPOSES[row.purpose] ?? row.purpose} · {row.target_type}
+                  {" · "}{row.reason === "daily_cap" ? "waits for tomorrow"
+                    : "failed twice; waits for someone to run it"}
+                  {" · "}{when(row.at)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Card>
+    </>
   );
 }

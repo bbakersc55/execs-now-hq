@@ -7,6 +7,7 @@ UUID PK, tenant FK with PROTECT, created_at/updated_at, tenant-scoped uniques.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -110,6 +111,11 @@ class Tenant(UUIDModel):
     ai_credits_as_of = models.DateField(null=True, blank=True)
     ai_monthly_budget_usd = models.DecimalField(max_digits=10, decimal_places=2,
                                                 null=True, blank=True)
+    #: A hard stop on what the worker may spend on Claude in one practice day
+    #: without anybody asking (owner, 2026-09-29). FF-set on AI usage.
+    #: Person-initiated calls are never counted or stopped. apps/tenancy/ai_guard.py.
+    ai_unattended_daily_cap_usd = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("5.00"), db_default=Decimal("5.00"))
     # Branding — the name, colours and logo every client-facing surface wears:
     # email (apps/crm/services/email_layout.py) and the portal, sign-in and
     # cadence pages through /api/branding. **White-label**: the defaults are a
@@ -362,6 +368,16 @@ class AiCall(TenantScopedModel):
     # per request on top, so the count is recorded rather than folded into a
     # number that would then be wrong in a direction that flatters us.
     web_searches = models.IntegerField(default=0)
+    #: Made by the worker with nobody asking (owner, 2026-09-29): counted
+    #: against the tenant's daily cap. `db_default`s so a worker still on the
+    #: previous code can insert.
+    unattended = models.BooleanField(default=False, db_default=False)
+    #: sha256 of what was asked, so "the same input failed twice" is exact:
+    #: this week's digest for a contact is not last week's.
+    input_hash = models.CharField(max_length=64, blank=True, default="", db_default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "ai_call"
+        # The daily-cap sum runs before every unattended call.
+        indexes = [models.Index(fields=["tenant", "unattended", "created_at"],
+                                name="ai_call_unattended_day")]

@@ -293,3 +293,32 @@ describe("the waiting-on-others tile", () => {
     expect(tile).toHaveTextContent("2 overdue");
   });
 });
+
+describe("when automatic AI is paused (owner, 2026-09-29)", () => {
+  beforeEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+
+  it("tells a VA, without the amounts", async () => {
+    show({ ...aBoard(), ai_paused: { paused: true, resumes_at: "2026-09-30T06:00:00Z",
+                                     skipped_today: 2, stopped_after_two_failures: 0 } },
+         aMe({ role: "VA" }));
+    const banner = await screen.findByText(/Automatic AI work is paused/);
+    expect(banner).toHaveTextContent("2 items wait until tomorrow");
+    expect(banner.textContent).not.toMatch(/\$/);
+  });
+
+  it("tells the FF the amounts, with the way to change them", async () => {
+    show({ ...aBoard(), ai_paused: { paused: true, resumes_at: null, skipped_today: 1,
+                                     stopped_after_two_failures: 1, cap_usd: "5.00",
+                                     spent_today_usd: "5.08" } });
+    const banner = await screen.findByText(/Automatic AI work is paused/);
+    expect(banner).toHaveTextContent("daily limit of $5.00 is reached ($5.08 spent)");
+    expect(banner).toHaveTextContent("1 automatic job failed twice");
+    expect(screen.getAllByRole("link", { name: "AI usage" }).length).toBeGreaterThan(0);
+  });
+
+  it("says nothing on an ordinary day", async () => {
+    show({ ...aBoard(), ai_paused: null });
+    await screen.findByText(/Good to see you/);
+    expect(screen.queryByText(/Automatic AI work is paused/)).toBeNull();
+  });
+});

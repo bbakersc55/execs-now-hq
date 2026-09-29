@@ -464,7 +464,7 @@ function AddFolder({ setNote, setProblem }: {
  */
 /**
  * Notes whose read failed, by name (owner, 2026-09-29). A failed read is
- * retried by the next poll on its own, up to three billed tries; after that it
+ * retried by the next poll on its own, up to two billed tries; after that it
  * waits here for a person, because retrying the same note every ten minutes
  * is how $17 went on answers that were cut off.
  */
@@ -487,7 +487,7 @@ function FailedFiles({ setProblem }: { setProblem: (text: string) => void }) {
   return (
     <Card title="Couldn't be read">
       <p className="small muted">
-        Each is tried again by itself on the next poll, up to three times.
+        Each is tried again by itself on the next poll, up to twice.
         After that it waits here, so the same note is not paid for every ten minutes.
       </p>
       <ul className="timeline">
@@ -502,7 +502,7 @@ function FailedFiles({ setProblem }: { setProblem: (text: string) => void }) {
               <span className="small muted">{row.error}</span>
             </span>
             {row.retries_automatically ? (
-              <Pill>Retrying ({row.automatic_failures} of 3)</Pill>
+              <Pill>Retrying ({row.automatic_failures} of 2)</Pill>
             ) : (
               <button className="small" disabled={again.isPending}
                 onClick={() => again.mutate(row.id)}>

@@ -7,6 +7,7 @@ router.register("staff", views.StaffViewSet, basename="staff")
 router.register("ai-usage", views.AiUsageViewSet, basename="ai-usage")
 router.register("ai-key", views.AnthropicKeyView, basename="ai-key")
 router.register("ai-budget", views.AiBudgetView, basename="ai-budget")
+router.register("ai-guard", views.AiGuardView, basename="ai-guard")
 router.register("act-as", views_acting.ActAsViewSet, basename="act-as")
 
 urlpatterns = router.urls

@@ -9,11 +9,15 @@ from __future__ import annotations
 
 from django.utils import timezone
 
+# Every job here is the worker's own: its Claude calls are capped per day and
+# stop after two failures on the same input (apps/tenancy/ai_guard.py).
+from apps.tenancy.claude import unattended_job
 from apps.tenancy.context import tenant_context
 
 CLIENT_ACTIVITY_QUIET = timezone.timedelta(minutes=30)   # FR-3.40, same window
 
 
+@unattended_job("work.tick")
 def tick(tenant_id: str, now=None) -> dict:
     """Every minute: close quiet windows, generate, expire, send, notify.
 

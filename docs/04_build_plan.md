@@ -1546,6 +1546,28 @@ it, today's 07:00 backup in the bucket. **Not yet running in the worker:** the
 qcluster in the owner's tab still runs the old parser, which keeps retrying the
 15 May note, until the owner restarts it.
 
+**A daily cap on unattended AI spend: built 2026-09-29** (owner). What the
+worker spends on Claude with nobody asking is capped per practice day, FF-set
+on AI usage, default $5.00 (`tenant.ai_unattended_daily_cap_usd`). At the cap
+the worker makes no more calls until midnight, practice time. Each skip is
+recorded once per item per day, and a banner shows on the dashboard (every
+staff role; amounts for the FF only) and on AI usage. "Unattended" means inside
+a scheduled job: every function in `ensure_schedules` wears
+`@unattended_job`, and a test fails for one that does not. Anything a person
+causes from the web is never counted or stopped, including "Sync now" and the
+strategy rows that fire while a live session's answers land. Nothing waiting is
+lost: new notes are still recorded and read tomorrow; the folder import
+pauses where it is; a note summary stays queued. Digest prose is simply left
+out, and the digest still goes, as it always could. **Any automatic job that
+fails twice on the same input**, billed, keyed on a hash of the exact prompt,
+stops until a person re-runs it (Read again, Draft another summary) or it
+succeeds. That brings meeting parsing from three automatic tries to two.
+Migration `tenancy` 0008 (three additive columns with database defaults and
+one index) was applied 2026-09-29: suite green, 07:00 backup. `apps/tenancy/ai_guard.py`,
+`tests/test_ai_guard.py`. **Not running in the worker until the owner restarts
+it.** The cap can be exceeded by at most the calls already in flight when it
+is reached (four workers).
+
 **At the time of reading, one source file was in `parsing`** ("Meeting started
 2026/05/15 10:59 MDT", updated 13:03:56 UTC today). This is probably a job the
 running worker had in hand. It is noted here because the cutover freeze checks

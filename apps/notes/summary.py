@@ -72,6 +72,15 @@ def draft(note) -> None:
             ),
             target_type="note", target_id=note.pk, trigger="auto",
         )
+    except claude.ClaudeSkipped as exc:
+        from apps.tenancy import ai_guard
+
+        if exc.reason == ai_guard.DAILY_CAP:
+            return    # Still drafting: tomorrow's first run picks it up.
+        note.summary_state = Note.SummaryState.FAILED
+        note.save(update_fields=["summary_state", "updated_at"])
+        _audit(note, None, "note.summary_failed", error=str(exc))
+        return
     except (claude.ClaudeUnavailable, claude.ClaudeRefused) as exc:
         note.summary_state = Note.SummaryState.FAILED
         note.save(update_fields=["summary_state", "updated_at"])
@@ -124,5 +133,10 @@ def request_redraft(note, *, actor):
                            status=409)
     note.summary_state = Note.SummaryState.DRAFTING
     note.save(update_fields=["summary_state", "updated_at"])
+    # A person asking: two earlier failures no longer stop the worker.
+    from apps.tenancy import ai_guard
+
+    ai_guard.allow_again(note.tenant, purpose="note_summary", target_type="note",
+                         target_id=note.pk, actor=actor)
     _audit(note, actor, "note.summary_redraft_requested")
     return note

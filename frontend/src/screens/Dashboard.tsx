@@ -8,7 +8,7 @@ import {
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
-import { Dashboard as Board, Me, Pipeline, api } from "../lib/api";
+import { Dashboard as Board, Me, Pipeline, aiPausedMessage, api } from "../lib/api";
 import { useRemembered } from "../lib/remembered";
 
 type Move = Board["pipeline"][number];
@@ -235,6 +235,13 @@ export function Dashboard({ me }: { me: Me }) {
             </button>
           </span>
         } />
+
+      {board.data.ai_paused && (
+        <Banner kind="warn">
+          {aiPausedMessage(board.data.ai_paused)}
+          {me.role === "FF" && <> <Link to="/ai-usage">AI usage</Link></>}
+        </Banner>
+      )}
 
       {arranging && (
         <p className="small muted arrange-hint">

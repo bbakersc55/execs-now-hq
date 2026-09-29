@@ -59,7 +59,7 @@ def test_a_truncated_answer_is_billed_and_kept_as_nothing(seeded_tenant, watch, 
     assert "cut off" in call.error
     # Named, with what happens next.
     assert "cut off" in source.error
-    assert "read again on the next poll (1 of 3" in source.error
+    assert "read again on the next poll (1 of 2" in source.error
     assert source.auto_parse_failures == 1
 
     # Nothing that reports spend on kept work counts it.
@@ -97,21 +97,21 @@ def test_the_reread_is_queued_by_the_failure_and_its_success_is_the_one_kept(
 
 
 @pytest.mark.django_db
-def test_after_three_billed_failures_the_poll_stops_and_names_the_file(
+def test_after_two_billed_failures_the_poll_stops_and_names_the_file(
     seeded_tenant, watch, fake_claude
 ):
     _truncate(fake_claude)
-    for _ in range(3):
+    for _ in range(2):
         _poll(seeded_tenant)
     source = MeetingSourceFile.objects.get()
-    assert source.auto_parse_failures == 3
+    assert source.auto_parse_failures == 2
     assert "not tried again until someone chooses Read again" in source.error
 
     calls = len(fake_claude.requests)
     for _ in range(5):            # fifty minutes of polling
         _poll(seeded_tenant)
     assert len(fake_claude.requests) == calls, "no more money spent on it"
-    assert AiCall.objects.filter(purpose=parsing.PARSE_PURPOSE).count() == 3
+    assert AiCall.objects.filter(purpose=parsing.PARSE_PURPOSE).count() == 2
 
     health = ingest.health(seeded_tenant)
     assert health["files_failed"] == 1
@@ -157,21 +157,21 @@ def test_a_person_rereading_is_not_capped(seeded_tenant, watch, fake_claude, ff,
     _poll(seeded_tenant)
     proposal = MeetingProposal.objects.get()
     source = proposal.source_file
-    source.auto_parse_failures = 3
+    source.auto_parse_failures = 2
     source.save(update_fields=["auto_parse_failures"])
 
     _truncate(fake_claude)
     response = api.as_(ff).post(f"/api/meeting-proposals/{proposal.pk}/reparse/")
     assert response.status_code == 502
     source.refresh_from_db()
-    assert source.auto_parse_failures == 3, "a person's try is not an automatic one"
+    assert source.auto_parse_failures == 2, "a person's try is not an automatic one"
 
 
 # ------------------------------------------------------------------ Read again
 
 def _gave_up(tenant, **extra):
     return MeetingSourceFileFactory(
-        tenant=tenant, state=MeetingSourceFile.State.FAILED, auto_parse_failures=3,
+        tenant=tenant, state=MeetingSourceFile.State.FAILED, auto_parse_failures=2,
         error="Claude's answer was cut off or empty; nothing was kept.", **extra)
 
 
@@ -180,7 +180,7 @@ def test_the_queue_lists_failed_files_by_name(seeded_tenant, in_tenant_a, ff, ap
     row = _gave_up(seeded_tenant, name="Meeting started 2026/05/15 10:59 MDT")
     body = api.as_(ff).get("/api/drive-watch/failed/").json()
     assert [(r["id"], r["name"], r["automatic_failures"], r["retries_automatically"])
-            for r in body] == [(str(row.pk), row.name, 3, False)]
+            for r in body] == [(str(row.pk), row.name, 2, False)]
 
 
 @pytest.mark.django_db

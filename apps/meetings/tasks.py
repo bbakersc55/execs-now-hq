@@ -11,9 +11,13 @@ health screen; the next run picks up from the same place.
 
 from __future__ import annotations
 
+# Every job here is the worker's own: its Claude calls are capped per day and
+# stop after two failures on the same input (apps/tenancy/ai_guard.py).
+from apps.tenancy.claude import unattended_job
 from apps.tenancy.context import tenant_context
 
 
+@unattended_job("meetings.poll_drive")
 def poll_drive(tenant_id: str) -> dict:
     from apps.meetings import ingest
     from apps.tenancy.models import Tenant
@@ -34,6 +38,7 @@ def poll_drive(tenant_id: str) -> dict:
     }
 
 
+@unattended_job("meetings.run_backfill")
 def run_backfill(tenant_id: str) -> dict:
     """One paced tick of the folder import — a few notes, oldest first.
 

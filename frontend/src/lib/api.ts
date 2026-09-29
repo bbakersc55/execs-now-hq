@@ -825,12 +825,46 @@ export interface Dashboard {
              open_goals: number }[];
   /** AI credit and budget — the FF's only (FR-0.9); null for everyone else. */
   ai?: AiBudget | null;
+  /** Set only while automatic AI work is paused or stopped (owner,
+   *  2026-09-29). Amounts for the FF only. */
+  ai_paused?: AiGuard | null;
   /** Open commitments by people outside the practice, and how many are overdue. */
   waiting?: { open: number; overdue: number };
 }
 
 /** GET /api/ai-budget/ (owner, 2026-09-28). The balance is an **estimate**:
  *  credits the FF entered, less what this app has logged since that day. */
+/** GET /api/ai-guard/ — the daily cap on unattended AI spend (owner,
+ *  2026-09-29). The amounts and the list are the FF's only. */
+export interface AiGuard {
+  paused: boolean;
+  resumes_at: string | null;
+  skipped_today: number;
+  stopped_after_two_failures: number;
+  cap_usd?: string;
+  spent_today_usd?: string;
+  skipped?: { reason: "daily_cap" | "failed_twice"; purpose: string; job: string;
+              target_type: string; target_id: string | null; at: string }[];
+}
+
+/** What a paused or stopped day says, in one sentence, for any staff role. */
+export function aiPausedMessage(g: AiGuard): string {
+  const parts: string[] = [];
+  if (g.paused) {
+    parts.push("Automatic AI work is paused for the rest of today: the daily limit"
+      + (g.cap_usd ? ` of $${g.cap_usd}` : "") + " is reached"
+      + (g.spent_today_usd ? ` ($${g.spent_today_usd} spent)` : "")
+      + `. ${g.skipped_today} item${g.skipped_today === 1 ? "" : "s"} wait until tomorrow;`
+      + " anything you run yourself still works.");
+  }
+  if (g.stopped_after_two_failures > 0) {
+    parts.push(`${g.stopped_after_two_failures} automatic job${
+      g.stopped_after_two_failures === 1 ? "" : "s"} failed twice on the same input and`
+      + " will not be retried until someone runs it again.");
+  }
+  return parts.join(" ");
+}
+
 export interface AiBudget {
   console_url: string;
   credits_usd: string | null;
