@@ -100,6 +100,7 @@ def test_an_app_route_gets_the_built_index(client, settings, tmp_path):
 
     (tmp_path / "index.html").write_text('<script src="/static/assets/app.js"></script>')
     settings.STATIC_ROOT = tmp_path
+    settings.APP_ROOT_URL = "/"            # production's value
     spa._index.cache_clear()
     try:
         for path in ("/", "/contacts/abc", "/cadence/some-token", "/precall/xyz"):
@@ -161,3 +162,15 @@ def test_with_neither_the_error_says_where_it_looked(settings):
     with pytest.raises(google_credentials.NoServiceAccountKey,
                        match="No service-account key at GOOGLE_APPLICATION_CREDENTIALS"):
         google_credentials.credentials(("scope",))
+
+
+@pytest.mark.django_db
+def test_on_the_laptop_an_app_route_goes_to_the_dev_server(client, settings):
+    """A stale build in frontend/dist is never served in development: every
+    app route goes to the same path on Vite (owner, 2026-09-29)."""
+    settings.APP_ROOT_URL = "http://localhost:5200/"
+    assert settings.IS_LOCAL
+    response = client.get("/strategy/abc?tab=pdf")
+    assert response.status_code == 302
+    assert response["Location"] == "http://localhost:5200/strategy/abc?tab=pdf"
+    assert client.get("/healthz").status_code == 200, "the server's own routes stay"

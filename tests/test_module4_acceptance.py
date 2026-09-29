@@ -2099,3 +2099,32 @@ def test_tenant_isolation_another_practices_session_has_no_cover(session, tenant
     assert client.post(f"/api/strategy-sessions/{session.pk}/send-pdf/",
                        {"body_html": "<p>x</p>"}, content_type="application/json"
                        ).status_code == 404
+
+
+@pytest.mark.django_db
+def test_a_next_step_whose_note_is_not_a_date_is_left_out(session, ff, api):
+    """The owner's session, 2026-09-29: "We agreed to speak again on In general,
+    no specific date set. Before then: Senior leaders to join the discussion."
+    A sentence appears only when its note reads as a date or a day."""
+    answer(session, "s9_follow_up_call", {"agreed": True,
+                                          "notes": "In general, no specific date set"})
+    answer(session, "s9_who_else", {"agreed": True,
+                                    "notes": "Senior leaders to join the discussion"})
+    answer(session, "s9_proposal_due", {"agreed": True, "notes": "Thu 2 Oct, 10am."})
+    body = api.as_(ff).get(f"/api/strategy-sessions/{session.pk}/pdf-cover/").json()["body_html"]
+    assert "speak again" not in body
+    assert "In general" not in body and "Senior leaders" not in body
+    assert "Before then" not in body
+    assert "You will have my proposal by Thu 2 Oct, 10am." in body
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Next Tuesday", True), ("Tuesday", True), ("10/1", True), ("2026-10-07", True),
+    ("Tue 7 Oct, 10am", True), ("October 7th", True), ("7 October 2026", True),
+    ("tomorrow", True), ("Thursday at 2pm", True),
+    ("In general, no specific date set", False),
+    ("Senior leaders to join the discussion", False), ("TBD", False),
+    ("next week", False), ("May", False), ("Early October", False), ("", False),
+])
+def test_what_reads_as_a_date_or_a_day(text, expected):
+    assert emails.reads_as_date_or_day(text) is expected

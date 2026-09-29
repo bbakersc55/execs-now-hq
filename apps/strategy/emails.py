@@ -12,6 +12,8 @@ the same words with the link removed (assumption C3).
 
 from __future__ import annotations
 
+import re
+
 from django.conf import settings
 from django.utils.html import escape
 
@@ -129,15 +131,53 @@ def _pdf_body(session, note: str = "", body_html: str | None = None) -> tuple[st
         subject=PDF_SUBJECT, preheader="Your strategy map from today.")
 
 
-#: The agreed §9 items the covering note mentions, in the order a prospect
-#: cares about them, and how each reads in a sentence. `{d}` is the fractional's
-#: own note on the item ("Tuesday 7 Oct, 10am").
+#: The agreed §9 items the covering note mentions, and how each reads in a
+#: sentence. `{d}` is the fractional's own note on the item. **A sentence
+#: appears only when that note reads as a date or a day** (owner, 2026-09-29):
+#: "In general, no specific date set" in a date sentence is worse than no
+#: sentence. "Who else weighs in" is not here: its note is people, not a date.
 NEXT_STEP_LINES = (
     ("s9_follow_up_call", "We agreed to speak again on {d}."),
     ("s9_proposal_due", "You will have my proposal by {d}."),
     ("s9_start_date", "We talked about starting on {d}."),
-    ("s9_who_else", "Before then: {d}."),
 )
+
+_DAYS = ("monday tuesday wednesday thursday friday saturday sunday "
+         "mon tue tues wed thu thur thurs fri sat sun").split()
+_MONTHS = ("january february march april may june july august september october "
+           "november december jan feb mar apr jun jul aug sep sept oct nov dec").split()
+#: Words a date or a day may carry without being anything else.
+_FILLER = {"next", "this", "on", "at", "the", "of", "by", "am", "pm", "a.m.", "p.m.",
+           "noon", "midday", "morning", "afternoon", "evening", "mt", "mdt", "mst"}
+_NUMERIC_DATE = re.compile(r"^\d{1,4}[/.-]\d{1,2}([/.-]\d{2,4})?$")
+_ORDINAL = re.compile(r"^\d{1,2}(st|nd|rd|th)?$")
+_YEAR = re.compile(r"^(19|20)\d{2}$")
+_TIME = re.compile(r"^\d{1,2}([:.]\d{2})?(am|pm)?$")
+
+
+def reads_as_date_or_day(text: str) -> bool:
+    """True for "Next Tuesday", "10/1", "Tue 7 Oct, 10am", "October 7th",
+    "tomorrow"; false for anything with a word that is not part of a date —
+    "In general, no specific date set", "Once the board has met"."""
+    words = re.findall(r"[a-z0-9:./-]+", (text or "").lower())
+    if not words:
+        return False
+    anchored = month = day_number = False
+    for word in words:
+        word = word.strip(".-/")
+        if not word:
+            continue
+        if word in _DAYS or word in ("today", "tomorrow") or _NUMERIC_DATE.match(word):
+            anchored = True
+        elif word in _MONTHS:
+            month = True                 # a date only with a day beside it
+        elif _ORDINAL.match(word):
+            day_number = True
+        elif word in _FILLER or _YEAR.match(word) or _TIME.match(word):
+            continue
+        else:
+            return False
+    return anchored or (month and day_number)
 
 
 def default_pdf_cover(session) -> str:
@@ -171,8 +211,8 @@ def default_pdf_cover(session) -> str:
     for key, line in NEXT_STEP_LINES:
         value = (by_key.get(key) or {}).get("value") or {}
         detail = (value.get("notes") or "").strip()
-        if value.get("agreed") and detail:
-            steps.append(line.format(d=e(detail)))
+        if value.get("agreed") and reads_as_date_or_day(detail):
+            steps.append(line.format(d=e(detail.rstrip("."))))
     if steps:
         parts.append(f"<p>{' '.join(steps)}</p>")
     parts.append("<p>If anything in it raises a question, just reply to this email.</p>")

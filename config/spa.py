@@ -14,7 +14,9 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import connection
-from django.http import HttpResponse, HttpResponseNotFound, JsonResponse
+from django.http import (
+    HttpResponse, HttpResponseNotFound, HttpResponseRedirect, JsonResponse,
+)
 from django.views.decorators.cache import never_cache
 
 
@@ -29,6 +31,13 @@ def _index() -> str | None:
 
 @never_cache
 def app_shell(request, *args, **kwargs):
+    # On the laptop the app is the Vite dev server, always current. A build
+    # left in frontend/dist is a snapshot of whenever it was last built, and
+    # serving it here showed the owner a two-screens-old page (2026-09-29). So
+    # in development every app route goes to the same path on the dev server.
+    root = settings.APP_ROOT_URL
+    if settings.IS_LOCAL and root.startswith("http"):
+        return HttpResponseRedirect(root.rstrip("/") + request.get_full_path())
     html = _index()
     if html is None:
         return HttpResponseNotFound(
