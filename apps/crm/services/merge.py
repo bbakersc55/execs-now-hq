@@ -79,6 +79,8 @@ def merge_contacts(survivor, absorbed, *, actor=None, role=None, field_choices=N
             **{field: survivor}
         )
 
+    moved = _merge_later_tables(tenant, survivor, absorbed, actor=actor)
+
     absorbed.deleted_at = timezone.now()
     absorbed.merged_into = survivor
     absorbed.save(update_fields=["deleted_at", "merged_into", "updated_at"])
@@ -91,9 +93,109 @@ def merge_contacts(survivor, absorbed, *, actor=None, role=None, field_choices=N
             "survivor": str(survivor.pk),
             "absorbed": str(absorbed.pk),
             "actor_role": role,
+            "moved": moved,
         },
     )
     return survivor
+
+
+#: Every relation onto a contact, and what a merge does with it. The test
+#: `test_every_contact_relation_has_a_merge_rule` fails when a new table points
+#: at contacts and is not listed here — which is how the tables added after
+#: Module 1 (meetings, commitments, stakeholders, suppressions…) were missed
+#: until 2026-09-29.
+HANDLED_RELATIONS = {
+    # Moved above, de-duplicated by value.
+    "contact_email.contact", "contact_phone.contact",
+    "contact_type_link.contact", "contact_service_category.contact",
+    # Moved above, wholesale.
+    "note.contact", "task.contact", "stage_change.contact", "email_thread.contact",
+    "email_message.contact", "outbox_message.to_contact",
+    # _merge_later_tables.
+    "membership.contact", "company.primary_contact", "contact.merged_into",
+    "contact_pipeline_position.contact", "enrollment.contact",
+    "email_suppression.contact", "campaign_recipient.contact",
+    "stakeholder.contact", "digest.contact", "strategy_session.contact",
+    "meeting_participant.contact", "commitment.contact",
+}
+
+
+def _merge_later_tables(tenant, survivor, absorbed, *, actor=None) -> dict:
+    """The relations added after Module 1 (owner, 2026-09-29: "Merge
+    duplicates" is one click, so the merge behind it must leave nothing
+    behind).
+
+    Each row moves to the survivor unless the survivor already holds the same
+    thing (the same meeting, the same task's stakeholder, the same pipeline).
+    Then the survivor's row stands and the absorbed one stays where it is, on a
+    record that is soft-deleted and still resolves — nothing historical is
+    destroyed. Two exceptions, both so the absorbed record can do nothing
+    further: a duplicate stakeholder row is deleted (a deleted contact must
+    not be sent digests), and a duplicate open enrollment is ended.
+    """
+    from apps.crm.models import (
+        CampaignRecipient, Company, Contact, ContactPipelinePosition, EmailSuppression,
+        Enrollment,
+    )
+    from apps.meetings.models import Commitment, MeetingParticipant
+    from apps.strategy.models import StrategySession
+    from apps.work.models import Digest, Stakeholder
+
+    counts: dict[str, int] = {}
+
+    def note(label, n):
+        if n:
+            counts[label] = counts.get(label, 0) + n
+
+    def move_all(model, field="contact"):
+        note(model._meta.db_table, model.all_objects.filter(
+            tenant=tenant, **{field: absorbed}).update(**{field: survivor}))
+
+    def move_unless_held(model, keys, *, live=None, on_conflict="leave"):
+        """`keys`: the fields that, with the contact, make a row unique.
+        `live`: a filter limiting the uniqueness to some rows (a partial
+        index), applied to both sides."""
+        rows = model.all_objects.filter(tenant=tenant, contact=absorbed)
+        for row in rows:
+            same = model.all_objects.filter(
+                tenant=tenant, contact=survivor, **{k: getattr(row, k) for k in keys})
+            clash = same.exists()
+            if clash and live is not None:
+                clash = (model.all_objects.filter(pk=row.pk, **live).exists()
+                         and same.filter(**live).exists())
+            if not clash:
+                model.all_objects.filter(pk=row.pk).update(contact=survivor)
+                note(model._meta.db_table, 1)
+            elif on_conflict == "delete":
+                row.delete()
+                note(f"{model._meta.db_table} (duplicate removed)", 1)
+            elif on_conflict == "end":
+                model.all_objects.filter(pk=row.pk).update(
+                    ended_at=timezone.now(), ended_by=actor,
+                    ended_reason=Enrollment.EndReason.UNENROLLED)
+                note(f"{model._meta.db_table} (duplicate ended)", 1)
+            else:
+                note(f"{model._meta.db_table} (kept on the merged record)", 1)
+
+    # A portal login follows the person.
+    move_all(Membership)
+    move_all(Company, "primary_contact")
+    move_all(Contact, "merged_into")
+    move_all(StrategySession)
+    move_all(Commitment)
+    move_unless_held(ContactPipelinePosition, ["pipeline_id"])
+    move_unless_held(Enrollment, ["program"], live={"ended_at__isnull": True},
+                     on_conflict="end")
+    # An unsubscribe must follow the person, or the survivor becomes mailable.
+    move_unless_held(EmailSuppression, ["category"], live={"lifted_at__isnull": True})
+    move_unless_held(CampaignRecipient, ["campaign_id"])
+    move_unless_held(Stakeholder, ["goal_id", "project_id", "task_id"],
+                     on_conflict="delete")
+    move_unless_held(Digest, ["cadence", "period_start"],
+                     live={"state__in": [s for s in Digest.State.values
+                                         if s not in ("expired", "skipped")]})
+    move_unless_held(MeetingParticipant, ["meeting_id"], on_conflict="delete")
+    return counts
 
 
 def _merge_child_values(model, tenant, survivor, absorbed, *, value_field, key):

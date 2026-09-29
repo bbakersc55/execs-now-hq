@@ -52,6 +52,10 @@ def _json_field(request, name):
     return raw or {}
 
 
+#: What a one-click group merge fills on the survivor when the survivor has it
+#: empty (2026-09-29). The two-record screen asks field by field instead.
+MERGE_FILL_FIELDS = ("title", "source", "background", "referral_fee_terms", "company_id")
+
 class TenantStaffViewSet(viewsets.ModelViewSet):
     permission_classes = [crm_perms.IsTenantStaff]
 
@@ -422,6 +426,42 @@ class ContactViewSet(TenantStaffViewSet):
             field_choices=request.data.get("fields") or {},
         )
         survivor.refresh_from_db()
+        return Response(self.get_serializer(survivor).data)
+
+    @action(detail=False, methods=["get"], url_path="duplicate-groups",
+            permission_classes=[crm_perms.IsFFOrVA])
+    def duplicate_groups(self, request):
+        """Likely duplicates across the whole book (owner, 2026-09-29): same
+        email address, or the same normalized full name. Proposed, never
+        merged — the person picks the survivor. FF and VA, as merge (4.5)."""
+        from apps.crm.services import duplicates
+
+        return Response(duplicates.groups(self.get_queryset()))
+
+    @action(detail=False, methods=["post"], url_path="merge-group",
+            permission_classes=[crm_perms.IsFFOrVA])
+    def merge_group(self, request):
+        """One click: every other contact in the group into the survivor,
+        through the same merge as the two-record screen, in one transaction.
+        The survivor's own values stand; a field it has empty takes the first
+        value an absorbed record holds, so nothing typed is lost."""
+        visible = self.get_queryset()
+        survivor = visible.filter(pk=request.data.get("survivor")).first()
+        ids = [str(i) for i in (request.data.get("absorbed") or [])]
+        absorbed = list(visible.filter(pk__in=ids))
+        if survivor is None or not ids or len(absorbed) != len(set(ids)):
+            raise Http404
+        if any(c.pk == survivor.pk for c in absorbed):
+            return Response({"detail": "The survivor cannot also be merged away."},
+                            status=400)
+        with transaction.atomic():
+            for other in absorbed:
+                blanks = {f: getattr(other, f) for f in MERGE_FILL_FIELDS
+                          if not getattr(survivor, f) and getattr(other, f)}
+                merge.merge_contacts(survivor, other, actor=request.user,
+                                     role=crm_perms.role_of(request),
+                                     field_choices=blanks)
+                survivor.refresh_from_db()
         return Response(self.get_serializer(survivor).data)
 
     @action(detail=False, methods=["get"])

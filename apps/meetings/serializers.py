@@ -23,7 +23,45 @@ def represent_item(item) -> dict:
         "is_practice": bool((item.payload or {}).get("is_practice")),
         # An action item's owner, by name, for the review screen (2026-09-28).
         "owner_contact_name": _owner_name(item),
+        # Looked up now, not when the notes were read (owner, 2026-09-29): a
+        # contact made since then is a candidate too. Each with what tells
+        # same-named people apart. Only for items still waiting.
+        "candidates": _live_candidates(item),
+        "owner_candidates": _owner_candidates(item),
     }
+
+
+def _with_context(rows: list[dict]) -> list[dict]:
+    from apps.crm.services.duplicates import contact_context
+
+    context = contact_context([r["contact_id"] for r in rows])
+    return [{**row, "emails": context.get(row["contact_id"], {}).get("emails", []),
+             "last_meeting": context.get(row["contact_id"], {}).get("last_meeting")}
+            for row in rows]
+
+
+def _live_candidates(item):
+    payload = item.payload or {}
+    if (item.kind != ProposalItem.Kind.PARTICIPANT or item.state != ProposalItem.State.PENDING
+            or payload.get("is_practice")):
+        return None
+    from apps.meetings import matching
+
+    return _with_context(matching.candidates_for(
+        item.tenant, name=payload.get("parsed_name", ""),
+        email=payload.get("parsed_email", "")))
+
+
+def _owner_candidates(item):
+    """Everyone the owner's name could be, when it is not already settled."""
+    payload = item.payload or {}
+    owner = (payload.get("proposed_owner_text") or "").strip()
+    if (item.kind != ProposalItem.Kind.ACTION_ITEM or item.state != ProposalItem.State.PENDING
+            or not owner or payload.get("owner_side") == "practice"):
+        return None
+    from apps.meetings import matching
+
+    return _with_context(matching.candidates_for(item.tenant, name=owner))
 
 
 def _owner_name(item) -> str:

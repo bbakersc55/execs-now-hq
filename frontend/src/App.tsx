@@ -23,6 +23,7 @@ import { CompanyDetail } from "./screens/CompanyDetail";
 import { Companies } from "./screens/Companies";
 import { ImportWizard } from "./screens/ImportWizard";
 import { Merge } from "./screens/Merge";
+import { Duplicates } from "./screens/Duplicates";
 import { Outbox } from "./screens/Outbox";
 import { CampaignDetail, Campaigns } from "./screens/Campaigns";
 import { SendingQueue } from "./screens/SendingQueue";
@@ -262,6 +263,7 @@ export function App() {
             <Route path="/contacts" element={<Contacts me={me} />} />
             <Route path="/contacts/:id" element={<ContactDetail me={me} />} />
             <Route path="/merge/:aId/:bId" element={<Merge />} />
+            <Route path="/contacts/duplicates" element={<Duplicates />} />
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/companies" element={<Companies me={me} />} />
             <Route path="/companies/:id" element={<CompanyDetail me={me} />} />

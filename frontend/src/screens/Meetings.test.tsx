@@ -833,6 +833,8 @@ describe("creating someone new over a strong email match (owner, 2026-09-29)", (
     const user = userEvent.setup();
     const fetchMock = show({ "POST /api/proposal-items/i1/approve/": refusingOnce() });
     await user.click(await screen.findByRole("button", { name: "Review" }));
+    // The match is the default now; the reviewer chooses "Someone new".
+    await user.selectOptions(screen.getByRole("combobox", { name: "Match for Dana Reyes" }), "");
     await user.click(screen.getByRole("button", { name: "Approve Dana Reyes" }));
 
     expect(await screen.findByText(/is already a contact/)).toBeInTheDocument();
@@ -850,6 +852,8 @@ describe("creating someone new over a strong email match (owner, 2026-09-29)", (
     const user = userEvent.setup();
     const fetchMock = show({ "POST /api/proposal-items/i1/approve/": refusingOnce() });
     await user.click(await screen.findByRole("button", { name: "Review" }));
+    // The match is the default now; the reviewer chooses "Someone new".
+    await user.selectOptions(screen.getByRole("combobox", { name: "Match for Dana Reyes" }), "");
     await user.click(screen.getByRole("button", { name: "Approve Dana Reyes" }));
     await user.click(await screen.findByRole("button", { name: "Link to Dana Reyes" }));
 
@@ -900,4 +904,79 @@ describe("notes that could not be read (owner, 2026-09-29)", () => {
         expect(post?.body).toEqual({ file: "f9" });
       });
     });
+});
+
+describe("choosing who a participant or an owner is (owner, 2026-09-29)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const RICHARDS = [
+    { contact_id: "r1", name: "Richard Hein", company: "Hein Plumbing", email: "rich@hein.test",
+      emails: ["rich@hein.test"], last_meeting: "2026-09-10", match_reason: "name_only",
+      confidence: 0.4, rank: 1 },
+    { contact_id: "r2", name: "Richard Hein", company: "", email: "",
+      emails: [], last_meeting: null, match_reason: "name_only", confidence: 0.4, rank: 2 },
+  ];
+
+  function withItems(items: MeetingProposal["items"]) {
+    return show({ [`GET /api/meeting-proposals/${ID}/`]: aProposal({ items }) });
+  }
+
+  it("defaults to a strong match, with Someone new second", async () => {
+    const user = userEvent.setup();
+    show();
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    const picker = screen.getByRole("combobox", { name: "Match for Dana Reyes" }) as HTMLSelectElement;
+    expect(picker.value).toBe("c1");
+    const options = within(picker).getAllByRole("option").map((o) => o.textContent);
+    expect(options[0]).toMatch(/^Dana Reyes · Acme Facilities/);
+    expect(options[1]).toMatch(/Someone new/);
+  });
+
+  it("lists every same-named contact with what tells them apart, defaulting to new",
+    async () => {
+      const user = userEvent.setup();
+      withItems([{ id: "i1", kind: "participant", state: "pending", source_excerpt: "Richard Hein",
+        position: 0, created_record_type: "", created_record_id: null, actioned_at: null,
+        candidates: RICHARDS,
+        payload: { parsed_name: "Richard Hein", proposed_contact_type: "client",
+                   existing_candidates: [] } }]);
+      await user.click(await screen.findByRole("button", { name: "Review" }));
+      const picker = screen.getByRole("combobox", { name: "Match for Richard Hein" }) as HTMLSelectElement;
+      expect(picker.value).toBe("");
+      const options = within(picker).getAllByRole("option").map((o) => o.textContent);
+      expect(options).toEqual([
+        "Someone new — create them",
+        "Richard Hein · Hein Plumbing · rich@hein.test · last met 2026-09-10 — matched on name only",
+        "Richard Hein · no meetings — matched on name only",
+      ]);
+      expect(screen.getByText(/2 contacts are called Richard Hein/)).toBeInTheDocument();
+    });
+
+  it("asks which one an ambiguous owner is, and sends the choice", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      [`GET /api/meeting-proposals/${ID}/`]: aProposal({ items: [{
+        id: "a1", kind: "action_item", state: "pending", source_excerpt: "Richard will send it.",
+        position: 0, created_record_type: "", created_record_id: null, actioned_at: null,
+        owner_candidates: RICHARDS,
+        payload: { text: "Send the quote", proposed_owner_text: "Richard Hein",
+                   owner_side: "other", owner_kind: "client", proposed_outcome: "record_only" } }] }),
+      "GET /api/meeting-proposals/": [aProposal()],
+      "GET /api/drive-watch/backfill/": { folder: PAST, backfill: null },
+      "GET /api/drive-watch/": HEALTH,
+      "POST /api/proposal-items/a1/approve/": { status: 201, body: { id: "a1" } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Meetings me={aMe()} />, { path: "/meetings", route: "/meetings" });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    const which = screen.getByRole("combobox", { name: "Which Richard Hein" }) as HTMLSelectElement;
+    // No strong match: nobody is chosen for the reviewer.
+    expect(which.value).toBe("");
+    await user.selectOptions(which, "r1");
+    await user.click(screen.getByRole("button", { name: "Approve Send the quote" }));
+    await waitFor(() => {
+      const post = fetchMock.calls.find((c) => c.url.endsWith("/a1/approve/"));
+      expect(post?.body).toMatchObject({ owner_side: "other", owner_contact_id: "r1" });
+    });
+  });
 });

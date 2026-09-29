@@ -95,9 +95,15 @@ export function Contacts({ me }: { me: Me }) {
       <PageHead title="Contacts"
         sub="Everyone the practice deals with. Search covers names, titles and background."
         action={!adding && (
-          <button className="primary" onClick={() => { setAdding(true); setNote(""); }}>
-            Add contact
-          </button>
+          <span className="row tight">
+            {/* Merge is FF and VA (matrix 4.5), so the way in is too. */}
+            {(me.role === "FF" || me.role === "VA") && (
+              <Link className="button" to="/contacts/duplicates">Merge duplicates</Link>
+            )}
+            <button className="primary" onClick={() => { setAdding(true); setNote(""); }}>
+              Add contact
+            </button>
+          </span>
         )} />
 
       {note && <Banner kind="ok">{note}</Banner>}

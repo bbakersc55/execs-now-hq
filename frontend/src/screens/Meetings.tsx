@@ -8,7 +8,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
-  Backfill, BackfillPlan, DismissReason, DriveFolder, DriveHealth, FailedFile, FolderPast, Me,
+  Backfill, BackfillPlan, ContactCandidate, DismissReason, DriveFolder, DriveHealth, FailedFile,
+  FolderPast, Me,
   MeetingProposal, WatchFolder, asksToConfirm,
   ProposalItem, api,
 } from "../lib/api";
@@ -1092,7 +1093,14 @@ function ItemRow({ item, onChanged, setNote }: {
 }) {
   const payload = item.payload ?? {};
   const [type, setType] = useState<string>(payload.proposed_contact_type ?? "prospect");
-  const [pick, setPick] = useState<string>("");
+  // Owner, 2026-09-29: the candidates as they are now, and the top one
+  // chosen by default when it is strong (in practice, a match on email).
+  const people = item.candidates ?? payload.existing_candidates ?? [];
+  const [pick, setPick] = useState<string>(defaultPick(people));
+  const owners = item.owner_candidates ?? [];
+  const [ownerPick, setOwnerPick] = useState<string>(
+    owners.some((o) => o.contact_id === payload.proposed_owner_contact_id)
+      ? payload.proposed_owner_contact_id! : defaultPick(owners));
   const [categories, setCategories] = useState("");
   // FR-5.10a — "" is the best company we already hold, "new" creates the one
   // the notes named, "none" leaves the contact without one.
@@ -1143,6 +1151,8 @@ function ItemRow({ item, onChanged, setNote }: {
               : { company_id: company }) }
       : item.kind === "action_item"
         ? { owner_side: side,
+            ...(side === "other" && owners.length > 0
+              ? { owner_contact_id: ownerPick || null } : {}),
             ...(side === "other" ? { owner_kind: kind, outcome,
               ...(outcome === "follow_up" ? { follow_up_date: followUp } : {}),
               ...(outcome === "portal" ? { notify_me: notifyMe } : {}) } : {}) }
@@ -1205,6 +1215,15 @@ function ItemRow({ item, onChanged, setNote }: {
                 disabled={!ownerName} onChange={() => setSide("other")} />
               <span>{ownerName ? `${ownerName}'s — a commitment` : "Someone else's"}</span>
             </label>
+            {side === "other" && owners.length > 0 && (
+              <select aria-label={`Which ${ownerName}`} value={ownerPick}
+                onChange={(e) => setOwnerPick(e.target.value)}>
+                {owners.map((row) => (
+                  <option key={row.contact_id} value={row.contact_id}>{describe(row)}</option>
+                ))}
+                <option value="">Not one of these — keep the name only</option>
+              </select>
+            )}
             {side === "other" && (
               <select aria-label={`What ${ownerName} is to us`} value={kind}
                 style={{ width: "auto" }} onChange={(e) => setKind(e.target.value)}>
@@ -1254,14 +1273,18 @@ function ItemRow({ item, onChanged, setNote }: {
           <Field label="Who is this">
             <select aria-label={`Match for ${payload.parsed_name}`} value={pick}
               onChange={(e) => setPick(e.target.value)}>
-              <option value="">Someone new — create them</option>
-              {(payload.existing_candidates ?? []).map((row) => (
-                <option key={row.contact_id} value={row.contact_id}>
-                  {row.name}{row.company ? ` · ${row.company}` : ""} — matched on{" "}
-                  {row.match_reason.replace(/_/g, " ")}
-                </option>
+              {orderedChoices(people).map((row) => row === null ? (
+                <option key="new" value="">Someone new — create them</option>
+              ) : (
+                <option key={row.contact_id} value={row.contact_id}>{describe(row)}</option>
               ))}
             </select>
+            {samePeople(people) > 1 && (
+              <span className="small muted">
+                {samePeople(people)} contacts are called {people[0].name}: pick by company,
+                email or last meeting.
+              </span>
+            )}
           </Field>
           <Field label="What they are to us">
             <select aria-label={`Type for ${payload.parsed_name}`} value={type}
@@ -1361,4 +1384,35 @@ interface StrongMatch { contact_id: string; name: string; email: string; company
 function strongMatchOf(e: Error): StrongMatch | null {
   const data = (e as Error & { status?: number; data?: { match?: StrongMatch } });
   return data.status === 409 && data.data?.match ? data.data.match : null;
+}
+
+/** A match strong enough to be the default (owner, 2026-09-29). */
+const DEFAULT_AT = 0.8;
+
+function defaultPick(rows: ContactCandidate[]): string {
+  return rows[0] && rows[0].confidence >= DEFAULT_AT ? rows[0].contact_id : "";
+}
+
+/** The picker's order: a strong top match first and "Someone new" second;
+ *  otherwise "Someone new" first. `null` stands for "Someone new". */
+function orderedChoices(rows: ContactCandidate[]): (ContactCandidate | null)[] {
+  if (rows[0] && rows[0].confidence >= DEFAULT_AT) return [rows[0], null, ...rows.slice(1)];
+  return [null, ...rows];
+}
+
+/** How many candidates share the first one's name. */
+function samePeople(rows: ContactCandidate[]): number {
+  const name = rows[0]?.name.toLowerCase();
+  return name ? rows.filter((r) => r.name.toLowerCase() === name).length : 0;
+}
+
+/** What tells same-named people apart: company, address, last meeting. */
+function describe(row: ContactCandidate): string {
+  const email = row.emails?.[0] || row.email;
+  return [
+    row.name,
+    row.company,
+    email,
+    row.last_meeting ? `last met ${row.last_meeting}` : "no meetings",
+  ].filter(Boolean).join(" · ") + ` — matched on ${row.match_reason.replace(/_/g, " ")}`;
 }

@@ -1042,8 +1042,31 @@ export interface DriveFolder {
 
 /** One proposed thing. **Nothing here exists yet**: approving is what creates
  *  it, and every item carries the passage it was drawn from (FR-5.14). */
+/** GET /api/contacts/duplicate-groups/ (owner, 2026-09-29). */
+export interface DuplicateMember {
+  id: string; name: string; company: string; emails: string[];
+  created_at: string; last_meeting: string | null;
+  meetings: number; tasks: number; notes: number;
+}
+export interface DuplicateGroup {
+  key: string; reasons: string[]; contacts: DuplicateMember[];
+  suggested_survivor: string;
+}
+
+/** A contact a name or address could be, with what tells same-named people
+ *  apart (owner, 2026-09-29). */
+export interface ContactCandidate {
+  contact_id: string; name: string; company: string; email: string;
+  match_reason: string; confidence: number; rank: number;
+  emails?: string[]; last_meeting?: string | null;
+}
+
 export interface ProposalItem {
   id: string;
+  /** Looked up when the proposal is opened, for a pending participant. */
+  candidates?: ContactCandidate[] | null;
+  /** Everyone an action item's owner could be, for a pending one. */
+  owner_candidates?: ContactCandidate[] | null;
   kind: "participant" | "action_item" | "deliverable";
   state: "pending" | "approved" | "rejected";
   source_excerpt: string;

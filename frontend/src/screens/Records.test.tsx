@@ -227,3 +227,26 @@ describe("the companies list", () => {
       .toBeInTheDocument();
   });
 });
+
+describe("the way in to Merge duplicates (owner, 2026-09-29)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  function render(role: "FF" | "CF" | "VA") {
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/contacts/": [DANA], "GET /api/contact-types/": [], "GET /api/pipelines/": [],
+    }));
+    renderRoute(<Contacts me={aMe({ role })} />, { path: "/contacts", route: "/contacts" });
+  }
+
+  it.each(["FF", "VA"] as const)("is on the Contacts screen for a %s", async (role) => {
+    render(role);
+    expect(await screen.findByRole("link", { name: "Merge duplicates" }))
+      .toHaveAttribute("href", "/contacts/duplicates");
+  });
+
+  it("is not there for a CF, who cannot merge (matrix 4.5)", async () => {
+    render("CF");
+    expect(await screen.findByRole("button", { name: "Add contact" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Merge duplicates" })).toBeNull();
+  });
+});

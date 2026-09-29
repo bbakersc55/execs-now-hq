@@ -458,11 +458,15 @@ fresh backup → dry run listing every row → the owner's yes.
 |---|---|
 | E1 Test Testing | **Delete** (with its portal login) |
 | E2 Testing again testing | **Delete** (with its portal login) |
-| E3 Hj hj | **Not decided.** The decision line was left as its placeholder, `[DELETE / KEEP AND RENAME — fill in after checking]`. The same message also says "delete Acme's other three test contacts", and Hj hj is one of those three, so the two instructions disagree. **Held out of the deletion until the owner says which.** |
+| E3 Hj hj | **Keep** (owner, 2026-09-29, later): a webinar sign-up with a real address. Its portal login and task stay. |
 | E4 Unknown 2 Unknown 2 | **Delete** |
 | E5 Steven Paul | **Delete**, with his draft strategy session |
 | E6 Mike Eller | **Delete the 2026-09-28 contact, meeting and 8 tasks; keep the 2026-09-22 set; add the owner as attended-by on the kept meeting** |
 | E7 Acme Facilities, Noble Baker | **Keep**, as the demo company and demo client |
+
+**Do not merge the Mike Eller group** on the new Merge duplicates screen before
+this runs. Merging would move the duplicate's 8 tasks onto the kept record;
+E6 deletes them instead.
 
 The findings under each row are unchanged below.
 
