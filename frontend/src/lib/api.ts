@@ -685,7 +685,10 @@ export interface StrategyAnswerRow {
 }
 
 export interface MapRow {
-  id: string; position: number; bottleneck: string; root_cause: string; the_fix: string;
+  id: string; position: number;
+  /** The focused format's card (owner, 2026-09-29): all the PDF shows. */
+  header?: string; statement?: string;
+  bottleneck: string; root_cause: string; the_fix: string;
   owner_text: string; horizon: number | null; measurable: string; mechanics_note: string;
   state: "proposed" | "accepted" | "discarded";
   converted_to: "" | "goal" | "project";
@@ -730,8 +733,19 @@ export interface SendPreview {
   body_text: string; body_html: string;
 }
 
+/** A diagnostic question Claude proposed from the pre-call form (focused
+ *  template, owner 2026-09-29). Only an accepted one is asked. */
+export interface DiagnosticProposal {
+  id: string; rule: "lowest_rating" | "growth" | "snapshot_gap"; rule_label: string;
+  basis: string; prompt: string; state: "proposed" | "accepted" | "discarded";
+  question_key: string; from_ai: boolean;
+}
+
 export interface StrategySessionRow {
   id: string;
+  /** classic | focused, frozen with the session's snapshot. */
+  format?: "classic" | "focused";
+  diagnostic_proposals?: DiagnosticProposal[];
   state: "draft" | "precall_sent" | "precall_complete" | "in_call" | "complete"
     | "converted" | "lost";
   /** What it was started from, as its snapshot records it. */

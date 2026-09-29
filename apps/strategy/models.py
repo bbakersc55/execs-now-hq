@@ -75,6 +75,18 @@ class StrategyTemplate(TenantScopedModel):
     discipline = models.CharField(max_length=40, default="operations")
     version = models.PositiveSmallIntegerField(default=1)
     is_default = models.BooleanField(default=False)
+
+    class Format(models.TextChoices):
+        CLASSIC = "classic", "Classic"
+        #: "Operations — focused" (owner, 2026-09-29): Claude proposes the
+        #: diagnostic from the pre-call form, map rows carry a header and a
+        #: focus statement, the map is capped at five, and the PDF lays out
+        #: 3–5 cards. Frozen into each session's snapshot, so a session keeps
+        #: the format it was started with.
+        FOCUSED = "focused", "Focused"
+
+    format = models.CharField(max_length=10, choices=Format.choices,
+                              default=Format.CLASSIC, db_default=Format.CLASSIC)
     #: Retired from the picker, never deleted: a session's `template` link and
     #: its snapshot's provenance both still name it. The default cannot be
     #: archived — another has to take its place first.
@@ -138,6 +150,11 @@ class StrategyQuestion(TenantScopedModel):
     #: template's unstarred diagnostic questions. A muted "if time" tag in the
     #: live view, and left out of the pre-call email.
     ask_if_time = models.BooleanField(default=False)
+    #: One of the focused template's five fixed diagnostic questions, asked
+    #: only when no proposed question has been accepted for the session
+    #: (owner, 2026-09-29) — the pre-call form was not completed, or nothing
+    #: Claude proposed was kept.
+    is_diagnostic_fallback = models.BooleanField(default=False, db_default=False)
     position = models.PositiveSmallIntegerField(default=0)
     # Questions are never hard-deleted: a reused key would change what a past
     # answer appears to answer.
@@ -383,6 +400,8 @@ class StrategyPathNote(TenantScopedModel):
     ai_call = models.ForeignKey("tenancy.AiCall", null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="+")
     from_ai = models.BooleanField(default=True)
+    #: What Claude drafted, before anyone edited it (owner, 2026-09-29).
+    proposed_text = models.TextField(blank=True, default="", db_default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "strategy_path_note"
@@ -423,6 +442,15 @@ class StrategyMapRow(TenantScopedModel):
     horizon = models.PositiveSmallIntegerField(choices=Horizon.choices,
                                                null=True, blank=True)
     measurable = models.CharField(max_length=255, blank=True, default="")
+    #: The focused format (owner, 2026-09-29): a short bold header (3–6
+    #: words) and one focus statement — all the PDF card shows. Drafted by
+    #: Claude, editable. `proposed_*` keep what Claude drafted, so an edit
+    #: before acceptance can teach the next draft this practice's style.
+    header = models.CharField(max_length=120, blank=True, default="", db_default="")
+    statement = models.TextField(blank=True, default="", db_default="")
+    proposed_header = models.CharField(max_length=120, blank=True, default="",
+                                       db_default="")
+    proposed_statement = models.TextField(blank=True, default="", db_default="")
     # Excluded from the PDF by default (FR-4.24.2).
     mechanics_note = models.TextField(blank=True, default="")
     state = models.CharField(max_length=10, choices=State.choices,
@@ -446,3 +474,75 @@ class StrategyMapRow(TenantScopedModel):
                 condition=models.Q(horizon__isnull=True) | models.Q(horizon__in=[30, 60, 90]),
                 name="strategy_map_row_horizon_is_30_60_90"),
         ]
+
+
+
+class StrategyDiagnosticProposal(TenantScopedModel):
+    """A diagnostic question Claude proposes from the pre-call form, for the
+    focused template (owner, 2026-09-29).
+
+    The same rule as everything Claude writes here: it lands `proposed`, a
+    person accepts, edits or discards it, and **only an accepted one is asked**.
+    Accepting appends it to the session's own snapshot under a new key, so the
+    answers resolve exactly as any other question's do.
+    """
+
+    class Rule(models.TextChoices):
+        LOWEST_RATING = "lowest_rating", "One of the two lowest ratings"
+        GROWTH = "growth", "They mentioned growth or expansion"
+        SNAPSHOT_GAP = "snapshot_gap", "An evident gap in the Snapshot"
+
+    class State(models.TextChoices):
+        PROPOSED = "proposed", "Proposed by Claude"
+        ACCEPTED = "accepted", "Accepted into the diagnostic"
+        DISCARDED = "discarded", "Discarded"
+
+    session = models.ForeignKey(StrategySession, on_delete=models.CASCADE,
+                                related_name="diagnostic_proposals")
+    rule = models.CharField(max_length=16, choices=Rule.choices)
+    #: What in the pre-call answers it rests on, quoted, so the fractional can
+    #: check the question against its reason.
+    basis = models.TextField(blank=True, default="")
+    prompt = models.TextField()
+    proposed_prompt = models.TextField(blank=True, default="")
+    state = models.CharField(max_length=10, choices=State.choices,
+                             default=State.PROPOSED, db_index=True)
+    position = models.PositiveSmallIntegerField(default=0)
+    #: The snapshot key it was given on acceptance.
+    question_key = models.CharField(max_length=80, blank=True, default="")
+    ai_call = models.ForeignKey("tenancy.AiCall", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "strategy_diagnostic_proposal"
+        ordering = ["position", "created_at"]
+        indexes = [models.Index(fields=["tenant", "session", "state"])]
+
+
+class StrategyStyleExample(TenantScopedModel):
+    """What Claude drafted, and what the practice kept after editing it
+    (owner, 2026-09-29). The most recent twelve go into the drafting prompts
+    as examples of this practice's style. One row per drafted item and kind,
+    updated when it is edited again.
+    """
+
+    class Kind(models.TextChoices):
+        MAP_HEADER = "map_header", "Map row header"
+        MAP_STATEMENT = "map_statement", "Map row focus statement"
+        PRO = "pro", "A pro"
+        CON = "con", "A con"
+
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    proposed = models.TextField()
+    accepted = models.TextField()
+    source_type = models.CharField(max_length=40)
+    source_id = models.UUIDField()
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "strategy_style_example"
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "kind", "source_type", "source_id"],
+                                    name="strategy_style_example_one_per_item"),
+        ]
+        indexes = [models.Index(fields=["tenant", "-updated_at"])]

@@ -35,11 +35,15 @@ MAX_ROWS_PER_RUN = 5
 #: What Consolidate may propose: three to five main targets is the aim, ten
 #: the ceiling.
 MAX_CONSOLIDATED = 10
+#: The focused format's map: at most five accepted rows (owner, 2026-09-29).
+FOCUSED_MAP_CAP = 5
 MIRROR_PURPOSE = "strategy_mirror"
 PATHS_PURPOSE = "strategy_path_notes"
 
 DIAGNOSTIC_SECTION = "diagnostic"
 DESTINATION_SECTION = "where_they_want_to_go"
+#: The focused format's §1 (owner, 2026-09-29), which replaces the destination.
+NEED_SECTION = "what_you_need"
 PATHS_SECTION = "two_paths"
 VALUES_SECTION = "what_they_value"
 
@@ -51,8 +55,11 @@ ROWS_SYSTEM = """\
 You are drafting candidate rows for a fractional operations executive's Strategy \
 Map, from what a prospect said in a diagnostic conversation.
 
-A row has: bottleneck, root cause, the fix, an owner, a horizon of 30, 60 or 90 \
-days, and a measurable.
+A row has: a header, a focus statement, the bottleneck, root cause, the fix, \
+an owner, a horizon of 30, 60 or 90 days, and a measurable. The header is 3 to 6 \
+words naming what the row is about, in title case, no full stop. The focus \
+statement is one sentence saying what will change and why it matters, in plain \
+words the prospect would use.
 
 You are given ONLY the questions asked and the answers captured — what they \
 said, who or what causes it, and what they have already tried. You must not \
@@ -71,9 +78,9 @@ use. The measurable is how they would know it worked — a thing already being \
 counted, or an obvious count of what the answer describes. The horizon is your \
 read of how long the fix takes, and only 30, 60 or 90.
 
-Reply with JSON only: a list of objects with the keys "bottleneck", \
-"root_cause", "the_fix", "owner_text", "horizon", "measurable". No prose around \
-it, no markdown fence."""
+Reply with JSON only: a list of objects with the keys "header", "statement", \
+"bottleneck", "root_cause", "the_fix", "owner_text", "horizon", "measurable". No \
+prose around it, no markdown fence."""
 
 MIRROR_SYSTEM = """\
 You are drafting "the mirror" for a fractional operations executive: two \
@@ -142,12 +149,15 @@ def drafting_input(session) -> str:
     too, not only from the PDF.
     """
     lines = []
-    for _question, prompt, value in _answered(session, DESTINATION_SECTION):
-        text = (value.get("text") or "").strip()
-        if text:
-            lines.append(f"{prompt}\n  {text}")
-    if lines:
-        lines.insert(0, "Where they want to go:")
+    for code, heading in ((DESTINATION_SECTION, "Where they want to go:"),
+                          (NEED_SECTION, "What they need:")):
+        said = []
+        for _question, prompt, value in _answered(session, code):
+            text = (value.get("text") or "").strip()
+            if text:
+                said.append(f"{prompt}\n  {text}")
+        if said:
+            lines += [heading, *said]
     diagnostic = _answered(session, DIAGNOSTIC_SECTION)
     if diagnostic:
         lines.append("\nDiagnostic — what is breaking:")
@@ -183,7 +193,12 @@ def _clean_row(raw) -> dict | None:
         horizon = int(horizon.strip())
     if horizon not in (30, 60, 90):
         horizon = None                   # never guessed into the column
+    header = " ".join(str(raw.get("header") or "").split())[:120]
+    statement = " ".join(str(raw.get("statement") or "").split())
     return {
+        # What Claude drafted is kept beside what a person edits it into.
+        "header": header, "proposed_header": header,
+        "statement": statement, "proposed_statement": statement,
         "bottleneck": bottleneck,
         "root_cause": (raw.get("root_cause") or "").strip(),
         "the_fix": (raw.get("the_fix") or "").strip(),
@@ -224,10 +239,14 @@ def draft_map_rows(session, *, trigger="button"):
     """
     from apps.tenancy import claude
 
+    from apps.strategy import style
+
     user_text = drafting_input(session)
     if not user_text:
         return []
     user_text += _already(session)
+    user_text += style.prompt_block(session.tenant, [style.K.MAP_HEADER,
+                                                     style.K.MAP_STATEMENT])
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=ROWS_PURPOSE, system=ROWS_SYSTEM,
@@ -268,7 +287,7 @@ given numbered rows — some already accepted onto the map, some proposed — ea
 with a bottleneck, root cause, fix, owner, horizon (30/60/90 days) and \
 measurable. Many repeat the same theme in different words.
 
-Merge them into three to five main targets (never more than ten). Each target \
+Merge them into three to five main targets (never more than {most}). Each target \
 cites, in "merges", the numbers of the rows it combines; every target merges at \
 least one row, and a row may be cited by only one target.
 
@@ -277,9 +296,12 @@ cause that is not in one of the rows it merges; do not estimate numbers; if the 
 merged rows name different owners or horizons, keep one they state or leave it \
 empty — never invent one. Plain operator's words.
 
-Reply with JSON only: a list of objects with the keys "bottleneck", \
-"root_cause", "the_fix", "owner_text", "horizon", "measurable", "merges". No \
-prose around it, no markdown fence."""
+Each target also has a "header" of 3 to 6 words naming it, in title case, and a \
+"statement": one sentence saying what will change and why it matters.
+
+Reply with JSON only: a list of objects with the keys "header", "statement", \
+"bottleneck", "root_cause", "the_fix", "owner_text", "horizon", "measurable", \
+"merges". No prose around it, no markdown fence."""
 
 
 def consolidation_input(rows) -> str:
@@ -289,7 +311,8 @@ def consolidation_input(rows) -> str:
     for number, row in enumerate(rows, start=1):
         where = "accepted" if row.state == StrategyMapRow.State.ACCEPTED else "proposed"
         lines.append(f"{number}. ({where}) bottleneck: {row.bottleneck}")
-        for field, label in (("root_cause", "root cause"), ("the_fix", "fix"),
+        for field, label in (("header", "header"), ("statement", "focus statement"),
+                             ("root_cause", "root cause"), ("the_fix", "fix"),
                              ("owner_text", "owner"), ("horizon", "horizon"),
                              ("measurable", "measurable")):
             value = getattr(row, field)
@@ -305,13 +328,21 @@ def consolidate_map_rows(session):
     """
     from apps.tenancy import claude
 
+    from apps.strategy import style
+
     rows = _live_rows(session)
     if len(rows) < 2:
         return []
+    # The focused map holds five (owner, 2026-09-29): Consolidate aims for
+    # three to five and never proposes more.
+    most = FOCUSED_MAP_CAP if services.is_focused(session) else MAX_CONSOLIDATED
     try:
         text, call = claude.complete_with_call(
-            tenant=session.tenant, purpose=CONSOLIDATE_PURPOSE, system=CONSOLIDATE_SYSTEM,
-            user_text=consolidation_input(rows), target_type="strategy_session",
+            tenant=session.tenant, purpose=CONSOLIDATE_PURPOSE,
+            system=CONSOLIDATE_SYSTEM.format(most={5: "five", 10: "ten"}.get(most, most)),
+            user_text=consolidation_input(rows) + style.prompt_block(
+                session.tenant, [style.K.MAP_HEADER, style.K.MAP_STATEMENT]),
+            target_type="strategy_session",
             target_id=session.pk, trigger="button", max_tokens=4000,
         )
     except (claude.ClaudeUnavailable, claude.ClaudeRefused):
@@ -345,7 +376,7 @@ def consolidate_map_rows(session):
             state=StrategyMapRow.State.PROPOSED, ai_call=call,
             merged_from=[str(rows[n - 1].pk) for n in merges], **row))
         position += 1
-        if len(made) >= MAX_CONSOLIDATED:
+        if len(made) >= most:
             break
     return made
 
@@ -484,9 +515,12 @@ def draft_path_notes(session, *, trigger="button"):
     from apps.crm.services import email_layout
     from apps.tenancy import claude
 
+    from apps.strategy import style
+
     user_text = path_input(session)
     if not user_text:
         return []
+    user_text += style.prompt_block(session.tenant, [style.K.PRO, style.K.CON])
     practice = email_layout.branding(session.tenant).display_name or "the practice"
     try:
         text, call = claude.complete_with_call(
@@ -524,7 +558,7 @@ def draft_path_notes(session, *, trigger="button"):
                 existing.add((path, kind, line.lower()))
                 made.append(StrategyPathNote.objects.create(
                     tenant=session.tenant, session=session, path=path, kind=kind,
-                    text=line, position=position, ai_call=call,
+                    text=line, proposed_text=line, position=position, ai_call=call,
                     state=StrategyPathNote.State.PROPOSED))
                 position += 1
     return made

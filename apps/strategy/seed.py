@@ -349,3 +349,105 @@ def seed_snapshot(discipline=DISCIPLINE) -> dict:
                           if question["key"] not in SERVICE_BUSINESS_KEYS],
         } for position, (code, title, budget, questions) in enumerate(SECTIONS)],
     }
+
+
+# ---------------------------------------------- "Operations — focused" (v2)
+#
+# Owner, 2026-09-29, for the October prospect. Built from the seed's own
+# questions where it keeps them (their keys are the same questions, so they
+# stay the same keys), with three new ones for §1.
+
+FOCUSED_NAME = "Operations — focused"
+FOCUSED = "focused"
+
+#: The five ratings on the pre-call form: the six, without Traction.
+FOCUSED_RATING_KEYS = ("s2_vision", "s2_people", "s2_data", "s2_issues", "s2_process")
+
+#: The five fixed diagnostic questions, asked only when nothing Claude proposed
+#: from the pre-call form was accepted (the form was not completed, or every
+#: proposal was discarded).
+FOCUSED_FALLBACK_KEYS = ("s4_decisions_stall", "s4_turnover", "s4_new_business",
+                         "s4_cash_pinch", "s4_double_customers")
+
+#: Live minutes, in order: 10/15/5/10/5/5/5 = 55.
+FOCUSED_SECTIONS = (
+    ("what_you_need", "What you need", 10),
+    ("diagnostic", "Diagnostic: where it's breaking", 15),
+    ("mirror", "The mirror", 5),
+    ("strategy_map", "Strategy Map", 10),
+    ("what_they_value", "What they value", 5),
+    ("two_paths", "Two paths", 5),
+    ("scope_agreement", "Scope agreement", 5),
+)
+
+WHAT_YOU_NEED = [
+    q("n1_why_now",
+      "What is going on that made you take this meeting, and what should be "
+      "different in 90 days?", must_ask=True),
+    q("n1_tried", "What have you already tried, and what got in the way?",
+      must_ask=True),
+    q("n1_this_seat",
+      "What would you want someone in this seat to actually do?", must_ask=True),
+    # Carried from "Where they want to go": the one question the three above
+    # do not already ask.
+    q("s3_stalled_goal",
+      "A goal that has been on the list for over a year — what has been in the way?"),
+]
+
+
+def focused_sections() -> list:
+    """(code, title, budget, [question, ...]) in the shape `SECTIONS` has."""
+    seed = {code: questions for code, _title, _budget, questions in SECTIONS}
+    by_key = {question["key"]: question for questions in seed.values()
+              for question in questions}
+    out = [
+        ("snapshot", "Snapshot: where they are today", None, list(seed["snapshot"])),
+        ("six_key_components", "Five Key Components: self-rating", None,
+         [by_key[key] for key in FOCUSED_RATING_KEYS]),
+    ]
+    live = {
+        "what_you_need": WHAT_YOU_NEED,
+        "diagnostic": [{**by_key[key], "must_ask": False, "is_diagnostic_fallback": True}
+                       for key in FOCUSED_FALLBACK_KEYS],
+        "mirror": [], "strategy_map": [],
+        "what_they_value": seed["what_they_value"][:3],
+        "two_paths": seed["two_paths"],
+        "scope_agreement": seed["scope_agreement"],
+    }
+    for code, title, budget in FOCUSED_SECTIONS:
+        out.append((code, title, budget, live[code]))
+    return out
+
+
+def create_focused(tenant, *, make_default=True):
+    """The focused template for one practice, made the default for its
+    discipline. Idempotent: an existing one is returned untouched, and only
+    the default flag moves. **Sessions already started are untouched** — each
+    keeps the snapshot it was started with."""
+    from django.db import transaction
+
+    from apps.strategy.models import StrategyQuestion, StrategySection, StrategyTemplate
+
+    with transaction.atomic():
+        template = StrategyTemplate.objects.filter(
+            tenant=tenant, name=FOCUSED_NAME, version=1).first()
+        if template is None:
+            template = StrategyTemplate.objects.create(
+                tenant=tenant, name=FOCUSED_NAME, version=1, discipline=DISCIPLINE,
+                format=StrategyTemplate.Format.FOCUSED, is_default=False)
+            for position, (code, title, budget, questions) in enumerate(focused_sections()):
+                section = StrategySection.objects.create(
+                    tenant=tenant, template=template, code=code, title=title,
+                    position=position, time_budget_minutes=budget)
+                for q_position, question in enumerate(questions):
+                    fields = {k: v for k, v in question.items() if k != "key"}
+                    fields["prompt"] = neutral_prompt(fields["prompt"], question["key"])
+                    StrategyQuestion.objects.create(
+                        tenant=tenant, template=template, section=section,
+                        key=question["key"], position=q_position, **fields)
+        if make_default and not template.is_default:
+            StrategyTemplate.objects.filter(tenant=tenant, discipline=DISCIPLINE,
+                                            is_default=True).update(is_default=False)
+            template.is_default = True
+            template.save(update_fields=["is_default", "updated_at"])
+    return template

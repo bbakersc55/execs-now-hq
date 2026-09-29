@@ -25,10 +25,11 @@ from apps.crm.models import Contact
 from apps.strategy import ai, conversion, emails, pdf as pdf_service
 from apps.strategy import prep as prep_service
 from apps.strategy import rewording
-from apps.strategy import services, session_admin, template_admin
+from apps.strategy import services, session_admin, style, template_admin
 from apps.strategy import serializers as strategy_serializers
 from apps.strategy.models import (
-    AskWhen, StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
+    AskWhen, StrategyAnswer, StrategyDiagnosticProposal, StrategyMapRow, StrategyPathNote,
+    StrategyPrepQuestion,
     StrategySession, StrategySessionPrep, StrategyTemplate, PDF_FLAG_KEYS,
 )
 from apps.tenancy.models import CLIENT_ROLES, AuditEvent
@@ -571,6 +572,22 @@ class SessionViewSet(StrategyViewSet):
         return Response({"drafted": [strategy_serializers.represent_path_note(n)
                                      for n in notes]}, status=201 if notes else 200)
 
+    @action(detail=True, methods=["post"], url_path="propose-diagnostic")
+    def propose_diagnostic(self, request, pk=None):
+        """Claude's diagnostic questions from the pre-call form, on demand
+        (owner, 2026-09-29). The other trigger is the form's completion."""
+        from apps.strategy import diagnostic
+
+        session = self.load(pk)
+        if (refused := self._fractional_only("run a Claude draft")) is not None:
+            return refused
+        if not services.is_focused(session):
+            return Response({"detail": "Proposed diagnostic questions belong to the "
+                                       "focused template."}, status=409)
+        made = diagnostic.propose(session, trigger="button")
+        return Response({"proposed": [diagnostic.represent(p) for p in made]},
+                        status=201 if made else 200)
+
     @action(detail=True, methods=["post"], url_path="draft-mirror")
     def draft_mirror(self, request, pk=None):
         session = self.load(pk)
@@ -691,12 +708,26 @@ class MapRowViewSet(StrategyViewSet):
         for field, value in serializer.validated_data.items():
             setattr(row, field, value)
         row.save()
+        if row.state == StrategyMapRow.State.ACCEPTED:
+            style.record_row(row)        # edited after acceptance: still their style
         return Response(strategy_serializers.represent_map_row(row))
 
     @action(detail=True, methods=["post"])
     def accept(self, request, pk=None):
-        return self._set_state(request, pk, StrategyMapRow.State.ACCEPTED,
-                               "accept a map row")
+        row = self.load_row(pk)
+        # The focused map holds five (owner, 2026-09-29).
+        if (services.is_focused(row.session) and row.state != StrategyMapRow.State.ACCEPTED
+                and StrategyMapRow.objects.filter(
+                    session=row.session, state=StrategyMapRow.State.ACCEPTED
+                ).count() >= ai.FOCUSED_MAP_CAP):
+            return Response({"detail": f"The map holds {ai.FOCUSED_MAP_CAP} rows. Remove "
+                                       "one, or Consolidate, before accepting another."},
+                            status=409)
+        response = self._set_state(request, pk, StrategyMapRow.State.ACCEPTED,
+                                   "accept a map row")
+        if response.status_code == 200:
+            style.record_row(self.load_row(pk))
+        return response
 
     @action(detail=True, methods=["post"])
     def discard(self, request, pk=None):
@@ -849,12 +880,17 @@ class PathNoteViewSet(StrategyViewSet):
         for field, value in serializer.validated_data.items():
             setattr(note, field, value)
         note.save()
+        if note.state == StrategyPathNote.State.ACCEPTED:
+            style.record_note(note)
         return Response(strategy_serializers.represent_path_note(note))
 
     @action(detail=True, methods=["post"])
     def accept(self, request, pk=None):
-        return self._set_state(request, pk, StrategyPathNote.State.ACCEPTED,
-                               "accept a pro or a con")
+        response = self._set_state(request, pk, StrategyPathNote.State.ACCEPTED,
+                                   "accept a pro or a con")
+        if response.status_code == 200:
+            style.record_note(self.load_note(pk))
+        return response
 
     @action(detail=True, methods=["post"])
     def discard(self, request, pk=None):
@@ -868,6 +904,73 @@ class PathNoteViewSet(StrategyViewSet):
         note.state = state
         note.save(update_fields=["state", "updated_at"])
         return Response(strategy_serializers.represent_path_note(note))
+
+
+class DiagnosticProposalViewSet(StrategyViewSet):
+    """The focused template's diagnostic tray (owner, 2026-09-29). Accepting,
+    editing and discarding are the fractional's, as the map's tray is."""
+
+    def proposals(self):
+        return StrategyDiagnosticProposal.objects.filter(
+            session__in=self.sessions()).select_related("session")
+
+    def load_proposal(self, pk):
+        proposal = self.proposals().filter(pk=pk).first()
+        if proposal is None:
+            raise Http404
+        return proposal
+
+    def partial_update(self, request, pk=None):
+        from apps.strategy import diagnostic
+
+        proposal = self.load_proposal(pk)
+        if (refused := self._fractional_only("edit a proposed question")) is not None:
+            return refused
+        if proposal.state != StrategyDiagnosticProposal.State.PROPOSED:
+            return Response({"detail": "Only a proposed question can be edited here."},
+                            status=409)
+        prompt = " ".join(str(request.data.get("prompt") or "").split())
+        if not prompt:
+            return Response({"detail": "A question needs some words."}, status=400)
+        proposal.prompt = prompt
+        proposal.save(update_fields=["prompt", "updated_at"])
+        return Response(diagnostic.represent(proposal))
+
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        from django.db import transaction
+
+        from apps.strategy import diagnostic
+
+        proposal = self.load_proposal(pk)
+        if (refused := self._fractional_only("accept a proposed question")) is not None:
+            return refused
+        try:
+            with transaction.atomic():
+                diagnostic.accept(proposal)
+        except diagnostic.Refused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user,
+            verb="strategy.diagnostic_question_accepted",
+            target_type="strategy_session", target_id=proposal.session_id,
+            payload={"proposal": str(proposal.pk), "key": proposal.question_key,
+                     "edited": proposal.prompt != proposal.proposed_prompt})
+        return Response(diagnostic.represent(proposal))
+
+    @action(detail=True, methods=["post"])
+    def discard(self, request, pk=None):
+        from apps.strategy import diagnostic
+
+        proposal = self.load_proposal(pk)
+        if (refused := self._fractional_only("discard a proposed question")) is not None:
+            return refused
+        if proposal.state != StrategyDiagnosticProposal.State.PROPOSED:
+            return Response({"detail": "Only a proposed question can be discarded."},
+                            status=409)
+        proposal.state = StrategyDiagnosticProposal.State.DISCARDED
+        proposal.save(update_fields=["state", "updated_at"])
+        return Response(diagnostic.represent(proposal))
 
 
 def represent_template(t) -> dict:

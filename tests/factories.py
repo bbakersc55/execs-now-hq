@@ -28,9 +28,9 @@ from apps.work.models import (
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
 from apps.strategy.models import (
-    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
-    StrategyQuestion, StrategySection, StrategySession, StrategySessionPrep,
-    StrategyTemplate,
+    StrategyAnswer, StrategyDiagnosticProposal, StrategyMapRow, StrategyPathNote,
+    StrategyPrepQuestion, StrategyQuestion, StrategySection, StrategySession,
+    StrategySessionPrep, StrategyStyleExample, StrategyTemplate,
 )
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, Role, StoredFile,
@@ -710,6 +710,29 @@ class StrategyPathNoteFactory(TenantScopedFactory):
     path = StrategyPathNote.Path.A
     kind = StrategyPathNote.Kind.PRO
     text = factory.Sequence(lambda n: f"A pro {n}")
+
+
+class StrategyDiagnosticProposalFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyDiagnosticProposal
+
+    tenant = factory.SubFactory(TenantFactory)
+    session = factory.SubFactory(StrategySessionFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    rule = StrategyDiagnosticProposal.Rule.LOWEST_RATING
+    prompt = factory.Sequence(lambda n: f"A diagnostic question {n}?")
+
+
+class StrategyStyleExampleFactory(TenantScopedFactory):
+    class Meta:
+        model = StrategyStyleExample
+
+    tenant = factory.SubFactory(TenantFactory)
+    kind = StrategyStyleExample.Kind.MAP_HEADER
+    proposed = "Claude's words"
+    accepted = "The practice's words"
+    source_type = "strategy_map_row"
+    source_id = factory.LazyFunction(__import__("uuid").uuid4)
 
 
 class StrategySessionPrepFactory(TenantScopedFactory):

@@ -112,6 +112,13 @@ def precall_complete(request, token: str):
                              StrategySession.State.PRECALL_SENT):
             session.state = StrategySession.State.PRECALL_COMPLETE
             session.save(update_fields=["state", "updated_at"])
+            # The focused template (owner, 2026-09-29): Claude proposes the
+            # diagnostic from these answers, on the worker, into the tray.
+            if services.is_focused(session):
+                from django_q.tasks import async_task
+
+                async_task("apps.strategy.tasks.propose_diagnostic",
+                           str(session.tenant_id), str(session.pk))
         from apps.tenancy.models import AuditEvent
 
         AuditEvent.all_objects.create(

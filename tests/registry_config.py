@@ -28,9 +28,9 @@ from apps.meetings.models import (
     MeetingParticipant, MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.strategy.models import (
-    StrategyAnswer, StrategyMapRow, StrategyPathNote, StrategyPrepQuestion,
-    StrategyQuestion, StrategySection, StrategySession, StrategySessionPrep,
-    StrategyTemplate,
+    StrategyAnswer, StrategyDiagnosticProposal, StrategyMapRow, StrategyPathNote,
+    StrategyPrepQuestion, StrategyQuestion, StrategySection, StrategySession,
+    StrategySessionPrep, StrategyStyleExample, StrategyTemplate,
 )
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, StoredFile, TenantSecret,
@@ -139,6 +139,10 @@ register(StrategyMapRow, factories.StrategyMapRowFactory,
          endpoints=("/api/strategy-map-rows/",))
 register(StrategyPathNote, factories.StrategyPathNoteFactory,
          endpoints=("/api/strategy-path-notes/",))
+register(StrategyDiagnosticProposal, factories.StrategyDiagnosticProposalFactory,
+         endpoints=("/api/strategy-diagnostic-proposals/",))
+# Read only into the drafting prompts; no endpoint.
+register(StrategyStyleExample, factories.StrategyStyleExampleFactory, api_exposed=False)
 register(StrategyPrepQuestion, factories.StrategyPrepQuestionFactory,
          endpoints=("/api/strategy-prep-questions/",))
 # Reached only through its session — there is no endpoint that takes one by id.

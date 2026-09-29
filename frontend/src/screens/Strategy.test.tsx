@@ -1552,3 +1552,78 @@ describe("the PDF's covering email (owner, 2026-09-29)", () => {
       await waitFor(() => expect(editor.innerHTML).toBe(DRAFT));
     });
 });
+
+
+describe("the focused template (owner, 2026-09-29)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const PROPOSAL = { id: "d1", rule: "lowest_rating" as const,
+                     rule_label: "One of the two lowest ratings",
+                     basis: "Data: 2/10", prompt: "Where does the week's data come from?",
+                     state: "proposed" as const, question_key: "", from_ai: true };
+
+  function focused(overrides: Partial<StrategySessionRow> = {}) {
+    return aSession({ format: "focused", diagnostic_proposals: [PROPOSAL], ...overrides });
+  }
+
+  it("shows each proposed question with its reason, and asks nothing until accepted",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = showSession(focused(), aMe(), {
+        "POST /api/strategy-diagnostic-proposals/d1/accept/": {},
+        "PATCH /api/strategy-diagnostic-proposals/d1/": {},
+      });
+      expect(await screen.findByText("Data: 2/10")).toBeInTheDocument();
+      expect(screen.getByText(/the section asks the five fixed questions/)).toBeInTheDocument();
+      const box = screen.getByRole("textbox",
+        { name: "Proposed question: Where does the week's data come from?" });
+      await user.clear(box);
+      await user.type(box, "Where do this week's numbers come from?");
+      await user.tab();
+      await user.click(screen.getByRole("button",
+        { name: 'Accept "Where does the week\'s data come from?"' }));
+      await waitFor(() => {
+        const patch = fetchMock.calls.find((c) => c.method === "PATCH");
+        expect(patch?.body).toEqual({ prompt: "Where do this week's numbers come from?" });
+        expect(fetchMock.calls.some((c) => c.url.endsWith("/d1/accept/"))).toBe(true);
+      });
+    });
+
+  it("has no diagnostic tray on a classic session", async () => {
+    showSession(aSession({ diagnostic_proposals: [PROPOSAL] }));
+    await screen.findByText(/Drafts land in the tray/);
+    expect(screen.queryByText("Data: 2/10")).toBeNull();
+  });
+
+  it("draws a map row as its card, header and statement, both editable", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(focused({ map_rows: [
+      { id: "r2", position: 0, header: "Weekends Get a Lead",
+        statement: "Every weekend site has a named lead.", bottleneck: "Weekend misses",
+        root_cause: "", the_fix: "", owner_text: "", horizon: 30, measurable: "",
+        mechanics_note: "", state: "accepted", converted_to: "", from_ai: true },
+    ] }), aMe(), { "PATCH /api/strategy-map-rows/r2/": {} });
+    const header = await screen.findByRole("textbox", { name: "Header for Weekend misses" });
+    expect(header).toHaveValue("Weekends Get a Lead");
+    expect(screen.getByRole("textbox", { name: "Focus statement for Weekend misses" }))
+      .toHaveValue("Every weekend site has a named lead.");
+    expect(screen.getByText(/The map — 1 of 5 rows/)).toBeInTheDocument();
+    await user.clear(header);
+    await user.type(header, "A Lead for Every Weekend");
+    await user.tab();
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+      .toEqual({ header: "A Lead for Every Weekend" }));
+  });
+
+  it("says why a sixth row cannot go on the map", async () => {
+    const user = userEvent.setup();
+    showSession(focused(), aMe(), {
+      "POST /api/strategy-map-rows/r1/accept/": () => ({ status: 409, body: {
+        detail: "The map holds 5 rows. Remove one, or Consolidate, before accepting another." } }),
+    });
+    const card = (await screen.findByRole("textbox", { name: "Header for Supervisor overload" }))
+      .closest(".card") as HTMLElement;
+    await user.click(within(card).getByRole("button", { name: "Accept" }));
+    expect(await screen.findByText(/The map holds 5 rows/)).toBeInTheDocument();
+  });
+});

@@ -28,6 +28,9 @@ def represent_map_row(row) -> dict:
     return {
         "id": str(row.pk),
         "position": row.position,
+        # The focused format's card (owner, 2026-09-29): all the PDF shows.
+        "header": row.header,
+        "statement": row.statement,
         "bottleneck": row.bottleneck,
         "root_cause": row.root_cause,
         "the_fix": row.the_fix,
@@ -114,6 +117,8 @@ def represent_session(session, *, include_financial=True, full=False,
         "state": session.state,
         # What this session was started from, as its snapshot records it — the
         # live template may since have been renamed or archived.
+        # classic | focused, frozen with the snapshot (owner, 2026-09-29).
+        "format": services.format_of(session),
         "template": {"id": (session.template_snapshot.get("template") or {}).get("id"),
                      "name": (session.template_snapshot.get("template") or {}).get("name",
                                                                                    "")},
@@ -155,7 +160,7 @@ def represent_session(session, *, include_financial=True, full=False,
     sections = []
     for section in session.template_snapshot.get("sections", []):
         questions = []
-        for question in section.get("questions", []):
+        for question in services.visible_questions(section):
             if not include_financial and question.get("is_financial"):
                 continue
             allowed.add(question["key"])
@@ -173,6 +178,15 @@ def represent_session(session, *, include_financial=True, full=False,
                            .order_by("position", "created_at")]
     payload["path_notes"] = [represent_path_note(note) for note in
                              StrategyPathNote.objects.filter(session=session)]
+    # The focused template's diagnostic tray (owner, 2026-09-29): the
+    # fractional's, on the same footing as prep.
+    from apps.strategy import diagnostic
+    from apps.strategy.models import StrategyDiagnosticProposal
+
+    payload["diagnostic_proposals"] = [
+        diagnostic.represent(p) for p in
+        StrategyDiagnosticProposal.objects.filter(session=session)
+    ] if include_prep and services.is_focused(session) else []
     from apps.strategy import emails as strategy_emails
 
     payload["precall_default_intro"] = strategy_emails.default_intro(session)
@@ -218,6 +232,8 @@ class PathNoteSerializer(serializers.Serializer):
 
 
 class MapRowSerializer(serializers.Serializer):
+    header = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    statement = serializers.CharField(required=False, allow_blank=True)
     bottleneck = serializers.CharField(required=False, allow_blank=True)
     root_cause = serializers.CharField(required=False, allow_blank=True)
     the_fix = serializers.CharField(required=False, allow_blank=True)

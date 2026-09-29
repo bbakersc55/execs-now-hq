@@ -135,6 +135,7 @@ def context_for(session) -> dict:
                 .order_by("position", "created_at")):
         rows.append({
             "position": len(rows) + 1,
+            "header": row.header, "statement": row.statement,
             "bottleneck": row.bottleneck, "root_cause": row.root_cause,
             "the_fix": row.the_fix, "owner_text": row.owner_text,
             "horizon": row.horizon, "measurable": row.measurable,
@@ -165,7 +166,8 @@ def context_for(session) -> dict:
         "six_key": {"ratings": ratings, "average": six_key["average"],
                     "complete": six_key["complete"], "chart": _chart(ratings),
                     "scale": rewording.RATING_SCALE_MEANING},
-        "destination": sections.get(DESTINATION_SECTION, []),
+        # The focused format's §1 stands where the destination stood.
+        "destination": sections.get(DESTINATION_SECTION) or sections.get("what_you_need", []),
         "mirror_goal": session.mirror_goal,
         "mirror_unlocks": session.mirror_unlocks,
         "map_rows": rows,
@@ -184,6 +186,12 @@ def context_for(session) -> dict:
         "money": [item for item in scope if item["is_financial"]],
         "flags": flags,
         "show_mechanics": flags["mechanics"],
+        # The focused format (owner, 2026-09-29): 3–5 full-width cards, each a
+        # bold header and one focus statement, and the mirror as bullets.
+        "focused": services.is_focused(session),
+        "focused_cards": focused_cards(rows),
+        "mirror_goal_points": sentences(session.mirror_goal),
+        "mirror_unlocks_points": sentences(session.mirror_unlocks),
     }
 
 
@@ -235,6 +243,35 @@ def _chart(ratings):
 
 #: Three cards a column, and the rest named but not drawn (owner, 2026-09-21).
 CARDS_PER_HORIZON = 3
+
+
+def card_of(row) -> dict:
+    """What a focused card shows: the header and the focus statement. A row
+    written before headers existed falls back to its bottleneck and its fix,
+    so no card is ever blank. The live view draws the same two lines."""
+    return {"header": (row.get("header") or "").strip() or row["bottleneck"],
+            "statement": (row.get("statement") or "").strip() or row.get("the_fix", ""),
+            "horizon": row.get("horizon")}
+
+
+def focused_cards(rows) -> list:
+    """Every accepted row as a card, in horizon order and priority within it,
+    each under its 30/60/90 label. At most five, which is the focused map's
+    cap; each card is one Nth of the width and grows with its text."""
+    order = {30: 0, 60: 1, 90: 2, None: 3}
+    cards = [card_of(row) for row in sorted(
+        rows, key=lambda r: (order.get(r["horizon"], 3), r["position"]))][:5]
+    for card in cards:
+        card["label"] = f"{card['horizon']} days" if card["horizon"] else "Not dated"
+    return cards
+
+
+def sentences(text: str) -> list[str]:
+    """One bullet per sentence, for the mirror (owner, 2026-09-29)."""
+    import re
+
+    text = " ".join((text or "").split())
+    return [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
 
 
 def _horizons(rows):

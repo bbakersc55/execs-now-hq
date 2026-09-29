@@ -278,8 +278,13 @@ export function SessionDetail({ me }: { me: Me }) {
               <button className="small" onClick={() => setAsk(null)}>Not now</button>
             </Banner>
           )}
+          {section.code === "diagnostic" && data.format === "focused" && (
+            <DiagnosticTray sessionPath={path} data={data} mayRun={mayRun}
+              onChanged={refresh} />
+          )}
           {section.code === "strategy_map" && (
             <MapSection tray={tray} map={map} mayRun={mayRun}
+              focused={data.format === "focused"}
               onDraft={() => act.mutate({ suffix: "draft-rows/" })}
               onConsolidate={() => act.mutate({ suffix: "consolidate/" })}
               busy={act.isPending} onChanged={refresh} />
@@ -476,14 +481,17 @@ function Mirror({ data, mayRun, onDraft, onAccept }: {
   );
 }
 
-function MapSection({ tray, map, mayRun, onDraft, onConsolidate, busy, onChanged }: {
-  tray: MapRow[]; map: MapRow[]; mayRun: boolean;
+function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate, busy,
+  onChanged }: {
+  tray: MapRow[]; map: MapRow[]; mayRun: boolean; focused?: boolean;
   onDraft: () => void; onConsolidate: () => void; busy: boolean; onChanged: () => void;
 }) {
+  const [refused, setRefused] = useState("");
   const act = useMutation({
     mutationFn: ({ row, suffix }: { row: string; suffix: string }) =>
       api.post(`/api/strategy-map-rows/${row}/${suffix}`),
-    onSuccess: onChanged,
+    onSuccess: () => { setRefused(""); onChanged(); },
+    onError: (e: Error) => setRefused(e.message),
   });
   const edit = useMutation({
     mutationFn: ({ row, body }: { row: string; body: Partial<MapRow> }) =>
@@ -523,9 +531,14 @@ function MapSection({ tray, map, mayRun, onDraft, onConsolidate, busy, onChanged
       {tray.length > 0 && (
         <>
           <h3 style={{ marginBottom: ".25rem" }}>Tray — {tray.length} proposed rows</h3>
+          {refused && <Banner kind="warn">{refused}</Banner>}
           {tray.map((row) => (
             <div key={row.id} className="card" style={{ marginBottom: ".5rem" }}>
-              <strong>{row.bottleneck}</strong>
+              {focused && (
+                <FocusCard row={row} mayRun={mayRun}
+                  onSave={(body) => edit.mutate({ row: row.id, body })} />
+              )}
+              <strong className={focused ? "small" : undefined}>{row.bottleneck}</strong>
               <p className="small muted" style={{ margin: ".2rem 0" }}>
                 {row.root_cause}{row.the_fix ? ` → ${row.the_fix}` : ""}
                 {row.horizon ? ` · ${row.horizon} days` : ""}
@@ -549,7 +562,9 @@ function MapSection({ tray, map, mayRun, onDraft, onConsolidate, busy, onChanged
         </>
       )}
 
-      <h3 style={{ marginBottom: ".25rem" }}>The map — {map.length} rows</h3>
+      <h3 style={{ marginBottom: ".25rem" }}>
+        The map — {map.length}{focused ? " of 5" : ""} rows
+      </h3>
       {map.length === 0 && (
         <p className="small muted">
           Empty until you accept a row. A worked example of the shape:<br />
@@ -559,7 +574,11 @@ function MapSection({ tray, map, mayRun, onDraft, onConsolidate, busy, onChanged
       {map.map((row, index) => (
         <div key={row.id} className="card" style={{ marginBottom: ".5rem" }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <span><strong>{index + 1}. {row.bottleneck}</strong><Merges row={row} /></span>
+            <span>
+              {focused ? <span className="small muted">{index + 1}. {row.bottleneck}</span>
+                : <strong>{index + 1}. {row.bottleneck}</strong>}
+              <Merges row={row} />
+            </span>
             {mayRun && (
               <span className="row">
                 {/* Pruning after a consolidation (dry run 2). Back to discarded,
@@ -583,6 +602,11 @@ function MapSection({ tray, map, mayRun, onDraft, onConsolidate, busy, onChanged
               </span>
             )}
           </div>
+          {/* The card the PDF shows (owner, 2026-09-29): the same two lines. */}
+          {focused && (
+            <FocusCard row={row} mayRun={mayRun}
+              onSave={(body) => edit.mutate({ row: row.id, body })} />
+          )}
           {mayRun ? (
             <div className="row">
               <input aria-label={`Measurable for ${row.bottleneck}`}
@@ -1750,5 +1774,106 @@ function Merges({ row }: { row: MapRow }) {
       Merges {row.merged_from.length}: {row.merged_from.map((m) => m.bottleneck
         + (m.state === "accepted" ? " (on the map)" : "")).join(" · ")}
     </p>
+  );
+}
+
+
+/**
+ * A focused map row as its card: a short bold header and one focus statement
+ * (owner, 2026-09-29) — exactly the two lines the PDF prints, with the same
+ * fallback to the bottleneck and the fix for a row written before headers.
+ * Saved on leaving the field, as every other map field is.
+ */
+function FocusCard({ row, mayRun, onSave }: {
+  row: MapRow; mayRun: boolean; onSave: (body: Partial<MapRow>) => void;
+}) {
+  const header = (row.header || "").trim() || row.bottleneck;
+  const statement = (row.statement || "").trim() || row.the_fix;
+  if (!mayRun) {
+    return (
+      <div style={{ marginBottom: ".4rem" }}>
+        <strong>{header}</strong>
+        {statement && <p className="small" style={{ margin: ".2rem 0 0" }}>{statement}</p>}
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginBottom: ".4rem" }}>
+      <input aria-label={`Header for ${row.bottleneck}`} defaultValue={header}
+        placeholder="Header, 3–6 words" style={{ fontWeight: 700, width: "100%" }}
+        onBlur={(e) => e.target.value.trim() !== header
+          && onSave({ header: e.target.value.trim() })} />
+      <textarea aria-label={`Focus statement for ${row.bottleneck}`} rows={2}
+        defaultValue={statement} placeholder="One focus statement"
+        style={{ width: "100%", marginTop: ".25rem" }}
+        onBlur={(e) => e.target.value.trim() !== statement
+          && onSave({ statement: e.target.value.trim() })} />
+    </div>
+  );
+}
+
+/**
+ * The focused template's diagnostic (owner, 2026-09-29): Claude proposes three
+ * to five questions from the pre-call form into this tray, each with the
+ * reason it was proposed and what in their answers it rests on. **Only an
+ * accepted question is asked**; accepted ones become the section. Until one
+ * is, the template's five fixed questions are what the section asks.
+ */
+function DiagnosticTray({ sessionPath, data, mayRun, onChanged }: {
+  sessionPath: string; data: StrategySessionRow; mayRun: boolean; onChanged: () => void;
+}) {
+  const [problem, setProblem] = useState("");
+  const done = { onSuccess: () => { setProblem(""); onChanged(); },
+                 onError: (e: Error) => setProblem(e.message) };
+  const propose = useMutation({
+    mutationFn: () => api.post(`${sessionPath}propose-diagnostic/`), ...done });
+  const act = useMutation({
+    mutationFn: ({ id, suffix }: { id: string; suffix: string }) =>
+      api.post(`/api/strategy-diagnostic-proposals/${id}/${suffix}`), ...done });
+  const edit = useMutation({
+    mutationFn: ({ id, prompt }: { id: string; prompt: string }) =>
+      api.patch(`/api/strategy-diagnostic-proposals/${id}/`, { prompt }), ...done });
+  const all = data.diagnostic_proposals ?? [];
+  const tray = all.filter((p) => p.state === "proposed");
+  const accepted = all.filter((p) => p.state === "accepted").length;
+  if (!mayRun) return null;
+  return (
+    <div style={{ marginBottom: ".75rem" }}>
+      <div className="row">
+        <button disabled={propose.isPending} onClick={() => propose.mutate()}>
+          {propose.isPending ? "Proposing…" : "Propose questions from the pre-call form"}
+        </button>
+        <span className="small muted">
+          {accepted > 0
+            ? `${accepted} of 5 accepted — they are the section.`
+            : "Nothing accepted yet: the section asks the five fixed questions."}
+        </span>
+      </div>
+      {problem && <Banner kind="warn">{problem}</Banner>}
+      {tray.length > 0 && (
+        <h3 style={{ marginBottom: ".25rem" }}>
+          Tray — {tray.length} proposed question{tray.length === 1 ? "" : "s"}
+        </h3>
+      )}
+      {tray.map((p) => (
+        <div key={p.id} className="card" style={{ marginBottom: ".4rem" }}>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            <Pill>{p.rule_label}</Pill> {p.basis}
+          </p>
+          <textarea aria-label={`Proposed question: ${p.prompt}`} rows={2}
+            defaultValue={p.prompt} style={{ width: "100%", marginTop: ".3rem" }}
+            onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== p.prompt
+              && edit.mutate({ id: p.id, prompt: e.target.value.trim() })} />
+          <div className="row" style={{ marginTop: ".3rem" }}>
+            <button className="primary" aria-label={`Accept "${p.prompt}"`}
+              disabled={accepted >= 5} onClick={() => act.mutate({ id: p.id, suffix: "accept/" })}>
+              Accept
+            </button>
+            <button className="danger" aria-label={`Discard "${p.prompt}"`}
+              onClick={() => act.mutate({ id: p.id, suffix: "discard/" })}>Discard</button>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

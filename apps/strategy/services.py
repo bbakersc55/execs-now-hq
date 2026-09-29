@@ -65,13 +65,15 @@ def snapshot_of(template: StrategyTemplate) -> dict:
             "has_fractional_note": question.has_fractional_note,
             "is_financial": question.is_financial,
             "ask_if_time": question.ask_if_time,
+            "is_diagnostic_fallback": question.is_diagnostic_fallback,
             "position": question.position,
         })
     return {
         "snapshot_version": SNAPSHOT_VERSION,
         "taken_at": timezone.now().isoformat(),
         "template": {"id": str(template.pk), "name": template.name,
-                     "discipline": template.discipline, "version": template.version},
+                     "discipline": template.discipline, "version": template.version,
+                     "format": template.format},
         "sections": [{
             "code": section.code,
             "title": section.title,
@@ -82,6 +84,29 @@ def snapshot_of(template: StrategyTemplate) -> dict:
     }
 
 
+FOCUSED = "focused"
+
+
+def format_of(session) -> str:
+    """The format the session was started with, as its snapshot records it.
+    A snapshot older than formats is classic."""
+    return (session.template_snapshot.get("template") or {}).get("format") or "classic"
+
+
+def is_focused(session) -> bool:
+    return format_of(session) == FOCUSED
+
+
+def visible_questions(section: dict) -> list:
+    """A section's questions as asked. In the focused format the diagnostic's
+    fixed questions are the fallback: once any proposed question has been
+    accepted into it (`dynamic`), they are not asked (owner, 2026-09-29)."""
+    questions = section.get("questions", [])
+    if any(q.get("dynamic") for q in questions):
+        return [q for q in questions if not q.get("is_diagnostic_fallback")]
+    return list(questions)
+
+
 def questions_in(snapshot: dict, *, ask_when=None, include_financial=True):
     """Every question in the snapshot, in order, optionally narrowed.
 
@@ -90,7 +115,7 @@ def questions_in(snapshot: dict, *, ask_when=None, include_financial=True):
     on a screen.
     """
     for section in snapshot.get("sections", []):
-        for question in section.get("questions", []):
+        for question in visible_questions(section):
             if ask_when is not None and question["ask_when"] != ask_when:
                 continue
             if not include_financial and question.get("is_financial"):

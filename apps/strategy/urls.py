@@ -5,6 +5,8 @@ from apps.strategy import views
 router = DefaultRouter()
 router.register("strategy-sessions", views.SessionViewSet, basename="strategy-session")
 router.register("strategy-map-rows", views.MapRowViewSet, basename="strategy-map-row")
+router.register("strategy-diagnostic-proposals", views.DiagnosticProposalViewSet,
+                basename="strategy-diagnostic-proposal")
 router.register("strategy-path-notes", views.PathNoteViewSet,
                 basename="strategy-path-note")
 router.register("strategy-prep-questions", views.PrepQuestionViewSet,

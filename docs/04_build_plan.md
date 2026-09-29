@@ -845,6 +845,56 @@ that only use could settle:
 
 ---
 
+### Strategy session v2 — "Operations — focused" (owner, 2026-09-29, for the October prospect)
+
+**Built on `dev`, tested; not yet the practice's default** (see the last point).
+Every change is keyed on the template's `format`, frozen into each session's
+snapshot, so **sessions already started keep exactly what they were started
+with** (tested).
+
+1. **The template.** Pre-call: the seven Snapshot questions and five ratings
+   (Traction dropped). Live, 10/15/5/10/5/5/5 = 55 minutes: §1 *What you need*
+   (three must-asks, plus the stalled-goal question carried from *Where they
+   want to go*); §2 *Diagnostic*; the mirror; the map; three values; two paths;
+   scope. §1 is read wherever the destination was (drafting input, PDF).
+2. **The dynamic diagnostic** (`apps/strategy/diagnostic.py`). When the pre-call
+   form is completed, a worker job (so capped by the daily limit) proposes three
+   to five questions into a tray. **Code decides what each is for**: the two
+   lowest ratings one each, a mention of growth or expansion one, and the
+   third-lowest rating if that comes to fewer than three. **Claude words them**,
+   and may add up to two for evident Snapshot gaps. A button re-proposes. The
+   guardrails, each tested: nothing is asked until a person accepts it (it then
+   joins the session's own snapshot under a new `dx_` key); Claude is given only
+   the pre-call answers and the slots; §1's must-asks are never touched, and §2
+   holds at most five. Until anything is accepted, §2 asks five fixed fallback
+   questions.
+3. **Map rows as cards.** Each row has a header (3–6 words) and one focus
+   statement, both drafted and editable. Owner, horizon and measurable stay as
+   fields. The focused map holds five accepted rows (a sixth is refused, 409),
+   and Consolidate aims for three to five, never more than five. The live view
+   and the PDF print the same two lines, with the bottleneck and fix as the
+   fallback for rows written before headers existed.
+4. **The PDF**, focused sessions only: one row of equal cards across the width,
+   each under its 30/60/90 label, growing with its text. No truncation (the
+   classic layout's `truncatechars` is not used). The mirror is bulleted, one
+   sentence each. Classic PDFs are laid out as before (tested).
+5. **Learning from edits** (`apps/strategy/style.py`). Each (drafted, kept)
+   pair for map headers, statements, pros and cons is stored per practice,
+   when accepted after an edit or edited after acceptance; editing back to
+   Claude's words removes it. The twelve most recent go into the rows,
+   Consolidate and pros-and-cons prompts. Tested: a pair reaches the prompt,
+   and another practice's never does.
+
+Migration `strategy` 0014 (five columns with database defaults, two tables)
+was applied 2026-09-29, before anything else here was written, because the dev
+server had reloaded onto the new models: additive, suite green, 16:43 backup.
+
+**To make it the default for the practice** (a data change, so dry run first):
+`manage.py add_focused_template --tenant <slug>`, then again with `--apply`.
+Not run.
+
+---
+
 ## Phase 4.5 — Module 4B: the client value report
 
 > **Scope approved by the owner 2026-09-16, with rulings on all eleven open questions
