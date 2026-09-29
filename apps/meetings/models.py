@@ -232,6 +232,14 @@ class MeetingSourceFile(TenantScopedModel):
     folder = models.ForeignKey("meetings.DriveWatchFolder", null=True, blank=True,
                                on_delete=models.SET_NULL, related_name="files")
     error = models.TextField(blank=True, default="")
+    #: Automatic reads that were billed and kept nothing — an answer cut off at
+    #: the limit, or one that could not be read. The poll retries a failed file
+    #: only while this is under `parsing.MAX_AUTO_PARSE_FAILURES`; on 2026-09-29
+    #: one note had failed 54 times, every ten minutes, at about $0.24 a time.
+    #: A failure that cost nothing (no key, no network) does not count, so
+    #: fixing the key still lets everything retry. A person asking resets it.
+    #: `db_default` so a worker still running the previous code can insert.
+    auto_parse_failures = models.PositiveSmallIntegerField(default=0, db_default=0)
     fetched_at = models.DateTimeField(null=True, blank=True)
     #: Kept so a re-parse needs no second trip to Drive, and so the review
     #: screen can show the passage an item was drawn from (FR-5.14).

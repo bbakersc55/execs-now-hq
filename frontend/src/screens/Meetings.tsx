@@ -8,7 +8,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
-  Backfill, BackfillPlan, DismissReason, DriveFolder, DriveHealth, FolderPast, Me,
+  Backfill, BackfillPlan, DismissReason, DriveFolder, DriveHealth, FailedFile, FolderPast, Me,
   MeetingProposal, WatchFolder, asksToConfirm,
   ProposalItem, api,
 } from "../lib/api";
@@ -256,6 +256,7 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
       {(health.folders ?? []).map((folder) => (
         <ExtraFolder key={folder.id} folder={folder} mine={mine} setProblem={setProblem} />
       ))}
+      {health.files_failed > 0 && <FailedFiles setProblem={setProblem} />}
       {mine && <AddFolder setNote={setNote} setProblem={setProblem} />}
       <Exclusions health={health} mine={mine} setProblem={setProblem} />
       </>
@@ -460,6 +461,60 @@ function AddFolder({ setNote, setProblem }: {
  * name, or a folder it sits in, has one of these as a whole word is recorded
  * as skipped and never sent to Claude.
  */
+/**
+ * Notes whose read failed, by name (owner, 2026-09-29). A failed read is
+ * retried by the next poll on its own, up to three billed tries; after that it
+ * waits here for a person, because retrying the same note every ten minutes
+ * is how $17 went on answers that were cut off.
+ */
+function FailedFiles({ setProblem }: { setProblem: (text: string) => void }) {
+  const qc = useQueryClient();
+  const rows = useQuery<FailedFile[]>({
+    queryKey: ["drive-failed"], queryFn: () => api.get("/api/drive-watch/failed/"),
+  });
+  const again = useMutation({
+    mutationFn: (id: string) => api.post<FailedFile>("/api/drive-watch/read-again/", { file: id }),
+    onSuccess: () => {
+      setProblem("");
+      qc.invalidateQueries({ queryKey: ["drive-failed"] });
+      qc.invalidateQueries({ queryKey: ["drive-watch"] });
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  const list = rows.data ?? [];
+  if (list.length === 0) return null;
+  return (
+    <Card title="Couldn't be read">
+      <p className="small muted">
+        Each is tried again by itself on the next poll, up to three times.
+        After that it waits here, so the same note is not paid for every ten minutes.
+      </p>
+      <ul className="timeline">
+        {list.map((row) => (
+          <li key={row.id} className="row tight">
+            <span>
+              <FileText size={12} />{" "}
+              {row.web_view_link
+                ? <a href={row.web_view_link} target="_blank" rel="noreferrer">{row.name}</a>
+                : row.name}
+              <br />
+              <span className="small muted">{row.error}</span>
+            </span>
+            {row.retries_automatically ? (
+              <Pill>Retrying ({row.automatic_failures} of 3)</Pill>
+            ) : (
+              <button className="small" disabled={again.isPending}
+                onClick={() => again.mutate(row.id)}>
+                <RefreshCw size={12} /> Read again
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function Exclusions({ health, mine, setProblem }: {
   health: DriveHealth; mine: boolean; setProblem: (text: string) => void;
 }) {
@@ -804,6 +859,8 @@ function DismissPanel({ proposal, onDone, onCancel, setNote }: {
   const person = people.find((p) => p.id === who);
   const candidates = person?.payload.existing_candidates ?? [];
 
+  const [match, setMatch] = useState<StrongMatch | null>(null);
+  const [overMatch, setOverMatch] = useState("");  // the match declined, by id
   const send = useMutation({
     mutationFn: (asVendor: boolean) => api.post(
       `/api/meeting-proposals/${proposal.id}/dismiss/`, {
@@ -811,6 +868,7 @@ function DismissPanel({ proposal, onDone, onCancel, setNote }: {
         ...(asVendor ? { vendor: {
           item: who,
           ...(link ? { contact_id: link } : {}),
+          ...(!link && overMatch ? { create_despite_match: overMatch } : {}),
           service_categories: categories.split(",").map((c) => c.trim()).filter(Boolean),
         } } : {}),
       }),
@@ -821,7 +879,11 @@ function DismissPanel({ proposal, onDone, onCancel, setNote }: {
         : "Dismissed. Nothing was created; it is under Archived if you need it back.");
       onDone();
     },
-    onError: (e: Error) => setNote(e.message),
+    onError: (e: Error) => {
+      const found = strongMatchOf(e);
+      if (found) setMatch(found);
+      else setNote(e.message);
+    },
   });
 
   return (
@@ -848,7 +910,7 @@ function DismissPanel({ proposal, onDone, onCancel, setNote }: {
           <div className="row">
             <Field label="Who is the vendor">
               <select aria-label="Who is the vendor" value={who}
-                onChange={(e) => { setWho(e.target.value); setLink(""); }}>
+                onChange={(e) => { setWho(e.target.value); setLink(""); setOverMatch(""); }}>
                 {people.map((p) => (
                   <option key={p.id} value={p.id}>{p.payload.parsed_name}</option>
                 ))}
@@ -877,11 +939,28 @@ function DismissPanel({ proposal, onDone, onCancel, setNote }: {
             A vendor needs at least one category, so they can be found by what they
             do. No tasks are created from this meeting.
           </p>
-          <button className="primary"
-            disabled={send.isPending || !who || !categories.trim()}
-            onClick={() => send.mutate(true)}>
-            Record as vendor and dismiss the rest
-          </button>
+          {match ? (
+            <Banner kind="warn">
+              <strong>{match.name || "Someone"}</strong> ({match.email}) is already a
+              contact, matched on email address. Is this the same person?{" "}
+              <span className="row tight" style={{ marginTop: "var(--s1)" }}>
+                <button className="primary small" disabled={send.isPending}
+                  onClick={() => { setLink(match.contact_id); setMatch(null); }}>
+                  Use {match.name || "them"}
+                </button>
+                <button className="small" disabled={send.isPending}
+                  onClick={() => { setOverMatch(match.contact_id); setMatch(null); }}>
+                  No, a new contact
+                </button>
+              </span>
+            </Banner>
+          ) : (
+            <button className="primary"
+              disabled={send.isPending || !who || !categories.trim()}
+              onClick={() => send.mutate(true)}>
+              Record as vendor and dismiss the rest
+            </button>
+          )}
         </div>
       )}
 
@@ -1035,11 +1114,40 @@ function ItemRow({ item, onChanged, setNote }: {
   const [notifyMe, setNotifyMe] = useState(true);
   const ownerName = item.owner_contact_name || payload.proposed_owner_text || "";
 
+  // Owner, 2026-09-29: creating someone new over a strong email match is
+  // refused by the server with the match named; this is that match, shown
+  // for the reviewer to link to or knowingly decline.
+  const [match, setMatch] = useState<StrongMatch | null>(null);
   const act = useMutation({
     mutationFn: ({ verb, body }: { verb: string; body?: object }) =>
       api.post(`/api/proposal-items/${item.id}/${verb}/`, body),
-    onSuccess: () => onChanged(),
-    onError: (e: Error) => setNote(e.message),
+    onSuccess: () => { setMatch(null); onChanged(); },
+    onError: (e: Error) => {
+      const found = strongMatchOf(e);
+      if (found) setMatch(found);
+      else setNote(e.message);
+    },
+  });
+
+  const approveBody = (extra: object = {}) => ({
+    ...(item.kind === "participant"
+      ? { contact_id: pick, contact_type: type,
+          service_categories: categories.split(",").map((c) => c.trim())
+            .filter(Boolean),
+          // Only ever one of the two, and neither when the reviewer
+          // said the contact has no company.
+          ...(pick || company === "none" ? {}
+            : company === "new"
+              ? { create_company: { name: companyName,
+                                    domain: companyDomain } }
+              : { company_id: company }) }
+      : item.kind === "action_item"
+        ? { owner_side: side,
+            ...(side === "other" ? { owner_kind: kind, outcome,
+              ...(outcome === "follow_up" ? { follow_up_date: followUp } : {}),
+              ...(outcome === "portal" ? { notify_me: notifyMe } : {}) } : {}) }
+        : {}),
+    ...extra,
   });
 
   const decided = item.state !== "pending";
@@ -1210,29 +1318,30 @@ function ItemRow({ item, onChanged, setNote }: {
         </div>
       )}
 
+      {!decided && !ours && match && (
+        <Banner kind="warn">
+          <strong>{match.name || "Someone"}</strong> ({match.email}) is already a contact,
+          matched on email address. Is this the same person?{" "}
+          <span className="row tight" style={{ marginTop: "var(--s1)" }}>
+            <button className="primary small" disabled={act.isPending}
+              onClick={() => { setPick(match.contact_id); act.mutate({
+                verb: "approve", body: approveBody({ contact_id: match.contact_id }) }); }}>
+              Link to {match.name || "them"}
+            </button>
+            <button className="small" disabled={act.isPending}
+              onClick={() => act.mutate({ verb: "approve",
+                body: approveBody({ create_despite_match: match.contact_id }) })}>
+              No, create a new contact anyway
+            </button>
+          </span>
+        </Banner>
+      )}
+
       {!decided && !ours && (
         <div className="row tight" style={{ marginTop: "var(--s2)" }}>
           <button className="primary small" disabled={act.isPending}
             aria-label={`Approve ${payload.parsed_name ?? payload.text}`}
-            onClick={() => act.mutate({ verb: "approve", body: {
-              ...(item.kind === "participant"
-                ? { contact_id: pick, contact_type: type,
-                    service_categories: categories.split(",").map((c) => c.trim())
-                      .filter(Boolean),
-                    // Only ever one of the two, and neither when the reviewer
-                    // said the contact has no company.
-                    ...(pick || company === "none" ? {}
-                      : company === "new"
-                        ? { create_company: { name: companyName,
-                                              domain: companyDomain } }
-                        : { company_id: company }) }
-                : item.kind === "action_item"
-                  ? { owner_side: side,
-                      ...(side === "other" ? { owner_kind: kind, outcome,
-                        ...(outcome === "follow_up" ? { follow_up_date: followUp } : {}),
-                        ...(outcome === "portal" ? { notify_me: notifyMe } : {}) } : {}) }
-                  : {}),
-            } })}>
+            onClick={() => act.mutate({ verb: "approve", body: approveBody() })}>
             <Check size={14} /> Approve
           </button>
           <button className="small danger" disabled={act.isPending}
@@ -1244,4 +1353,12 @@ function ItemRow({ item, onChanged, setNote }: {
       )}
     </div>
   );
+}
+
+/** The existing contact a new one would duplicate (owner, 2026-09-29). */
+interface StrongMatch { contact_id: string; name: string; email: string; company: string }
+
+function strongMatchOf(e: Error): StrongMatch | null {
+  const data = (e as Error & { status?: number; data?: { match?: StrongMatch } });
+  return data.status === 409 && data.data?.match ? data.data.match : null;
 }

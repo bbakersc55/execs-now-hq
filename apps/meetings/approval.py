@@ -32,9 +32,29 @@ from apps.work import services as work_services
 
 
 class ApprovalRefused(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, extra=None):
         super().__init__(message)
         self.status = status
+        #: Anything the screen needs to act on the refusal, beside the words.
+        self.extra = extra or {}
+
+
+#: A match this strong is the same person unless the reviewer says otherwise
+#: (owner, 2026-09-29). Only an email match reaches it.
+STRONG_MATCH = 0.95
+
+
+def strong_match(tenant, *, name: str, email: str):
+    """The existing contact a new one would duplicate, or None — looked up
+    **now**, not taken from the candidates stored at parse time, so a contact
+    created a minute ago by another proposal is found too."""
+    from apps.meetings import matching
+
+    if not (email or "").strip():
+        return None
+    return next((row for row in matching.candidates_for(tenant, name=name, email=email)
+                 if row["match_reason"] == matching.EMAIL
+                 and row["confidence"] >= STRONG_MATCH), None)
 
 
 # ------------------------------------------------------------------ participants
@@ -164,6 +184,24 @@ def approve_participant(item, *, actor, role, choice: dict, request=None):
         last = (candidate.get("last_name") or "").strip()
         if not first and not last:
             raise ApprovalRefused("A new contact needs a name.")
+        # Owner, 2026-09-29, after a second Mike Eller was created with the
+        # first one offered at 0.98: creating someone new over a strong email
+        # match needs a confirmation that **names the match** — the contact's
+        # id, not a bare "yes", so it cannot be given without seeing who.
+        address = (candidate.get("email") or "").strip()
+        match = strong_match(tenant, name=f"{first} {last}".strip(), email=address)
+        if match is not None:
+            if str(choice.get("create_despite_match") or "") != match["contact_id"]:
+                raise ApprovalRefused(
+                    f"{match['name'] or 'Someone'} ({match['email'] or address}) is already "
+                    "a contact, matched on email address. Link to them, or confirm that "
+                    "this is a different person.",
+                    status=409, extra={"match": match})
+            AuditEvent.all_objects.create(
+                tenant=tenant, actor=actor, verb="meeting.contact_created_despite_match",
+                target_type="proposal_item", target_id=item.pk,
+                payload={"matched_contact": match["contact_id"], "email": address,
+                         "confidence": match["confidence"]})
         company, made = resolve_company(item, actor=actor, choice=choice,
                                         request=request)
         contact = Contact.objects.create(
@@ -174,7 +212,6 @@ def approve_participant(item, *, actor, role, choice: dict, request=None):
         )
         if made and company is not None:
             _spread_company(item, company)
-        address = (candidate.get("email") or "").strip()
         if address:
             ContactEmail.objects.create(tenant=tenant, contact=contact,
                                         address=address, is_primary=True)

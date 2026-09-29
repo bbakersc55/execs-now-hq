@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.meetings import drive as drive_service
@@ -308,9 +309,12 @@ def poll(tenant, *, client=None, parse=True) -> dict:
         # Capped. A backlog — a restored database, an interrupted backfill —
         # must not turn one poll into a hundred Claude calls at once. What is
         # left over is picked up by the next poll, oldest first.
+        # A failed file is retried only while its billed failures are under
+        # the cap; past it, the queue names it for a person (parsing._failed).
         for row in MeetingSourceFile.objects.filter(
-                state__in=[MeetingSourceFile.State.RECORDED,
-                           MeetingSourceFile.State.FAILED]
+                Q(state=MeetingSourceFile.State.RECORDED)
+                | Q(state=MeetingSourceFile.State.FAILED,
+                    auto_parse_failures__lt=parsing.MAX_AUTO_PARSE_FAILURES)
                 ).order_by("created_at")[:PARSE_PER_POLL]:
             if not parsing.claim(row):
                 continue          # The backfill has it.
@@ -346,6 +350,11 @@ def health(tenant) -> dict:
         "files_pending": pending,
         "files_failed": MeetingSourceFile.objects.filter(
             state=MeetingSourceFile.State.FAILED).count(),
+        # Failed and no longer retried by itself: each is named in the queue
+        # (`drive-watch/failed/`) with Read again.
+        "files_needing_person": MeetingSourceFile.objects.filter(
+            state=MeetingSourceFile.State.FAILED,
+            auto_parse_failures__gte=_max_auto()).count(),
         "files_skipped": MeetingSourceFile.objects.filter(
             state=MeetingSourceFile.State.SKIPPED).count(),
         "backfill": _backfill_state(),
@@ -356,6 +365,12 @@ def health(tenant) -> dict:
         "folders": [_folder_state(f) for f in folders_for(watch)] if watch else [],
         "exclusions": _exclusion_state(watch) if watch else [],
     }
+
+
+def _max_auto() -> int:
+    from apps.meetings import parsing
+
+    return parsing.MAX_AUTO_PARSE_FAILURES
 
 
 def _folder_state(folder) -> dict:

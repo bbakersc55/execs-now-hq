@@ -807,3 +807,97 @@ describe("an action item owned by someone else", () => {
       ?.body).toEqual({ owner_side: "practice" }));
   });
 });
+
+describe("creating someone new over a strong email match (owner, 2026-09-29)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const MATCH = { contact_id: "c1", name: "Dana Reyes", email: "dana@acme.invalid",
+                  company: "Acme Facilities", match_reason: "email", confidence: 0.98 };
+
+  function refusingOnce() {
+    let first = true;
+    return (body: unknown) => {
+      const sent = body as Record<string, unknown>;
+      if (first && !sent.contact_id && !sent.create_despite_match) {
+        first = false;
+        return { status: 409, body: {
+          detail: "Dana Reyes (dana@acme.invalid) is already a contact, matched on email "
+                  + "address. Link to them, or confirm that this is a different person.",
+          match: MATCH } };
+      }
+      return { status: 201, body: { id: "i1" } };
+    };
+  }
+
+  it("names the match and sends the declined contact's id to create anyway", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ "POST /api/proposal-items/i1/approve/": refusingOnce() });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await user.click(screen.getByRole("button", { name: "Approve Dana Reyes" }));
+
+    expect(await screen.findByText(/is already a contact/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Link to Dana Reyes" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "No, create a new contact anyway" }));
+
+    await waitFor(() => {
+      const posts = fetchMock.calls.filter((c) => c.url.endsWith("/i1/approve/"));
+      expect(posts).toHaveLength(2);
+      expect(posts[1].body).toMatchObject({ create_despite_match: "c1" });
+    });
+  });
+
+  it("links to the match instead, in one click", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ "POST /api/proposal-items/i1/approve/": refusingOnce() });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await user.click(screen.getByRole("button", { name: "Approve Dana Reyes" }));
+    await user.click(await screen.findByRole("button", { name: "Link to Dana Reyes" }));
+
+    await waitFor(() => {
+      const posts = fetchMock.calls.filter((c) => c.url.endsWith("/i1/approve/"));
+      expect(posts[1].body).toMatchObject({ contact_id: "c1" });
+      expect(posts[1].body).not.toHaveProperty("create_despite_match");
+    });
+  });
+});
+
+describe("notes that could not be read (owner, 2026-09-29)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const FAILED = [
+    { id: "f9", name: "Meeting started 2026/05/15 10:59 MDT - Notes by Gemini",
+      error: "Claude's answer was cut off or empty; nothing was kept. Failed 3 times "
+             + "automatically; not tried again until someone chooses Read again.",
+      web_view_link: "https://d/f9", automatic_failures: 3, retries_automatically: false,
+      state: "failed", mime_type: "", skip_reason: "", owner_email: "", fetched_at: null },
+    { id: "f8", name: "Weekly sync", error: "Queued to be read again (1 of 3).",
+      web_view_link: "", automatic_failures: 1, retries_automatically: true,
+      state: "failed", mime_type: "", skip_reason: "", owner_email: "", fetched_at: null },
+  ];
+
+  it("names each one, and offers Read again only once the automatic tries are spent",
+    async () => {
+      const user = userEvent.setup();
+      // Built here rather than through show(): mockApi takes the first key a
+      // URL starts with, so the specific drive-watch routes must come first.
+      const fetchMock = mockApi({
+        "GET /api/drive-watch/failed/": FAILED,
+        "POST /api/drive-watch/read-again/": { ...FAILED[0], retries_automatically: true },
+        "GET /api/drive-watch/backfill/": { folder: PAST, backfill: null },
+        "GET /api/drive-watch/": { ...HEALTH, files_failed: 2, files_needing_person: 1 },
+        [`GET /api/meeting-proposals/${ID}/`]: aProposal(),
+        "GET /api/meeting-proposals/": [aProposal()],
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<Meetings me={aMe()} />, { path: "/meetings", route: "/meetings" });
+      expect(await screen.findByText(/Meeting started 2026\/05\/15/)).toBeInTheDocument();
+      expect(screen.getByText("Retrying (1 of 3)")).toBeInTheDocument();
+      const buttons = screen.getAllByRole("button", { name: /Read again/ });
+      expect(buttons).toHaveLength(1);
+      await user.click(buttons[0]);
+      await waitFor(() => {
+        const post = fetchMock.calls.find((c) => c.url.endsWith("/read-again/"));
+        expect(post?.body).toEqual({ file: "f9" });
+      });
+    });
+});

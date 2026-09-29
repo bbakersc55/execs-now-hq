@@ -26,7 +26,7 @@ from django.utils import timezone
 
 from apps.meetings.models import (
     DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting,
-    MeetingProposal, ProposalItem,
+    MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.tenancy.models import AuditEvent
 
@@ -420,6 +420,38 @@ class DriveWatchViewSet(MeetingViewSetBase):
         })
 
 
+    @action(detail=False, methods=["get"], url_path="failed")
+    def failed(self, request):
+        """Files whose read failed, **named** (matrix 11.8's scope): what went
+        wrong, how many automatic tries it has had, and whether the poll will
+        try it again by itself."""
+        rows = meeting_perms.source_files_for(request, MeetingSourceFile.objects.filter(
+            state=MeetingSourceFile.State.FAILED)).order_by("created_at")
+        return Response([{
+            **meeting_serializers.represent_source_file(row),
+            "automatic_failures": row.auto_parse_failures,
+            "retries_automatically": parsing.retries_automatically(row),
+        } for row in rows])
+
+    @action(detail=False, methods=["post"], url_path="read-again")
+    def read_again(self, request):
+        """Queue a failed file for the next poll, its automatic tries restored
+        (matrix 11.8). A file this person cannot see is a 404."""
+        try:
+            file_id = uuid.UUID(str(request.data.get("file") or ""))
+        except ValueError:
+            raise Http404
+        row = meeting_perms.source_files_for(request).filter(pk=file_id).first()
+        if row is None:
+            raise Http404
+        try:
+            parsing.read_again(row, actor=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response({**meeting_serializers.represent_source_file(row),
+                         "automatic_failures": 0, "retries_automatically": True})
+
+
 class MeetingViewSet(MeetingViewSetBase):
     """Call notes on a contact and on a company (FR-5.8d).
 
@@ -532,7 +564,7 @@ class ProposalViewSet(MeetingViewSetBase):
             else:
                 dismissal.dismiss(proposal, actor=request.user, reason=reason, note=note)
         except approval.ApprovalRefused as exc:
-            return Response({"detail": str(exc)}, status=exc.status)
+            return Response({"detail": str(exc), **exc.extra}, status=exc.status)
         proposal.refresh_from_db()
         return Response(meeting_serializers.represent_proposal(proposal, full=True))
 
@@ -644,7 +676,7 @@ class ProposalItemViewSet(MeetingViewSetBase):
                 approval.approve_task_item(item, actor=request.user, role=role,
                                            choice=request.data or {})
         except approval.ApprovalRefused as exc:
-            return Response({"detail": str(exc)}, status=exc.status)
+            return Response({"detail": str(exc), **exc.extra}, status=exc.status)
         AuditEvent.all_objects.create(
             tenant=request.tenant, actor=request.user, verb="meeting.item_approved",
             target_type="proposal_item", target_id=item.pk,

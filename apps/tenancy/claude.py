@@ -28,7 +28,13 @@ PRICES_PER_MTOK = {
 
 
 class ClaudeUnavailable(Exception):
-    """No key, a rejected key, or the API could not be reached. Retryable."""
+    """No key, a rejected key, or the API could not be reached. Retryable.
+
+    `call` is the `AiCall` row the failure wrote, when it got that far — so a
+    caller can tell a failure that cost money (an answer cut off at the limit)
+    from one that cost nothing (no key, no network)."""
+
+    call = None
 
 
 class ClaudeRefused(Exception):
@@ -174,7 +180,9 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
         call.succeeded = False
         call.error = message
         call.save()
-        raise ClaudeUnavailable(message) from exc
+        error = ClaudeUnavailable(message)
+        error.call = call
+        raise error from exc
 
     try:
         key = _resolve_key(tenant)

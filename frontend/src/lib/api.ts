@@ -920,6 +920,17 @@ export interface InboundHealth {
  *  `google_connected` and `drive_access` are separate because they fail
  *  separately: a practice can have a Google account connected for sending mail
  *  that has never been asked for Drive. */
+/** A file whose read failed, named (owner, 2026-09-29). */
+export interface FailedFile {
+  id: string;
+  name: string;
+  error: string;
+  web_view_link: string;
+  automatic_failures: number;
+  /** False once the automatic tries are used up: only Read again reads it. */
+  retries_automatically: boolean;
+}
+
 export interface DriveHealth {
   connected: boolean;
   google_connected: boolean;
@@ -932,6 +943,8 @@ export interface DriveHealth {
   has_cursor: boolean;
   files_pending: number;
   files_failed: number;
+  /** Failed and no longer retried by itself; each needs Read again. */
+  files_needing_person?: number;
   files_skipped: number;
   /** The folder's past: the decision made about it, or null if none yet. */
   backfill: Backfill | null;

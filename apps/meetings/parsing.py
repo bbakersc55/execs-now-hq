@@ -27,6 +27,15 @@ from apps.meetings.models import MeetingProposal, MeetingSourceFile, ProposalIte
 
 PARSE_PURPOSE = "meeting_parse"
 
+#: Room for the answer and the model's reasoning, which is billed as output.
+#: At 6000, 78 reads (to 2026-09-29) came back cut off: successful answers ran
+#: to 5,984, and long notes ran past it. 16000 is the wrapper's default and
+#: stays below the SDK's non-streaming ceiling.
+PARSE_MAX_TOKENS = 16000
+
+#: Billed automatic failures before the poll stops retrying a file.
+MAX_AUTO_PARSE_FAILURES = 3
+
 SYSTEM = """\
 You are reading the notes of one business meeting for a fractional operations \
 executive, and proposing what should be recorded. A person reviews everything \
@@ -215,7 +224,8 @@ def _build(source_file, payload, call) -> MeetingProposal:
 
     source_file.state = MeetingSourceFile.State.PARSED
     source_file.error = ""
-    source_file.save(update_fields=["state", "error", "updated_at"])
+    source_file.auto_parse_failures = 0
+    source_file.save(update_fields=["state", "error", "auto_parse_failures", "updated_at"])
     return proposal
 
 
@@ -313,21 +323,73 @@ def parse(source_file, *, client=None, trigger="auto",
             tenant=source_file.tenant, purpose=PARSE_PURPOSE, system=SYSTEM,
             user_text=f"{source_file.name}\n\n{text}",
             target_type="meeting_source_file", target_id=source_file.pk,
-            trigger=trigger, max_tokens=6000,
+            trigger=trigger, max_tokens=PARSE_MAX_TOKENS,
+            # Extraction, not judgment: low effort, as the owner
+            # classification was (2026-09-28). Reasoning is billed as output,
+            # and at the default it was what ran past the old 6000 limit.
+            effort="low",
         )
     except (claude.ClaudeUnavailable, claude.ClaudeRefused) as exc:
-        source_file.state = MeetingSourceFile.State.FAILED
-        source_file.error = str(exc)
-        source_file.save(update_fields=["state", "error", "updated_at"])
-        return None
+        call = getattr(exc, "call", None)
+        return _failed(source_file, str(exc), trigger=trigger,
+                       billed=bool(call and call.output_tokens))
 
     payload = _payload(reply)
     if not isinstance(payload, dict):
-        source_file.state = MeetingSourceFile.State.FAILED
-        source_file.error = "Claude answered with something this could not read."
-        source_file.save(update_fields=["state", "error", "updated_at"])
-        return None
+        return _failed(source_file, "Claude answered with something this could not read.",
+                       trigger=trigger, billed=True)
     return _build(source_file, payload, call)
+
+
+def _failed(source_file, message: str, *, trigger: str, billed: bool) -> None:
+    """Record a failed read, **named**, and say what happens next.
+
+    A failed file is picked up again by the next poll, so a re-read is queued
+    by the failure itself. That retry is what cost $17 by 2026-09-29: one note
+    failed at the limit 54 times, every ten minutes. So a failure that was
+    billed counts against the file, and after `MAX_AUTO_PARSE_FAILURES` the
+    poll stops and the queue names the file for a person to read again. A
+    failure that cost nothing (no key, no network) never counts: fixing the
+    key must still let every file retry by itself.
+    """
+    if billed and trigger != "button":
+        source_file.auto_parse_failures += 1
+    tries = source_file.auto_parse_failures
+    if tries >= MAX_AUTO_PARSE_FAILURES:
+        message += (f" Failed {tries} times automatically; not tried again until "
+                    "someone chooses Read again on the meeting queue.")
+    elif billed and trigger != "button":
+        message += (f" Queued to be read again on the next poll "
+                    f"({tries} of {MAX_AUTO_PARSE_FAILURES} automatic tries).")
+    source_file.state = MeetingSourceFile.State.FAILED
+    source_file.error = message
+    source_file.save(update_fields=["state", "error", "auto_parse_failures", "updated_at"])
+    return None
+
+
+def retries_automatically(source_file) -> bool:
+    return source_file.auto_parse_failures < MAX_AUTO_PARSE_FAILURES
+
+
+def read_again(source_file, *, actor=None) -> MeetingSourceFile:
+    """A person asks for a failed file to be read again: queued for the next
+    poll, with its automatic tries restored. Nothing is read here — the read
+    costs money and takes a minute, so it happens on the worker, not in the
+    request."""
+    from apps.tenancy.models import AuditEvent
+
+    if source_file.state != MeetingSourceFile.State.FAILED:
+        raise ValueError("Only a file whose read failed can be read again.")
+    before = source_file.auto_parse_failures
+    source_file.state = MeetingSourceFile.State.RECORDED
+    source_file.auto_parse_failures = 0
+    source_file.error = ""
+    source_file.save(update_fields=["state", "auto_parse_failures", "error", "updated_at"])
+    AuditEvent.all_objects.create(
+        tenant_id=source_file.tenant_id, actor=actor, verb="meeting.file_read_again",
+        target_type="meeting_source_file", target_id=source_file.pk,
+        payload={"file": source_file.name, "automatic_failures_before": before})
+    return source_file
 
 
 def reparse(proposal, *, actor=None) -> MeetingProposal | None:
