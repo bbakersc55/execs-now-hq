@@ -2011,3 +2011,91 @@ def test_tenant_isolation_another_practices_pro_or_con_is_not_editable(
         content_type="application/json").status_code == 404
     note.refresh_from_db()
     assert note.text == "Ours."
+
+
+# ============ the PDF's covering email, a full editor (owner, 2026-09-29)
+
+@pytest.mark.django_db
+def test_the_covering_email_is_drafted_from_the_session(session, ff, api):
+    _a_full_session(session)
+    body = api.as_(ff).get(f"/api/strategy-sessions/{session.pk}/pdf-cover/").json()["body_html"]
+    assert body.startswith("<p>Hi Dana,</p>")
+    assert pdf_service.context_for(session)["session_date"] in body
+    assert "<strong>To grow, but do it more sustainably</strong>" in body
+    assert "<li><strong>Path A</strong>: Continue to run it yourself</li>" in body
+    assert "Path B</strong>: Work with" in body
+    assert "We agreed to speak again on Next Tuesday." in body
+    assert "You will have my proposal by Tuesday." in body
+    # Money is never in it, whatever §9 holds.
+    assert "MARKERINVESTMENT" not in body and "MARKERREACTION" not in body
+
+
+@pytest.mark.django_db
+def test_what_a_session_does_not_have_is_left_out_not_invented(session, ff, api):
+    body = api.as_(ff).get(f"/api/strategy-sessions/{session.pk}/pdf-cover/").json()["body_html"]
+    assert "aiming for" not in body          # no mirror goal yet
+    assert "agreed to speak again" not in body
+
+
+@pytest.mark.django_db
+def test_the_edited_email_is_what_previews_and_what_sends_cleaned(session, ff, api):
+    edited = ('<p>Hi Dana, <b>thank you</b>.</p><script>alert(1)</script>'
+              '<p onclick="x">See <a href="javascript:alert(1)">this</a> and '
+              '<a href="https://acme.invalid/plan">the plan</a>.</p><ul><li>One</li></ul>')
+    client = api.as_(ff)
+    preview = client.post(f"/api/strategy-sessions/{session.pk}/send-preview/",
+                          {"which": "pdf", "body_html": edited},
+                          content_type="application/json").json()
+    assert "<b>thank you</b>" in preview["body_html"]
+    assert "Hi Dana, thank you." in preview["body_text"]
+    assert OutboxMessage.all_objects.count() == 0, "a preview writes nothing"
+
+    sent = client.post(f"/api/strategy-sessions/{session.pk}/send-pdf/",
+                       {"body_html": edited}, content_type="application/json")
+    assert sent.status_code == 201, sent.content
+    message = OutboxMessage.all_objects.get(producer=OutboxMessage.Producer.STRATEGY_PDF)
+    for gone in ("<script", "alert(1)", "onclick", "javascript:"):
+        assert gone not in message.body_html
+    assert '<a href="https://acme.invalid/plan">the plan</a>' in message.body_html
+    assert "the plan (https://acme.invalid/plan)" in message.body_text
+    assert "- One" in message.body_text
+    assert message.attachments.count() == 1
+
+
+@pytest.mark.django_db
+def test_an_empty_email_is_refused_and_nothing_sends(session, ff, api):
+    sent = api.as_(ff).post(f"/api/strategy-sessions/{session.pk}/send-pdf/",
+                            {"body_html": "<p> </p><script>x</script>"},
+                            content_type="application/json")
+    assert sent.status_code == 400
+    assert OutboxMessage.all_objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_role_boundaries_a_va_can_neither_draft_nor_send_the_map(session, seeded_tenant, api):
+    """Matrix 10.11: sending the map is the fractional's."""
+    from .factories import MembershipFactory
+
+    va = api.as_(MembershipFactory(tenant=seeded_tenant, role="VA"))
+    assert va.get(f"/api/strategy-sessions/{session.pk}/pdf-cover/").status_code == 403
+    assert va.post(f"/api/strategy-sessions/{session.pk}/send-preview/",
+                   {"which": "pdf", "body_html": "<p>x</p>"},
+                   content_type="application/json").status_code == 403
+    assert va.post(f"/api/strategy-sessions/{session.pk}/send-pdf/",
+                   {"body_html": "<p>x</p>"}, content_type="application/json").status_code == 403
+    assert OutboxMessage.all_objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_another_practices_session_has_no_cover(session, tenant_b, api):
+    from apps.tenancy.context import tenant_context
+
+    from .factories import MembershipFactory
+
+    with tenant_context(tenant_b.pk):
+        outsider = MembershipFactory(tenant=tenant_b, role="FF")
+    client = api.as_(outsider)
+    assert client.get(f"/api/strategy-sessions/{session.pk}/pdf-cover/").status_code == 404
+    assert client.post(f"/api/strategy-sessions/{session.pk}/send-pdf/",
+                       {"body_html": "<p>x</p>"}, content_type="application/json"
+                       ).status_code == 404

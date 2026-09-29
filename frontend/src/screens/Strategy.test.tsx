@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -1499,4 +1499,56 @@ describe("the map tray, after dry run 2", () => {
     expect(screen.queryByRole("button", { name: /Remove Supervisor overload/ }))
       .not.toBeInTheDocument();
   });
+});
+
+
+describe("the PDF's covering email (owner, 2026-09-29)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const DRAFT = "<p>Hi Dana,</p><p>Thank you for your time on 29 September 2026.</p>";
+
+  function withCover() {
+    return showSession(aSession(), aMe(), {
+      [`GET /api/strategy-sessions/${SESSION_ID}/pdf-cover/`]: { body_html: DRAFT },
+      [`POST /api/strategy-sessions/${SESSION_ID}/send-preview/`]: (body: unknown) => ({
+        status: 200, body: {
+          subject: "Your strategy map", to_address: "dana@acme.invalid",
+          from_address: "bryan@getexecutivesnow.test", body_text: "",
+          body_html: `<html><body>${(body as { body_html: string }).body_html}</body></html>`,
+        } }),
+      [`POST /api/strategy-sessions/${SESSION_ID}/send-pdf/`]: { status: 201, body: {} },
+    });
+  }
+
+  it("starts from the drafted email, in the editor, with a live preview", async () => {
+    withCover();
+    const editor = await screen.findByLabelText("The covering email");
+    await waitFor(() => expect(editor.innerHTML).toBe(DRAFT));
+    const frame = await screen.findByTitle("The email as it will send") as HTMLIFrameElement;
+    await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("Thank you for your time"));
+    expect(frame.getAttribute("sandbox")).toBe("");
+  });
+
+  it("previews and sends exactly what was edited, and can go back to the draft",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = withCover();
+      const editor = await screen.findByLabelText("The covering email");
+      await waitFor(() => expect(editor.innerHTML).toBe(DRAFT));
+
+      editor.innerHTML = "<p>Hi Dana, <b>great to meet you</b>.</p>";
+      fireEvent.input(editor);
+      const frame = await screen.findByTitle("The email as it will send");
+      await waitFor(() => expect(frame.getAttribute("srcdoc"))
+        .toContain("<b>great to meet you</b>"));
+
+      await user.click(screen.getByRole("button", { name: /^Send it to/ }));
+      await waitFor(() => {
+        const post = fetchMock.calls.find((c) => c.url.endsWith("/send-pdf/"));
+        expect(post?.body).toEqual({ body_html: "<p>Hi Dana, <b>great to meet you</b>.</p>" });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Reset to the drafted email" }));
+      await waitFor(() => expect(editor.innerHTML).toBe(DRAFT));
+    });
 });

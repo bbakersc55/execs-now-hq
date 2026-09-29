@@ -429,7 +429,16 @@ class SessionViewSet(StrategyViewSet):
                      "searches": result.ai_call.web_searches if result.ai_call_id else 0})
         return Response(strategy_serializers.represent_prep(result), status=201)
 
-    @action(detail=True, methods=["get"], url_path="send-preview")
+    @action(detail=True, methods=["get"], url_path="pdf-cover")
+    def pdf_cover(self, request, pk=None):
+        """The covering note, drafted from the session, for the fractional to
+        edit (owner, 2026-09-29). Writes nothing."""
+        session = self.load(pk)
+        if (refused := self._fractional_only("send the map")) is not None:
+            return refused
+        return Response({"body_html": emails.default_pdf_cover(session)})
+
+    @action(detail=True, methods=["get", "post"], url_path="send-preview")
     def send_preview(self, request, pk=None):
         """What will go out, before it goes out (incident, 2026-09-22).
 
@@ -438,7 +447,10 @@ class SessionViewSet(StrategyViewSet):
         not type is where the six broken questions were.
         """
         session = self.load(pk)
-        which = request.query_params.get("which", "questions")
+        # POST carries a body too long for a query string: the covering note
+        # as it is being edited (owner, 2026-09-29). Nothing is written.
+        params = request.data if request.method == "POST" else request.query_params
+        which = params.get("which", "questions")
         if which == "questions":
             if (refused := self._fractional_only("send the questions")) is not None:
                 return refused
@@ -452,7 +464,8 @@ class SessionViewSet(StrategyViewSet):
             if (refused := self._fractional_only("send the map")) is not None:
                 return refused
             return Response(emails.preview_strategy_pdf(
-                session, note=request.query_params.get("note") or "",
+                session, note=params.get("note") or "",
+                body_html=params.get("body_html") if "body_html" in params else None,
                 actor=request.user))
         return Response({"detail": "which is 'questions', 'invite' or 'pdf'."},
                         status=400)
@@ -608,9 +621,11 @@ class SessionViewSet(StrategyViewSet):
         if (refused := self._fractional_only("send the map to a prospect")) is not None:
             return refused
         try:
-            message = emails.send_strategy_pdf(session, actor=request.user,
-                                               role=self._role(),
-                                               note=request.data.get("note", ""))
+            message = emails.send_strategy_pdf(
+                session, actor=request.user, role=self._role(),
+                note=request.data.get("note", ""),
+                body_html=(request.data.get("body_html")
+                           if "body_html" in request.data else None))
         except services.SessionError as exc:
             return Response({"detail": str(exc)}, status=exc.status)
         if session.state == StrategySession.State.IN_CALL:

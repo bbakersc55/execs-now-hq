@@ -16,7 +16,7 @@ from django.conf import settings
 from django.utils.html import escape
 
 from apps.crm.models import OutboxMessage
-from apps.crm.services import email_layout, outbox
+from apps.crm.services import email_layout, html_clean, outbox
 from apps.strategy import pdf as pdf_service
 from apps.strategy import rewording, services
 from apps.strategy.models import StrategySession
@@ -101,9 +101,19 @@ def send_precall_invite(session, *, actor=None, role=None):
     return message
 
 
-def _pdf_body(session, note: str) -> tuple[str, str]:
+def _pdf_body(session, note: str = "", body_html: str | None = None) -> tuple[str, str]:
     """The covering note the map travels with. Extracted so the send panel can
-    show it before it goes (incident, 2026-09-22)."""
+    show it before it goes (incident, 2026-09-22).
+
+    `body_html` is the whole note as the fractional edited it (owner,
+    2026-09-29), cleaned here whatever the browser sent. Without it, the
+    one-line `note` form still works as it did.
+    """
+    if body_html is not None:
+        content = html_clean.clean(body_html)
+        return html_clean.to_text(content), email_layout.document(
+            session.tenant, content_html=content, subject=PDF_SUBJECT,
+            preheader="Your strategy map from today.")
     name = session.contact.first_name or "there"
     fractional = services.merge_context(session).get("Fractional name", "")
     lines = [f"Hi {name},", "",
@@ -119,7 +129,59 @@ def _pdf_body(session, note: str) -> tuple[str, str]:
         subject=PDF_SUBJECT, preheader="Your strategy map from today.")
 
 
-def send_strategy_pdf(session, *, actor=None, role=None, note=""):
+#: The agreed §9 items the covering note mentions, in the order a prospect
+#: cares about them, and how each reads in a sentence. `{d}` is the fractional's
+#: own note on the item ("Tuesday 7 Oct, 10am").
+NEXT_STEP_LINES = (
+    ("s9_follow_up_call", "We agreed to speak again on {d}."),
+    ("s9_proposal_due", "You will have my proposal by {d}."),
+    ("s9_start_date", "We talked about starting on {d}."),
+    ("s9_who_else", "Before then: {d}."),
+)
+
+
+def default_pdf_cover(session) -> str:
+    """The covering note, drafted from the session (owner, 2026-09-29): their
+    name, the date, the goal they stated in the mirror, the two paths, and the
+    next step they agreed with its date. Every part is left out when the
+    session does not have it, rather than filled in. The fractional edits all
+    of it before anything is sent."""
+    ctx = pdf_service.context_for(session)
+    e = escape
+    name = session.contact.first_name or "there"
+    company = ctx["company"]
+    parts = [f"<p>Hi {e(name)},</p>",
+             f"<p>Thank you for your time on {e(ctx['session_date'])}. I enjoyed "
+             f"getting into how {e(company) if company else 'the business'} runs, and "
+             "your strategy map is attached: what we found, what to fix first, and "
+             "how we would measure it.</p>"]
+    goal = (ctx["mirror_goal"] or "").strip().rstrip(".")
+    if goal:
+        parts.append(f"<p>You told me what you are aiming for: <strong>{e(goal)}</strong>. "
+                     "Everything on the map is there because it stands between you "
+                     "and that.</p>")
+    paths = ctx["path_pair"]
+    if paths:
+        items = "".join(f"<li><strong>{e(p['label'])}</strong>: {e(p['title'])}</li>"
+                        for p in paths)
+        parts.append(f"<p>We looked at two ways forward:</p><ul>{items}</ul>"
+                     "<p>Either way, the map is yours to use.</p>")
+    by_key = {item["key"]: item for item in ctx["scope"] if not item["is_financial"]}
+    steps = []
+    for key, line in NEXT_STEP_LINES:
+        value = (by_key.get(key) or {}).get("value") or {}
+        detail = (value.get("notes") or "").strip()
+        if value.get("agreed") and detail:
+            steps.append(line.format(d=e(detail)))
+    if steps:
+        parts.append(f"<p>{' '.join(steps)}</p>")
+    parts.append("<p>If anything in it raises a question, just reply to this email.</p>")
+    fractional = ctx["fractional"]
+    parts.append(f"<p>Thanks,<br>{e(fractional)}</p>" if fractional else "<p>Thanks,</p>")
+    return "".join(parts)
+
+
+def send_strategy_pdf(session, *, actor=None, role=None, note="", body_html=None):
     """Same-day: the map, as a PDF, to the prospect (R8, matrix 10.11).
 
     The file is stored first, so what was emailed can be re-read exactly as it
@@ -129,8 +191,11 @@ def send_strategy_pdf(session, *, actor=None, role=None, note=""):
     if not address:
         raise services.SessionError(
             f"{session.contact.first_name} has no email address to send to.", status=400)
+    if body_html is not None and not html_clean.to_text(html_clean.clean(body_html)).strip():
+        raise services.SessionError("The email is empty. Write something, or reset it "
+                                    "to the drafted one.", status=400)
     stored = pdf_service.store_pdf(session)
-    text, html = _pdf_body(session, note)
+    text, html = _pdf_body(session, note, body_html)
     message = outbox.create_message(
         tenant=session.tenant, producer=OutboxMessage.Producer.STRATEGY_PDF,
         to_address=address, to_contact=session.contact, subject=PDF_SUBJECT,
@@ -323,10 +388,13 @@ def preview_precall_questions(session, *, intro="", actor=None):
                     producer=OutboxMessage.Producer.PRECALL_QUESTIONS, actor=actor)
 
 
-def preview_strategy_pdf(session, *, note="", actor=None):
+def preview_strategy_pdf(session, *, note="", body_html=None, actor=None):
     """The covering note only. The document itself has had its own true preview
     since AC-4.10 — this is the email it travels in, which had none."""
-    body_text, body_html = _pdf_body(session, note)
+    body_text, body_html = _pdf_body(session, note, body_html)
+    # A browser cannot show the `cid:` logo a mail client resolves from the
+    # attachment; the preview inlines it, as the PDF preview does.
+    body_html, _ = email_layout.with_logo(body_html, session.tenant, as_data_uri=True)
     return _preview(session, subject=PDF_SUBJECT, body_text=body_text,
                     body_html=body_html,
                     producer=OutboxMessage.Producer.STRATEGY_PDF, actor=actor)

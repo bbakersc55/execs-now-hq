@@ -1,9 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 
+import { RichText } from "../components/RichText";
 import { PageHead, SendPreview } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import {
@@ -781,12 +782,30 @@ function PdfCard({ data, path, onChanged, setNote }: {
     onSuccess: onChanged,
   });
   const [showEmail, setShowEmail] = useState(true);
-  const emailPreview = useQuery<Preview>({
-    queryKey: ["send-preview", path, "pdf"],
-    queryFn: () => api.get<Preview>(`${path}send-preview/?which=pdf`),
+  // The covering email, drafted from the session and then entirely the
+  // fractional's (owner, 2026-09-29). Null until the draft arrives.
+  const drafted = useQuery<{ body_html: string }>({
+    queryKey: ["pdf-cover", path], queryFn: () => api.get(`${path}pdf-cover/`),
+  });
+  const [body, setBody] = useState<string | null>(null);
+  useEffect(() => {
+    if (body === null && drafted.data) setBody(drafted.data.body_html);
+  }, [drafted.data, body]);
+  // The preview follows the editor, a moment after typing stops.
+  const [previewed, setPreviewed] = useState<string | null>(null);
+  useEffect(() => {
+    if (body === null) return;
+    const wait = setTimeout(() => setPreviewed(body), 400);
+    return () => clearTimeout(wait);
+  }, [body]);
+  const emailPreview = useQuery<Preview & { body_html?: string }>({
+    queryKey: ["send-preview", path, "pdf", previewed],
+    queryFn: () => api.post(`${path}send-preview/`, { which: "pdf", body_html: previewed }),
+    enabled: previewed !== null,
+    placeholderData: keepPreviousData,
   });
   const send = useMutation({
-    mutationFn: () => api.post(`${path}send-pdf/`),
+    mutationFn: () => api.post(`${path}send-pdf/`, { body_html: body }),
     onSuccess: () => { setNote("Sent. It is on the contact's timeline and in the Outbox."); onChanged(); },
     onError: (e: Error) => setNote(e.message),
   });
@@ -819,17 +838,46 @@ function PdfCard({ data, path, onChanged, setNote }: {
       {/* The document has had a true preview since AC-4.10; the email it
           travels in had none until 22 September. */}
       {showEmail && (
-        <SendPreview preview={emailPreview.data} loading={emailPreview.isFetching} />
+        <>
+          <div className="spread" style={{ marginTop: ".75rem" }}>
+            <strong className="small">The email it goes in</strong>
+            {drafted.data && body !== drafted.data.body_html && (
+              <button className="link small" onClick={() => setBody(drafted.data!.body_html)}>
+                Reset to the drafted email
+              </button>
+            )}
+          </div>
+          {body === null ? <p className="small muted">Drafting the email…</p> : (
+            <RichText label="The covering email" value={body}
+              onChange={(html) => setBody(html)} />
+          )}
+          {emailPreview.data && (
+            <>
+              <p className="tiny muted" style={{ margin: ".5rem 0 0" }}>
+                To {emailPreview.data.to_address || "—"} · from{" "}
+                {emailPreview.data.from_address || "—"} · {emailPreview.data.subject}
+                {" "}· the PDF attached
+              </p>
+              {emailPreview.data.body_html ? (
+                <iframe title="The email as it will send" sandbox=""
+                  srcDoc={emailPreview.data.body_html}
+                  style={{ width: "100%", height: "28rem", border: "1px solid var(--line)",
+                           borderRadius: "6px", background: "#fff" }} />
+              ) : <SendPreview preview={emailPreview.data} />}
+            </>
+          )}
+        </>
       )}
       <div className="row tight">
-        <button className="primary" disabled={send.isPending || !emailPreview.data}
+        <button className="primary"
+          disabled={send.isPending || body === null || !emailPreview.data}
           onClick={() => send.mutate()}>
           Send it to {data.contact?.name}
         </button>
       </div>
       <p className="small muted">
-        Generating is not sending. Nothing leaves until you click send, and the
-        send reads the email above.
+        Generating is not sending. Nothing leaves until you click send, and it
+        sends the email exactly as it reads above.
       </p>
     </Card>
   );
