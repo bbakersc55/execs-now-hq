@@ -241,6 +241,10 @@ class DriveWatchViewSet(MeetingViewSetBase):
         send mail halfway through the afternoon.
         """
         self.require_founder(request)
+        from config import environment
+
+        if environment.is_demo():
+            return Response({"detail": environment.DEMO_REFUSAL}, status=409)
         if not gmail_oauth.is_configured():
             return Response({"detail": (
                 "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are not set, "

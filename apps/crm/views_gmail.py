@@ -132,6 +132,10 @@ class GmailConnectionViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"])
     def start(self, request):
         """Hand back the consent URL. The browser navigates; we never proxy it."""
+        from config import environment
+
+        if environment.is_demo():
+            return Response({"detail": environment.DEMO_REFUSAL}, status=409)
         if not gmail_oauth.is_configured():
             return Response({"detail": (
                 "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are not set, "

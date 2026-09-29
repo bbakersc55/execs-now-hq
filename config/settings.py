@@ -20,6 +20,18 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.
 
 PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", default="http://localhost:8100")
 IS_LOCAL = PUBLIC_BASE_URL.startswith(("http://localhost", "http://127.0.0.1"))
+# local | demo | production (config/environment.py). Defaults from the host:
+# the demo must say so, because it runs off localhost like production.
+APP_ENVIRONMENT = env("APP_ENVIRONMENT", default="local" if IS_LOCAL else "production")
+if APP_ENVIRONMENT not in ("local", "demo", "production"):
+    raise RuntimeError(f"APP_ENVIRONMENT must be local, demo or production, not "
+                       f"{APP_ENVIRONMENT!r}.")
+if APP_ENVIRONMENT == "local" and not IS_LOCAL:
+    raise RuntimeError("APP_ENVIRONMENT is local but PUBLIC_BASE_URL is not localhost.")
+if APP_ENVIRONMENT == "production" and IS_LOCAL:
+    raise RuntimeError("APP_ENVIRONMENT is production but PUBLIC_BASE_URL is localhost.")
+IS_DEMO = APP_ENVIRONMENT == "demo"
+
 # Off localhost, the laptop's conveniences are refused rather than trusted to
 # have been changed (Phase 7): the dev key signs every session and magic link,
 # and DEBUG shows a stack trace, settings included, to anyone who finds an error.
@@ -209,6 +221,10 @@ if APP_MAIL_TRANSPORT not in ("gmail", "postmark"):
 POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default="")
 POSTMARK_INBOUND_WEBHOOK_SECRET = env("POSTMARK_INBOUND_WEBHOOK_SECRET", default="")
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+if IS_DEMO:
+    # The demo sends nothing: every message goes to the dev transport
+    # (apps/crm/services/outbox.py), and this backend discards it.
+    EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
 EMAIL_PORT = env.int("EMAIL_PORT", default=1025)
 
@@ -268,6 +284,9 @@ if STORAGE_BACKEND == "local" and not IS_LOCAL:
         "STORAGE_BACKEND=local outside localhost would write client files to a "
         "container disk that is discarded on every deploy. Use gcs."
     )
+if IS_DEMO and GCS_BUCKET_MEDIA == "execs-now-hq-media":
+    raise RuntimeError("The demo must not write to the production media bucket. Set "
+                       "GCS_BUCKET_MEDIA to the demo's own bucket.")
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 MEDIA_URL = "/media/"
 

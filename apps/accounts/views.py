@@ -117,6 +117,8 @@ def me(request):
         # "Generate now", for instance). False anywhere that is not localhost,
         # so the control cannot appear in front of a client.
         "dev_tools": settings.IS_LOCAL,
+        # local | demo | production: the staff banner says "Demo" (2026-09-29).
+        "environment": settings.APP_ENVIRONMENT,
         # FR-3.42 — while acting as, everything above describes the acted-as
         # user; this names both people, for the banner that never goes away.
         "acting": _acting(request),

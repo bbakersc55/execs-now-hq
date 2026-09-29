@@ -301,7 +301,9 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     dev_real = settings.IS_LOCAL and is_real_send_allowed(
         message.to_address, message.tenant
     )
-    use_real_transport = (not settings.IS_LOCAL) or dev_real
+    # The demo never sends (owner, 2026-09-29): its mail goes to the dev
+    # transport, whose backend there discards it.
+    use_real_transport = ((not settings.IS_LOCAL) or dev_real) and not settings.IS_DEMO
     transport = get_transport() if use_real_transport else DevOutboxTransport()
 
     thread = message.thread

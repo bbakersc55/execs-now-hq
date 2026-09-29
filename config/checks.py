@@ -61,3 +61,18 @@ def runtime_imports(app_configs, **kwargs):
         )
         for need, exc in missing()
     ]
+
+
+@register(Tags.compatibility)
+def no_worker_in_the_demo(app_configs, **kwargs):
+    """The demo has no worker (owner, 2026-09-29). A qcluster started there by
+    mistake refuses, rather than generating digests from demo data."""
+    from django.conf import settings
+
+    argv = sys.argv
+    if not (len(argv) > 1 and argv[1] == "qcluster" and settings.IS_DEMO):
+        return []
+    return [Error("The demo runs no worker.",
+                  hint="APP_ENVIRONMENT is demo. Remove the qcluster service from the "
+                       "demo environment; see docs/phase7_cutover_runbook.md.",
+                  id="execsnowhq.E002")]

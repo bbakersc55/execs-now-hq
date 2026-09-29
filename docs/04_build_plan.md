@@ -1715,10 +1715,14 @@ deliberately renamed.
 > - **Branching:** work happens on `dev`; `main` moves only when the owner says
 >   "release", with the full suite as the gate. Railway production deploys from
 >   `main`, as below.
-> - **A staging service with its own database is part of Phase 7**, not Phase 8+.
->   It deploys from `dev` and hosts the rehearsal restore. The "scratch Railway
->   database" below is that staging database. The Phase 8+ `staging` branch is
->   no longer needed.
+> - **Three environments, set up together in Phase 7** (owner, later on
+>   2026-09-29): the laptop; **`demo.getexecutivesnow.com`**, which deploys from
+>   `dev` with its own seeded database (`manage.py seed_demo`), no worker, no
+>   outbound email and no Drive or mailbox reading, all enforced by
+>   `APP_ENVIRONMENT=demo`; and **`app.getexecutivesnow.com`** from `main`. The
+>   demo brings Phase 8+ item 0 forward and replaces the staging service and
+>   `staging` branch. The "scratch Railway database" below is a throwaway
+>   Postgres used only for the rehearsal and then deleted, never the demo's.
 >
 > The runbook also corrects one point of the owner's list: **the Anthropic key is
 > not a Railway variable.** Settings refuse `ANTHROPIC_API_KEY` off localhost,
@@ -1804,7 +1808,7 @@ In `CLAUDE.md`'s order, not started until Beta has run on your real practice for
 
 **Three things that should happen early in that sequence regardless:**
 
-0. **A staging environment, before public launch.** `demo.getexecutivesnow.com` on Railway, its own database, a seeded demo tenant with fictional clients and no real data. It serves two purposes that both arrive with V1: **demonstrating the product to prospective fractionals** without exposing your practice's real client data, and **testing a release before it reaches production**. Once other people's practices depend on the app, shipping straight from `main` to production with no intermediate host stops being acceptable. Staging deploys from a `staging` branch; production continues to deploy from `main`.
+0. *(Brought forward into Phase 7, 2026-09-29: see the note at the top of Phase 7.)* **A staging environment, before public launch.** `demo.getexecutivesnow.com` on Railway, its own database, a seeded demo tenant with fictional clients and no real data. It serves two purposes that both arrive with V1: **demonstrating the product to prospective fractionals** without exposing your practice's real client data, and **testing a release before it reaches production**. Once other people's practices depend on the app, shipping straight from `main` to production with no intermediate host stops being acceptable. Staging deploys from a `staging` branch; production continues to deploy from `main`.
 
 1. **The V1 Google verification track.** Beta runs on an **Internal** OAuth consent screen (assumption C1), which needs no verification and has no refresh-token expiry — but Internal means *only Workspace accounts can sign in*. The moment a second fractional's practice needs access, the app must move to **External**, and `gmail.send` plus `gmail.readonly` then require **Google verification with a CASA security assessment**. It is slow, expensive, and **the longest lead time in the entire V1 plan.** Start it before it is needed, not when it blocks launch.
 2. **Postgres row-level security** (B2), deferred from Beta as defence in depth once the schema stops moving.

@@ -12,6 +12,7 @@ import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom
 import { ActAsColleague, ActingBanner } from "./components/ActAs";
 import { Avatar, useNarrowWindow, useRemembered } from "./components/shell";
 import { ToastHost } from "./components/ui";
+import { DemoBanner } from "./components/DemoBanner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
@@ -251,6 +252,7 @@ export function App() {
       <main>
         {/* FR-3.42 — never dismissible; stopping is the only way out. */}
         <ActingBanner me={me} />
+        <DemoBanner me={me} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
           <Routes>

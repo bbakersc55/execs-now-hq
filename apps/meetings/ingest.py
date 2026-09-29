@@ -245,6 +245,10 @@ def poll(tenant, *, client=None, parse=True) -> dict:
     Returns a small report the health screen reads: what was recorded, what was
     skipped and why, what failed to parse.
     """
+    from config import environment
+
+    if environment.is_demo():
+        raise NotConnected(environment.DEMO_REFUSAL)
     watch = watch_for(tenant)
     if watch is None:
         raise NotConnected("No folder is being watched for this practice.")

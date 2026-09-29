@@ -3,6 +3,23 @@
 *Written 2026-09-29. Preparation only: nothing below has been run. Nothing has
 been deleted and the app has not moved.*
 
+> **Three environments (owner, 2026-09-29, later the same day).** This replaces
+> the separate staging service the first version described:
+>
+> | | Where | Deploys from | Database | Worker | Email out | Drive / mailbox |
+> |---|---|---|---|---|---|---|
+> | **Local** | the laptop, debug | the working tree | `execsnowhq_dev` now, `execsnowhq_local` after cutover | the owner's tab | Mailpit (+ the allow-list) | yes |
+> | **Demo** | `demo.getexecutivesnow.com` | `dev` | its own, seeded (`manage.py seed_demo`) | **none** | **none** | **none** |
+> | **Production** | `app.getexecutivesnow.com` | `main`, on "release" | its own | yes | yes | yes |
+>
+> The demo's "none"s are enforced in code by `APP_ENVIRONMENT=demo`
+> (`config/environment.py`), not left to how Railway happens to be set up. It
+> sends mail to a backend that discards it; Drive polling, the inbox poll,
+> "Sync now" and both Google connects refuse; `qcluster` refuses to start; it
+> refuses the production media bucket; staff see a "Demo" banner. **Both Railway
+> environments, both DNS records and both sets of OAuth URIs are set up in the
+> same pass (A1–A4).**
+
 This is the runbook for the move described in `04_build_plan.md` Phase 7. The
 build plan says **what** the move involves and why. This document says **who does
 what, in what order**, and what has to be true before the next step starts.
@@ -15,9 +32,9 @@ what, in what order**, and what has to be true before the next step starts.
   confirmation, row by row.**
 
 Every step is marked **[proven]** (done and checked), **[built, not run]**,
-**[to run]** or **[to build]**. As of 2026-09-29: B0 proven; B1, B4 and B7 built
-and tested locally, not run on Railway; B5 proven on the laptop; everything else
-to run.
+**[to run]** or **[to build]**. As of 2026-09-29: B0 proven; B1, B3, B4 and B7
+built and tested locally, not run on Railway; B5 proven on the laptop;
+everything else to run.
 
 ---
 
@@ -29,10 +46,10 @@ to run.
 - **I merge `dev` → `main` only when you say "release".** The gate is the
   **full test suite, green on `dev` at the commit being merged**. A red suite
   means no merge, whatever the change.
-- The staging service (B3) deploys from **`dev`**. So "pushed to dev" means
-  "live on staging", and "release" means "live in production". This replaces the
-  separate `staging` branch that the Phase 8+ note proposed. One working branch
-  is enough while one person releases.
+- **The demo (B3) deploys from `dev`.** So "pushed to dev" means "live on the
+  demo", and "release" means "live in production". This replaces both the
+  staging service of this runbook's first version and the `staging` branch of
+  the Phase 8+ note. One working branch is enough while one person releases.
 - **The GitHub rule on `main`: approved (owner, 2026-09-29), and it is step
   A0 below.** It is yours because this laptop has no `gh` CLI and no GitHub
   token for me to set it with.
@@ -58,12 +75,13 @@ to run.
 ### A1. Railway account and project — *any time before B1*
 
 1. Create the Railway account (or sign in) and put a payment method on it.
-   Postgres, three app services and staging will exceed the free allowance.
+   Two Postgres databases and four app services will exceed the free allowance.
 2. Create one **project** named `execs-now-hq`. Make two **environments** in it:
-   `production` and `staging`. Each environment gets its own Postgres (B1, B3),
-   **at version 16**, to match the laptop and the image's `pg_dump`. If Railway
-   offers only a newer version, stop and tell me, because the Dockerfile
-   changes with it.
+   `production` and `demo`. Each gets its own Postgres (B1, B3), **at version
+   16**, to match the laptop and the image's `pg_dump`. If Railway offers only
+   a newer version, stop and tell me, because the Dockerfile changes with it.
+   - `production` will hold `web`, `qcluster`, `backup` and `Postgres`, from `main`.
+   - `demo` will hold `web` and `Postgres` only, from `dev`. **No qcluster.**
 3. Connect the GitHub repo `bbakersc55/execs-now-hq` to the project. This is
    Railway's GitHub app, and it asks for access to that repo only. Grant access
    to this repo only, not "all repositories".
@@ -71,14 +89,15 @@ to run.
 5. Tell me it is done. I do the service configuration (B1). Adding a service
    yourself is fine too, but leave its settings to me so the three services match.
 
-### A2. DNS — CNAME for `app.getexecutivesnow.com` — *after B1 gives you the target*
+### A2. DNS — two CNAMEs, `app` and `demo` — *after B1 and B3 give you the targets*
 
-1. Once the production web service exists, Railway → web service → Settings →
-   Networking → **Custom domain** → `app.getexecutivesnow.com`. Railway shows a
-   CNAME target, something like `xxxx.up.railway.app`.
-2. At your DNS host for `getexecutivesnow.com`, add a **CNAME** record:
-   - Name: `app`
-   - Target: the value Railway shows
+1. Once both web services exist: Railway → **production** → web → Settings →
+   Networking → **Custom domain** → `app.getexecutivesnow.com`; and **demo** →
+   web → the same → `demo.getexecutivesnow.com`. Railway shows a CNAME target
+   for each, something like `xxxx.up.railway.app`. They are different targets.
+2. At your DNS host for `getexecutivesnow.com`, add two **CNAME** records:
+   - Name `app` → the production target
+   - Name `demo` → the demo target
    - TTL: the lowest your host allows (300 s is typical) until cutover is done
 3. Change nothing else. **Do not touch the MX, SPF, DKIM or DMARC records.**
    Workspace mail depends on them, and the app needs no DNS records of its own
@@ -86,8 +105,9 @@ to run.
 4. Railway issues the TLS certificate once the CNAME resolves. Tell me when the
    custom domain shows as verified.
 
-Pointing the CNAME early is safe. Until cutover, the domain serves staging-grade
-emptiness: the production database stays empty until the final restore (B6).
+Pointing both CNAMEs early is safe. Until cutover, `app` serves an empty
+database (it stays empty until the final restore, C7), and `demo` serves only
+fictional data.
 
 ### A3. Google OAuth — redirect URIs for the new host — *before C5*
 
@@ -105,12 +125,16 @@ missing one fails at Google's screen with `redirect_uri_mismatch`:
 - `https://app.getexecutivesnow.com/accounts/gmail/callback` (Gmail **and** Drive
   consent; both use this one callback)
 
-**For staging**, only if you want to sign in to staging with Google during the
-rehearsal (recommended, because it proves sign-in before the real move), also add
-the staging host I give you in B3:
-- `https://<staging-host>/accounts/google/login/callback/`
-- Do **not** add the staging Gmail callback. Staging must never hold a working
-  Gmail or Drive grant (see B3).
+**For the demo**, in the same pass, add:
+- Authorised JavaScript origin: `https://demo.getexecutivesnow.com`
+- Redirect URI: `https://demo.getexecutivesnow.com/accounts/google/login/callback/`
+  (signing in only)
+- Do **not** add the demo's `/accounts/gmail/callback`. The demo never connects
+  Gmail or Drive, and refuses to (B3).
+
+Sign-in stays Internal, so only `@getexecutivesnow.com` accounts can sign in to
+the demo, and only those the seed gave a membership (`--ff-email`). A prospect
+you show it to watches you drive; they do not get a login.
 
 The consent screen stays **Internal**. Nothing else on it changes.
 
@@ -128,10 +152,29 @@ any of them into this conversation.** I set every non-secret variable; B1 lists 
 | `GOOGLE_SA_BACKUP_JSON` | production **backup cron only** | A **new** service-account key for backups (A4a). |
 | `SENTRY_DSN` | production web and qcluster | Optional. Only if you want error reporting from day one (A5 in the assumptions). |
 
-**Staging gets its own values, not production's:** a different
-`DJANGO_SECRET_KEY` and a different `FIELD_ENCRYPTION_KEY`, **except during the
-one rehearsal step C4.3**, where staging temporarily holds the production key to
-prove decryption. B3 and C4 say exactly when it goes in and when it comes out.
+**The demo gets its own values, never production's:**
+
+| Variable | Demo web | Value |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | yes | A **new** value, different from production's |
+| `FIELD_ENCRYPTION_KEY` | yes | A **new** Fernet key (the command is in `.env.example`). Nothing real is ever encrypted with it |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | yes | The same OAuth client's secret (sign-in only on the demo) |
+| `GOOGLE_SA_APP_JSON` | yes | The **demo** service account's key (A4b), not the app's |
+
+**The production encryption key goes into Railway once, for one command,
+during the rehearsal (C4.3)**, as a variable on a one-off command in the demo
+environment, never on the demo's web service. Then it is removed.
+
+#### A4b. The demo's own bucket and service account — *before B3*
+
+1. GCP `execs-now-hq` → Cloud Storage → create bucket
+   **`execs-now-hq-demo-media`**, same region as the production one. The demo
+   refuses to boot pointed at `execs-now-hq-media`.
+2. IAM → Service accounts → create `demo-app`. Grant it **Storage Object Admin
+   on `execs-now-hq-demo-media` only**. Nothing at project level, nothing on
+   the production buckets.
+3. Create a JSON key and paste its contents into the demo web's
+   `GOOGLE_SA_APP_JSON`, then delete the downloaded file.
 
 #### The Anthropic key — not a Railway variable
 
@@ -269,45 +312,68 @@ stays at 0 replicas until C9.
 **Not built, on purpose:** `sentry-sdk`. Say if you want error reporting from
 day one and I will add it; `SENTRY_DSN` then goes in A4.
 
-### B2. The first deploy, empty — **[to run]**
+### B2. The first deploys, both empty of real data — **[to run]**
 
 1. For the first production deploy I ask you for a **"release"** of the B1
-   code, with the suite green as always.
-2. `web` refuses to start on the empty database (`migrate --check`). That is
-   the point of the check. I apply the migrations in the service shell. The
-   database is empty, so there is nothing to back up. Then `web` starts.
-   Seeing the sign-in page at `https://app.getexecutivesnow.com` proves the
-   image, WeasyPrint's libraries, the proxy settings, TLS and DNS, with no data
-   at stake.
+   code, with the suite green as always. The demo deploys from `dev` without
+   one.
+2. Each `web` refuses to start on its empty database (`migrate --check`). That
+   is the point of the check. I apply the migrations in each service's shell;
+   both databases are empty, so there is nothing to back up. Then each starts.
+   The sign-in page at `https://app.getexecutivesnow.com` and at
+   `https://demo.getexecutivesnow.com` proves the image, WeasyPrint's
+   libraries, the proxy settings, TLS and DNS for both, with no data at stake.
 3. Nobody signs in to production yet. There is no tenant in it until C7.
 
-### B3. The staging service, with its own database — **[to run]** · safety design **approved by the owner, 2026-09-29**
+### B3. The demo — **[built, not run]** 2026-09-29 · safety design approved 2026-09-29
 
-The `staging` environment mirrors production: `web` only (from **`dev`**), its
-own `Postgres` at 16, and a Railway-generated domain that I give you for A3.
+The `demo` environment: `web` only, from **`dev`**, its own Postgres at 16, at
+`demo.getexecutivesnow.com`. What it does and does not do is set by one
+variable, **`APP_ENVIRONMENT=demo`**, and enforced in code:
 
-**What makes staging safe to hold a copy of real data** (approved as proposed):
+| Promise | Where it is kept | Tested |
+|---|---|---|
+| Sends no email | `outbox` always uses the dev transport; the email backend discards | `tests/test_demo_environment.py` |
+| Reads no Drive, no mailbox | `ingest.poll` and `inbound_poll.poll` refuse, so the timer, "Sync now" and "Collect replies" all stop there | same |
+| Connects no Google account | the Gmail and Drive consent starts refuse (409) | same |
+| Runs no worker | a system check makes `qcluster` refuse to start | same |
+| Holds no real files | boot refused if `GCS_BUCKET_MEDIA` is the production bucket | same (a real boot) |
+| Says so | a "Demo" banner for FF, CF and VA; clients never reach it | `DemoBanner.test.tsx` |
 
-- **Staging never runs `qcluster`.** It gets no qcluster service at all. The
-  worker is what polls Drive (Claude spend on your key), polls your mailbox, and
-  generates and sends digests. With no worker, none of that can happen.
-- **Staging's own `FIELD_ENCRYPTION_KEY`**, different from production's, except
-  during the one rehearsal step that proves decryption (C4.3). Afterwards the
-  restored `tenant_secret` rows are deleted from staging, so staging holds no
-  working Gmail, Drive or Anthropic credential.
-- **No Gmail callback URI for staging** (A3), so nobody can connect Gmail there
-  by accident.
-- **The Django-Q schedule and queue tables are emptied** on staging after every
-  restore, so nothing is queued even if a worker were ever added.
-- The rehearsal data is **dropped** from staging once the rehearsal is signed
-  off. Staging then holds seeded demo data only (the Phase 8+ demo tenant).
-- Staging's `CSRF_TRUSTED_ORIGINS` names its own host, and its
-  `DJANGO_ALLOWED_HOSTS` names its host and the health check's.
+**Demo variables I set:** `APP_ENVIRONMENT=demo`,
+`PUBLIC_BASE_URL=https://demo.getexecutivesnow.com`, `APP_ROOT_URL=/`,
+`DJANGO_DEBUG=False`,
+`DJANGO_ALLOWED_HOSTS=demo.getexecutivesnow.com,healthcheck.railway.app`,
+`DATABASE_URL` (the demo Postgres), `STORAGE_BACKEND=gcs`,
+`GCS_BUCKET_MEDIA=execs-now-hq-demo-media`, `GOOGLE_OAUTH_CLIENT_ID`,
+`GOOGLE_CLOUD_PROJECT`, `ANTHROPIC_MODEL`. Secrets are yours (A4, A4b).
 
-**Web requests on staging can still send mail when someone clicks send**, since
-`PUBLIC_BASE_URL` is not localhost there. With no Gmail credential that decrypts,
-a send fails rather than delivers. That failure is the safeguard, and D-check 5's
-equivalent on staging is to confirm the failure happens.
+**Seeding and resetting** (`manage.py seed_demo`; **[built, tested]**):
+
+    railway ssh --service web          # in the demo environment
+    python manage.py seed_demo --database <the demo database's name> \
+        --ff-email bryan.baker@getexecutivesnow.com --ff-name "Bryan Baker"
+
+Every run **empties the whole demo database first, then seeds it**, so
+re-running is the reset. It refuses unless `APP_ENVIRONMENT` is `demo`, refuses
+`execsnowhq_dev` by name whatever else is true, and needs the database's name
+typed. What it makes, all fictional and all at `.example` addresses: **Summit
+Operations Partners**; three client companies (Northwind Facility Services,
+Bluebird HVAC, Cedar Ridge Landscaping), each with a goal, projects and tasks
+in every status, carrying client-facing updates; weekly digests waiting for
+approval, generated by the real digest code; three prospects at pipeline
+stages, a referral partner and a vendor; one strategy session with Brianna
+Castillo, completed, with a map, both paths, pros and cons, next steps, and its
+PDF stored; and two meeting proposals in the queue, one client and one
+prospect, built by the same code a real parse uses. The FF is `--ff-email`, and
+there is a fictional VA.
+
+**The demo has no Anthropic key**, so Claude's buttons there say so rather than
+drafting. If you want to show drafting live, enter a key on the demo's AI usage
+screen. It spends on that key, and the daily cap there is $0 for unattended
+work, which the demo has none of anyway.
+
+**The rehearsal no longer goes near the demo's database** (B6).
 
 ### B4. The backup cron — **[built, not run]** 2026-09-29
 
@@ -340,10 +406,16 @@ emptied on purpose (C4.4, C7.3). Read-only.
 one side only and a differing queue table reported both problems, ignored the
 queue, and exited 1. The throwaway databases were then dropped.
 
-### B6. The rehearsal restore into staging — **[to run]**
+### B6. The rehearsal restore — into a throwaway database — **[to run]**
 
-This is C4 in the timeline below. I run it, report the row-count output
-verbatim, and the rehearsal counts as passed only when you have read it.
+This is C4 in the timeline below. It uses a **third, temporary Postgres** added
+to the demo environment for the day and deleted when the rehearsal is signed
+off. **No service ever points at it.** It is used only by one-off commands
+(`pg_dump`/`psql`, the row-count comparison, and one decryption check), so the
+approved safety rules hold without needing a staging app: no worker, no web,
+no Gmail callback, and the production key present only for the length of one
+command. I report the row-count output verbatim, and the rehearsal counts as
+passed only when you have read it.
 
 ### B7. The laptop becomes development-only — **[built, not run]** 2026-09-29
 
@@ -380,15 +452,14 @@ verbatim, and the rehearsal counts as passed only when you have read it.
 | C1 | Owner | **A1**: Railway account, project, repo connected; **Postgres created at version 16** in both environments | Tell me |
 | C2 | Claude | **B1** code on `dev`, suite green, pushed | Suite green, reported |
 | C2a | Owner | **"release"** of B1 → `main` → **B2** first empty deploy | `web` boots |
-| C3 | Owner | **A2** DNS CNAME, **A3** OAuth URIs, **A4** production secrets, **A4a** backup SA | Custom domain verified; sign-in page loads at `https://app.getexecutivesnow.com` |
-| C4 | Claude | **The rehearsal**, into staging: | |
+| C3 | Owner | In one pass: **A2** both CNAMEs, **A3** OAuth URIs for both hosts, **A4** production and demo secrets, **A4a** backup SA, **A4b** demo bucket and SA | Both custom domains verified; the sign-in page loads on both |
+| C3d | Claude | **B3**: seed the demo; you sign in to `demo.getexecutivesnow.com` and look around | The Demo banner shows; nothing sent (Outbox rows carry no delivery) |
+| C4 | Claude | **The rehearsal**, into a throwaway Postgres (B6): | |
 | | | C4.1 fresh laptop dump (`pg_dump --no-owner --no-privileges`), the same form as the final dump | Dump over the size floor |
-| | | C4.2 restore into staging Postgres | `psql` exits 0, no errors in the log |
-| | | C4.3 **with the production key set on staging temporarily**: decrypt every `tenant_secret` row in a management shell, reporting *count decrypted / count total*, never the values | **All** decrypt |
-| | | C4.4 empty the Django-Q queue and schedule tables on staging; delete `tenant_secret` rows; swap staging back to its own key | Done, reported |
-| | | C4.5 **B5** row-count comparison, laptop vs staging | **Zero mismatches** apart from the tables C4.4 emptied |
-| | | C4.6 sign in to staging with Google (if A3's staging URI was added); open a contact, a meeting, a strategy PDF, a flyer attachment (GCS media reached from Railway) | All open |
-| | | C4.7 time the whole run | Gives the length of the real freeze |
+| | | C4.2 restore into the throwaway database | `psql` exits 0, no errors in the log |
+| | | C4.3 **one command with the production key in its environment**: decrypt every `tenant_secret` row, reporting *count decrypted / count total*, never the values | **All** decrypt |
+| | | C4.4 **B5** row-count comparison, laptop vs throwaway | **Zero mismatches** |
+| | | C4.5 time the whole run, then delete the throwaway database | Gives the length of the real freeze; the database is gone |
 | C4r | Owner | Read the C4 report and confirm | Your yes |
 | C5 | Both | **Part E** deletions, after your confirmation, then a fresh laptop backup | Deletions reported, backup ran |
 | C6 | Owner + Claude | **The freeze.** A5: you stop qcluster and the dev server. I confirm no task is mid-flight: `django_q_ormq` empty of leased rows, and no `MeetingSourceFile` left in `parsing` (one was in `parsing` at 13:03 UTC today, so this check is not academic). | Nothing in flight |
@@ -433,7 +504,7 @@ In this order. **Check 1 and check 6 have fixed positions and must not move.**
    "last polled", and no file already recorded is read a second time (the
    restored cursor holds). **One inbound poll** completes without error.
 9. **The backup cron ran**, its object is in `gs://execs-now-hq-db-backups/`,
-   **and it has been restored into staging** and row-count-compared (build plan
+   **and it has been restored into a throwaway database** and row-count-compared (build plan
    §5: a backup never restored is a hypothesis).
 10. Strategy PDF renders on Railway (WeasyPrint's system libraries present).
 11. A stored file (flyer or Outbox attachment) downloads with its real size.

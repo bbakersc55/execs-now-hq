@@ -64,6 +64,10 @@ def due(tenant, *, limit=THREADS_PER_RUN):
 
 def poll(tenant, *, client=None, limit=THREADS_PER_RUN) -> dict:
     """One run. Returns what a health line would say."""
+    from config import environment
+
+    if environment.is_demo():
+        raise NotConnected(environment.DEMO_REFUSAL)
     if client is None:
         client = transport.GmailReader(reading_connection(tenant))
 

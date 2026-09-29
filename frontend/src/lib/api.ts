@@ -53,6 +53,8 @@ export interface Me {
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */
   dev_tools?: boolean;
+  /** Which of the three environments (owner, 2026-09-29). */
+  environment?: "local" | "demo" | "production";
   /** FR-3.42 — set while the real person acts as another user. Everything
    *  above then describes the acted-as user. */
   acting?: Acting | null;
