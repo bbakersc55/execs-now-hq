@@ -1935,3 +1935,79 @@ def test_a_token_that_is_not_one_is_refused_the_same_way_as_an_expired_one(clien
         response = client.get(f"/api/strategy/precall/{bad}")
         assert response.status_code == 404
         assert "expired" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_pros_and_cons_are_editable_before_and_after_acceptance_and_addable(
+    session, ff, api
+):
+    """Owner, 2026-09-29, before a live session's PDF: edit a pro or con in the
+    tray and after accepting it, and add one written by hand. What was
+    edited, and what was added, is what the prospect reads."""
+    _a_full_session(session)
+    proposed = StrategyPathNote.objects.create(
+        tenant=session.tenant, session=session, path="a", kind="con", text="Claude's words.")
+    accepted = StrategyPathNote.objects.create(
+        tenant=session.tenant, session=session, path="b", kind="pro", text="Also Claude's.",
+        state=StrategyPathNote.State.ACCEPTED)
+    client = api.as_(ff)
+
+    assert client.patch(f"/api/strategy-path-notes/{proposed.pk}/",
+                        {"text": "MARKEREDITEDPROPOSED"},
+                        content_type="application/json").status_code == 200
+    client.post(f"/api/strategy-path-notes/{proposed.pk}/accept/")
+    assert client.patch(f"/api/strategy-path-notes/{accepted.pk}/",
+                        {"text": "MARKEREDITEDACCEPTED"},
+                        content_type="application/json").status_code == 200
+    added = client.post("/api/strategy-path-notes/", {
+        "session": str(session.pk), "path": "b", "kind": "con", "text": "MARKERADDED"},
+        content_type="application/json")
+    assert added.status_code == 201
+    note = StrategyPathNote.objects.get(text="MARKERADDED")
+    assert note.state == StrategyPathNote.State.ACCEPTED and note.from_ai is False
+
+    html = pdf_service.render_html(session)
+    for marker in ("MARKEREDITEDPROPOSED", "MARKEREDITEDACCEPTED", "MARKERADDED"):
+        assert marker in html
+    assert "Claude's words." not in html and "Also Claude's." not in html
+
+
+@pytest.mark.django_db
+def test_role_boundaries_a_va_cannot_edit_or_add_a_pro_or_con(session, seeded_tenant, api):
+    """Matrix 10.6's rule: the fractional's judgement, never a VA's."""
+    from .factories import MembershipFactory
+
+    note = StrategyPathNote.objects.create(
+        tenant=session.tenant, session=session, path="a", kind="pro", text="Kept.",
+        state=StrategyPathNote.State.ACCEPTED)
+    va = api.as_(MembershipFactory(tenant=seeded_tenant, role="VA"))
+    assert va.patch(f"/api/strategy-path-notes/{note.pk}/", {"text": "Changed"},
+                    content_type="application/json").status_code == 403
+    assert va.post("/api/strategy-path-notes/", {
+        "session": str(session.pk), "path": "a", "kind": "pro", "text": "Mine"},
+        content_type="application/json").status_code == 403
+    note.refresh_from_db()
+    assert note.text == "Kept."
+    assert StrategyPathNote.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_another_practices_pro_or_con_is_not_editable(
+    session, tenant_b, api
+):
+    from apps.tenancy.context import tenant_context
+
+    from .factories import MembershipFactory
+
+    note = StrategyPathNote.objects.create(
+        tenant=session.tenant, session=session, path="a", kind="pro", text="Ours.")
+    with tenant_context(tenant_b.pk):
+        outsider = MembershipFactory(tenant=tenant_b, role="FF")
+    client = api.as_(outsider)
+    assert client.patch(f"/api/strategy-path-notes/{note.pk}/", {"text": "Theirs"},
+                        content_type="application/json").status_code == 404
+    assert client.post("/api/strategy-path-notes/", {
+        "session": str(session.pk), "path": "a", "kind": "pro", "text": "Theirs"},
+        content_type="application/json").status_code == 404
+    note.refresh_from_db()
+    assert note.text == "Ours."

@@ -262,7 +262,7 @@ export function SessionDetail({ me }: { me: Me }) {
                   .then(refresh)} />
           )}
           {section.code === "two_paths" && (
-            <PathsSection notes={data.path_notes ?? []} mayRun={mayRun}
+            <PathsSection sessionId={data.id} notes={data.path_notes ?? []} mayRun={mayRun}
               onDraft={() => act.mutate({ suffix: "draft-paths/" })}
               onChanged={refresh} />
           )}
@@ -993,14 +993,25 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
  * the questions above and **stays here**. It is the fractional's record of the
  * call, not a line in a document the prospect keeps.
  */
-function PathsSection({ notes, mayRun, onDraft, onChanged }: {
-  notes: PathNote[]; mayRun: boolean; onDraft: () => void; onChanged: () => void;
+function PathsSection({ sessionId, notes, mayRun, onDraft, onChanged }: {
+  sessionId: string; notes: PathNote[]; mayRun: boolean; onDraft: () => void;
+  onChanged: () => void;
 }) {
   const act = useMutation({
     mutationFn: ({ note, suffix }: { note: string; suffix: string }) =>
       api.post(`/api/strategy-path-notes/${note}/${suffix}`),
     onSuccess: () => onChanged(),
   });
+  // Editable before and after acceptance, saved on leaving the field, as the
+  // map rows are (owner, 2026-09-29).
+  const edit = useMutation({
+    mutationFn: ({ note, text }: { note: string; text: string }) =>
+      api.patch(`/api/strategy-path-notes/${note}/`, { text }),
+    onSuccess: () => onChanged(),
+  });
+  const save = (note: PathNote, text: string) => {
+    if (text.trim() && text !== note.text) edit.mutate({ note: note.id, text });
+  };
   const tray = notes.filter((n) => n.state === "proposed");
   const accepted = notes.filter((n) => n.state === "accepted");
 
@@ -1016,7 +1027,11 @@ function PathsSection({ notes, mayRun, onDraft, onChanged }: {
             <Pill kind={note.kind === "con" ? "warn" : ""}>
               {note.kind === "pro" ? "+" : "−"}
             </Pill>{" "}
-            {note.text}
+            {mayRun ? (
+              <input aria-label={`Edit "${note.text}"`} defaultValue={note.text}
+                style={{ width: "calc(100% - 7rem)" }}
+                onBlur={(e) => save(note, e.target.value)} />
+            ) : note.text}
             {mayRun && (
               <button className="link" style={{ marginLeft: ".4rem" }}
                 onClick={() => act.mutate({ note: note.id, suffix: "discard/" })}>
@@ -1025,6 +1040,7 @@ function PathsSection({ notes, mayRun, onDraft, onChanged }: {
             )}
           </p>
         ))}
+        {mayRun && <AddPathNote session={sessionId} path={path} onAdded={onChanged} />}
       </div>
     );
   };
@@ -1049,8 +1065,13 @@ function PathsSection({ notes, mayRun, onDraft, onChanged }: {
               <p className="small" style={{ margin: 0 }}>
                 <Pill>{note.path === "a" ? "Path A" : "Path B"}</Pill>{" "}
                 <Pill kind={note.kind === "con" ? "warn" : ""}>{note.kind}</Pill>{" "}
-                {note.text}
+                {!mayRun && note.text}
               </p>
+              {mayRun && (
+                <textarea aria-label={`Edit "${note.text}"`} rows={2} defaultValue={note.text}
+                  style={{ width: "100%", marginTop: ".3rem" }}
+                  onBlur={(e) => save(note, e.target.value)} />
+              )}
               {mayRun && (
                 <div className="row" style={{ marginTop: ".3rem" }}>
                   {/* The labels name the note: two trays on one screen, and a
@@ -1087,6 +1108,38 @@ function PathsSection({ notes, mayRun, onDraft, onChanged }: {
  * somewhere a person reads — and it carries an intro they wrote, which is why
  * it is theirs to send and not a VA's.
  */
+/** A pro or a con the fractional writes themselves: accepted on arrival, so
+ *  it is on the PDF (owner, 2026-09-29). */
+function AddPathNote({ session, path, onAdded }: {
+  session: string; path: "a" | "b"; onAdded: () => void;
+}) {
+  const [kind, setKind] = useState<"pro" | "con">("pro");
+  const [text, setText] = useState("");
+  const [problem, setProblem] = useState("");
+  const add = useMutation({
+    mutationFn: () => api.post("/api/strategy-path-notes/", { session, path, kind, text }),
+    onSuccess: () => { setText(""); setProblem(""); onAdded(); },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  const which = path === "a" ? "Path A" : "Path B";
+  return (
+    <div className="row tight" style={{ marginTop: ".3rem" }}>
+      <select aria-label={`Pro or con for ${which}`} value={kind} style={{ width: "auto" }}
+        onChange={(e) => setKind(e.target.value as "pro" | "con")}>
+        <option value="pro">+ pro</option>
+        <option value="con">− con</option>
+      </select>
+      <input aria-label={`New ${kind} for ${which}`} value={text}
+        placeholder={`Add a ${kind}`} onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) add.mutate(); }} />
+      <button className="small" disabled={!text.trim() || add.isPending}
+        aria-label={`Add one to ${which}`} onClick={() => add.mutate()}>Add one</button>
+      {problem && <span className="small" role="alert">{problem}</span>}
+    </div>
+  );
+}
+
+
 function QuestionsByEmail({ path, data, onSent }: {
   path: string; data: StrategySessionRow; onSent: (text: string) => void;
 }) {

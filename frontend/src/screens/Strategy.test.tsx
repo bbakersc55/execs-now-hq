@@ -583,8 +583,9 @@ describe("the decision page's pros and cons", () => {
       "POST /api/strategy-path-notes/p1/accept/": {},
     });
     expect(await screen.findByText("It waits behind the day job.")).toBeInTheDocument();
-    // The accepted one is already in its column, not in the tray.
-    expect(screen.getByText("Someone owns the list on Monday.")).toBeInTheDocument();
+    // The accepted one is already in its column, not in the tray — and
+    // editable there (owner, 2026-09-29).
+    expect(screen.getByDisplayValue("Someone owns the list on Monday.")).toBeInTheDocument();
 
     expect(screen.getByText(/Tray — 1 proposed for the two paths/)).toBeInTheDocument();
 
@@ -592,6 +593,47 @@ describe("the decision page's pros and cons", () => {
       "button", { name: 'Accept "It waits behind the day job."' }));
     await waitFor(() => expect(fetchMock.calls.some(
       (c) => c.url === "/api/strategy-path-notes/p1/accept/")).toBe(true));
+  });
+
+  it("edits a proposed one and an accepted one, saving on leaving the field", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      "PATCH /api/strategy-path-notes/": {},
+    });
+    const proposed = await screen.findByRole("textbox",
+      { name: 'Edit "It waits behind the day job."' });
+    await user.clear(proposed);
+    await user.type(proposed, "It waits behind the dispatch backlog.");
+    await user.tab();
+    const accepted = screen.getByRole("textbox", { name: 'Edit "Someone owns the list on Monday."' });
+    await user.clear(accepted);
+    await user.type(accepted, "Dana owns the list from Monday.");
+    await user.tab();
+    await waitFor(() => {
+      const patches = fetchMock.calls.filter((c) => c.method === "PATCH");
+      expect(patches.map((c) => c.body)).toEqual([
+        { text: "It waits behind the dispatch backlog." },
+        { text: "Dana owns the list from Monday." },
+      ]);
+    });
+  });
+
+  it("adds a pro or con the fractional writes, to the path it is under", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aSession(), aMe(), {
+      "POST /api/strategy-path-notes/": { status: 201, body: {} },
+    });
+    await screen.findByText("It waits behind the day job.");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Pro or con for Path B" }), "con");
+    await user.type(screen.getByRole("textbox", { name: "New con for Path B" }),
+      "A monthly fee from day one.");
+    await user.click(screen.getByRole("button", { name: "Add one to Path B" }));
+    await waitFor(() => {
+      const post = fetchMock.calls.find((c) => c.method === "POST"
+        && c.url === "/api/strategy-path-notes/");
+      expect(post?.body).toEqual({ session: SESSION_ID, path: "b", kind: "con",
+                                   text: "A monthly fee from day one." });
+    });
   });
 
   it("asks Claude for them on the button, and says nothing is published", async () => {
