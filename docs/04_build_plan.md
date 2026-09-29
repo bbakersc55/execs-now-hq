@@ -1507,17 +1507,44 @@ against the Anthropic console).
 with "Claude's answer was cut off or empty; nothing was kept." Those tokens were
 billed and produced nothing. After precision, this is the second finding.
 
-**Two defects surfaced by the metric; neither is fixed yet (no behaviour
-changes today):**
+**Two defects surfaced by the metric.** *(Corrected 2026-09-29, later the
+same day.)*
 
 1. **A new Drive version with unchanged text became a second proposal.** "Mike
-   Eller" v12 was read on 2026-09-22, and v13 on 2026-09-28 with identical text
-   (104,232 characters). It produced a second proposal, a second meeting and 8
-   duplicate tasks. One other file *was* skipped as "unchanged since version
-   4", so the check exists but did not catch this one.
+   Eller" v12 was read on 2026-09-22, and v13 on 2026-09-28 at 10:17 MDT with
+   identical text. **This was already fixed, not open:** `f20c3a8` ("never read
+   the same note twice") landed at 12:17 MDT the same day, two hours after the
+   second read. The morning report called it unfixed because it looked at the
+   data, not the commit history. No further change.
 2. **A new contact was created when the matcher offered the existing one** (by
-   email, confidence 0.98) on that second proposal. Whether that was a click or
-   a default in the screen is not yet known.
+   email, 0.98). **Likely cause, inferred from the code:** the "Who is this"
+   picker defaults to *Someone new — create them* even when an email match is
+   listed, so approving without touching the picker creates a duplicate. Nothing
+   recorded shows whether the reviewer chose it or left the default. **Fixed 2026-09-29** as the
+   owner specified: creating someone new over an email match of 0.95 or more is
+   refused by the server with the match named, and goes through only with a
+   confirmation carrying that contact's id. The match is looked up at approval
+   time, not taken from the parse, so a contact created a minute earlier is
+   found too. This covers the vendor path of a dismissal as well. The picker's
+   default is unchanged. Pre-selecting the match is the owner's call (FR-5.11:
+   matching proposes, never decides).
+
+**The parse failures: fixed 2026-09-29** as the owner specified, following the
+owner-classification fix. The output limit went from 6,000 to 16,000 and
+extraction asks for low effort. A failed read is named with what happens next,
+and the next poll re-reads it automatically. A billed failure (cut off, or
+unreadable) counts against the file, and **after three the poll stops**, and
+the queue lists the file under *Couldn't be read* with **Read again**. A failure
+that cost nothing (no key, no network) never counts. **Why the cap matters more
+than the limit:** the 72 failures came from 6 files, and one note (15 May) had
+failed 54 times, once every ten minutes, at about $0.24 each, because the poll
+retried every failed file forever at the same limit. Tests:
+`tests/test_parse_truncation.py`, including that a truncated response is never
+billed as a kept proposal. Migration `meetings` 0007 (one additive column with a
+database default) was **applied 2026-09-29 ~08:45 MDT**: additive, suite green on
+it, today's 07:00 backup in the bucket. **Not yet running in the worker:** the
+qcluster in the owner's tab still runs the old parser, which keeps retrying the
+15 May note, until the owner restarts it.
 
 **At the time of reading, one source file was in `parsing`** ("Meeting started
 2026/05/15 10:59 MDT", updated 13:03:56 UTC today). This is probably a job the

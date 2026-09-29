@@ -14,9 +14,10 @@ what, in what order**, and what has to be true before the next step starts.
 - **Part E** is the test data to delete before the move. **It needs your
   confirmation, row by row.**
 
-Every step is marked **[proven]** (done and checked), **[built, not run]** or
-**[to build]**. Today everything is **[to build]** or not started, except the
-branching in B0.
+Every step is marked **[proven]** (done and checked), **[built, not run]**,
+**[to run]** or **[to build]**. As of 2026-09-29: B0 proven; B1, B4 and B7 built
+and tested locally, not run on Railway; B5 proven on the laptop; everything else
+to run.
 
 ---
 
@@ -32,20 +33,37 @@ branching in B0.
   "live on staging", and "release" means "live in production". This replaces the
   separate `staging` branch that the Phase 8+ note proposed. One working branch
   is enough while one person releases.
-- **Your step, optional but recommended:** GitHub → repo → Settings → Branches →
-  add a rule on `main` that blocks force-pushes and deletion. That way the rule
-  holds even if a session forgets it.
+- **The GitHub rule on `main`: approved (owner, 2026-09-29), and it is step
+  A0 below.** It is yours because this laptop has no `gh` CLI and no GitHub
+  token for me to set it with.
 
 ---
 
 ## Part A — the owner's steps, in order
+
+### A0. Protect `main` on GitHub — *now; five minutes*
+
+1. GitHub → `bbakersc55/execs-now-hq` → **Settings → Rules → Rulesets → New
+   branch ruleset** (older screens: Settings → Branches → Add rule).
+2. Name it `main`. Enforcement: **Active**. Target: **the default branch**
+   (`main`).
+3. Tick **Restrict deletions** and **Block force pushes**. Tick nothing else.
+   Requiring pull requests or status checks would block my "release" merge,
+   which is a plain push after the suite passes here.
+4. Leave the bypass list empty, and save.
+5. Tell me. I cannot check it from here: a dry-run push never reaches GitHub,
+   and there is no `gh` on this laptop. So its first real test is the first
+   force-push anyone tries, which should be never.
 
 ### A1. Railway account and project — *any time before B1*
 
 1. Create the Railway account (or sign in) and put a payment method on it.
    Postgres, three app services and staging will exceed the free allowance.
 2. Create one **project** named `execs-now-hq`. Make two **environments** in it:
-   `production` and `staging`. Each environment gets its own Postgres (B1, B3).
+   `production` and `staging`. Each environment gets its own Postgres (B1, B3),
+   **at version 16**, to match the laptop and the image's `pg_dump`. If Railway
+   offers only a newer version, stop and tell me, because the Dockerfile
+   changes with it.
 3. Connect the GitHub repo `bbakersc55/execs-now-hq` to the project. This is
    Railway's GitHub app, and it asks for access to that repo only. Grant access
    to this repo only, not "all repositories".
@@ -190,71 +208,85 @@ through `app.getexecutivesnow.com`:
 `dev` created from `main` at `8f8851d` and pushed to `origin/dev`. All work from
 now on happens on `dev`. `main` moves only on "release".
 
-### B1. Railway configuration for the production services — **[to build]**
+### B1. Railway configuration for the production services — **[built, not run]** 2026-09-29
 
-**Code, on `dev`.** None of it exists yet:
+**Built on `dev` and tested locally. None of it has run on Railway,** and the
+image has not been built: Docker is not installed on the laptop, so the first
+build is Railway's.
 
-- `gunicorn` added to `requirements.txt`. No production WSGI server exists today.
-- **Build config** (`railway.json` or a `Dockerfile`; I will pick one and say
-  why when I build it) that:
-  - installs WeasyPrint's system libraries (Pango, HarfBuzz, fonts). Without
-    them the strategy PDF and the value report fail only when someone uses them,
-    not at boot;
-  - runs `npm ci && npm run build` in `frontend/`, then `collectstatic`;
-  - pins Python 3.12.
-- **Settings for running behind Railway's proxy:** `SECURE_PROXY_SSL_HEADER`
-  and `CSRF_TRUSTED_ORIGINS`. Neither exists today. Without the first,
-  `SECURE_SSL_REDIRECT` loops forever, and Google sign-in builds an `http://`
-  callback that Google rejects.
-- **Service-account key from an environment variable.** Today
-  `GOOGLE_APPLICATION_CREDENTIALS` is a file path. On Railway the key arrives as
-  `GOOGLE_SA_APP_JSON`, and the storage and STT clients will load it from that
-  variable (still never ADC, per assumption A7).
-- `sentry-sdk`, only if you want A4's `SENTRY_DSN`. It is not installed today.
-- `.env.example` updated for every new variable.
+| What | Where | Tested how |
+|---|---|---|
+| `gunicorn==26.2.0` | `requirements.txt` | Installed; `pip check` clean |
+| One image for all three services: Node 24 builds the bundle; Python 3.12 slim; WeasyPrint's Pango/HarfBuzz; Arimo and Liberation fonts (what the laptop resolves the PDFs' Helvetica/Arial to); `pg_dump` 16 from PGDG; `collectstatic`; runs as a non-root user | `Dockerfile`, `.dockerignore` | **Not built** (no Docker here) |
+| Per-service config | `railway/web.json`, `railway/qcluster.json`, `railway/backup.json`, `railway/README.md` | Key names follow Railway's documented schema; to be checked against the real screens at A1/B1 |
+| Behind Railway's proxy: `SECURE_PROXY_SSL_HEADER` (off localhost only), `CSRF_TRUSTED_ORIGINS` (the public origin, plus any named), `/healthz` exempt from the HTTPS redirect | `config/settings.py` | Production settings booted in a subprocess with production variables (`tests/test_production_settings.py`) |
+| **Refused off localhost:** the development `DJANGO_SECRET_KEY`, and `DJANGO_DEBUG=True` (joining the two refusals that already existed) | `config/settings.py` | Same tests: each makes boot fail with its message |
+| The service-account key from `GOOGLE_SA_APP_JSON` (the key's contents) in preference to the file path, with no key file written to disk; a malformed value is named and never echoed | `apps/tenancy/google_credentials.py`, used by storage and Speech-to-Text | Unit tests with a generated key |
+| The React app served by Django: Vite builds with base `/static/` (WhiteNoise serves it), and every path outside `api/ admin/ accounts/ auth/ static/ media/ healthz` returns `index.html`, so a deep link opens the app | `frontend/vite.config.ts`, `config/spa.py`, `config/urls.py` | `npm run build` checked (the index asks for `/static/assets/…`); route tests. **Not seen in a browser.** |
+| `/healthz`: the process and the database, nothing else | `config/spa.py` | Test |
+| `.env.example` current | `.env.example` | By hand |
+
+**Postgres major version: create the Railway database at 16.** The laptop is on
+16.15, and the image's `pg_dump` is 16 (`PG_MAJOR` in the Dockerfile). A newer
+server would need both changed together, because a `pg_dump` older than its
+server refuses to run.
+
+**Migrations are never applied by a deploy.** `web` and `qcluster` start with
+`migrate --check`, so a release that carries a migration **refuses to start**
+until the migration is applied by hand in the service shell, after that day's
+backup. CLAUDE.md's migration rule (SQL first, additive, green, backup today)
+holds in production exactly as on the laptop. The old version keeps serving
+until the new one passes its health check. See `railway/README.md`.
 
 **Services in the `production` environment**, all built from `main`:
 
-| Service | Start command | Notes |
+| Service | Config | Notes |
 |---|---|---|
-| `web` | `python manage.py migrate --noinput && gunicorn config.wsgi` | Custom domain `app.getexecutivesnow.com`. Health check on a plain URL. |
-| `qcluster` | `python manage.py qcluster` | Same image, same database, **no public domain**. `Q_CLUSTER_WORKERS=4`. `CONN_MAX_AGE` is already 0 everywhere in settings. **Starts with 0 replicas** and is scaled to 1 only at C9. |
-| `backup` | the Railway-adapted backup script (B4) | Cron schedule, no domain. |
-| `Postgres` | Railway plugin | Its major version must match the laptop's `pg_dump` or be newer. I check both before the rehearsal. |
+| `web` | `railway/web.json` | Custom domain `app.getexecutivesnow.com`. Health check `/healthz`. |
+| `qcluster` | `railway/qcluster.json` | **No public domain.** `Q_CLUSTER_WORKERS=4`; `CONN_MAX_AGE` is already 0. **Starts with 0 replicas** and is scaled to 1 only at C9. |
+| `backup` | `railway/backup.json` | Cron `0 8 * * *` (08:00 UTC, 02:00 Mountain). |
+| `Postgres` | Railway plugin | **Version 16.** |
 
 **Non-secret variables I set:** `DJANGO_DEBUG=False`,
-`DJANGO_ALLOWED_HOSTS=app.getexecutivesnow.com`,
+`DJANGO_ALLOWED_HOSTS=app.getexecutivesnow.com,healthcheck.railway.app` (the
+second is the Host header Railway's health check sends),
 `PUBLIC_BASE_URL=https://app.getexecutivesnow.com`, `APP_ROOT_URL=/`,
 `DATABASE_URL` (Railway reference to the plugin), `APP_MAIL_TRANSPORT=gmail`,
 `DEFAULT_FROM_ADDRESS`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_CLOUD_PROJECT`,
 `GOOGLE_STT_LANGUAGE`, `STORAGE_BACKEND=gcs`, `GCS_BUCKET_MEDIA=execs-now-hq-media`,
 `ANTHROPIC_MODEL`, `Q_CLUSTER_WORKERS=4`.
 
-**Deliberately absent:** `DEV_REAL_SEND_ALLOWLIST` (settings refuse to boot
-with it off localhost), `ANTHROPIC_API_KEY` (same), `EMAIL_HOST`/`EMAIL_PORT`
-(Mailpit only), `MEDIA_ROOT`.
+**Deliberately absent:** `DEV_REAL_SEND_ALLOWLIST` and `ANTHROPIC_API_KEY`
+(settings refuse to boot with either off localhost), `GOOGLE_APPLICATION_CREDENTIALS`
+(replaced by `GOOGLE_SA_APP_JSON`), `EMAIL_HOST`/`EMAIL_PORT` (Mailpit only),
+`MEDIA_ROOT`.
 
 **`PUBLIC_BASE_URL` is the most consequential variable in the move.** Off
 localhost, outbound mail is real mail (FR-0.7). It is set on production from the
 start, which is why the production database stays empty until C7 and qcluster
 stays at 0 replicas until C9.
 
-### B2. The first deploy, empty — **[to build]**
+**Not built, on purpose:** `sentry-sdk`. Say if you want error reporting from
+day one and I will add it; `SENTRY_DSN` then goes in A4.
 
-1. Merge nothing to `main` yet. For the first production deploy I ask you for a
-   **"release"** of the B1 code, with the suite green as always.
-2. `web` boots against the empty production Postgres and migrates it. Seeing the
-   sign-in page at `https://app.getexecutivesnow.com` proves the build, the
-   proxy settings, TLS and DNS, with no data at stake.
+### B2. The first deploy, empty — **[to run]**
+
+1. For the first production deploy I ask you for a **"release"** of the B1
+   code, with the suite green as always.
+2. `web` refuses to start on the empty database (`migrate --check`). That is
+   the point of the check. I apply the migrations in the service shell. The
+   database is empty, so there is nothing to back up. Then `web` starts.
+   Seeing the sign-in page at `https://app.getexecutivesnow.com` proves the
+   image, WeasyPrint's libraries, the proxy settings, TLS and DNS, with no data
+   at stake.
 3. Nobody signs in to production yet. There is no tenant in it until C7.
 
-### B3. The staging service, with its own database — **[to build]**
+### B3. The staging service, with its own database — **[to run]** · safety design **approved by the owner, 2026-09-29**
 
-The `staging` environment mirrors production: `web` (from **`dev`**), its own
-`Postgres`, and a Railway-generated domain that I give you for A3.
+The `staging` environment mirrors production: `web` only (from **`dev`**), its
+own `Postgres` at 16, and a Railway-generated domain that I give you for A3.
 
-**What makes staging safe to hold a copy of real data.** This is the part that
-matters, and **it is a judgement call for you to confirm**:
+**What makes staging safe to hold a copy of real data** (approved as proposed):
 
 - **Staging never runs `qcluster`.** It gets no qcluster service at all. The
   worker is what polls Drive (Claude spend on your key), polls your mailbox, and
@@ -269,58 +301,74 @@ matters, and **it is a judgement call for you to confirm**:
   restore, so nothing is queued even if a worker were ever added.
 - The rehearsal data is **dropped** from staging once the rehearsal is signed
   off. Staging then holds seeded demo data only (the Phase 8+ demo tenant).
+- Staging's `CSRF_TRUSTED_ORIGINS` names its own host, and its
+  `DJANGO_ALLOWED_HOSTS` names its host and the health check's.
 
 **Web requests on staging can still send mail when someone clicks send**, since
 `PUBLIC_BASE_URL` is not localhost there. With no Gmail credential that decrypts,
 a send fails rather than delivers. That failure is the safeguard, and D-check 5's
 equivalent on staging is to confirm the failure happens.
 
-### B4. The backup cron — **[to build]**
+### B4. The backup cron — **[built, not run]** 2026-09-29
 
-`scripts/backup_db.sh` is written for the laptop: a fixed database name
-(`execsnowhq_dev`), your `gcloud` login, and `pg_dump` from the laptop. The
-Railway version:
+`scripts/backup_db_railway.sh`, with `scripts/gcs_backup.py` for the storage
+steps. The laptop's `scripts/backup_db.sh` is unchanged, so the script you run
+every morning does not change under you. Same flow and safeguards, in the same
+order: dump, refuse a dump under 1 KB, upload, media copy (never deletes,
+recordings excluded), prune `*.sql.gz` older than 30 days. What differs:
 
-- takes the database from `DATABASE_URL`;
-- authenticates as `backup-writer` from `GOOGLE_SA_BACKUP_JSON`;
-- keeps **everything else identical:** the size floor that refuses to upload an
-  empty dump, dump **then** media, media copied without deletes, recordings
-  excluded, and 30-day pruning of `*.sql.gz` only;
-- names production dumps `execsnowhq_prod_<stamp>.sql.gz`, so a laptop dump and
-  a production dump can never be mistaken for each other in the bucket;
-- runs nightly on a Railway cron schedule. The time I propose is 08:00 UTC
-  (02:00 Mountain); you can change it.
+- the database comes from `DATABASE_URL`;
+- there is no `gcloud` in the image, so upload, copy and prune use the
+  google-cloud-storage library the app already has, as `backup-writer` from
+  `GOOGLE_SA_BACKUP_JSON` (A4a); the media copy is server-side, bucket to bucket;
+- production dumps are named `execsnowhq_prod_<stamp>.sql.gz`.
 
-It will be a separate script (`scripts/backup_db_railway.sh`), so the laptop
-script you run every morning does not change under you.
+**Tested:** what is copied, what is pruned, and the order of the steps
+(`tests/test_backup_railway.py`). **Not run:** it needs Railway and the backup
+service account, so its first real run is C10, and D-check 9 restores it.
 
-### B5. The row-count comparison — **[to build]**
+### B5. The row-count comparison — **[proven on the laptop]** 2026-09-29
 
-`scripts/compare_row_counts.sh <source> <target>` does the following:
+`scripts/compare_row_counts.sh SOURCE TARGET` (a database name or a `postgres://`
+URL on either side) runs an **exact** `count(*)` for every table in `public`,
+prints both sides, and **exits 1 on any mismatch or on a table present on one
+side only**. `django_q_*` tables are listed but never fail it, since they are
+emptied on purpose (C4.4, C7.3). Read-only.
 
-- runs an **exact** `SELECT count(*)` for every table in `public`. It does not
-  use `pg_class` estimates, because an estimate that happens to match proves
-  nothing;
-- prints both sides and a diff, and **exits non-zero on any mismatch or on a
-  table present on one side only**;
-- counts the Django-Q tables separately, since they are emptied on purpose
-  after restore (C4.4, C7.3), and reports them as expected-to-differ.
+**Run for real:** `execsnowhq_dev` against itself gave 94 tables matching,
+6,766 rows, exit 0. Two throwaway databases with a count mismatch, a table on
+one side only and a differing queue table reported both problems, ignored the
+queue, and exited 1. The throwaway databases were then dropped.
 
-### B6. The rehearsal restore into staging — **[to build]**
+### B6. The rehearsal restore into staging — **[to run]**
 
 This is C4 in the timeline below. I run it, report the row-count output
 verbatim, and the rehearsal counts as passed only when you have read it.
 
-### B7. The laptop becomes development-only — **[to build]**
+### B7. The laptop becomes development-only — **[built, not run]** 2026-09-29
 
-- `scrub_dev_data` **does not exist yet**, although
-  `scripts/refresh_dev_from_prod.sh` calls it. Until I build it, that script
-  fails at its most important step. I build it before the laptop ever points at
-  a copy of production data.
-- The laptop's `.env` moves to a **new** database name (`execsnowhq_local`),
-  seeded or scrubbed, with `tenant_secret` rows removed. The old
-  `execsnowhq_dev` is left untouched as the two-week fallback.
-- `05_dev_environment.md` gets the post-move daily workflow next to the pre-move one.
+- **`manage.py scrub_dev_data` now exists**, built to the spec in
+  `05_dev_environment.md` §8, with one addition the spec could not have
+  foreseen. **Until cutover, `execsnowhq_dev` on this laptop *is* production**,
+  and it passes both of the spec's localhost checks. So the command also
+  refuses that database by name, whatever else is true, and requires the target
+  database's name typed as `--database <name>`. It rewrites every contact
+  address, user address (`--keep-staff` keeps the practice's own sign-ins),
+  phone number, suppression address, message address and parsed participant
+  email to `.invalid`; empties CSV import rows; deletes Gmail connections, **all**
+  `tenant_secret` rows (the Anthropic key too: the laptop uses its env
+  fallback), Google sign-in tokens, outbox messages, queued jobs, magic links
+  and stakeholder tokens; clears pre-call tokens; and turns `hold_all_digests`
+  back on. Tested: every refusal, and a scrub after which nothing can receive,
+  send or sign in (`tests/test_scrub_dev_data.py`). **Never run on real data.**
+- **`scripts/refresh_dev_from_prod.sh` fixed.** Its `DEV_DB` was
+  `execsnowhq_dev`, so run today it would have **dropped the production
+  database** (it would have failed first at the Railway dump, but only because
+  Railway does not exist yet). It now restores into `execsnowhq_local`, refuses
+  unless `.env` points there, stops on the first SQL error, and calls the scrub
+  with the typed name.
+- Still to do at C11: the laptop's `.env` moves to `execsnowhq_local`, and
+  `05_dev_environment.md` gets the post-move daily workflow next to the pre-move one.
 
 ---
 
@@ -328,7 +376,8 @@ verbatim, and the rehearsal counts as passed only when you have read it.
 
 | # | Who | Step | Gate to continue |
 |---|---|---|---|
-| C1 | Owner | **A1**: Railway account, project, repo connected | Tell me |
+| C0 | Owner | **A0**: the ruleset on `main` | Tell me |
+| C1 | Owner | **A1**: Railway account, project, repo connected; **Postgres created at version 16** in both environments | Tell me |
 | C2 | Claude | **B1** code on `dev`, suite green, pushed | Suite green, reported |
 | C2a | Owner | **"release"** of B1 → `main` → **B2** first empty deploy | `web` boots |
 | C3 | Owner | **A2** DNS CNAME, **A3** OAuth URIs, **A4** production secrets, **A4a** backup SA | Custom domain verified; sign-in page loads at `https://app.getexecutivesnow.com` |
@@ -399,9 +448,23 @@ Each check will be reported as passed-and-seen, failed, or not yet run.
 
 ## Part E — test data to delete before the move
 
-**Nothing here has been deleted.** For each row: confirm, strike, or change it.
-I found more attached to some rows than the names suggest, and those extras are
-listed so you know what goes with each one.
+**Nothing here has been deleted.**
+
+**The owner's decisions, 2026-09-29.** All deletions are **hard deletes**, run
+**after 3 PM Mountain on 2026-09-29** (not before: a live session at 1 PM), as
+fresh backup → dry run listing every row → the owner's yes.
+
+| | Decision |
+|---|---|
+| E1 Test Testing | **Delete** (with its portal login) |
+| E2 Testing again testing | **Delete** (with its portal login) |
+| E3 Hj hj | **Not decided.** The decision line was left as its placeholder, `[DELETE / KEEP AND RENAME — fill in after checking]`. The same message also says "delete Acme's other three test contacts", and Hj hj is one of those three, so the two instructions disagree. **Held out of the deletion until the owner says which.** |
+| E4 Unknown 2 Unknown 2 | **Delete** |
+| E5 Steven Paul | **Delete**, with his draft strategy session |
+| E6 Mike Eller | **Delete the 2026-09-28 contact, meeting and 8 tasks; keep the 2026-09-22 set; add the owner as attended-by on the kept meeting** |
+| E7 Acme Facilities, Noble Baker | **Keep**, as the demo company and demo client |
+
+The findings under each row are unchanged below.
 
 All rows belong to tenant Executives Now. The IDs are the first 8 characters of
 the UUID. The full IDs are pulled fresh when I run the deletion.
