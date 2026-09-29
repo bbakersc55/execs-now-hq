@@ -20,6 +20,13 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.
 
 PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", default="http://localhost:8100")
 IS_LOCAL = PUBLIC_BASE_URL.startswith(("http://localhost", "http://127.0.0.1"))
+# Off localhost, the laptop's conveniences are refused rather than trusted to
+# have been changed (Phase 7): the dev key signs every session and magic link,
+# and DEBUG shows a stack trace, settings included, to anyone who finds an error.
+if not IS_LOCAL and SECRET_KEY == "dev-only-insecure-key":
+    raise RuntimeError("DJANGO_SECRET_KEY is the development default. Set a real one.")
+if not IS_LOCAL and DEBUG:
+    raise RuntimeError("DJANGO_DEBUG is on outside localhost. Turn it off.")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -143,6 +150,18 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = not IS_LOCAL
 CSRF_COOKIE_SECURE = not IS_LOCAL
 SECURE_SSL_REDIRECT = not IS_LOCAL
+# Behind Railway's proxy (Phase 7). TLS ends at the proxy, so without this
+# every request looks like plain http: SECURE_SSL_REDIRECT loops forever, and
+# Google sign-in builds an http:// callback that Google refuses. Trusted only
+# off localhost, where the proxy is the only way in.
+if not IS_LOCAL:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Railway's health check calls over plain http inside its network.
+SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
+# The public origin, and any others named (a staging host), for CSRF on
+# HTTPS POSTs. Localhost needs none: Django checks same-origin itself.
+CSRF_TRUSTED_ORIGINS = ([] if IS_LOCAL else [PUBLIC_BASE_URL.rstrip("/")]) + env.list(
+    "CSRF_TRUSTED_ORIGINS", default=[])
 CLIENT_SESSION_AGE = 60 * 60 * 24 * 30
 
 REST_FRAMEWORK = {
@@ -233,6 +252,9 @@ GOOGLE_STT_LANGUAGE = env("GOOGLE_STT_LANGUAGE", default="en-US")
 # apps/tenancy/storage.py — never via ADC (assumption A7).
 _credentials_path = env("GOOGLE_APPLICATION_CREDENTIALS", default="")
 GOOGLE_APPLICATION_CREDENTIALS = str(Path(_credentials_path).expanduser()) if _credentials_path else ""
+# On Railway the key arrives as the file's contents, not a path (Phase 7);
+# apps/tenancy/google_credentials.py prefers it when set.
+GOOGLE_SA_APP_JSON = env("GOOGLE_SA_APP_JSON", default="")
 
 # Where `stored_file` content lives. `gcs` (gs://<bucket>/<object_key>) since
 # Phase 2: a recording exists nowhere else, so it cannot wait for a nightly

@@ -131,25 +131,21 @@ def store_recording(note, *, content: bytes, content_type: str, duration_seconds
 # --------------------------------------------------------- Speech-to-Text
 
 @functools.cache
-def _speech_client_for(credentials_path: str):
+def _speech_client_for(credentials):
     from google.cloud import speech_v1
-    from google.oauth2 import service_account
 
-    credentials = service_account.Credentials.from_service_account_file(
-        credentials_path, scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
     return speech_v1.SpeechClient(credentials=credentials)
 
 
 def _speech_client():
-    from pathlib import Path
+    from apps.tenancy import google_credentials
 
-    path = settings.GOOGLE_APPLICATION_CREDENTIALS
-    if not path or not Path(path).is_file():
-        raise RecordingError(
-            f"No service-account key at GOOGLE_APPLICATION_CREDENTIALS={path!r}."
-        )
-    return _speech_client_for(path)
+    try:
+        credentials = google_credentials.credentials(
+            ("https://www.googleapis.com/auth/cloud-platform",))
+    except google_credentials.NoServiceAccountKey as exc:
+        raise RecordingError(str(exc)) from exc
+    return _speech_client_for(credentials)
 
 
 def _fail(note, message):

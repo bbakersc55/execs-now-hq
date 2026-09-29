@@ -1,11 +1,12 @@
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 
 from apps.accounts import views as account_views
 from apps.crm import views_gmail
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
 from apps.crm import views_unsubscribe as crm_unsubscribe
+from config import spa
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -52,4 +53,10 @@ urlpatterns = [
     path("auth/magic/request", account_views.request_magic_link, name="magic-request"),
     # C3.3: GET renders a confirmation page; only POST consumes the token.
     path("auth/magic/<str:token>", account_views.magic_link_landing, name="magic-landing"),
+    path("healthz", spa.healthz, name="healthz"),
+    # Last: every other path is the React app's (production; Phase 7). The
+    # server's own prefixes are excluded so a mistyped API URL is a 404, not
+    # a page of HTML.
+    re_path(r"^(?!api/|admin/|accounts/|auth/|static/|media/|healthz).*$",
+            spa.app_shell, name="app-shell"),
 ]

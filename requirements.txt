@@ -19,6 +19,7 @@
 #   google-api-python-client     — the Drive client that reads the notes folder (Module 5)
 #   anthropic                    — Claude, the only LLM (CLAUDE.md); first used in Module 2
 #   weasyprint                   — the strategy session PDF (Module 4, FR-4.23)
+#   gunicorn                     — the production WSGI server on Railway (Phase 7)
 # Everything else below is a transitive dependency of those.
 
 annotated-types==0.8.0
@@ -48,6 +49,7 @@ google-resumable-media==2.10.2
 googleapis-common-protos==1.75.3
 grpcio==1.83.1
 grpcio-status==1.83.1
+gunicorn==26.2.0
 h11==0.16.0
 httplib2==0.32.0
 httpcore2==2.12.0

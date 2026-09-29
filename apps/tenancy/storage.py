@@ -267,26 +267,22 @@ class GcsBackend:
 
 
 @functools.cache
-def _client_for(credentials_path: str, project: str):
+def _client_for(credentials, project: str):
     from google.cloud import storage as gcs
-    from google.oauth2 import service_account
 
-    credentials = service_account.Credentials.from_service_account_file(
-        credentials_path, scopes=_GCS_SCOPES
-    )
     return gcs.Client(project=project, credentials=credentials)
 
 
 def _client():
-    path = settings.GOOGLE_APPLICATION_CREDENTIALS
-    if not path or not Path(path).is_file():
+    from apps.tenancy import google_credentials
+
+    try:
+        credentials = google_credentials.credentials(tuple(_GCS_SCOPES))
+    except google_credentials.NoServiceAccountKey as exc:
         # Explicitly not a fallback to gcloud ADC (assumption A7): that would
         # work on this laptop, bill the wrong project, and fail on Railway.
-        raise StorageUnavailable(
-            f"No service-account key at GOOGLE_APPLICATION_CREDENTIALS={path!r}. "
-            f"See docs/05_dev_environment.md §5b."
-        )
-    return _client_for(path, settings.GOOGLE_CLOUD_PROJECT)
+        raise StorageUnavailable(f"{exc} See docs/05_dev_environment.md §5b.") from exc
+    return _client_for(credentials, settings.GOOGLE_CLOUD_PROJECT)
 
 
 class _unavailable_on_failure:
