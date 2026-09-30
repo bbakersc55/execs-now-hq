@@ -38,7 +38,7 @@ describe("the partner table: enrolment", () => {
     const user = userEvent.setup();
     const fetchMock = show({ "POST /api/contacts/enroll-selected/":
       { changed_count: 1, skipped: [] } });
-    await user.click(await screen.findByRole("button", { name: "Enrol Ben Partner" }));
+    await user.click(await screen.findByRole("button", { name: "Enroll Ben Partner" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
       .toEqual({ ids: ["p2"], program: "referral_touches" }));
   });
@@ -48,7 +48,7 @@ describe("the partner table: enrolment", () => {
     const fetchMock = show({ "POST /api/contacts/enroll-selected/":
       { changed_count: 1, skipped: [] } });
     await user.click(await screen.findByLabelText("Select Ann Partner"));
-    await user.click(screen.getByRole("button", { name: "Unenrol selected" }));
+    await user.click(screen.getByRole("button", { name: "Unenroll selected" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
       .toEqual({ ids: ["p1"], program: "referral_touches", unenroll: true }));
   });

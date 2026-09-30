@@ -22,7 +22,7 @@ from apps.tenancy.models import AuditEvent, Tenant
 
 
 class Command(BaseCommand):
-    help = "Recognise staff participants on existing meeting proposals (FR-5.9e)."
+    help = "Recognize staff participants on existing meeting proposals (FR-5.9e)."
 
     def add_arguments(self, parser):
         parser.add_argument("--tenant", help="Tenant slug. Default: every tenant.")
@@ -45,7 +45,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"  {member.role} {member.name} -> "
                 + (f"contact {found.first_name} {found.last_name}" if found
-                   else "no contact row (recognised, but attendance cannot be "
+                   else "no contact row (recognized, but attendance cannot be "
                         "recorded against a contact)"))
 
         pending = ProposalItem.objects.filter(

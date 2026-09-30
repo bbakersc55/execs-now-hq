@@ -2,7 +2,7 @@
 
 **Module 1: Contacts & pipeline · for the owner**
 
-The five manual checks from `04_build_plan.md` Phase 1, as click paths through the actual UI. Everything here is something I cannot verify for you: it needs your real data, or it needs your judgement.
+The five manual checks from `04_build_plan.md` Phase 1, as click paths through the actual UI. Everything here is something I cannot verify for you: it needs your real data, or it needs your judgment.
 
 ---
 
@@ -42,7 +42,7 @@ Where a step says *"nothing arrives"*, **that is the thing being verified** — 
 
 Two things must exist before the button will work. Both are in `docs/05_dev_environment.md`:
 
-1. **The redirect URI is registered.** In the `execs-now-hq` GCP project → OAuth client → **Authorised redirect URIs**, `http://localhost:8100/accounts/gmail/callback` must be listed alongside the sign-in one (§5a). Without it Google refuses the consent with a `redirect_uri_mismatch` before you ever see a consent screen.
+1. **The redirect URI is registered.** In the `execs-now-hq` GCP project → OAuth client → **Authorized redirect URIs**, `http://localhost:8100/accounts/gmail/callback` must be listed alongside the sign-in one (§5a). Without it Google refuses the consent with a `redirect_uri_mismatch` before you ever see a consent screen.
 2. **`info@getexecutivesnow.com` is a confirmed send-as alias on your Gmail** — added in Gmail, *and* the confirmation link clicked (§5c). The app can check this for you but cannot do it for you.
 
 ### 0b — Connect
@@ -193,7 +193,7 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 > **Owner defaults to you.** The form says so at the bottom. That default is what drives a CF's own visibility later (FR-1.9c), so leave it alone unless you are entering someone else's contact.
 
-**2.0c — Company: pick or create.** The **Company** dropdown lists every company you have. If theirs is not there, leave the dropdown on *none* and type the name in **…or a new company** — it is created on save. Typing a name that already exists (any capitalisation) **attaches them to the existing company** rather than creating a second one; that is the same duplicate the merge screen exists to clean up.
+**2.0c — Company: pick or create.** The **Company** dropdown lists every company you have. If theirs is not there, leave the dropdown on *none* and type the name in **…or a new company** — it is created on save. Typing a name that already exists (any capitalization) **attaches them to the existing company** rather than creating a second one; that is the same duplicate the merge screen exists to clean up.
 
 **2.0d — Types.** Tick any that apply; a person can be several. **Ticking *Referral partner* shows a warning**: saving will queue their onboarding email in the Outbox *for approval* and place them in the referral pipeline. It sends nothing. That is FR-1.23 firing through the same path the contact page uses.
 
@@ -239,7 +239,7 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 **2.7 — Confirm the history actually moved.** On that page, look at the **Timeline** panel. Notes and tasks that belonged to the merged-away record are now listed there. Check the **Details** panel: both email addresses are present, one marked primary.
 
-> **Duplicates are now collapsed.** You reported the survivor carrying the same phone number twice. Emails match case-insensitively and phone numbers match on their digits, so `+1 555-0100` and `15550100` are recognised as one number and only one row survives — with exactly one primary. Genuinely different numbers are both kept.
+> **Duplicates are now collapsed.** You reported the survivor carrying the same phone number twice. Emails match case-insensitively and phone numbers match on their digits, so `+1 555-0100` and `15550100` are recognized as one number and only one row survives — with exactly one primary. Genuinely different numbers are both kept.
 
 **2.8** Re-run the dry run for the same CSV. → The row that was *needs-a-decision* now resolves to a single contact and counts as an **update**.
 
@@ -357,7 +357,7 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 **4.7 — Now read it as the recipient would.** Three questions:
 
-1. **Does it sound like you?** Not "is it grammatical" — would this partner recognise it as coming from you?
+1. **Does it sound like you?** Not "is it grammatical" — would this partner recognize it as coming from you?
 2. **Is the fee line right?** If you set fee terms, there is a line reminding them of the arrangement. If you left it blank, **there must be no fee language at all.** Check that.
 3. **Is the reciprocal line useful?** Every touch says what you are looking for, so the partner can send referrals *and* knows what to send. Does it name something real?
 
@@ -430,7 +430,7 @@ These are not in the build plan, but they exercise the parts most likely to bite
 
 ## What to tell me afterwards
 
-1. **Anything in Check 4 that did not sound like you.** Highest priority — it is the only judgement I cannot make.
+1. **Anything in Check 4 that did not sound like you.** Highest priority — it is the only judgment I cannot make.
 2. **Duplicates from Check 2 that the ambiguous list missed.**
 3. **Any count in Check 1's dry run that surprised you**, especially a high `update`.
 4. **Anything that sent you to a terminal.** Every step in this document should be clickable; if one is not, that is a gap in the UI, not in the API.

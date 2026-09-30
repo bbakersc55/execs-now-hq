@@ -93,7 +93,7 @@ def is_configured() -> bool:
 
 
 def redirect_uri() -> str:
-    """Must match an Authorised redirect URI on the OAuth client exactly."""
+    """Must match an Authorized redirect URI on the OAuth client exactly."""
     return f"{settings.PUBLIC_BASE_URL.rstrip('/')}/accounts/gmail/callback"
 
 
@@ -147,7 +147,7 @@ def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
 
 
 def exchange_code(code: str) -> dict:
-    """Authorisation code -> tokens. Raises rather than returning a partial."""
+    """Authorization code -> tokens. Raises rather than returning a partial."""
     response = requests.post(TOKEN_URL, data={
         "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
         "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
@@ -157,7 +157,7 @@ def exchange_code(code: str) -> dict:
     }, timeout=20)
     if not response.ok:
         raise GmailOAuthError(
-            f"Google refused the authorisation code ({response.status_code}). "
+            f"Google refused the authorization code ({response.status_code}). "
             "Check that the redirect URI on the OAuth client matches "
             f"{redirect_uri()} exactly, then try connecting again."
         )

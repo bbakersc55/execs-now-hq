@@ -54,7 +54,7 @@ Google lets you untick a scope on that screen. If you untick Drive, the app
 says so plainly and keeps the mail connection working; it does not pretend
 nothing was stored.
 
-If you would rather see the scopes before agreeing, the authorisation URL the
+If you would rather see the scopes before agreeing, the authorization URL the
 app builds carries them in its `scope=` parameter.
 
 ## 4. Get the folder id

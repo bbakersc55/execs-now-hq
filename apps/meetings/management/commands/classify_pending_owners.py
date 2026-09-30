@@ -35,7 +35,7 @@ class Command(BaseCommand):
                     f"{plan['items']} need Claude, on "
                     f"{plan['proposals']} proposals. With Claude: {plan['proposals']} "
                     f"calls, about ${plan['estimated_cost_usd']:.2f} "
-                    f"({'measured from calls already made' if plan['measured'] else 'modelled'}). "
+                    f"({'measured from calls already made' if plan['measured'] else 'modeled'}). "
                     "Without: free.")
                 if options["run"]:
                     result = ownership.reclassify(tenant, use_claude=not options["no_ai"])

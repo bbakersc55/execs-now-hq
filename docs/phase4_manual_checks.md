@@ -100,7 +100,7 @@ Before you send one to anybody real.
 5. Click **I'm done for now**. Check Mailpit for *"… finished the pre-call
    form"* — that notice goes to the session owner.
 
-**The judgement to make:** thirteen questions is a real completion risk. If it
+**The judgment to make:** thirteen questions is a real completion risk. If it
 reads as long, tell me which ones to move into the call and I will flip their
 `ask_when` — or do it yourself on `/strategy/template`.
 
@@ -256,10 +256,10 @@ out of a reply.
 
 ---
 
-## Customising the questions for one prospect, before his session
+## Customizing the questions for one prospect, before his session
 
 **Read this first: in Beta there is one template for the whole practice.** There is
-no per-prospect template and no per-session override. "Customising it for him" means
+no per-prospect template and no per-session override. "Customizing it for him" means
 **editing the practice's template and then starting his session** — and the edit stays
 in force for **every session started after his** until you change it back. The snapshot
 protects sessions that already exist; it does not un-edit the template.
@@ -323,7 +323,7 @@ Two tests hold it:
 | 4 — the PDF read as the prospect | 2026-09-19 | Passed, after ratings, comments and the merge field were fixed |
 | 5 — convert and check the work | 2026-09-21 | Passed on the re-run: work created per row, Noble at Closed Won, the session converted |
 
-**Module 4 is signed off with Check 1 open.** Two judgements from the Check 5 run are
+**Module 4 is signed off with Check 1 open.** Two judgments from the Check 5 run are
 recorded in the build plan rather than carried in anyone's head: nine "Not measured
 yet" ticks is acceptable friction for now and gets revisited after a real session, and
 an owner that lands as text with nobody assigned is correct.
@@ -333,5 +333,5 @@ an owner that lands as text with nobody assigned is correct.
 ## What I would like back
 
 For each check: passed, or what it showed. For Check 1 and Check 3 especially,
-your judgement in your own words — I will record the AI's quality as *what you
+your judgment in your own words — I will record the AI's quality as *what you
 said about N real sessions*, with N, and not as a pass.

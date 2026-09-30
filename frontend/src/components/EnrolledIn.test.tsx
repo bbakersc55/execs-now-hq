@@ -34,8 +34,8 @@ describe("Enrolled in", () => {
   it("unenrols from a digest by its attachment and from touches by program", async () => {
     const user = userEvent.setup();
     const fetchMock = show(ROWS, aMe(), true, { "POST /api/contacts/c1/unenroll/": {} });
-    await user.click(await screen.findByRole("button", { name: /Unenrol from Progress digest/ }));
-    await user.click(screen.getByRole("button", { name: "Unenrol from Referral touches" }));
+    await user.click(await screen.findByRole("button", { name: /Unenroll from Progress digest/ }));
+    await user.click(screen.getByRole("button", { name: "Unenroll from Referral touches" }));
 
     await waitFor(() => expect(fetchMock.calls.filter((c) => c.method === "POST")
       .map((c) => c.body)).toEqual([{ stakeholder: "s1" }, { program: "referral_touches" }]));
@@ -45,7 +45,7 @@ describe("Enrolled in", () => {
     const user = userEvent.setup();
     const fetchMock = show([], aMe(), true, { "POST /api/contacts/c1/enroll/": {} });
     expect(await screen.findByText("Not enrolled in any email.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Enrol in referral touches" }));
+    await user.click(screen.getByRole("button", { name: "Enroll in referral touches" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
       .toEqual({ program: "referral_touches" }));
   });
@@ -53,7 +53,7 @@ describe("Enrolled in", () => {
   it("shows a VA the list and no controls", async () => {
     show(ROWS, aMe({ role: "VA" }));
     expect(await screen.findByText("Referral touches")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Unenrol/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Unenroll/ })).not.toBeInTheDocument();
   });
 
   it("says what they unsubscribed from, and that only their link undoes it", async () => {

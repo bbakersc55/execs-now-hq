@@ -69,7 +69,7 @@
 | 3.13 | Manage email templates | ✅ | ❌ | 🔸 | — | — | VA may edit body copy, not create or delete rules |
 | 3.14 | Manage contact types and service categories | ✅ | ❌ | ✅ | — | — | CRM hygiene is the VA's job (FR-1.9d) |
 | 3.14a | **Manage pipelines** (create, rename, remove) | ✅ | ❌ | ❌ | — | — | **FF only, per pipeline.** A practice runs several — a sales pipeline and a nurture pipeline for referral partners (FR-1.6). Adding or removing one changes how the practice works |
-| 3.15 | **Manage the stages within a pipeline** (rename, reorder, add, remove) | ✅ | ❌ | ❌ | — | — | **FF only, per pipeline.** Renaming is safe by design — behaviour keys on the stage's `semantic`, never its label — but adding and removing stages is a workflow change. A sales-kind pipeline must keep **exactly one `won` stage**; removing the last one is refused, because without it nothing can become a client (FR-1.6a) |
+| 3.15 | **Manage the stages within a pipeline** (rename, reorder, add, remove) | ✅ | ❌ | ❌ | — | — | **FF only, per pipeline.** Renaming is safe by design — behavior keys on the stage's `semantic`, never its label — but adding and removing stages is a workflow change. A sales-kind pipeline must keep **exactly one `won` stage**; removing the last one is refused, because without it nothing can become a client (FR-1.6a) |
 | 3.15a | **Read pipelines and their stages** | ✅ | ✅ | ✅ | ❌ | ❌ | Every tenant user works the board daily. Client users have no CRM surface at all (4.18) |
 | 3.16 | Invite a CF or VA | ✅ | ❌ | ❌ | — | — | No self-serve signup (C1) |
 | 3.17 | Change a member's role | ✅ | ❌ | ❌ | — | — | |
@@ -202,8 +202,8 @@
 | 10.3c | **Read the prep brief** | ✅ | 🔸 | ❌ | — | — | **Absent from a VA's payload**, not hidden in it — the §9 standard (FR-4.21e) |
 | 10.4 | Run the live session view | ✅ | 🔸 | ❌ | — | — | |
 | 10.5 | Trigger a Claude draft run | ✅ | 🔸 | ❌ | — | — | Costs money against the tenant key; writes an `ai_call` |
-| 10.6 | Accept / edit / discard map rows | ✅ | 🔸 | ❌ | — | — | R6 — the fractional's judgement |
-| 10.6a | Accept / edit / discard **§8's pros and cons** | ✅ | 🔸 | ❌ | — | — | R6a — the same judgement as 10.6, on the decision page. **Only an accepted note reaches the prospect's PDF** |
+| 10.6 | Accept / edit / discard map rows | ✅ | 🔸 | ❌ | — | — | R6 — the fractional's judgment |
+| 10.6a | Accept / edit / discard **§8's pros and cons** | ✅ | 🔸 | ❌ | — | — | R6a — the same judgment as 10.6, on the decision page. **Only an accepted note reaches the prospect's PDF** |
 | 10.7 | View sections 1–8 of a session | ✅ | 🔸 | ✅ | — | — | |
 | 10.8 | **View §9 investment range and reaction** | ✅ | 🔸 | ❌ | — | — | **`is_financial` questions. `CLAUDE.md`: VA has no financials.** Must be absent from the API response (AC-4.13) |
 | 10.9 | Generate the PDF | ✅ | 🔸 | ✅ | — | — | Generating is not sending |
@@ -214,21 +214,21 @@
 
 ## 10A. Module 4B — Client value report
 
-> **Specified 2026-09-21, from ruling 6 of the Phase 4.5 scope, and amended the same day by rulings B, E, G and H.** The line this section draws: **judging the client relationship is FF-and-assigned-CF; administering it is a VA's too.** Resolving a goal and accepting a narrative are judgements. Recording a reading and exporting a PDF are not. **Client roles are read-only throughout** — the report is the one place in the product built for them to read, and there is nothing in it for them to write.
+> **Specified 2026-09-21, from ruling 6 of the Phase 4.5 scope, and amended the same day by rulings B, E, G and H.** The line this section draws: **judging the client relationship is FF-and-assigned-CF; administering it is a VA's too.** Resolving a goal and accepting a narrative are judgments. Recording a reading and exporting a PDF are not. **Client roles are read-only throughout** — the report is the one place in the product built for them to read, and there is nothing in it for them to write.
 
 | # | Action | FF | CF | VA | FCC | ECC | Notes |
 |---|---|---|---|---|---|---|---|
 | 10A.1 | View a client company's value report | ✅ | 🔸 | ✅ | 🔸 | 🔸 | CF: `assigned`. Client: `own-company`. **Requires a login** — a `stakeholder_token` does not reach it (AC-4B.21) |
 | 10A.2 | Open one goal's report | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Same scopes as 10A.1. Another company's goal is **404**, not 403 |
 | 10A.3 | See an **internal** goal in a report | — | — | — | — | — | **No surface for anyone** (ruling 10). A goal with no client company is absent from the response, not filtered in the UI (AC-4B.3) |
-| 10A.4 | Record a measurement | ✅ | 🔸 | ✅ | ❌ | ❌ | **A VA may**: taking a reading is administration, not judgement. **A client may not** — a client typing their own numbers into the report they are being shown changes what the artifact is |
+| 10A.4 | Record a measurement | ✅ | 🔸 | ✅ | ❌ | ❌ | **A VA may**: taking a reading is administration, not judgment. **A client may not** — a client typing their own numbers into the report they are being shown changes what the artifact is |
 | 10A.5 | Correct or delete a measurement | ✅ | 🔸 | ✅ | ❌ | ❌ | A reading is a fact that can be wrong; correcting it moves the chart and never the headline (AC-4B.5) |
 | 10A.6 | Write / update the **outcome statement** | ✅ | 🔸 | ❌ | ❌ | ❌ | **VA 403 — ruling H, 2026-09-21**, which ruling 6 had not reached. It is the fractional's sentence about what the goal is for, in the client's language — the nearest thing in the product to speaking for the practice |
 | 10A.7 | Create / edit a standalone milestone | ✅ | 🔸 | ✅ | ❌ | ❌ | Dated beats are administration |
 | 10A.8 | Mark a task as a milestone | ✅ | 🔸 | ✅ | ❌ | ❌ | **Ruling E, 2026-09-21 — only a client-visible task in the goal's own tree, never an internal one.** Follows the task's own edit rights (row 7.4) on top of that; a client-editable task does **not** carry this, because the goal's timeline is not the client's to compose |
 | 10A.9 | Edit a **derived** milestone's title or dates | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody.** They belong to the task, and un-completing it clears the date (FR-4B.25). Two places to maintain one fact is what ruling 8 exists to prevent |
-| 10A.10 | **Resolve a goal** | ✅ | 🔸 | ❌ | ❌ | ❌ | **Ruling 6 — VA 403**, asserted against the API body. CF: `assigned`. A judgement about the relationship |
-| 10A.10a | See a resolution's **reason** | ✅ | 🔸 | ✅ | 🔸 | 🔸 | **Ruling G, 2026-09-21 — the client reads it.** No internal-only resolution and no visibility flag on the line: a reason the client cannot read cannot make *changed course* read as judgement (FR-4B.30a) |
+| 10A.10 | **Resolve a goal** | ✅ | 🔸 | ❌ | ❌ | ❌ | **Ruling 6 — VA 403**, asserted against the API body. CF: `assigned`. A judgment about the relationship |
+| 10A.10a | See a resolution's **reason** | ✅ | 🔸 | ✅ | 🔸 | 🔸 | **Ruling G, 2026-09-21 — the client reads it.** No internal-only resolution and no visibility flag on the line: a reason the client cannot read cannot make *changed course* read as judgment (FR-4B.30a) |
 | 10A.11 | Edit or delete a resolution | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody, ever** (ruling 7). Append-only: no update or delete route exists. Reversing a resolution is appending another with its own reason |
 | 10A.11a | Edit or delete a **narrative version** | ❌ | ❌ | ❌ | ❌ | ❌ | **Nobody, ever** (ruling B). Each acceptance appends a dated snapshot; the living narrative is rewritten freely and **what the client was told is not** |
 | 10A.12 | Trigger a narrative draft | ✅ | 🔸 | ✅ | ❌ | ❌ | Costs money against the tenant key; writes an `ai_call`. A VA may **prepare**, exactly as with a digest (row 8.2) |
@@ -240,7 +240,7 @@
 
 > **Row 10A.6 is the one that will look inconsistent, so here is why it is not.** A VA may record a measurement (10A.4) but not write the outcome statement. A reading is a number someone took; the outcome statement is the sentence a founder repeats to their board, and it goes out under the fractional's name. The test is not how much typing the action involves — it is whether being wrong is an administrative error or a wrong thing said to a client on the practice's behalf.
 
-> **Rows 10A.10 and 10A.13 are the 4B analogues of row 8.3** (approving a digest), and they fail the same way: a VA who may do them can publish a judgement about the engagement that the fractional never made. Both are asserted **against the API response body**, not by the absence of a button.
+> **Rows 10A.10 and 10A.13 are the 4B analogues of row 8.3** (approving a digest), and they fail the same way: a VA who may do them can publish a judgment about the engagement that the fractional never made. Both are asserted **against the API response body**, not by the absence of a button.
 
 > **The client columns are read-only in every row of this section**, which is deliberate and worth stating once. FR-3.35a gives a client tasks and projects of their own precisely so the portal is a working tool; the value report is the opposite kind of artifact — the practice's account of the engagement, which a client reads and does not co-author.
 
@@ -262,7 +262,7 @@
 | 11.12 | See the folder's name, last poll and last error | ✅ | ✅ | ✅ | ❌ | ❌ | Read-only for CF and VA |
 | 11.13 | Choose and run the folder backfill; stop it | ✅ | ❌ | ❌ | ❌ | ❌ | **FF only.** It spends the practice's money against the practice's own Drive |
 
-> **Row 11.4 does not apply to our own staff (FR-5.9e).** A participant who matches somebody on the practice's staff is recognised rather than asked about: no type is offered, no approval is needed, and the row is excluded from whether the proposal is still open. There is nothing to authorise because nothing is created — so there is no role question here, for any role.
+> **Row 11.4 does not apply to our own staff (FR-5.9e).** A participant who matches somebody on the practice's staff is recognized rather than asked about: no type is offered, no approval is needed, and the row is excluded from whether the proposal is still open. There is nothing to authorize because nothing is created — so there is no role question here, for any role.
 >
 > **Connecting is narrower than using (11.10–11.12).** Clearing this queue is the VA's job and a CF's own meetings are in it, so both act on proposals freely. But pointing the app at a folder grants it a standing read of a whole Google Drive, and there is one folder per practice — so choosing it belongs with the person who answers for the practice's data. The asymmetry with 11.12 is deliberate too: every staff role may *see* where the folder has got to, because a queue that is empty and a queue that is asleep look identical to whoever has to clear it.
 >

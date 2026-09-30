@@ -118,7 +118,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 2. Every file seen becomes a `MeetingSourceFile` row, unique on `(tenant, drive_file_id, drive_version)` — re-polling the same file never produces a second proposal.
 3. A **"Sync now"** button in the UI runs the same task on demand, so you are never waiting on a timer during a working session.
 4. Ingestion is a two-step commit: record the file first, parse with Claude second. If Claude fails, the file is still recorded and retried; the cursor never advances past unprocessed work.
-5. On Railway this design is unchanged (it works and it is simple). Push notifications are a V1 optimisation, not a Beta requirement.
+5. On Railway this design is unchanged (it works and it is simple). Push notifications are a V1 optimization, not a Beta requirement.
 
 `Approved.`
 
@@ -166,7 +166,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** application-layer scoping only; RLS noted as a V1 hardening option.
 
-**Why:** RLS would give defence in depth but doubles the debugging surface (silent empty results) at exactly the phase where I am iterating on the schema fastest; the meta-test in B3 gets most of the safety for none of the cost.
+**Why:** RLS would give defense in depth but doubles the debugging surface (silent empty results) at exactly the phase where I am iterating on the schema fastest; the meta-test in B3 gets most of the safety for none of the cost.
 
 `Approved.`
 
@@ -182,7 +182,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** a `Membership` table (user × tenant × role) exists from migration 1, but the app assumes and enforces one membership per user until V1.
 
-**Why:** modelling it as a table now costs nothing and avoids a painful migration; enforcing one-per-user now removes an entire class of "which tenant am I in?" UI from Beta.
+**Why:** modeling it as a table now costs nothing and avoids a painful migration; enforcing one-per-user now removes an entire class of "which tenant am I in?" UI from Beta.
 
 `Approved.`
 
@@ -204,7 +204,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 `Approved.`
 
-### C2. Gmail send authorisation is a **separate** consent flow from sign-in
+### C2. Gmail send authorization is a **separate** consent flow from sign-in
 
 **Choice:** sign-in requests only `openid email profile`. A distinct "Connect Gmail" action requests `gmail.send` with offline access and stores a per-user refresh token (encrypted, per E1).
 
@@ -274,11 +274,11 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 `Approved.`
 
-### D5. Enumerations live in tables, not Python enums, where V1 will customise them
+### D5. Enumerations live in tables, not Python enums, where V1 will customize them
 
 **Choice:** `PipelineStage` and `ContactType` are per-tenant rows seeded from a preset; task status and role codes stay as Python choices.
 
-**Why:** V1 promises multi-discipline presets and per-tenant customisation of pipeline and contact types; status and role semantics are wired into permission logic and should not be user-editable.
+**Why:** V1 promises multi-discipline presets and per-tenant customization of pipeline and contact types; status and role semantics are wired into permission logic and should not be user-editable.
 
 `Approved.`
 
@@ -351,7 +351,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Why:** `CLAUDE.md` requires a dry run before irreversible steps, and the first real import of your existing contacts is the single highest-consequence data event in Beta.
 
-**Dedupe order:** exact email → (normalised name + company) → no match, create new. Ambiguous matches are listed for a human, not guessed.
+**Dedupe order:** exact email → (normalized name + company) → no match, create new. Ambiguous matches are listed for a human, not guessed.
 
 `Approved.`
 
@@ -364,13 +364,13 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 - **Reset is FF-only, by emailed link, and clears the PIN rather than revealing it.** The note becomes readable to anyone with normal access from that point, and the reset is audited.
 - **Stated plainly so it is not mistaken for something stronger:** this protects a note from a shoulder-surfer, a VA, and a casual browse. It does not protect it from the FF, from a database dump, or from the backup file. If a note needs protection from those, it should not be in the app.
 
-**Search behaviour:** a locked note appears in search results as a locked stub — title and linked contact only, no body or summary — unless unlocked.
+**Search behavior:** a locked note appears in search results as a locked stub — title and linked contact only, no body or summary — unless unlocked.
 
 `Approved.`
 
 ### F7. Recording pipeline and audio retention
 
-**Choice:** browser `MediaRecorder` → upload to GCS → Google Speech-to-Text long-running recognise → Claude summary → Note. Soft cap of 60 minutes per recording.
+**Choice:** browser `MediaRecorder` → upload to GCS → Google Speech-to-Text long-running recognize → Claude summary → Note. Soft cap of 60 minutes per recording.
 
 **Amended per your mark:**
 - **(1) Consent reminder.** Starting a recording shows a one-line reminder to confirm the other parties consent to being recorded. Dismissible per session, not per recording.
@@ -413,7 +413,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 2. **Claude drafts the connective prose** — the opening summary that turns a list of transitions into "here is the value delivered this week." It never invents a status or a fact; it is given only the transitions and the human-written lines.
 3. **Every AI-drafted digest is generated 24 hours before its send window and lands in an approval screen** listing all pending digests, with per-digest approve / edit / skip and an "approve all" for a reviewed batch. **An unapproved digest does not send.** It expires and rolls into the next period.
 4. **Deterministic digests may send without approval** — *gated by the master switch in 4a.* If a tenant turns off AI prose, the digest is a template containing only status transitions and text a human wrote: no AI output, therefore no review requirement.
-4a. **Master switch, per tenant: `hold_all_digests`, default ON for Beta.** While ON, **every** digest waits in the approval screen regardless of how it was composed — AI-drafted or deterministic. When switched OFF, behaviour is exactly as item 4 describes: AI-drafted digests still require approval, deterministic digests send on cadence. This is the safe default and the answer to H4.
+4a. **Master switch, per tenant: `hold_all_digests`, default ON for Beta.** While ON, **every** digest waits in the approval screen regardless of how it was composed — AI-drafted or deterministic. When switched OFF, behavior is exactly as item 4 describes: AI-drafted digests still require approval, deterministic digests send on cadence. This is the safe default and the answer to H4.
 5. **Cadence** per stakeholder: `every_update` (batched with a 30-minute quiet window so one editing session sends one email, not six), `weekly` (default; anchored to a per-tenant send day and hour in tenant timezone), `monthly`.
 6. Every digest send is an `AuditEvent` and is visible on the task/project timeline, so "did they hear about this?" is answerable.
 
@@ -490,13 +490,13 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** the in-call view displays the seed's section budget (10 / 25 / 5 / 15 / 5 / 10 min, ~75 total) as elapsed-vs-budget per section, plus a count of unanswered ★ `must_ask` questions.
 
-**Why:** the seed sets a time budget and marks the questions to prioritise if time is short — surfacing both is what makes that guidance operative during a live call rather than advice in a document.
+**Why:** the seed sets a time budget and marks the questions to prioritize if time is short — surfacing both is what makes that guidance operative during a live call rather than advice in a document.
 
 `Approved.`
 
 ### F13f. The worked example row ships as seeded example content
 
-**Choice:** the supervisor-overload row from the seed (1 supervisor / 14 sites → area lead per 8 sites, inspections to app → Integrator → 60 → inspections per site per month) ships as the in-app example on an empty Strategy Map, clearly labelled as an example and dismissible.
+**Choice:** the supervisor-overload row from the seed (1 supervisor / 14 sites → area lead per 8 sites, inspections to app → Integrator → 60 → inspections per site per month) ships as the in-app example on an empty Strategy Map, clearly labeled as an example and dismissible.
 
 **Why:** the seed asks to keep it as the in-app example, and an empty map with a filled example row is a much better prompt to a fractional mid-call than an empty map with column headers.
 
@@ -574,7 +574,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 - **Outbound:** the FF's connection sends all app mail as the tenant alias. A CF may still connect their own Gmail to send as themselves to contacts on assigned companies (H7); those sends are recorded on the same threads.
 - **Inbound:** `users.threads.get` polling over the threads the app started, on a 15-minute schedule. Cursor-based like Drive (A6) and equally tolerant of a laptop being closed.
 
-**Why polling known thread ids rather than `users.history.list`** — unchanged, and now load-bearing rather than an optimisation: Gmail's history has a limited retention window, so a laptop closed for ten days can return `404 historyId not found` and force a full resync. The set of threads the app started is always known and bounded.
+**Why polling known thread ids rather than `users.history.list`** — unchanged, and now load-bearing rather than an optimization: Gmail's history has a limited retention window, so a laptop closed for ten days can return `404 historyId not found` and force a full resync. The set of threads the app started is always known and bounded.
 
 **The scope cost, restated.** Reading a thread still needs **`gmail.readonly`**, a restricted scope over the whole mailbox, and sending as an alias needs **`gmail.settings.basic`** to verify it. Under the **Internal** consent screen both are free — no verification, no CASA, no refresh-token expiry (C1). **The bill arrives at V1**, when going External to serve a second practice means a security assessment covering `gmail.send`, `gmail.readonly`, and `gmail.settings.basic`. Postmark existing as a V1 transport option is what keeps that from being the only road.
 
@@ -616,7 +616,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** `PRODUCT_NAME = "Execs NOW HQ"` in `config/branding.py`, exposed to the frontend through a single `/api/branding` payload alongside the palette.
 
-**Why:** `CLAUDE.md` asks for one constant; routing it through the same payload as the palette means V1 per-tenant white-labelling changes data, not code.
+**Why:** `CLAUDE.md` asks for one constant; routing it through the same payload as the palette means V1 per-tenant white-labeling changes data, not code.
 
 `Approved.`
 
@@ -682,7 +682,7 @@ This register is the reference for every later document in Phase 0. Nothing in i
 
 ### I1. No client of any tenant ever sees the product
 
-**The rule.** Every client-facing surface renders the **tenant's** display name, colours
+**The rule.** Every client-facing surface renders the **tenant's** display name, colors
 and logo, read from the tenant row: the portal shell and every portal screen, the
 magic-link sign-in page, the signed-out page, the refused-access page, the cadence page,
 and every email. Never a hardcoded `Executives Now`, never `Execs NOW HQ`. The product

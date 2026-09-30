@@ -241,17 +241,17 @@ existing **Web application** OAuth client (the one the laptop uses). **Add these
 URIs. Remove none.** The localhost URIs must stay, because the laptop remains the
 development machine.
 
-**Authorised JavaScript origins**, add:
+**Authorized JavaScript origins**, add:
 - `https://app.getexecutivesnow.com`
 
-**Authorised redirect URIs**, add both. They are two different consents, and a
+**Authorized redirect URIs**, add both. They are two different consents, and a
 missing one fails at Google's screen with `redirect_uri_mismatch`:
 - `https://app.getexecutivesnow.com/accounts/google/login/callback/` (signing in)
 - `https://app.getexecutivesnow.com/accounts/gmail/callback` (Gmail **and** Drive
   consent; both use this one callback)
 
 **For the demo**, in the same pass, add:
-- Authorised JavaScript origin: `https://demo.getexecutivesnow.com`
+- Authorized JavaScript origin: `https://demo.getexecutivesnow.com`
 - Redirect URI: `https://demo.getexecutivesnow.com/accounts/google/login/callback/`
   (signing in only)
 - Do **not** add the demo's `/accounts/gmail/callback`. The demo never connects
@@ -627,7 +627,7 @@ In this order. **Check 1 and check 6 have fixed positions and must not move.**
    `sent`, `From` = `info@getexecutivesnow.com`.
 6. **qcluster started (C9) only after 1–5.** The first `work.tick` runs and
    generates nothing, because digests are held.
-7. **Decryption on production**: the Anthropic key works. Summarise one note, or
+7. **Decryption on production**: the Anthropic key works. Summarize one note, or
    run the smallest Claude call available, and see an `ai_call` row with
    `succeeded=true`.
 8. **One Drive poll** completes. The folder health screen shows a fresh

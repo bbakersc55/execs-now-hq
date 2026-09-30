@@ -21,7 +21,7 @@ from django.views.decorators.http import require_http_methods
 from apps.crm.services import unsubscribe
 from apps.tenancy.context import tenant_context
 
-GONE = {"detail": "This link is not one we recognise. If you meant to unsubscribe, "
+GONE = {"detail": "This link is not one we recognize. If you meant to unsubscribe, "
                   "reply to the email and ask; we will take you off."}
 
 

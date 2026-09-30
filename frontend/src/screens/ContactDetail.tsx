@@ -265,7 +265,7 @@ export function ContactDetail({ me }: { me: Me }) {
                     : "not enrolled in touches, so none are drafted"}
                 </p>
                 <button disabled={draftTouch.isPending || !c.referral_enrolled}
-                  title={c.referral_enrolled ? undefined : "Enrol them in referral touches first"}
+                  title={c.referral_enrolled ? undefined : "Enroll them in referral touches first"}
                   onClick={() => draftTouch.mutate()}>
                   {draftTouch.isPending ? "Drafting…" : "Draft touch now"}
                 </button>

@@ -11,7 +11,7 @@
 
 1. **What "done" means** — the gate. Not "the code exists"; the observable state that ends the phase.
 2. **Tests that must pass** — always including the two non-negotiable families, plus the phase's own acceptance criteria from `01_prd.md`.
-3. **Manual checks you do yourself** — the ones I cannot honestly run for you, either because they need your judgement or because they need your real data.
+3. **Manual checks you do yourself** — the ones I cannot honestly run for you, either because they need your judgment or because they need your real data.
 4. **What I will report** — stated as `CLAUDE.md` requires: proven versus assumed, never a scoped subset presented as a total.
 
 **Reporting discipline.** At the end of every phase I give you a table of acceptance criteria with three possible values: **tested end to end**, **written but not exercised**, **not implemented**. A criterion I could not run — because it needs a real Postmark send, a real Drive folder, or the Railway host — is marked as such rather than quietly counted as passing. No phase is reported complete on a partial run.
@@ -107,7 +107,7 @@ Every criterion above as tested / written-not-exercised / not-implemented, plus 
 1. **Import your real book of business** — the highest-consequence data event in Beta. Read the dry run before committing. Then **roll it back**, confirm the count returns, and import again.
 2. Confirm the ambiguous-match list contains the duplicates you already know about.
 3. Move a real prospect through the pipeline and watch the follow-up task appear and the email draft queue.
-4. Read a generated referral touch. **This is a judgement call I cannot make for you:** does it sound like you, and would you send it to a real partner? If not, the template or the prompt is wrong and it is a Phase 1 bug.
+4. Read a generated referral touch. **This is a judgment call I cannot make for you:** does it sound like you, and would you send it to a real partner? If not, the template or the prompt is wrong and it is a Phase 1 bug.
 5. Confirm the flyer attaches and that an onboarding draft appeared the moment you tagged a referral partner.
 6. **Connect your own Gmail, verify the `info@` send-as alias, and send a real email to an allow-listed address.** Confirm it arrives showing **`info@getexecutivesnow.com`** as the sender, and that it is in your Gmail Sent folder — that is trade-off 2 of the transport change, working as intended. Replies will not be ingested until Module 6; expected, and said here so it is not later read as a bug.
 7. **Deliberately break the alias.** Point `from_address` at an address that is not a confirmed "Send mail as" on your account and try to send. The error should tell you exactly what to add in Gmail. **Nothing should go out from your personal address instead.**
@@ -164,7 +164,7 @@ which is the point of reporting it.
 | AC-1.25 | AI spend is FF-only | ✅ Walked (extras) |
 
 **The two live deliveries are the ones that matter**, because they are the only points
-where the app's behaviour left the machine:
+where the app's behavior left the machine:
 
 - **AC-1.6** — a referral touch drafted, approved, and received in Gmail **from
   `info@getexecutivesnow.com`**. Proves the Gmail transport, the verified send-as alias,
@@ -181,7 +181,7 @@ than coding slips:
 
 1. **One fixed pipeline was wrong.** The practice runs two (sales, and a nurture track
    for referral partners) and the owner's CRM carries both a Status and a Stage column.
-   Modelled as `pipeline` + `contact_pipeline_position`, with stage behaviour keyed on a
+   Modeled as `pipeline` + `contact_pipeline_position`, with stage behavior keyed on a
    `semantic` independent of the label.
 2. **No way to add a contact or company by hand** — everything had arrived by CSV.
 3. **Imported referral partners were invisible to the scheduler** (no cadence, no next
@@ -221,7 +221,7 @@ per `CLAUDE.md`.
 
 1. One-action capture; optional dual linking (Contact *or* Company, **and** Task).
 2. PIN: set, unlock, lockout, **FF-only reset that clears rather than reveals**.
-3. **The title-leak defence** — explicit title required before PIN, and `"Locked note"` for any auto-derived title on a stub.
+3. **The title-leak defense** — explicit title required before PIN, and `"Locked note"` for any auto-derived title on a stub.
 4. Locked notes excluded **at index time**, not filtered at query time.
 5. Recording → GCS → Speech-to-Text → Claude summary, with the summary **proposed, never auto-attached**.
 6. Consent reminder; 120-minute cap; per-tenant audio retention with the deletion job running.
@@ -270,7 +270,7 @@ Nothing is "written but not exercised".
 |---|---|---|
 | AC-2.1 | Capture needs only a sentence | ✅ Walked (Check 1) |
 | AC-2.2 | Linking optional, mutable, dual; never contact *and* company | ✅ Walked (Check 2) |
-| AC-2.3 | Locked stub leaks nothing; the title-leak defence, UI **and** API | ✅ Walked (Check 2) |
+| AC-2.3 | Locked stub leaks nothing; the title-leak defense, UI **and** API | ✅ Walked (Check 2) |
 | AC-2.4 | Five wrong PINs lock the note, audited per attempt | ✅ Walked (Check 2) |
 | AC-2.5 | **Reset clears rather than reveals, FF-only** | ✅ **Live** (Check 3) |
 | AC-2.5a | 110-minute warning, clean stop at 120 | ✅ Automated (simulated clock; no real 2-hour recording) |
@@ -395,7 +395,7 @@ before Phase 4 — see FR-3.24a below.
 | Migrations since the 2026-09-11 report | **4, all additive**, applied by the owner 2026-09-15: `work` 0002 (digest key unique among live digests only), `work` 0003 and `tenancy` 0003 (acting-as columns), `crm` 0019 (Outbox `suppressed` state). **None since** — the 2026-09-18 digest fix touches no schema |
 | Live to a real inbox | An **every-update** digest, approved and delivered (retest, 2026-09-15). **A weekly digest: not yet** — that is Check 2 |
 
-**Digest behaviour under each of the four combinations**, which is where an
+**Digest behavior under each of the four combinations**, which is where an
 unintended send would hide. Tested as a parametrised table, all four cases:
 
 | `hold_all_digests` | AI prose | What happens at generation | What sends at the window |
@@ -434,7 +434,7 @@ was fixed before the check was re-run, unless it says otherwise.
 | Check | Status | What it found |
 |---|---|---|
 | 1 · Read a real digest as your client would | ✅ Passed (owner) | Functional, not polished: the digest email and the progress report go to the design pass as known inputs (item 5), layout and typography only |
-| 2 · One full weekly cycle on a real engagement | ✅ **Passed 2026-09-18, in two parts** | **Generation, on the real cycle:** three weekly drafts 24 h ahead, all `pending`, nothing sent. **Friday's approval did not happen** and the tick expired them unsent 36 s past the window — correct behaviour, content owed again, delivery unproven. **Delivery, same day:** dev-triggered generation to the owner's own address with a short send window, real approval, real Gmail send, received. Owner's verdict: reads as value delivered, narrative faithful, branding solid on desktop. Improvement taken from it: FR-3.24a |
+| 2 · One full weekly cycle on a real engagement | ✅ **Passed 2026-09-18, in two parts** | **Generation, on the real cycle:** three weekly drafts 24 h ahead, all `pending`, nothing sent. **Friday's approval did not happen** and the tick expired them unsent 36 s past the window — correct behavior, content owed again, delivery unproven. **Delivery, same day:** dev-triggered generation to the owner's own address with a short send window, real approval, real Gmail send, received. Owner's verdict: reads as value delivered, narrative faithful, branding solid on desktop. Improvement taken from it: FR-3.24a |
 | 3 · Leave a digest unapproved | ✅ Passed on retest | **The server expired it on time; the screen never refreshed**, so it looked pending. Now: the list refreshes, a passed window is flagged, approving after the window is refused (it would otherwise have sent on the next tick), and a banner shows when the tick has stopped. The cluster had been down overnight with nothing showing it; the runbook now says to restart `qcluster` after every backend commit, and stale schedules are realigned (`work.tick` had been stuck at 12 Sep, firing every ~30 s) |
 | 4 · Be an every-update stakeholder | ✅ Passed on retest | **Two engine bugs:** a held every-update digest was expired by the same tick that generated it, and the expired row then blocked its content from ever generating again. Fixed; **FR-3.28d** (24-hour review window) confirmed by the owner. A later retest looked silent but was correctly inside the 30-minute quiet window — no defect — which led to the read-only **"Coming up"** card (FR-3.29a) |
 | 5 · Sign in to the portal as a real client user | ✅ Passed on retest | No create controls in the portal; "Add a task here" on a goal gave a client a bare 400; magic-link sign-in landed on a 404. Added from what the check showed: the client **activity log** (FR-3.41) and **act as** (FR-3.42). *(The activity log was **reversed on 2026-09-16** — it is the practice's feed now, not the client's, and a client is refused it: FR-3.41a. Act as stands.)* |
@@ -533,7 +533,7 @@ goal-less work stays unheaded and last.
 "Three of five sites now inspected weekly, up from one" needs the measurable's
 **baseline and current value** — `goal.baseline_value` and `goal_measurement`, neither
 of which exists until 4B. Until then Module 3 frames work by the goal it serves and
-says nothing about distance travelled, because it has nothing true to say about it.
+says nothing about distance traveled, because it has nothing true to say about it.
 
 #### The process lesson, and what changed because of it
 
@@ -765,7 +765,7 @@ re-running it is the next thing.
 Before the first real prospect session, on the owner's instruction: **two pages,
 visual over verbose**, same brand system, WeasyPrint. Page one is the Snapshot as
 header chips, the Six Key Components as a bar chart with the lowest score in the accent
-colour, the mirror as a callout, and the map as cards under a 30/60/90 strip saying
+color, the mirror as a callout, and the map as cards under a 30/60/90 strip saying
 which fix lands when. Page two is the two paths side by side, what they value, and the
 agreed next steps as a checklist with dates. **Five tests hold it**, including the page
 count against a full nine-row map — the brief is two pages, and a later loosening of a
@@ -811,7 +811,7 @@ was green on it before it was applied, and today's backup had already run. **App
 1. **Claude has been exercised only against the test double.** The drafting prompts
    have never met the real API in a real session, and their output quality is
    unmeasured: that is manual check 3's job, and the report on it will be **your
-   judgement on N real sessions**, with N.
+   judgment on N real sessions**, with N.
 2. **Checks 2, 3 and 4 ran as a dry run on 2026-09-19**; **Check 5 failed on
    2026-09-21, was fixed, and passed on the re-run the same day** (both above).
    **Check 1 has never run** (`phase4_manual_checks.md`, with the click paths).
@@ -834,7 +834,7 @@ Won, the session converted. With Checks 2, 3 and 4 passed on the 2026-09-19 dry 
 - **The quality of Claude's drafting stands at N = 1**, the owner's sentence from the
   dry run (above). Check 1 on real prospects is the only thing that raises N.
 
-**Two judgements recorded from the Check 5 run**, because both were open questions
+**Two judgments recorded from the Check 5 run**, because both were open questions
 that only use could settle:
 
 1. **Nine "Not measured yet" ticks is acceptable friction for now** — revisited after
@@ -942,9 +942,9 @@ toward it, and — in the fractional's own words — what that adds up to.
 
 ### The shape
 
-**Anchor and organisation.**
+**Anchor and organization.**
 
-1. The report is organised **by goal**, not by period. It shows **all** of a client
+1. The report is organized **by goal**, not by period. It shows **all** of a client
    company's goals: **current first, historical below**.
 2. **Any single goal is openable on its own** — the unit a quarterly-review
    conversation actually walks through, one goal at a time.
@@ -964,7 +964,7 @@ overridden status, and a back-link to its map row. This module adds:
 4. **A measurable, of one of two kinds** (ruling 1):
    - **Numeric** — a name, a unit, a **baseline**, a **target**, and a dated
      measurement history. The baseline is what the number was when the engagement
-     started; without it there is no distance travelled, only a reading.
+     started; without it there is no distance traveled, only a reading.
    - **Qualitative** — a **"how we'll know" sentence** in place of a number, for the
      goals that do not reduce to one. "Reduce supervisor overload" is the ordinary
      case, not the exception.
@@ -1015,11 +1015,11 @@ overridden status, and a back-link to its map row. This module adds:
     with its own reason. **No resolution line is ever edited away** — the history of how
     the thinking changed is the part worth keeping.
 13b. **FF and an assigned CF may resolve a goal and accept a narrative. A VA may do
-    neither** (ruling 6) — both are judgements about the client relationship, not
+    neither** (ruling 6) — both are judgments about the client relationship, not
     administration of it.
 14. **"Changed course" is normal consulting** and is frequently the most valuable
-    judgement the fractional made all quarter. The reason line is the whole mechanism
-    that makes it read as judgement rather than as failure, which is why it is
+    judgment the fractional made all quarter. The reason line is the whole mechanism
+    that makes it read as judgment rather than as failure, which is why it is
     required rather than optional. A resolution vocabulary with no reason attached
     would make "changed course" indistinguishable from "gave up".
 
@@ -1066,7 +1066,7 @@ overridden status, and a back-link to its map row. This module adds:
 **The measured narrative belongs here, not in the digest.** Module 3 now frames every
 block of work by the goal it serves (FR-3.24a) — the goal's name and the sentence the
 fractional wrote about it — and is forbidden from saying anything about distance
-travelled, because Module 3 has no measurement to say it with. The fuller sentence the
+traveled, because Module 3 has no measurement to say it with. The fuller sentence the
 owner wants, *"three of five sites now inspected weekly, up from one"*, needs the
 measurable's **baseline** and **current value**: `goal.baseline_value` /
 `goal.baseline_at` and the latest `goal_measurement` row. Both arrive with this
@@ -1178,7 +1178,7 @@ already makes that the schema cannot currently keep. Three changes fall out:
   statement, resolving a goal, accepting a narrative, and exporting the PDF. **Settled
   by ruling 6:** resolving a goal and accepting a narrative are **FF and assigned CF
   only — never a VA**. Client roles are read-only throughout. A VA may still record a
-  measurement and export a PDF; neither is a judgement about the relationship.
+  measurement and export a PDF; neither is a judgment about the relationship.
 
 ### Rulings — all settled by the owner, 2026-09-16
 
@@ -1239,7 +1239,7 @@ hard to revisit honestly later.
 | D | Does the baseline count toward the chart's three? | **Yes, when it is dated** | As specified. An undated baseline does not count, because a point with no date cannot be placed on an axis. AC-4B.6 now tests both directions |
 | E | Which tasks may be marked as a milestone? | **Any client-visible task in the goal's own tree. Never internal** | Narrower than the spec's assumption of any task the user may edit. A milestone is a beat on the **client's** timeline, so an invisible task would leak the work in its title alone — and **a task hidden or moved out of the tree afterwards takes its milestone out of the client's response**. New FR-4B.24a/24b, new AC-4B.13a, matrix row 10A.8 |
 | F | Do exports have a retention rule? | **No. Every export is kept as a `stored_file`, listed on the goal *and* the company. No auto-deletion** | As specified, plus the company listing. Notes has audio retention because audio is large and decays in value; a record of what a client was shown is neither. **No cleanup job exists that could reach one.** FR-4B.39, **new 39a**, AC-4B.19 |
-| G | May a client see a resolution's reason? | **Yes** | As specified, now explicit: no internal-only resolution, no visibility flag on the line. A reason the client cannot read cannot make *changed course* read as judgement. New FR-4B.30a, new AC-4B.10a, matrix row 10A.10a |
+| G | May a client see a resolution's reason? | **Yes** | As specified, now explicit: no internal-only resolution, no visibility flag on the line. A reason the client cannot read cannot make *changed course* read as judgment. New FR-4B.30a, new AC-4B.10a, matrix row 10A.10a |
 | H | May a VA write the outcome statement? | **No** | Confirms the call the spec made and flagged as its own rather than a ruling. FR-4B.10, matrix row 10A.6, AC-4B.17 |
 
 **Nothing is left open.** The specification is complete and the module is ready to
@@ -1253,7 +1253,7 @@ With the rulings settled the gate can be stated, and this is it. **Written up in
 1. The `goal` columns and the **six** new tables migrated: `goal_measurement`,
    `goal_milestone`, `goal_resolution`, `goal_narrative`, **`goal_narrative_version`**
    (ruling B) and `goal_report_export`.
-2. The portal report organised **by goal**, all of a client's goals, **current first,
+2. The portal report organized **by goal**, all of a client's goals, **current first,
    historical below**, with **any single goal openable on its own**.
 2a. **An engagement timeline across all of a company's goals** *(owner, 2026-09-21)* —
    goal starts, milestones, resolutions and dated readings on one axis, at the **top of
@@ -1420,7 +1420,7 @@ and the practice's per-company view of the same thing.
 
 1. **Claude has met only the test double.** The narrative prompt has never run against
    the real API on a real goal, and its quality is unmeasured — that is manual check 1's
-   job, and the report on it will be **your judgement on N real goals**, with N.
+   job, and the report on it will be **your judgment on N real goals**, with N.
 2. **No client has opened it.** Every client-side assertion here is an API-shape
    assertion; whether the page reads as value delivered is manual check 1.
 3. **None of the four manual checks has run** — in particular check 3, taking the PDF
@@ -1431,21 +1431,21 @@ and the practice's per-company view of the same thing.
 ### Manual checks that will matter most
 
 1. **Read a real goal's report as the client.** Does it read as value delivered? This
-   is the same judgement Check 1 of Phase 3 asked for, on the artifact that was
+   is the same judgment Check 1 of Phase 3 asked for, on the artifact that was
    supposed to answer it.
 2. **Resolve a real goal as "changed course" and read it back.** Does the reason line
-   make it read as judgement, or as failure? If it reads as failure, the vocabulary or
+   make it read as judgment, or as failure? If it reads as failure, the vocabulary or
    the layout is wrong and it is a bug in this module.
 3. **Export the quarterly PDF and take it into a real client conversation.** Whether it
    survives that hour is the only honest test of the module.
 4. **Record a measurement every week for a month on one real goal**, then read the
    chart. Three readings is the threshold on paper; whether it is the right one is a
-   judgement only the owner can make, on real data.
+   judgment only the owner can make, on real data.
 
 ### Report
 
 The usual three values. The AI narrative's quality will be reported as **the owner's
-judgement on N real goals**, with N — never as a pass.
+judgment on N real goals**, with N — never as a pass.
 
 ---
 
@@ -1463,7 +1463,7 @@ judgement on N real goals**, with N — never as a pass.
 5. Proposed contact type per participant, with **referral → queued onboarding** and **vendor → inline categories**.
 5b. **A participant arrives with their company** — candidates by domain then name, a create path through `CompanySerializer`, one create covering the meeting. *(Added 2026-09-22 from real use. FR-5.9e1, AC-5.10a.)*
 5c. **Call notes readable on the contact and the company**, with the source Doc linked. *(Added 2026-09-22 from real use. FR-5.8d, AC-5.8d.)*
-5a. **The practice is recognised, not asked about** — staff participants shown with no type, no approval, recorded on the meeting as attended-by, and never holding a proposal open. *(Added 2026-09-22 from real proposals: the FF was a participant in every meeting and eight proposals sat at `partially_actioned` on his own name. FR-5.9e, AC-5.9e.)*
+5a. **The practice is recognized, not asked about** — staff participants shown with no type, no approval, recorded on the meeting as attended-by, and never holding a proposal open. *(Added 2026-09-22 from real proposals: the FF was a participant in every meeting and eight proposals sat at `partially_actioned` on his own name. FR-5.9e, AC-5.9e.)*
 6. **Partial approval**; rejection persists; re-parse supersedes.
 7. `Meeting` record on every approved participant's timeline.
 8. CF `proposal-scope` with both limbs.
@@ -1536,7 +1536,7 @@ before V1**, not one to explain away.
 
 **Participants:** 122 approved outside the practice, **78 created as new
 contacts and 44 matched to existing ones**. 29 were rejected and 74 were left
-open by dismissals. The practice itself was recognised 97 times (FR-5.9e, never
+open by dismissals. The practice itself was recognized 97 times (FR-5.9e, never
 asked). *Created vs matched is inferred:* a contact counts as created when its
 source is "meeting notes" and it was made within 30 seconds of the approval.
 The item does not store which path was taken.
@@ -1657,7 +1657,7 @@ approve/reject rate reported": met.** 153 were reviewed, and the rates are above
 
 ### Report
 
-Fixture results and live results **reported separately and labelled**. A replay pass is not evidence that mail is being delivered or ingested.
+Fixture results and live results **reported separately and labeled**. A replay pass is not evidence that mail is being delivered or ingested.
 
 > **Built 2026-09-22.** Eight fixtures, `manage.py replay_inbound`, the
 > 15-minute poll over threads the app started, the unmatched queue with filing,
@@ -1690,8 +1690,8 @@ Fixture results and live results **reported separately and labelled**. A replay 
 > `theme.css` and barely in the screens:
 >
 > 1. **Body text was set in the brand blue.** Every sentence in the app was
->    `#0A3A65`. That reads as washed out, and it leaves the brand colour with
->    nothing to emphasise, because everything already is it. Text is a cool
+>    `#0A3A65`. That reads as washed out, and it leaves the brand color with
+>    nothing to emphasize, because everything already is it. Text is a cool
 >    near-black now; the blue is for headings, links and structure, and the
 >    orange marks one thing at a time.
 > 2. **There was no scale.** Type sizes and spacings were chosen per rule.
@@ -1732,7 +1732,7 @@ means no client ever sees the unstyled version.
    banners) replacing the ad hoc styles in `theme.css`, built on the Executives Now tokens
    already there so V1's per-tenant branding stays a token swap.
 2. Layout and hierarchy on each screen; empty, loading and error states; narrow widths.
-3. Accessibility: every control labelled, keyboard reachable, visible focus, contrast
+3. Accessibility: every control labeled, keyboard reachable, visible focus, contrast
    against the brand palette.
 4. **Known inputs:** the Notes capture panel (functional, not presentable — owner, Check 3);
    the "Linked to" choices, whose layout broke because a panel-wide `input { width: 100% }`
@@ -1747,7 +1747,7 @@ means no client ever sees the unstyled version.
    they are; this is layout and typography only.
 6. **Known input from Phase 3 (owner, 2026-09-15):** the **client-activity notification email** to the practice (FR-3.40) — the **subject** still needs proper wording. *(Its body moved to the branded layout — who, what and when — in the email presentation pass, 2026-09-15.)* What it reports and when (the 30-minute batching, never an update made while acting as) stays as it is.
 
-**Not in scope:** changes to behaviour, copy that carries a rule (the consent reminder, the
+**Not in scope:** changes to behavior, copy that carries a rule (the consent reminder, the
 PIN dialog's explanation, anything stating what is or isn't sent), or any review queue.
 Those change only with their own AC.
 
@@ -1809,7 +1809,7 @@ The cutover is a window, not a gradual migration. **No writes happen on the lapt
 6. Flip DNS and configuration (steps 2 and 4).
 7. **Start the Railway services** — web first, then `qcluster` (see step 6 verification, which must happen between them).
 
-- A **rehearsal restore into a scratch Railway database** happens days earlier, so the real window is short and already practised.
+- A **rehearsal restore into a scratch Railway database** happens days earlier, so the real window is short and already practiced.
 - **Flush the Django-Q2 queue tables before starting `qcluster`** (A2 consequence 2) — a restored database replays stale jobs otherwise, which after a migration could mean re-sending a week of digests.
 - Re-key: `FIELD_ENCRYPTION_KEY` moves as a Railway secret. **The Anthropic key and OAuth tokens do not survive without it** — verify decryption on Railway before decommissioning the laptop copy.
 
@@ -1861,7 +1861,7 @@ In `CLAUDE.md`'s order, not started until Beta has run on your real practice for
 0. *(Brought forward into Phase 7, 2026-09-29: see the note at the top of Phase 7.)* **A staging environment, before public launch.** `demo.getexecutivesnow.com` on Railway, its own database, a seeded demo tenant with fictional clients and no real data. It serves two purposes that both arrive with V1: **demonstrating the product to prospective fractionals** without exposing your practice's real client data, and **testing a release before it reaches production**. Once other people's practices depend on the app, shipping straight from `main` to production with no intermediate host stops being acceptable. Staging deploys from a `staging` branch; production continues to deploy from `main`.
 
 1. **The V1 Google verification track.** Beta runs on an **Internal** OAuth consent screen (assumption C1), which needs no verification and has no refresh-token expiry — but Internal means *only Workspace accounts can sign in*. The moment a second fractional's practice needs access, the app must move to **External**, and `gmail.send` plus `gmail.readonly` then require **Google verification with a CASA security assessment**. It is slow, expensive, and **the longest lead time in the entire V1 plan.** Start it before it is needed, not when it blocks launch.
-2. **Postgres row-level security** (B2), deferred from Beta as defence in depth once the schema stops moving.
+2. **Postgres row-level security** (B2), deferred from Beta as defense in depth once the schema stops moving.
 
 **On Module 4, for V1** *(owner, 2026-09-19, out of the dry run)*:
 

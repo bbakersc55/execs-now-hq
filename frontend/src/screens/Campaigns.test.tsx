@@ -48,10 +48,10 @@ describe("the campaign composer", () => {
     expect(await screen.findByLabelText("Include Left Early")).toBeDisabled();
     expect(screen.getByText("unsubscribed from marketing emails")).toBeInTheDocument();
     // Nobody is chosen until someone chooses.
-    expect(screen.getByRole("button", { name: /Enrol and queue/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Enroll and queue/ })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Select all 2" }));
     await user.click(screen.getByLabelText("Include Priya Shah"));
-    await user.click(screen.getByRole("button", { name: "Enrol and queue 1" }));
+    await user.click(screen.getByRole("button", { name: "Enroll and queue 1" }));
 
     await waitFor(() => expect(posted(fetchMock, "/queue/")).toEqual([{ ids: ["c1"] }]));
     expect(await screen.findByText(/1 queued in the sending queue/)).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe("the campaign composer", () => {
 
     await waitFor(() => expect(posted(fetchMock, "/preview/").at(-1)).toMatchObject(
       { subject: "News for {FirstName}" }), { timeout: 3000 });
-    expect(screen.getByRole("button", { name: /Enrol and queue/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Enroll and queue/ })).toBeDisabled();
   });
 
   it("sends a test to the composer", async () => {

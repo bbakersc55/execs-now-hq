@@ -3,7 +3,7 @@
 **Module 2: Notes · for the owner**
 
 The four manual checks from `04_build_plan.md` Phase 2, as click paths through the actual
-UI. Everything here needs your real calls, your real data, or your judgement — the
+UI. Everything here needs your real calls, your real data, or your judgment — the
 automated suite cannot tell you whether a summary is worth keeping.
 
 ---

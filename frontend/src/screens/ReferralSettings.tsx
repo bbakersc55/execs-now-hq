@@ -51,7 +51,7 @@ export function ReferralSettings() {
     onError: (e: Error) => setNote(e.message),
   });
 
-  // Enrolment is explicit (owner, 2026-09-28): a partner gets touches only
+  // Enrollment is explicit (owner, 2026-09-28): a partner gets touches only
   // once someone here has put them on the cadence.
   const enrol = useMutation({
     mutationFn: ({ ids, off }: { ids: string[]; off: boolean }) =>
@@ -177,11 +177,11 @@ export function ReferralSettings() {
           >
             <button className="primary" disabled={!picked.length || enrol.isPending}
               onClick={() => enrol.mutate({ ids: picked, off: false })}>
-              Enrol {picked.length || ""} selected
+              Enroll {picked.length || ""} selected
             </button>
             <button disabled={!picked.length || enrol.isPending}
               onClick={() => enrol.mutate({ ids: picked, off: true })}>
-              Unenrol selected
+              Unenroll selected
             </button>
             <button disabled={!picked.length || draftMany.isPending}
               onClick={() => draftMany.mutate()}>
@@ -193,7 +193,7 @@ export function ReferralSettings() {
           <p className="small muted">
             <strong>{partners.filter((p) => p.referral_enrolled).length} of {partners.length}
             {" "}enrolled.</strong> Touches are drafted only for enrolled partners — becoming a
-            partner, or being imported as one, does not enrol anyone.
+            partner, or being imported as one, does not enroll anyone.
           </p>
         )}
         {partners.length === 0 ? (
@@ -221,9 +221,9 @@ export function ReferralSettings() {
                       {p.referral_enrolled
                         ? <Pill kind="ok">enrolled</Pill> : <Pill>not enrolled</Pill>}
                       <button className="small" disabled={enrol.isPending}
-                        aria-label={`${p.referral_enrolled ? "Unenrol" : "Enrol"} ${p.first_name} ${p.last_name}`}
+                        aria-label={`${p.referral_enrolled ? "Unenroll" : "Enroll"} ${p.first_name} ${p.last_name}`}
                         onClick={() => enrol.mutate({ ids: [p.id], off: !!p.referral_enrolled })}>
-                        {p.referral_enrolled ? "Unenrol" : "Enrol"}
+                        {p.referral_enrolled ? "Unenroll" : "Enroll"}
                       </button>
                     </span>
                   </td>
@@ -238,7 +238,7 @@ export function ReferralSettings() {
                   </td>
                   <td className="right">
                     <button disabled={draftTouch.isPending || !p.referral_enrolled}
-                      title={p.referral_enrolled ? undefined : "Enrol them first"}
+                      title={p.referral_enrolled ? undefined : "Enroll them first"}
                       aria-label={`Draft touch for ${p.first_name} ${p.last_name}`}
                       onClick={() => draftTouch.mutate(p.id)}>
                       Draft touch now

@@ -573,7 +573,7 @@ class GoalResolutionSerializer(serializers.Serializer):
 
     REASON_REQUIRED = (
         "Say why in one line. The client reads it, and it is what makes a change of "
-        "course read as a judgement rather than as giving up.")
+        "course read as a judgment rather than as giving up.")
 
     resolution = serializers.ChoiceField(choices=GoalResolution.Resolution.choices)
     # The message is on the field, not in `validate_reason`: DRF trims

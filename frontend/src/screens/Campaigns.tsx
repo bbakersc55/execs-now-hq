@@ -13,7 +13,7 @@ import {
 
 /**
  * Campaigns (owner, 2026-09-28). Write one marketing email, choose who gets
- * it, and "Enrol and queue": one Outbox row per person, merged for them,
+ * it, and "Enroll and queue": one Outbox row per person, merged for them,
  * waiting for approval. Nothing on this screen sends — except a test to you.
  */
 export function Campaigns() {
@@ -83,7 +83,7 @@ export function CampaignDetail() {
   });
   const [draft, setDraft] = useState<Partial<Campaign>>({});
   const [note, setNote] = useState("");
-  // The recipients' choice lives here so "Enrol and queue" can be the page's
+  // The recipients' choice lives here so "Enroll and queue" can be the page's
   // one primary action, top right, as the brief puts it.
   const [chosen, setChosen] = useState<string[]>([]);
   const queue = useMutation({
@@ -135,7 +135,7 @@ export function CampaignDetail() {
             <button className="primary" disabled={!chosen.length || queue.isPending || dirty}
               title={dirty ? "Save the email first" : undefined}
               onClick={() => queue.mutate()}>
-              <UserPlus size={16} /> Enrol and queue {chosen.length || ""}
+              <UserPlus size={16} /> Enroll and queue {chosen.length || ""}
             </button>
           </span>
         } />
@@ -306,9 +306,9 @@ function Recipients({ campaign, onChosen }: {
             </optgroup>
           ))}
         </select>
-        <select aria-label="Filter by enrolment" value={filters.enrolled} className="filter-select"
+        <select aria-label="Filter by enrollment" value={filters.enrolled} className="filter-select"
           onChange={(e) => setFilter("enrolled", e.target.value)}>
-          <option value="">Any enrolment</option>
+          <option value="">Any enrollment</option>
           {Object.entries(ENROLMENT).map(([value, label]) =>
             <option key={value} value={value}>{label}</option>)}
         </select>

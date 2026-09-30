@@ -184,7 +184,7 @@ Two separate credentials, for two separate purposes. Keeping them apart is delib
 
 In the **`execs-now-hq`** GCP project, configure the OAuth consent screen with **User type: Internal**, then create an OAuth client (Web application):
 
-- Authorised origins: `http://localhost:5200`, `http://localhost:8100`
+- Authorized origins: `http://localhost:5200`, `http://localhost:8100`
 - Redirect URIs — **both are required**, they are two different consents (C2):
   - `http://localhost:8100/accounts/google/login/callback/` — signing in
   - `http://localhost:8100/accounts/gmail/callback` — connecting Gmail to send
@@ -737,7 +737,7 @@ Done. No address in this database can receive mail.
 | Digests never generate | `qcluster` not running | Terminal 2 |
 | Digests screen: "The scheduled tick has not run" banner | `qcluster` stopped, or every tick is failing (the banner quotes the error) | Terminal 2; restart `qcluster`. If it names a missing column, run `migrate` first |
 | A digest stays "pending" on screen after its window | The server has expired it; the screen had not refreshed | Fixed: the list now refreshes every 30 s and marks a passed window. If it persists, check the tick banner |
-| Behaviour doesn't match the code you just committed | `qcluster` is still running the code it started with | Restart `qcluster` after **every** backend commit (§6) |
+| Behavior doesn't match the code you just committed | `qcluster` is still running the code it started with | Restart `qcluster` after **every** backend commit (§6) |
 | An every-update digest hasn't appeared after a few minutes | Its **30-minute quiet window** has not closed (FR-3.22). It closes 30 minutes after the **last** change to anything that stakeholder follows, and every further change restarts it | **Digests → Coming up** shows the time it will generate; each change moves it. With `hold_all_digests` on it then appears in **Digests** for approval; nothing reaches Mailpit or Gmail until it is approved. *(Phase 3 retest, 2026-09-15: no defect — later changes had restarted the window.)* |
 | Nothing in Mailpit | Mailpit not running, or wrong port | `EMAIL_PORT=1025`, check terminal 4 |
 | A real client got dev mail | An address is in `DEV_REAL_SEND_ALLOWLIST` | Remove it. Exact addresses only; wildcards are rejected at startup |
@@ -750,7 +750,7 @@ Done. No address in this database can receive mail.
 | Every note job fails with a missing column | `qcluster` started before a migration | Restart `qcluster` (§6) |
 | Recording stuck on "Transcribing…" | `qcluster` not running, or no schedule | Terminal 2; then `manage.py ensure_schedules` |
 | Waiting for a digest to test with | Generation runs 24 h before the send window | **Digests → Generate a digest now** (localhost only): the same path, for a chosen person and period |
-| No digest generated at all | Nothing was owed — no updates, or all already sent | Correct behaviour (FR-3.31): a period with nothing in it produces no email |
+| No digest generated at all | Nothing was owed — no updates, or all already sent | Correct behavior (FR-3.31): a period with nothing in it produces no email |
 | Transcription fails: "Speech-to-Text could not start" | API disabled, key lacks `roles/speech.client`, or offline | §5b; the audio is kept — use **Retry transcription** |
 | Summary shows "Claude could not draft a summary" | No Anthropic key, a rejected key, or offline | Sidebar → AI usage → Anthropic API key; then **Draft another summary** |
 | Yellow "recording waiting to upload" banner | The upload never reached the server | It is held in this browser; **Retry upload now**, or download it |

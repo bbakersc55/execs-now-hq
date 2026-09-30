@@ -288,7 +288,7 @@ class ContactViewSet(TenantStaffViewSet):
                                           ended_at__isnull=True).exists():
             return Response({"detail": (
                 f"{contact.first_name} is not enrolled in referral touches. "
-                "Enrol them first.")}, status=400)
+                "Enroll them first.")}, status=400)
         message = referral.draft_touch_now(contact, actor=request.user)
         return Response(
             crm_serializers.OutboxMessageSerializer(

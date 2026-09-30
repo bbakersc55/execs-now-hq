@@ -65,10 +65,10 @@ export function EnrolledIn({ contactId, me, isPartner }: {
               </div>
               {mayChange && (
                 <button className="small" disabled={change.isPending}
-                  aria-label={`Unenrol from ${row.label}`}
+                  aria-label={`Unenroll from ${row.label}`}
                   onClick={() => change.mutate({ path: "unenroll", body:
                     row.kind === "digest" ? { stakeholder: row.id } : { program: row.kind } })}>
-                  Unenrol
+                  Unenroll
                 </button>
               )}
             </li>
@@ -85,7 +85,7 @@ export function EnrolledIn({ contactId, me, isPartner }: {
         <button onClick={() => change.mutate({ path: "enroll",
                                                 body: { program: "referral_touches" } })}
           disabled={change.isPending}>
-          Enrol in referral touches
+          Enroll in referral touches
         </button>
       )}
       {change.isError && <Banner kind="bad">{(change.error as Error).message}</Banner>}

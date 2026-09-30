@@ -232,7 +232,7 @@ def gmail_callback(request):
     code = request.GET.get("code", "")
     if not code:
         return HttpResponseRedirect(_spa_url(
-            where, gmail_error="Google returned no authorisation code. Nothing was stored."
+            where, gmail_error="Google returned no authorization code. Nothing was stored."
         ))
 
     try:

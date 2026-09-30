@@ -17,7 +17,7 @@ These apply to **every** table in this document and are not repeated per table.
 | Soft delete | `deleted_at timestamptz NULL` on Contact, Company, Note, Goal, Project, Task, Comment | D2 |
 | Actor columns | `created_by`, `updated_by` → `user`, nullable (system actions have no user) | — |
 | Money | none in Beta beyond free-text fee terms | D5 |
-| Enum style | Python choices for anything permission logic depends on; **tables** for anything V1 lets a tenant customise | D5 |
+| Enum style | Python choices for anything permission logic depends on; **tables** for anything V1 lets a tenant customize | D5 |
 
 **Tenant scoping is enforced by the fail-closed manager in B1, not by the schema.** `tenant_id` is on every row so the filter is *possible*; the manager is what makes it *unavoidable*. Two schema-level supports:
 
@@ -271,7 +271,7 @@ referral partner look like a stalled prospect.
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
 | `name` | text | `U(tenant_id, name)` — the FF's to change |
-| `kind` | text | `sales` · `referral` · `custom`. **Behaviour keys on this**, not on the name |
+| `kind` | text | `sales` · `referral` · `custom`. **Behavior keys on this**, not on the name |
 | `position` | smallint | order of the board selector |
 
 Seeded per tenant: **"Sales"** (`sales`) and **"Referral partners"** (`referral`).
@@ -728,7 +728,7 @@ The five shapes inside `value`:
 Two mechanisms, and they are not equal — worth being precise about which one carries the guarantee:
 
 - **`template_snapshot` + `question_key` with no FK is the protection.** A completed session renders entirely from its own snapshot: section order, prompts, `ask_when`, response schemas, `must_ask`, and the `is_financial` flag all come from the frozen jsonb. Deleting a section or rewording a question in the live template cannot cascade, cannot block, and cannot change a byte of what a past session displays — because nothing in the session points at the live rows at all.
-- **`strategy_question.deleted_at` + a never-reused `key` is defence in depth**, not the guarantee. It keeps keys stable so that *forward-looking* work — reporting across sessions, diffing a template against a session, seeding a new template from an old one — can still resolve a key to its current question. Without it, a deleted-and-recreated question could reuse a key and quietly change what a historical answer appears to be answering.
+- **`strategy_question.deleted_at` + a never-reused `key` is defense in depth**, not the guarantee. It keeps keys stable so that *forward-looking* work — reporting across sessions, diffing a template against a session, seeding a new template from an old one — can still resolve a key to its current question. Without it, a deleted-and-recreated question could reuse a key and quietly change what a historical answer appears to be answering.
 
 Put plainly: the snapshot is why AC-4.12 passes; the soft delete is why cross-session analysis in V1 will not silently lie.
 
@@ -815,7 +815,7 @@ What is deliberately *not* proposed matters as much as what is:
 
 > **Append-only, and the append-only-ness is structural** (ruling 7): there is no update or delete route, and `resolution` plus `reason` are written once. **A goal's current state is its latest row; a goal with no rows is current.** Resuming a paused goal appends a `paused`-reversing line of its own kind; un-achieving an achieved goal appends a new line with its own reason. Nothing is edited away, because *how the thinking changed* is the part a client conversation is actually about.
 >
-> **`reason` is `NOT NULL` with no default and no empty-string escape** — a `CHECK (length(btrim(reason)) > 0)` goes with it, because a NOT NULL column that accepts `''` enforces nothing. This is the one mechanism that makes **changed course** read as judgement rather than as giving up (FR-4B.29).
+> **`reason` is `NOT NULL` with no default and no empty-string escape** — a `CHECK (length(btrim(reason)) > 0)` goes with it, because a NOT NULL column that accepts `''` enforces nothing. This is the one mechanism that makes **changed course** read as judgment rather than as giving up (FR-4B.29).
 
 ### `goal_narrative`
 
@@ -988,7 +988,7 @@ Created on approval (FR-5.8a). **This is the "update their profile with the meet
 
 | Column | Type | Notes |
 |---|---|---|
-| `is_practice` | boolean, default false | This attendee **is the practice**. No contact type, never approved by anybody — recognised |
+| `is_practice` | boolean, default false | This attendee **is the practice**. No contact type, never approved by anybody — recognized |
 | `staff_user_id` | uuid null | Which member of staff. Null where the participant's contact row could not be resolved to one |
 
 The practice never decides which client company a meeting belongs to; only the

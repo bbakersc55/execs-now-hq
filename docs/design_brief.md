@@ -72,7 +72,7 @@ the owner before any of it was written:
 - **The live view's rail navigates and nothing else.** Starting a section is its
   own control, so reading ahead mid-call cannot move the pacing under you.
 - **Inter and Lucide are self-hosted.** Inter is vendored as one variable woff2
-  with its OFL licence; the app is demonstrated on other people's wifi, and a
+  with its OFL license; the app is demonstrated on other people's wifi, and a
   `<link>` to Google falls back to system fonts silently.
 
 **Three things the build decided**, stated here rather than left in the code:
@@ -106,7 +106,7 @@ was not a fault.
    practice's unfinished admin. The same fix went into the PDF, which had the
    same double-print.
 4. **Timeline labels overprinted** where marks bunched. They stagger above and
-   below the line now, and a label that would still land on its neighbour
+   below the line now, and a label that would still land on its neighbor
    leaves its **number** behind instead — the number the list under "Every
    mark, in words" now carries, so nothing on the axis is anonymous and
    nothing is lost.
@@ -134,9 +134,9 @@ cost. There is now a test that says exactly this.
 
   One rule re-checked on a new surface: matrix 9.5 says seat usage is not a VA's to see, and the peek sheet is a new place that number could appear. It does not, and a test says so.
 - ~~**Notes**: panel layout~~ — **built 2026-09-22.** List left, note right, every note still its own URL so a link into one opens it *beside* the list rather than instead of it. The open note is marked with the same orange rail the sidebar uses for the current page — one language for "this is where you are". Search is instant here too. Stacks and notebooks remain on the roadmap, as a data-model change.
-- ~~Settings screens, Outbox, Digests, Activity~~ — **built 2026-09-22.** Nine screens moved from an ad-hoc `<h2>` + `.sub` pair to `PageHead`, which is the only structural change: they now carry the same header, type scale and primary-action slot as everything else. No behaviour, copy or queue was touched.
+- ~~Settings screens, Outbox, Digests, Activity~~ — **built 2026-09-22.** Nine screens moved from an ad-hoc `<h2>` + `.sub` pair to `PageHead`, which is the only structural change: they now carry the same header, type scale and primary-action slot as everything else. No behavior, copy or queue was touched.
 - ~~Sidebar auto-collapse on narrow windows~~ — **built 2026-09-22.** A narrow window collapses it and **widening gives it back**, because the automatic state is held separately from the remembered choice and only ever adds to it. Somebody who collapsed it deliberately keeps it collapsed at any width.
-- **Dark mode: not built, and the brief contradicts itself on it.** The direction paragraph says "Fask and Evernote for cleanliness, not for their dark theme; **dark mode is shelved**"; this list says "dark mode as an option". I have taken the direction paragraph as the decision and built nothing. *(Owner: if you do want it, it is a real piece of work rather than a token swap — every status and priority colour needs a second value that holds its meaning on a dark ground, and the PDF and email templates stay light either way.)*
+- **Dark mode: not built, and the brief contradicts itself on it.** The direction paragraph says "Fask and Evernote for cleanliness, not for their dark theme; **dark mode is shelved**"; this list says "dark mode as an option". I have taken the direction paragraph as the decision and built nothing. *(Owner: if you do want it, it is a real piece of work rather than a token swap — every status and priority color needs a second value that holds its meaning on a dark ground, and the PDF and email templates stay light either way.)*
 
 ## Recorded for the roadmap (not UI)
 
