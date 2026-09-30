@@ -174,3 +174,34 @@ def test_on_the_laptop_an_app_route_goes_to_the_dev_server(client, settings):
     assert response.status_code == 302
     assert response["Location"] == "http://localhost:5200/strategy/abc?tab=pdf"
     assert client.get("/healthz").status_code == 200, "the server's own routes stay"
+
+
+DB_PROBE = ("import django, json; django.setup(); from django.conf import settings as s; "
+            "d = s.DATABASES['default']; "
+            "print(json.dumps({k: d.get(k) for k in ('ENGINE','NAME','HOST','PORT','USER')}))")
+
+
+def _db(**env_overrides):
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(("PG", "POSTGRES", "DATABASE_"))}
+    env.update({"DJANGO_SETTINGS_MODULE": "config.settings", **PRODUCTION, **env_overrides})
+    done = subprocess.run([sys.executable, "-c", DB_PROBE], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr[-1500:]
+    return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+def test_railways_database_url_alone_sets_the_connection():
+    """2026-09-29: production crashed on localhost:5432. It was a deploy from
+    before DATABASE_URL was set, not settings ignoring it, and this pins that
+    DATABASE_URL on its own is enough: no PGHOST/PGPORT needed or read."""
+    got = _db(DATABASE_URL="postgresql://railway_user:secret@postgres.railway.internal:5432/railway",
+              PGHOST="localhost", PGPORT="5432")
+    assert got == {"ENGINE": "django.db.backends.postgresql", "NAME": "railway",
+                   "HOST": "postgres.railway.internal", "PORT": 5432,
+                   "USER": "railway_user"}
+
+
+def test_the_laptops_socket_form_still_works():
+    got = _db(PUBLIC_BASE_URL="http://localhost:8100", DATABASE_URL="postgres:///execsnowhq_dev")
+    assert (got["NAME"], got["HOST"]) == ("execsnowhq_dev", "")
