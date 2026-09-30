@@ -5,7 +5,7 @@ Railway → service → Settings → **Config-as-code path**:
 
 | Service | File | Runs |
 |---|---|---|
-| `web` | `railway/web.json` | **refuses to start while any migration is unapplied** (`migrate --check`), runs the system checks, then gunicorn. Health check `/healthz`. |
+| `web` | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database, and otherwise **refuses to start while any migration is unapplied**. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
 | `qcluster` | `railway/qcluster.json` | the Django-Q2 worker, with the same unapplied-migration refusal. **No public domain.** Starts at 0 replicas and is scaled to 1 only at runbook C9. |
 | `backup` | `railway/backup.json` | `scripts/backup_db_railway.sh`, nightly at 08:00 UTC (02:00 Mountain). |
 
