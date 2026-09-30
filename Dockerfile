@@ -19,9 +19,9 @@ RUN npm run build
 # ------------------------------------------------------------------- the app
 FROM python:3.12-slim-bookworm
 
-# The Railway Postgres major version. The laptop runs 16; the Railway
-# database is created at 16 to match (runbook B1). Change both together.
-ARG PG_MAJOR=16
+# pg_dump must be at least the server's major version. Production's Railway
+# Postgres is 18 and the demo's 16 (2026-09-29); pg_dump 18 dumps both.
+ARG PG_MAJOR=18
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -62,5 +62,7 @@ RUN PUBLIC_BASE_URL=http://localhost:8100 DJANGO_SECRET_KEY=collectstatic-only \
 RUN useradd --create-home --uid 10001 app && chown -R app /app
 USER app
 
-# Railway sets PORT. Each service overrides this command (railway/*.json).
-CMD ["sh", "-c", "gunicorn config.wsgi --bind 0.0.0.0:${PORT:-8100} --workers 3 --timeout 120 --access-logfile -"]
+# 8080: the port both custom domains are pointed at (owner, 2026-09-29).
+# Each service overrides this command (railway/*.json).
+EXPOSE 8080
+CMD ["gunicorn", "config.wsgi", "--bind", "0.0.0.0:8080", "--workers", "3", "--timeout", "120", "--access-logfile", "-"]
