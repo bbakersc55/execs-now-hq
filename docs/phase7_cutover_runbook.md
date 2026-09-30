@@ -121,6 +121,25 @@ laptop to a separate scrubbed database).
 
 **Next: C8, the owner's re-consent and D-checks 1–5**, then C9 (the worker).
 
+### C8–C9, 2026-09-30 ~03:10–03:35 UTC
+
+- **C8 (owner):** Gmail reconnected, Drive watch confirmed (after the
+  Disconnect was undone), a test message to `bbakersc1@gmail.com` delivered
+  from `info@getexecutivesnow.com` at 03:18:45, and the reply reached the
+  owner's inbox. **The magic-link check could not be done:** production's
+  signed-out screen had no client sign-in form. Fixed on `dev` (35bfe23); it
+  reaches production at the next release. **Reply collection is not granted:**
+  the reconnect did not include `gmail.readonly`, so the inbox poll reports
+  "not connected". Reconnect Gmail with reply collection ticked.
+- **C9:** `hold_all_digests` confirmed ON; `ensure_schedules` realigned the 9
+  schedules. Service `qcluster` created in production from `main`
+  (`scripts/start_qcluster.sh`, restart on failure, no domain). Its variables
+  are Railway references to the web service's, so nothing was pasted twice (the
+  encryption key's fingerprint matches). **First cycle, 03:31:48: every job
+  succeeded** (tick, Drive poll, import step, inbox poll, notes), 0 failures, 0
+  AI calls, 0 digests generated, nothing sent (the one message in the window is
+  the owner's test, 13 minutes before the worker started).
+
 ### Variables
 
 `*` = set by Claude. A generated secret was piped straight into Railway and
