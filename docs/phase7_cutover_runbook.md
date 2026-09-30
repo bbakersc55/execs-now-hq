@@ -94,6 +94,33 @@ restore, plus the checks.
 
 **Next is the freeze (C6), which starts with the owner.**
 
+### Cutover, 2026-09-30 ~02:58–03:01 UTC (C6–C7)
+
+- **C6:** the owner stopped the laptop worker, dev server and Vite. Checked: no
+  process, 0 queued jobs, no note transcribing or drafting. One file, the
+  15 May note, had been left in `parsing` by the old worker at 15:43 UTC. The
+  new poll never retries that state, so it was marked failed and needing a
+  person (`auto_parse_failures=2`, 54 failures before the cap). It shows under
+  "Couldn't be read" with Read again.
+- **C7.1–7.2:** final dump 9.74 MB. Production's database was checked to hold
+  only the rows the schema build makes (permissions, content types, migration
+  records, the site row), then its schema reset and the dump restored: 40 s,
+  no errors, through a temporary TCP proxy deleted straight afterwards.
+- **C7.3:** the job queue was already empty; schedules kept (9). `ensure_schedules`
+  runs at C9 with the worker.
+- **C7.4 gate: 96 tables, 6,867 rows, 0 problems**, laptop vs production.
+- **C7.5: `hold_all_digests` is ON.** Decryption on production, with its own
+  key: **2 of 2** (Anthropic key, Gmail token). Daily AI cap $5.
+- **C7.6:** web restarted on the restored data: "Migrations are current", 200.
+- Freeze to live: **3 minutes**. The dump and credentials were shredded.
+
+**The laptop's `execsnowhq_dev` is now the two-week fallback. Do not start the
+laptop worker or dev server against it**: it still holds working Gmail and Drive
+tokens, and a laptop worker would poll alongside production (B7 moves the
+laptop to a separate scrubbed database).
+
+**Next: C8, the owner's re-consent and D-checks 1–5**, then C9 (the worker).
+
 ### Variables
 
 `*` = set by Claude. A generated secret was piped straight into Railway and
