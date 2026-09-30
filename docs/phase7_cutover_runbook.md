@@ -64,6 +64,36 @@ demo bucket and service account).** Neither exists in GCP.
 **The freeze will be short:** the rehearsal suggests about a minute of dump and
 restore, plus the checks.
 
+### Release 1, 2026-09-30 02:49 UTC
+
+- **"release"**: the full suite green on `dev` at `b72a671` (1,886 backend,
+  478 frontend), `main` fast-forwarded to it. **Production deployed from the
+  Dockerfile, built its schema on the empty database, and `/healthz` returns
+  200.** The earlier localhost:5432 crash was the pre-Railway `main`, deployed
+  before `DATABASE_URL` existed; settings were never at fault (now pinned by a
+  test).
+- **The owner's secrets had been staged, not deployed**, in both projects
+  (Railway holds dashboard edits until "Deploy"). Committed through the API.
+  Checked by fingerprint, not value: production's `FIELD_ENCRYPTION_KEY` and
+  `GOOGLE_OAUTH_CLIENT_SECRET` **match the laptop exactly**; its service-account
+  key is `execs-now-hq-app`, the demo's is `demo-app`. The demo's
+  `GOOGLE_OAUTH_CLIENT_SECRET` had not been entered; set from the laptop's
+  `.env` (the same OAuth client).
+- **Demo seeded** (`seed_demo`, inside the container): Summit Operations
+  Partners, 3 clients, 3 prospects, 3 digests waiting, 1 strategy session with
+  its PDF in `execs-now-hq-demo-media`, 2 meeting proposals. Nothing written to
+  the production bucket.
+- **Backup cron (B4/C10) running, ahead of plan**: service `backup` in the
+  production project, `scripts/backup_db_railway.sh` at `0 8 * * *`, as
+  `backup-writer`. One run forced (schedule briefly every 5 minutes, then put
+  back): `pg_dump` 18.6, 38.6 KB dump uploaded as
+  `execsnowhq_prod_20260930_025522.sql.gz`, media copy and prune OK. The key
+  file on the laptop was shredded after it was stored.
+- **Not yet created: `qcluster`** in production. It is created at C9, after
+  the cutover checks, not before.
+
+**Next is the freeze (C6), which starts with the owner.**
+
 ### Variables
 
 `*` = set by Claude. A generated secret was piped straight into Railway and
