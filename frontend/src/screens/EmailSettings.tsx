@@ -19,6 +19,8 @@ const SCOPE_LABELS: Record<string, string> = {
   email: "Identify the account",
 };
 
+const READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+
 function scopeLabel(scope: string) {
   return SCOPE_LABELS[scope] ?? scope.replace("https://www.googleapis.com/auth/", "");
 }
@@ -29,6 +31,9 @@ export function EmailSettings({ me }: { me: Me }) {
   const [params, setParams] = useSearchParams();
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
+  // FR-6.3g — reply collection is opt-in per connect. `null` until the person
+  // touches the box, so it follows what the connection already holds.
+  const [collectReplies, setCollectReplies] = useState<boolean | null>(null);
 
   // The OAuth callback lands here with its outcome in the query string, since
   // it is a browser redirect from Google and cannot return JSON.
@@ -51,7 +56,8 @@ export function EmailSettings({ me }: { me: Me }) {
   });
 
   const start = useMutation({
-    mutationFn: () => api.post<{ authorization_url: string }>("/api/gmail-connection/start/"),
+    mutationFn: (inbound: boolean) =>
+      api.post<{ authorization_url: string }>("/api/gmail-connection/start/", { inbound }),
     onSuccess: (data) => { window.location.href = data.authorization_url; },
     onError: (e: Error) => setProblem(e.message),
   });
@@ -90,6 +96,8 @@ export function EmailSettings({ me }: { me: Me }) {
 
   const s = status.data!;
   const busy = start.isPending || verify.isPending || disconnect.isPending;
+  const readsMail = s.scopes.includes(READ_SCOPE);
+  const inbound = collectReplies ?? readsMail;
 
   return (
     <>
@@ -114,13 +122,19 @@ export function EmailSettings({ me }: { me: Me }) {
         title="Your Gmail connection"
         actions={
           s.connected ? (
-            <button className="danger" disabled={busy}
-              onClick={() => disconnect.mutate()}>
-              Disconnect
-            </button>
+            <>
+              <button className="primary" disabled={busy || !s.oauth_configured}
+                onClick={() => start.mutate(inbound)}>
+                Reconnect
+              </button>
+              <button className="danger" disabled={busy}
+                onClick={() => disconnect.mutate()}>
+                Disconnect
+              </button>
+            </>
           ) : (
             <button className="primary" disabled={busy || !s.oauth_configured}
-              onClick={() => start.mutate()}>
+              onClick={() => start.mutate(inbound)}>
               Connect Gmail
             </button>
           )
@@ -147,13 +161,27 @@ export function EmailSettings({ me }: { me: Me }) {
           <>
             <p><Pill kind="warn">not connected</Pill> No Gmail account is connected for you.</p>
             <p className="muted small">
-              Connect asks Google for two permissions and nothing else: send mail as you
+              Connect asks Google for two permissions: send mail as you
               (<code>gmail.send</code>), and read your send-as list
-              (<code>gmail.settings.basic</code>). It does not ask to read your mailbox —
-              that is Tier 2 and separate.
+              (<code>gmail.settings.basic</code>). It asks to read your mailbox only if
+              you tick the box below.
             </p>
           </>
         )}
+        <label className="choice">
+          <input type="checkbox" checked={inbound} disabled={busy}
+            onChange={(e) => setCollectReplies(e.target.checked)} />
+          <span>Also collect replies</span>
+        </label>
+        <p className="muted small">
+          Ticked, Google is also asked for <code>gmail.readonly</code>: a read over
+          your <strong>entire mailbox</strong>. Google has no narrower grant. The app
+          reads only the threads it started, but that limit is in the app&apos;s code,
+          not enforced by Google. Unticked, Replies cannot collect anything.
+          {s.connected && (readsMail
+            ? " Your connection holds it now."
+            : " Your connection does not hold it; tick the box and Reconnect.")}
+        </p>
       </Card>
 
       <Card

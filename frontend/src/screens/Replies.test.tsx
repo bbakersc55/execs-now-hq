@@ -95,7 +95,8 @@ describe("replies that came back", () => {
       detail: "The connected Google account has not granted permission to read mail." } });
 
     expect(await screen.findByText(/has not granted permission to read mail/))
-      .toBeInTheDocument();
+      .toBeInTheDocument();    expect(screen.getByRole("link", { name: "Open Email settings" }))
+      .toHaveAttribute("href", "/settings/email");
   });
 
   it("gives a VA the queue and not the mailbox", async () => {

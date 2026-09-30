@@ -23,9 +23,10 @@ from apps.crm.services import inbound, transport
 #: one tick does rather than a limit on how much gets read.
 THREADS_PER_RUN = 40
 
-DRIVE_SCOPE_MISSING = (
+READ_SCOPE_MISSING = (
     "The connected Google account has not granted permission to read mail, so "
-    "replies cannot be collected. Reconnect Gmail and leave every box ticked."
+    "replies cannot be collected. Reconnect Gmail from Settings → Email with "
+    "“Also collect replies” ticked."
 )
 
 
@@ -46,7 +47,7 @@ def reading_connection(tenant):
         if set(TIER2_SCOPES) <= set(connection.scopes or []):
             return connection
     if connections:
-        raise NotConnected(DRIVE_SCOPE_MISSING)
+        raise NotConnected(READ_SCOPE_MISSING)
     raise NotConnected("No Google account is connected for this practice.")
 
 

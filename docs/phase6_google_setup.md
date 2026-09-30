@@ -17,8 +17,8 @@ nothing else to turn on.
 ## 2. Re-consent, from Email settings
 
 The app asks for this scope **only when you tick the box**, so an existing
-connection does not have it. On **Settings → Email**, reconnect with *"also
-collect replies"* ticked. The Gmail scopes are requested again at the same
+connection does not have it. On **Settings → Email settings**, in the *Your
+Gmail connection* card, tick **Also collect replies** and press **Reconnect**. The Gmail scopes are requested again at the same
 time, so **sending is re-granted, not replaced** — you will not lose the
 ability to send halfway through.
 

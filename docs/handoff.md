@@ -17,7 +17,7 @@ Execs NOW HQ is a multi-tenant SaaS for fractional executives, built by the owne
 | 4 Strategy session (template, pre-call form + email variant, live view with Claude tray, 2-page sales PDF, conversion, prep panel) | Signed off except Check 1 (first real prospect session) |
 | 4B Client value report (goal-anchored, measurables, milestones, resolutions, narrative, PDF) | Built, 4 manual checks pending (needs real goals with measurements) |
 | 5 Meeting ingestion (Drive folder → Claude → review queue) | Built, folder connected, backfill running. First real meeting reviewed (dry run, 2026-09-26): **18 approved / 9 rejected** of 27 proposals (67% approved) |
-| 6 Inbound email (Gmail polling of app-started threads, unmatched queue) | Built; gmail.readonly granted; first real reply pending |
+| 6 Inbound email (Gmail polling of app-started threads, unmatched queue) | Built; **gmail.readonly never granted** (no screen offered it until 2026-09-30; see runbook C8); first real reply pending |
 | Design pass Tier 1 (shell, Work, Tasks board + editor, live view, portal, value report) | Done, round 1 fixes in |
 | Design pass Tier 2 (dashboard, contacts/companies, notes panel, settings) | CC building now, after a task-editor gap fix |
 | Branded HTML email layout | Done, approved on real Gmail |

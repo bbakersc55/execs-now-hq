@@ -130,7 +130,10 @@ laptop to a separate scrubbed database).
   signed-out screen had no client sign-in form. Fixed on `dev` (35bfe23); it
   reaches production at the next release. **Reply collection is not granted:**
   the reconnect did not include `gmail.readonly`, so the inbox poll reports
-  "not connected". Reconnect Gmail with reply collection ticked.
+  "not connected". Cause: the Email settings screen had no reply-collection
+  tick — the API accepted the flag but nothing sent it, so neither the laptop
+  nor production ever held the scope. Tick added on `dev`; after the next
+  release, redo A6 step 2.
 - **C9:** `hold_all_digests` confirmed ON; `ensure_schedules` realigned the 9
   schedules. Service `qcluster` created in production from `main`
   (`scripts/start_qcluster.sh`, restart on failure, no domain). Its variables
@@ -362,9 +365,13 @@ the app will also be reconnected on the new origin, so every future consent goes
 through `app.getexecutivesnow.com`:
 
 1. Sign in at `https://app.getexecutivesnow.com` with Google.
-2. **Settings → Gmail → Reconnect.** Tick reply collection
-   (`gmail.readonly`), as on the laptop. Confirm the send-as alias
-   `info@getexecutivesnow.com` shows as verified.
+2. **Settings → Email settings → Your Gmail connection.** Tick **Also collect
+   replies** (`gmail.readonly`), then **Reconnect**. Confirm the send-as alias
+   `info@getexecutivesnow.com` shows as verified, and that "Granted" lists
+   "Read your mailbox (Tier 2)". *(Corrected 2026-09-30: this step said "as on
+   the laptop", but no screen ever sent the reply-collection flag — the laptop
+   connection never held `gmail.readonly` either. The tick and the Reconnect
+   button were added on `dev` the same day.)*
 3. **Meeting queue: check, do not press anything.** Reconnecting Gmail with
    Drive ticked in step 2 *is* the Drive reconnect; there is no separate
    button. Confirm both watched folders read back with their names and file

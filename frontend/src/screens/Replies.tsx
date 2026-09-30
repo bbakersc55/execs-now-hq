@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Inbox, Mail, Paperclip, RefreshCw } from "lucide-react";
 
 import { PageHead } from "../components/shell";
@@ -58,7 +59,12 @@ export function Replies({ me }: { me: Me }) {
       {note && <Banner kind="info">{note}</Banner>}
       {problem && <Banner kind="bad">{problem}</Banner>}
       {health.data && !health.data.can_read && (
-        <Banner kind="warn">{health.data.detail}</Banner>
+        <Banner kind="warn">
+          {health.data.detail}
+          {(me.role === "FF" || me.role === "CF") && (
+            <> <Link to="/settings/email">Open Email settings</Link></>
+          )}
+        </Banner>
       )}
       {health.data?.can_read && (
         <p className="small muted">

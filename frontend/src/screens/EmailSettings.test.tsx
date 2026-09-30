@@ -107,3 +107,53 @@ describe("EmailSettings — dev delivery section", () => {
     expect(await screen.findByText(/not an exact address/)).toBeInTheDocument();
   });
 });
+
+describe("EmailSettings — collecting replies (FR-6.3g)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+  const READ = "https://www.googleapis.com/auth/gmail.readonly";
+  const consent = { "POST /api/gmail-connection/start/": () => ({
+    status: 200, body: { authorization_url: "#google-consent" } }) };
+
+  it("offers the tick unticked when the connection cannot read mail", async () => {
+    setup();
+
+    const box = await screen.findByRole("checkbox", { name: "Also collect replies" });
+    expect(box).not.toBeChecked();
+    expect(screen.getByText(/does not hold it; tick the box and Reconnect/))
+      .toBeInTheDocument();
+  });
+
+  it("starts the tick checked when the connection already reads mail", async () => {
+    setup({ scopes: ["https://www.googleapis.com/auth/gmail.send", READ] });
+
+    expect(await screen.findByRole("checkbox", { name: "Also collect replies" }))
+      .toBeChecked();
+  });
+
+  it("asks for the read scope on Reconnect only when ticked", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setup({}, consent);
+
+    await user.click(await screen.findByRole("checkbox", { name: "Also collect replies" }));
+    await user.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    await waitFor(() => {
+      const post = fetchMock.calls.find((c) => c.method === "POST"
+        && c.url.includes("/api/gmail-connection/start/"));
+      expect(post?.body).toEqual({ inbound: true });
+    });
+  });
+
+  it("connects without the read scope by default", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setup({ connected: false, scopes: [] }, consent);
+
+    await user.click(await screen.findByRole("button", { name: "Connect Gmail" }));
+
+    await waitFor(() => {
+      const post = fetchMock.calls.find((c) => c.method === "POST"
+        && c.url.includes("/api/gmail-connection/start/"));
+      expect(post?.body).toEqual({ inbound: false });
+    });
+  });
+});
