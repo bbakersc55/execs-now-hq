@@ -13,6 +13,7 @@ import { ActAsColleague, ActingBanner } from "./components/ActAs";
 import { Avatar, useNarrowWindow, useRemembered } from "./components/shell";
 import { ToastHost } from "./components/ui";
 import { DemoBanner } from "./components/DemoBanner";
+import { SignedOut } from "./components/SignedOut";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
@@ -199,13 +200,7 @@ export function App() {
   if (isLoading) return <main style={{ padding: "2rem" }}>Loading…</main>;
 
   if (isError || !me?.authenticated) {
-    return (
-      <main style={{ padding: "3rem", textAlign: "center" }}>
-        <h2>{brand?.display_name || "Sign in"}</h2>
-        <p className="muted">You are not signed in.</p>
-        <a className="btn" href="/accounts/google/login/">Sign in with Google</a>
-      </main>
-    );
+    return <SignedOut practice={brand?.display_name || ""} />;
   }
 
   const visible = NAV.filter((n) => !n.roles || (me.role && n.roles.includes(me.role)));

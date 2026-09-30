@@ -7,7 +7,7 @@ from django.contrib.auth import login
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 
 from config.branding import PALETTE, PRODUCT_NAME
@@ -57,6 +57,10 @@ def tenant_branding(tenant):
     }
 
 
+# The signed-out screen's first call, so it also sets the CSRF cookie the
+# client sign-in form needs (2026-09-30: the form did not exist, and a signed-
+# out visitor had no cookie to post it with).
+@ensure_csrf_cookie
 def branding(request):
     """FR-0.6 / G5: one payload, so white-labelling is a data change.
 

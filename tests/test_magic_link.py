@@ -149,3 +149,21 @@ def test_the_landing_follows_the_configured_root_not_a_fixed_path(client, tenant
                                   redirect_to="https://app.example.invalid/tasks")
     assert client.post(f"/auth/magic/{raw}", HTTP_ACCEPT="text/html")["Location"] == (
         "https://app.example.invalid/tasks")
+
+
+@pytest.mark.django_db
+def test_the_signed_out_screen_gets_what_the_client_form_needs(seeded_tenant):
+    """2026-09-30: production had no client sign-in form, and a signed-out
+    visitor had no CSRF cookie to post one with. The branding call the
+    signed-out screen makes first now sets it, and the request is accepted
+    with it and refused without it."""
+    from django.test import Client
+
+    browser = Client(enforce_csrf_checks=True)
+    assert browser.post("/auth/magic/request", {"email": "a@example.invalid"}).status_code == 403
+    browser.get("/api/branding")
+    token = browser.cookies["csrftoken"].value
+    ok = browser.post("/auth/magic/request", {"email": "a@example.invalid"},
+                      HTTP_X_CSRFTOKEN=token)
+    assert ok.status_code == 200
+    assert ok.json()["detail"].startswith("If that address has access")
