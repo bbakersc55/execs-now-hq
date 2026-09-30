@@ -38,6 +38,74 @@ everything else to run.
 
 ---
 
+## State at 2026-09-29, evening
+
+**Done by the owner:** A0 (the ruleset on `main`); A1 as **two Railway
+projects**, not two environments in one: `execs-now-hq-live-app-no-testing`
+(branch `main`) and `execs-now-hq-demo` (branch `dev`), each with Postgres and a
+web service; A2 (custom domains `app.` and `demo.getexecutivesnow.com` on port
+8080, CNAME and TXT at GoDaddy); A3 (the "Execs NOW HQ" OAuth client carries
+both hosts). **Not yet done: A4a (the backup service account) and A4b (the
+demo bucket and service account).** Neither exists in GCP.
+
+**Done by Claude, and checked:**
+
+| Step | Result |
+|---|---|
+| Part E deletions | **Applied 18:08 MDT** after a fresh backup (`execsnowhq_dev_20260929_180818`) and a dry run: E1 8 rows, E2 8, E4 5, E5 24 (Steven Paul and his session, confirmed by the owner), E6 22 = 67, each group audited. Hj hj kept. |
+| gunicorn | Pinned to 8080 (`scripts/start_web.sh`, `Dockerfile`). |
+| Postgres versions | Production came up at **18**. The demo's image had been changed to 16 over an 18 data directory, so **it could not start**; set back to 18. Both are 18 now, and the image's `pg_dump` is 18. |
+| Railway settings | Config-as-code is **deprecated** on Railway, so each web service's settings (Dockerfile, start command `scripts/start_web.sh`, health check `/healthz`, restart on failure) were applied through Railway's API. `railway/*.json` are the written record. |
+| First deploy on an empty database | `migrate_if_empty` builds the schema only on a database with no migrations and no tables. Anywhere else a deploy refuses to start with a migration unapplied. |
+| **Demo** | **Live at `https://demo.getexecutivesnow.com`**, from `dev` (the service had been on `main`; switched). Schema built, `/healthz` 200, the app and its assets served, sign-in route up. Variables set; see "Variables" below. **Not seeded**: the seed stores a PDF, and the demo bucket does not exist yet (A4b). |
+| **Production web** | Variables and settings set. **Still failing to deploy, as expected**: `main` has no Dockerfile until the owner says "release". |
+| **Rehearsal (C4)** | **Passed.** Laptop dump (9.7 MB) restored into a throwaway Postgres 18 in 32 s, no errors. Row counts, the same dump loaded locally vs the throwaway: 96 tables, 6,867 rows, 0 problems (and the same against the live laptop). **Decryption: 2 of 2 secrets** (Anthropic key, Gmail token), checked from the laptop against the throwaway with the laptop's own key, so **the production key never went to Railway**. Dump to restore to checks took 61 s. The throwaway database was then deleted and the dump shredded. |
+
+**The freeze will be short:** the rehearsal suggests about a minute of dump and
+restore, plus the checks.
+
+### Variables
+
+`*` = set by Claude. A generated secret was piped straight into Railway and
+never displayed. **You paste only the four marked ☐.**
+
+**Production, web service `execs-now-hq`:**
+
+| Variable | Value |
+|---|---|
+| `APP_ENVIRONMENT`* | `production` |
+| `PUBLIC_BASE_URL`* | `https://app.getexecutivesnow.com` |
+| `APP_ROOT_URL`* | `/` |
+| `DJANGO_DEBUG`* | `False` |
+| `DJANGO_ALLOWED_HOSTS`* | `app.getexecutivesnow.com,healthcheck.railway.app` |
+| `DATABASE_URL`* | `${{Postgres.DATABASE_URL}}` |
+| `DJANGO_SECRET_KEY`* | generated |
+| `GOOGLE_OAUTH_CLIENT_ID`* | from the laptop's `.env` |
+| `GOOGLE_CLOUD_PROJECT`* · `GOOGLE_STT_LANGUAGE`* | `execs-now-hq` · `en-US` |
+| `STORAGE_BACKEND`* · `GCS_BUCKET_MEDIA`* | `gcs` · `execs-now-hq-media` |
+| `ANTHROPIC_MODEL`* · `APP_MAIL_TRANSPORT`* · `DEFAULT_FROM_ADDRESS`* · `Q_CLUSTER_WORKERS`* | `claude-opus-5` · `gmail` · `info@getexecutivesnow.com` · `4` |
+| ☐ `FIELD_ENCRYPTION_KEY` | **exactly** the laptop `.env` value |
+| ☐ `GOOGLE_OAUTH_CLIENT_SECRET` | the laptop `.env` value |
+| ☐ `GOOGLE_SA_APP_JSON` | the **contents** of `~/.config/execs-now-hq/sa-app.json` |
+
+The `qcluster` and `backup` services are created later (C9, C10). qcluster
+takes the web's values by Railway reference (`${{execs-now-hq.FIELD_ENCRYPTION_KEY}}`),
+so nothing is pasted twice. backup needs `GOOGLE_SA_BACKUP_JSON` (A4a) then.
+
+**Demo, web service `execs-now-hq`:** everything set (`APP_ENVIRONMENT=demo`,
+`PUBLIC_BASE_URL=https://demo.getexecutivesnow.com`,
+`DJANGO_ALLOWED_HOSTS=demo.getexecutivesnow.com,healthcheck.railway.app`,
+`DATABASE_URL=${{Postgres.DATABASE_URL}}?connect_timeout=10`,
+`GCS_BUCKET_MEDIA=execs-now-hq-demo-media`, and a generated `DJANGO_SECRET_KEY`
+and `FIELD_ENCRYPTION_KEY` of its own) except:
+
+| Variable | Value |
+|---|---|
+| ☐ `GOOGLE_OAUTH_CLIENT_SECRET` | the same laptop `.env` value |
+| (after A4b) `GOOGLE_SA_APP_JSON` | the **demo-app** key's contents, never the app's |
+
+---
+
 ## Branching — in effect from 2026-09-29
 
 - **`dev`** is the working branch. Every change lands there and is pushed there.
@@ -519,7 +587,7 @@ Each check will be reported as passed-and-seen, failed, or not yet run.
 
 ## Part E — test data to delete before the move
 
-**Nothing here has been deleted.**
+**Applied 2026-09-29 18:08 MDT: 67 rows** (see "State at 2026-09-29, evening").
 
 **The owner's decisions, 2026-09-29.** All deletions are **hard deletes**, run
 **after 3 PM Mountain on 2026-09-29** (not before: a live session at 1 PM), as
@@ -531,7 +599,7 @@ fresh backup → dry run listing every row → the owner's yes.
 | E2 Testing again testing | **Delete** (with its portal login) |
 | E3 Hj hj | **Keep** (owner, 2026-09-29, later): a webinar sign-up with a real address. Its portal login and task stay. |
 | E4 Unknown 2 Unknown 2 | **Delete** |
-| E5 Steven Paul | **Delete**, with his draft strategy session |
+| E5 Steven Paul | **Delete**, with his strategy session (by then in-call with 13 answers; confirmed as a mistaken entry, 18:08) |
 | E6 Mike Eller | **Delete the 2026-09-28 contact, meeting and 8 tasks; keep the 2026-09-22 set; add the owner as attended-by on the kept meeting** |
 | E7 Acme Facilities, Noble Baker | **Keep**, as the demo company and demo client |
 
