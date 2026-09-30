@@ -65,4 +65,4 @@ USER app
 # 8080: the port both custom domains are pointed at (owner, 2026-09-29).
 # Each service overrides this command (railway/*.json).
 EXPOSE 8080
-CMD ["gunicorn", "config.wsgi", "--bind", "0.0.0.0:8080", "--workers", "3", "--timeout", "120", "--access-logfile", "-"]
+CMD ["scripts/start_web.sh"]

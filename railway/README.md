@@ -1,7 +1,12 @@
 # Railway service configuration (Phase 7)
 
-One image (`Dockerfile`), three services, each pointed at its own file under
-Railway → service → Settings → **Config-as-code path**:
+One image (`Dockerfile`), three services. **Railway no longer accepts
+config-as-code files** (2026-09-29: "deprecated, use `.railway/railway.ts`"),
+so these JSON files are the written record of each service's settings, and the
+settings themselves are applied to each service through Railway's API
+(`serviceInstanceUpdate`): Dockerfile path, start command, health check,
+restart policy, cron schedule. The start commands are scripts in `scripts/`,
+because a quoted `sh -c '…'` start command was not run as written.
 
 | Service | File | Runs |
 |---|---|---|
