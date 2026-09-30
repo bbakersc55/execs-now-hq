@@ -1088,6 +1088,10 @@ export interface DriveFolder {
   files: number;
   readable: number;
   truncated: boolean;
+  /** Counted at the depth the watch reads it (owner, 2026-09-30). */
+  depth?: "one" | "any";
+  name_pattern?: string;
+  in_subfolders?: number;
 }
 
 /** One proposed thing. **Nothing here exists yet**: approving is what creates

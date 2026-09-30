@@ -176,6 +176,31 @@ def describe_folder(tenant, folder_id, *, client=None):
 
 
 @transaction.atomic
+def counted_at_watch_depth(tenant, folder_id, info) -> dict:
+    """What "Check folder" reports, counted at the depth the watch will read
+    (owner, 2026-09-30).
+
+    A folder already registered to be read at any depth (Google Meet, one
+    folder per meeting) is counted as the import counts it: every note under
+    it matching its name pattern, at any depth. Anything else is read one level
+    down, so its count includes that level. On 2026-09-30 the Google Meet link
+    reported "0 files, 0 readable" because only its top level, which holds no
+    notes, was counted.
+    """
+    extra = DriveWatchFolder.all_objects.filter(
+        tenant=tenant, folder_id=folder_id, depth=DriveWatchFolder.Depth.ANY).first()
+    if extra is not None:
+        found = client_for(tenant).search(extra.name_pattern, roots=[folder_id],
+                                          page_size=1000, max_pages=10)
+        return {"depth": "any", "name_pattern": extra.name_pattern,
+                "files": len(found), "readable": len(found), "in_subfolders": len(found)}
+    below_files = sum(sub.files for sub in info.subfolders)
+    below_readable = sum(sub.readable for sub in info.subfolders)
+    return {"depth": "one", "name_pattern": "",
+            "files": info.files + below_files, "readable": info.readable + below_readable,
+            "in_subfolders": below_readable}
+
+
 def record(tenant, drive_file, *, folder=None,
            excluded: str = "") -> tuple[MeetingSourceFile | None, bool]:
     """Write one file down. Returns `(row, created)`.

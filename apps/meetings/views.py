@@ -289,8 +289,16 @@ class DriveWatchViewSet(MeetingViewSetBase):
         except drive_service.DriveUnavailable as exc:
             return Response({"detail": str(exc)}, status=400)
 
-        found = {"folder_id": info.folder_id, "name": info.name, "files": info.files,
-                 "readable": info.readable, "truncated": info.truncated}
+        # Counted at the depth the watch will read it, so the number is honest
+        # for a folder of per-meeting folders (owner, 2026-09-30).
+        try:
+            counts = ingest.counted_at_watch_depth(request.tenant, folder_id, info)
+        except drive_service.DriveUnavailable as exc:
+            return Response({"detail": str(exc)}, status=400)
+        found = {"folder_id": info.folder_id, "name": info.name, "files": counts["files"],
+                 "readable": counts["readable"], "in_subfolders": counts["in_subfolders"],
+                 "depth": counts["depth"], "name_pattern": counts["name_pattern"],
+                 "truncated": info.truncated}
         if not save:
             return Response(found)
 

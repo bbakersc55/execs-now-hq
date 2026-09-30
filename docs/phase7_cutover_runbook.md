@@ -346,10 +346,15 @@ through `app.getexecutivesnow.com`:
 2. **Settings → Gmail → Reconnect.** Tick reply collection
    (`gmail.readonly`), as on the laptop. Confirm the send-as alias
    `info@getexecutivesnow.com` shows as verified.
-3. **Meeting queue → Drive folder → Reconnect Drive.** Confirm both watched
-   folders still read back with their names and file counts ("Meet Recordings"
-   and "Google Meet" with the Gemini pattern), and that the exclusion list
-   (`AoA`, `Academy of America`) is still there.
+3. **Meeting queue: check, do not press anything.** Reconnecting Gmail with
+   Drive ticked in step 2 *is* the Drive reconnect; there is no separate
+   button. Confirm both watched folders read back with their names and file
+   counts ("Meet Recordings", and "Google Meet" at any depth with the Gemini
+   pattern), and the never-read list (`AoA`, `Academy of America`, and the
+   ignored meetings). **Do not press Disconnect on the folder card:** it
+   switches the watch off. *(Corrected 2026-09-30: this step said "Reconnect
+   Drive", no such button exists, and Disconnect was pressed at 03:08:59 UTC;
+   the watch was switched back on with its cursor unchanged.)*
 4. Send one test message to yourself from the app (D-check 5).
 5. Tell me. qcluster on Railway does not start until this and D-checks 1–5 pass.
 

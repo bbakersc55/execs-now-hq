@@ -768,7 +768,8 @@ def test_checking_a_folder_reads_it_and_saves_nothing(
 
     assert response.status_code == 200, response.data
     assert response.data == {"folder_id": "1AbCdEfGh_1", "name": "Gemini meeting notes",
-                             "files": 14, "readable": 12, "truncated": False}
+                             "files": 14, "readable": 12, "in_subfolders": 0,
+                             "depth": "one", "name_pattern": "", "truncated": False}
     assert fake_client.described == ["1AbCdEfGh_1"]
     # Checking is not connecting.
     assert not DriveWatch.objects.exists()
@@ -2568,3 +2569,50 @@ def test_an_import_past_the_estimated_balance_asks_first(
     went = client.post("/api/drive-watch/backfill/",
                        {"scope": "all", "confirm_over_balance": True}, format="json")
     assert went.status_code == 201
+
+
+
+# ------------------------- Check folder counts at the watch's depth (2026-09-30)
+
+@pytest.mark.django_db
+def test_check_folder_counts_one_level_down_as_the_watch_reads_it(
+    seeded_tenant, ff_user, api, fake_client, drive_granted, in_tenant_a
+):
+    fake_client.subfolders = [drive.SubFolder(folder_id="s1", name="September",
+                                              files=5, readable=4)]
+    body = api.as_(ff_user).post("/api/drive-watch/check/", {"folder": "1AbCdEfGh_1"}).data
+    assert (body["files"], body["readable"], body["in_subfolders"], body["depth"]) == \
+        (19, 16, 4, "one")
+
+
+@pytest.mark.django_db
+def test_check_folder_counts_google_meet_at_any_depth(
+    seeded_tenant, ff_user, api, fake_client, drive_granted, watch
+):
+    """The cutover, 2026-09-30: the Google Meet link reported 0 files and 0
+    readable, because only its top level (which holds no notes, just a folder
+    per meeting) was counted. Counted as the import counts it, it is the notes
+    below it that match the pattern."""
+    meet = "1GoogleMeetFolderAbc"
+    fake_client.tree = {
+        meet: ("Google Meet", None),
+        "m-rick": ("30 Minutes w/ Bryan Baker (Rick Turner)", meet),
+        "m-two": ("Weekly sync", meet),
+        "elsewhere": ("Someone else's folder", None),
+        "m-other": ("A meeting not under Google Meet", "elsewhere"),
+    }
+    DriveWatchFolder.objects.create(tenant=watch.tenant, watch=watch, folder_id=meet,
+                                    folder_name="Google Meet",
+                                    depth=DriveWatchFolder.Depth.ANY, name_pattern=GEMINI)
+    fake_client.listing = [
+        a_meet_file("n1", f"30 Minutes w/ Bryan Baker (Rick Turner) - {GEMINI}", "m-rick"),
+        a_meet_file("n2", f"Weekly sync - {GEMINI}", "m-two"),
+        a_meet_file("n3", "Recording.mp4", "m-rick", mime="video/mp4"),
+        a_meet_file("n4", f"Elsewhere - {GEMINI}", "m-other"),
+    ]
+    response = api.as_(ff_user).post("/api/drive-watch/check/", {
+        "folder": f"https://drive.google.com/drive/folders/{meet}"})
+    assert response.status_code == 200, response.data
+    body = response.data
+    assert body["depth"] == "any" and body["name_pattern"] == GEMINI
+    assert body["readable"] == 2, "both notes under Google Meet; not the video, not elsewhere"

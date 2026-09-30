@@ -331,6 +331,9 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
             <p className="small muted">
               {found.files}{found.truncated && "+"} file{found.files === 1 ? "" : "s"}
               {" · "}{found.readable} readable as meeting notes
+              {found.depth === "any"
+                ? ` · counted at any depth, notes named “${found.name_pattern}”`
+                : found.in_subfolders ? ` · including ${found.in_subfolders} one level down` : ""}
             </p>
             {found.readable === 0 && (
               <Banner kind="warn">
