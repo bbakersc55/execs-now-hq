@@ -62,14 +62,14 @@ Post-Beta / V1 and beyond, in this order: invoicing (PDF invoice by email with a
 - **Module by module.** Finish, test, and get sign-off on each module before the next. Bugs get fixed in the current module, not carried forward.
 - **Review queues over automation** anywhere the AI's output would email a client or create records. Human approves; the app executes.
 - **State what's proven vs. what's assumed.** When reporting, distinguish "tested end to end" from "written but not exercised." Never report a scoped subset as a total.
-- **Dry-run before irreversible steps** (migrations that drop data, bulk sends, deletes). Show the plan, wait for a yes.
+- **Dry-run before irreversible steps** (migrations that drop data, bulk sends, deletes). Show the plan, wait for a yes. *Exception: migrations against the laptop's `execsnowhq_local` (see below).*
 - **Migrations: SQL first, always; where it is applied decides the rest.** Show every migration's SQL (`manage.py sqlmigrate`) before generating it. Then:
   - **Laptop: apply it yourself, immediately**, when both hold:
     1. **The configured database is `execsnowhq_local`** — check `DATABASE_URL` in `.env`. Never `execsnowhq_dev` (the pre-cutover database, kept only as the fallback).
     2. **The full suite is green on it** — run after the migration exists, not before.
 
-    No backup is needed: `execsnowhq_local` is a scrubbed copy of production, and `scripts/refresh_dev_from_prod.sh` rebuilds it.
-  - **Production: applied by hand, never by a deploy.** Run a deliberate `manage.py migrate` in a Railway shell, and only after that day's Railway backup is confirmed: an `execsnowhq_prod_*` dump from that day in `gs://execs-now-hq-db-backups`, or the owner's word. A deploy must never migrate. `scripts/start_web.sh` migrates only an empty database and refuses to start with a migration unapplied; keep it that way. Anything destructive, data-rewriting, or that you are unsure about **waits for the owner** — and "unsure" is itself a reason to wait, not to reason around.
+    That holds for destructive and data-rewriting migrations too: no backup, no dry run and no wait. `execsnowhq_local` is a scrubbed copy of production, and `scripts/refresh_dev_from_prod.sh` rebuilds it.
+  - **Production: applied by hand, never by a deploy, and only by the sequence in `docs/phase7_cutover_runbook.md`, "Releasing a migration".** In order: confirm that day's Railway backup (the newest `execsnowhq_prod_*` dump in `gs://execs-now-hq-db-backups`, from the most recent 08:00 UTC run); release; then **immediately** `railway ssh --service qcluster -- python manage.py migrate` in the waiting worker, so web is down for a minute, not until someone remembers; then redeploy web. Keep `start_web.sh` refusing and `start_qcluster.sh` waiting on an unapplied migration; never add a migrating start command. Anything destructive, data-rewriting, or that you are unsure about **waits for the owner's yes on the dry run before "release"** — and "unsure" is itself a reason to wait, not to reason around.
 
   Say in the report where the migration was applied and which conditions you checked; an applied migration is never left unmentioned. *(Rule added 2026-09-16, after `crm` 0020 was left unapplied on a one-line additive constraint. Reworded 2026-10-02 for runbook B7: the laptop is development-only, production is on Railway.)*
 - **Prompts for the owner** are delivered as copy-paste blocks with a stated target (Claude Code, terminal, Railway shell). The owner pastes results back for review.

@@ -203,6 +203,49 @@ and `FIELD_ENCRYPTION_KEY` of its own) except:
 
 ---
 
+## Releasing a migration — the only way a migration reaches production
+
+Owner, 2026-10-02. **No deploy ever migrates production.** `start_web.sh`
+builds the schema only on an empty database and otherwise refuses to start
+with a migration unapplied. `start_qcluster.sh` **waits** in the same case, and
+that is deliberate. `railway ssh` reaches only an *active* instance, and the
+waiting worker is the only active container running the new code, where the
+migration files are. (A shell in the old web container would run the old
+code's `migrate` and find nothing to apply.) No other route is used: not
+`railway run … migrate` from the laptop, and not a start command that migrates.
+
+**Before "release":** the migration's SQL has been shown (`sqlmigrate`), the
+full suite is green on `dev`, and the laptop's `execsnowhq_local` is migrated.
+Anything destructive or data-rewriting has your explicit yes on the dry run
+(CLAUDE.md).
+
+**On "release", in one sitting, straight through:**
+
+| # | Step | Command | Gate |
+|---|---|---|---|
+| R1 | Confirm the backup | `gcloud storage ls -l "gs://execs-now-hq-db-backups/execsnowhq_prod_*" \| sort -k2 \| tail -1` | The newest dump is from the most recent 08:00 UTC run (02:00 Mountain), under 24 hours old, and over the 1 KB floor. If not, stop: run the backup by hand first (`railway redeploy --service backup -y`) and check again. |
+| R2 | Release | merge `dev` → `main`, push | Railway builds web and qcluster |
+| R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else |
+| R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report |
+| R5 | Worker resumes by itself | `railway logs --service qcluster` | `migrations current`, then `Q Cluster … starting`, within 30 s |
+| R6 | Web onto the new code | `railway redeploy --service web -y` | Deployment active; `curl -s -o /dev/null -w '%{http_code}' https://app.getexecutivesnow.com/healthz` is `200` |
+| R7 | Report | | R1–R6 results, the migration names, and the time from R2 to R6 |
+
+**What it costs.** The worker is paused from R2 to R5. That is intended, so no
+old-code job runs while the schema changes. Web's new deployment fails its
+health check until R4. Whether Railway keeps the old web serving in the
+meantime, as it does for a failed health check, **has not been observed yet**:
+if it does, nothing goes down; if not, web is down from R2 to R6, a few minutes
+when R4 follows R3 immediately. The first migration release records which.
+
+**Not yet observed on Railway:** a waiting `qcluster` counting as active for
+`railway ssh`, and `railway redeploy` on the backup cron. The waiting itself is
+tested locally (2026-10-02: it waited on a database with every migration
+unapplied, and started the cluster 4 s after `migrate` ran by hand). If R4 finds
+no instance, stop and report. Do not improvise another route.
+
+---
+
 ## Part A — the owner's steps, in order
 
 ### A0. Protect `main` on GitHub — *now; five minutes*

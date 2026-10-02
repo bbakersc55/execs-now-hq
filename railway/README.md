@@ -24,19 +24,13 @@ is where that happens. The variables each service needs are in
 
 ## Migrations are never applied by a deploy
 
-CLAUDE.md's rule holds in production: SQL first, and applying depends on the
-migration being additive, the suite being green, and a backup having run today.
-A deploy that applied migrations by itself would skip all three. So a release
-that carries a migration deploys, **refuses to start**, and the migration is
-applied deliberately, after that day's backup:
+A release that carries a migration deploys, web **refuses to start**, and
+qcluster **waits**. The migration is then applied by hand inside the waiting
+worker, the only active container running the new code:
 
-    railway ssh --service web      # a shell inside the running service
-    python manage.py migrate
+    railway ssh --service qcluster -- python manage.py migrate
 
-(`railway run` would run it on the laptop with Railway's variables, and the
-private `DATABASE_URL` does not resolve from outside Railway. The exact CLI
-form is to be confirmed at runbook B2.)
-
-Then redeploy (or restart) `web` and `qcluster`. The old version keeps serving
-until the new one passes its health check, so a refused start does not take
-the app down.
+The worker starts by itself, and web is redeployed onto the new code. The full
+sequence, including the backup check that comes first, is
+`docs/phase7_cutover_runbook.md`, "Releasing a migration". It is the only way a
+migration reaches production.
