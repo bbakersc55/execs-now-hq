@@ -194,7 +194,8 @@ and `FIELD_ENCRYPTION_KEY` of its own) except:
   **full test suite, green on `dev` at the commit being merged**. A red suite
   means no merge, whatever the change.
 - **The demo (B3) deploys from `dev`.** So "pushed to dev" means "live on the
-  demo", and "release" means "live in production". This replaces both the
+  demo", and "release" means "live in production". The demo applies its own
+  migrations at start (2026-10-02); production never does. This replaces both the
   staging service of this runbook's first version and the `staging` branch of
   the Phase 8+ note. One working branch is enough while one person releases.
 - **The GitHub rule on `main`: approved (owner, 2026-09-29), and it is step
@@ -213,6 +214,10 @@ waiting worker is the only active container running the new code, where the
 migration files are. (A shell in the old web container would run the old
 code's `migrate` and find nothing to apply.) No other route is used: not
 `railway run … migrate` from the laptop, and not a start command that migrates.
+**The demo is the one exception** (owner, 2026-10-02): its web applies its own
+migrations at start, because it deploys from `dev` with no worker and holds
+only fictional data. `migrate_if_empty` refuses that if the host is
+`app.getexecutivesnow.com`, whatever `APP_ENVIRONMENT` says.
 
 **Before "release":** the migration's SQL has been shown (`sqlmigrate`), the
 full suite is green on `dev`, and the laptop's `execsnowhq_local` is migrated.

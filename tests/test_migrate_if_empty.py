@@ -53,3 +53,44 @@ def test_an_empty_database_gets_its_schema():
          mock.patch("apps.tenancy.management.commands.migrate_if_empty.call_command") as run:
         call_command("migrate_if_empty")
     run.assert_called_once_with("migrate", interactive=False, verbosity=1)
+
+
+def _pending():
+    from django.db.migrations.executor import MigrationExecutor
+
+    pending = mock.Mock(app_label="crm")
+    pending.name = "0099_x"
+    return mock.patch.object(MigrationExecutor, "migration_plan",
+                             return_value=[(pending, False)])
+
+
+@pytest.mark.django_db
+def test_the_demo_applies_its_migrations_at_start(settings):
+    settings.IS_DEMO = True
+    settings.PUBLIC_BASE_URL = "https://demo.getexecutivesnow.com"
+    with _pending(), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.call_command") as run:
+        call_command("migrate_if_empty")
+    run.assert_called_once_with("migrate", interactive=False, verbosity=1)
+
+
+@pytest.mark.django_db
+def test_a_demo_setting_on_the_production_host_is_refused(settings):
+    settings.IS_DEMO = True
+    settings.PUBLIC_BASE_URL = "https://app.getexecutivesnow.com"
+    with _pending(), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.call_command") as run:
+        with pytest.raises(CommandError, match="Refusing to migrate"):
+            call_command("migrate_if_empty")
+    run.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_production_still_refuses(settings):
+    settings.IS_DEMO = False
+    settings.PUBLIC_BASE_URL = "https://app.getexecutivesnow.com"
+    with _pending(), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.call_command") as run:
+        with pytest.raises(CommandError, match="Unapplied migrations"):
+            call_command("migrate_if_empty")
+    run.assert_not_called()

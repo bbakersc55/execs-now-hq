@@ -5,17 +5,24 @@
   is nothing to back up and nothing to lose. This is how a new environment's
   first deploy comes up without anyone opening a shell into a container that
   cannot start.
+- **The demo** (`APP_ENVIRONMENT=demo`, owner 2026-10-02): apply what is
+  unapplied. It deploys from `dev` with no worker, so there is no new-code
+  container to migrate from by hand, and it holds only seeded, fictional data.
+  Refused if the host is production's, whatever the environment says.
 - **Any other database**: never migrate. Exit non-zero if a migration is
-  unapplied, so the deploy refuses to start and the migration waits for the
-  owner's rule (SQL shown, additive, suite green, a backup today).
+  unapplied, so the deploy refuses to start. Production's migrations go only
+  through the runbook's "Releasing a migration"; the worker waits for it.
 """
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+
+PRODUCTION_HOST = "app.getexecutivesnow.com"
 
 
 def recorded_migrations(tables) -> int:
@@ -42,8 +49,15 @@ class Command(BaseCommand):
             return
         executor = MigrationExecutor(connection)
         plan = executor.migration_plan(executor.loader.graph.leaf_nodes())
+        if plan and settings.IS_DEMO:
+            if PRODUCTION_HOST in settings.PUBLIC_BASE_URL:
+                raise CommandError(f"APP_ENVIRONMENT is demo but PUBLIC_BASE_URL is "
+                                   f"{settings.PUBLIC_BASE_URL}. Refusing to migrate.")
+            self.stdout.write(f"Demo: applying {len(plan)} migration(s).")
+            call_command("migrate", interactive=False, verbosity=1)
+            return
         if plan:
             names = ", ".join(f"{m.app_label}.{m.name}" for m, _ in plan)
             raise CommandError(f"Unapplied migrations: {names}. A deploy never applies "
-                               "them; apply them by hand after the day's backup.")
+                               "them: runbook, \"Releasing a migration\".")
         self.stdout.write("Migrations are current.")

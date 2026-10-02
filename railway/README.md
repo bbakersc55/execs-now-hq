@@ -10,7 +10,7 @@ because a quoted `sh -c '…'` start command was not run as written.
 
 | Service | File | Runs |
 |---|---|---|
-| `web` | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database, and otherwise **refuses to start while any migration is unapplied**. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
+| `web` | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database; on the demo (`APP_ENVIRONMENT=demo`) applies unapplied migrations; otherwise **refuses to start while any migration is unapplied**. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
 | `qcluster` | `railway/qcluster.json` | the Django-Q2 worker, with the same unapplied-migration refusal. **No public domain.** Starts at 0 replicas and is scaled to 1 only at runbook C9. |
 | `backup` | `railway/backup.json` | `scripts/backup_db_railway.sh`, nightly at 08:00 UTC (02:00 Mountain). |
 
@@ -34,3 +34,8 @@ The worker starts by itself, and web is redeployed onto the new code. The full
 sequence, including the backup check that comes first, is
 `docs/phase7_cutover_runbook.md`, "Releasing a migration". It is the only way a
 migration reaches production.
+
+**The demo is the exception** (owner, 2026-10-02): its web applies its own
+migrations at start. It deploys from `dev` with no worker, so it has no
+waiting container to migrate from, and it holds only fictional data. The
+command refuses if a demo setting ever meets production's host.
