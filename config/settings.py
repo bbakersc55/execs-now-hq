@@ -275,7 +275,8 @@ GOOGLE_SA_APP_JSON = env("GOOGLE_SA_APP_JSON", default="")
 # Where `stored_file` content lives. `gcs` (gs://<bucket>/<object_key>) since
 # Phase 2: a recording exists nowhere else, so it cannot wait for a nightly
 # sync. `local` (MEDIA_ROOT/<bucket>/<object_key>, the same shape) is for the
-# test suite and the restore drill only.
+# test suite, the restore drill, and the laptop since B7 (its scrubbed copy of
+# production must never reach production's bucket).
 STORAGE_BACKEND = env("STORAGE_BACKEND", default="gcs")
 if STORAGE_BACKEND not in ("gcs", "local"):
     raise RuntimeError(f"STORAGE_BACKEND must be 'gcs' or 'local', not {STORAGE_BACKEND!r}.")

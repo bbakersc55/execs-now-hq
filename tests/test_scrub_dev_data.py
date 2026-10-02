@@ -12,14 +12,16 @@ from django.conf import settings
 from django.core.management import CommandError, call_command
 
 from apps.accounts.models import MagicLinkToken, User
-from apps.crm.models import ContactEmail, ContactPhone, GmailConnection, OutboxMessage
+from apps.crm.models import (
+    ContactEmail, ContactPhone, DevSendAllowlistEntry, GmailConnection, ImportRow, OutboxMessage,
+)
 from apps.tenancy.models import Tenant, TenantSecret
 from apps.work.models import StakeholderToken
 
 from . import registry_config  # noqa: F401
 from .factories import (
-    ClientCompanyFactory, ContactEmailFactory, ContactPhoneFactory, GmailConnectionFactory,
-    MagicLinkTokenFactory, MembershipFactory, OutboxMessageFactory, StakeholderTokenFactory,
+    ClientCompanyFactory, ContactEmailFactory, ContactPhoneFactory, DevSendAllowlistEntryFactory,
+    GmailConnectionFactory, ImportRowFactory, MagicLinkTokenFactory, MembershipFactory, OutboxMessageFactory, StakeholderTokenFactory,
     TenantSecretFactory,
 )
 
@@ -75,6 +77,11 @@ def test_nothing_left_can_receive_mail_send_or_sign_in(seeded_tenant, in_tenant_
     OutboxMessageFactory(tenant=seeded_tenant)
     MagicLinkTokenFactory(tenant=seeded_tenant)
     StakeholderTokenFactory(tenant=seeded_tenant)
+    # B7: a production copy carried a client's address in the allow-list, and
+    # every import row's preview still held the CSV's addresses.
+    DevSendAllowlistEntryFactory(tenant=seeded_tenant, address="dana@acme.com")
+    ImportRowFactory(tenant=seeded_tenant, raw={"Email": "dana@acme.com"},
+                     preview={"email": "dana@acme.com", "phones": ["+13035550123"]})
     Tenant.objects.filter(pk=seeded_tenant.pk).update(hold_all_digests=False)
 
     _scrub()
@@ -85,9 +92,10 @@ def test_nothing_left_can_receive_mail_send_or_sign_in(seeded_tenant, in_tenant_
     assert User.objects.get(pk=client.user_id).email.endswith("@example.invalid")
     assert User.objects.get(pk=staff.user_id).email.endswith("@example.invalid")
     for model in (GmailConnection, TenantSecret, OutboxMessage, MagicLinkToken,
-                  StakeholderToken):
+                  StakeholderToken, DevSendAllowlistEntry):
         assert model.all_objects.count() == 0, model.__name__
     assert Tenant.objects.get(pk=seeded_tenant.pk).hold_all_digests is True
+    assert list(ImportRow.objects.values_list("raw", "preview")) == [({}, {})]
 
 
 @pytest.mark.django_db

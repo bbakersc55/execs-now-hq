@@ -573,7 +573,7 @@ no Gmail callback, and the production key present only for the length of one
 command. I report the row-count output verbatim, and the rehearsal counts as
 passed only when you have read it.
 
-### B7. The laptop becomes development-only — **[built, not run]** 2026-09-29
+### B7. The laptop becomes development-only — **[run]** 2026-10-02
 
 - **`manage.py scrub_dev_data` now exists**, built to the spec in
   `05_dev_environment.md` §8, with one addition the spec could not have
@@ -597,6 +597,26 @@ passed only when you have read it.
   with the typed name.
 - Still to do at C11: the laptop's `.env` moves to `execsnowhq_local`, and
   `05_dev_environment.md` gets the post-move daily workflow next to the pre-move one.
+- **Run 2026-10-02.** `execsnowhq_local` was restored from
+  `execsnowhq_prod_20261002_080213.sql.gz`, stopping on the first error. The dump
+  is from **Postgres 18.6**, not the 16 that C1 planned; its one 17+ line
+  (`SET transaction_timeout = 0`) is dropped before restoring into the laptop's
+  16. Checked against the database itself, not the scrub's report: no
+  `tenant_secret`, `gmail_connection`, `socialaccount_socialtoken`, magic-link
+  or allow-list rows; no Google access/refresh token, `sk-ant-` key or private
+  key anywhere in the data, decoded Django-Q task history included. **Two gaps
+  found and fixed in the scrub:** `dev_send_allowlist_entry` carried a client's
+  real address (a localhost build sends REAL mail to those rows), and
+  `import_row.preview` still held every CSV address after `raw` was emptied.
+  **Not scrubbed, by spec:** real addresses inside free text (email bodies and
+  raw headers, meeting transcripts, proposal excerpts, audit payloads). No send
+  path reads them.
+- The laptop's `.env` is `STORAGE_BACKEND=local`: with `gcs`, deleting a
+  recording locally would have deleted production's object.
+- All four services started against it, and the worker ran every schedule
+  once with no failure. `refresh_dev_from_prod.sh` now restores from the
+  newest nightly GCS dump (the live `railway run pg_dump` could not work: laptop
+  `pg_dump` 16 cannot dump an 18 server). Run end to end, 5 s.
 
 ---
 
@@ -629,7 +649,7 @@ passed only when you have read it.
 | C8 | Owner | **A6** re-consent, then D-checks 1–5 | All pass |
 | C9 | Claude | Only now: **`qcluster` scaled to 1** on Railway. Watch the first ticks, one Drive poll and one inbound poll. | D-checks 6–8 |
 | C10 | Claude | **B4** backup cron enabled; first run triggered by hand | D-check 9 |
-| C11 | Claude | **B7** laptop to development-only | Reported |
+| C11 | Claude | **B7** laptop to development-only (done 2026-10-02) | Reported |
 | C12 | Owner | Two weeks later: say so, and the old laptop database is deleted (dry-run first, per CLAUDE.md) | Your yes |
 
 **Rollback, up to C9:** if any gate from C7 to C8 fails, production is not in

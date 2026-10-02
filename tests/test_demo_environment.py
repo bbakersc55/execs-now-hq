@@ -151,6 +151,9 @@ BOOT = {
     "DJANGO_ALLOWED_HOSTS": "demo.getexecutivesnow.com",
     "DEV_REAL_SEND_ALLOWLIST": "", "ANTHROPIC_API_KEY": "",
     "APP_ENVIRONMENT": "demo", "GCS_BUCKET_MEDIA": "execs-now-hq-demo-media",
+    # As the demo sets it (runbook A4). Unset, the boot inherits the laptop's
+    # .env, which is STORAGE_BACKEND=local since B7.
+    "STORAGE_BACKEND": "gcs",
 }
 PROBE = ("import django; django.setup(); from django.conf import settings as s; "
          "print(s.APP_ENVIRONMENT, s.IS_DEMO, s.EMAIL_BACKEND)")

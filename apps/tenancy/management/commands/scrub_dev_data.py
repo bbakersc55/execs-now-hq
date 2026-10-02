@@ -84,8 +84,8 @@ class Command(BaseCommand):
 
         from apps.accounts.models import MagicLinkToken, User
         from apps.crm.models import (
-            ContactEmail, ContactPhone, EmailMessage, EmailSuppression, GmailConnection,
-            ImportRow, OutboxMessage, UnmatchedInbound,
+            ContactEmail, ContactPhone, DevSendAllowlistEntry, EmailMessage, EmailSuppression,
+            GmailConnection, ImportRow, OutboxMessage, UnmatchedInbound,
         )
         from apps.meetings.models import ProposalItem
         from apps.strategy.models import StrategySession
@@ -139,8 +139,16 @@ class Command(BaseCommand):
             from_address="scrubbed@example.invalid",
             to_addresses=["scrubbed@example.invalid"])
         rows.append(("unmatched_inbound addresses", n, "rewritten"))
-        n = ImportRow.all_objects.update(raw={})
-        rows.append(("import_row.raw", n, "emptied (it held the CSV's addresses)"))
+        # `preview` is the dry run's rendering of the same row: the same
+        # addresses and phones. Commit rebuilds from `raw`, so both go.
+        n = ImportRow.all_objects.update(raw={}, preview={})
+        rows.append(("import_row.raw + preview", n, "emptied (they held the CSV's addresses)"))
+        # Rows here receive REAL mail from a localhost build (mailer.py). A
+        # production copy carries whatever was allow-listed when the laptop was
+        # production; .env's DEV_REAL_SEND_ALLOWLIST stays the only floor.
+        n = DevSendAllowlistEntry.all_objects.count()
+        DevSendAllowlistEntry.all_objects.all().delete()
+        rows.append(("dev_send_allowlist_entry", n, "deleted (.env allow-list still applies)"))
 
         # A proposal approved in development must not create a real address.
         n = 0

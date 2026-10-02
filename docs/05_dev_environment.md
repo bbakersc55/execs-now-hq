@@ -57,7 +57,7 @@ mailpit --version
 |---|---|---|
 | Django | **8100** | `CLAUDE.md` — deliberately unusual |
 | Vite | **5200** | proxies `/api` and `/admin` to 8100 |
-| Postgres | 5432 | system default; database `execsnowhq_dev` |
+| Postgres | 5432 | system default; database `execsnowhq_local` (B7; `execsnowhq_dev` before cutover) |
 | Mailpit SMTP | 1025 | Django's `EMAIL_PORT` |
 | Mailpit web | **8125** | where you read dev mail |
 
@@ -644,58 +644,66 @@ From cutover day, **the laptop is development-only and live data never returns t
 | Backups | laptop cron, gcloud ADC | **Railway cron service, service-account key** |
 | Real mail | allow-list only | **everything is real** |
 
-**Daily loop:**
+**Run 2026-10-02 (runbook B7).** The laptop's `.env` names `execsnowhq_local`,
+a scrubbed copy of production, with `STORAGE_BACKEND=local`. `execsnowhq_dev`
+is the pre-cutover database, untouched, kept as the fallback until C12; nothing
+points at it.
+
+**Every session — five tabs:**
 
 ```bash
+# Tab 1: prep, then stays open for git, pytest and one-off commands
 cd ~/projects/execs-now-hq
+gcloud config configurations activate execs-now-hq
 git pull
-# ... work, with the same four terminals from §6 against the dev database ...
-.venv/bin/pytest
-git push origin main          # Railway builds and deploys from main
+.venv/bin/pip install -r requirements-dev.txt && npm install --prefix frontend
+.venv/bin/python manage.py migrate            # dev can be ahead of production's schema
+.venv/bin/python manage.py ensure_schedules
+
+# Tab 2: Django
+cd ~/projects/execs-now-hq && .venv/bin/python manage.py runserver 8100
+
+# Tab 3: worker. Safe on execsnowhq_local: no Google token, no stored
+# Anthropic key, digests held. Never against execsnowhq_dev.
+cd ~/projects/execs-now-hq && .venv/bin/python manage.py qcluster
+
+# Tab 4: frontend
+cd ~/projects/execs-now-hq && npm run dev --prefix frontend      # Vite on 5200
+
+# Tab 5: dev outbox
+mailpit --smtp localhost:1025 --listen localhost:8125
 ```
 
-**Refreshing local dev data from production — one command, no gap:**
+`scripts/backup_db.sh` is no longer part of the session: it backs up
+`execsnowhq_dev`, which nothing writes to now. Production is backed up nightly
+by Railway (B4). Development needs no backup: a refresh rebuilds it.
+
+**What a scrubbed copy cannot do, by design.** The practice's own sign-in
+addresses are kept (`--keep-staff`), so Google sign-in is meant to work; this
+had not been tried in a browser on `execsnowhq_local` at B7. Gmail sending,
+Drive polling and inbound polling find no connection. **Connecting Gmail on the
+laptop is a real decision:** the token is yours, so the local worker would then
+read your real mailbox and Drive alongside production (and spend Claude on new
+meetings). Sends stay safe either way: contacts are `.invalid`, and off the
+allow-list mail goes to Mailpit. Claude calls use `ANTHROPIC_API_KEY` from `.env`. Files referenced by
+production rows are not on the laptop, so an old attachment or recording opens
+empty; anything uploaded locally works.
+
+**Refreshing local data from production — stop tabs 2 and 3 first:**
 
 ```bash
-./scripts/refresh_dev_from_prod.sh
+./scripts/refresh_dev_from_prod.sh                 # newest nightly production dump
+./scripts/refresh_dev_from_prod.sh execsnowhq_prod_20261002_080213.sql.gz   # a specific one
 ```
 
-**There is deliberately no manual step between restore and scrub.** A three-command sequence has a window in which your local database holds real client addresses unscrubbed — and that window is exactly where an interruption, a phone call, or a forgotten terminal turns into a real email to a real client. One script closes it.
-
-`scripts/refresh_dev_from_prod.sh`:
-
-```bash
-#!/usr/bin/env bash
-# Pull production data into the LOCAL DEV database and scrub it in one step.
-# There is no point at which unscrubbed production data sits in a usable database.
-set -euo pipefail
-
-DEV_DB="execsnowhq_dev"
-DUMP="$(mktemp /tmp/execsnowhq_prod_XXXXXX.sql)"
-trap 'shred -u "${DUMP}" 2>/dev/null || rm -f "${DUMP}"' EXIT
-
-echo "==> Refusing to continue if this is not a local environment"
-grep -qE '^PUBLIC_BASE_URL=https?://(localhost|127\.0\.0\.1)' .env \
-  || { echo "!! PUBLIC_BASE_URL is not localhost. Aborting." >&2; exit 1; }
-
-echo "==> Dumping production (Railway)"
-railway run pg_dump --no-owner --no-privileges > "${DUMP}"
-test -s "${DUMP}" || { echo "!! Empty dump. Aborting." >&2; exit 1; }
-
-echo "==> Restoring into ${DEV_DB}"
-dropdb --if-exists "${DEV_DB}"
-createdb "${DEV_DB}"
-psql -q "${DEV_DB}" < "${DUMP}"
-
-echo "==> Scrubbing (this is the step that matters)"
-.venv/bin/python manage.py scrub_dev_data
-
-echo "==> Done. Dump shredded."
-```
-
-```bash
-chmod +x scripts/refresh_dev_from_prod.sh
-```
+It refuses unless `.env` is localhost, names `execsnowhq_local`, and has
+`STORAGE_BACKEND=local`. It downloads the newest `execsnowhq_prod_*` dump from
+`gs://execs-now-hq-db-backups`, drops and recreates `execsnowhq_local`, restores
+with "stop on first error", scrubs, realigns schedules and shreds the dump, in
+one run. Data is as of the last 08:00 UTC backup. **There is no manual step
+between restore and scrub.** It reads the backup rather than dumping Railway
+live because production is Postgres 18 and this laptop's `pg_dump` is 16. The
+nightly dump also needs only your gcloud login and never connects to production.
 
 ### `manage.py scrub_dev_data`
 
@@ -713,6 +721,7 @@ Scrubbing execsnowhq_dev (host=localhost, PUBLIC_BASE_URL=http://localhost:8100)
   contact_email.address      1,284 rewritten -> <uuid>@example.invalid
   user.email                    11 rewritten -> <uuid>@example.invalid
   contact_phone.number       1,102 rewritten -> +1555xxxxxxx
+  dev_send_allowlist_entry       1 deleted (.env allow-list still applies)
   gmail_connection               3 deleted (and 3 tenant_secret rows)
   outbox_message               412 deleted
   django_q_ormq                  7 queued tasks flushed
