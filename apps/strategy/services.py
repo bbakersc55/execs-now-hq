@@ -104,6 +104,21 @@ def is_focused(session) -> bool:
     return format_of(session) == FOCUSED
 
 
+V3 = "v3"
+
+
+def is_v3(session) -> bool:
+    """Started from a builder template (P3). What that changes is in
+    `apps/strategy/v3.py`."""
+    return format_of(session) == V3
+
+
+def has_card_map(session) -> bool:
+    """The focused map — cards, five at most, and a diagnostic proposed into a
+    tray — which a v3 session has as well."""
+    return format_of(session) in (FOCUSED, V3)
+
+
 def visible_questions(section: dict) -> list:
     """A section's questions as asked. In the focused format the diagnostic's
     fixed questions are the fallback: once any proposed question has been
@@ -193,7 +208,19 @@ def merge_context(session: StrategySession) -> dict:
                          if session.scheduled_at else ""),
         "Fractional name": ((owner.full_name or "").strip() or owner.email)
         if owner else "",
+        **_v3_merge(session),
     }
+
+
+def _v3_merge(session) -> dict:
+    """`{Practice}`, which only a builder template can use (P3). Never empty:
+    it lands inside sentences."""
+    if not is_v3(session):
+        return {}
+    from apps.crm.services import email_layout
+
+    brand = email_layout.branding(session.tenant)
+    return {"Practice": brand.display_name or brand.practice_name or "the practice"}
 
 
 def render_prompt(prompt: str, context: dict) -> str:

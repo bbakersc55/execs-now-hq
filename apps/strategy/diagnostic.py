@@ -134,6 +134,11 @@ def propose(session, *, trigger="button") -> list:
 
     from apps.tenancy import claude
 
+    # A v3 session (P3) has its own rules and its own size.
+    if services.is_v3(session):
+        from apps.strategy import v3
+
+        return v3.propose(session, trigger=trigger)
     if not services.is_focused(session):
         return []
     planned = slots(session)
@@ -208,7 +213,15 @@ def accept(proposal) -> StrategySession:
     if section is None:
         raise Refused("This session has no diagnostic section.")
     dynamic = [q for q in section.get("questions", []) if q.get("dynamic")]
-    if len(dynamic) >= MOST:
+    if services.is_v3(session):
+        # The template's number is where a v3 session starts; eight is where
+        # it stops (P3, D4).
+        from apps.strategy import v3
+
+        refusal = v3.accept_refusal(session, len(dynamic))
+        if refusal:
+            raise Refused(refusal)
+    elif len(dynamic) >= MOST:
         raise Refused(f"The diagnostic holds {MOST} questions. Discard one before "
                       "accepting another.")
     key = f"dx_{uuid.uuid4().hex[:10]}"

@@ -61,6 +61,13 @@ def _check_template(template):
     if template.archived_at is not None:
         raise SessionError(f"“{template.name}” is archived. Restore it, or choose "
                            f"another template.", status=409)
+    if template.format == template.Format.V3:
+        from apps.strategy import builder
+
+        missing = builder.readiness(template)
+        if missing:
+            raise SessionError(f"“{template.name}” is not ready to run. "
+                               + " ".join(missing), status=409)
 
 
 def _replace(session, snapshot, template) -> StrategySession:
@@ -91,6 +98,12 @@ def restore_seed(session: StrategySession) -> StrategySession:
     longer points at a template, because its questions are no template's."""
     from apps.strategy import seed
 
+    # The seed is the Operations template. A session started from a builder
+    # template (P3) reloads from its own template instead.
+    if services.is_v3(session):
+        raise SessionError("This session's questions come from a template made in "
+                           "the builder. Reload them from that template instead.",
+                           status=409)
     return _replace(session, seed.seed_snapshot(seed_discipline(session)), None)
 
 

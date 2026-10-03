@@ -524,6 +524,11 @@ class SessionViewSet(StrategyViewSet):
         session = self.load(pk)
         if (refused := self._fractional_only("run a Claude draft")) is not None:
             return refused
+        if services.is_v3(session):
+            from apps.strategy import v3
+
+            if v3.map_room(session) <= 0:         # said, rather than a silent nothing
+                return Response({"drafted": [], "detail": v3.MAP_FULL})
         rows = ai.draft_map_rows(session, trigger="button")
         return Response({"drafted": [strategy_serializers.represent_map_row(r)
                                      for r in rows]}, status=201 if rows else 200)
@@ -581,6 +586,21 @@ class SessionViewSet(StrategyViewSet):
         session = self.load(pk)
         if (refused := self._fractional_only("run a Claude draft")) is not None:
             return refused
+        if services.is_v3(session):
+            # v3 (P3): on demand as well, and once the ratings are taken on the
+            # call, "Propose from the ratings" for the two lowest.
+            from apps.strategy import v3
+
+            from_ratings = request.data.get("from_ratings") is True
+            if from_ratings and len(v3.ratings(session)) < 2:
+                return Response({"detail": "Take at least two ratings first."},
+                                status=409)
+            if v3.diagnostic_room(session) <= 0:
+                return Response({"detail": v3.accept_refusal(
+                    session, v3.DIAGNOSTIC_CEILING)}, status=409)
+            made = v3.propose(session, trigger="button", from_ratings=from_ratings)
+            return Response({"proposed": [diagnostic.represent(p) for p in made]},
+                            status=201 if made else 200)
         if not services.is_focused(session):
             return Response({"detail": "Proposed diagnostic questions belong to the "
                                        "focused template."}, status=409)
@@ -716,7 +736,7 @@ class MapRowViewSet(StrategyViewSet):
     def accept(self, request, pk=None):
         row = self.load_row(pk)
         # The focused map holds five (owner, 2026-09-29).
-        if (services.is_focused(row.session) and row.state != StrategyMapRow.State.ACCEPTED
+        if (services.has_card_map(row.session) and row.state != StrategyMapRow.State.ACCEPTED
                 and StrategyMapRow.objects.filter(
                     session=row.session, state=StrategyMapRow.State.ACCEPTED
                 ).count() >= ai.FOCUSED_MAP_CAP):
@@ -919,6 +939,31 @@ class DiagnosticProposalViewSet(StrategyViewSet):
         if proposal is None:
             raise Http404
         return proposal
+
+    def create(self, request):
+        """A diagnostic question typed in during a v3 session (P3, D4; matrix
+        10.5b). It joins the session, not the template."""
+        from django.db import transaction
+
+        from apps.strategy import diagnostic, v3
+
+        session = self.load(request.data.get("session"))
+        if (refused := self._fractional_only("add a diagnostic question")) is not None:
+            return refused
+        if not services.is_v3(session):
+            return Response({"detail": "A question is added by hand only in a session "
+                                       "started from a builder template."}, status=409)
+        try:
+            with transaction.atomic():
+                proposal = v3.add_question(session, prompt=request.data.get("prompt"))
+        except diagnostic.Refused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user,
+            verb="strategy.diagnostic_question_added",
+            target_type="strategy_session", target_id=session.pk,
+            payload={"proposal": str(proposal.pk), "key": proposal.question_key})
+        return Response(diagnostic.represent(proposal), status=201)
 
     def partial_update(self, request, pk=None):
         from apps.strategy import diagnostic

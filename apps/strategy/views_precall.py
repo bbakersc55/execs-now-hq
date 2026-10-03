@@ -114,7 +114,7 @@ def precall_complete(request, token: str):
             session.save(update_fields=["state", "updated_at"])
             # The focused template (owner, 2026-09-29): Claude proposes the
             # diagnostic from these answers, on the worker, into the tray.
-            if services.is_focused(session):
+            if services.has_card_map(session):
                 from django_q.tasks import async_task
 
                 async_task("apps.strategy.tasks.propose_diagnostic",

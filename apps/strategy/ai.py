@@ -148,6 +148,10 @@ def drafting_input(session) -> str:
     a draft is about the work, and the private column is private from the model
     too, not only from the PDF.
     """
+    if services.is_v3(session):
+        from apps.strategy import v3
+
+        return v3.drafting_input(session)
     lines = []
     for code, heading in ((DESTINATION_SECTION, "Where they want to go:"),
                           (NEED_SECTION, "What they need:")):
@@ -215,6 +219,16 @@ def _live_rows(session):
         .order_by("state", "position", "created_at"))
 
 
+def _system(text: str, session) -> str:
+    """The prompt as written, for a classic or focused session; addressed to
+    the practice's own kind of advisor for a v3 one (P3)."""
+    if services.is_v3(session):
+        from apps.strategy import v3
+
+        return v3.system(text, session)
+    return text
+
+
 def _already(session) -> str:
     """The rows a new draft must not repeat, told to the model."""
     rows = _live_rows(session)
@@ -244,12 +258,25 @@ def draft_map_rows(session, *, trigger="button"):
     user_text = drafting_input(session)
     if not user_text:
         return []
+    # v3 (P3, D13a): no call when the map is full, never more rows than it has
+    # room for, and the rejected rows are told to the model as well.
+    is_v3 = services.is_v3(session)
+    most = MAX_ROWS_PER_RUN
+    if is_v3:
+        from apps.strategy import v3
+
+        most = min(most, v3.map_room(session))
+        if most <= 0:
+            return []
     user_text += _already(session)
+    if is_v3:
+        user_text += v3.rejected(session)
     user_text += style.prompt_block(session.tenant, [style.K.MAP_HEADER,
                                                      style.K.MAP_STATEMENT])
     try:
         text, call = claude.complete_with_call(
-            tenant=session.tenant, purpose=ROWS_PURPOSE, system=ROWS_SYSTEM,
+            tenant=session.tenant, purpose=ROWS_PURPOSE,
+            system=_system(ROWS_SYSTEM, session),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger=trigger, max_tokens=4000,
         )
@@ -264,17 +291,25 @@ def draft_map_rows(session, *, trigger="button"):
     existing = {row.bottleneck.strip().lower() for row in
                 StrategyMapRow.objects.filter(session=session)}
     position = (StrategyMapRow.objects.filter(session=session).count())
+    seen = v3.seen_rows(session) if is_v3 else set()
     made = []
     for raw in payload:
         row = _clean_row(raw)
         if row is None or row["bottleneck"].lower() in existing:
             continue                     # a second run does not duplicate the first
+        if is_v3:
+            # The same row in other capitals or punctuation, by its header or
+            # its bottleneck, in any state — including one already rejected.
+            if v3.is_duplicate(row, seen):
+                continue
+            seen.update({v3.normalized(row["bottleneck"]), v3.normalized(row["header"])})
+            seen.discard("")
         existing.add(row["bottleneck"].lower())
         made.append(StrategyMapRow.objects.create(
             tenant=session.tenant, session=session, position=position,
             state=StrategyMapRow.State.PROPOSED, ai_call=call, **row))
         position += 1
-        if len(made) >= MAX_ROWS_PER_RUN:
+        if len(made) >= most:
             break                        # the cap holds whatever the model sent
     return made
 
@@ -335,11 +370,13 @@ def consolidate_map_rows(session):
         return []
     # The focused map holds five (owner, 2026-09-29): Consolidate aims for
     # three to five and never proposes more.
-    most = FOCUSED_MAP_CAP if services.is_focused(session) else MAX_CONSOLIDATED
+    most = FOCUSED_MAP_CAP if services.has_card_map(session) else MAX_CONSOLIDATED
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=CONSOLIDATE_PURPOSE,
-            system=CONSOLIDATE_SYSTEM.format(most={5: "five", 10: "ten"}.get(most, most)),
+            system=_system(
+                CONSOLIDATE_SYSTEM.format(most={5: "five", 10: "ten"}.get(most, most)),
+                session),
             user_text=consolidation_input(rows) + style.prompt_block(
                 session.tenant, [style.K.MAP_HEADER, style.K.MAP_STATEMENT]),
             target_type="strategy_session",
@@ -392,7 +429,8 @@ def draft_mirror(session):
         return None
     try:
         text = claude.complete(
-            tenant=session.tenant, purpose=MIRROR_PURPOSE, system=MIRROR_SYSTEM,
+            tenant=session.tenant, purpose=MIRROR_PURPOSE,
+            system=_system(MIRROR_SYSTEM, session),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger="button", max_tokens=1000,
         )
@@ -525,7 +563,7 @@ def draft_path_notes(session, *, trigger="button"):
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=PATHS_PURPOSE,
-            system=PATHS_SYSTEM.format(practice=practice),
+            system=_system(PATHS_SYSTEM.format(practice=practice), session),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger=trigger, max_tokens=1500,
         )

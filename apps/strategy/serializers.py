@@ -186,7 +186,16 @@ def represent_session(session, *, include_financial=True, full=False,
     payload["diagnostic_proposals"] = [
         diagnostic.represent(p) for p in
         StrategyDiagnosticProposal.objects.filter(session=session)
-    ] if include_prep and services.is_focused(session) else []
+    ] if include_prep and services.has_card_map(session) else []
+    # A v3 session (P3) carries what its template set: the scale line above the
+    # ratings, and how many diagnostic questions it starts with and may hold.
+    if services.is_v3(session):
+        from apps.strategy import v3
+
+        settings = v3.settings_of(session)
+        payload["rating_scale"] = settings["rating_scale"]
+        payload["diagnostic"] = {"size": settings["diagnostic_size"],
+                                 "most": v3.DIAGNOSTIC_CEILING}
     from apps.strategy import emails as strategy_emails
 
     payload["precall_default_intro"] = strategy_emails.default_intro(session)

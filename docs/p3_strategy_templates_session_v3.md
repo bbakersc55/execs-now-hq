@@ -456,6 +456,26 @@ value" on or off, and settings. Differences from the text above, all small:
   gives a *classic* copy (the copy does not carry the format). Fixing it would
   change v2 behavior, so it is left for the owner to decide.
 
+**Phase 3 (2026-10-03).** `apps/strategy/v3.py`, and a v3-only branch at each
+place the shared engine needed one (`services`, `ai`, `diagnostic`,
+`serializers`, `session_admin`, `views`, `views_precall`). No schema change.
+Differences from the text above:
+
+- **Gap questions fill the template's number.** §3c said "up to two" for
+  evident gaps. With a growth mention and the default of three that is still
+  two; a template set to six gets up to six (or five and the growth one),
+  otherwise "a practice sets its own number" would not hold. Claude may still
+  find fewer, or none.
+- The diagnostic prompt also lists every question already asked, proposed or
+  rejected in the session, and a rejected question is not proposed again.
+- `{Practice}` is a merge field in a v3 session (the practice's display name).
+- A v3 draft session is reloaded from its own template; "Restore seed
+  wording" refuses it (409), and so does reloading from a template that is no
+  longer ready.
+- A v3 session payload carries `rating_scale` and `diagnostic` (`size`,
+  `most`). A classic or v2 payload is unchanged.
+- "Draft rows" on a full v3 map answers with a sentence and makes no call.
+
 ### What I would cut or defer to hit Tuesday, plainly
 
 **Not in the Tuesday build:**
