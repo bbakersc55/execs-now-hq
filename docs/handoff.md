@@ -53,7 +53,7 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | P3 strategy template builder and session v3 | **Not started**; spec not yet written |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
-| Backlog, built 10/3, **not released** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
+| Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
 
 Tests on `dev` as of 10/3: **2076 backend, 538 frontend**. The
 tenant-isolation and role-boundary families are registries that fail on an
@@ -128,7 +128,6 @@ unregistered model; the isolation family now includes the platform owner.
      restricted scopes, then publish.
    - Scope classifications and costs are marked to confirm in the console.
 3. **P4 and Microsoft 365 decisions** (the tables at the end of each spec).
-4. **"Release"** for the three backlog items.
 5. **C12** (about 10/14): say the word, and `execsnowhq_dev` is deleted with a
    dry run.
 
@@ -186,19 +185,19 @@ unregistered model; the isolation family now includes the platform owner.
 - **Secrets:** `FIELD_ENCRYPTION_KEY` is in the owner's password manager;
   losing it loses every stored token and key.
 - **Test data:** Acme Facilities and Noble Baker are test rows in production;
-  keep them out of external demos. "Fake Practice, LLC" was made while testing
-  P2 before P2 reached production, so it's on the laptop or the demo, not
-  production. Archive it wherever it lives once it has served.
+  keep them out of external demos. "Fake Practice, LLC" exists only on the
+  laptop and goes with the next refresh from production; leave it.
 
 ## Open threads
 
 1. **Phase 6 live checks** wait on a real reply on an app-started thread.
    Confirm `gmail.readonly` was granted by reading `GmailConnection.scopes`, not
    by memory.
-2. **Phase 4 Check 1 and Module 4B's manual checks** need real events: a real
-   prospect session end to end with its PDF, and real goals with measurements.
-   *(The 9/29 session with Brett Murray, Grime Fighters, and its outcome are
-   not recorded here. Update this line.)*
+2. **Brett Murray, Grime Fighters:** the strategy session ran 9/29 as planned,
+   and the map and PDF were sent the same day. **Proposal pending, no decision
+   yet.** That is one of the two real sessions the exit criteria ask for.
+   Module 4B's manual checks still need real goals with measurements (Brett, if
+   he signs).
 3. **Referral-touch drafts** were scheduled to appear on 10/7 for approval.
 4. **Meeting ingestion:** live pickup of a brand-new Google Meet meeting had not
    been observed at last check.
