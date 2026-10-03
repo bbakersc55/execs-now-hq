@@ -71,7 +71,7 @@ export function ClientFacingLinePrompt({ to, what, onSave, onCancel }: {
         One line on what this means for the client — optional
       </label>
       <textarea id="client-facing-line" rows={3} value={line} autoFocus
-        placeholder="e.g. We can now see where invoices stall; the fix lands next week."
+        placeholder="For example: We can now see where invoices stall; the fix lands next week."
         onChange={(e) => setLine(e.target.value)} />
       <Banner kind="info">
         This is what their progress report will say. Without it the report shows the

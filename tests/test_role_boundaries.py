@@ -626,7 +626,7 @@ def test_10a_a_va_may_administer_and_may_not_judge(seeded_tenant, api, fake_clau
     resolved = api.as_(va).post("/api/goal-resolutions/", json.dumps(
         {"goal": str(goal.pk), "resolution": "achieved", "reason": "Done."}),
         content_type="application/json")
-    assert resolved.status_code == 403 and "fractional's call" in resolved.json()["detail"]
+    assert resolved.status_code == 403 and "assigned associate's call" in resolved.json()["detail"]
 
     accepted = api.as_(va).post(f"/api/value-report/{goal.pk}/accept-narrative/",
                                 json.dumps({"body": "A VA's verdict."}),
@@ -636,7 +636,7 @@ def test_10a_a_va_may_administer_and_may_not_judge(seeded_tenant, api, fake_clau
     statement = api.as_(va).patch(f"/api/goals/{goal.pk}/", json.dumps(
         {"outcome_statement": "A VA's sentence."}), content_type="application/json")
     assert statement.status_code == 400
-    assert "fractional's sentence" in json.dumps(statement.json())
+    assert "assigned associate's sentence" in json.dumps(statement.json())
 
     from apps.work.models import GoalNarrativeVersion, GoalResolution
 

@@ -123,7 +123,7 @@ export function Digests({ me }: { me: Me }) {
       {!mayApprove && (
         <Banner kind="info">
           You can read and edit these to get them ready. Approving and sending is the
-          founder's or a contractor fractional's call.
+          practice owner's or an associate's call.
         </Banner>
       )}
 

@@ -47,9 +47,9 @@ const EXAMPLE = "Owner is the bottleneck on approvals → No decision rights wri
 const FLAG_LABEL: Record<string, string> = {
   fractional_notes: "Your private notes",
   diagnostic_observations: "Your diagnostic observations",
-  alignment_observation: "The alignment observation (§3.4)",
+  alignment_observation: "The alignment observation",
   mechanics: "Notes / mechanics from experience",
-  investment: "§9 — scope and investment",
+  investment: "Scope and investment",
 };
 
 /**
@@ -137,7 +137,7 @@ export function SessionDetail({ me }: { me: Me }) {
         {data.scheduled_at ? when(data.scheduled_at) : "Not scheduled"} · {data.owner}
         {data.must_ask && <> · <strong>{data.must_ask.answered} of {data.must_ask.of}</strong> must-asks answered</>}
         {elapsed !== null && (
-          <> · <strong>{elapsed} min</strong> of the template's {data.budget_minutes}</>
+          <> · <strong>{elapsed} minutes</strong> of the template's {data.budget_minutes}</>
         )}
       </p>
       {note && <Banner kind="info">{note}</Banner>}
@@ -163,7 +163,7 @@ export function SessionDetail({ me }: { me: Me }) {
       {!mayRun && (
         <Banner kind="info">
           You can read the session and send the pre-call form. Running the call,
-          drafting, sending the map and converting are the fractional's.
+          drafting, sending the map and converting are for the practice owner or an associate.
         </Banner>
       )}
 
@@ -243,8 +243,8 @@ export function SessionDetail({ me }: { me: Me }) {
               {section.time_budget_minutes && (
                 <Pill kind={over ? "warn" : here ? "ai" : ""}>
                   {here && onSection !== null
-                    ? `${onSection} of ${section.time_budget_minutes} min`
-                    : `${section.time_budget_minutes} min`}
+                    ? `${onSection} of ${section.time_budget_minutes} minutes`
+                    : `${section.time_budget_minutes} minutes`}
                 </Pill>
               )}
               {mayRun && !precall && (
@@ -1750,14 +1750,14 @@ function CallClock({ data, elapsed, onSection }: {
         Call{" "}
         {elapsed === null
           ? <strong>not started</strong>
-          : <strong className={over ? "over" : ""}>{elapsed} of {total} min</strong>}
-        {elapsed === null && <span className="muted"> · {total} min planned</span>}
+          : <strong className={over ? "over" : ""}>{elapsed} of {total} minutes</strong>}
+        {elapsed === null && <span className="muted"> · {total} minutes planned</span>}
       </span>
       {current && (
         <span>
           {current.title}{" "}
           <strong className={sectionOver ? "over" : ""}>
-            {onSection ?? 0} of {current.time_budget_minutes ?? "—"} min</strong>
+            {onSection ?? 0} of {current.time_budget_minutes ?? "—"} minutes</strong>
         </span>
       )}
     </div>

@@ -83,7 +83,7 @@ class WorkViewSet(viewsets.GenericViewSet):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         if getattr(request, "membership", None) is None:
-            self.permission_denied(request, message="No membership for this tenant.")
+            self.permission_denied(request, message="You're not a member of this practice.")
 
     def base_queryset(self):
         return self.model.objects.filter(deleted_at__isnull=True)
@@ -718,7 +718,7 @@ class DigestViewSet(WorkViewSet):
             raise Http404
         digest = self.load(pk)
         if digest.state != Digest.State.PENDING:
-            return Response({"detail": f"This digest is {digest.state}. Preview what was "
+            return Response({"detail": f"This digest is {digest.get_state_display().lower()}. Preview what was "
                                        "sent from its Outbox row."}, status=409)
         html, text = digest_service.email_for(digest,
                                               footer_url=digest_service.preview_footer_url())
@@ -847,7 +847,7 @@ class DigestViewSet(WorkViewSet):
                      "development_only": True},
         )
         return Response({
-            "detail": f"Generated a {digest.state} digest for {contact.first_name} "
+            "detail": f"Generated a {digest.get_state_display().lower()} digest for {contact.first_name} "
                       f"from {len(owed)} update{'s' if len(owed) != 1 else ''}.",
             "digest": work_serializers.represent_digest(digest, full=True),
         }, status=201)
@@ -926,7 +926,7 @@ class ActivityView(viewsets.GenericViewSet):
 
         membership = getattr(request, "membership", None)
         if membership is None:
-            return Response({"detail": "No membership for this tenant."}, status=403)
+            return Response({"detail": "You're not a member of this practice."}, status=403)
         if membership.role in CLIENT_ROLES:
             # Matrix 7.16 as it now reads. A client is not told what the feed is.
             return Response({"detail": "Not available."}, status=403)
@@ -1063,7 +1063,7 @@ class PortalAccessViewSet(WorkViewSet):
 
     def create(self, request):
         if not self._may_manage(request):
-            return Response({"detail": "A VA does not grant portal access."}, status=403)
+            return Response({"detail": "Assistants don't grant portal access."}, status=403)
         from apps.crm.models import Contact
 
         contact = crm_perms.contact_queryset_for(
@@ -1100,7 +1100,7 @@ class PortalAccessViewSet(WorkViewSet):
         """Matrix 9.2a — change FCC vs ECC on an existing portal user. Same
         scope as revoke, and the same session handling when the role narrows."""
         if not self._may_manage(request):
-            return Response({"detail": "A VA does not change portal roles."}, status=403)
+            return Response({"detail": "Assistants don't change portal roles."}, status=403)
         membership = self._live_access(request, pk)
         try:
             result = portal.change_role(membership, request.data.get("role"),
@@ -1111,7 +1111,7 @@ class PortalAccessViewSet(WorkViewSet):
 
     def destroy(self, request, pk=None):
         if not self._may_manage(request):
-            return Response({"detail": "A VA does not revoke portal access."}, status=403)
+            return Response({"detail": "Assistants don't revoke portal access."}, status=403)
         return Response(portal.revoke(self._live_access(request, pk), actor=request.user))
 
 
@@ -1129,7 +1129,7 @@ class AssignablePeopleView(viewsets.GenericViewSet):
 
         membership = getattr(request, "membership", None)
         if membership is None:
-            return Response({"detail": "No membership for this tenant."}, status=403)
+            return Response({"detail": "You're not a member of this practice."}, status=403)
         rows = Membership.objects.filter(revoked_at__isnull=True).select_related("user")
         if crm_perms.role_of(request) in CLIENT_ROLES:
             rows = rows.filter(client_company_id=membership.client_company_id,
@@ -1162,7 +1162,7 @@ class ValueReportBase(viewsets.GenericViewSet):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         if getattr(request, "membership", None) is None:
-            self.permission_denied(request, message="No membership for this tenant.")
+            self.permission_denied(request, message="You're not a member of this practice.")
 
     def for_client(self) -> bool:
         return work_perms.is_client(self.request)
@@ -1211,7 +1211,7 @@ class ValueReportBase(viewsets.GenericViewSet):
         if work_perms.may_judge(request, goal.client_company_id):
             return None
         return Response(
-            {"detail": "That is the fractional's call, not an administrative one. "
+            {"detail": "That is the practice owner's or the assigned associate's call. "
                        "Recording a reading and exporting the report are yours; "
                        "this is not."},
             status=403)

@@ -55,8 +55,8 @@ def test_default_transport_is_gmail():
 
 
 @override_settings(APP_MAIL_TRANSPORT="postmark")
-def test_postmark_transport_is_a_v1_option_and_says_so():
-    with pytest.raises(transport.TransportUnavailable, match="V1 option"):
+def test_postmark_transport_is_not_available_yet_and_says_so():
+    with pytest.raises(transport.TransportUnavailable, match="not available yet"):
         transport.get_transport().send()
 
 

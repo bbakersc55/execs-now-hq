@@ -730,7 +730,7 @@ def test_generate_now_runs_the_real_path_for_a_chosen_stakeholder(
         content_type="application/json")
     assert response.status_code == 201
     body = response.json()
-    assert "Generated a pending digest" in body["detail"]
+    assert "Generated a pending approval digest" in body["detail"]
     assert "Generated on demand." in body["digest"]["body_text"]
     # Held, exactly as the Thursday run would be.
     assert body["digest"]["state"] == "pending"

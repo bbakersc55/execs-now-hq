@@ -255,8 +255,7 @@ def sending_connection_for(tenant, from_address=""):
     if connection is None:
         raise TransportUnavailable(
             "No Gmail account is connected for this practice. Connect Gmail in "
-            "Settings — in Beta all app mail, including magic links, goes "
-            "through it."
+            "Settings — all app mail, including magic links, goes through it."
         )
     if connection.send_as_verified_at is None:
         raise SendAsNotVerified(
@@ -370,8 +369,7 @@ class PostmarkTransport:
 
     def send(self, **kwargs):
         raise TransportUnavailable(
-            "The Postmark transport is a V1 option and is not configured. "
-            "Set APP_MAIL_TRANSPORT=gmail for Beta."
+            "Sending through Postmark is not available yet. Contact support."
         )
 
 

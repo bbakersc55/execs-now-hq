@@ -122,7 +122,7 @@ def _resolve_key(tenant) -> str:
     if settings.IS_LOCAL and settings.ANTHROPIC_API_KEY:
         return settings.ANTHROPIC_API_KEY
     raise ClaudeUnavailable(
-        "No Anthropic API key is set. The founder fractional adds one under AI usage."
+        "No Anthropic API key is set. The practice owner adds one under AI usage."
     )
 
 
@@ -273,7 +273,7 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
             **({"output_config": {"effort": effort}} if effort else {}),
         )
     except anthropic.AuthenticationError as exc:
-        fail("Anthropic rejected the stored key. The founder fractional can replace it "
+        fail("Anthropic rejected the stored key. The practice owner can replace it "
              "under AI usage.", exc)
     except anthropic.PermissionDeniedError as exc:
         fail(f"The stored key cannot use {settings.ANTHROPIC_MODEL}.", exc)

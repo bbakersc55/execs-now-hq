@@ -229,7 +229,7 @@ def start(*, tenant, contact, template=None, owner=None, company=None,
         template = (live.filter(is_default=True).order_by("-version").first()
                     or live.order_by("-version").first())
     if template is None:
-        raise SessionError("This tenant has no strategy template to run.", status=409)
+        raise SessionError("This practice has no strategy template yet.", status=409)
     if template.archived_at is not None:
         raise SessionError(f"“{template.name}” is archived. Restore it, or start from "
                            f"another template.", status=409)
@@ -353,7 +353,7 @@ def save_answer(session, *, question_key, value, answered_by, fractional_note=No
         # The public form may only write what it was sent to ask.
         raise AnswerInvalid("That question is not on the pre-call form.", status=403)
     if answered_by == StrategyAnswer.AnsweredBy.PROSPECT and fractional_note:
-        raise AnswerInvalid("A prospect cannot write a fractional note.", status=403)
+        raise AnswerInvalid("A prospect cannot write a practice note.", status=403)
     cleaned = clean_value(question["response_schema"], value)
     answer, _created = StrategyAnswer.objects.update_or_create(
         tenant=session.tenant, session=session, question_key=question_key,

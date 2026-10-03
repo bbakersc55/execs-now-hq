@@ -765,7 +765,7 @@ def test_ac_4b_17_a_va_may_measure_and_export_and_may_not_judge(
     outcome = api.as_(va).patch(f"/api/goals/{goal.pk}/", json.dumps(
         {"outcome_statement": "A VA's sentence."}), content_type="application/json")
     assert outcome.status_code == 400
-    assert "the fractional's sentence" in json.dumps(outcome.json())
+    assert "assigned associate's sentence" in json.dumps(outcome.json())
     goal.refresh_from_db()
     assert goal.outcome_statement != "A VA's sentence."
 
@@ -773,7 +773,7 @@ def test_ac_4b_17_a_va_may_measure_and_export_and_may_not_judge(
         "goal": str(goal.pk), "resolution": "achieved", "reason": "Done."}),
         content_type="application/json")
     assert resolved.status_code == 403
-    assert "the fractional's call" in resolved.json()["detail"]
+    assert "assigned associate's call" in resolved.json()["detail"]
 
     accepted = api.as_(va).post(f"/api/value-report/{goal.pk}/accept-narrative/",
                                 json.dumps({"body": "Published by a VA."}),

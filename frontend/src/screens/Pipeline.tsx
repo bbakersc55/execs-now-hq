@@ -85,7 +85,7 @@ export function Pipeline() {
     return (
       <>
         <h2>Pipeline</h2>
-        <Empty>No pipelines yet. An FF creates them in pipeline settings.</Empty>
+        <Empty>No pipelines yet. The practice owner creates them in pipeline settings.</Empty>
       </>
     );
   }
@@ -128,7 +128,7 @@ export function Pipeline() {
       {activePipeline?.kind === "sales" && (
         <p className="muted small">
           This is the sales pipeline: reaching its <strong>won</strong> stage is what makes
-          someone a client (FR-1.6a). Other pipelines have their own end states and none
+          someone a client. Other pipelines have their own end states and none
           of them flag a company.
         </p>
       )}

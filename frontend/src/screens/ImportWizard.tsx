@@ -23,6 +23,14 @@ const TARGETS = [
   "contact_type", "pipeline_stage", "tags", "notes", "background", "source",
 ];
 
+/** What each target is called on screen; the keys are the importer's. */
+const TARGET_LABEL: Record<string, string> = {
+  first_name: "First name", last_name: "Last name", email: "Email", phone: "Phone",
+  company: "Company", title: "Title", contact_type: "Contact type",
+  pipeline_stage: "Pipeline stage", tags: "Tags", notes: "Notes",
+  background: "Background", source: "Source",
+};
+
 /** The two columns that go through the value-mapping sub-step. */
 const VALUE_TARGETS = ["contact_type", "pipeline_stage"] as const;
 type ValueTarget = (typeof VALUE_TARGETS)[number];
@@ -238,10 +246,10 @@ export function ImportWizard() {
           <p className="muted small">
             A column mapped to <strong>notes</strong> becomes a real note attached to the
             contact — not a field on the record. Map <strong>two</strong> columns to{" "}
-            <strong>phone</strong> to import a second number; the first one becomes the
+            <strong>Phone</strong> to import a second number; the first one becomes the
             contact's primary. If your file has both a <strong>Status</strong> and a
             separate <strong>Stage</strong> column, map them to{" "}
-            <strong>contact_type</strong> and <strong>pipeline_stage</strong> — they are
+            <strong>Contact type</strong> and <strong>Pipeline stage</strong> — they are
             different facts and both are kept.
           </p>
 
@@ -267,7 +275,7 @@ export function ImportWizard() {
                     <select value={mapping[h] ?? ""}
                       onChange={(e) => setMapping({ ...mapping, [h]: e.target.value })}>
                       {TARGETS.map((t) => (
-                        <option key={t} value={t}>{t === "" ? "— ignore —" : t}</option>
+                        <option key={t} value={t}>{t === "" ? "— ignore —" : TARGET_LABEL[t] ?? t}</option>
                       ))}
                     </select>
                   </td>
@@ -419,7 +427,7 @@ export function ImportWizard() {
               Saves the column mapping <em>and</em> every value mapping together, so the
               next export from the same system maps in one click.
             </p>
-            <input placeholder="e.g. Outlook export" value={profileName}
+            <input placeholder="For example, Outlook export" value={profileName}
               onChange={(e) => setProfileName(e.target.value)} />{" "}
             <button disabled={!profileName || saveProfile.isPending}
               onClick={() => saveProfile.mutate()}>

@@ -232,8 +232,8 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
             if not work_perms.may_judge(request, company):
                 raise serializers.ValidationError({
                     "outcome_statement":
-                        "The outcome statement is the fractional's sentence about "
-                        "what this goal is for. Recording a reading is yours; this "
+                        "The outcome statement is the practice owner's or the assigned "
+                        "associate's sentence about what this goal is for. Recording a reading is yours; this "
                         "is not."})
         # Ruling 2 — direction is required on a numeric measurable and never
         # inferred, because inference is silently wrong when baseline and target

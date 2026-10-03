@@ -85,7 +85,7 @@ class ContactViewSet(TenantStaffViewSet):
         email is a decision about the relationship, not data entry."""
         if crm_perms.role_of(request) not in ("FF", "CF"):
             self.permission_denied(request, message=(
-                "Enrolling someone in email is the founder's or a fractional's."))
+                "Enrolling someone in email is for the practice owner or an associate."))
 
     @action(detail=True, methods=["get"])
     def enrollments(self, request, pk=None):
@@ -708,7 +708,7 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
         message = self.get_object()
         if not self._editable(message):
             return Response(
-                {"detail": f"This message is {message.state} and can no longer be edited."},
+                {"detail": f"This message is {message.get_state_display().lower()} and can no longer be edited."},
                 status=400,
             )
         for field in ("subject", "body_text", "body_html"):
@@ -752,7 +752,7 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
         message = self.get_object()
         if not self._editable(message):
             return Response(
-                {"detail": f"This message is {message.state}; attachments are fixed."},
+                {"detail": f"This message is {message.get_state_display().lower()}; attachments are fixed."},
                 status=400,
             )
         upload = request.FILES.get("file")
@@ -788,7 +788,7 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
         message = self.get_object()
         if not self._editable(message):
             return Response(
-                {"detail": f"This message is {message.state}; attachments are fixed."},
+                {"detail": f"This message is {message.get_state_display().lower()}; attachments are fixed."},
                 status=400,
             )
         attachment = OutboxAttachment.objects.filter(

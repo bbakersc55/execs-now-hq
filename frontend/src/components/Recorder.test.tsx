@@ -54,7 +54,7 @@ describe("Recorder", () => {
     expect(getUserMedia).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: /Everyone has agreed/ }));
-    await screen.findByText("● REC");
+    await screen.findByText("● Recording");
     expect(fetchMock.calls.some((c) => c.method === "POST" && c.url.includes("consent-reminder"))).toBe(true);
     expect(getUserMedia).toHaveBeenCalledOnce();
   });
@@ -67,7 +67,7 @@ describe("Recorder", () => {
   it("AC-2.6 — once dismissed this session, the next recording starts without it", async () => {
     setup(true);
     fireEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await screen.findByText("● REC");
+    await screen.findByText("● Recording");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
@@ -76,7 +76,7 @@ describe("Recorder", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
     fireEvent.click(screen.getByRole("button", { name: /Record/ }));
     await flush();
-    expect(screen.getByText("● REC")).toBeInTheDocument();
+    expect(screen.getByText("● Recording")).toBeInTheDocument();
 
     act(() => { vi.advanceTimersByTime((WARN_AT_SECONDS - 5) * 1000); });
     expect(screen.queryByText(/stops automatically at/)).not.toBeInTheDocument();

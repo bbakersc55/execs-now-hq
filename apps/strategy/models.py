@@ -271,7 +271,7 @@ class StrategyAnswer(TenantScopedModel):
 
     class AnsweredBy(models.TextChoices):
         PROSPECT = "prospect", "The prospect, on the pre-call form"
-        FRACTIONAL = "fractional", "The fractional, in the call"
+        FRACTIONAL = "fractional", "The practice, in the call"
 
     session = models.ForeignKey(StrategySession, on_delete=models.CASCADE,
                                 related_name="answers")

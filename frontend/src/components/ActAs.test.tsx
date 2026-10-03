@@ -41,7 +41,7 @@ describe("the acting-as banner (FR-3.42)", () => {
 
     const banner = screen.getByRole("status", { name: "Acting as" });
     expect(banner).toHaveTextContent("Bryan Baker is acting as Priya Shah");
-    expect(banner).toHaveTextContent("employee, Acme Facilities");
+    expect(banner).toHaveTextContent("Client team member, Acme Facilities");
     expect(banner).toHaveTextContent("no email is sent");
 
     await user.click(screen.getByRole("button", { name: "Stop acting as Priya Shah" }));

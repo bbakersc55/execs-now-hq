@@ -273,7 +273,7 @@ describe("changing an existing portal user's role", () => {
     await userEvent.selectOptions(await screen.findByLabelText("Role for Ben Orji"), "FCC");
     await waitFor(() => expect(patches).toEqual([{ role: "FCC" }]));
     expect(confirmMock).not.toHaveBeenCalled();
-    expect(await screen.findByText(/Role changed to founder/)).toBeInTheDocument();
+    expect(await screen.findByText(/Role changed to client owner/)).toBeInTheDocument();
   });
 
   it("asks before narrowing to employee, and sends nothing if declined", async () => {

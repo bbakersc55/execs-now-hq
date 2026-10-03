@@ -3,8 +3,14 @@
 **Practices beta program, phase 1 of 4 · spec for owner review · 2026-10-02**
 
 This spec covers P1 only. It is written from an audit of the code as of
-`2e5e717`. Nothing in it is built yet. Decisions marked **D1–D7** need the
-owner's answer before the build starts. Each has a recommendation.
+`2e5e717`.
+
+**Approved 2026-10-02.** D1 as recommended (owner-facing docs renamed fully,
+runbooks forward-only). D2 **B**: neutral grays and an initials mark for an
+unbranded practice, product brand on staff screens. D3 as listed. D4 exactly as
+recommended. D5–D7 as recommended. Also in P1: the portal stylesheet bug and
+the unbranded value report with raw codes. Platform mark: `mark.png` at 464 px;
+use it as is, and upscale only for the 512 icon.
 
 ---
 
@@ -121,10 +127,11 @@ The audit counts 316 "tenant" and 768 role codes across 17 docs. Recommendation:
 - **Backend source guard:** a test scans every literal passed to
   `PermissionDenied`, `ValidationError`, `Response({"detail": …})` and email
   subjects in `apps/`, and fails on `\b(FF|CF|VA|FCC|ECC)\b` or `tenant`.
-- **Frontend render guard:** a vitest renders each staff screen as each staff
-  role, and each portal screen as both client roles. It fails if the page text
-  matches `\b(FF|CF|VA|FCC|ECC)\b` or `/tenant/i`. It also checks every role
-  `<option>` against `ROLE_LABEL`.
+- **Frontend source guard** (`frontend/src/test/vocabulary.test.ts`): scans every
+  screen's source for text a person can read (JSX text and string literals that
+  are sentences, not bare codes). It fails on a role code, "tenant" or "founder
+  fractional". *Built as a source scan rather than rendering each screen per
+  role: it covers every file, including screens no test renders.*
 - **Existing tests updated:** `test_module3_portal.py:603` asserts "FCC or
   ECC"; 7 frontend tests assert on "founder fractional" / "founder" /
   "employee"; abbreviation tests on "● REC", "§9", "min".

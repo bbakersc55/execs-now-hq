@@ -69,9 +69,9 @@ def _clean_id(value: str) -> str:
     return value if ID_PATTERN.fullmatch(value) else ""
 
 SKIP_REASONS = {
-    "application/pdf": "A PDF is not read in Beta — export the notes as a Doc or text.",
-    "video": "Audio and video are out of scope for Beta.",
-    "audio": "Audio and video are out of scope for Beta.",
+    "application/pdf": "A PDF is not read yet — export the notes as a Doc or text.",
+    "video": "Audio and video are not read from Drive.",
+    "audio": "Audio and video are not read from Drive.",
 }
 
 
@@ -87,7 +87,7 @@ def skip_reason(mime_type: str) -> str:
     if mime_type.startswith("application/vnd.google-apps."):
         kind = mime_type.rsplit(".", 1)[-1]
         return f"A Google {kind} is not meeting notes; only Docs are read."
-    return f"{mime_type or 'That file type'} is not read in Beta."
+    return f"{mime_type or 'That file type'} is not read yet."
 
 
 @dataclass

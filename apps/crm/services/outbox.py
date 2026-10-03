@@ -202,9 +202,9 @@ def _suppressed_while_acting(*, tenant, producer, to_contact, to_address, from_a
 def approve(message, *, actor, role):
     """FR-1.17, FR-1.19. A VA cannot approve (H7)."""
     if role not in (Role.FF, Role.CF):
-        raise SendNotPermitted("Only a founder or contractor fractional may send.")
+        raise SendNotPermitted("Only the practice owner or an associate can send.")
     if message.state not in (S.DRAFT, S.PENDING_APPROVAL):
-        raise SendNotPermitted(f"Cannot approve a message in state {message.state}.")
+        raise SendNotPermitted(f"Cannot approve a message in state {message.get_state_display().lower()}.")
     reason = _suppress_if_unsubscribed(message, actor=actor)
     if reason:
         raise SendNotPermitted(reason)

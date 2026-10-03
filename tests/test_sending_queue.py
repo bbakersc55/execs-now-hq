@@ -99,7 +99,7 @@ def test_a_va_prepares_but_never_approves(seeded_tenant, va, api, queue, dev_out
     skipped = api.as_(va).post("/api/sending-queue/skip/", {"keys": keys},
                                content_type="application/json").json()
     assert skipped["done"] == [f"outbox:{queue['touch'].pk}"]
-    assert "cannot skip" in skipped["failed"][0]["detail"]
+    assert "can't skip" in skipped["failed"][0]["detail"]
 
 
 @pytest.mark.django_db

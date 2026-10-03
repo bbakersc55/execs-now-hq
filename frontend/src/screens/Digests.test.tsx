@@ -57,7 +57,7 @@ describe("the digest approval screen", () => {
     expect(screen.queryByRole("button", { name: "Approve and send" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Skip this one" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Approve.*selected/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Approving and sending is the founder's/)).toBeInTheDocument();
+    expect(screen.getByText(/Approving and sending is the practice owner's/)).toBeInTheDocument();
   });
 
   it("AC-3.20 — a stale draft names what changed and offers a rebuild", async () => {

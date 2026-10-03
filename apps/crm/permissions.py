@@ -49,7 +49,7 @@ class IsTenantStaff(permissions.BasePermission):
 
 
 class IsFF(permissions.BasePermission):
-    message = "Only the founder fractional may do this."
+    message = "Only the practice owner can do this."
 
     def has_permission(self, request, view):
         return role_of(request) == Role.FF
@@ -58,7 +58,7 @@ class IsFF(permissions.BasePermission):
 class IsFFOrVA(permissions.BasePermission):
     """Matrix 4.5 — merge, and 3.14 contact types / service categories."""
 
-    message = "Only the founder fractional or a VA may do this."
+    message = "Only the practice owner or an assistant can do this."
 
     def has_permission(self, request, view):
         return role_of(request) in (Role.FF, Role.VA)
@@ -67,7 +67,7 @@ class IsFFOrVA(permissions.BasePermission):
 class CanSend(permissions.BasePermission):
     """Matrix 5.3 — the H7 boundary. A VA may draft and reject, never send."""
 
-    message = "A VA cannot approve or send. Ask the founder fractional."
+    message = "Assistants can't approve or send. Ask the practice owner."
 
     def has_permission(self, request, view):
         return role_of(request) in (Role.FF, Role.CF)
@@ -82,7 +82,7 @@ class CanConnectMailbox(permissions.BasePermission):
     only this one.
     """
 
-    message = "A VA does not connect a mailbox. Ask the founder fractional."
+    message = "Assistants don't connect a mailbox. Ask the practice owner."
 
     def has_permission(self, request, view):
         return role_of(request) in (Role.FF, Role.CF)

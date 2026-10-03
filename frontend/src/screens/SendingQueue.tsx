@@ -210,7 +210,7 @@ function Detail({ item, mayApprove, busy, onAct, onSaved }: {
       </p>
       {item.warning && <Banner kind="warn">{item.warning}</Banner>}
       {!mayApprove && (
-        <p className="small muted">Only the founder or a fractional approves. You can edit or
+        <p className="small muted">Only the practice owner or an associate approves. You can edit or
           skip.</p>
       )}
       {editing && <Editor item={item} onSaved={() => { setEditing(false); onSaved(); }} />}

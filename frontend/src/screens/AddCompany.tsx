@@ -112,15 +112,15 @@ export function AddCompany({ me, onDone, existing, people = [] }: {
               ))}
             </select>
             <p className="muted small" style={{ marginBottom: 0 }}>
-              One of this company's own contacts. Portal access offers them as the founder
-              user; changing it does not change anyone's existing portal role.
+              One of this company's own contacts. Portal access offers them as the client
+              owner; changing it does not change anyone's existing portal role.
             </p>
           </Field>
         )}
         {editing && !maySetPrimary && (
           <p className="muted small">
             Primary contact: {current ? `${current.first_name} ${current.last_name}` : "none"}.
-            Only the founder fractional or a CF changes it.
+            Only the practice owner or an associate changes it.
           </p>
         )}
 
@@ -136,7 +136,7 @@ export function AddCompany({ me, onDone, existing, people = [] }: {
 
         <p className="muted small">
           <strong>Client company</strong> is not set here. It is derived when one of
-          their contacts reaches the sales pipeline's won stage (FR-1.6a), so there is
+          their contacts reaches the sales pipeline's won stage, so there is
           only ever one answer to “is this a client”.
         </p>
 

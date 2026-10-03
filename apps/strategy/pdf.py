@@ -146,7 +146,7 @@ def context_for(session) -> dict:
     paths = sections.get(PATHS_SECTION, [])
     scope = sections.get(SCOPE_SECTION, [])
     brand = email_layout.branding(session.tenant)
-    practice = brand.display_name or brand.practice_name or "your fractional operator"
+    practice = brand.display_name or brand.practice_name or "the practice"
     return {
         "brand": brand,
         "practice": practice,

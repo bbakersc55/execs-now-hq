@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { api, StaffMember } from "../lib/api";
+import { STAFF_ROLES, roleLabel } from "../lib/roles";
 
 export function Staff() {
   const qc = useQueryClient();
@@ -59,8 +60,8 @@ export function Staff() {
 
       {note && <Banner kind="ok">{note}</Banner>}
       <Banner kind="info">
-        Google sign-in is restricted to your Workspace domain, so a CF or VA needs an
-        account at that domain. Client users are different — they get portal access on a
+        Google sign-in is restricted to your Workspace domain, so an associate or assistant
+        needs an account at that domain. Client users are different — they get portal access on a
         contact and sign in by magic link.
       </Banner>
 
@@ -71,9 +72,7 @@ export function Staff() {
           <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="Role">
             <select value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="VA">VA — virtual assistant</option>
-              <option value="CF">CF — contractor fractional</option>
-              <option value="FF">FF — founder fractional</option>
+              {[...STAFF_ROLES].reverse().map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </Field>
           <div style={{ flex: "0 0 auto" }}>
@@ -94,8 +93,7 @@ export function Staff() {
                   <td>
                     <select value={m.role} disabled={!m.is_active}
                       onChange={(e) => changeRole.mutate({ id: m.id, role: e.target.value })}>
-                      <option value="FF">FF</option><option value="CF">CF</option>
-                      <option value="VA">VA</option>
+                      {STAFF_ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
                     </select>
                   </td>
                   <td className="muted small">{when(m.invited_at)}</td>

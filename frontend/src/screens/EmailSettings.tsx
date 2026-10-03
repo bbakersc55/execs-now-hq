@@ -11,7 +11,7 @@ import { SenderSettings } from "./SenderSettings";
 const SCOPE_LABELS: Record<string, string> = {
   "https://www.googleapis.com/auth/gmail.send": "Send mail as you",
   "https://www.googleapis.com/auth/gmail.settings.basic": "Read your send-as list",
-  "https://www.googleapis.com/auth/gmail.readonly": "Read your mailbox (Tier 2)",
+  "https://www.googleapis.com/auth/gmail.readonly": "Read your mailbox",
   // Granted from the meeting queue, not here — but it shows here, because
   // this is the screen that lists what the app may do with the account.
   "https://www.googleapis.com/auth/drive.readonly": "Read your meeting-notes folder in Drive",
@@ -102,7 +102,7 @@ export function EmailSettings({ me }: { me: Me }) {
   return (
     <>
       <PageHead title="Email settings"
-        sub={<>In Beta every app-originated message — magic links, digests,
+        sub={<>Every app-originated message — magic links, digests,
           referral touches — is sent by a connected Gmail account with{" "}
           <strong>From</strong> set to the practice alias. This is your own
           connection.</>} />
@@ -112,9 +112,8 @@ export function EmailSettings({ me }: { me: Me }) {
 
       {!s.oauth_configured && (
         <Banner kind="warn">
-          No Google OAuth client is configured, so there is nothing to connect to.
-          Set <code>GOOGLE_OAUTH_CLIENT_ID</code> and <code>GOOGLE_OAUTH_CLIENT_SECRET</code>{" "}
-          — <code>docs/05_dev_environment.md</code> §5a.
+          Google sign-in isn't configured on this server, so there is nothing to connect
+          to. Contact support.
         </Banner>
       )}
 
@@ -262,14 +261,14 @@ export function EmailSettings({ me }: { me: Me }) {
       <Card title="Transport in use">
         <p><Pill>{s.transport}</Pill> {s.transport_label}</p>
         <p className="muted small">
-          Set by <code>APP_MAIL_TRANSPORT</code>. The Outbox stays the single queue and
+          Set on the server. The Outbox stays the single queue and
           the complete send log whichever transport is selected.
         </p>
         {s.practice_sending.ok ? (
           <p className="muted small">
             The practice currently sends through <strong>{s.practice_sending.account}</strong>.
             {me.role === "CF" && s.practice_sending.account !== s.email_address &&
-              " That is the founder fractional's connection, not yours."}
+              " That is the practice owner's connection, not yours."}
           </p>
         ) : (
           <Banner kind="bad">{s.practice_sending.detail}</Banner>

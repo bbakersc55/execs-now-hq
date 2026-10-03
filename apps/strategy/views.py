@@ -77,7 +77,7 @@ class StrategyViewSet(viewsets.ViewSet):
 
     def _fractional_only(self, what):
         if self._role() not in FRACTIONAL_ONLY:
-            return Response({"detail": f"A VA cannot {what}."}, status=403)
+            return Response({"detail": f"Assistants can't {what}."}, status=403)
         return None
 
 
@@ -130,8 +130,8 @@ class SessionViewSet(StrategyViewSet):
     def archive(self, request, pk=None):
         session = self.load(pk)
         if not self._may_archive(session):
-            return Response({"detail": "Only the founder fractional, or the fractional "
-                                       "who owns this session, may archive it."},
+            return Response({"detail": "Only the practice owner, or the person "
+                                       "who owns this session, can archive it."},
                             status=403)
         session_admin.archive(session)
         self._session_audit("strategy.session_archived", session.pk,
@@ -143,8 +143,8 @@ class SessionViewSet(StrategyViewSet):
     def unarchive(self, request, pk=None):
         session = self.load(pk)
         if not self._may_archive(session):
-            return Response({"detail": "Only the founder fractional, or the fractional "
-                                       "who owns this session, may restore it."},
+            return Response({"detail": "Only the practice owner, or the person "
+                                       "who owns this session, can restore it."},
                             status=403)
         session_admin.unarchive(session)
         self._session_audit("strategy.session_unarchived", session.pk,
@@ -155,7 +155,7 @@ class SessionViewSet(StrategyViewSet):
     def destroy(self, request, pk=None):
         session = self.load(pk)
         if self._role() != FF:
-            return Response({"detail": "Only the founder fractional may delete a "
+            return Response({"detail": "Only the practice owner can delete a "
                                        "session."}, status=403)
         session_id = session.pk
         try:
@@ -1002,7 +1002,7 @@ class TemplateViewSet(StrategyViewSet):
     def _ff_template(self, pk):
         """The FF's, or a refusal. Returns `(template, refusal)`."""
         if self._role() != FF:
-            return None, Response({"detail": "Only the founder fractional may manage "
+            return None, Response({"detail": "Only the practice owner can manage "
                                              "the templates."}, status=403)
         template = StrategyTemplate.objects.filter(pk=pk).first()
         if template is None:
@@ -1036,7 +1036,7 @@ class TemplateViewSet(StrategyViewSet):
     @action(detail=False, methods=["post"], url_path="restore-from-seed")
     def restore_from_seed(self, request):
         if self._role() != FF:
-            return Response({"detail": "Only the founder fractional may manage the "
+            return Response({"detail": "Only the practice owner can manage the "
                                        "templates."}, status=403)
         name = request.data.get("name") or "Operations — generic"
         variant = request.data.get("variant") or ""

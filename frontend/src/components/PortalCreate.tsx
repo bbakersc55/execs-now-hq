@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Me, PortalPerson, Task, WorkParent, api } from "../lib/api";
+import { usePracticeName } from "../lib/branding";
 import { Banner, Card, Field } from "./ui";
 
 type Outcome = { kind: string; text: string; link: string };
@@ -51,6 +52,7 @@ export function PortalCreate({ me, offer = ["task", "project"] }: {
 
 function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => void }) {
   const qc = useQueryClient();
+  const practice = usePracticeName();
   const [form, setForm] = useState({ title: "", project: "", assignee: "", due_date: "" });
   const [steps, setSteps] = useState<string[]>([]);
   const [step, setStep] = useState("");
@@ -155,7 +157,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
         </Field>
 
         <p className="small muted">
-          You can assign it to anyone at your company. It is shown to your fractional straight away.
+          You can assign it to anyone at your company. It is shown to {practice} straight away.
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
           {create.isPending ? "Creating…" : "Create task"}
@@ -167,6 +169,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
 
 function NewProjectForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
   const qc = useQueryClient();
+  const practice = usePracticeName();
   const [form, setForm] = useState({ title: "", description: "", target_date: "" });
   const [error, setError] = useState("");
 
@@ -201,7 +204,7 @@ function NewProjectForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
             onChange={(e) => setForm({ ...form, target_date: e.target.value })} />
         </Field>
         <p className="small muted">
-          A project groups your company's own tasks. Goals are set with your fractional, so a
+          A project groups your company's own tasks. Goals are set with {practice}, so a
           project you add stands on its own rather than under a goal.
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>

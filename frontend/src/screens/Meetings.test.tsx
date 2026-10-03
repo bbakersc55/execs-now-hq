@@ -295,7 +295,7 @@ describe("connecting the notes folder", () => {
     show({ "GET /api/drive-watch/": UNCONNECTED }, aMe({ role: "VA" }));
 
     // Matrix 11.10 — connecting is the founder's. Clearing the queue is not.
-    expect(await screen.findByText(/The founder fractional connects it/))
+    expect(await screen.findByText(/The practice owner connects it/))
       .toBeInTheDocument();
     expect(screen.queryByLabelText("Drive folder link")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Allow Drive access/ }))

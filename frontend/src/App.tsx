@@ -18,6 +18,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
 import { api, Me } from "./lib/api";
+import { useBranding } from "./lib/branding";
+import { roleLabel } from "./lib/roles";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
 import { Contacts } from "./screens/Contacts";
@@ -54,22 +56,9 @@ import { Tasks } from "./screens/Tasks";
 import { Work } from "./screens/Work";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
 
-interface Branding {
-  display_name: string;
-  logo_url: string;
-  palette: { header: string; accent: string; gray_dark: string; gray_light: string };
-  /** Staff only. A client is never told the product's name. */
-  product_name: string | null;
-}
 
 const TENANT = ["FF", "CF", "VA"];
 
-/** The five codes are the schema's; nobody signing in thinks of themselves as
- *  an "ECC". */
-const ROLE_LABELS: Record<string, string> = {
-  FF: "Founder", CF: "Fractional", VA: "Assistant",
-  FCC: "Client — founder", ECC: "Client",
-};
 const CLIENT = ["FCC", "ECC"];
 
 /** `group` is the heading the item sits under in the sidebar. A flat list of
@@ -171,11 +160,7 @@ export function App() {
   // White-label: every client-facing surface wears the practice's name, colours
   // and logo; only staff screens name the product. Unauthenticated too — the
   // signed-out screen is the first thing a client with a dead session sees.
-  const { data: brand } = useQuery<Branding>({
-    queryKey: ["branding"],
-    queryFn: () => api.get<Branding>("/api/branding"),
-    retry: false,
-  });
+  const { data: brand } = useBranding();
   const staff = !!me?.role && TENANT.includes(me.role);
   // Manual only, and remembered in this browser (design brief, Tier 1).
   const [chosen, setCollapsed] = useRemembered("enhq.sidebar.collapsed", false);
@@ -239,7 +224,7 @@ export function App() {
           <Avatar name={me.full_name || me.email} size="lg" />
           <div className="names" style={{ minWidth: 0 }}>
             <div className="name">{me.full_name || me.email}</div>
-            <div className="role">{ROLE_LABELS[me.role!] ?? me.role}</div>
+            <div className="role">{roleLabel(me.role)}</div>
             <ActAsColleague me={me} />
           </div>
         </div>

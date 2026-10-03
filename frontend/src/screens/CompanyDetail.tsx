@@ -36,7 +36,7 @@ export function CompanyDetail({ me }: { me: Me }) {
       const who = (contacts.data ?? []).find((x) => x.id === contact);
       setError("");
       setNote(`${who ? `${who.first_name} ${who.last_name}` : "They"} is now the primary contact. `
-        + "Future grants offer them as founder; nobody's existing portal role changed.");
+        + "Future grants offer them as client owner; nobody's existing portal role changed.");
       qc.setQueryData(["company", id], updated);
       qc.invalidateQueries({ queryKey: ["companies"] });
       qc.invalidateQueries({ queryKey: ["portal-candidates", id] });

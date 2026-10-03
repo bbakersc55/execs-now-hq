@@ -198,7 +198,7 @@ describe("the live session view", () => {
     showSession();
     // Exact: the call clock's "N of 70 min" can contain "0 of 7" too.
     expect(await screen.findByText("0 of 7")).toBeInTheDocument();
-    expect(screen.getByText("25 min")).toBeInTheDocument();
+    expect(screen.getByText("25 minutes")).toBeInTheDocument();
     expect(screen.getByText("must ask")).toBeInTheDocument();
   });
 
@@ -234,7 +234,7 @@ describe("the live session view", () => {
     showSession();
     const mechanics = await screen.findByLabelText("Notes / mechanics from experience");
     expect(mechanics).not.toBeChecked();
-    expect(screen.getByLabelText("§9 — scope and investment")).not.toBeChecked();
+    expect(screen.getByLabelText("Scope and investment")).not.toBeChecked();
     expect(screen.getByText(/Generating is not sending/)).toBeInTheDocument();
   });
 
@@ -277,15 +277,15 @@ describe("per-section pacing", () => {
     showSession(aSession({ current_section: "diagnostic",
                            current_section_at: twelveMinutesAgo }));
     // On the section's own pill, and again on the call clock at the top.
-    expect(await screen.findAllByText("12 of 25 min")).toHaveLength(2);
+    expect(await screen.findAllByText("12 of 25 minutes")).toHaveLength(2);
     // The sections not being run show their budget and nothing else.
-    expect(screen.getByText("15 min")).toBeInTheDocument();
+    expect(screen.getByText("15 minutes")).toBeInTheDocument();
   });
 
   it("flags a section that has run over", async () => {
     const longAgo = new Date(Date.now() - 40 * 60_000).toISOString();
     showSession(aSession({ current_section: "diagnostic", current_section_at: longAgo }));
-    const [clock, pill] = await screen.findAllByText("40 of 25 min");
+    const [clock, pill] = await screen.findAllByText("40 of 25 minutes");
     expect(pill).toHaveClass("warn");
     expect(clock).toHaveClass("over");
   });
@@ -293,7 +293,7 @@ describe("per-section pacing", () => {
   it("always shows the call clock, before and during the call", async () => {
     showSession(aSession({ started_at: null }));
     const clock = await screen.findByRole("status", { name: "Call clock" });
-    expect(clock).toHaveTextContent(/Call not started · 70 min planned/);
+    expect(clock).toHaveTextContent(/Call not started · 70 minutes planned/);
   });
 
   it("times the call against the template's total once it has started", async () => {
@@ -301,8 +301,8 @@ describe("per-section pacing", () => {
     showSession(aSession({ started_at: tenAgo, current_section: "diagnostic",
                            current_section_at: tenAgo }));
     const clock = await screen.findByRole("status", { name: "Call clock" });
-    expect(clock).toHaveTextContent("Call 10 of 70 min");
-    expect(clock).toHaveTextContent(/Diagnostic: where it's breaking 10 of 25 min/);
+    expect(clock).toHaveTextContent("Call 10 of 70 minutes");
+    expect(clock).toHaveTextContent(/Diagnostic: where it's breaking 10 of 25 minutes/);
   });
 
   it("gives a pre-call section no Start control, and every live one a Start", async () => {
@@ -359,7 +359,7 @@ describe("the template editor", () => {
   it("is the founder fractional's alone", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/strategy-templates/": [TEMPLATE] }));
     renderRoute(<SessionTemplate me={aMe({ role: "CF" })} />);
-    expect(await screen.findByText(/founder fractional's to edit/)).toBeInTheDocument();
+    expect(await screen.findByText(/practice owner's to edit/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Wording of s4_done_right")).not.toBeInTheDocument();
   });
 });
@@ -1317,7 +1317,7 @@ describe("editing a template's questions", () => {
       "Kind of answer (new question in diagnostic)"), "diagnostic_triple");
     await user.type(screen.getByLabelText("Area (new question in diagnostic)"), "People");
     await user.click(screen.getByLabelText("Must ask (new question in diagnostic)"));
-    await user.click(screen.getByLabelText("Fractional note (new question in diagnostic)"));
+    await user.click(screen.getByLabelText("Practice note (new question in diagnostic)"));
     await user.click(screen.getByRole("button", { name: "Add the question" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/questions/"))
       ?.body).toEqual({

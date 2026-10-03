@@ -269,7 +269,7 @@ class Contact(TenantScopedModel):
     # contradicting each other (a template can be attached without switching).
     referral_touch_mode = models.CharField(
         max_length=12,
-        choices=[("ai", "AI-drafted"), ("template", "FF-written template")],
+        choices=[("ai", "AI-drafted"), ("template", "Written by the practice owner")],
         default="ai",
     )
     referral_template = models.ForeignKey(

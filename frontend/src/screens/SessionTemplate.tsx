@@ -109,7 +109,7 @@ export function SessionTemplate({ me }: { me: Me }) {
   if (me.role !== "FF") {
     return (
       <Banner kind="info">
-        The template is the founder fractional's to edit. You can read every
+        The template is the practice owner's to edit. You can read every
         question on a session itself.
       </Banner>
     );
@@ -187,7 +187,7 @@ export function SessionTemplate({ me }: { me: Me }) {
                         : String(section.time_budget_minutes))}
                     onChange={(e) => setBudgets({ ...budgets,
                                                   [section.code]: e.target.value })} />
-                  {" "}min
+                  {" "}minutes
                 </label>
               }>
               {section.questions.length === 0 && (
@@ -449,7 +449,7 @@ function AddQuestion({ section, title, busy, onAdd }: {
       <div className="row">
         {flag("must_ask", "Must ask")}
         {flag("ask_if_time", "If time")}
-        {flag("has_fractional_note", "Fractional note")}
+        {flag("has_fractional_note", "Practice note")}
         {flag("is_financial", "Financial")}
       </div>
       <div className="row">

@@ -8,6 +8,7 @@ the cleanup half of the VA's own work back to the FF.
 from __future__ import annotations
 
 from django.db import transaction
+from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
 
 from apps.crm.models import (
@@ -18,8 +19,8 @@ from apps.notes.models import Note
 from apps.tenancy.models import AuditEvent, Membership, Role
 
 
-class MergeNotPermitted(Exception):
-    pass
+class MergeNotPermitted(PermissionDenied):
+    """A 403 with its message wherever it is raised, not a server error."""
 
 
 @transaction.atomic
@@ -27,7 +28,7 @@ def merge_contacts(survivor, absorbed, *, actor=None, role=None, field_choices=N
     """All history moves to the survivor; the absorbed record is soft-deleted
     with a pointer, so its old id still resolves."""
     if role is not None and role not in (Role.FF, Role.VA):
-        raise MergeNotPermitted("Only the founder fractional or a VA may merge contacts.")
+        raise MergeNotPermitted("Only the practice owner or an assistant can merge contacts.")
     if survivor.pk == absorbed.pk:
         raise ValueError("Cannot merge a contact into itself.")
     if survivor.tenant_id != absorbed.tenant_id:

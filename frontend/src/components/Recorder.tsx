@@ -142,7 +142,7 @@ export function Recorder({ onComplete, onCancel, onActiveChange }: {
     return (
       <div className="card" aria-live="polite">
         <div className="spread">
-          <span><span className="pill bad">● REC</span> <span className="mono">{clock(elapsed)}</span></span>
+          <span><span className="pill bad">● Recording</span> <span className="mono">{clock(elapsed)}</span></span>
           <button className="danger" onClick={stop} disabled={phase === "stopping"}>Stop recording</button>
         </div>
         <p className="small muted" style={{ margin: ".35rem 0 0" }}>Microphone only.</p>

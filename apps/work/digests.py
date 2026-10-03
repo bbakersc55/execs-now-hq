@@ -248,7 +248,10 @@ def _describe(update) -> str:
     task = update.task
     what = task.title if task else "work"
     if update.kind == K.STATUS_CHANGED:
-        return f"{what}: {update.from_value or 'new'} → {update.to_value}"
+        # Display labels, never the stored codes: this body can reach a client
+        # as written ("In progress → Done", not "in_progress → done").
+        before = _status_label(update.from_value) if update.from_value else "New"
+        return f"{what}: {before} → {_status_label(update.to_value)}"
     if update.kind == K.COMPLETED:
         return f"{what}: completed"
     if update.kind == K.CREATED:
@@ -263,7 +266,7 @@ def _describe(update) -> str:
         return f"{what}: comment"
     if update.kind == K.NARRATIVE:
         return what
-    return f"{what}: {update.kind}"
+    return f"{what}: {update.get_kind_display().lower()}"
 
 
 def deterministic_body(owed) -> str:
@@ -734,10 +737,10 @@ def approve(digest, *, actor, role):
 
     if role not in (Role.FF, Role.CF):
         # Matrix 8.3 — the single most important role boundary in the product.
-        raise DigestActionRefused("A VA cannot approve a digest.", status=403)
+        raise DigestActionRefused("Assistants can't approve a digest. Ask the practice owner.", status=403)
     digest = _locked(digest)
     if digest.state != Digest.State.PENDING:
-        raise DigestActionRefused(f"This digest is {digest.state}.", status=409)
+        raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.", status=409)
     if digest.send_window_at <= timezone.now():
         # FR-3.30 — unapproved at its window, it never sends. Until the next tick
         # expires it, it is still `pending`; approving it in that gap would
@@ -764,10 +767,10 @@ def skip(digest, *, actor, role):
 
     if role not in (Role.FF, Role.CF):
         # Skipping suppresses a client email: a send decision either way.
-        raise DigestActionRefused("A VA cannot skip a digest.", status=403)
+        raise DigestActionRefused("Assistants can't skip a digest. Ask the practice owner.", status=403)
     digest = _locked(digest)
     if digest.state != Digest.State.PENDING:
-        raise DigestActionRefused(f"This digest is {digest.state}.", status=409)
+        raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.", status=409)
     _enter_dead_state(digest, Digest.State.SKIPPED)   # its claims go with it
     AuditEvent.all_objects.create(
         tenant=digest.tenant, actor=actor, verb="digest.skipped",
@@ -777,7 +780,7 @@ def skip(digest, *, actor, role):
 
 def edit_body(digest, *, actor, role, body_text):
     if digest.state != Digest.State.PENDING:
-        raise DigestActionRefused(f"This digest is {digest.state}.", status=409)
+        raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.", status=409)
     digest.body_text = body_text
     # The edit is what gets sent: the grouped HTML described the old wording.
     digest.body_html = ""
@@ -850,7 +853,7 @@ def send(digest, *, actor=None):
     from apps.crm.services import outbox
 
     if digest.state != Digest.State.APPROVED:
-        raise DigestActionRefused(f"This digest is {digest.state}; it cannot be sent.")
+        raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}; it cannot be sent.")
     address = digest.contact.primary_email
     if not address:
         raise DigestActionRefused(

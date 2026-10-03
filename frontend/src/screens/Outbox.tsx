@@ -121,8 +121,8 @@ export function Outbox() {
       {note && <Banner kind="ok">{note}</Banner>}
       {!canSend && (
         <Banner kind="info">
-          You can read, edit, and reject drafts. Approving and sending is done by a
-          fractional.
+          You can read, edit, and reject drafts. Approving and sending is done by the
+          practice owner or an associate.
         </Banner>
       )}
 

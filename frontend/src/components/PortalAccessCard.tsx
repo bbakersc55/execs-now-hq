@@ -2,13 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Company, Me, PortalAccess, PortalCandidates, api } from "../lib/api";
+import { PORTAL_ROLE_CODES, roleLabel } from "../lib/roles";
 import { ActAsButton } from "./ActAs";
 import { Banner, Card, Empty, Field } from "./ui";
 
-export const PORTAL_ROLES = [
-  { value: "FCC", label: "Founder (FCC)" },
-  { value: "ECC", label: "Employee (ECC)" },
-];
+export const PORTAL_ROLES = PORTAL_ROLE_CODES.map((value) => ({ value, label: roleLabel(value) }));
 
 /**
  * Seats in use and who holds them, for one client company.
@@ -76,8 +74,8 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
       api.patch<{ role: string; sessions_ended: number }>(`/api/portal-access/${id}/`, { role }),
     onSuccess: (r) => {
       setMessage({ kind: "ok", text: r.role === "FCC"
-        ? "Role changed to founder. Nothing else changed."
-        : `Role changed to employee; ${r.sessions_ended} session(s) ended. `
+        ? "Role changed to client owner. Nothing else changed."
+        : `Role changed to client team member; ${r.sessions_ended} session(s) ended. `
           + "They keep access and sign in again with a fresh link." });
       refresh();
     },
@@ -122,7 +120,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                     onChange={(e) => {
                       const role = e.target.value;
                       if (role === "ECC" && p.role === "FCC" && !confirm(
-                        `Change ${p.name} to an employee user? Their sessions and any unused `
+                        `Change ${p.name} to a client team member? Their sessions and any unused `
                         + "sign-in links end now. They keep access and sign in again.")) {
                         return;
                       }
@@ -180,8 +178,8 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
         </ul>
       )}
       <p className="small muted">
-        The company's primary contact is offered as its founder user and everyone else as an
-        employee user; choose otherwise before granting, or change a role above.
+        The company's primary contact is offered as its client owner and everyone else as a
+        client team member; choose otherwise before granting, or change a role above.
       </p>
     </Card>
   );

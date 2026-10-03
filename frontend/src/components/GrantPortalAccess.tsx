@@ -90,7 +90,7 @@ export function GrantPortalAccess({ me, contactId }: { me: Me; contactId: string
           <p className="small muted">
             This creates their login, consumes a seat and emails them a sign-in link.
             It sends nothing else, and they see only their own company. The company's
-            primary contact is offered as founder; anyone else as employee.
+            primary contact is offered as client owner; anyone else as client team member.
           </p>
         </>
       )}

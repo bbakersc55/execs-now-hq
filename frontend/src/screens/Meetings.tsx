@@ -267,8 +267,8 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
   if (!mine) {
     return (
       <Banner kind="warn">
-        No notes folder is connected yet, so nothing is being read. The founder
-        fractional connects it.
+        No notes folder is connected yet, so nothing is being read. The practice
+        owner connects it.
       </Banner>
     );
   }

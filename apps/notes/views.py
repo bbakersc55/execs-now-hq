@@ -336,10 +336,10 @@ class NoteViewSet(viewsets.GenericViewSet):
         VA does not. Matrix 3.11: only the FF changes it."""
         tenant = request.tenant
         if request.membership.role == Role.VA:
-            return Response({"detail": "Settings are not available to a VA."}, status=403)
+            return Response({"detail": "Settings are not available to assistants."}, status=403)
         if request.method == "PATCH":
             if request.membership.role != Role.FF:
-                return Response({"detail": "Only the founder fractional changes "
+                return Response({"detail": "Only the practice owner changes "
                                            "recording settings."}, status=403)
             try:
                 days = int(request.data.get("audio_retention_days"))

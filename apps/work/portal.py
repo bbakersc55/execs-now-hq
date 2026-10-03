@@ -47,7 +47,7 @@ def refusal_for(contact, *, tenant, role=None):
     if not contact.primary_email:
         return f"{contact.first_name} has no email address, so no sign-in link can be sent."
     if (role or default_role_for(contact)) not in (Role.FCC, Role.ECC):
-        return "Portal access is FCC or ECC."
+        return "Portal access is for client owners and client team members."
     existing = Membership.all_objects.filter(tenant=tenant, contact=contact).first()
     if existing is not None and existing.revoked_at is None:
         return f"{contact.first_name} already has access."
@@ -154,7 +154,7 @@ def change_role(membership, new_role, *, actor):
     change ends nothing. The same role again is a no-op and is not audited.
     """
     if new_role not in (Role.FCC, Role.ECC):
-        raise PortalAccessRefused("Portal access is FCC or ECC.")
+        raise PortalAccessRefused("Portal access is for client owners and client team members.")
     old = membership.role
     if new_role == old:
         return {"changed": False, "sessions_ended": 0, "links_invalidated": 0}

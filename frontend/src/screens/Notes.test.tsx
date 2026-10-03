@@ -67,7 +67,7 @@ describe("AC-2.3 in the UI — the title leak", () => {
     showNote(aNote({ title: "HR matter", title_is_auto: false }));
     await user.click(await screen.findByRole("button", { name: "Set a PIN" }));
     expect(screen.getByRole("dialog")).toHaveTextContent(
-      /not encryption.*founder fractional.*database export.*nightly backup/s,
+      /not encryption.*practice owner.*database export.*nightly backup/s,
     );
   });
 });

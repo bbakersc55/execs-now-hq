@@ -44,7 +44,7 @@ export function PinDialog({ note, onDone, onCancel }: {
       <p className="small">
         A PIN hides this note from other people using the app: they see its title and what it
         is linked to, and nothing else. <strong>It is a privacy screen, not encryption.</strong>{" "}
-        It does not hide the note from the founder fractional (who can reset it), from a
+        It does not hide the note from the practice owner (who can reset it), from a
         database export, or from the nightly backup.
       </p>
 
@@ -58,7 +58,7 @@ export function PinDialog({ note, onDone, onCancel }: {
           </Banner>
           <Field label="Title shown on the locked note">
             <input aria-label="Title shown on the locked note" value={title}
-              onChange={(e) => setTitle(e.target.value)} placeholder="e.g. HR matter" />
+              onChange={(e) => setTitle(e.target.value)} placeholder="For example, HR matter" />
           </Field>
         </>
       )}

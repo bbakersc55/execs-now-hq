@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods
 
 from config.branding import PALETTE, PRODUCT_NAME
 
+from apps.tenancy.roles import role_label
 from .models import MagicLinkToken
 from .ratelimit import RateLimit, too_many
 
@@ -112,6 +113,7 @@ def me(request):
         "email": request.user.email,
         "full_name": request.user.full_name,
         "role": membership.role if membership else None,
+        "role_label": role_label(membership.role) if membership else None,
         "tenant": str(membership.tenant_id) if membership else None,
         "client_company": (
             str(membership.client_company_id)

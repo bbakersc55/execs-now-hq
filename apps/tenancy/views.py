@@ -10,20 +10,25 @@ from rest_framework.response import Response
 from apps.crm.permissions import IsFF, IsTenantStaff
 from apps.tenancy import services
 from apps.tenancy.models import AiCall, Membership
+from apps.tenancy.roles import role_label
 
 
 class MembershipSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
     full_name = serializers.CharField(source="user.full_name", read_only=True)
     is_active = serializers.SerializerMethodField()
+    role_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Membership
-        fields = ["id", "email", "full_name", "role", "invited_at",
+        fields = ["id", "email", "full_name", "role", "role_label", "invited_at",
                   "revoked_at", "is_active"]
 
     def get_is_active(self, obj):
         return obj.revoked_at is None
+
+    def get_role_label(self, obj):
+        return role_label(obj.role)
 
 
 class StaffViewSet(viewsets.ReadOnlyModelViewSet):

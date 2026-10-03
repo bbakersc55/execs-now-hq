@@ -15,6 +15,7 @@ from django.db import models
 
 from .context import get_current_tenant_id
 from .managers import AllTenantsManager, TenantManager
+from .roles import ROLE_LABEL
 
 
 class UUIDModel(models.Model):
@@ -82,7 +83,7 @@ class TenantScopedModel(UUIDModel):
             ).first()
             if other is not None and other != self.tenant_id:
                 raise ValidationError(
-                    {field.name: f"{field.name} belongs to a different tenant."}
+                    {field.name: f"{field.name} belongs to a different practice."}
                 )
 
 
@@ -166,11 +167,12 @@ class Tenant(UUIDModel):
 
 
 class Role(models.TextChoices):
-    FF = "FF", "Founder fractional"
-    CF = "CF", "Contractor/employee fractional"
-    VA = "VA", "Virtual assistant"
-    FCC = "FCC", "Founder of client company"
-    ECC = "ECC", "Employee of client company"
+    # Labels: apps/tenancy/roles.py, the one place a role's name is set.
+    FF = "FF", ROLE_LABEL["FF"]
+    CF = "CF", ROLE_LABEL["CF"]
+    VA = "VA", ROLE_LABEL["VA"]
+    FCC = "FCC", ROLE_LABEL["FCC"]
+    ECC = "ECC", ROLE_LABEL["ECC"]
 
 
 CLIENT_ROLES = {Role.FCC, Role.ECC}

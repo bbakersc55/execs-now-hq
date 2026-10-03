@@ -282,7 +282,7 @@ class CompanySerializer(serializers.ModelSerializer):
         membership = getattr(self.context["request"], "membership", None)
         if membership is None or membership.role not in (Role.FF, Role.CF):
             raise PermissionDenied(
-                "Only the founder fractional or a CF sets the primary contact.")
+                "Only the practice owner or an associate sets the primary contact.")
         if value is not None and (self.instance is None
                                   or value.company_id != self.instance.pk
                                   or value.deleted_at is not None):

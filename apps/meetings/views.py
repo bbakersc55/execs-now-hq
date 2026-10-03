@@ -75,7 +75,7 @@ class MeetingViewSetBase(viewsets.GenericViewSet):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         if getattr(request, "membership", None) is None:
-            self.permission_denied(request, message="No membership for this tenant.")
+            self.permission_denied(request, message="You're not a member of this practice.")
         if not meeting_perms.may_use(request):
             # Matrix 11.1 — no client-facing surface exists here, including for
             # a meeting about their own company.
@@ -247,8 +247,8 @@ class DriveWatchViewSet(MeetingViewSetBase):
             return Response({"detail": environment.DEMO_REFUSAL}, status=409)
         if not gmail_oauth.is_configured():
             return Response({"detail": (
-                "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are not set, "
-                "so there is nothing to connect to. See docs/05_dev_environment.md §5a."
+                "Google sign-in isn't configured on this server, so there is "
+                "nothing to connect to. Contact support."
             )}, status=400)
         state = gmail_oauth.new_state()
         request.session[gmail_oauth.STATE_SESSION_KEY] = state

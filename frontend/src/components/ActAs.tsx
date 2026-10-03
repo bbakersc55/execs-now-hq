@@ -3,9 +3,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ActAsCandidate, Me, api } from "../lib/api";
+import { roleLabel } from "../lib/roles";
 import { Banner } from "./ui";
 
-const ROLE_WORD: Record<string, string> = { FCC: "founder", ECC: "employee" };
 
 /**
  * FR-3.42 — acting as another user.
@@ -46,7 +46,7 @@ export function ActingBanner({ me }: { me: Me }) {
   return (
     <div role="status" aria-label="Acting as" style={{ position: "sticky", top: 0, zIndex: 5 }}>
       <Banner kind="warn">
-        <strong>{a.real_name} is acting as {a.as_name}</strong> ({ROLE_WORD[a.as_role] ?? a.as_role}
+        <strong>{a.real_name} is acting as {a.as_name}</strong> ({roleLabel(a.as_role)}
         {a.company_name && `, ${a.company_name}`}). Everything done here is recorded as done by
         {" "}{a.real_name} on behalf of {a.as_name}, and <strong>no email is sent</strong>.{" "}
         <button className="primary" disabled={stop.isPending} onClick={() => stop.mutate()}>

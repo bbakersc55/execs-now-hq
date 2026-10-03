@@ -600,7 +600,7 @@ def test_9_2_a_grant_never_makes_anything_but_a_client_user(role, seeded_tenant,
     contact = a_contact(seeded_tenant, company, "Sneaky", "sneaky@northwind.invalid")
     dev_outbox.clear()
     refused = post(api.as_(ff), "/api/portal-access/", {"contact": str(contact.pk), "role": role})
-    assert refused.status_code == 400 and "FCC or ECC" in refused.json()["detail"]
+    assert refused.status_code == 400 and "client owners and client team members" in refused.json()["detail"]
     assert not Membership.all_objects.filter(contact=contact).exists()
     assert dev_outbox == []
 

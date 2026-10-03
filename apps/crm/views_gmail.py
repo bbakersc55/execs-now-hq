@@ -29,7 +29,7 @@ from apps.tenancy.models import AuditEvent, SecretKind
 
 TRANSPORT_LABELS = {
     "gmail": "Your connected Gmail, sending as the practice alias",
-    "postmark": "Postmark (a V1 option — not configured in Beta)",
+    "postmark": "Postmark (not available yet)",
 }
 
 
@@ -138,8 +138,8 @@ class GmailConnectionViewSet(viewsets.ViewSet):
             return Response({"detail": environment.DEMO_REFUSAL}, status=409)
         if not gmail_oauth.is_configured():
             return Response({"detail": (
-                "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are not set, "
-                "so there is nothing to connect to. See docs/05_dev_environment.md §5a."
+                "Google sign-in isn't configured on this server, so there is "
+                "nothing to connect to. Contact support."
             )}, status=400)
         state = gmail_oauth.new_state()
         request.session[gmail_oauth.STATE_SESSION_KEY] = state
@@ -213,7 +213,7 @@ def gmail_callback(request):
     if membership is None or membership.role not in ("FF", "CF"):
         # Covers signed-out (session expired mid-consent) and the H7 boundary.
         return HttpResponseRedirect(_spa_url(where, gmail_error=(
-            "You are not signed in as a fractional, so this connection was not stored."
+            "You are not signed in as the practice owner or an associate, so this connection was not stored."
         )))
 
     expected = request.session.pop(gmail_oauth.STATE_SESSION_KEY, None)
