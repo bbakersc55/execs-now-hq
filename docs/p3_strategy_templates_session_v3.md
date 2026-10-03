@@ -9,6 +9,14 @@ and §3g now say exactly what Claude proposes and how duplicates are kept out).
 D12 adds the owner's own judgment after the dry run. The decisions are recorded
 in §8. Build order: phase 1 (pin v2) first, alone, with no schema change and no
 P3 code.
+
+**Released 2026-10-03 without the demo dry run.** The owner waived that part
+of D12 (one v3 and one v2 session completed on the demo before go/no-go) and
+said "release" the same day phase 5 was finished. The other four conditions
+held at the released commit: v2 goldens byte-identical, real-session
+fingerprints identical, existing strategy tests unedited and green, both
+suites green. **No v3 or v2 screen had been seen in a browser at release.**
+
 Written from `docs/handoff.md`, `04_build_plan.md` (Phase 4 and "Strategy
 session v2"), `01_prd.md` (FR-4.x, AC-4.x), `02_data_model.md` §6,
 `03_access_matrix.md` §10, and the code under `apps/strategy/`,
@@ -560,5 +568,5 @@ and review-before-it-lands on every AI output.
 | **D9** | **Create the 10/8 session in production on "Operations — focused" before any P3 release**, so its questions are frozen first | **Yes** | **Yes.** The owner creates it himself: Cory Muscato, 10/8. |
 | **D10** | **Where the dry run happens.** Demo, with a key you enter on its AI usage screen, the Propose button standing in for the worker, and the pre-call leg on the laptop if the link cannot be copied from the demo's Outbox | Demo for the session; laptop for the pre-call leg if needed | **Yes.** Demo, with a separate Anthropic key that has a small spending limit. |
 | D11 | Add "Operations — focused" to the demo's fictional practice (`add_focused_template`, dry run then `--apply`, in the demo's Railway shell) so you can rehearse a v2 session there on the P3 code | Yes. It is the only browser proof that v2 is unchanged. | **Yes.** Done in the demo's Railway shell when P3 reaches `dev`. |
-| D12 | Go/no-go rule for Tuesday: goldens byte-identical, real-session hashes identical, existing strategy tests unedited and green, full suite green, one v3 and one v2 session completed on the demo | Yes, all five | **Yes, all five, plus the owner's own judgment after the dry run.** |
+| D12 | Go/no-go rule for Tuesday: goldens byte-identical, real-session hashes identical, existing strategy tests unedited and green, full suite green, one v3 and one v2 session completed on the demo | Yes, all five | **Yes, all five, plus the owner's own judgment after the dry run.** *Dry run waived by the owner at release, 2026-10-03.* |
 | D13 | The builder makes no AI calls in P3 (no "draft my template") | Yes; revisit after Blue Sky has used it | **Yes for the builder.** AI in the session is required: Claude proposes the map without duplicates (§3e) and drafts the pros and cons for each path (§3g). |
