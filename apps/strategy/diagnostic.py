@@ -227,6 +227,45 @@ def accept(proposal) -> StrategySession:
     return session
 
 
+#: A removed question can come out only before the session is finished.
+CLOSED = {StrategySession.State.COMPLETE, StrategySession.State.CONVERTED,
+          StrategySession.State.LOST}
+
+
+def remove(proposal) -> StrategySession:
+    """Take an accepted question back out of the session (backlog, 2026-10-03)
+    and return it to the tray as proposed, so it can be accepted again or
+    discarded. Refused once it has an answer, or once the session is done:
+    a question someone already answered is part of the record."""
+    from apps.strategy.models import StrategyAnswer
+
+    if proposal.state != P.ACCEPTED or not proposal.question_key:
+        raise Refused("Only an accepted question can be removed.")
+    session = StrategySession.objects.select_for_update().get(pk=proposal.session_id)
+    if session.state in CLOSED:
+        raise Refused("This session is finished; its questions stay as they were asked.")
+    answer = StrategyAnswer.objects.filter(session=session,
+                                           question_key=proposal.question_key).first()
+    if answer is not None and answer.value:
+        raise Refused("This question has been answered, so it stays. Its answer is "
+                      "part of the session.")
+    snapshot = session.template_snapshot
+    section = next((s for s in snapshot.get("sections", []) if s["code"] == DIAGNOSTIC),
+                   None)
+    if section is not None:
+        section["questions"] = [q for q in section.get("questions", [])
+                                if q.get("key") != proposal.question_key]
+        for position, question in enumerate(section["questions"]):
+            question["position"] = position
+    if answer is not None:
+        answer.delete()                      # an empty answer row, nothing in it
+    session.template_snapshot = snapshot
+    session.save(update_fields=["template_snapshot", "updated_at"])
+    proposal.state, proposal.question_key = P.PROPOSED, ""
+    proposal.save(update_fields=["state", "question_key", "updated_at"])
+    return session
+
+
 def represent(proposal) -> dict:
     return {"id": str(proposal.pk), "rule": proposal.rule,
             "rule_label": proposal.get_rule_display(), "basis": proposal.basis,

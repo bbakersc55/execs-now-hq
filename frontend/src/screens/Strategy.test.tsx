@@ -1589,6 +1589,23 @@ describe("the focused template (owner, 2026-09-29)", () => {
       });
     });
 
+  it("takes an accepted question back out, and shows why when it cannot (2026-10-03)",
+    async () => {
+      const user = userEvent.setup();
+      const accepted = { ...PROPOSAL, id: "d2", state: "accepted" as const,
+                         question_key: "dx_abc", prompt: "Who signs off on hires?" };
+      const fetchMock = showSession(focused({ diagnostic_proposals: [PROPOSAL, accepted] }),
+        aMe(), {
+          "POST /api/strategy-diagnostic-proposals/d2/remove/": () => ({ status: 409, body: {
+            detail: "This question has been answered, so it stays." } }),
+        });
+      expect(await screen.findByText("In the session — 1 accepted")).toBeInTheDocument();
+      await user.click(screen.getByRole("button",
+        { name: 'Remove "Who signs off on hires?" from the session' }));
+      expect(await screen.findByText(/has been answered, so it stays/)).toBeInTheDocument();
+      expect(fetchMock.calls.some((c) => c.url.endsWith("/d2/remove/"))).toBe(true);
+    });
+
   it("has no diagnostic tray on a classic session", async () => {
     showSession(aSession({ diagnostic_proposals: [PROPOSAL] }));
     await screen.findByText(/Drafts land in the tray/);

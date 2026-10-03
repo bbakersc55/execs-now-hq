@@ -19,7 +19,7 @@ from apps.strategy.models import (
     StrategyAnswer, StrategyDiagnosticProposal, StrategyMapRow, StrategyPathNote,
     StrategySession, StrategyStyleExample, StrategyTemplate,
 )
-from apps.tenancy.models import AiCall
+from apps.tenancy.models import AiCall, AuditEvent
 
 from . import registry_config  # noqa: F401
 from .factories import ContactEmailFactory, ContactFactory, MembershipFactory
@@ -451,3 +451,73 @@ def test_tenant_isolation_nothing_from_another_practice_reaches_a_prompt(
     prompt = fake_claude.requests[-1]["messages"][0]["content"]
     assert "OURS-KEPT" in prompt
     assert "THEIRS" not in prompt
+
+
+# ---------------------------------------------- removing an accepted question
+
+def _accepted(session, fake_claude, client):
+    precall(session)
+    fake_claude.reply = REPLY
+    made = diagnostic.propose(session)
+    assert client.post(f"/api/strategy-diagnostic-proposals/{made[0].pk}/accept/"
+                       ).status_code == 200
+    made[0].refresh_from_db()
+    return made[0]
+
+
+@pytest.mark.django_db
+def test_an_accepted_question_can_be_taken_back_out_before_it_is_answered(
+        session, fake_claude, ff, api):
+    """Backlog, 2026-10-03: out of the session, back into the tray as
+    proposed, and the fixed questions return when none is left."""
+    client = api.as_(ff)
+    proposal = _accepted(session, fake_claude, client)
+    key = proposal.question_key
+    response = client.post(f"/api/strategy-diagnostic-proposals/{proposal.pk}/remove/")
+    assert response.status_code == 200 and response.json()["state"] == "proposed"
+    session.refresh_from_db()
+    proposal.refresh_from_db()
+    assert key not in [k for _, k in codes(session.template_snapshot)]
+    assert proposal.question_key == ""
+    assert AuditEvent.all_objects.filter(verb="strategy.diagnostic_question_removed").exists()
+    # It can be accepted again.
+    assert client.post(f"/api/strategy-diagnostic-proposals/{proposal.pk}/accept/"
+                       ).status_code == 200
+
+
+@pytest.mark.django_db
+def test_an_answered_question_stays(session, fake_claude, ff, api):
+    client = api.as_(ff)
+    proposal = _accepted(session, fake_claude, client)
+    session.refresh_from_db()
+    answer(session, proposal.question_key, {"said": "From a sheet", "cause": "", "tried": ""})
+    response = client.post(f"/api/strategy-diagnostic-proposals/{proposal.pk}/remove/")
+    assert response.status_code == 409 and "answered" in response.json()["detail"]
+    session.refresh_from_db()
+    assert proposal.question_key in [k for _, k in codes(session.template_snapshot)]
+
+
+@pytest.mark.django_db
+def test_a_finished_sessions_questions_stay(session, fake_claude, ff, api):
+    client = api.as_(ff)
+    proposal = _accepted(session, fake_claude, client)
+    StrategySession.objects.filter(pk=session.pk).update(state="complete")
+    assert client.post(f"/api/strategy-diagnostic-proposals/{proposal.pk}/remove/"
+                       ).status_code == 409
+
+
+@pytest.mark.django_db
+def test_only_an_accepted_question_is_removed_and_not_by_an_assistant(
+        session, fake_claude, ff, api, seeded_tenant):
+    from .conftest import _member
+
+    client = api.as_(ff)
+    precall(session)
+    fake_claude.reply = REPLY
+    made = diagnostic.propose(session)
+    assert client.post(f"/api/strategy-diagnostic-proposals/{made[1].pk}/remove/"
+                       ).status_code == 409
+    client.post(f"/api/strategy-diagnostic-proposals/{made[1].pk}/accept/")
+    assistant = _member(seeded_tenant, "VA")
+    assert api.as_(assistant).post(
+        f"/api/strategy-diagnostic-proposals/{made[1].pk}/remove/").status_code == 403

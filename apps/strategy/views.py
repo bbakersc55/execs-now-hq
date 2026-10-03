@@ -959,6 +959,31 @@ class DiagnosticProposalViewSet(StrategyViewSet):
         return Response(diagnostic.represent(proposal))
 
     @action(detail=True, methods=["post"])
+    def remove(self, request, pk=None):
+        """An accepted question back out of the session and into the tray
+        (backlog, 2026-10-03). Refused once answered or once the session is
+        finished."""
+        from django.db import transaction
+
+        from apps.strategy import diagnostic
+
+        proposal = self.load_proposal(pk)
+        if (refused := self._fractional_only("remove a diagnostic question")) is not None:
+            return refused
+        key = proposal.question_key
+        try:
+            with transaction.atomic():
+                diagnostic.remove(proposal)
+        except diagnostic.Refused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user,
+            verb="strategy.diagnostic_question_removed",
+            target_type="strategy_session", target_id=proposal.session_id,
+            payload={"proposal": str(proposal.pk), "key": key})
+        return Response(diagnostic.represent(proposal))
+
+    @action(detail=True, methods=["post"])
     def discard(self, request, pk=None):
         from apps.strategy import diagnostic
 

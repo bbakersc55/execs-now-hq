@@ -1835,7 +1835,8 @@ function DiagnosticTray({ sessionPath, data, mayRun, onChanged }: {
       api.patch(`/api/strategy-diagnostic-proposals/${id}/`, { prompt }), ...done });
   const all = data.diagnostic_proposals ?? [];
   const tray = all.filter((p) => p.state === "proposed");
-  const accepted = all.filter((p) => p.state === "accepted").length;
+  const inSession = all.filter((p) => p.state === "accepted");
+  const accepted = inSession.length;
   if (!mayRun) return null;
   return (
     <div style={{ marginBottom: ".75rem" }}>
@@ -1850,6 +1851,25 @@ function DiagnosticTray({ sessionPath, data, mayRun, onChanged }: {
         </span>
       </div>
       {problem && <Banner kind="warn">{problem}</Banner>}
+      {/* Backlog, 2026-10-03: an accepted question can come back out until it
+          is answered; it returns to the tray. */}
+      {inSession.length > 0 && (
+        <>
+          <h3 style={{ marginBottom: ".25rem" }}>In the session — {inSession.length} accepted</h3>
+          <ul aria-label="Accepted diagnostic questions" style={{ listStyle: "none", padding: 0 }}>
+            {inSession.map((p) => (
+              <li key={p.id} className="row" style={{ alignItems: "baseline", gap: ".5rem" }}>
+                <span style={{ flex: 1 }}>{p.prompt}</span>
+                <button className="ghost small" aria-label={`Remove "${p.prompt}" from the session`}
+                  disabled={act.isPending}
+                  onClick={() => act.mutate({ id: p.id, suffix: "remove/" })}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {tray.length > 0 && (
         <h3 style={{ marginBottom: ".25rem" }}>
           Tray — {tray.length} proposed question{tray.length === 1 ? "" : "s"}
