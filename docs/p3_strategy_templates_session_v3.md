@@ -427,6 +427,35 @@ can run end to end on the demo by Monday morning.**
 | **Mon–Tue** | | Your dry run on the demo. I fix what it finds; nothing new is started unless the dry run is clean. | Regression test per fix | The dry run is the browser check |
 | **6. After go/no-go** | later | Custom sections; add, remove, reorder sections; talk tracks; start from a copy; live-view preview; `precall_intro`. | Per item, plus isolation and role tests for each new verb | Section drag and drop; preview |
 
+### As built
+
+**Phase 1 (2026-10-03).** `tests/test_strategy_v2_golden.py` with 34 golden
+files each for a classic and a v2 session; `scripts/strategy_session_fingerprints.py`
+with its baseline of the four real sessions on the laptop.
+
+**Phase 2 (2026-10-03).** Migration `strategy 0016_template_builder`, the SQL
+of §2.2 (Django orders the statements alphabetically). `apps/strategy/builder.py`
+and `views_builder.py`: `/api/strategy-template-builder/` creates a blank v3
+template and edits its questions, section titles and budgets, "What they
+value" on or off, and settings. Differences from the text above, all small:
+
+- The blank template's two paths read "Continue to run it yourselves" and
+  "Work with us". `{Practice}` becomes a merge field in phase 3, with the
+  session engine that fills it; until then it is accepted in settings only.
+- Part limits, enforced on save: 20 pre-call questions, 8 rated items (2 to be
+  ready), 8 fixed diagnostic questions, 5 mirror questions, 5 values, 12 scope
+  items, always 2 paths.
+- The existing editor's question verbs refuse a v3 template (409), so a
+  section can only ever hold its own shape of question. Rename, duplicate, set
+  default and archive work on every template.
+- D3 is enforced on the server: "Restore from seed" returns 403 for a practice
+  with no classic or v2 template.
+- The template list adds `format`, `ready` and `missing` to a v3 template's
+  entry only.
+- **Found, not changed:** duplicating "Operations — focused" in today's editor
+  gives a *classic* copy (the copy does not carry the format). Fixing it would
+  change v2 behavior, so it is left for the owner to decide.
+
 ### What I would cut or defer to hit Tuesday, plainly
 
 **Not in the Tuesday build:**

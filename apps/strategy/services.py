@@ -48,6 +48,13 @@ def snapshot_of(template: StrategyTemplate) -> dict:
     needs to render itself is in here, which is what makes AC-4.12 structural
     rather than a promise.
     """
+    # A builder template (P3) freezes its own shape, with each section's kind
+    # and the template's settings. Classic and focused are written below,
+    # exactly as before.
+    if template.format == StrategyTemplate.Format.V3:
+        from apps.strategy import builder
+
+        return builder.snapshot(template)
     sections = (StrategySection.objects.filter(template=template)
                 .order_by("position", "created_at"))
     questions = (StrategyQuestion.objects.filter(template=template, deleted_at__isnull=True)
@@ -233,6 +240,13 @@ def start(*, tenant, contact, template=None, owner=None, company=None,
     if template.archived_at is not None:
         raise SessionError(f"“{template.name}” is archived. Restore it, or start from "
                            f"another template.", status=409)
+    if template.format == StrategyTemplate.Format.V3:
+        from apps.strategy import builder
+
+        missing = builder.readiness(template)
+        if missing:
+            raise SessionError(f"“{template.name}” is not ready to run. "
+                               + " ".join(missing), status=409)
     company = company if company is not None else contact.company
     # FR-4.9b — the Visionary defaults to the company's primary contact, and to
     # the prospect themselves when there is none. Both are editable.

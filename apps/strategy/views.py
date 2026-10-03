@@ -999,13 +999,25 @@ class DiagnosticProposalViewSet(StrategyViewSet):
 
 
 def represent_template(t) -> dict:
-    return {
+    payload = {
         "id": str(t.pk), "name": t.name, "discipline": t.discipline,
         "version": t.version, "is_default": t.is_default,
         "archived_at": t.archived_at.isoformat() if t.archived_at else None,
         "sessions": t.sessions.count(),
         "sections": services.snapshot_of(t)["sections"],
     }
+    # Only a builder template (P3) says so, and whether it can start a
+    # session: a classic or focused template's payload is what it always was.
+    if t.format == StrategyTemplate.Format.V3:
+        from apps.strategy import builder
+
+        missing = builder.readiness(t)
+        payload.update(format=t.format, ready=not missing, missing=missing)
+    return payload
+
+
+BUILDER_ONLY = ("This template was made in the template builder, and its questions "
+                "are edited there.")
 
 
 class TemplateViewSet(StrategyViewSet):
@@ -1033,6 +1045,15 @@ class TemplateViewSet(StrategyViewSet):
         if template is None:
             raise Http404
         return template, None
+
+    def _editor_template(self, pk):
+        """As `_ff_template`, for the editor's question and section verbs: a
+        builder template (P3) is refused, because each of its sections holds
+        one shape of question and the builder is what keeps it so."""
+        template, refused = self._ff_template(pk)
+        if not refused and template.format == StrategyTemplate.Format.V3:
+            return None, Response({"detail": BUILDER_ONLY}, status=409)
+        return template, refused
 
     def _audit(self, verb, template, payload=None):
         AuditEvent.all_objects.create(
@@ -1063,6 +1084,12 @@ class TemplateViewSet(StrategyViewSet):
         if self._role() != FF:
             return Response({"detail": "Only the practice owner can manage the "
                                        "templates."}, status=403)
+        # P3, D3: the seed is Executives Now's own Operations template. A
+        # practice that was never given it builds its own.
+        if not StrategyTemplate.objects.exclude(
+                format=StrategyTemplate.Format.V3).exists():
+            return Response({"detail": "This practice builds its own templates. "
+                                       "Start one with New template."}, status=403)
         name = request.data.get("name") or "Operations — generic"
         variant = request.data.get("variant") or ""
         return self._run(lambda: template_admin.restore_from_seed(
@@ -1074,7 +1101,7 @@ class TemplateViewSet(StrategyViewSet):
     @action(detail=True, methods=["post"])
     def questions(self, request, pk=None):
         """Add a question. The rewording guard applies, as to any wording."""
-        template, refused = self._ff_template(pk)
+        template, refused = self._editor_template(pk)
         if refused:
             return refused
         data = request.data
@@ -1093,7 +1120,7 @@ class TemplateViewSet(StrategyViewSet):
 
     @action(detail=True, methods=["post"], url_path="remove-question")
     def remove_question(self, request, pk=None):
-        template, refused = self._ff_template(pk)
+        template, refused = self._editor_template(pk)
         if refused:
             return refused
         try:
@@ -1107,7 +1134,7 @@ class TemplateViewSet(StrategyViewSet):
 
     @action(detail=True, methods=["post"])
     def reorder(self, request, pk=None):
-        template, refused = self._ff_template(pk)
+        template, refused = self._editor_template(pk)
         if refused:
             return refused
         try:
@@ -1150,6 +1177,12 @@ class TemplateViewSet(StrategyViewSet):
         if refused:
             return refused
         from apps.strategy.models import StrategyQuestion
+
+        # Renaming is the same for every template; a builder template's
+        # sections and questions are edited in the builder (P3).
+        if template.format == StrategyTemplate.Format.V3 and (
+                request.data.get("sections") or request.data.get("questions")):
+            return Response({"detail": BUILDER_ONLY}, status=409)
 
         if "name" in request.data:
             was = template.name

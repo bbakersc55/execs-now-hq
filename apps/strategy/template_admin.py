@@ -57,6 +57,10 @@ def duplicate(source: StrategyTemplate, *, name) -> StrategyTemplate:
     """A full copy under a new name: every section with its budget, and every
     question with its key and flags — **archived questions included**, still
     archived, so a key spent in the original stays spent in the copy."""
+    if source.format == StrategyTemplate.Format.V3:
+        from apps.strategy import builder
+
+        return builder.duplicate(source, name=name)
     name = _clean_name(name)
     _name_free(name)
     copy = StrategyTemplate.objects.create(

@@ -84,9 +84,17 @@ class StrategyTemplate(TenantScopedModel):
         #: 3–5 cards. Frozen into each session's snapshot, so a session keeps
         #: the format it was started with.
         FOCUSED = "focused", "Focused"
+        #: Made in the template builder (P3, 2026-10-03): the practice's own
+        #: questions, rated items and templated text. Each section carries a
+        #: `kind`, and the template its `settings`. Like the other two, frozen
+        #: into each session's snapshot.
+        V3 = "v3", "Built in the template builder"
 
     format = models.CharField(max_length=10, choices=Format.choices,
                               default=Format.CLASSIC, db_default=Format.CLASSIC)
+    #: A v3 template's own text and limits (`builder.SETTINGS`). Empty on every
+    #: classic and focused template, and never read for them.
+    settings = models.JSONField(default=dict, blank=True, db_default={})
     #: Retired from the picker, never deleted: a session's `template` link and
     #: its snapshot's provenance both still name it. The default cannot be
     #: archived — another has to take its place first.
@@ -114,6 +122,17 @@ class StrategySection(TenantScopedModel):
     title = models.CharField(max_length=255)
     position = models.PositiveSmallIntegerField(default=0)
     time_budget_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: What the section does in a v3 template (`builder.KINDS`). Empty on
+    #: classic and focused templates, whose behavior is keyed on `code`.
+    kind = models.CharField(max_length=16, blank=True, default="", db_default="")
+    #: The practice's talk track for the section, for staff in the live view.
+    #: Never on the pre-call form, an email or the PDF.
+    intro = models.TextField(blank=True, default="", db_default="")
+    #: A custom section's answers print on page two of the PDF.
+    show_in_pdf = models.BooleanField(default=False, db_default=False)
+    #: A removed section (v3 only). Kept, so its code and its questions' keys
+    #: stay spent.
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "strategy_section"
@@ -155,6 +174,12 @@ class StrategyQuestion(TenantScopedModel):
     #: (owner, 2026-09-29) — the pre-call form was not completed, or nothing
     #: Claude proposed was kept.
     is_diagnostic_fallback = models.BooleanField(default=False, db_default=False)
+    #: A short name (v3): the chart label of a rated item, the chip label of a
+    #: pre-call question.
+    label = models.CharField(max_length=60, blank=True, default="", db_default="")
+    #: A pre-call question whose answer shows in the PDF header (v3; three at
+    #: most per template).
+    pdf_chip = models.BooleanField(default=False, db_default=False)
     position = models.PositiveSmallIntegerField(default=0)
     # Questions are never hard-deleted: a reused key would change what a past
     # answer appears to answer.
@@ -491,6 +516,10 @@ class StrategyDiagnosticProposal(TenantScopedModel):
         LOWEST_RATING = "lowest_rating", "One of the two lowest ratings"
         GROWTH = "growth", "They mentioned growth or expansion"
         SNAPSHOT_GAP = "snapshot_gap", "An evident gap in the Snapshot"
+        #: v3 (P3): the same judgement, on a template with its own pre-call
+        #: questions, and a question a person typed in during the call.
+        PRECALL_GAP = "precall_gap", "An evident gap in the pre-call answers"
+        MANUAL = "manual", "Added by hand during the session"
 
     class State(models.TextChoices):
         PROPOSED = "proposed", "Proposed by Claude"
