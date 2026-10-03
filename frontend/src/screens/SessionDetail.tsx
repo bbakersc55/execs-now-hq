@@ -201,7 +201,8 @@ export function SessionDetail({ me }: { me: Me }) {
       </Card>
 
       {data.six_key_components && data.six_key_components.of > 0 && (
-        <SixKey summary={data.six_key_components} sections={data.sections ?? []} />
+        <SixKey summary={data.six_key_components} sections={data.sections ?? []}
+          v3={data.format === "v3"} />
       )}
 
       {mayRun && (data.pinned_questions ?? []).length > 0 && (
@@ -422,16 +423,22 @@ function TrayDrawer({ open, onToggle, rows, notes, onChanged }: {
   );
 }
 
-function SixKey({ summary, sections }: {
+function SixKey({ summary, sections, v3 = false }: {
   summary: NonNullable<StrategySessionRow["six_key_components"]>;
   sections: StrategySessionRow["sections"];
+  /** A v3 session (P3) rates the practice's own items: the card takes its
+   *  title from the ratings section and each name from the item's label. */
+  v3?: boolean;
 }) {
   // The component's name, not the lead-in that follows it on the form: a
   // line of question does not fit beside a score.
   const labels = Object.fromEntries((sections ?? [])
-    .flatMap((s) => s.questions).map((q) => [q.key, q.prompt.split(" — ")[0]]));
+    .flatMap((s) => s.questions)
+    .map((q) => [q.key, (v3 && q.label) || q.prompt.split(" — ")[0]]));
+  const title = (v3 && (sections ?? []).find((s) => s.kind === "ratings")?.title)
+    || "Six Key Components";
   return (
-    <Card title="Six Key Components">
+    <Card title={title}>
       <p className="small muted">
         {summary.answered} of {summary.of} rated
         {summary.average !== null && <> · average <strong>{summary.average}</strong></>}
@@ -455,8 +462,10 @@ function SixKey({ summary, sections }: {
       </ul>
       {!summary.complete && (
         <p className="small muted">
-          The lowest score is named once all six are in — with three blank it would
-          only look like an answer.
+          {v3 ? "The lowest score is named once every one is in — with some blank it "
+            + "would only look like an answer."
+            : <>The lowest score is named once all six are in — with three blank it would
+          only look like an answer.</>}
         </p>
       )}
     </Card>

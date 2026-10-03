@@ -414,6 +414,18 @@ describe("a v3 session in the live view", () => {
     expect(screen.getAllByText(/1 is not yet/)).toHaveLength(1);
   });
 
+  it("names the ratings summary after the template's own section and labels", async () => {
+    const rated = aV3Session();
+    rated.six_key_components = { scores: [{ key: "r1", rating: 4, comment: "",
+                                            answered_by: "fractional" }],
+      ratings: { r1: 4 }, answered: 1, of: 1, average: 4, complete: true, lowest: "r1" };
+    showSession(rated);
+    await screen.findByText("Look here first");
+    expect(screen.queryByText("Six Key Components")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Three things we rate").length).toBeGreaterThan(1);
+    expect(screen.getByText("Plan")).toBeInTheDocument();
+  });
+
   it("shows the diagnostic tray with what is in the session and what is proposed",
     async () => {
       showSession();
