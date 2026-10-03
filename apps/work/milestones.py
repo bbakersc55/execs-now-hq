@@ -84,6 +84,10 @@ def is_visible_to_client(milestone) -> bool:
             and in_goal_tree(task, milestone.goal))
 
 
+#: What each state is called where a person reads it (P1).
+STATE_LABEL = {"hit": "On time", "late": "Late", "ahead": "Early", "due": "Due"}
+
+
 def state_of(milestone, *, today) -> str:
     """hit · late · ahead · due — from two dates and no status column."""
     occurred = occurred_on(milestone)

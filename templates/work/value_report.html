@@ -9,17 +9,17 @@
                            font: 9pt "Helvetica Neue", Helvetica, Arial, sans-serif;
                            color: #939598; } }
   body { font: 11pt/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; }
-  h1 { font-size: 22pt; color: #0A3A65; margin: 0 0 4pt; }
-  h2 { font-size: 13pt; color: #0A3A65; margin: 20pt 0 6pt;
-       border-bottom: 1.5pt solid #F58220; padding-bottom: 3pt; }
-  h3 { font-size: 12pt; color: #0A3A65; margin: 0 0 2pt; }
+  h1 { font-size: 22pt; color: {{ brand.header_color }}; margin: 0 0 4pt; }
+  h2 { font-size: 13pt; color: {{ brand.header_color }}; margin: 20pt 0 6pt;
+       border-bottom: 1.5pt solid {{ brand.accent_color }}; padding-bottom: 3pt; }
+  h3 { font-size: 12pt; color: {{ brand.header_color }}; margin: 0 0 2pt; }
   .lede { color: #6D6E71; font-size: 10.5pt; margin: 0 0 16pt; }
   .goal { page-break-inside: avoid; margin: 0 0 16pt; padding: 10pt 12pt;
-          border: 0.75pt solid #E6E6E6; border-left: 3pt solid #0A3A65; }
+          border: 0.75pt solid #E6E6E6; border-left: 3pt solid {{ brand.header_color }}; }
   .goal.historical { border-left-color: #939598; }
-  .headline { font-size: 13pt; color: #0A3A65; margin: 2pt 0 6pt; }
+  .headline { font-size: 13pt; color: {{ brand.header_color }}; margin: 2pt 0 6pt; }
   .measure { background: #F5F8FB; padding: 8pt 10pt; margin: 6pt 0; }
-  .measure .figures { font-size: 14pt; color: #0A3A65; }
+  .measure .figures { font-size: 14pt; color: {{ brand.header_color }}; }
   .measure .figures .to { color: #939598; padding: 0 4pt; }
   .muted { color: #939598; font-size: 9.5pt; }
   .narrative { margin: 6pt 0; }
@@ -32,14 +32,22 @@
   table.beats td { padding: 3pt 6pt 3pt 0; border-bottom: 0.5pt solid #F0F0F0;
                    vertical-align: top; }
   .pill { font-size: 8.5pt; color: #6D6E71; }
-  .resolution { margin-top: 6pt; padding-left: 8pt; border-left: 2pt solid #F58220;
+  .resolution { margin-top: 6pt; padding-left: 8pt; border-left: 2pt solid {{ brand.accent_color }};
                 font-size: 10pt; }
   .timeline td { font-size: 9pt; padding: 2pt 6pt 2pt 0; vertical-align: top; }
   .timeline .when { color: #939598; white-space: nowrap; width: 62pt; }
-  .timeline .which { color: #0A3A65; width: 120pt; }
+  .timeline .which { color: {{ brand.header_color }}; width: 120pt; }
+  .masthead { display: flex; justify-content: space-between; align-items: center;
+              border-bottom: 3pt solid {{ brand.header_color }}; padding-bottom: 6pt;
+              margin: 0 0 12pt; }
+  .masthead .practice { font-size: 12pt; font-weight: 700; color: {{ brand.header_color }}; }
 </style>
 </head>
 <body>
+  <div class="masthead">
+    {% if brand.logo %}<img data-enhq-logo src="cid:enhq-logo" alt="{{ practice }}" style="max-height:34px">
+    {% else %}<span class="practice">{{ practice }}</span>{% endif %}
+  </div>
   <h1>{% if is_single_goal %}{{ blocks.0.title }}{% else %}Where we are{% endif %}</h1>
   <p class="lede">{{ company.name }} · {{ generated_on }}</p>
 
@@ -87,10 +95,10 @@
                  viewBox="0 0 {{ block.chart.width }} {{ block.chart.height }}"
                  style="margin-top:6pt">
               <polyline points="{{ block.chart.path }}" fill="none"
-                        stroke="#0A3A65" stroke-width="2"/>
+                        stroke="{{ brand.header_color }}" stroke-width="2"/>
               {% for point in block.chart.points %}
                 <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3"
-                        fill="{% if point.is_baseline %}#F58220{% else %}#0A3A65{% endif %}"/>
+                        fill="{% if point.is_baseline %}{{ brand.accent_color }}{% else %}{{ brand.header_color }}{% endif %}"/>
               {% endfor %}
             </svg>
             <div class="muted">{{ block.chart.low }} to {{ block.chart.high }}</div>
@@ -109,7 +117,7 @@
             <tr>
               <td style="width:62pt" class="muted">{{ stone.occurred_at|default:stone.due_date|default:"—" }}</td>
               <td>{{ stone.title }}</td>
-              <td style="width:50pt" class="pill">{{ stone.state }}</td>
+              <td style="width:50pt" class="pill">{{ stone.state_label }}</td>
             </tr>
           {% endfor %}
         </table>
@@ -117,7 +125,7 @@
 
       {% if block.resolution %}
         <div class="resolution">
-          <strong>{{ block.resolution.resolution }}</strong> — {{ block.resolution.reason }}
+          <strong>{{ block.resolution.label }}</strong> — {{ block.resolution.reason }}
         </div>
       {% endif %}
 

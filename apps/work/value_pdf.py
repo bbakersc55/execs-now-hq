@@ -5,9 +5,11 @@ conversation was held over still reads the way it read that day, a year and four
 measurements later. That is the whole reason `goal_report_export` exists, and
 the reason an export records which narrative version it carried.
 
-One brand system, not a third: the colours come from the same place the email
-layout takes them, and WeasyPrint is already established by Module 4's strategy
-PDF.
+One brand system, not a third: the practice's name, logo and colors come from
+the same place the email layout takes them (`email_layout.branding`), and
+WeasyPrint is already established by Module 4's strategy PDF. *(Until P1,
+2026-10-02, this said so and was not true: the colors were Executives Now's,
+hard-coded, and there was no logo or practice name.)*
 
 **Exporting is not sending.** Nothing here reaches a client; a PDF travels only
 as an attachment on an ordinary Outbox message a person approves.
@@ -18,6 +20,7 @@ from __future__ import annotations
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from apps.crm.services import email_layout
 from apps.work import narratives as narrative_service
 from apps.work import value_report
 from apps.work.models import GoalReportExport
@@ -61,7 +64,10 @@ def context_for(request, *, company, goal=None) -> dict:
     for block in blocks:
         block["chart"] = (_chart(block["measure"]["series"])
                           if block["measure"]["show_chart"] else None)
+    brand = email_layout.branding(request.tenant)
     return {
+        "brand": brand,
+        "practice": brand.display_name or brand.practice_name,
         "company": report["company"],
         "generated_on": timezone.localdate().strftime("%-d %B %Y"),
         # FR-4B.36b — the timeline is the all-goals view's. A single goal's page
@@ -73,8 +79,11 @@ def context_for(request, *, company, goal=None) -> dict:
 
 
 def render_html(request, *, company, goal=None) -> str:
-    return render_to_string("work/value_report.html",
+    """The logo is resolved the way the strategy PDF resolves it."""
+    html = render_to_string("work/value_report.html",
                             context_for(request, company=company, goal=goal))
+    html, _ = email_layout.with_logo(html, request.tenant, as_data_uri=True)
+    return html
 
 
 def render_pdf(request, *, company, goal=None) -> bytes:

@@ -253,6 +253,8 @@ def goal_block(goal, *, request, for_client: bool, task_queryset) -> dict:
         "is_historical": is_historical(goal, resolutions),
         "resolution": {
             "resolution": latest.resolution,
+            # What a person reads (P1): never the stored code.
+            "label": latest.get_resolution_display(),
             # Ruling G — the client reads the reason. A reason they cannot read
             # cannot make "changed course" read as judgement.
             "reason": latest.reason,
@@ -260,7 +262,8 @@ def goal_block(goal, *, request, for_client: bool, task_queryset) -> dict:
             "by": latest.resolved_by.full_name if latest.resolved_by else "",
         } if latest else None,
         "resolutions": [
-            {"id": str(r.pk), "resolution": r.resolution, "reason": r.reason,
+            {"id": str(r.pk), "resolution": r.resolution, "label": r.get_resolution_display(),
+             "reason": r.reason,
              "at": r.resolved_at.isoformat(),
              "by": r.resolved_by.full_name if r.resolved_by else ""}
             for r in resolutions
@@ -271,6 +274,8 @@ def goal_block(goal, *, request, for_client: bool, task_queryset) -> dict:
              "occurred_at": (milestone_service.occurred_on(m).isoformat()
                              if milestone_service.occurred_on(m) else None),
              "state": milestone_service.state_of(m, today=today),
+             "state_label": milestone_service.STATE_LABEL[
+                 milestone_service.state_of(m, today=today)],
              "is_derived": m.is_derived,
              "source_task": str(m.source_task_id) if m.source_task_id else None}
             for m in visible_milestones

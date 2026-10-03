@@ -413,7 +413,7 @@ function GoalCard({ block, me, onChanged, setNote }: {
             .map((stone) => ({
               at: (stone.occurred_at ?? stone.due_date)!,
               label: stone.title,
-              detail: `${stone.title} · ${stone.state}`,
+              detail: `${stone.title} · ${stone.state_label}`,
               tone: stone.state === "late" ? "late"
                 : stone.state === "due" ? "due" : "hit",
             }))} />
@@ -423,7 +423,7 @@ function GoalCard({ block, me, onChanged, setNote }: {
         <ul className="timeline" style={{ marginTop: "var(--s3)" }}>
           {block.resolutions.map((row) => (
             <li key={row.id}>
-              <strong>{row.resolution.replace("_", " ")}</strong> — {row.reason}
+              <strong>{row.label}</strong> — {row.reason}
               <div className="when">{when(row.at)}{row.by ? ` · ${row.by}` : ""}</div>
             </li>
           ))}

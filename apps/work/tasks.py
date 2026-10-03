@@ -104,7 +104,7 @@ def client_activity_email(tenant, rows) -> tuple[str, str, str]:
     content = render_to_string("email/client_activity_content.html",
                                email_layout.template_context(tenant, intro=intro, rows=items,
                                                              closing=closing))
-    html = email_layout.document(tenant, content_html=content, subject=subject,
+    html = email_layout.document(tenant, content_html=content, subject=subject, internal=True,
                                  preheader=f"{count} update{'s' if count != 1 else ''} "
                                            "from your clients")
     text = (intro + "\n\n" + "\n".join(f"- {i['who']} {i['what']} — {i['when']}" for i in items)

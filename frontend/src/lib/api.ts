@@ -568,11 +568,13 @@ export interface GoalMeasure {
 export interface GoalMilestoneRow {
   id: string; title: string; due_date: string | null; occurred_at: string | null;
   state: "hit" | "late" | "ahead" | "due";
+  /** What the state is called on screen (P1). */
+  state_label: string;
   is_derived: boolean; source_task: string | null;
 }
 
 export interface GoalResolutionRow {
-  id: string; resolution: string; reason: string; at: string; by: string;
+  id: string; resolution: string; label: string; reason: string; at: string; by: string;
 }
 
 export interface GoalNarrativeRow {

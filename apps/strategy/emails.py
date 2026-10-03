@@ -22,6 +22,7 @@ from apps.crm.services import email_layout, html_clean, outbox
 from apps.strategy import pdf as pdf_service
 from apps.strategy import rewording, services
 from apps.strategy.models import StrategySession
+from apps.tenancy import contrast
 from apps.tenancy.models import AuditEvent
 
 INVITE_SUBJECT = "Before our strategy session"
@@ -61,8 +62,12 @@ def _invite_body(session, url) -> tuple[str, str, str, str]:
     stored_text = f"{opening}[The form link was sent to {session.contact.primary_email}.]{closing}"
     sent_text = f"{opening}{url}{closing}"
     body = escape(opening).replace("\n\n", "</p><p>").replace("\n", "<br>")
+    # The practice's accent, with whichever text color reads on it (P1, D4);
+    # it was Executives Now's orange for every practice.
+    brand = email_layout.branding(session.tenant)
     button = (f'<p><a href="{escape(url)}" style="display:inline-block;padding:10px 18px;'
-              f'border-radius:6px;background:#F58220;color:#ffffff;font-weight:700;'
+              f'border-radius:6px;background:{brand.accent_color};'
+              f'color:{contrast.text_on(brand.accent_color)};font-weight:700;'
               f'text-decoration:none;">Open the form</a></p>')
     tail = escape(closing).replace("\n", "<br>")
     stored_html = f"<p>{body}</p><p><em>The form link was sent to the prospect.</em></p><p>{tail}</p>"

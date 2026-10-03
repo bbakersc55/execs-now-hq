@@ -818,7 +818,7 @@ def email_for(digest, *, footer_url="") -> tuple[str, str]:
 
     brand = email_layout.branding(digest.tenant)
     content = digest.body_html if (digest.body_html or "").strip() \
-        else email_layout.text_to_html(digest.body_text, accent=brand.accent_color)
+        else email_layout.text_to_html(digest.body_text, accent=brand.header_color)
     first_line = (digest.body_text or "").strip().split("\n", 1)[0]
     html = email_layout.document(
         digest.tenant, content_html=content, subject=_subject(digest),

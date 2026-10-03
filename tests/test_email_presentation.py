@@ -309,8 +309,10 @@ def test_a_referral_touch_goes_out_in_the_personal_layout(seeded_tenant, ff, dev
     outbox.approve(message, actor=ff.user, role="FF")
 
     html = html_part(dev_outbox[0])
-    assert 'data-enhq-email="personal"' in html and "#0A3A65" not in html
-    assert 'href="https://example.com" style="color:#F58220' in html
+    # No header block: neither the primary-color bar nor the accent rule.
+    assert 'data-enhq-email="personal"' in html and "height:4px" not in html
+    # Links are text on white, so the primary color, never the accent (P1, D4).
+    assert 'href="https://example.com" style="color:#0A3A65' in html
     # The words as written, then (a touch is marketing, 2026-09-28) the link.
     words, _, footer = dev_outbox[0].body.partition("\n\n—\n")
     assert words == "Hi Maria,\n\nSee https://example.com\n\nBryan"

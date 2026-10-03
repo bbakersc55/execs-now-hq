@@ -47,12 +47,15 @@ def _branding_tenant(request):
 def tenant_branding(tenant):
     """Name, colours and logo for a page — the same values the email layout uses."""
     from apps.crm.services import email_layout
+    from apps.tenancy import contrast
 
     brand = email_layout.branding(tenant) if tenant is not None else None
     return {
         "display_name": brand.display_name if brand else "",
         "header_color": brand.header_color if brand else email_layout.DEFAULT_HEADER_COLOR,
         "accent_color": brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR,
+        "on_accent_color": contrast.text_on(
+            brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR),
         "logo_url": ("/api/branding/logo"
                      if tenant is not None and tenant.email_logo_id else ""),
         # Always an image when the practice is known: its own mark, or its

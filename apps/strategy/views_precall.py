@@ -154,5 +154,5 @@ def _notify_owner(session):
         body_html=email_layout.document(
             session.tenant,
             content_html="".join(f"<p>{escape(line)}</p>" for line in lines),
-            subject=subject, preheader=lines[0][:140]),
+            subject=subject, preheader=lines[0][:140], internal=True),
         source_type="strategy_session", source_id=session.pk)

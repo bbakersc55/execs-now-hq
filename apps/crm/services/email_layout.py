@@ -91,6 +91,8 @@ class Branding:
     accent_color: str
     logo: Logo | None = None
     mark: Logo | None = None
+    #: P1: the practice-wide footer (address, phone, website), plain text.
+    footer_text: str = ""
 
 
 def branding(tenant) -> Branding:
@@ -106,6 +108,7 @@ def branding(tenant) -> Branding:
         accent_color=colour(getattr(tenant, "email_accent_color", ""), DEFAULT_ACCENT_COLOR),
         logo=_shown_size(tenant, "email_logo"),
         mark=_shown_size(tenant, "email_mark"),
+        footer_text=(getattr(tenant, "brand_footer_text", "") or "").strip(),
     )
 
 
@@ -117,15 +120,34 @@ def _shown_size(tenant, field) -> Logo | None:
     return None
 
 
-def template_context(tenant, **extra):
+#: Mail only the practice's own staff receive: no client-facing footer (P1).
+INTERNAL_PRODUCERS = frozenset({"client_activity", "precall_complete", "note_pin_reset"})
+
+
+def footer_html(text: str, *, link_color: str) -> str:
+    """The practice footer as HTML: escaped, one line per line, addresses and
+    URLs linked."""
+    return "<br>".join(linked(line, accent=link_color, emails=True)
+                       for line in (text or "").splitlines() if line.strip())
+
+
+def template_context(tenant, *, internal=False, **extra):
+    """`accent` is fill and decoration only (D4): bars, rules, button fills.
+    Text on white uses `link_color` (the primary color), and text on an
+    accent fill uses `on_accent`."""
+    from apps.tenancy.contrast import text_on
+
     brand = branding(tenant)
     return {"brand": brand, "font": FONT_STACK, "text_color": TEXT_COLOR,
             "muted": MUTED_COLOR, "faint": FAINT_COLOR, "accent": brand.accent_color,
+            "link_color": brand.header_color, "on_accent": text_on(brand.accent_color),
+            "footer_html": "" if internal else footer_html(brand.footer_text,
+                                                           link_color=brand.header_color),
             "logo_cid": LOGO_CID, **extra}
 
 
 def document(tenant, *, content_html, subject="", preheader="", footer_link=None,
-             personal=False) -> str:
+             personal=False, internal=False) -> str:
     """A finished HTML email around already-safe content.
 
     `footer_link` is `(label, url)` — the digest's "change how often you hear from
@@ -134,8 +156,8 @@ def document(tenant, *, content_html, subject="", preheader="", footer_link=None
     link = {"label": footer_link[0], "url": footer_link[1]} if footer_link else None
     return render_to_string(
         "email/personal.html" if personal else "email/base.html",
-        template_context(tenant, content=content_html, subject=subject, preheader=preheader,
-                         footer_link=link),
+        template_context(tenant, internal=internal, content=content_html, subject=subject,
+                         preheader=preheader, footer_link=link),
     )
 
 
@@ -189,26 +211,37 @@ def for_delivery(message, *, body_text=None, body_html=None) -> tuple[str, str]:
     """
     from apps.crm.services import unsubscribe
 
-    text = message.body_text if body_text is None else body_text
+    text = _with_footer(message, message.body_text if body_text is None else body_text)
     html = message.body_html if body_html is None else body_html
     if is_document(html):
         # The unsubscribe link, for marketing and updates only — placed here so
         # every send and every preview carries exactly the same one.
         return unsubscribe.apply(message, html, text,
                                  personal='data-enhq-email="personal"' in html)
-    accent = branding(message.tenant).accent_color
+    # Links are text on white, so they take the primary color, not the
+    # accent (D4: the accent is decoration only).
+    link_color = branding(message.tenant).header_color
     personal = message.producer in PERSONAL_PRODUCERS
     if (html or "").strip():
-        content = style_links(html, accent=accent)
+        content = style_links(html, accent=link_color)
     elif personal:
         words, signed = split_signature(message.tenant, text)
-        content = text_to_html(words, accent=accent) + (
+        content = text_to_html(words, accent=link_color) + (
             signature_block(message.tenant, signed) if signed else "")
     else:
-        content = text_to_html(text, accent=accent)
+        content = text_to_html(text, accent=link_color)
     wrapped = document(message.tenant, content_html=content, subject=message.subject,
-                       personal=personal)
+                       personal=personal, internal=message.producer in INTERNAL_PRODUCERS)
     return unsubscribe.apply(message, wrapped, text, personal=personal)
+
+
+def _with_footer(message, text):
+    """The plain-text part carries the practice footer too (P1), except on
+    mail only the practice's own staff receive."""
+    footer = branding(message.tenant).footer_text
+    if not footer or message.producer in INTERNAL_PRODUCERS or footer in (text or ""):
+        return text
+    return f"{(text or '').rstrip()}\n\n{footer}"
 
 
 # ------------------------------------------------------------------ the sign-off
@@ -236,7 +269,7 @@ def signature_block(tenant, text) -> str:
     lines = [line.strip() for line in (text or "").strip().split("\n") if line.strip()]
     if not lines:
         return ""
-    details = "".join(f"<br>{linked(line, accent=brand.accent_color, emails=True)}"
+    details = "".join(f"<br>{linked(line, accent=brand.header_color, emails=True)}"
                       for line in lines[1:])
     mark = ""
     if brand.mark:
@@ -340,7 +373,7 @@ def with_logo(html, tenant, *, as_data_uri=False) -> tuple[str, list[tuple]]:
 # ------------------------------------------------------------ one-button emails
 
 def action_link_email(tenant, *, subject, heading, paragraphs, button_label, url, expiry,
-                      closing="", redacted_note="") -> tuple[str, str]:
+                      closing="", redacted_note="", internal=False) -> tuple[str, str]:
     """Magic links and PIN resets: one prominent accent button, the plain URL
     beneath it for mail that blocks buttons, and the expiry said plainly.
 
@@ -348,7 +381,7 @@ def action_link_email(tenant, *, subject, heading, paragraphs, button_label, url
     replaced by `redacted_note`, so no row ever holds a working credential
     (assumption C3). Both copies come from this one function.
     """
-    ctx = template_context(tenant, heading=heading, paragraphs=paragraphs,
+    ctx = template_context(tenant, internal=internal, heading=heading, paragraphs=paragraphs,
                            button_label=button_label, url=url, expiry=expiry,
                            closing=closing, redacted_note=redacted_note)
     content = render_to_string("email/action_link_content.html", ctx)
@@ -357,4 +390,5 @@ def action_link_email(tenant, *, subject, heading, paragraphs, button_label, url
     if closing:
         lines += ["", closing]
     text = "\n".join(lines).strip()
-    return document(tenant, content_html=content, subject=subject, preheader=heading), text
+    return document(tenant, content_html=content, subject=subject, preheader=heading,
+                    internal=internal), text

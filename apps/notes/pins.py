@@ -214,7 +214,7 @@ def pin_reset_email(tenant, *, title, url):
     from apps.crm.services import email_layout
 
     return email_layout.action_link_email(
-        tenant, subject="Clear a note's PIN", heading="Clear this note's PIN",
+        tenant, subject="Clear a note's PIN", heading="Clear this note's PIN", internal=True,
         paragraphs=[
             f"You asked to reset the PIN on the note “{title}”.",
             "This link CLEARS the PIN. It does not tell you what the PIN was. Once "
