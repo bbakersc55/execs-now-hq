@@ -2,6 +2,8 @@
 
 > **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
 
+> **Practices and the platform owner (P2, 2026-10-02).** Many practices run on one platform. The platform owner creates and archives practices and sees only their records, totals and the feedback their staff send, never anything inside one: `docs/data_and_the_platform_owner.md`. Onboarding (invitation, beta agreement, Getting started) and the second Google client for practices outside the Executives Now Workspace: `docs/p2_practices_admin_onboarding.md`.
+
 **Phase 0 · Execs NOW HQ · for owner review**
 **Built on:** `CLAUDE.md`, `00_assumptions.md` (all marks applied), `strategy_session_seed.md`.
 
