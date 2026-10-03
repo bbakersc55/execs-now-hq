@@ -12,7 +12,7 @@ from apps.crm.models import (
     EmailAttachment, UnmatchedInbound, Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactPipelinePosition, ContactType, ContactTypeLink, ContactServiceCategory,
     Campaign, CampaignRecipient, DevSendAllowlistEntry, EmailSuppression, Enrollment,
-    MailPreference,
+    MailPreference, DuplicateDismissal,
     EmailMessage, EmailTemplate, EmailThread, GmailConnection, ImportBatch,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
@@ -912,3 +912,19 @@ class FeedbackFactory(TenantScopedFactory):
     happened = "The button did nothing"
     expected = "The digest to be approved"
     page_url = "/digests"
+
+
+class DuplicateDismissalFactory(TenantScopedFactory):
+    """A pair said not to be duplicates, stored in id order."""
+
+    class Meta:
+        model = DuplicateDismissal
+
+    class Params:
+        pair = factory.LazyAttribute(lambda o: sorted(
+            [ContactFactory(tenant=o.tenant), ContactFactory(tenant=o.tenant)],
+            key=lambda c: str(c.pk)))
+
+    tenant = factory.SubFactory(TenantFactory)
+    contact_a = factory.LazyAttribute(lambda o: o.pair[0])
+    contact_b = factory.LazyAttribute(lambda o: o.pair[1])

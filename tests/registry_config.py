@@ -12,6 +12,7 @@ from apps.crm.models import (
     ContactServiceCategory, ContactType, ContactTypeLink, EmailMessage,
     ContactPipelinePosition, DevSendAllowlistEntry, EmailTemplate, EmailThread,
     Campaign, CampaignRecipient, EmailSuppression, Enrollment, MailPreference,
+    DuplicateDismissal,
     GmailConnection,
     ImportBatch, Pipeline,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage,
@@ -160,3 +161,7 @@ register(AgreementAcceptance, factories.AgreementAcceptanceFactory, api_exposed=
 # Staff send it and list their own (/api/feedback/); the platform owner reads
 # it through apps/platform/feedback.py, the one crossing.
 register(Feedback, factories.FeedbackFactory, endpoints=("/api/feedback/",))
+
+# Backlog 2026-10-03: written and undone through /api/contacts/not-duplicates/;
+# never read by id.
+register(DuplicateDismissal, factories.DuplicateDismissalFactory, api_exposed=False)

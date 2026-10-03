@@ -12,6 +12,11 @@ Two rules, and a contact caught by both is one group, not two:
 
 Nothing here merges. It proposes groups; a person picks the survivor
 (FR-1.34, matrix 4.5).
+
+**"Not duplicates"** (backlog, 2026-10-03): a pair a person dismissed is never
+linked again. A third contact matching both can still bring them into one
+group (that is new information), and the group lists the pairs already
+dismissed so the screen can say so.
 """
 
 from __future__ import annotations
@@ -91,16 +96,23 @@ def groups(contacts) -> list[dict]:
             i = parent[i]
         return i
 
+    dismissed = dismissed_pairs(ids)
+
     def join(members, reason):
         members = sorted(members)
         if len(members) < 2:
             return
-        for other in members[1:]:
-            a, b = root(members[0]), root(other)
-            if a != b:
-                parent[b] = a
-        for m in members:
-            reasons[m].add(reason)
+        # Every pair that matches, except the ones a person said are not
+        # duplicates. Buckets are small (one address, one name).
+        for i, first in enumerate(members):
+            for second in members[i + 1:]:
+                if (first, second) in dismissed:
+                    continue
+                a, b = root(first), root(second)
+                if a != b:
+                    parent[b] = a
+                reasons[first].add(reason)
+                reasons[second].add(reason)
 
     by_address = defaultdict(set)
     for contact_id, address in ContactEmail.objects.filter(
@@ -134,6 +146,58 @@ def groups(contacts) -> list[dict]:
             "reasons": sorted({r for m in members for r in reasons[m]}),
             "contacts": rows,
             "suggested_survivor": survivor["id"],
+            "dismissed_pairs": sorted([a, b] for a, b in dismissed
+                                      if a in members and b in members),
         })
     result.sort(key=lambda g: (-len(g["contacts"]), g["contacts"][0]["name"].lower()))
     return result
+
+
+def _pair(a, b) -> tuple[str, str]:
+    a, b = str(a), str(b)
+    return (a, b) if a < b else (b, a)
+
+
+def dismissed_pairs(contact_ids) -> set[tuple[str, str]]:
+    from apps.crm.models import DuplicateDismissal
+
+    ids = [str(i) for i in contact_ids]
+    return {(str(a), str(b)) for a, b in DuplicateDismissal.objects.filter(
+        contact_a_id__in=ids, contact_b_id__in=ids).values_list("contact_a_id", "contact_b_id")}
+
+
+def dismiss(contacts, *, actor) -> int:
+    """Every pair among `contacts` (already scoped to what the person may see)
+    is not a duplicate. Returns how many pairs were newly recorded."""
+    from itertools import combinations
+
+    from apps.crm.models import DuplicateDismissal
+    from apps.tenancy.models import AuditEvent
+
+    contacts = list(contacts)
+    made = 0
+    for x, y in combinations(contacts, 2):
+        a, b = _pair(x.pk, y.pk)
+        _, created = DuplicateDismissal.objects.get_or_create(
+            contact_a_id=a, contact_b_id=b, defaults={"dismissed_by": actor})
+        made += created
+    if contacts:
+        AuditEvent.objects.create(
+            actor=actor, verb="contacts.not_duplicates", target_type="contact",
+            target_id=contacts[0].pk,
+            payload={"contacts": [str(c.pk) for c in contacts], "pairs": made})
+    return made
+
+
+def undo_dismissal(contacts, *, actor) -> int:
+    from apps.crm.models import DuplicateDismissal
+    from apps.tenancy.models import AuditEvent
+
+    ids = [str(c.pk) for c in contacts]
+    deleted, _ = DuplicateDismissal.objects.filter(
+        contact_a_id__in=ids, contact_b_id__in=ids).delete()
+    if ids:
+        AuditEvent.objects.create(
+            actor=actor, verb="contacts.not_duplicates_undone", target_type="contact",
+            target_id=ids[0], payload={"contacts": ids, "pairs": deleted})
+    return deleted

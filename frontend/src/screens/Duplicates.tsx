@@ -18,15 +18,36 @@ export function Duplicates() {
     queryKey: ["duplicate-groups"],
     queryFn: () => api.get("/api/contacts/duplicate-groups/"),
   });
+  const qc = useQueryClient();
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
+  // The last "Not duplicates", so it can be taken back from the banner.
+  const [dismissed, setDismissed] = useState<{ ids: string[]; name: string } | null>(null);
   const list = groups.data ?? [];
+
+  const undo = useMutation({
+    mutationFn: (ids: string[]) =>
+      api.post("/api/contacts/not-duplicates/", { contacts: ids, undo: true }),
+    onSuccess: () => {
+      setDismissed(null);
+      setNote("Undone: they are back in the list.");
+      qc.invalidateQueries({ queryKey: ["duplicate-groups"] });
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
 
   return (
     <>
       <PageHead title="Merge duplicates" crumbs={[{ to: "/contacts", label: "Contacts" }]}
         sub="Contacts that share an email address or a full name. Choose who stays; the others merge into them." />
       {note && <Banner kind="ok">{note}</Banner>}
+      {dismissed && (
+        <Banner kind="ok">
+          Marked {dismissed.name} as not duplicates. They won't be suggested together again.{" "}
+          <button className="ghost small" disabled={undo.isPending}
+            onClick={() => undo.mutate(dismissed.ids)}>Undo</button>
+        </Banner>
+      )}
       {problem && <Banner kind="bad">{problem}</Banner>}
       {groups.isError && <Banner kind="bad">{(groups.error as Error).message}</Banner>}
       {groups.isLoading ? <p>Loading…</p> : list.length === 0 ? (
@@ -35,7 +56,8 @@ export function Duplicates() {
         <>
           <p className="small muted">{list.length} group{list.length === 1 ? "" : "s"}.</p>
           {list.map((group) => (
-            <Group key={group.key} group={group} setNote={setNote} setProblem={setProblem} />
+            <Group key={group.key} group={group} setNote={setNote} setProblem={setProblem}
+              onDismissed={(ids, name) => { setNote(""); setDismissed({ ids, name }); }} />
           ))}
         </>
       )}
@@ -43,8 +65,9 @@ export function Duplicates() {
   );
 }
 
-function Group({ group, setNote, setProblem }: {
+function Group({ group, setNote, setProblem, onDismissed }: {
   group: DuplicateGroup; setNote: (t: string) => void; setProblem: (t: string) => void;
+  onDismissed: (ids: string[], name: string) => void;
 }) {
   const qc = useQueryClient();
   const [survivor, setSurvivor] = useState(group.suggested_survivor);
@@ -64,9 +87,33 @@ function Group({ group, setNote, setProblem }: {
     onError: (e: Error) => setProblem(e.message),
   });
 
+  const notDuplicates = useMutation({
+    mutationFn: () => api.post("/api/contacts/not-duplicates/", {
+      contacts: group.contacts.map((c) => c.id),
+    }),
+    onSuccess: () => {
+      setProblem("");
+      onDismissed(group.contacts.map((c) => c.id),
+        group.contacts.length === 2 ? `these two ${group.contacts[0].name}s`
+          : `these ${group.contacts.length} contacts`);
+      qc.invalidateQueries({ queryKey: ["duplicate-groups"] });
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  const nameOf = (id: string) => group.contacts.find((c) => c.id === id)?.name ?? "";
+  const shortOf = (id: string) => summary(group.contacts.find((c) => c.id === id)!)
+    .split(" · ").slice(0, 2).join(", ");
+
   return (
     <Card title={group.contacts[0].name}
       actions={group.reasons.map((r) => <Pill key={r}>{r}</Pill>)}>
+      {group.dismissed_pairs.length > 0 && (
+        <p className="small muted" style={{ marginTop: 0 }}>
+          {group.dismissed_pairs.map(([a, b]) => `${nameOf(a)} (${shortOf(a)}) and `
+            + `${nameOf(b)} (${shortOf(b)})`).join("; ")} were already marked not
+          duplicates. They're here again because a newer contact matches them.
+        </p>
+      )}
       <fieldset className="choices">
         <legend className="small muted">Who stays</legend>
         {group.contacts.map((c) => (
@@ -85,6 +132,11 @@ function Group({ group, setNote, setProblem }: {
           aria-label={`Merge into ${keep.name} (${group.key})`}
           onClick={() => merge.mutate()}>
           Merge {others.length} into {keep.name}
+        </button>
+        <button className="ghost small" disabled={notDuplicates.isPending}
+          aria-label={`Not duplicates (${group.key})`}
+          onClick={() => notDuplicates.mutate()}>
+          Not duplicates
         </button>
         {group.contacts.length === 2 && (
           <Link className="small" to={`/merge/${keep.id}/${others[0].id}`}>

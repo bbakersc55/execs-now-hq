@@ -316,6 +316,31 @@ class Contact(TenantScopedModel):
         return row.address if row else None
 
 
+class DuplicateDismissal(TenantScopedModel):
+    """Two contacts a person said are **not** duplicates (backlog, 2026-10-03).
+
+    One row per pair, stored in a fixed order (`contact_a` has the smaller
+    id), so "A is not B" and "B is not A" are the same row. The Merge
+    duplicates screen never links a dismissed pair again; a third contact
+    that matches both can still bring them into one group, because that is
+    new information, and the group says which pair was already dismissed.
+    """
+
+    contact_a = models.ForeignKey("Contact", on_delete=models.CASCADE, related_name="+")
+    contact_b = models.ForeignKey("Contact", on_delete=models.CASCADE, related_name="+")
+    dismissed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "duplicate_dismissal"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "contact_a", "contact_b"],
+                                    name="duplicate_dismissal_once_per_pair"),
+            models.CheckConstraint(condition=models.Q(contact_a__lt=models.F("contact_b")),
+                                   name="duplicate_dismissal_ordered_pair"),
+        ]
+
+
 class ContactEmail(TenantScopedModel):
     """Multiple per contact, one primary (FR-1.1). Stakeholder delivery uses the
     primary (FR-3.20); email match is the first matching rule (FR-5.10)."""

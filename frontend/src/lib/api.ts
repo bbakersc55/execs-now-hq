@@ -1118,6 +1118,9 @@ export interface DuplicateMember {
 export interface DuplicateGroup {
   key: string; reasons: string[]; contacts: DuplicateMember[];
   suggested_survivor: string;
+  /** Pairs in this group a person already said are not duplicates; the group
+   *  is back only because a newer contact matches them (2026-10-03). */
+  dismissed_pairs: [string, string][];
 }
 
 /** A contact a name or address could be, with what tells same-named people

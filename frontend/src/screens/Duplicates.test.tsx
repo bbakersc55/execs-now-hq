@@ -7,6 +7,7 @@ import { Duplicates } from "./Duplicates";
 
 const GROUP = {
   key: "a", reasons: ["same email address", "same name"], suggested_survivor: "old",
+  dismissed_pairs: [] as [string, string][],
   contacts: [
     { id: "old", name: "Mike Eller", company: "", emails: ["eller.mike@populist.test"],
       created_at: "2026-09-22T22:52:22Z", last_meeting: "2026-09-10", meetings: 1,
@@ -52,5 +53,29 @@ describe("merge duplicates (owner, 2026-09-29)", () => {
   it("says plainly when there is nothing to merge", async () => {
     show([]);
     expect(await screen.findByText(/No likely duplicates/)).toBeInTheDocument();
+  });
+
+  it("marks a group not duplicates, and Undo takes it back (2026-10-03)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/contacts/not-duplicates/": (body: unknown) =>
+        ({ body: (body as { undo?: boolean }).undo ? { undone: 1 } : { dismissed: 1 } }),
+      "GET /api/contacts/duplicate-groups/": [GROUP],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Duplicates />, { path: "/contacts/duplicates", route: "/contacts/duplicates" });
+    await user.click(await screen.findByRole("button", { name: "Not duplicates (a)" }));
+    expect(await screen.findByText(/won't be suggested together again/)).toBeInTheDocument();
+    const sent = fetchMock.calls.filter((c) => c.url === "/api/contacts/not-duplicates/");
+    expect(sent[0].body).toEqual({ contacts: ["old", "new"] });
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText(/they are back in the list/)).toBeInTheDocument();
+    expect(fetchMock.calls.filter((c) => c.url === "/api/contacts/not-duplicates/")[1].body)
+      .toEqual({ contacts: ["old", "new"], undo: true });
+  });
+
+  it("says when a group is back only because a newer contact matches", async () => {
+    show([{ ...GROUP, dismissed_pairs: [["new", "old"]] }]);
+    expect(await screen.findByText(/were already marked not\s+duplicates/)).toBeInTheDocument();
   });
 });

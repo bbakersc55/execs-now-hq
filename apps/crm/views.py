@@ -438,6 +438,22 @@ class ContactViewSet(TenantStaffViewSet):
 
         return Response(duplicates.groups(self.get_queryset()))
 
+    @action(detail=False, methods=["post"], url_path="not-duplicates",
+            permission_classes=[crm_perms.IsFFOrVA])
+    def not_duplicates(self, request):
+        """POST {contacts: [ids], undo?: bool}: these are not duplicates of
+        each other (backlog, 2026-10-03), or take that back. Only contacts the
+        person can see; FF and VA, as merge."""
+        from apps.crm.services import duplicates
+
+        ids = [str(i) for i in (request.data.get("contacts") or [])]
+        visible = list(self.get_queryset().filter(pk__in=ids))
+        if len(ids) < 2 or len(visible) != len(set(ids)):
+            raise Http404
+        if request.data.get("undo"):
+            return Response({"undone": duplicates.undo_dismissal(visible, actor=request.user)})
+        return Response({"dismissed": duplicates.dismiss(visible, actor=request.user)})
+
     @action(detail=False, methods=["post"], url_path="merge-group",
             permission_classes=[crm_perms.IsFFOrVA])
     def merge_group(self, request):
