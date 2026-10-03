@@ -1,96 +1,234 @@
 # Execs NOW HQ — handoff to the next chat
 
-Written 2026-09-22 (evening). Upload this at the start of the next chat with: "Read this handoff, then pick up where it leaves off."
+Written 2026-10-03, replacing the 2026-09-22 version. Upload this at the
+start of the next chat with: "Read this handoff, then pick up where it leaves
+off." The specs in `docs/` are the source of truth; this covers what they
+don't, and what changed since 9/30.
 
 ## What this is, in one paragraph
 
-Execs NOW HQ is a multi-tenant SaaS for fractional executives, built by the owner (Bryan Baker, Executives Now, an operations fractional) with Claude Code (CC) doing the coding and this chat doing product direction, review, and the prompts CC receives. Django 5.2 / DRF / Postgres / Django-Q2 (ORM broker, no Redis) backend; React + Vite + TypeScript frontend; WeasyPrint PDFs; Claude API for AI; Google (Gmail send/read, Drive read, Speech-to-Text); GCS for files and backups. Runs on the owner's Zorin laptop in dev mode; Railway is the production target, not yet used. Repo: github.com/bbakersc55/execs-now-hq, branch main. Every spec doc lives in the repo under docs/ and is the source of truth; this handoff covers what the docs don't.
+Execs NOW HQ is a multi-tenant SaaS for fractional executives, built by the
+owner (Bryan Baker, Executives Now, an operations fractional; Noble Rose LLC)
+with Claude Code (CC) doing the coding and this chat doing product direction,
+review and the prompts CC receives. Django 5.2 / DRF / Postgres / Django-Q2
+(ORM broker, no Redis); React + Vite + TypeScript; WeasyPrint PDFs; the Claude
+API; Google (Gmail send and read, Drive read, Speech-to-Text); GCS for files
+and backups. **Production runs on Railway at app.getexecutivesnow.com since
+the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
+`dev`, release to `main`.
 
-## Where it stands (all Beta modules built)
+## The three environments, and their rules
 
-| Module | State |
+| | Production | Demo | Laptop |
+|---|---|---|---|
+| Where | app.getexecutivesnow.com (Railway project `execs-now-hq-live-app-no-testing`) | demo.getexecutivesnow.com (Railway project `execs-now-hq-demo`) | `~/projects/execs-now-hq` |
+| Code | `main`, only on the word **"release"**, full suite green | `dev`, every push | `dev` |
+| Data | the real practice | a fictional practice (Summit Operations Partners), seeded | **`execsnowhq_local`**: a scrubbed copy of production (B7) |
+| Worker | the Railway `qcluster` service | **none**; the demo sends nothing and reads no mailbox or Drive | a local qcluster is fine on `execsnowhq_local`; never on `execsnowhq_dev` |
+| Migrations | **only by "Releasing a migration"** (runbook): confirm the newest backup, release, apply in the waiting worker with `railway ssh --service qcluster -- python manage.py migrate`, redeploy web (`railway redeploy --service execs-now-hq -y`) | applied by web at start (`APP_ENVIRONMENT=demo` only) | CC applies when `.env` names `execsnowhq_local` and the suite is green; no backup needed |
+| Backups | nightly 08:00 UTC (02:00 MT), Railway cron → `gs://execs-now-hq-db-backups/execsnowhq_prod_*` | none needed | none needed: `./scripts/refresh_dev_from_prod.sh` rebuilds it from the newest production dump, scrubbed |
+| Files | `gs://execs-now-hq-media` | its own demo bucket (refuses production's) | `STORAGE_BACKEND=local` (`media/`): production's files are not on the laptop |
+
+- **`execsnowhq_dev`** (the laptop's pre-cutover database) is the fallback until
+  runbook **C12, about 10/14**. Then the owner says so and it's deleted (dry
+  run first). Nothing points at it.
+- **The release sequence is proven** (Release 2, 10/3, P1 + P2, 7
+  migrations): push to new code serving took **4 min 22 s**, and the **old web
+  kept serving throughout** (polled every 5 s, every response 200). The worker
+  paused about 68 s. Recorded in `docs/phase7_cutover_runbook.md`.
+- Laptop session (five tabs): see `docs/05_dev_environment.md` §8. Tab 1 runs
+  `gcloud config configurations activate execs-now-hq`, `git pull`, the
+  installs, `migrate` and `ensure_schedules`; then runserver 8100, qcluster,
+  Vite 5200 and Mailpit 8125. The old daily `backup_db.sh` is no longer part
+  of it.
+
+## Where it stands
+
+| | State |
 |---|---|
-| 0.5 Foundation | Signed off |
-| 1 CRM (contacts, two pipelines, import, Outbox, referral touches, Gmail send) | Signed off, in real use (142 contacts, 42 referral partners) |
-| 2 Notes (capture, PIN, recording→transcript→summary) | Signed off |
-| 3 Tasks + client portal + digests + act-as + staff activity feed | Signed off 6/6 |
-| 4 Strategy session (template, pre-call form + email variant, live view with Claude tray, 2-page sales PDF, conversion, prep panel) | Signed off except Check 1 (first real prospect session) |
-| 4B Client value report (goal-anchored, measurables, milestones, resolutions, narrative, PDF) | Built, 4 manual checks pending (needs real goals with measurements) |
-| 5 Meeting ingestion (Drive folder → Claude → review queue) | Built, folder connected, backfill running. First real meeting reviewed (dry run, 2026-09-26): **18 approved / 9 rejected** of 27 proposals (67% approved) |
-| 6 Inbound email (Gmail polling of app-started threads, unmatched queue) | Built; **gmail.readonly never granted** (no screen offered it until 2026-09-30; see runbook C8); first real reply pending |
-| Design pass Tier 1 (shell, Work, Tasks board + editor, live view, portal, value report) | Done, round 1 fixes in |
-| Design pass Tier 2 (dashboard, contacts/companies, notes panel, settings) | CC building now, after a task-editor gap fix |
-| Branded HTML email layout | Done, approved on real Gmail |
-| Railway move | Not done; trigger = a client needs portal access |
+| Modules 0.5–6 | Built and in use; details below in "Open threads" |
+| Phase 7 cutover | Done 9/30 (Release 1); B7 laptop move done 10/2 |
+| **P1** vocabulary, roles, branding | **Released 10/3** |
+| **P2** Practices admin and onboarding | **Released 10/3**, except creating Blue Sky |
+| P3 strategy template builder and session v3 | **Not started**; spec not yet written |
+| P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
+| Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
+| Backlog, built 10/3, **not released** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
 
-Test counts as of tonight: ~1457 backend, ~304 frontend; tenant-isolation and role-boundary families are registries that fail on an unregistered model.
+Tests on `dev` as of 10/3: **2076 backend, 538 frontend**. The
+tenant-isolation and role-boundary families are registries that fail on an
+unregistered model; the isolation family now includes the platform owner.
 
-## Live dates and people
+### P1 in brief (`docs/p1_practices_vocabulary_branding.md`)
 
-- **Brett Murray, Grime Fighters**: real prospect, strategy session **Tuesday 9/29/2026, 1:00 PM MT**. Pre-call questions were emailed 9/22 (with a correction email after an incident, see below). His reply lands in Gmail and, via Module 6, on his contact record. Owner types his answers into the session's pre-call boxes; the six ratings are taken on the call. His email is on the dev allow-list. His session snapshot was patched so the six rating questions show component names. Check 1 of Phase 4 = this session.
-- A second real prospect session is scheduled in **October**.
-- **Noble Baker / Acme Facilities**: test client and company (Noble's email is the owner's personal Gmail). Used for every dry run and for "View portal as" demos. Acme has converted strategy-session goals. Noble's old session has private-content PDF toggles switched ON from a marker test; do not send from it.
-- **Friday 9/25**: planned full dry run with Noble on the finished UI before Brett's call.
-- **Monday 9/28**: owner reviews Tier 2 design, clears the meeting queue and reports approve/reject tally, types Brett's answers if received.
-- **Oct 7**: 42 referral-touch drafts appear in the Outbox for approval (scheduler; nothing sends without approval).
+- **Vocabulary:** a tenant is a **Practice**. Roles are shown by name:
+  practice owner (FF), associate (CF), assistant (VA), client owner (FCC),
+  client team member (ECC). Codes stay in code and data. Guard tests fail on a
+  role code or "tenant" in readable text.
+- **Branding per practice** (Settings → Branding, practice owner only): display
+  name, logo, mark (favicon and email sign-off), primary and accent colors,
+  email footer.
+  - **Contrast rules:** primary vs white ≥ 4.5 and accent vs primary ≥ 3
+    block a save; accent vs white only warns, and the accent is never used
+    for text on white.
+  - **Unbranded default:** an unbranded practice shows its name over neutral
+    grays, with an initials mark.
+  - **Where it applies:** the portal, client emails and PDFs. Staff screens
+    keep the product look and show the practice name under the wordmark.
+- **The product favicon** comes from `assets/brand/mark-transparent.png`,
+  derived from the owner's `mark.png` (original kept).
+
+### P2 in brief (`docs/p2_practices_admin_onboarding.md`)
+
+- **Platform owner** = the owner's own sign-in (set in production 10/3 with
+  `set_platform_owner`). The sidebar switch goes between "Executives Now" and
+  "Practices". In the Practices area **no practice is bound**: it shows each
+  practice's record and totals, and the feedback staff send, never anything
+  inside a practice (`docs/data_and_the_platform_owner.md`).
+- **Practices:**
+  - **Create:** sets your defaults (AI $50 a month and $5 a day unattended,
+    digests held, no strategy template, neutral brand, never Executives Now's
+    addresses).
+  - **Invite owner:** sends only when you press it, and is refused while the
+    practice's Google client isn't set up.
+  - **Archive / unarchive:** archiving signs everyone out, stops the jobs and
+    keeps the data.
+- **Signed-out pages** name no practice. Only an emailed link names one
+  (`?via=` token), and the tab shows the product icon until the practice is
+  known.
+- **The beta agreement** (`docs/legal/beta_agreement_v1.md`) gates a practice
+  owner on the server until accepted; the acceptance records a hash of the
+  text.
+- **Getting started:** a seven-item checklist on the practice owner's
+  dashboard, computed from the practice's own data.
+- **Feedback button** on every staff screen; it goes to the platform owner.
+- **Two Google OAuth clients** (D1):
+  - **Executives Now** keeps its Internal client.
+  - **Outside practices** use a second client, External/Testing, in a new GCP
+    project: staff are added as test users, and connections expire every 7
+    days until Google verifies the app.
+  - **Staff sign-in is email-first:** the address decides which client.
+
+## Blocked on the owner
+
+1. **Blue Sky Business Consulting LLC** (display name "Blue Sky Business
+   Consulting", blueskybizconsulting.com, owner Shawn): created through
+   Practices → Add a practice **when Shawn's email arrives**. Inviting him also
+   needs steps 1–6 of the Google verification plan (the External client and its
+   two variables in Railway, Shawn as a test user).
+2. **Google verification** (`docs/google_verification.md`), the owner's steps:
+   - Set up the new GCP project and verify `getexecutivesnow.com` in Search
+     Console.
+   - Publish the homepage and privacy policy (both drafted; have a lawyer
+     read the policy).
+   - Configure the consent screen and the OAuth client; add test users.
+   - Record the demo video (script drafted) and submit with the drafted scope
+     justifications.
+   - Answer Google's emails, then the annual CASA assessment for the
+     restricted scopes, then publish.
+   - Scope classifications and costs are marked to confirm in the console.
+3. **P4 and Microsoft 365 decisions** (the tables at the end of each spec).
+4. **"Release"** for the three backlog items.
+5. **C12** (about 10/14): say the word, and `execsnowhq_dev` is deleted with a
+   dry run.
 
 ## Rules and decisions that live outside the repo docs (or are easy to miss)
 
-- **Every AI output and every email goes through a human.** Review queues everywhere; hold_all_digests is ON; the only automation that sends unattended is a deterministic (non-AI) digest with hold OFF, which is not the case anywhere yet.
-- **Nothing sends without the full body on screen** (incident 9/22). Magic links and PIN resets are the deliberate exceptions.
-- **A rewording never changes a question's shape** (incident 9/22).
-- **White-label rule**: clients never see the product name; every client-facing surface renders the tenant's name, colors, logo. Product name is staff-only. V1 adds per-tenant domains.
-- **Referral touches and onboarding send from the FF's own address; system mail from info@** (per-producer defaults, per-draft override).
-- **Migrations**: CC shows SQL first; may apply itself when additive + suite green + backup this session (owner's session-start backup counts). Destructive or data-rewriting waits for the owner and is done as a command with dry run.
-- **Snapshot rule**: a strategy session freezes the template at Start. Edit the template first, then start the session. One template per practice in Beta; customize per prospect by editing before Start (the template is currently customized for Brett; re-edit or run prep before October's session).
-- **Goals → Projects → Tasks**, three levels, structural cap; a task has one parent, never both. Clients create tasks and projects, never goals.
-- **Digests**: weekly generates Thursday 08:00, sends Friday 08:00 tenant time, expires unapproved at the window (content rolls forward). Every-update batches on a 30-minute quiet window, waits 24h for approval when held. The Digests screen shows a Coming-up card and expiry countdowns.
-- **Percent-of-tasks-done is never a headline** anywhere.
-- **Stakeholders are Contacts, not Users**; digests go to contacts without logins.
-- **Act-as**: FF/assigned CF may view the portal as a client user; everything logged as "X on behalf of Y"; no email sends while acting. Entry: company page portal-access list → "View portal as…".
-- **Activity feed is staff-only** (reversed from an earlier client-facing decision).
-- **AC-3.5 faithfulness constraint** applies to every Claude narrative: assert nothing absent from the input.
-- **Owner's contact row** was merged and linked to his membership; it still carried prospect/referral-partner types at time of writing (owner was cleaning it up).
-
-## Roadmap (recorded, not scheduled)
-
-Campaign/sequence editor for referral partners and nurtured prospects; task dependencies with auto-collapse; private tasks; notes stacks/notebooks; Google Calendar integration; dynamic follow-up questions with a pre-call research pass (three guardrails: proposed never auto-asked, asserts nothing beyond input, never displaces a must-ask); in-app AI helper (email inbox triage first); additional AI models via an integration layer (N8N-style); dark mode; per-tenant display labels for Goal/Project/Task; a **"multi-site service business" strategy template (V1)** — the industry-neutral Operations templates archive the site-inspection, second-location and margin-by-site questions (owner, 2026-09-26), and this variant brings them back; then post-Beta modules: invoicing (PDF + payment link), financials/QB-lite, e-signature (build own if no API), HRIS-lite, connectors, product billing. Investor deck: owner deferred; when wanted, needs audience, ask, proof point.
-
-## Beta exit criteria (from the build plan)
-
-5 real digests approved and delivered (weekly delivered once via dev-triggered generation; real cycle continues), 2 real strategy sessions end to end with a PDF sent (Brett + October), 10 real meeting proposals reviewed with the approve/reject rate reported, backup restored at least once (done), all mandatory test families green.
-
-## How we work (keep this rhythm)
-
-- Owner is non-technical-ish; runs everything via copy-paste blocks with a stated target (terminal / Claude Code). CC works in `~/projects/execs-now-hq`; a separate Aris project must never be touched (CLAUDE.md isolation rule, Claude Code deny rules).
-- Session start (five terminal tabs): `cd ~/projects/execs-now-hq && gcloud config configurations activate execs-now-hq && ./scripts/backup_db.sh`; `.venv/bin/python manage.py runserver 8100`; `.venv/bin/python manage.py qcluster`; `cd frontend && npm run dev`; `mailpit --smtp localhost:1025 --listen localhost:8125`; then `claude` in tab 1 with `/model claude-opus-5` and `/memory`. Runbook says also `pip install -r requirements-dev.txt` after any pull. App http://localhost:5200, Mailpit http://localhost:8125.
-- Session end: `./scripts/backup_db.sh` (DB dump + media sync to GCS), Ctrl+C the four tabs.
-- CC stops at the end of each phase with an AC table (tested / written-not-exercised / not implemented), full output of the two mandatory families, and asks on anything the docs do not settle. It commits to main (sometimes a phase branch) and pushes when told. It reports what it could not verify (it has no browser; every screen is first seen by the owner).
-- Manual checks are where the real findings come from; five or six per phase; the owner runs them and sends notes; we batch findings into one CC message.
-- Prompts to CC are specific: state the bug/gap, the rule, the test to add, "commit, push, stop."
+- **Every AI output and every client email goes through a human.** Review
+  queues everywhere; `hold_all_digests` ON; magic links and PIN resets are the
+  deliberate direct sends. Platform mail (invitations, feedback notices) goes
+  through Executives Now's Gmail and its Outbox.
+- **Nothing sends without the full body on screen** (incident 9/22). **A
+  rewording never changes a question's shape.**
+- **White-label:** a client never sees the product's name. Signed-out pages
+  show the product icon but no product name; a practice's own surfaces wear its
+  brand.
+- **Migrations:** SQL shown before generating, always.
+  - **Laptop:** applied by CC on `execsnowhq_local` once the suite is green,
+    destructive or not.
+  - **Production:** only through the release sequence, after that day's
+    backup.
+  - **Demo:** migrates itself at start.
+  - Never a migrating start command for production.
+- **Branches:** work on `dev`; `main` only on "release" with the full suite
+  green at the merged commit.
+- **Snapshot rule:** a strategy session freezes its template at Start.
+- **Goals → Projects → Tasks**, three levels; clients create tasks and projects,
+  never goals. **Percent-of-tasks-done is never a headline.**
+- **Stakeholders are contacts**, not users; digests reach contacts without
+  logins.
+- **AC-3.5 faithfulness:** every Claude narrative asserts nothing absent from
+  its input.
 
 ## Gotchas that cost time before
 
-- **Restart qcluster after any backend commit** (it doesn't reload; runserver and Vite do). Re-run `ensure_schedules` after a long outage.
-- **Hard-reload / restart Vite** after frontend commits before calling something a bug (a stale module once looked like a broken page).
-- **pip install after pulls**; a missing package shows as HTML-instead-of-JSON errors in the browser. CC added a startup check.
-- **Dev allow-list**: on a localhost build, only exact addresses on the allow-list (Email settings, dev-only section, plus DEV_REAL_SEND_ALLOWLIST in .env) get real mail; everyone else goes to Mailpit. Real prospects must be added before any send.
-- **Ports**: Django 8100, Vite 5200. If 8100 is "in use": `fuser -k 8100/tcp`.
-- **OAuth**: Internal consent screen (getexecutivesnow.com Workspace only); scopes granted: openid/email/profile, gmail.send, gmail.settings.basic, drive.readonly, gmail.readonly. Redirect URIs registered for both 8100 and 5200 (Google login) and 8100 (Gmail callback). Google verification (CASA) is a V1 task.
-- **GCP**: project execs-now-hq (org GetExecutivesNow); buckets execs-now-hq-db-backups and execs-now-hq-media; app runtime uses a service-account key at ~/.config/execs-now-hq/sa-app.json, not ADC; backups use the gcloud CLI. Named gcloud configuration `execs-now-hq` keeps it separate from the Aris project.
-- **Secrets**: FIELD_ENCRYPTION_KEY is in the owner's password manager; losing it loses every stored token and API key. Anthropic key stored in-app (Organization "Executives Now" on console.anthropic.com, prepaid credits).
-- **Test data**: Acme Facilities, Noble Baker, "Test Testing", "Testing again testing", "Hj hj", "Unknown 2 Unknown 2" are test rows. Clean up before any external demo that shows Contacts.
+- **qcluster does not reload** on code changes; restart it after a backend
+  commit or migrate. `runserver` does reload: a model change breaks the dev
+  server until its migration is applied.
+- **Production's web service is named `execs-now-hq`**, not `web`.
+- `railway ssh` reaches only an active instance. The waiting worker is how a
+  migration reaches production; a shell in old web would run old code.
+- **A refused web deployment shows FAILED, and the old one keeps serving** until
+  web is redeployed after the migration.
+- Hard-reload Vite before calling a frontend change broken. `pip install`
+  after pulls.
+- On the laptop, mail goes to Mailpit unless the address is on the dev
+  allow-list (`.env` plus Email settings).
+- **Google OAuth:** the Internal consent screen accepts getexecutivesnow.com
+  only. The External client is for everyone else and has Testing mode's 7-day
+  expiry until verified. `gmail.settings.basic`, `gmail.readonly` and
+  `drive.readonly` are (to confirm) restricted scopes, which means CASA.
+- **GCP** project `execs-now-hq`: buckets `execs-now-hq-db-backups` and
+  `execs-now-hq-media`; the app uses the service-account key (Railway:
+  `GOOGLE_SA_APP_JSON`), backups the backup service account. On the laptop,
+  `gcloud auth login` expires: run `! gcloud auth login` when a gcloud step
+  fails with "Reauthentication failed".
+- **Secrets:** `FIELD_ENCRYPTION_KEY` is in the owner's password manager;
+  losing it loses every stored token and key.
+- **Test data in production:** Acme Facilities, Noble Baker, and Fake Practice,
+  LLC (an outside-practice test) exist; keep them out of external demos.
 
-**Meeting queue tally, for the record (owner, 2026-09-26 dry run):** first real
-meeting, 27 proposals, 18 approved and 9 rejected. That is one meeting's
-proposals reviewed with the rate reported, toward the exit criterion of 10 real
-proposals reviewed.
+## Open threads
 
-## Open threads at time of writing
+1. **Phase 6 live checks** wait on a real reply on an app-started thread.
+   Confirm `gmail.readonly` was granted by reading `GmailConnection.scopes`, not
+   by memory.
+2. **Phase 4 Check 1 and Module 4B's manual checks** need real events: a real
+   prospect session end to end with its PDF, and real goals with measurements.
+   *(The 9/29 session with Brett Murray, Grime Fighters, and its outcome are
+   not recorded here. Update this line.)*
+3. **Referral-touch drafts** were scheduled to appear on 10/7 for approval.
+4. **Meeting ingestion:** live pickup of a brand-new Google Meet meeting had not
+   been observed at last check.
+5. **Not seen in a browser yet:** P1 (Branding screen, portal colors), P2
+   (Practices, switcher fix, agreement, checklist, feedback), and the three
+   backlog items.
 
-1. CC: task-editor gap (company/goal/project on Edit task; meeting-derived tasks filed under the meeting's company; internal-task stakeholder warning), then Tier 2 design.
-2. Owner: Monday review of Tier 2; meeting queue clear + tally; Brett's answers; design round 2 findings for the live view.
-3. Friday dry run with Noble; Tuesday Brett's session (Check 1); PDF sent from the session after the call.
-4. Module 4B manual checks once real goals with measurements exist (Brett, if he signs; or Acme).
-5. Module 6 live: AC-6.12 proves itself on the first real reply.
-6. Railway move when a client needs the portal (runbook in build plan Phase 7; note: reconnect Gmail on the new origin first, and hold_all_digests must be ON before qcluster starts there).
+## Roadmap (recorded, not scheduled)
+
+- **P3:** strategy template builder and session v3.
+- **Then**, in this order: P4 billing, Microsoft 365 transport per its spec,
+  the campaign/sequence editor, task dependencies, private tasks, notes stacks,
+  Google Calendar, an in-app AI helper (inbox triage first), other AI models
+  through an integration layer, dark mode, per-practice labels for
+  Goal/Project/Task, and a multi-site service-business strategy template.
+- **Post-Beta modules**, in `CLAUDE.md`'s order: invoicing (P4 §2) → basic
+  financials → e-signature → simple HRIS → connectors → product billing and
+  self-serve onboarding.
+
+## Beta exit criteria (from the build plan)
+
+5 real digests approved and delivered, 2 real strategy sessions end to end
+with a PDF sent, 10 real meeting proposals reviewed with the approve/reject
+rate reported (27 reviewed on 9/26: 18 approved, 9 rejected), a backup
+restored at least once (done), all mandatory test families green.
+
+## How we work (keep this rhythm)
+
+- The owner runs everything through copy-paste blocks with a stated target
+  (terminal, Claude Code, Railway shell). A separate Aris project must never
+  be touched.
+- CC finishes a unit, commits on `dev`, pushes, and reports: what's tested
+  end to end versus written but not exercised, and anything not seen in a
+  browser. The owner reviews several units at once.
+- Prompts to CC are specific: the gap, the rule, the test, "commit, stop".
