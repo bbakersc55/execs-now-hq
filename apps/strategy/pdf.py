@@ -119,7 +119,7 @@ def context_for(session) -> dict:
         if isinstance(rating, int):
             # The chart names the component, not the lead-in: the question
             # was asked on the form, and a line of it will not fit a bar label.
-            ratings.append({"label": rewording.component_of(item["key"]) or item["prompt"],
+            ratings.append({"label": _rating_label(session, item),
                             "rating": rating,
                             "comment": (item["value"].get("comment") or "").strip(),
                             "percent": rating * 10,
@@ -147,7 +147,7 @@ def context_for(session) -> dict:
     scope = sections.get(SCOPE_SECTION, [])
     brand = email_layout.branding(session.tenant)
     practice = brand.display_name or brand.practice_name or "the practice"
-    return {
+    context = {
         "brand": brand,
         "practice": practice,
         "session": session,
@@ -188,11 +188,28 @@ def context_for(session) -> dict:
         "show_mechanics": flags["mechanics"],
         # The focused format (owner, 2026-09-29): 3–5 full-width cards, each a
         # bold header and one focus statement, and the mirror as bullets.
-        "focused": services.is_focused(session),
+        "focused": services.has_card_map(session),
         "focused_cards": focused_cards(rows),
         "mirror_goal_points": sentences(session.mirror_goal),
         "mirror_unlocks_points": sentences(session.mirror_unlocks),
     }
+    # A v3 session (P3) prints on the same two pages, with the template's own
+    # header chips, chart heading and scale, and path copy.
+    if services.is_v3(session):
+        from apps.strategy import v3
+
+        context.update(v3.pdf_context(session, context, sections, merge))
+    return context
+
+
+def _rating_label(session, item) -> str:
+    """What the chart calls a rated item: its component for the seed's six,
+    and its own label in a v3 session (P3)."""
+    if services.is_v3(session):
+        from apps.strategy import v3
+
+        return v3.label_of(session, item["key"])
+    return rewording.component_of(item["key"]) or item["prompt"]
 
 
 #: The header's three chips, and what to call them. The seed's own prompts are

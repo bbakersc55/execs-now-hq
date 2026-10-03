@@ -127,6 +127,17 @@ def prep_input(session, *, website_url: str, notes: str) -> str:
     return "\n".join(lines)
 
 
+def _system(session) -> str:
+    """The brief's prompt, addressed to the practice's own kind of advisor for
+    a v3 session (P3) and as written for every other."""
+    if services.is_v3(session):
+        from apps.strategy import v3
+
+        return v3.system(SYSTEM, session).replace(
+            "ordinary operational bottlenecks", "ordinary bottlenecks")
+    return SYSTEM
+
+
 def prepare(session, *, website_url="", notes="", actor=None):
     """Run it, and keep what came back. One call, one `ai_call`."""
     from apps.tenancy import claude
@@ -140,7 +151,7 @@ def prepare(session, *, website_url="", notes="", actor=None):
 
     try:
         text, call = claude.complete_with_call(
-            tenant=session.tenant, purpose=PREP_PURPOSE, system=SYSTEM,
+            tenant=session.tenant, purpose=PREP_PURPOSE, system=_system(session),
             user_text=prep_input(session, website_url=prep.website_url, notes=prep.notes),
             target_type="strategy_session", target_id=session.pk, trigger="button",
             max_tokens=8000, tools=[claude.WEB_SEARCH_TOOL],
@@ -177,6 +188,14 @@ def prepare(session, *, website_url="", notes="", actor=None):
         if refusal:
             dropped.append(key)
             continue
+        # v3 (P3): the builder would refuse a merge field that does not exist,
+        # so a suggestion carrying one is not offered either.
+        if services.is_v3(session):
+            from apps.strategy import builder
+
+            if builder.unknown_merge_fields(suggested):
+                dropped.append(key)
+                continue
         rewordings.append({"key": key, "current": current, "suggested": suggested,
                            "why": str(raw.get("why") or "").strip()})
 

@@ -146,7 +146,7 @@
 <div class="two block">
   <div>
     {% if six_key.chart %}
-      <h2>The six key components</h2>
+      <h2>{% if ratings_title %}{{ ratings_title }}{% else %}The six key components{% endif %}</h2>
       <svg class="chart" width="{{ six_key.chart.width }}" height="{{ six_key.chart.height }}"
            viewBox="0 0 {{ six_key.chart.width }} {{ six_key.chart.height }}">
         {% for bar in six_key.chart.bars %}
@@ -250,8 +250,8 @@
             <div class="label">{{ path.label }}</div>
             <div class="name">{{ path.title }}</div>
             {% for move in path.moves %}
-              <p class="move"><b>{{ move.headline }}</b><br>
-                <span class="muted">{{ move.detail }}</span></p>
+              <p class="move"><b>{{ move.headline }}</b>{% if move.detail %}<br>
+                <span class="muted">{{ move.detail }}</span>{% endif %}</p>
             {% endfor %}
             {% if path.pros %}
               <div class="pc">

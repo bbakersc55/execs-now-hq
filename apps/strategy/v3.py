@@ -390,3 +390,76 @@ def accept_refusal(session, dynamic_count: int) -> str:
         return (f"A session holds {DIAGNOSTIC_CEILING} diagnostic questions at most. "
                 "Take one out before adding another.")
     return ""
+
+
+# ------------------------------------------------------------------ the PDF
+
+CHIPS_MOST = 3
+#: The chart's label column grows with the practice's own labels, inside the
+#: width the two-column page gives it.
+CHART_WIDTH = 274
+LABEL_WIDTH = (76, 150)
+LABEL_MOST = 22
+
+
+def chips(session, answered: list) -> list:
+    """The header's chips: the pre-call answers the template marked, each under
+    its own short label, three at most."""
+    out = []
+    for item in answered:
+        question = services.question_in(session.template_snapshot, item["key"]) or {}
+        if question.get("pdf_chip") and item["text"]:
+            out.append({**item, "label": (question.get("label") or "").strip()})
+    return out[:CHIPS_MOST]
+
+
+def chart(ratings: list) -> dict | None:
+    """The ratings chart, with the label column sized to the longest label."""
+    if not ratings:
+        return None
+    row_height, bar_height, value_gutter = 20, 12, 22
+    labels = [row["label"] if len(row["label"]) <= LABEL_MOST
+              else row["label"][:LABEL_MOST - 1].rstrip() + "…" for row in ratings]
+    low, high = LABEL_WIDTH
+    label_width = min(max(low, round(max(len(label) for label in labels) * 6.6) + 6), high)
+    track = CHART_WIDTH - label_width - value_gutter
+    bars = []
+    for index, (rating, label) in enumerate(zip(ratings, labels)):
+        width = round(track * rating["rating"] / 10, 1)
+        bars.append({
+            "label": label, "rating": rating["rating"], "is_lowest": rating["is_lowest"],
+            "y": index * row_height, "width": width,
+            "value_x": label_width + width + 4,
+            "text_y": index * row_height + bar_height - 2,
+        })
+    return {"bars": bars, "width": CHART_WIDTH, "label_width": label_width,
+            "track": track, "bar_height": bar_height,
+            "height": len(ratings) * row_height, "row_height": row_height}
+
+
+def pdf_context(session, context: dict, sections: dict, merge: dict) -> dict:
+    """What a v3 PDF takes from its template instead of from the code: the
+    header chips, the chart's heading and scale, and the two paths' copy.
+    `sections` is already filtered — nothing private is added here."""
+    from apps.strategy import builder
+
+    settings = settings_of(session)
+    render = lambda text: services.render_prompt(text, merge)  # noqa: E731
+    precall = section_of(session, builder.PRECALL) or {}
+    rated = section_of(session, builder.RATINGS) or {}
+    mirror = section_of(session, builder.MIRROR) or {}
+    ratings = context["six_key"]["ratings"]
+    paths = []
+    for path in context["path_pair"]:
+        side = path["side"]
+        paths.append({**path, "title": render(settings[f"path_{side}_title"]),
+                      "moves": [{"headline": render(line), "detail": ""}
+                                for line in settings[f"path_{side}_points"]]})
+    return {
+        "snapshot": chips(session, sections.get(precall.get("code"), [])),
+        "six_key": {**context["six_key"], "chart": chart(ratings),
+                    "scale": settings["rating_scale"]},
+        "ratings_title": rated.get("title", ""),
+        "destination": sections.get(mirror.get("code"), []),
+        "path_pair": paths,
+    }

@@ -476,6 +476,21 @@ Differences from the text above:
   `most`). A classic or v2 payload is unchanged.
 - "Draft rows" on a full v3 map answers with a sentence and makes no call.
 
+**Phase 4 (2026-10-03).** The v3 PDF context (`v3.pdf_context`), two
+conditionals in `templates/strategy/pdf.html` that leave a classic or v2
+document byte-identical, and the prep prompt addressed to the template's
+advisor. Conversion needed no change. Notes:
+
+- The chart's heading is the ratings section's title; a label longer than 22
+  characters is cut with an ellipsis and the label column widens to fit.
+- Each path prints its title and its two lines from the template, in bold,
+  with no second line under them.
+- **The mechanics note does not print on a card map**, whatever its flag
+  says, in v2 or v3: a card is a header and a focus statement. This is v2's
+  behavior, found while testing, and left as it is.
+- A prep rewording that uses a merge field which does not exist is dropped,
+  as the builder would refuse it.
+
 ### What I would cut or defer to hit Tuesday, plainly
 
 **Not in the Tuesday build:**
