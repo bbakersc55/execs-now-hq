@@ -115,6 +115,11 @@ export function SessionTemplate({ me }: { me: Me }) {
     );
   }
   const pending = Object.keys(edits).length + Object.keys(budgets).length;
+  // A template made in the builder (P3) is edited there; this screen lists
+  // it, and still renames, duplicates, sets the default and archives.
+  const inBuilder = template?.format === "v3";
+  // D3: the seed is offered only where a classic or focused template exists.
+  const hasSeeded = all.some((t) => t.format !== "v3");
   const refresh = (picked?: Template, message?: string) => {
     if (picked) setPickedId(picked.id);
     if (message) setNote(message);
@@ -131,7 +136,17 @@ export function SessionTemplate({ me }: { me: Me }) {
         </p>
       )}
       {note && <Banner kind="ok">{note}</Banner>}
-      {!template ? <p>Loading the template…</p> : (
+      {templates.data && all.length === 0 && (
+        <Card title="Your first template">
+          <p className="small muted">
+            This practice has no strategy template yet. Give one a name and build it:
+            your own questions before the call, what you rate on the call, and the
+            words on the document your prospect keeps.
+          </p>
+          <NewTemplate />
+        </Card>
+      )}
+      {!template ? (templates.data ? null : <p>Loading the template…</p>) : (
         <>
           <Card>
             <div className="row">
@@ -157,6 +172,20 @@ export function SessionTemplate({ me }: { me: Me }) {
               {" "}· {template.sessions} session{template.sessions === 1 ? "" : "s"} started
               from it
             </p>
+            {inBuilder ? (
+              <>
+                <p className="small muted">
+                  This template was made in the builder, and its questions are edited
+                  there.{" "}
+                  {template.ready === false
+                    ? <>It is <strong>not ready to run</strong>: {(template.missing ?? []).join(" ")}</>
+                    : "It is ready to run."}
+                </p>
+                <Link className="btn" to={`/strategy/templates/${template.id}/build`}>
+                  Open the builder</Link>
+              </>
+            ) : (
+            <>
             <p className="small muted">
               Change the wording, move a question between the pre-call form and the
               call, mark it must-ask or ask-if-time, add, remove and reorder, and set
@@ -168,15 +197,25 @@ export function SessionTemplate({ me }: { me: Me }) {
               onClick={() => save.mutate(template.id)}>
               Save {pending || ""} change{pending === 1 ? "" : "s"}
             </button>
+            </>
+            )}
             {pending > 0 && (
               <button className="ghost" onClick={() => { setEdits({}); setBudgets({}); }}>
                 Discard</button>
             )}
           </Card>
 
-          <Manage template={template} onDone={refresh} />
+          <Manage template={template} onDone={refresh} hasSeeded={hasSeeded} />
 
-          {template.sections.map((section) => (
+          <Card title="New template">
+            <p className="small muted">
+              Build a template of your own: the eight parts of a session, laid out and
+              ready for your questions. It does not change the practice default.
+            </p>
+            <NewTemplate />
+          </Card>
+
+          {!inBuilder && template.sections.map((section) => (
             <Card key={section.code} title={section.title}
               actions={
                 <label className="small inline">
@@ -290,8 +329,9 @@ export function SessionTemplate({ me }: { me: Me }) {
 /** Rename, duplicate, default, archive — and Restore from seed, which makes a
  *  new template rather than touching this one. Every one of them is audited
  *  server-side, and none of them reaches a session already started. */
-function Manage({ template, onDone }: {
+function Manage({ template, onDone, hasSeeded = true }: {
   template: Template; onDone: (picked?: Template, message?: string) => void;
+  hasSeeded?: boolean;
 }) {
   const [name, setName] = useState(template.name);
   const [copyName, setCopyName] = useState("");
@@ -367,6 +407,7 @@ function Manage({ template, onDone }: {
           </button>
         )}
       </div>
+      {hasSeeded && (<>
       <hr />
       <p className="small muted">
         <strong>Restore from seed</strong> makes a new template exactly as the
@@ -395,7 +436,38 @@ function Manage({ template, onDone }: {
           Restore from seed
         </button>
       </div>
+      </>)}
     </Card>
+  );
+}
+
+/** Name a new builder template (P3) and go and build it. */
+function NewTemplate() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const create = useMutation({
+    mutationFn: () => api.post<{ id: string }>("/api/strategy-template-builder/",
+                                               { name: name.trim() }),
+    onSuccess: (made) => {
+      qc.invalidateQueries({ queryKey: ["strategy-templates"] });
+      navigate(`/strategy/templates/${made.id}/build`);
+    },
+  });
+  return (
+    <>
+      {create.isError && <Banner kind="bad">{(create.error as Error).message}</Banner>}
+      <div className="row">
+        <Field label="Name">
+          <input aria-label="Name for the new template" value={name}
+            placeholder="Our strategy session" onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <button className="primary" disabled={!name.trim() || create.isPending}
+          onClick={() => create.mutate()}>
+          {create.isPending ? "Creating…" : "New template"}
+        </button>
+      </div>
+    </>
   );
 }
 

@@ -668,12 +668,22 @@ export interface StrategyQuestion {
   /** Asked only if the call has time — a muted tag in the live view. */
   ask_if_time?: boolean;
   position: number;
+  /** A builder template's question (P3): its short name, and whether its
+   *  answer shows in the PDF header. */
+  label?: string;
+  pdf_chip?: boolean;
 }
+
+/** What a section of a builder template does (P3). */
+export type SectionKind = "precall" | "ratings" | "diagnostic" | "mirror" | "map"
+  | "values" | "paths" | "scope";
 
 export interface StrategySection {
   code: string; title: string; position: number;
   time_budget_minutes: number | null;
   questions: StrategyQuestion[];
+  /** Only on a builder template's section (P3). */
+  kind?: SectionKind;
 }
 
 /** GET /api/strategy-templates/ — every template, archived ones last. */
@@ -683,6 +693,33 @@ export interface StrategyTemplateRow {
   /** How many sessions were started from it. */
   sessions: number;
   sections: StrategySection[];
+  /** Only on a template made in the builder (P3): whether it can start a
+   *  session, and what it still needs if not. */
+  format?: "v3";
+  ready?: boolean;
+  missing?: string[];
+}
+
+/** A builder template's own text and limits (P3). */
+export interface BuilderSettings {
+  advisor_role: string; rating_scale: string;
+  path_a_title: string; path_a_points: string[];
+  path_b_title: string; path_b_points: string[];
+  diagnostic_size: number;
+}
+
+export interface BuilderSection {
+  code: string; kind: SectionKind; title: string; time_budget_minutes: number | null;
+  included: boolean; optional: boolean; response_schema: string | null;
+  most: number; fixed_count: boolean; questions: StrategyQuestion[];
+}
+
+/** GET /api/strategy-template-builder/<id>/ — one builder template (P3). */
+export interface BuilderTemplate {
+  id: string; name: string; format: "v3"; is_default: boolean;
+  archived_at: string | null; settings: BuilderSettings;
+  ready: boolean; missing: string[]; merge_fields: string[];
+  sections: BuilderSection[];
 }
 
 /** The live ones, default first — what the start form and Apply offer. */
@@ -749,15 +786,21 @@ export interface SendPreview {
 /** A diagnostic question Claude proposed from the pre-call form (focused
  *  template, owner 2026-09-29). Only an accepted one is asked. */
 export interface DiagnosticProposal {
-  id: string; rule: "lowest_rating" | "growth" | "snapshot_gap"; rule_label: string;
+  id: string;
+  rule: "lowest_rating" | "growth" | "snapshot_gap" | "precall_gap" | "manual";
+  rule_label: string;
   basis: string; prompt: string; state: "proposed" | "accepted" | "discarded";
   question_key: string; from_ai: boolean;
 }
 
 export interface StrategySessionRow {
   id: string;
-  /** classic | focused, frozen with the session's snapshot. */
-  format?: "classic" | "focused";
+  /** classic | focused | v3, frozen with the session's snapshot. */
+  format?: "classic" | "focused" | "v3";
+  /** A v3 session (P3): the scale line above its ratings, and how many
+   *  diagnostic questions it starts with and may hold. */
+  rating_scale?: string;
+  diagnostic?: { size: number; most: number };
   diagnostic_proposals?: DiagnosticProposal[];
   state: "draft" | "precall_sent" | "precall_complete" | "in_call" | "complete"
     | "converted" | "lost";

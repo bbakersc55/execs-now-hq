@@ -140,7 +140,9 @@ function NewSession({ onDone, initialTemplate = "", initialContact = "", focus =
   });
   const offered = activeTemplates(templates.data);
   const [templateId, setTemplateId] = useState(initialTemplate);
-  const chosenTemplate = offered.find((t) => t.id === templateId) ?? offered[0];
+  // A builder template that is not ready (P3) is listed, and cannot be chosen.
+  const chosenTemplate = offered.find((t) => t.id === templateId)
+    ?? offered.find((t) => t.ready !== false) ?? offered[0];
 
   const found = useQuery<{ contacts: Contact[] }>({
     queryKey: ["contact-search", term],
@@ -174,8 +176,9 @@ function NewSession({ onDone, initialTemplate = "", initialContact = "", focus =
           <select aria-label="Template" value={chosenTemplate?.id ?? ""}
             onChange={(e) => setTemplateId(e.target.value)}>
             {offered.map((t) => (
-              <option key={t.id} value={t.id}>
+              <option key={t.id} value={t.id} disabled={t.ready === false}>
                 {t.name}{t.is_default ? " (practice default)" : ""}
+                {t.ready === false ? " (not ready to run)" : ""}
               </option>
             ))}
           </select>
@@ -198,6 +201,12 @@ function NewSession({ onDone, initialTemplate = "", initialContact = "", focus =
             </li>
           ))}
         </ul>
+      )}
+      {templates.data && offered.length === 0 && (
+        <p className="small muted">
+          This practice has no strategy template yet.{" "}
+          <Link to="/strategy/template">Build one</Link> before starting a session.
+        </p>
       )}
       {start.isError && <Banner kind="bad">{(start.error as Error).message}</Banner>}
     </Card>

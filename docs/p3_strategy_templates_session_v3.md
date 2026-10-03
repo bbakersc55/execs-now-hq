@@ -491,6 +491,21 @@ advisor. Conversion needed no change. Notes:
 - A prep rewording that uses a merge field which does not exist is dropped,
   as the builder would refuse it.
 
+**Phase 5 (2026-10-03).** `frontend/src/screens/TemplateBuilder.tsx` (the
+builder, at `/strategy/templates/<id>/build`), `SessionV3.tsx` (the live
+view's v3 diagnostic tray and scale line), and v3-only branches in the
+templates screen, the start form and the live view. Notes:
+
+- Each field in the builder has its own Save, shown once it differs from what
+  is stored, rather than one Save per card.
+- A practice with no template now sees "Your first template" instead of a
+  screen that stayed on "Loading the template…". "Restore from seed" is shown
+  only where a classic or v2 template exists.
+- Prep's suggested rewordings for a v3 session open in the builder, filled in
+  and unsaved.
+- **Not built:** "Preview the pre-call form" in the builder header (on the
+  list of first things to go).
+
 ### What I would cut or defer to hit Tuesday, plainly
 
 **Not in the Tuesday build:**

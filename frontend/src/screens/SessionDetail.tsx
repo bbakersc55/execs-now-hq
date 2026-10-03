@@ -13,6 +13,8 @@ import {
   api, asksToConfirm,
 } from "../lib/api";
 
+import { DiagnosticTrayV3, RatingScale } from "./SessionV3";
+
 const CAN_RUN = ["FF", "CF"];
 
 /** Minutes since a moment, on a clock that moves. Returns null when there is
@@ -97,7 +99,13 @@ export function SessionDetail({ me }: { me: Me }) {
   const act = useMutation({
     mutationFn: ({ suffix, body }: { suffix: string; body?: object }) =>
       api.post(`${path}${suffix}`, body),
-    onSuccess: () => { setAsk(null); refresh(); },
+    onSuccess: (result) => {
+      setAsk(null);
+      // A v3 map that is full answers with a sentence instead of rows (P3).
+      const said = result as { detail?: string; drafted?: unknown[] } | undefined;
+      if (said?.detail && said.drafted?.length === 0) setNote(said.detail);
+      refresh();
+    },
     onError: (e: Error, { suffix }) => asksToConfirm(e)
       ? setAsk({ suffix, detail: e.message }) : setNote(e.message),
   });
@@ -255,12 +263,15 @@ export function SessionDetail({ me }: { me: Me }) {
               )}
             </span>
           }>
-          {section.code === "mirror" && (
+          {section.code === "mirror" && data.format !== "v3" && (
             <Mirror data={data} mayRun={mayRun}
               onDraft={() => act.mutate({ suffix: "draft-mirror/" })}
               onAccept={(goal, unlocks) =>
                 api.patch(path, { mirror_goal: goal, mirror_unlocks: unlocks })
                   .then(refresh)} />
+          )}
+          {section.code === "six_key_components" && data.format === "v3" && (
+            <RatingScale scale={data.rating_scale ?? ""} />
           )}
           {section.code === "two_paths" && (
             <PathsSection sessionId={data.id} notes={data.path_notes ?? []} mayRun={mayRun}
@@ -282,9 +293,13 @@ export function SessionDetail({ me }: { me: Me }) {
             <DiagnosticTray sessionPath={path} data={data} mayRun={mayRun}
               onChanged={refresh} />
           )}
+          {section.code === "diagnostic" && data.format === "v3" && (
+            <DiagnosticTrayV3 sessionPath={path} data={data} mayRun={mayRun}
+              onChanged={refresh} />
+          )}
           {section.code === "strategy_map" && (
             <MapSection tray={tray} map={map} mayRun={mayRun}
-              focused={data.format === "focused"}
+              focused={data.format === "focused" || data.format === "v3"}
               onDraft={() => act.mutate({ suffix: "draft-rows/" })}
               onConsolidate={() => act.mutate({ suffix: "consolidate/" })}
               busy={act.isPending} onChanged={refresh} />
@@ -300,8 +315,17 @@ export function SessionDetail({ me }: { me: Me }) {
               onSave={(value, fractional_note) =>
                 answer.mutate({ question_key: question.key, value, fractional_note })} />
           ))}
+          {/* v3 (P3): the mirror is read back after its own questions. */}
+          {section.code === "mirror" && data.format === "v3" && (
+            <Mirror data={data} mayRun={mayRun}
+              onDraft={() => act.mutate({ suffix: "draft-mirror/" })}
+              onAccept={(goal, unlocks) =>
+                api.patch(path, { mirror_goal: goal, mirror_unlocks: unlocks })
+                  .then(refresh)} />
+          )}
           {section.questions.length === 0 && section.code !== "mirror"
-            && section.code !== "strategy_map" && section.code !== "two_paths" && (
+            && section.code !== "strategy_map" && section.code !== "two_paths"
+            && !(data.format === "v3" && section.code === "diagnostic") && (
             <p className="small muted">Nothing to capture here.</p>
           )}
         </Card>
@@ -1466,6 +1490,8 @@ function Rewordings({ id, path, prep, onChanged, setNote, sessionTemplateId }: {
   const [target, setTarget] = useState("");
   const targetId = (offered.find((t) => t.id === target)
     ?? offered.find((t) => t.id === sessionTemplateId) ?? offered[0])?.id;
+  const builderId = offered.find((t) => t.id === targetId)?.format === "v3"
+    ? targetId : undefined;
   const [chosen, setChosen] = useState<string[]>([]);
   const [edited, setEdited] = useState<Record<string, string>>({});
   const textFor = (key: string, fallback: string) => edited[key] ?? fallback;
@@ -1481,8 +1507,11 @@ function Rewordings({ id, path, prep, onChanged, setNote, sessionTemplateId }: {
     }).then(() => keys),
     onSuccess: (keys) => {
       onChanged();
-      navigate(`/strategy/template?session=${id}&prefill=${keys.join(",")}`
-        + (targetId ? `&template=${targetId}` : ""));
+      navigate(builderId
+        // A builder template (P3) takes the suggestions in the builder.
+        ? `/strategy/templates/${builderId}/build?session=${id}&prefill=${keys.join(",")}`
+        : `/strategy/template?session=${id}&prefill=${keys.join(",")}`
+          + (targetId ? `&template=${targetId}` : ""));
     },
     onError: (e: Error) => setNote(e.message),
   });

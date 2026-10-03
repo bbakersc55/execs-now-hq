@@ -57,6 +57,7 @@ import { Unsubscribe } from "./screens/Unsubscribe";
 import { PreCallForm } from "./screens/PreCallForm";
 import { SessionDetail } from "./screens/SessionDetail";
 import { SessionTemplate } from "./screens/SessionTemplate";
+import { TemplateBuilder } from "./screens/TemplateBuilder";
 import { Sessions } from "./screens/Sessions";
 import { Digests } from "./screens/Digests";
 import { Report } from "./screens/Report";
@@ -329,6 +330,7 @@ export function App() {
             <Route path="/replies" element={<Replies me={me} />} />
             <Route path="/strategy" element={<Sessions me={me} />} />
             <Route path="/strategy/template" element={<SessionTemplate me={me} />} />
+            <Route path="/strategy/templates/:id/build" element={<TemplateBuilder me={me} />} />
             <Route path="/strategy/:id" element={<SessionDetail me={me} />} />
             <Route path="/digests" element={<Digests me={me} />} />
             <Route path="/report" element={<Report me={me} />} />
