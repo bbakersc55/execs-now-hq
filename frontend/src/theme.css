@@ -754,6 +754,12 @@ a.button.primary:hover { background: var(--orange-600); }
 .arranging > .slot.dragging { opacity: .5; }
 .arranging > .slot.drop-target { border-color: var(--orange); border-style: solid; }
 .arranging a { pointer-events: none; }
+/* The end of a row in Arrange mode: drop here to go last, or to fill an
+   emptied row (2026-10-03). */
+.arranging > .row-end { grid-column: 1 / -1; min-height: 2.5rem; display: flex;
+  align-items: center; justify-content: center; color: var(--muted); font-size: var(--t-13);
+  border: 1px dashed var(--line-strong); border-radius: var(--radius); }
+.arranging > .row-end.drop-target { border-color: var(--orange); border-style: solid; }
 .slot-bar { display: flex; align-items: center; gap: var(--s1); color: var(--muted);
             margin-bottom: var(--s2); }
 .slot-bar .grow { flex: 1; }

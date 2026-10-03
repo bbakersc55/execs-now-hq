@@ -194,7 +194,7 @@ describe("arranging the dashboard", () => {
       .toEqual(["Due by day", "Pipeline", "Waiting for approval"]);
     const saved = JSON.parse(
       localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
-    expect(saved.panels.slice(0, 3)).toEqual(["due", "pipeline", "approval"]);
+    expect(saved.bottom.slice(0, 3)).toEqual(["panel:due", "panel:pipeline", "panel:approval"]);
   });
 
   it("moves a tile by dragging it onto another", async () => {
@@ -244,6 +244,71 @@ describe("arranging the dashboard", () => {
     await screen.findByRole("heading", { name: "Practice finances" });
     expect(panelOrder()[0]).toBe("Pipeline");
     expect(screen.getByRole("link", { name: /Open goals/ })).toBeInTheDocument();
+  });
+
+  const dataTransfer = () =>
+    ({ setData: vi.fn(), getData: vi.fn(), effectAllowed: "", dropEffect: "" });
+  const rowKeys = (row: "top" | "bottom") => [...screen.getByTestId(`row-${row}`)
+    .querySelectorAll<HTMLElement>("[data-key]")].map((slot) => slot.dataset.key);
+
+  it("drags a tile into the panels' row, onto a panel (2026-10-03)", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Arrange" }));
+    const goals = screen.getAllByTestId("slot-goals")[0];
+    const due = screen.getAllByTestId("slot-due")[0];
+    const transfer = dataTransfer();
+    fireEvent.dragStart(goals, { dataTransfer: transfer });
+    fireEvent.dragOver(due, { dataTransfer: transfer });
+    fireEvent.drop(due, { dataTransfer: transfer });
+    expect(rowKeys("top")).not.toContain("tile:goals");
+    expect(rowKeys("bottom")[0]).toBe("tile:goals");
+    expect(rowKeys("bottom")[1]).toBe("panel:due");
+  });
+
+  it("drops a panel at the end of the top row", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Arrange" }));
+    const transfer = dataTransfer();
+    fireEvent.dragStart(screen.getAllByTestId("slot-clients")[0], { dataTransfer: transfer });
+    fireEvent.dragOver(screen.getByTestId("row-end-top"), { dataTransfer: transfer });
+    fireEvent.drop(screen.getByTestId("row-end-top"), { dataTransfer: transfer });
+    expect(rowKeys("top").at(-1)).toBe("panel:clients");
+    expect(rowKeys("bottom")).not.toContain("panel:clients");
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    const saved = JSON.parse(
+      localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
+    expect(saved.top.at(-1)).toBe("panel:clients");
+  });
+
+  it("moves a block to the other row from the keyboard", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Arrange" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Tasks due to the bottom row" }));
+    expect(rowKeys("bottom").at(-1)).toBe("tile:tasks");
+    fireEvent.click(screen.getByRole("button", { name: "Move Tasks due to the top row" }));
+    expect(rowKeys("top").at(-1)).toBe("tile:tasks");
+  });
+
+  it("reads an order saved in the old two-list shape", async () => {
+    localStorage.setItem("dashboard-layout:bryan.baker@getexecutivesnow.com",
+      JSON.stringify({ tiles: ["goals", "tasks"], panels: ["clients", "due"] }));
+    show();
+    await screen.findByRole("heading", { name: "Clients" });
+    fireEvent.click(screen.getByRole("button", { name: "Arrange" }));
+    expect(rowKeys("top").slice(0, 2)).toEqual(["tile:goals", "tile:tasks"]);
+    expect(rowKeys("bottom").slice(0, 2)).toEqual(["panel:clients", "panel:due"]);
+  });
+
+  it("keeps an assistant's hidden finances slot where it was saved", async () => {
+    show(aBoard(), aMe({ role: "VA" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Arrange" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Clients to the top row" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    const saved = JSON.parse(
+      localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
+    expect(saved.bottom).toEqual(
+      ["panel:due", "panel:approval", "panel:pipeline", "panel:finances"]);
+    expect(screen.queryByRole("heading", { name: "Practice finances" })).not.toBeInTheDocument();
   });
 
   it("keeps each person's order to themselves", async () => {

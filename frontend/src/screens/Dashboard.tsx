@@ -2,7 +2,7 @@ import { useState, type DragEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
-  ArrowDown, ArrowRight, ArrowUp, CheckSquare, GripVertical, Hourglass, Mail, Target,
+  ArrowDown, ArrowLeftRight, ArrowRight, ArrowUp, CheckSquare, GripVertical, Hourglass, Mail, Target,
   TrendingUp,
 } from "lucide-react";
 
@@ -18,9 +18,21 @@ const TILES = ["tasks", "digests", "pipeline", "goals", "waiting"] as const;
 const PANELS = ["due", "approval", "pipeline", "finances", "clients"] as const;
 type TileId = (typeof TILES)[number];
 type PanelId = (typeof PANELS)[number];
-interface Layout { tiles: TileId[]; panels: PanelId[] }
+/** A block anywhere on the dashboard. Prefixed, because "pipeline" is both a
+ *  tile and a panel. */
+type BlockKey = `tile:${TileId}` | `panel:${PanelId}`;
+type RowName = "top" | "bottom";
+/** Two rows, each holding any blocks in any order (backlog, 2026-10-03: free
+ *  drag across rows). Saved per person in this browser. */
+interface Layout { top: BlockKey[]; bottom: BlockKey[] }
 
-const DEFAULT_LAYOUT: Layout = { tiles: [...TILES], panels: [...PANELS] };
+const ALL_BLOCKS: BlockKey[] = [
+  ...TILES.map((id) => `tile:${id}` as BlockKey), ...PANELS.map((id) => `panel:${id}` as BlockKey),
+];
+const DEFAULT_LAYOUT: Layout = {
+  top: TILES.map((id) => `tile:${id}` as BlockKey),
+  bottom: PANELS.map((id) => `panel:${id}` as BlockKey),
+};
 
 const TILE_NAMES: Record<TileId, string> = {
   tasks: "Tasks due", digests: "Digests waiting", pipeline: "Pipeline moves",
@@ -43,11 +55,10 @@ const PANEL_NAMES: Record<PanelId, string> = {
  * at rest, and the one thing that stands out is whatever is overdue, marked in
  * colour rather than in shadow.
  *
- * **The order is the person's own.** "Arrange" lets them drag the tiles among
- * the tiles and the panels among the panels, remembered per user in this
- * browser like the other remembered choices. Tiles and panels stay in their
- * own rows: a tile dropped among the panels would be a small card stranded in
- * a grid built for wide ones.
+ * **The order is the person's own.** "Arrange" lets them drag any block to any
+ * place in either row, remembered per user in this browser like the other
+ * remembered choices. *(Until 2026-10-03 tiles stayed among tiles and panels
+ * among panels; the owner asked for free movement across rows.)*
  */
 export function Dashboard({ me }: { me: Me }) {
   const board = useQuery<Board>({
@@ -58,7 +69,7 @@ export function Dashboard({ me }: { me: Me }) {
   const pipelines = useQuery<Pipeline[]>({
     queryKey: ["pipelines"], queryFn: () => api.get<Pipeline[]>("/api/pipelines/"),
   });
-  const [saved, remember] = useRemembered<Layout>(
+  const [saved, remember] = useRemembered<Layout | LegacyLayout>(
     `dashboard-layout:${me.email || "anon"}`, DEFAULT_LAYOUT);
   const [arranging, setArranging] = useState(false);
 
@@ -69,7 +80,7 @@ export function Dashboard({ me }: { me: Me }) {
 
   const layout = normalise(saved);
   // A VA has no financials (access matrix), so not even the empty slot.
-  const panels = layout.panels.filter((id) => id !== "finances" || me.role !== "VA");
+  const hidden = (key: BlockKey) => key === "panel:finances" && me.role === "VA";
   const kinds = new Map((pipelines.data ?? []).map((p) => [p.name, p.kind]));
 
   const tile: Record<TileId, ReactNode> = {
@@ -254,17 +265,10 @@ export function Dashboard({ me }: { me: Me }) {
         </p>
       )}
 
-      <Arrangeable className="tiles" group="tiles" arranging={arranging}
-        order={layout.tiles} names={TILE_NAMES}
-        onChange={(tiles) => remember({ ...layout, tiles })}
-        render={(id) => tile[id]} />
-
-      <Arrangeable className="panels" group="panels" arranging={arranging}
-        order={panels} names={PANEL_NAMES}
-        // The VA's hidden slot keeps its place in what is saved.
-        onChange={(order) => remember({ ...layout, panels: withHidden(order, layout.panels) })}
-        render={(id) => panel[id]}
-        wide={(id) => id === "clients"} />
+      <ArrangeRows arranging={arranging} layout={layout} hidden={hidden}
+        onChange={remember}
+        render={(key) => key.startsWith("tile:")
+          ? tile[key.slice(5) as TileId] : panel[key.slice(6) as PanelId]} />
     </>
   );
 }
@@ -315,107 +319,164 @@ function PipelineColumn({ title, moves }: { title: string; moves: Move[] }) {
   );
 }
 
-/**
- * A row of blocks the person can put in their own order.
- *
- * Dragging is the quick way; the arrow buttons are the same move for a
- * keyboard, and for a screen with no drag at all. While arranging, the links
- * inside the blocks are inert — a drag that ends as a click would leave the
- * page halfway through arranging it.
- */
-function Arrangeable<T extends string>({
-  className, group, arranging, order, names, onChange, render, wide,
-}: {
-  className: string; group: string; arranging: boolean; order: T[];
-  names: Record<T, string>; onChange: (order: T[]) => void;
-  render: (id: T) => ReactNode; wide?: (id: T) => boolean;
-}) {
-  const [dragging, setDragging] = useState<T | null>(null);
-  const [over, setOver] = useState<T | null>(null);
+function nameOf(key: BlockKey): string {
+  return key.startsWith("tile:") ? TILE_NAMES[key.slice(5) as TileId]
+    : PANEL_NAMES[key.slice(6) as PanelId];
+}
 
-  const moveTo = (id: T, index: number) => {
-    const next = order.filter((other) => other !== id);
-    next.splice(Math.max(0, Math.min(index, next.length)), 0, id);
-    if (next.join() !== order.join()) onChange(next);
+/**
+ * Arrange mode: the two rows, and any block may move to any place in either
+ * (backlog, 2026-10-03). Before, tiles stayed among tiles and panels among
+ * panels; now a panel can sit in the top row and a tile in the bottom one.
+ *
+ * Drop a block on another to take its place, or on a row's end zone to go
+ * last in that row (which is also how an emptied row is filled again). The
+ * arrows and "to the other row" are the same moves for a keyboard. While
+ * arranging, the links inside the blocks are inert: a drag that ends as a
+ * click would leave the page halfway through arranging it.
+ */
+function ArrangeRows({ arranging, layout, hidden, onChange, render }: {
+  arranging: boolean; layout: Layout; hidden: (key: BlockKey) => boolean;
+  onChange: (layout: Layout) => void; render: (key: BlockKey) => ReactNode;
+}) {
+  const [dragging, setDragging] = useState<BlockKey | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const visible = { top: layout.top.filter((k) => !hidden(k)),
+                    bottom: layout.bottom.filter((k) => !hidden(k)) };
+
+  /** Move a block to `index` among the *visible* blocks of `row`. Hidden
+   *  blocks keep their saved place. */
+  const moveTo = (key: BlockKey, row: RowName, index: number) => {
+    const next: Layout = { top: layout.top.filter((k) => k !== key),
+                           bottom: layout.bottom.filter((k) => k !== key) };
+    const shown = next[row].filter((k) => !hidden(k));
+    const clamped = Math.max(0, Math.min(index, shown.length));
+    const before = shown[clamped];
+    const at = before === undefined ? next[row].length : next[row].indexOf(before);
+    next[row].splice(at, 0, key);
+    if (next.top.join() !== layout.top.join() || next.bottom.join() !== layout.bottom.join()) {
+      onChange(next);
+    }
   };
   const clear = () => { setDragging(null); setOver(null); };
+  const other = (row: RowName): RowName => (row === "top" ? "bottom" : "top");
 
   return (
-    <div className={`${className}${arranging ? " arranging" : ""}`}>
-      {order.map((id, index) => {
-        const classes = ["slot",
-          wide?.(id) ? "wide" : "",
-          dragging === id ? "dragging" : "",
-          over === id && dragging !== id ? "drop-target" : ""].filter(Boolean).join(" ");
-        if (!arranging) {
-          return <div key={id} className={classes}>{render(id)}</div>;
-        }
-        return (
-          <div key={id} className={classes} data-testid={`slot-${id}`}
-            draggable
-            onDragStart={(event: DragEvent) => {
-              setDragging(id);
-              // Firefox will not start a drag without data on the transfer.
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", `${group}:${id}`);
-            }}
-            onDragOver={(event: DragEvent) => {
-              // Only this row's own blocks: a tile cannot land among panels.
-              if (dragging === null) return;
-              event.preventDefault();
-              if (over !== id) setOver(id);
-            }}
-            onDrop={(event: DragEvent) => {
-              event.preventDefault();
-              if (dragging !== null) moveTo(dragging, index);
-              clear();
-            }}
-            onDragEnd={clear}>
-            <div className="slot-bar">
-              <GripVertical size={14} aria-hidden="true" />
-              <span className="small">{names[id]}</span>
-              <span className="grow" />
-              <button className="icon-button" disabled={index === 0}
-                aria-label={`Move ${names[id]} earlier`}
-                onClick={() => moveTo(id, index - 1)}>
-                <ArrowUp size={14} />
-              </button>
-              <button className="icon-button" disabled={index === order.length - 1}
-                aria-label={`Move ${names[id]} later`}
-                onClick={() => moveTo(id, index + 1)}>
-                <ArrowDown size={14} />
-              </button>
+    <>
+      {(["top", "bottom"] as RowName[]).map((row) => (
+        <div key={row} data-testid={`row-${row}`}
+          className={`${row === "top" ? "tiles" : "panels"}${arranging ? " arranging" : ""}`}>
+          {visible[row].map((key, index) => {
+            const id = key.split(":")[1];
+            const classes = ["slot",
+              key === "panel:clients" ? "wide" : "",
+              dragging === key ? "dragging" : "",
+              over === key && dragging !== key ? "drop-target" : ""].filter(Boolean).join(" ");
+            if (!arranging) {
+              return <div key={key} className={classes}>{render(key)}</div>;
+            }
+            const name = nameOf(key);
+            return (
+              <div key={key} className={classes} data-testid={`slot-${id}`} data-key={key}
+                draggable
+                onDragStart={(event: DragEvent) => {
+                  setDragging(key);
+                  // Firefox will not start a drag without data on the transfer.
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", key);
+                }}
+                onDragOver={(event: DragEvent) => {
+                  if (dragging === null) return;
+                  event.preventDefault();
+                  if (over !== key) setOver(key);
+                }}
+                onDrop={(event: DragEvent) => {
+                  event.preventDefault();
+                  if (dragging !== null) moveTo(dragging, row, index);
+                  clear();
+                }}
+                onDragEnd={clear}>
+                <div className="slot-bar">
+                  <GripVertical size={14} aria-hidden="true" />
+                  <span className="small">{name}</span>
+                  <span className="grow" />
+                  <button className="icon-button" disabled={index === 0}
+                    aria-label={`Move ${name} earlier`}
+                    onClick={() => moveTo(key, row, index - 1)}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button className="icon-button" disabled={index === visible[row].length - 1}
+                    aria-label={`Move ${name} later`}
+                    onClick={() => moveTo(key, row, index + 1)}>
+                    <ArrowDown size={14} />
+                  </button>
+                  <button className="icon-button"
+                    aria-label={`Move ${name} to the ${other(row)} row`}
+                    onClick={() => moveTo(key, other(row), visible[other(row)].length)}>
+                    <ArrowLeftRight size={14} />
+                  </button>
+                </div>
+                <div className="slot-body">{render(key)}</div>
+              </div>
+            );
+          })}
+          {arranging && (
+            <div className={`row-end${over === `end:${row}` ? " drop-target" : ""}`}
+              data-testid={`row-end-${row}`}
+              onDragOver={(event: DragEvent) => {
+                if (dragging === null) return;
+                event.preventDefault();
+                if (over !== `end:${row}`) setOver(`end:${row}`);
+              }}
+              onDrop={(event: DragEvent) => {
+                event.preventDefault();
+                if (dragging !== null) moveTo(dragging, row, visible[row].length);
+                clear();
+              }}>
+              Drop here to put it last in this row
             </div>
-            <div className="slot-body">{render(id)}</div>
-          </div>
-        );
-      })}
-    </div>
+          )}
+        </div>
+      ))}
+    </>
   );
 }
 
-/**
- * What was saved, made safe to lay out: anything no longer on the dashboard is
- * dropped, and anything new is added at the end — so a panel added in a later
- * release (the finances slot, for one) appears for people who had already
- * arranged theirs, rather than being hidden by an order saved before it existed.
- */
-function normalise(saved: Partial<Layout> | null | undefined): Layout {
-  const fit = <T extends string>(ids: unknown, all: readonly T[]): T[] => {
-    const kept = (Array.isArray(ids) ? ids : [])
-      .filter((id, i, list): id is T => all.includes(id as T) && list.indexOf(id) === i);
-    return [...kept, ...all.filter((id) => !kept.includes(id))];
-  };
-  return { tiles: fit(saved?.tiles, TILES), panels: fit(saved?.panels, PANELS) };
-}
+/** The shape saved before 2026-10-03: tiles and panels in their own lists. */
+interface LegacyLayout { tiles?: unknown; panels?: unknown }
 
-/** Puts back any panel this person cannot see, where it was in the saved order. */
-function withHidden(visible: PanelId[], saved: PanelId[]): PanelId[] {
-  const next = [...visible];
-  saved.forEach((id, index) => {
-    if (!next.includes(id)) next.splice(Math.min(index, next.length), 0, id);
+/**
+ * What was saved, made safe to lay out: an old two-list layout becomes the two
+ * rows; anything no longer on the dashboard is dropped; and anything new is
+ * added at the end of its usual row, so a block added in a later release (the
+ * finances slot, for one) appears for people who had already arranged theirs.
+ */
+function normalise(saved: Layout | LegacyLayout | null | undefined): Layout {
+  const asKeys = (ids: unknown, prefix: "tile" | "panel" | ""): BlockKey[] =>
+    (Array.isArray(ids) ? ids : []).map((id) => (prefix && !String(id).includes(":")
+      ? `${prefix}:${id}` : String(id)) as BlockKey);
+  const raw = saved as Partial<Layout> & LegacyLayout | null | undefined;
+  let top: BlockKey[];
+  let bottom: BlockKey[];
+  if (raw && ("top" in raw || "bottom" in raw)) {
+    top = asKeys(raw.top, "");
+    bottom = asKeys(raw.bottom, "");
+  } else {
+    top = asKeys(raw?.tiles, "tile");
+    bottom = asKeys(raw?.panels, "panel");
+  }
+  const seen = new Set<BlockKey>();
+  const keep = (keys: BlockKey[]) => keys.filter((key) => {
+    if (!ALL_BLOCKS.includes(key) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
-  return next;
+  top = keep(top);
+  bottom = keep(bottom);
+  for (const key of ALL_BLOCKS) {
+    if (!seen.has(key)) (key.startsWith("tile:") ? top : bottom).push(key);
+  }
+  return { top, bottom };
 }
 
 function Tile({ label, value, note, icon: Icon, to, bad }: {
