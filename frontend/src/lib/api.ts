@@ -52,6 +52,12 @@ export interface Me {
   role: "FF" | "CF" | "VA" | "FCC" | "ECC" | null;
   /** What the role is called (P1): never show `role` itself. */
   role_label?: string | null;
+  /** P2: may switch to the Practices area. */
+  is_platform_owner?: boolean;
+  /** P2: "platform" in the Practices area, where no practice is bound. */
+  area?: "practice" | "platform";
+  /** P2: the platform owner's own practice, for the switch's label. */
+  home_practice?: string | null;
   tenant: string | null;
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */

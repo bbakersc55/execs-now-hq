@@ -21,6 +21,7 @@ import { api, Me } from "./lib/api";
 import { PRODUCT_FAVICON, setFavicon, useBranding } from "./lib/branding";
 import { applyPortalTokens } from "./lib/palette";
 import { LinkBranded } from "./components/LinkBranded";
+import { AreaSwitch } from "./components/AreaSwitch";
 import { roleLabel } from "./lib/roles";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
@@ -42,6 +43,7 @@ import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
+import { Practices } from "./screens/Practices";
 import { Dashboard } from "./screens/Dashboard";
 import { Meetings } from "./screens/Meetings";
 import { Replies } from "./screens/Replies";
@@ -72,6 +74,11 @@ type NavItem = {
   /** Every nav item has one (design brief, Tier 1). */
   icon: typeof Users;
 };
+
+/** The Practices area's whole navigation (P2). */
+const PLATFORM_NAV: NavItem[] = [
+  { to: "/practices", label: "Practices", group: "Platform", icon: Building2 },
+];
 
 const NAV: NavItem[] = [
   // Matrix 4.18 — Module 1 has no client-facing surface, so every CRM entry is
@@ -168,7 +175,9 @@ export function App() {
   // and logo; only staff screens name the product. Unauthenticated too — the
   // signed-out screen is the first thing a client with a dead session sees.
   const { data: brand } = useBranding();
-  const staff = !!me?.role && TENANT.includes(me.role);
+  // P2: the Practices area is a staff screen with no practice bound.
+  const platform = me?.area === "platform";
+  const staff = platform || (!!me?.role && TENANT.includes(me.role));
   // Manual only, and remembered in this browser (design brief, Tier 1).
   const [chosen, setCollapsed] = useRemembered("enhq.sidebar.collapsed", false);
   // Narrow windows collapse it; widening gives it back. The remembered choice
@@ -206,7 +215,8 @@ export function App() {
     return <SignedOut practice={brand?.display_name || ""} />;
   }
 
-  const visible = NAV.filter((n) => !n.roles || (me.role && n.roles.includes(me.role)));
+  const visible = platform ? PLATFORM_NAV
+    : NAV.filter((n) => !n.roles || (me.role && n.roles.includes(me.role)));
 
   return (
     <div className={collapsed ? "layout collapsed" : "layout"}>
@@ -218,6 +228,7 @@ export function App() {
           {/* P1: staff see which practice they are in, under the product. */}
           {staff && brand?.display_name && (
             <div className="practice" aria-label="Practice">{brand.display_name}</div>)}
+          <AreaSwitch me={me} />
         </div>
         {me.role && TENANT.includes(me.role) && <NoteCapture defaults={captureDefaults(location.pathname)} />}
         <nav>
@@ -245,7 +256,7 @@ export function App() {
           <Avatar name={me.full_name || me.email} size="lg" />
           <div className="names" style={{ minWidth: 0 }}>
             <div className="name">{me.full_name || me.email}</div>
-            <div className="role">{roleLabel(me.role)}</div>
+            <div className="role">{platform ? "Platform owner" : roleLabel(me.role)}</div>
             <ActAsColleague me={me} />
           </div>
         </div>
@@ -256,6 +267,11 @@ export function App() {
         <DemoBanner me={me} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
+          {platform ? (
+            <Routes>
+              <Route path="*" element={<Practices />} />
+            </Routes>
+          ) : (
           <Routes>
             {/* The landing page (design brief, Tier 2). A client user never
                 reaches it: their landing page is the portal. */}
@@ -306,6 +322,7 @@ export function App() {
             <Route path="/report/:id" element={<Report me={me} />} />
             <Route path="/activity" element={<Activity me={me} />} />
           </Routes>
+          )}
         </ErrorBoundary>
         <ToastHost />
       </main>

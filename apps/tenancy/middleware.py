@@ -92,5 +92,7 @@ class TenantMiddleware:
         return (
             Membership.all_objects.select_related("tenant")
             .filter(user=user, revoked_at__isnull=True)
+            # P2: an archived practice binds nobody; its users are signed out.
+            .exclude(tenant__status="archived")
             .first()
         )

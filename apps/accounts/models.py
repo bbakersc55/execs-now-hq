@@ -81,6 +81,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         return (
             Membership.all_objects.select_related("tenant")
             .filter(user=self, revoked_at__isnull=True)
+            .exclude(tenant__status="archived")
             .first()
         )
 

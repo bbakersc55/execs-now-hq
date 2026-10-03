@@ -177,6 +177,15 @@ def branding_logo(request):
                         content_type=tenant.email_logo.content_type or "image/png")
 
 
+def _home_practice(user) -> str | None:
+    from apps.crm.services import email_layout
+    from apps.tenancy.models import Membership
+
+    membership = (Membership.all_objects.select_related("tenant")
+                  .filter(user=user, revoked_at__isnull=True).first())
+    return email_layout.branding(membership.tenant).display_name if membership else None
+
+
 def me(request):
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
@@ -191,6 +200,8 @@ def me(request):
         # platform owner after switching; then no practice is bound.
         "is_platform_owner": request.user.is_platform_owner,
         "area": getattr(request, "area", "practice"),
+        # The switch's other label, readable from the Practices area too.
+        "home_practice": _home_practice(request.user) if request.user.is_platform_owner else None,
         "tenant": str(membership.tenant_id) if membership else None,
         "client_company": (
             str(membership.client_company_id)
@@ -251,6 +262,7 @@ def request_magic_link(request):
     membership = (
         Membership.all_objects.select_related("user", "tenant")
         .filter(user__email__iexact=email, revoked_at__isnull=True)
+        .exclude(tenant__status="archived")     # P2: no sign-in link for an archived practice
         .first()
     )
     if membership is not None and membership.user.is_active:

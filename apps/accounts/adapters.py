@@ -55,6 +55,7 @@ def _live_membership_for(email: str):
     return (
         Membership.all_objects.select_related("user", "tenant")
         .filter(user__email__iexact=email, revoked_at__isnull=True)
+        .exclude(tenant__status="archived")     # P2: an archived practice signs nobody in
         .first()
     )
 

@@ -95,32 +95,50 @@ def realigned_next_run(tenant, schedule_type, minutes, local_hour, next_run, now
     return _first_run(tenant, local_hour) if local_hour is not None else now
 
 
+def ensure_for(tenant, write=None) -> None:
+    """Create or update one practice's schedules (P2: provisioning and
+    unarchiving call this for the one practice)."""
+    for name, func, schedule_type, minutes, local_hour in SCHEDULES:
+        full_name = f"{name}:{tenant.slug}"
+        fields = {
+            "func": func, "args": repr(str(tenant.pk)),
+            "schedule_type": schedule_type, "minutes": minutes, "repeats": -1,
+        }
+        schedule = Schedule.objects.filter(name=full_name).first()
+        if schedule is None:
+            schedule = Schedule.objects.create(
+                name=full_name, next_run=_first_run(tenant, local_hour), **fields
+            )
+            verb = "created"
+        else:
+            Schedule.objects.filter(pk=schedule.pk).update(**fields)
+            verb = "updated"
+            realigned = realigned_next_run(tenant, schedule_type, minutes, local_hour,
+                                           schedule.next_run)
+            if realigned is not None:
+                Schedule.objects.filter(pk=schedule.pk).update(next_run=realigned)
+                verb = "realigned"
+            schedule.refresh_from_db()
+        if write:
+            write(f"{verb:8} {full_name:45} next run {schedule.next_run:%Y-%m-%d %H:%M %Z}")
+
+
+def remove_for(tenant) -> int:
+    """Delete one practice's schedules: an archived practice runs nothing."""
+    names = [f"{name}:{tenant.slug}" for name, *_ in SCHEDULES]
+    deleted, _ = Schedule.objects.filter(name__in=names).delete()
+    return deleted
+
+
 class Command(BaseCommand):
-    help = "Create or update the periodic job schedules for every tenant."
+    help = "Create or update the periodic job schedules for every active practice."
 
     def handle(self, *args, **options):
         for tenant in Tenant.objects.order_by("slug"):
-            for name, func, schedule_type, minutes, local_hour in SCHEDULES:
-                full_name = f"{name}:{tenant.slug}"
-                fields = {
-                    "func": func, "args": repr(str(tenant.pk)),
-                    "schedule_type": schedule_type, "minutes": minutes, "repeats": -1,
-                }
-                schedule = Schedule.objects.filter(name=full_name).first()
-                if schedule is None:
-                    schedule = Schedule.objects.create(
-                        name=full_name, next_run=_first_run(tenant, local_hour), **fields
-                    )
-                    verb = "created"
-                else:
-                    Schedule.objects.filter(pk=schedule.pk).update(**fields)
-                    verb = "updated"
-                    realigned = realigned_next_run(tenant, schedule_type, minutes, local_hour,
-                                                   schedule.next_run)
-                    if realigned is not None:
-                        Schedule.objects.filter(pk=schedule.pk).update(next_run=realigned)
-                        verb = "realigned"
-                    schedule.refresh_from_db()
-                self.stdout.write(
-                    f"{verb:8} {full_name:45} next run {schedule.next_run:%Y-%m-%d %H:%M %Z}"
-                )
+            if tenant.status == Tenant.Status.ARCHIVED:
+                # An archived practice runs nothing (P2), and this command is
+                # run after every pull: it must not bring the jobs back.
+                remove_for(tenant)
+                self.stdout.write(f"{'skipped':8} {tenant.slug:45} archived")
+                continue
+            ensure_for(tenant, self.stdout.write)
