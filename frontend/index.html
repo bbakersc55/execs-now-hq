@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Replaced at runtime by the practice's name (a client) or the product's (staff). -->
+    <!-- The server fills both in per session (config/spa.py), so a client never
+         sees the product's name or icon, not even while the app loads. These
+         defaults are the client-safe ones: the practice's own mark. -->
     <title>Portal</title>
+    <link rel="icon" href="/api/branding/mark" />
   </head>
   <body>
     <div id="root"></div>

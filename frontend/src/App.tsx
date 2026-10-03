@@ -18,7 +18,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
 import { api, Me } from "./lib/api";
-import { useBranding } from "./lib/branding";
+import { PRODUCT_FAVICON, setFavicon, useBranding } from "./lib/branding";
+import { applyPortalTokens } from "./lib/palette";
 import { roleLabel } from "./lib/roles";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
@@ -173,16 +174,26 @@ export function App() {
   const wordmark = (staff ? brand?.product_name : brand?.display_name) ?? "";
   const palette = brand?.palette;
 
+  // P1: a client's portal wears the practice's whole color family; staff
+  // screens keep the product's look, so their tokens are removed, not set.
   useEffect(() => {
     if (!palette) return;
-    const root = document.documentElement;
-    root.style.setProperty("--blue", palette.header);
-    root.style.setProperty("--orange", palette.accent);
-  }, [palette]);
+    applyPortalTokens(document.documentElement,
+      staff ? null : { primary: palette.header, accent: palette.accent });
+  }, [palette, staff]);
 
   useEffect(() => {
     if (wordmark) document.title = wordmark;
   }, [wordmark]);
+
+  // The tab icon: the product's for staff, the practice's mark (or its
+  // initials) for everyone else. In production the server already wrote the
+  // right one into index.html (config/spa.py); this keeps the dev server and
+  // a sign-in within the page right.
+  useEffect(() => {
+    if (!brand) return;
+    setFavicon(staff ? PRODUCT_FAVICON : brand.mark_url);
+  }, [brand, staff]);
 
   if (isLoading) return <main style={{ padding: "2rem" }}>Loading…</main>;
 
@@ -199,6 +210,9 @@ export function App() {
           {brand?.logo_url && !staff
             ? <img src={brand.logo_url} alt={wordmark} />
             : <h1>{wordmark}</h1>}
+          {/* P1: staff see which practice they are in, under the product. */}
+          {staff && brand?.display_name && (
+            <div className="practice" aria-label="Practice">{brand.display_name}</div>)}
         </div>
         {me.role && TENANT.includes(me.role) && <NoteCapture defaults={captureDefaults(location.pathname)} />}
         <nav>

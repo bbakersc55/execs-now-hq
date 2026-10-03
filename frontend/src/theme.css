@@ -29,6 +29,9 @@
   --orange: #f58220;
   --orange-600: #dc7318;
   --orange-050: #fef3e8;
+  /* Text on an orange fill. White on the product's own screens; the client
+     portal sets it per practice (lib/palette.ts). */
+  --on-orange: #fff;
 
   /* --- neutrals --------------------------------------------------------- */
   --text: #1f2937;
@@ -135,6 +138,10 @@ h4 { font-size: var(--t-14); font-weight: 600; color: var(--text); }
 }
 .sidebar .brand h1 { font-size: var(--t-16); font-weight: 650; color: #fff; }
 .sidebar .brand img { max-height: 28px; max-width: 150px; }
+.sidebar .brand { flex-wrap: wrap; }
+.sidebar .brand .practice { flex-basis: 100%; font-size: var(--t-12); color: #9ab4cc;
+                            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layout.collapsed .sidebar .brand .practice { display: none; }
 .sidebar nav { display: flex; flex-direction: column; }
 .sidebar .nav-group {
   font-size: var(--t-12); font-weight: 600; letter-spacing: .08em;
@@ -254,7 +261,7 @@ button:hover:not(:disabled), .btn:hover { background: var(--hover); border-color
 button:disabled { opacity: .45; cursor: not-allowed; }
 /* The one primary action on a screen. */
 button.primary, .btn.primary {
-  background: var(--orange); border-color: var(--orange); color: #fff; font-weight: 600;
+  background: var(--orange); border-color: var(--orange); color: var(--on-orange); font-weight: 600;
 }
 button.primary:hover:not(:disabled), .btn.primary:hover {
   background: var(--orange-600); border-color: var(--orange-600);
@@ -262,7 +269,7 @@ button.primary:hover:not(:disabled), .btn.primary:hover {
 button.ghost, .btn.ghost {
   border-color: transparent; background: transparent; color: var(--navy);
 }
-button.ghost:hover:not(:disabled) { background: rgba(10, 58, 101, .06); border-color: transparent; }
+button.ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--navy) 6%, transparent); border-color: transparent; }
 button.danger { color: var(--bad); border-color: var(--bad-line); }
 button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 button.link {
@@ -427,7 +434,7 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
 .pill.status-not_started { background: #f3f4f6; color: #4b5563; border-color: var(--line); }
 .pill.status-in_progress { background: var(--info-bg); color: #1d4ed8; border-color: var(--info-line); }
 .pill.status-blocked { background: var(--bad-bg); color: var(--bad); border-color: var(--bad-line); }
-.pill.status-waiting_on_client { background: var(--orange); color: #fff; border-color: var(--orange); }
+.pill.status-waiting_on_client { background: var(--orange); color: var(--on-orange); border-color: var(--orange); }
 .pill.status-done { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-line); }
 .pill.status-cancelled { background: #f3f4f6; color: var(--gray-light); text-decoration: line-through; }
 .pill.derived { border-style: dashed; }
@@ -680,7 +687,7 @@ th .arrow.on { opacity: 1; color: var(--orange); }
 a.button { display: inline-flex; align-items: center; gap: var(--s1);
            padding: var(--s2) var(--s4); border-radius: var(--radius-sm);
            text-decoration: none; font-size: var(--t-14); }
-a.button.primary { background: var(--orange); color: #fff; }
+a.button.primary { background: var(--orange); color: var(--on-orange); }
 a.button.primary:hover { background: var(--orange-600); }
 
 /* Dashboard (Tier 2). Four tiles, then panels. Everything is flat: elevation
