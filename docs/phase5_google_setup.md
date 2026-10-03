@@ -1,5 +1,7 @@
 # Phase 5 — what to set up on the Google side
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 Everything below is in the **Execs NOW HQ** GCP project, the same one the
 nightly backup bucket lives in. It is separate from anything else you run.
 
@@ -70,10 +72,10 @@ the id out of it, `?usp=sharing` and all. The id on its own works too.
 
 It then opens the folder and tells you its name, how many files are in it and
 how many of those it can read, **before** it saves anything. Confirm, and it
-starts watching. **One folder per tenant in Beta** — the schema enforces it.
+starts watching. **One folder per practice in Beta** — the schema enforces it.
 
-Only the founder fractional can connect or disconnect the folder (matrix
-11.10). A CF or VA sees which folder is watched and when it was last read, and
+Only the practice owner can connect or disconnect the folder (matrix
+11.10). An associate or assistant sees which folder is watched and when it was last read, and
 no connect controls.
 
 ## 5. What the app will and will not do with it

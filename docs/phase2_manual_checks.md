@@ -1,5 +1,7 @@
 # Phase 2 — Manual Checks
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Module 2: Notes · for the owner**
 
 The four manual checks from `04_build_plan.md` Phase 2, as click paths through the actual
@@ -33,8 +35,8 @@ with Anthropic before it is saved; if the check fails nothing changes. Without a
 recordings still transcribe, and their summaries show *"Claude could not draft a summary"*
 with a button to try again once a key is in.
 
-**For Check 2 you act as a VA without a second Workspace account.** Google sign-in only
-admits `@getexecutivesnow.com` accounts, so a local-only command creates one test VA and
+**For Check 2 you act as an assistant without a second Workspace account.** Google sign-in only
+admits `@getexecutivesnow.com` accounts, so a local-only command creates one test assistant and
 prints a one-time sign-in link for it:
 
 ```bash
@@ -43,14 +45,14 @@ prints a one-time sign-in link for it:
 ```
 
 - It refuses to run unless the app **and** the database are on this laptop.
-- The test VA is `va.localtest@example.invalid` — `.invalid` is a reserved domain that can
+- The test assistant is `va.localtest@example.invalid` — `.invalid` is a reserved domain that can
   never receive mail. Its creation is audited like any invite.
 - The link is an ordinary magic link: it works once and expires in 20 minutes. Run the
   command again for a fresh one.
 - **Open the link in a private window.** Browsers share sign-in cookies across
   `localhost` ports, so opening it in your normal window would sign *you* out and sign the
-  VA in. The private window keeps the two sessions apart.
-- The link lands you on the app at `localhost:5200` as the VA — the sidebar shows **VA**
+  assistant in. The private window keeps the two sessions apart.
+- The link lands you on the app at `localhost:5200` as the assistant — the sidebar shows **Assistant**
   under the name "Local test VA".
 
 When you have finished all four checks, remove it:
@@ -93,7 +95,7 @@ Accept it, edit and accept, or discard. Discarding keeps the transcript.
 and anything the summary got wrong. Quality is reported as *observed on N real
 recordings* — this is recording 1.
 
-## Check 2 — PIN a sensitive note, then try to find it as a VA
+## Check 2 — PIN a sensitive note, then try to find it as an assistant
 
 1. Write a note about something genuinely sensitive, with **no title**, and link it to a
    contact. Note a distinctive phrase from the body.
@@ -101,21 +103,21 @@ recordings* — this is recording 1.
    and explain why: the title stays visible on a locked note, and right now the title *is*
    your first line. Give it a title that does not give the content away.
 3. Set a 4–6 digit PIN.
-4. Run `dev_va_login`, open the link in a **private window**, click **Sign in**. As the VA:
+4. Run `dev_va_login`, open the link in a **private window**, click **Sign in**. As the assistant:
    - open the contact — the timeline shows **🔒 Note (locked): your title**, nothing more;
    - search the phrase in **Contacts** and in **Notes** — nothing comes back;
    - open the note — a title, an unlock box, and no body.
 5. Open DevTools (F12). In **Elements**, Ctrl+F for the phrase. In **Network**, click the
    `notes` and `timeline` requests and search each **Response**. It must be in neither.
    (View Source would not tell you anything: it shows the app's empty shell.)
-6. As the VA, enter a wrong PIN five times. The fifth attempt locks the note for 15
+6. As the assistant, enter a wrong PIN five times. The fifth attempt locks the note for 15
    minutes, and even the right PIN is refused until then — for you too, since the lockout
    belongs to the note, not the person. (Do this on a throwaway note if you want to keep
    working with the sensitive one straight away.)
 
 ## Check 3 — Reset a PIN and confirm it clears rather than reveals
 
-1. As yourself (FF), in a **new** session (sign out and back in, so you are not already
+1. As yourself (practice owner), in a **new** session (sign out and back in, so you are not already
    unlocked), open the locked note. You see the stub, like everyone else — the PIN is not
    a role.
 2. **Email me a link that clears it.** Your address is on the dev allow-list, so the email
@@ -151,7 +153,7 @@ session; after you confirm it, it does not reappear until you next sign in. It l
   Outbox around **2026-10-07**, each awaiting approval, none sent. Unapproved drafts past
   their send-by expire hourly. Contact search is reindexed hourly; it had never run, so
   until now search matched tags only.
-- **Audio retention** is under **Notes** (FF only). Audio is deleted after the set number
+- **Audio retention** is under **Notes** (practice owner only). Audio is deleted after the set number
   of days *once it has transcribed*; audio that never transcribed is kept and flagged on its
   note until someone retries or discards it. At **0**, audio goes as soon as its transcript
   exists, and cannot be re-transcribed.

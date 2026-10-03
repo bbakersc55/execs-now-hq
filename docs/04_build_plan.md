@@ -1,5 +1,7 @@
 # 04 — Build Plan: Beta
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Phase 0 · Execs NOW HQ · for owner review**
 **Built on:** `CLAUDE.md`, `00_assumptions.md`, `01_prd.md`, `02_data_model.md`, `03_access_matrix.md`.
 
@@ -28,9 +30,9 @@ Module numbers follow `CLAUDE.md`. **Build order is not module order**, in one p
 
 (The design pass may also follow the Railway move; it must precede Beta exit — see its section.)
 
-**Build order is module order again.** Ruling 9.3 moved Module 6 after Railway because its inbound half needed a public webhook. The transport change removes that dependency: with Gmail as the transport (assumption A3), inbound arrives by **polling the tenant's own mailbox**, which needs no public endpoint and runs on the laptop. **Module 6 returns to its original position, before the Railway move.**
+**Build order is module order again.** Ruling 9.3 moved Module 6 after Railway because its inbound half needed a public webhook. The transport change removes that dependency: with Gmail as the transport (assumption A3), inbound arrives by **polling the practice's own mailbox**, which needs no public endpoint and runs on the laptop. **Module 6 returns to its original position, before the Railway move.**
 
-The Phase 1 carve-back stays where it is — `email_thread`, `thread_token`, threading headers, and Gmail connect are all in Module 1, because Module 1 promises a CF "send from my own address" and a `manual` direct-to-`sent` producer.
+The Phase 1 carve-back stays where it is — `email_thread`, `thread_token`, threading headers, and Gmail connect are all in Module 1, because Module 1 promises an associate "send from my own address" and a `manual` direct-to-`sent` producer.
 
 ---
 
@@ -50,9 +52,9 @@ The Phase 1 carve-back stays where it is — `email_thread`, `thread_token`, thr
 
 ### Tests that must pass
 
-- **Tenant isolation (registry).** Foundation models registered; the **meta-test fails on an unregistered model** — verified by deliberately adding a model and watching the suite go red.
-- **Role boundaries (registry).** Matrix §2 and §3 rows: 2.1 cross-tenant 404, 2.4 one membership, 3.3/3.4 API key unreadable **by every role including FF**, 3.16–3.19 FF-only.
-- `TenantContextMissing` raises when a query runs with no tenant bound — the single most important negative test in the codebase.
+- **Practice isolation (registry).** Foundation models registered; the **meta-test fails on an unregistered model** — verified by deliberately adding a model and watching the suite go red.
+- **Role boundaries (registry).** Matrix §2 and §3 rows: 2.1 cross-practice 404, 2.4 one membership, 3.3/3.4 API key unreadable **by every role including practice owner**, 3.16–3.19 practice owner-only.
+- `TenantContextMissing` raises when a query runs with no practice bound — the single most important negative test in the codebase.
 - Magic link: single-use, 20-minute expiry, hashed at rest, **GET does not consume** (C3.3), rate limit holds, enumeration response is constant.
 
 ### Manual checks
@@ -74,31 +76,31 @@ Every criterion above as tested / written-not-exercised / not-implemented, plus 
 
 1. Contacts, companies, domains, locations, types, stages, service categories — all CRUD, with soft delete and restore.
 2. **The client invariant** (FR-1.6a) derives forward and does not reverse.
-3. `client_assignment` in place and **actually governing CF visibility** (FR-1.9c).
+3. `client_assignment` in place and **actually governing associate visibility** (FR-1.9c).
 4. CSV import: mapping profiles, dry run, commit, **rollback**, ambiguous-match listing, notes column → real `note` rows.
 5. Merge, with audit.
 6. Stage automations: `create_task` fires; `draft_email` queues.
 7. **The Outbox** as both approval queue and complete send log, including direct-to-`sent` routing.
-8. Referral: fee terms, tenant blurb, three-part touch composition, staleness warning, onboarding draft with flyer.
+8. Referral: fee terms, practice blurb, three-part touch composition, staleness warning, onboarding draft with flyer.
 9. Global search over contacts, companies, notes.
 
-**Carved back from Module 6 (ruling 9.3)** — required for FR-1.19a and the CF "send from my own address" story:
+**Carved back from Module 6 (ruling 9.3)** — required for FR-1.19a and the associate "send from my own address" story:
 
 10. **`email_thread` created for every outbound message**, carrying a `thread_token`.
 11. **Threading headers on every send** — the token in the `Message-ID` and in `X-ExecsNowHQ-Thread`, `In-Reply-To` quoting the previous message, and Gmail's `threadId` stored on the thread (FR-6.2).
-12. **Gmail connect** for FF and CF, with **send-as verification** against `settings.sendAs`; **not offered to VAs** (H7).
-13. The `manual` producer routing by role: FF/CF direct-to-`sent` via their own Gmail, VA to `pending_approval`.
+12. **Gmail connect** for practice owner and associate, with **send-as verification** against `settings.sendAs`; **not offered to assistants** (H7).
+13. The `manual` producer routing by role: Practice owner/associate direct-to-`sent` via their own Gmail, assistant to `pending_approval`.
 14. **The `APP_MAIL_TRANSPORT` seam**, with the Gmail transport implemented and Postmark raising a clear "V1 option" error.
 
 > Not in Phase 1: inbound polling, replay fixtures, and the unmatched queue. Those are Module 6.
 
 ### Tests that must pass
 
-- **Tenant isolation:** every Module 1 model registered.
-- **Role boundaries:** matrix §4 and §5 in full — with 5.3 (VA cannot approve), 5.5 (VA *may* send `precall_invite`), 5.6 (VA `manual` becomes a draft), 4.5 (VA may merge), 4.11 (FF-only assignment), 3.15 (FF-only stages) called out individually.
+- **Practice isolation:** every Module 1 model registered.
+- **Role boundaries:** matrix §4 and §5 in full — with 5.3 (assistant cannot approve), 5.5 (assistant *may* send `precall_invite`), 5.6 (assistant `manual` becomes a draft), 4.5 (assistant may merge), 4.11 (practice owner-only assignment), 3.15 (practice owner-only stages) called out individually.
 - **Acceptance criteria AC-1.1 through AC-1.25.**
 - **Every denied-send test also asserts the dev outbox is empty** and that no `outbox_message` reached `sent` (matrix §14.3).
-- **AC-6.1 and AC-6.13** (carved back): one `email_thread` per contact conversation with a consistent token, recoverable from the `Message-ID`; `From` set to the verified tenant alias; `In-Reply-To` quoting the previous message on a follow-up.
+- **AC-6.1 and AC-6.13** (carved back): one `email_thread` per contact conversation with a consistent token, recoverable from the `Message-ID`; `From` set to the verified practice alias; `In-Reply-To` quoting the previous message on a follow-up.
 - **AC-6.14** (carved back): an unverified send-as alias fails with an actionable message and does **not** fall back to the fractional's personal address.
 - **The dev-outbox guard is transport-independent**: a non-allow-listed recipient on a localhost build never reaches the Gmail API at all — asserted by confirming the HTTP call is never made, not merely that the message did not arrive.
 
@@ -119,7 +121,7 @@ Every criterion above as tested / written-not-exercised / not-implemented, plus 
 | | |
 |---|---|
 | Automated tests | **487 passed**, 2 xfailed |
-| — of which the two mandatory families | **236** (tenant isolation + role boundaries) |
+| — of which the two mandatory families | **236** (practice isolation + role boundaries) |
 | — Module 1 acceptance | **41** |
 | Frontend tests | **53 passed** |
 | Manual checks | **5 of 5 passed** |
@@ -141,7 +143,7 @@ which is the point of reporting it.
 | AC-1.4 | Stage automation fires task, queues email, per pipeline | ✅ Walked (Check 3) |
 | AC-1.5 | An unapproved draft expires rather than sending | ✅ Automated |
 | AC-1.6 | **Referral touch drafted 3 days early, approved, delivered** | ✅ **Live** (Check 4) |
-| AC-1.7 | VA cannot approve or send | ✅ Automated |
+| AC-1.7 | Assistant cannot approve or send | ✅ Automated |
 | AC-1.8 | Vendor search by service category | ✅ Walked (extras) |
 | AC-1.9 | Merge preserves history and is audited | ✅ Walked (Check 2) |
 | AC-1.10 | Out-of-scope reads 404, never 403 | ✅ Automated |
@@ -149,19 +151,19 @@ which is the point of reporting it.
 | AC-1.12 | Client invariant derives forward only | ✅ Walked (Check 3) |
 | AC-1.12a | A contact holds a position in two pipelines at once | ✅ Walked (Check 3) |
 | AC-1.12b | A sales pipeline cannot lose its only `won` stage | ✅ Automated |
-| AC-1.13 | Assignment governs CF visibility | ✅ Automated |
-| AC-1.14 | Assignment endpoints reject CF and VA | ✅ Automated |
-| AC-1.15 | VA sees the whole CRM | ✅ Automated |
+| AC-1.13 | Assignment governs associate visibility | ✅ Automated |
+| AC-1.14 | Assignment endpoints reject associate and assistant | ✅ Automated |
+| AC-1.15 | Assistant sees the whole CRM | ✅ Automated |
 | AC-1.16 | Send-by default, configurable, expiry sends nothing | ✅ Automated |
 | AC-1.17 | Outbox is the complete send log | ✅ Walked (Check 4) |
 | AC-1.18 | Touch composition has all three parts | ✅ Walked (Check 4) |
 | AC-1.19 | Stale blurb warns but does not block | ✅ Automated |
 | AC-1.20 | **Onboarding fires once, attaches the flyer, delivered intact** | ✅ **Live** (Check 5) |
-| AC-1.21 | VA may merge; CF may not | ✅ Walked (Check 2) |
+| AC-1.21 | Assistant may merge; associate may not | ✅ Walked (Check 2) |
 | AC-1.22 | Delete and restore are delegable | ✅ Automated |
-| AC-1.23 | Pipelines and stages FF-only; types and categories not | ✅ Walked (Check 3) |
+| AC-1.23 | Pipelines and stages practice owner-only; types and categories not | ✅ Walked (Check 3) |
 | AC-1.24 | Staff removal cascades | ✅ Walked (extras) |
-| AC-1.25 | AI spend is FF-only | ✅ Walked (extras) |
+| AC-1.25 | AI spend is practice owner-only | ✅ Walked (extras) |
 
 **The two live deliveries are the ones that matter**, because they are the only points
 where the app's behavior left the machine:
@@ -220,22 +222,22 @@ per `CLAUDE.md`.
 ### Done means
 
 1. One-action capture; optional dual linking (Contact *or* Company, **and** Task).
-2. PIN: set, unlock, lockout, **FF-only reset that clears rather than reveals**.
+2. PIN: set, unlock, lockout, **Practice owner-only reset that clears rather than reveals**.
 3. **The title-leak defense** — explicit title required before PIN, and `"Locked note"` for any auto-derived title on a stub.
 4. Locked notes excluded **at index time**, not filtered at query time.
 5. Recording → GCS → Speech-to-Text → Claude summary, with the summary **proposed, never auto-attached**.
-6. Consent reminder; 120-minute cap; per-tenant audio retention with the deletion job running.
+6. Consent reminder; 120-minute cap; per-practice audio retention with the deletion job running.
 
 ### Tests that must pass
 
-- **Tenant isolation** and **role boundaries** (matrix §6), including **6.4 — PIN gating is not a role**: the FF without the PIN gets no body.
+- **Practice isolation** and **role boundaries** (matrix §6), including **6.4 — PIN gating is not a role**: the practice owner without the PIN gets no body.
 - **AC-2.1 through AC-2.10**, with AC-2.3's title-leak case run **both** through the UI and **directly against the API**, since FR-2.11b exists precisely for the path that bypasses the dialog.
 - Search returns no body text for a locked note, asserted against the raw API response and rendered HTML, not the UI.
 
 ### Manual checks
 
 1. Record a real 20-minute call. Read the transcript for usability and the summary for accuracy. **Would you keep this summary?** If not, the prompt needs work now.
-2. PIN a genuinely sensitive note. Sign in as a VA and try to find it — search for a phrase from its body.
+2. PIN a genuinely sensitive note. Sign in as an assistant and try to find it — search for a phrase from its body.
 3. Ask for a PIN reset and confirm the email clears rather than reveals.
 4. Confirm the consent reminder is worded in a way you are comfortable relying on.
 
@@ -246,7 +248,7 @@ per `CLAUDE.md`.
 | | |
 |---|---|
 | Automated tests | **613 passed**, 2 xfailed |
-| — of which the two mandatory families | **294** (tenant isolation + role boundaries) |
+| — of which the two mandatory families | **294** (practice isolation + role boundaries) |
 | — Module 2 acceptance | **41** |
 | Frontend tests | **76 passed** |
 | Manual checks | **4 of 4 passed** |
@@ -272,13 +274,13 @@ Nothing is "written but not exercised".
 | AC-2.2 | Linking optional, mutable, dual; never contact *and* company | ✅ Walked (Check 2) |
 | AC-2.3 | Locked stub leaks nothing; the title-leak defense, UI **and** API | ✅ Walked (Check 2) |
 | AC-2.4 | Five wrong PINs lock the note, audited per attempt | ✅ Walked (Check 2) |
-| AC-2.5 | **Reset clears rather than reveals, FF-only** | ✅ **Live** (Check 3) |
+| AC-2.5 | **Reset clears rather than reveals, practice owner-only** | ✅ **Live** (Check 3) |
 | AC-2.5a | 110-minute warning, clean stop at 120 | ✅ Automated (simulated clock; no real 2-hour recording) |
 | AC-2.6 | Consent reminder, once per sign-in session | ✅ Walked (Check 4) — **wording approved by the owner as written** |
 | AC-2.7 | Summary proposed, never auto-attached | ✅ Walked (Check 1) |
 | AC-2.8 | (a) transcription fails, audio kept · (b) upload fails, browser keeps it | ✅ Automated |
 | AC-2.9 | Retention deletes transcribed audio, keeps and flags the rest | ✅ Automated |
-| AC-2.10 | Tenant isolation | ✅ Automated |
+| AC-2.10 | Practice isolation | ✅ Automated |
 
 **What the manual checks corrected, none of which the suite would have caught:**
 
@@ -300,7 +302,7 @@ Nothing is "written but not exercised".
 
 - **Staff magic links.** The magic-link request endpoint will issue a link to any member,
   staff included, while access matrix 2.3 says staff sign in with Google only. Never
-  exposed in the UI, and now the only route for the local test VA (`dev_va_login`).
+  exposed in the UI, and now the only route for the local test assistant (`dev_va_login`).
 - **Module 1's scheduled jobs were never registered** and now are (`ensure_schedules`).
   The first referral-touch drafting run is due around 2026-10-07 with about 42 drafts, each
   awaiting approval.
@@ -322,7 +324,7 @@ Nothing is "written but not exercised".
 7. **`digest_item`** driving per-recipient consumption; digests keyed `(contact, cadence, period_start)`.
 8. Generation Thursday 08:00 / send Friday 08:00; `every_update` on quiet-window close.
 9. **`hold_all_digests` ON**, the approval screen, stale flagging with regenerate, expiry-releases-claims.
-10. Portal: scoped by tenant **and** company; client task and **project** creation; FR-3.9a edit rule; on-demand report; cadence self-service by signed token.
+10. Portal: scoped by practice **and** company; client task and **project** creation; FR-3.9a edit rule; on-demand report; cadence self-service by signed token.
 11. Portal access grant, seats counted from live memberships, revoke.
 
 ### Mid-phase checkpoint — a report, not a gate
@@ -333,8 +335,8 @@ It reports the hierarchy and its three-level cap, the six statuses, `client_owne
 
 ### Tests that must pass
 
-- **Tenant isolation**, plus **client-company isolation as a separate family** (FR-0.2) — two companies in the *same* tenant, expecting **404** both ways.
-- **Role boundaries:** matrix §7, §8, §9 in full. **8.3 (VA cannot approve a digest) is the single most important role test in the product.**
+- **Practice isolation**, plus **client-company isolation as a separate family** (FR-0.2) — two companies in the *same* practice, expecting **404** both ways.
+- **Role boundaries:** matrix §7, §8, §9 in full. **8.3 (assistant cannot approve a digest) is the single most important role test in the product.**
 - **AC-3.1 through AC-3.39.** The ones I will not let slide:
   - **AC-3.5** — the AI narrative asserts no fact absent from its inputs.
   - **AC-3.6** — nothing sends while held; dev outbox empty after the send window.
@@ -388,7 +390,7 @@ before Phase 4 — see FR-3.24a below.
 | | |
 |---|---|
 | Automated tests | **981 passed**, 3 skipped, 2 xfailed (2026-09-18) |
-| — tenant isolation + role boundaries files | **377** (`test_tenant_isolation.py` 231, `test_role_boundaries.py` 146). The Module 3 files below add their own isolation and role cases |
+| — practice isolation + role boundaries files | **377** (`test_tenant_isolation.py` 231, `test_role_boundaries.py` 146). The Module 3 files below add their own isolation and role cases |
 | — Module 3 test files | **207** (acceptance 32, digests 63, portal 63, act as 19, activity log 19, stakeholder picker 11) |
 | Frontend tests | **220 passed** |
 | Manual checks | **6 of 6 passed** · Check 2 in two parts: generation on the real cycle, delivery dev-triggered the same day (above) |
@@ -438,10 +440,10 @@ was fixed before the check was re-run, unless it says otherwise.
 | 3 · Leave a digest unapproved | ✅ Passed on retest | **The server expired it on time; the screen never refreshed**, so it looked pending. Now: the list refreshes, a passed window is flagged, approving after the window is refused (it would otherwise have sent on the next tick), and a banner shows when the tick has stopped. The cluster had been down overnight with nothing showing it; the runbook now says to restart `qcluster` after every backend commit, and stale schedules are realigned (`work.tick` had been stuck at 12 Sep, firing every ~30 s) |
 | 4 · Be an every-update stakeholder | ✅ Passed on retest | **Two engine bugs:** a held every-update digest was expired by the same tick that generated it, and the expired row then blocked its content from ever generating again. Fixed; **FR-3.28d** (24-hour review window) confirmed by the owner. A later retest looked silent but was correctly inside the 30-minute quiet window — no defect — which led to the read-only **"Coming up"** card (FR-3.29a) |
 | 5 · Sign in to the portal as a real client user | ✅ Passed on retest | No create controls in the portal; "Add a task here" on a goal gave a client a bare 400; magic-link sign-in landed on a 404. Added from what the check showed: the client **activity log** (FR-3.41) and **act as** (FR-3.42). *(The activity log was **reversed on 2026-09-16** — it is the practice's feed now, not the client's, and a client is refused it: FR-3.41a. Act as stands.)* |
-| 6 · Grant a third seat with two available | ✅ Passed on retest | The seat message was clear. Also found: no FCC/ECC choice at grant, no way to change a role, the seat count out of step after a revoke, no primary contact picker, and a VA able to read seat usage (matrix 9.5). Matrix 9.2a added |
+| 6 · Grant a third seat with two available | ✅ Passed on retest | The seat message was clear. Also found: no client owner/client team member choice at grant, no way to change a role, the seat count out of step after a revoke, no primary contact picker, and an assistant able to read seat usage (matrix 9.5). Matrix 9.2a added |
 
 **Also found during the checks, and fixed:** the stakeholder picker searched every
-contact in the tenant; it now defaults to the work's client company, with an explicit
+contact in the practice; it now defaults to the work's client company, with an explicit
 "someone outside" search, and marks the practice's own people.
 
 **Decided during the checks** (recorded in `01_prd.md` and `03_access_matrix.md`):
@@ -502,7 +504,7 @@ deterministic under load.
 **The repair, and the audit behind it.** The stuck digest's three claims were released
 on the owner's instruction, with a `digest.claims_released` audit event naming each
 freed update and why; `owed_to` for that contact then returned the three, so they come
-round again next period. **Every digest in a dead state, across all tenants, was then
+round again next period. **Every digest in a dead state, across all practices, was then
 scanned:** 6 `expired` and 1 `skipped` digest hold **zero** claims, and no update is
 claimed only by a dead digest. The 18 claims that exist all sit on `sent` digests,
 which is the delivery record and correct. **That one row was the only occurrence.**
@@ -580,7 +582,7 @@ of the seed and all confirmed as seeded:
 2. **The worked example map row is in-app copy, not data.** A `strategy_map_row`
    requires a session, so the supervisor-overload example has no home as a row without
    inventing a fake session that every list and report would then have to exclude. It
-   ships as a constant beside the map's empty state. A tenant-editable example is a V1
+   ships as a constant beside the map's empty state. A practice-editable example is a V1
    question, not a Beta one.
 3. **Both §9 money items are `is_financial`** — the investment range *and* their
    reaction to it. "They choked at that number" is the same information as the number;
@@ -592,7 +594,7 @@ of the seed and all confirmed as seeded:
 
 ### Tests that must pass
 
-- **Tenant isolation** (including the pre-call token) and **role boundaries** (matrix §10) — with **10.8 (VA cannot see §9 investment fields)** asserted against the API response body, not the UI.
+- **Practice isolation** (including the pre-call token) and **role boundaries** (matrix §10) — with **10.8 (assistant cannot see §9 investment fields)** asserted against the API response body, not the UI.
 - **AC-4.1 through AC-4.19.** Especially:
   - **AC-4.9** — all five exclusion markers absent from the generated PDF's text, then one toggled on and only that one appearing.
   - **AC-4.12 / AC-4.19** — heavy template edits leave a completed session byte-identical.
@@ -618,7 +620,7 @@ is the only thing that tests this module honestly.
 |---|---|
 | Automated tests | **1098 passed**, 3 skipped, 2 xfailed |
 | — Module 4 files | **84** (`test_module4_acceptance.py` 42, `test_module4_session.py` 35, `test_module4_seed.py` 7) |
-| — tenant isolation | **261** (was 231; the six new tables add 30, driven by the registry) |
+| — practice isolation | **261** (was 231; the six new tables add 30, driven by the registry) |
 | — role boundaries | **146**, with matrix §10 asserted in the Module 4 files, as Module 3 did |
 | Frontend tests | **243 passed** (23 new: the public form, the live view, the §10 boundary, pacing, the editor, the 2026-09-19 dry run's three, and the 2026-09-21 conversion four — which render the **real `App`** at the session's own URL and press the button) |
 | Migrations | **6, all additive**, applied: `strategy` 0001 (six tables), 0003 (`drafted_areas`), 0005 (`started_at`), 0006 (`current_section` + its clock), `work` 0004 and `crm` 0021 (the goal columns and the three `source_map_row` back-links), plus `crm` 0022 (a producer choice, no-op at the database). Two data migrations: `strategy` 0002 (the seed) and 0004 (the diagnostic's note field) |
@@ -640,21 +642,21 @@ is the only thing that tests this module honestly.
 | 4.10 | Nothing emailed without a click | ✅ | `test_ac_4_10_...` — preview leaves the Outbox empty; send delivers, attaches, audits |
 | 4.11 | Conversion per-row and confirmed | ✅ *(re-proved 2026-09-21)* | `test_ac_4_11_...` — preview creates nothing, then 2 goals + 1 project with owner, target date, measurable and back-links. Until 2026-09-21 its "de-select one" was a row **discarded in the tray**, which is not what the criterion says: de-selecting is a choice made at conversion, and the server refused it. The test now leaves a fourth accepted row out with `{"as": "skip"}` and asserts it survives accepted and unconverted |
 | 4.12 | Snapshot protects history | ✅ | `test_ac_4_12_and_4_19_...` — section deleted, questions reworded, schema changed; the session's payload is identical |
-| 4.13 | VA financial boundary | ✅ | `test_ac_4_13_...` — the values are **not in the response body**, not merely hidden; plus a parametrised refusal of every fractional-only action |
-| 4.14 | Tenant isolation | ✅ | `test_ac_4_14_...` plus the registry family's 30 cases over the six tables |
+| 4.13 | Assistant financial boundary | ✅ | `test_ac_4_13_...` — the values are **not in the response body**, not merely hidden; plus a parametrised refusal of every fractional-only action |
+| 4.14 | Practice isolation | ✅ | `test_ac_4_14_...` plus the registry family's 30 cases over the six tables |
 | 4.15 | Merge sources resolve and degrade | ✅ | With 4.4 — all seven fields, `{Visionary}` defaulted from `primary_contact` |
 | 4.16 | Two triggers, costed | ✅ | `test_ac_4_16_...` — save calls nothing; the button writes one `AiCall` with tokens and cost; completing an area fires once; the accepted row is untouched and nothing duplicates |
 | 4.17 | Owner resolves or is preserved | ✅ | `test_ac_4_17_...` — exact name resolves; "Maria in dispatch" and an ambiguous "Maria" stay verbatim with a null contact |
-| 4.18 | VA sends the invite and nothing else | ✅ | `test_ac_4_18_...` — direct-to-`sent`, and the stored copy carries **no working link** (assumption C3) |
+| 4.18 | Assistant sends the invite and nothing else | ✅ | `test_ac_4_18_...` — direct-to-`sent`, and the stored copy carries **no working link** (assumption C3) |
 | 4.19 | Template edits cannot reach a completed session | ✅ | With 4.12 — and the soft-deleted question is still a row |
 
 #### The two mandatory families
 
-- **Tenant isolation — 261 cases.** The six new tables are in the registry, so the
+- **Practice isolation — 261 cases.** The six new tables are in the registry, so the
   meta-test would have failed had one been left out. On top of the generic cases:
-  a session, its PDF endpoint and its send action are 404 from another tenant, and the
+  a session, its PDF endpoint and its send action are 404 from another practice, and the
   pre-call token resolves only to its own session.
-- **Role boundaries — matrix §10, every row.** A VA is refused `answers`,
+- **Role boundaries — matrix §10, every row.** An assistant is refused `answers`,
   `draft-rows`, `draft-mirror`, `send-pdf`, `convert` and `conversion-preview`
   (parametrised), may not toggle a PDF flag, and **never receives the §9 values in the
   payload** — while still being able to create a session, send the invite and preview
@@ -678,7 +680,7 @@ cadence link does.
    history of every section a fractional clicked through is state nobody reads.
 2. **The template editor is V1 — except a minimal one now.** Beta's editor changes
    three things per question and no more: **the wording, `ask_when`, and `must_ask`**,
-   founder fractional only. Reordering, adding, deleting, and the flags that carry
+   practice owner only. Reordering, adding, deleting, and the flags that carry
    privacy (`is_financial`, `has_fractional_note`) wait for V1's multi-discipline work.
    The API refuses the rest rather than quietly ignoring it, and a test asserts that an
    edit reaches no session already under way.
@@ -787,7 +789,7 @@ Four changes after reading the first draft, all on the same two pages.
 1. **"What happens next" is sized like the last thing he reads** — 12pt rows, 17pt
    ticks, double the row height.
 2. **The decision page is rebuilt.** Written to the person deciding, in the second
-   person, with the practice's name taken from the tenant's display name. Each path
+   person, with the practice's name taken from the practice's display name. Each path
    carries two lines on what taking it means, then its **accepted pros and cons**, then
    their leaning. **The reaction and the honest risk come off the document** — they are
    the fractional's record of the call, they stay in the live view, and they remain
@@ -818,7 +820,7 @@ was green on it before it was applied, and today's backup had already run. **App
    Check 1 — running a real session with a real prospect — is the only honest test
    of this module, and it is what the sign-off below leaves open.
 3. **V1's template work is deferred, deliberately:** no reordering, no adding or
-   deleting questions, no second discipline, no per-tenant worked example.
+   deleting questions, no second discipline, no per-practice worked example.
 
 ### Phase 4 — signed off by the owner, 2026-09-21, with Check 1 open
 
@@ -1014,7 +1016,7 @@ overridden status, and a back-link to its map row. This module adds:
     appends. Un-achieving an achieved goal is allowed and appends a new resolution line
     with its own reason. **No resolution line is ever edited away** — the history of how
     the thinking changed is the part worth keeping.
-13b. **FF and an assigned CF may resolve a goal and accept a narrative. A VA may do
+13b. **Practice owner and an assigned associate may resolve a goal and accept a narrative. An assistant may do
     neither** (ruling 6) — both are judgments about the client relationship, not
     administration of it.
 14. **"Changed course" is normal consulting** and is frequently the most valuable
@@ -1176,8 +1178,8 @@ already makes that the schema cannot currently keep. Three changes fall out:
 - **The weekly digest stays exactly as it is** (ruling 5). Two artifacts, two jobs: the digest is a weekly "what moved", this is the periodic "where are we". Whether the digest should eventually borrow the goal anchor is revisited **after real use**, not decided now.
 - New access-matrix rows are needed for: recording a measurement, writing the outcome
   statement, resolving a goal, accepting a narrative, and exporting the PDF. **Settled
-  by ruling 6:** resolving a goal and accepting a narrative are **FF and assigned CF
-  only — never a VA**. Client roles are read-only throughout. A VA may still record a
+  by ruling 6:** resolving a goal and accepting a narrative are **Practice owner and assigned associate
+  only — never an assistant**. Client roles are read-only throughout. An assistant may still record a
   measurement and export a PDF; neither is a judgment about the relationship.
 
 ### Rulings — all settled by the owner, 2026-09-16
@@ -1193,7 +1195,7 @@ honestly later.
 | 3 | What a client sees before a narrative is accepted | **The structure shows.** A goal is never held back waiting for prose |
 | 4 | Live or snapshot PDF | **Snapshot on export**, kept as a `stored_file`, listed on the goal |
 | 5 | Does the weekly digest gain the goal anchor | **No — the digest stays as it is.** Two artifacts, two jobs. Revisit after real use |
-| 6 | Who may resolve a goal and accept a narrative | **FF and an assigned CF. A VA neither** |
+| 6 | Who may resolve a goal and accept a narrative | **Practice owner and an assigned associate. An assistant neither** |
 | 7 | Can a resolution be reversed | **Resolutions append, never erase.** Resuming a paused goal appends; un-achieving an achieved goal is allowed and appends a new line with its own reason. **No resolution line is ever edited away** |
 | 8 | Milestones versus tasks | **Separate table, plus one affordance**: a task can be marked as a milestone, deriving the milestone from its completion rather than being maintained twice. **Standalone milestones remain possible** |
 | 9 | Charting | **Both portal and PDF, from three readings up.** Below three, baseline → current as text |
@@ -1240,7 +1242,7 @@ hard to revisit honestly later.
 | E | Which tasks may be marked as a milestone? | **Any client-visible task in the goal's own tree. Never internal** | Narrower than the spec's assumption of any task the user may edit. A milestone is a beat on the **client's** timeline, so an invisible task would leak the work in its title alone — and **a task hidden or moved out of the tree afterwards takes its milestone out of the client's response**. New FR-4B.24a/24b, new AC-4B.13a, matrix row 10A.8 |
 | F | Do exports have a retention rule? | **No. Every export is kept as a `stored_file`, listed on the goal *and* the company. No auto-deletion** | As specified, plus the company listing. Notes has audio retention because audio is large and decays in value; a record of what a client was shown is neither. **No cleanup job exists that could reach one.** FR-4B.39, **new 39a**, AC-4B.19 |
 | G | May a client see a resolution's reason? | **Yes** | As specified, now explicit: no internal-only resolution, no visibility flag on the line. A reason the client cannot read cannot make *changed course* read as judgment. New FR-4B.30a, new AC-4B.10a, matrix row 10A.10a |
-| H | May a VA write the outcome statement? | **No** | Confirms the call the spec made and flagged as its own rather than a ruling. FR-4B.10, matrix row 10A.6, AC-4B.17 |
+| H | May an assistant write the outcome statement? | **No** | Confirms the call the spec made and flagged as its own rather than a ruling. FR-4B.10, matrix row 10A.6, AC-4B.17 |
 
 **Nothing is left open.** The specification is complete and the module is ready to
 build on the owner's word.
@@ -1298,9 +1300,9 @@ exist, conversion carries measurable kind, name, unit, direction and horizon, an
 
 ### Tests that will be non-negotiable
 
-- **Tenant isolation and client-company isolation**, as every phase — a client of one
+- **Practice isolation and client-company isolation**, as every phase — a client of one
   company never sees another's goals, measurements, or narratives, **404 both ways**.
-- **Role boundaries** for the new verbs, VA's exclusions asserted against the API body.
+- **Role boundaries** for the new verbs, assistant's exclusions asserted against the API body.
 - **The narrative asserts no fact absent from its inputs**, tested as AC-3.5 is.
 - **An unaccepted narrative is absent from the client's API response**, not merely
   hidden in the UI — the same standard as internal comments (AC-3.4).
@@ -1310,7 +1312,7 @@ exist, conversion carries measurable kind, name, unit, direction and horizon, an
   goal has been paused, resumed and achieved.
 - **A task marked as a milestone derives its date from completion**, and un-completing
   the task does not leave a milestone claiming a date that never happened.
-- **A VA cannot resolve a goal or accept a narrative**, and **a CF cannot on a client
+- **An assistant cannot resolve a goal or accept a narrative**, and **an associate cannot on a client
   they are not assigned to** — asserted against the API body.
 - **The chart is absent below three readings** and present at three, **with a dated
   baseline counting as one of them** and an undated one not (ruling D).
@@ -1337,8 +1339,8 @@ else. Module 4B is done as code and unproven as a product.
 |---|---|
 | Automated tests | **1170 passed**, 3 skipped, 2 xfailed (was 1098) |
 | — Module 4B file | **36** (`test_module4b_acceptance.py`) |
-| — tenant isolation | **291** (was 261; the six new tables add 30, driven by the registry) |
-| — role boundaries | **152** (was 146; matrix §10A adds 6, including the VA line asserted both ways) |
+| — practice isolation | **291** (was 261; the six new tables add 30, driven by the registry) |
+| — role boundaries | **152** (was 146; matrix §10A adds 6, including the assistant line asserted both ways) |
 | Frontend tests | **254 passed** (was 243; 11 new in `ValueReport.test.tsx`) |
 | Migration | **`work` 0005, purely additive**, applied — see the three checks below |
 | New dependency | none |
@@ -1378,21 +1380,21 @@ it was applied — the owner had not confirmed one, so one was taken rather than
 | 4B.15a | One living narrative, versioned (ruling B) | ✅ | One row after two acceptances, two dated snapshots, client reads the later, no route edits one, no period column anywhere |
 | 4B.15b | An export cites the version current at export | ✅ | The stored PDF still carries March's text after September's is accepted |
 | 4B.16 | The structural half shows regardless | ✅ | Unaccepted narrative; measure, chart, bar and milestones all present |
-| 4B.17 | A VA measures and exports, and does not judge | ✅ | 201, 201 — then 400 on the outcome statement and 403 on resolving and accepting, in the body. An unassigned CF gets 404 for all of it |
+| 4B.17 | An assistant measures and exports, and does not judge | ✅ | 201, 201 — then 400 on the outcome statement and 403 on resolving and accepting, in the body. An unassigned associate gets 404 for all of it |
 | 4B.18 | Client-company isolation, both ways | ✅ | 404 across the board, including writes; a client naming another company still gets their own |
 | 4B.19 | A snapshot, and every one kept (ruling F) | ✅ | The first export's bytes are unchanged after two readings and a rewritten statement; both listed on goal and company; **no `delete_after` on any of them** |
 | 4B.20 | Exporting is not sending | ✅ | Preview and export leave the Outbox empty |
 | 4B.20a | The engagement timeline (owner, 2026-09-21) | ✅ | Three goals on one axis with both milestones, three readings and the resolution **with its reason**, in date order; resolved span ends at its resolution; in the all-goals PDF, **absent from a single goal's page**; an internal goal contributes nothing; hiding a task's milestone removes that mark |
-| 4B.21 | The report requires a login | ✅ | Anonymous and cadence-token both refused; a signed-in FCC gets it |
+| 4B.21 | The report requires a login | ✅ | Anonymous and cadence-token both refused; a signed-in client owner gets it |
 | 4B.22 | Every draft is costed | ✅ | One `ai_call` with tokens and cost; accepting, exporting and reading write none |
 | 4B.23 | FR-3.38 is gone, not shadowed | ✅ | The route 404s, `reverse()` raises, and neither `ProgressReportView` nor `report_for_company` exists |
 
 #### The two mandatory families
 
-- **Tenant isolation — 291 cases** (was 261). The six new tables are in the registry, so
+- **Practice isolation — 291 cases** (was 261). The six new tables are in the registry, so
   the meta-test would have failed had one been left out.
 - **Role boundaries — 152** (was 146). Matrix §10A adds six, and the **sixth weighted
-  case** the matrix now names is asserted as a line rather than a blanket: the same VA
+  case** the matrix now names is asserted as a line rather than a blanket: the same assistant
   records a reading and exports a PDF (201, 201) and is refused the outcome statement,
   the resolution and the narrative acceptance — all against the response body.
 
@@ -1453,7 +1455,7 @@ judgment on N real goals**, with N — never as a pass.
 
 ### Done means
 
-0. **Connecting the folder, on the meeting queue screen** — the Drive consent, the folder taken as a URL or an id, verified live and shown before it is saved, and Disconnect. FF only. *(Added 2026-09-22: Phase 5 shipped a queue with no control that led anywhere, so setup was blocked. FR-5.1a, AC-5.1a, matrix 11.10–11.12.)*
+0. **Connecting the folder, on the meeting queue screen** — the Drive consent, the folder taken as a URL or an id, verified live and shown before it is saved, and Disconnect. Practice owner only. *(Added 2026-09-22: Phase 5 shipped a queue with no control that led anywhere, so setup was blocked. FR-5.1a, AC-5.1a, matrix 11.10–11.12.)*
 0b. **The import offer persists while unread history remains**, and the folder card says what is not being read. *(Added 2026-09-22 from real use: 8 of 167 imported, 159 left, offer gone. AC-5.1b.1.)*
 0a. **The folder's past, as a choice** — the survey, the three options with counts and estimated cost shown before confirming, the paced oldest-first import, and Stop. **Subfolders read one level down.** *(Added 2026-09-22: "Sync now" reported 0 waiting on 167 real notes, because Drive's cursor starts at "now". FR-5.1b–1c, AC-5.1b–1c, matrix 11.13.)*
 1. `DriveWatch` cursor polling every 10 minutes, "Sync now", health screen, `drive_file_owner_email` captured.
@@ -1463,23 +1465,23 @@ judgment on N real goals**, with N — never as a pass.
 5. Proposed contact type per participant, with **referral → queued onboarding** and **vendor → inline categories**.
 5b. **A participant arrives with their company** — candidates by domain then name, a create path through `CompanySerializer`, one create covering the meeting. *(Added 2026-09-22 from real use. FR-5.9e1, AC-5.10a.)*
 5c. **Call notes readable on the contact and the company**, with the source Doc linked. *(Added 2026-09-22 from real use. FR-5.8d, AC-5.8d.)*
-5a. **The practice is recognized, not asked about** — staff participants shown with no type, no approval, recorded on the meeting as attended-by, and never holding a proposal open. *(Added 2026-09-22 from real proposals: the FF was a participant in every meeting and eight proposals sat at `partially_actioned` on his own name. FR-5.9e, AC-5.9e.)*
+5a. **The practice is recognized, not asked about** — staff participants shown with no type, no approval, recorded on the meeting as attended-by, and never holding a proposal open. *(Added 2026-09-22 from real proposals: the practice owner was a participant in every meeting and eight proposals sat at `partially_actioned` on his own name. FR-5.9e, AC-5.9e.)*
 6. **Partial approval**; rejection persists; re-parse supersedes.
 7. `Meeting` record on every approved participant's timeline.
-8. CF `proposal-scope` with both limbs.
+8. Associate `proposal-scope` with both limbs.
 
 ### Tests that must pass
 
-- **Tenant isolation**, **role boundaries** (matrix §11), including **AC-5.16 — the CF two-limb scope**, with the FF's unmatched prospect meeting returning **404** to a CF.
+- **Practice isolation**, **role boundaries** (matrix §11), including **AC-5.16 — the associate two-limb scope**, with the practice owner's unmatched prospect meeting returning **404** to an associate.
 - **AC-5.1 through AC-5.16.** Especially:
   - **AC-5.1** — three days of downtime loses nothing.
   - **AC-5.2** — three polls, no duplicates.
   - **AC-5.3** — nothing created before approval.
   - **AC-5.8** — approving a deliverable creates records and **sends nothing**.
   - **AC-5.10** — a parse failure does not advance the cursor.
-  - **AC-5.1a** — the folder is verified before it is watched, and only the FF may connect one.
+  - **AC-5.1a** — the folder is verified before it is watched, and only the practice owner may connect one.
   - **AC-5.1b** — a fresh watch sees none of the folder's past, and the import that fixes that is chosen, priced and paced.
-  - **AC-5.9e** — the practice is shown and not asked about, with an FF and a CF, and a staff row never holds a proposal open.
+  - **AC-5.9e** — the practice is shown and not asked about, with a practice owner and an associate, and a staff row never holds a proposal open.
 
 ### Manual checks
 
@@ -1497,7 +1499,7 @@ AC-5.1–5.16, plus **extraction quality on N real meetings** with a count of pr
 
 #### The Phase 5 metric — the real queue, 2026-09-29 (Beta exit criterion 7, third limb)
 
-Read from the database at 2026-09-29 ~13:10 UTC, tenant Executives Now. The
+Read from the database at 2026-09-29 ~13:10 UTC, practice Executives Now. The
 ingestion ran from 2026-09-22 to 2026-09-29, on real Gemini notes.
 **Superseded proposals (replaced by a re-parse) are excluded from every count
 below**; there were 11.
@@ -1597,11 +1599,11 @@ qcluster in the owner's tab still runs the old parser, which keeps retrying the
 15 May note, until the owner restarts it.
 
 **A daily cap on unattended AI spend: built 2026-09-29** (owner). What the
-worker spends on Claude with nobody asking is capped per practice day, FF-set
+worker spends on Claude with nobody asking is capped per practice day, practice owner-set
 on AI usage, default $5.00 (`tenant.ai_unattended_daily_cap_usd`). At the cap
 the worker makes no more calls until midnight, practice time. Each skip is
 recorded once per item per day, and a banner shows on the dashboard (every
-staff role; amounts for the FF only) and on AI usage. "Unattended" means inside
+staff role; amounts for the practice owner only) and on AI usage. "Unattended" means inside
 a scheduled job: every function in `ensure_schedules` wears
 `@unattended_job`, and a test fails for one that does not. Anything a person
 causes from the web is never counted or stopped, including "Sync now" and the
@@ -1630,7 +1632,7 @@ approve/reject rate reported": met.** 153 were reviewed, and the rates are above
 
 ## Phase 6 — Unified client communication
 
-> **Back in module order.** Its outbound half — threading, tokens, Gmail sending — was **carved back into Phase 1**, because Module 1 could not honestly be called done without it. What remains is the inbound half, which the transport change makes laptop-friendly: polling the tenant's own mailbox needs no public endpoint.
+> **Back in module order.** Its outbound half — threading, tokens, Gmail sending — was **carved back into Phase 1**, because Module 1 could not honestly be called done without it. What remains is the inbound half, which the transport change makes laptop-friendly: polling the practice's own mailbox needs no public endpoint.
 
 ### Done means
 
@@ -1640,11 +1642,11 @@ approve/reject rate reported": met.** 153 were reviewed, and the rates are above
 4. The **unmatched queue**, with filing to a contact. Nothing is ever dropped.
 5. Quoted-history trimming for display with the raw message retained; attachments stored.
 6. `gmail.readonly` requested at connect time, with what it grants stated plainly at the point of consent.
-7. Real replies ingested from the tenant's mailbox — **on the laptop**, no public endpoint.
+7. Real replies ingested from the practice's mailbox — **on the laptop**, no public endpoint.
 
 ### Tests that must pass
 
-- **Tenant isolation** and **role boundaries** (matrix §12), including **12.4 — a VA cannot send a reply** and **12.5 — client users reach no communication surface at all**, since these threads include internal correspondence *about* them.
+- **Practice isolation** and **role boundaries** (matrix §12), including **12.4 — an assistant cannot send a reply** and **12.5 — client users reach no communication surface at all**, since these threads include internal correspondence *about* them.
 - **AC-6.2 through AC-6.11** by replay — reported as **fixture-driven**, never as live transport.
 - **AC-6.12** — a real reply on a real digest appears on the timeline within one poll interval. **This now runs on your laptop**, which is the point of the transport change.
 - **AC-6.15 / AC-6.16 / AC-6.17** — Gmail-native replies captured, downtime tolerated, and a revoked token naming its consequence.
@@ -1730,7 +1732,7 @@ means no client ever sees the unstyled version.
 
 1. A small component set (form fields, choice rows, panels, dialogs, tables, status pills,
    banners) replacing the ad hoc styles in `theme.css`, built on the Executives Now tokens
-   already there so V1's per-tenant branding stays a token swap.
+   already there so V1's per-practice branding stays a token swap.
 2. Layout and hierarchy on each screen; empty, loading and error states; narrow widths.
 3. Accessibility: every control labeled, keyboard reachable, visible focus, contrast
    against the brand palette.
@@ -1776,7 +1778,7 @@ deliberately renamed.
 >
 > The runbook also corrects one point of the owner's list: **the Anthropic key is
 > not a Railway variable.** Settings refuse `ANTHROPIC_API_KEY` off localhost,
-> and the tenant's key already travels encrypted in the database.
+> and the practice's key already travels encrypted in the database.
 
 ### The trigger
 
@@ -1794,7 +1796,7 @@ deliberately renamed.
 
 **2. DNS**
 - `app.getexecutivesnow.com` → Railway. **That is the whole list.**
-- **No Postmark records are needed.** DKIM, Return-Path, and the inbound MX belonged to a transport Beta no longer uses (assumption A3); mail goes out through the tenant's Gmail and comes back by polling their mailbox. Those records return with the Postmark transport option in V1.
+- **No Postmark records are needed.** DKIM, Return-Path, and the inbound MX belonged to a transport Beta no longer uses (assumption A3); mail goes out through the practice's Gmail and comes back by polling their mailbox. Those records return with the Postmark transport option in V1.
 - **Consequence for sequencing:** DNS is no longer the long pole. Under the old plan it had to start days early; now it is a single A/CNAME record.
 
 **3. Data — with an explicit freeze**
@@ -1858,7 +1860,7 @@ In `CLAUDE.md`'s order, not started until Beta has run on your real practice for
 
 **Three things that should happen early in that sequence regardless:**
 
-0. *(Brought forward into Phase 7, 2026-09-29: see the note at the top of Phase 7.)* **A staging environment, before public launch.** `demo.getexecutivesnow.com` on Railway, its own database, a seeded demo tenant with fictional clients and no real data. It serves two purposes that both arrive with V1: **demonstrating the product to prospective fractionals** without exposing your practice's real client data, and **testing a release before it reaches production**. Once other people's practices depend on the app, shipping straight from `main` to production with no intermediate host stops being acceptable. Staging deploys from a `staging` branch; production continues to deploy from `main`.
+0. *(Brought forward into Phase 7, 2026-09-29: see the note at the top of Phase 7.)* **A staging environment, before public launch.** `demo.getexecutivesnow.com` on Railway, its own database, a seeded demo practice with fictional clients and no real data. It serves two purposes that both arrive with V1: **demonstrating the product to prospective fractionals** without exposing your practice's real client data, and **testing a release before it reaches production**. Once other people's practices depend on the app, shipping straight from `main` to production with no intermediate host stops being acceptable. Staging deploys from a `staging` branch; production continues to deploy from `main`.
 
 1. **The V1 Google verification track.** Beta runs on an **Internal** OAuth consent screen (assumption C1), which needs no verification and has no refresh-token expiry — but Internal means *only Workspace accounts can sign in*. The moment a second fractional's practice needs access, the app must move to **External**, and `gmail.send` plus `gmail.readonly` then require **Google verification with a CASA security assessment**. It is slow, expensive, and **the longest lead time in the entire V1 plan.** Start it before it is needed, not when it blocks launch.
 2. **Postgres row-level security** (B2), deferred from Beta as defense in depth once the schema stops moving.
@@ -1896,10 +1898,10 @@ In `CLAUDE.md`'s order, not started until Beta has run on your real practice for
 
 - **9.1 — Phase 0.5 stays a separate gated phase.**
 - **9.2 — Phase 3 is not split.** A **mid-phase checkpoint** is added after done-items 1–5: a status report in the three-value format before digests and the portal begin. **It is a report, not a gate** — I continue unless you say otherwise.
-- **9.3 — Module 6 moves entirely after the Railway move**, with the outbound half carved back into Phase 1: `email_thread` and `thread_token` on every outbound message, `Reply-To` carrying the token on **both** Postmark and Gmail, and Tier 1 Gmail connect. You were right that a Module 1 which cannot send from Gmail is not done — the CF story and the `manual` producer both live in Module 1 and both need it.
+- **9.3 — Module 6 moves entirely after the Railway move**, with the outbound half carved back into Phase 1: `email_thread` and `thread_token` on every outbound message, `Reply-To` carrying the token on **both** Postmark and Gmail, and Tier 1 Gmail connect. You were right that a Module 1 which cannot send from Gmail is not done — the associate story and the `manual` producer both live in Module 1 and both need it.
 
 **Phase 7 additions applied:** deployment is **git push to `main` → Railway** with repo connection added to provisioning; an explicit **freeze** with a seven-step cutover sequence and per-table row-count verification; the laptop becomes **development-only** afterwards with a scrubbed dev database and no path for live data to return; and the verification list now **leads** with confirming `hold_all_digests` is ON **before the first `qcluster` start**, because `DEV_REAL_SEND_ALLOWLIST` no longer exists and every stakeholder email becomes real at that moment.
 
-**Also applied:** the Phase 3 manual check now states that laptop-Beta delivery is observed in Mailpit and that you should add your own address as a stakeholder to see one genuinely delivered digest; Beta exit criterion 7 is made concrete in `01_prd.md` (5 digests, 2 strategy sessions with PDFs sent, 10 meeting proposals with the approve/reject rate reported); and a **staging environment** (`demo.getexecutivesnow.com`, separate database, seeded demo tenant) is added to Phase 8+ as a pre-launch requirement.
+**Also applied:** the Phase 3 manual check now states that laptop-Beta delivery is observed in Mailpit and that you should add your own address as a stakeholder to see one genuinely delivered digest; Beta exit criterion 7 is made concrete in `01_prd.md` (5 digests, 2 strategy sessions with PDFs sent, 10 meeting proposals with the approve/reject rate reported); and a **staging environment** (`demo.getexecutivesnow.com`, separate database, seeded demo practice) is added to Phase 8+ as a pre-launch requirement.
 
 **Status:** `04_build_plan.md` is complete. Proceeding to `05_dev_environment.md`, the last Phase 0 document.

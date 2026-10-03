@@ -1,5 +1,7 @@
 # Phase 4 — Manual Checks
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Module 4: the strategy session · for the owner**
 
 The five manual checks from `04_build_plan.md` Phase 4. **Check 1 is the whole
@@ -30,18 +32,18 @@ mailpit --smtp localhost:1025 --listen localhost:8125   # terminal 4
 
 **Where everything is.** A new **Strategy** entry in the left-hand navigation.
 `/strategy` lists sessions and starts them; `/strategy/<id>` is the live view;
-`/strategy/template` is the template editor (founder fractional only).
+`/strategy/template` is the template editor (practice owner only).
 
-**Who can do what.** A VA can start a session, send the pre-call form and
+**Who can do what.** An assistant can start a session, send the pre-call form and
 preview the PDF. Running the call, drafting, accepting rows, toggling what the
-PDF includes, sending it and converting are yours or a CF's. A VA never receives
+PDF includes, sending it and converting are yours or an associate's. An assistant never receives
 §9's investment fields — not on screen, and not in the API response either.
 
 **Nothing is sent by the app on its own.** The pre-call invite and the PDF each
 go out on a click, and nothing else in this module emails anybody. Mail goes to
 Mailpit unless the address is in `DEV_REAL_SEND_ALLOWLIST`.
 
-**Claude costs money.** Both drafting buttons spend against the tenant key. The
+**Claude costs money.** Both drafting buttons spend against the practice key. The
 spend is on **AI usage** (`/ai-usage`), per call, with tokens and cost.
 
 ---
@@ -188,7 +190,7 @@ point of doing this before day one rather than after.
 
 ## Also worth a look, though not a numbered check
 
-**The template editor** (`/strategy/template`, founder fractional only). Change a
+**The template editor** (`/strategy/template`, practice owner only). Change a
 question's wording, move one between the form and the call, clear a must-ask,
 **Save**. Then open a session you had already started: it is **unchanged**. A
 session renders from the copy of the template it took when it started, so an edit
@@ -221,7 +223,7 @@ told to assert nothing your inputs do not carry, and specifically not to invent
 revenue, headcount, customer counts, locations, names or dates.
 
 **It is yours.** The brief reaches no prospect surface — not the form, not the
-questions email, not the PDF — and a VA does not see it at all. Cost shows on
+questions email, not the PDF — and an assistant does not see it at all. Cost shows on
 **AI usage** as one call, with the number of web searches beside it; **searches
 are billed on top of tokens**, so the dollar figure there is the token cost and
 the search count is what tells you the rest.
@@ -244,7 +246,7 @@ instead*. Edit the opening line, **Send the questions**.
   **1–10 scale explained once** above the six components.
 - It carries **nothing you keep to yourself**: not the §3 alignment observation
   you never ask aloud, and not §9's money.
-- **A VA cannot send this one**, though they can still send the form link. The
+- **An assistant cannot send this one**, though they can still send the form link. The
   link is template-only; this has your words in it and goes from your address.
 
 **When the answers come back, type them into the live view** — the pre-call
@@ -268,7 +270,7 @@ protects sessions that already exist; it does not un-edit the template.
 **Start**. Edit first, start second.
 
 1. **Strategy** in the left-hand navigation.
-2. **"Edit the template"** — the link under the heading, founder fractional only.
+2. **"Edit the template"** — the link under the heading, practice owner only.
 3. Find the question. The cards are the nine sections in their running order, and each
    question shows its key (`s3_three_year_picture`), its diagnostic area, and a red
    **financial** chip on the two §9 money items.

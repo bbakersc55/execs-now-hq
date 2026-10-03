@@ -1,5 +1,7 @@
 # 00 — Assumptions Register
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Phase 0 · Execs NOW HQ · for owner review**
 
 Every decision below is something `CLAUDE.md` does **not** settle. Nothing here contradicts `CLAUDE.md`; where it was explicit (Postgres, Claude-only, ports, roles, review queues, brand) I treated it as fixed and did not re-litigate it.
@@ -39,7 +41,7 @@ Open questions I genuinely cannot answer myself are collected in §H at the end 
 **Detail worth your attention:**
 - Django-Q2's scheduler is **catch-up aware**: a schedule whose `next_run` has passed fires on the next cluster start. On a laptop that is off overnight, the 6am digest job runs when you open the lid instead of being silently skipped. Celery Beat drops missed windows by default. This matters for A6 as well.
 - Cost of being wrong: I will write every task as a plain module-level function taking primitives (`run_digest(digest_id: str)`), never bound methods or ORM objects. Swapping to Celery later is then a decorator change plus a settings block, not a rewrite.
-- Honest downside: Django-Q2 has a much smaller community than Celery and a thinner ecosystem for exotic routing/priority. At Beta volume (one tenant, tens of jobs/day) none of that is reachable.
+- Honest downside: Django-Q2 has a much smaller community than Celery and a thinner ecosystem for exotic routing/priority. At Beta volume (one practice, tens of jobs/day) none of that is reachable.
 
 `Approved.`
 
@@ -47,7 +49,7 @@ Open questions I genuinely cannot answer myself are collected in §H at the end 
 
 **Choice (yours, accepted):** Django-Q2 with the **Django ORM broker** on Postgres, in both development and production. No Redis service on the laptop or on Railway.
 
-**You asked for a concrete failure mode at Beta volume. I do not have one.** The ORM broker's real ceiling is throughput — it polls a table taking row locks, which starts to matter somewhere in the thousands-of-tasks-per-minute range. One tenant at tens of jobs per day is nowhere near it. Broker parity is preserved and the laptop loses a service. Accepted as written.
+**You asked for a concrete failure mode at Beta volume. I do not have one.** The ORM broker's real ceiling is throughput — it polls a table taking row locks, which starts to matter somewhere in the thousands-of-tasks-per-minute range. One practice at tens of jobs per day is nowhere near it. Broker parity is preserved and the laptop loses a service. Accepted as written.
 
 Three consequences follow from it. None is a reason to reconsider; all three need handling in `05_dev_environment.md`:
 
@@ -65,11 +67,11 @@ Three consequences follow from it. None is a reason to reconsider; all three nee
 
 `Approved.`
 
-### A3. Mail transport: **the tenant's Gmail in Beta; Postmark is a V1 option**  ·  **[SUPERSEDED — owner decision, Phase 1 review]**
+### A3. Mail transport: **the practice's Gmail in Beta; Postmark is a V1 option**  ·  **[SUPERSEDED — owner decision, Phase 1 review]**
 
 **Original choice (superseded):** Postmark for all app-originated mail, chosen for its inbound webhook and activity log.
 
-**Current choice:** **all** app-originated mail — magic links, digests, referral touches, strategy PDFs, pre-call invites — sends through the **tenant's connected Gmail (Tier 1)**, with `From` set to their **send-as alias** (`info@getexecutivesnow.com`). **Postmark becomes a per-tenant transport option in V1, not a Beta dependency.**
+**Current choice:** **all** app-originated mail — magic links, digests, referral touches, strategy PDFs, pre-call invites — sends through the **practice's connected Gmail (Tier 1)**, with `From` set to their **send-as alias** (`info@getexecutivesnow.com`). **Postmark becomes a per-practice transport option in V1, not a Beta dependency.**
 
 **Implemented as a transport setting**, so the seam is real rather than hypothetical:
 
@@ -83,8 +85,8 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Three trade-offs the owner accepted in making this change**, recorded so they are not rediscovered as surprises:
 
-1. **Magic links depend on the FF's Gmail token.** Sign-in mail is sent synchronously in-request (A2a) and now rides on one OAuth credential. If it is revoked or expires, **client sign-in stops** until it is reconnected. The failure message says exactly that rather than surfacing as a generic error.
-2. **App mail appears in the FF's Sent folder.** Digests, touches, and magic links are all sent by that account.
+1. **Magic links depend on the practice owner's Gmail token.** Sign-in mail is sent synchronously in-request (A2a) and now rides on one OAuth credential. If it is revoked or expires, **client sign-in stops** until it is reconnected. The failure message says exactly that rather than surfacing as a generic error.
+2. **App mail appears in the practice owner's Sent folder.** Digests, touches, and magic links are all sent by that account.
 3. **No third-party delivery log in Beta.** Postmark's per-message activity trail does not exist; the Outbox is the only send log, and bounces are visible only in Gmail.
 
 **What this removes from Beta:** the DKIM, Return-Path, and inbound MX records (A3's old detail); the Postmark inbound webhook; and the public-endpoint dependency that forced Module 6 to wait for Railway (F16).
@@ -109,12 +111,12 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ### A6. Google Drive polling on a laptop that is not always on **[BLOCKING]**
 
-**Choice:** **cursor-based pull, never push.** Per tenant folder connection we store Drive's `startPageToken`; a Django-Q2 schedule calls `changes.list` every 10 minutes and advances the cursor only after each file is durably recorded.
+**Choice:** **cursor-based pull, never push.** Per practice folder connection we store Drive's `startPageToken`; a Django-Q2 schedule calls `changes.list` every 10 minutes and advances the cursor only after each file is durably recorded.
 
 **Why:** a cursor is a position, not an event — a laptop that was closed for three days asks Drive "what changed since token X" on next start and gets everything, in order, exactly once. Drive push notifications require a public HTTPS endpoint and expire on their own schedule, so they are unusable on a laptop and would silently stop delivering.
 
 **Detail:**
-1. `DriveWatch` row per tenant: folder id, `page_token`, `last_polled_at`, `last_error`.
+1. `DriveWatch` row per practice: folder id, `page_token`, `last_polled_at`, `last_error`.
 2. Every file seen becomes a `MeetingSourceFile` row, unique on `(tenant, drive_file_id, drive_version)` — re-polling the same file never produces a second proposal.
 3. A **"Sync now"** button in the UI runs the same task on demand, so you are never waiting on a timer during a working session.
 4. Ingestion is a two-step commit: record the file first, parse with Claude second. If Claude fails, the file is still recorded and retried; the cursor never advances past unprocessed work.
@@ -131,8 +133,8 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 | Purpose | Credential |
 |---|---|
 | **Backups** (`scripts/backup_db.sh`) | **gcloud CLI with your ADC** — no key file |
-| **App runtime** (Speech-to-Text, GCS media, Drive without a tenant token) | **A dedicated service-account key** at `GOOGLE_APPLICATION_CREDENTIALS`, outside the repo |
-| **Acting as a person** (Gmail send, tenant Drive) | That user's OAuth token, encrypted in `tenant_secret` (E1) |
+| **App runtime** (Speech-to-Text, GCS media, Drive without a practice token) | **A dedicated service-account key** at `GOOGLE_APPLICATION_CREDENTIALS`, outside the repo |
+| **Acting as a person** (Gmail send, practice Drive) | That user's OAuth token, encrypted in `tenant_secret` (E1) |
 
 **The app never uses gcloud ADC.** Your laptop's ADC is shared with another project and its quota-project setting cannot serve both, so the app would intermittently bill or fail against the wrong project. A key file also makes development identical to Railway, where interactive gcloud login does not exist.
 
@@ -144,21 +146,21 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ## B. Tenancy enforcement
 
-### B1. Tenant scoping: contextvar + middleware + default manager, with a fail-closed default **[BLOCKING]**
+### B1. Practice scoping: contextvar + middleware + default manager, with a fail-closed default **[BLOCKING]**
 
 **Choice:** a four-layer pattern, where layer 2 is the one that actually matters:
 
 1. **`TenantScopedModel`** abstract base: `tenant = FK(Tenant, on_delete=PROTECT, db_index=True)`. Every domain table inherits it. A meta-test (B3) fails the build if a concrete model in a domain app does not.
 2. **`current_tenant` contextvar**, set by `TenantMiddleware` from the authenticated user's `Membership`, and cleared in a `finally` block. Not a thread-local — a contextvar survives async and does not leak across a reused worker thread.
-3. **`TenantManager` as the default manager**: `get_queryset()` filters on the contextvar and **raises `TenantContextMissing` when the contextvar is unset**, rather than returning everything. Fail-closed. A forgotten filter is a 500 in a test, not a silent cross-tenant leak in production.
+3. **`TenantManager` as the default manager**: `get_queryset()` filters on the contextvar and **raises `TenantContextMissing` when the contextvar is unset**, rather than returning everything. Fail-closed. A forgotten filter is a 500 in a test, not a silent cross-practice leak in production.
 4. **`Model.objects_all_tenants`** — an explicit, greppable escape hatch for migrations, management commands, and the backup script. Every use of it is expected to be justified in review.
 
 **Why:** `CLAUDE.md` says never rely on views remembering to filter; the only version of that promise that holds under pressure is one where *not* scoping raises rather than returns rows.
 
 **Also:**
-- `save()` stamps `tenant` from the contextvar; a model `clean()` rejects any FK pointing at a different tenant (catches "assign task to a contact in tenant B").
+- `save()` stamps `tenant` from the contextvar; a model `clean()` rejects any FK pointing at a different practice (catches "assign task to a contact in practice B").
 - Background jobs have no request, so every task takes a `tenant_id` argument and opens an explicit `with tenant_context(tenant_id):` block — same manager, same guarantees.
-- **Client users get a second scope layer:** FCC/ECC requests additionally bind `current_client_company`, and client-facing querysets filter on both. Tenant isolation and client-company isolation are separate mechanisms so a bug in one does not defeat the other.
+- **Client users get a second scope layer:** client owner/client team member requests additionally bind `current_client_company`, and client-facing querysets filter on both. Practice isolation and client-company isolation are separate mechanisms so a bug in one does not defeat the other.
 
 `Approved.`
 
@@ -178,11 +180,11 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 `Approved.`
 
-### B4. One user belongs to exactly one tenant in Beta
+### B4. One user belongs to exactly one practice in Beta
 
-**Choice:** a `Membership` table (user × tenant × role) exists from migration 1, but the app assumes and enforces one membership per user until V1.
+**Choice:** a `Membership` table (user × practice × role) exists from migration 1, but the app assumes and enforces one membership per user until V1.
 
-**Why:** modeling it as a table now costs nothing and avoids a painful migration; enforcing one-per-user now removes an entire class of "which tenant am I in?" UI from Beta.
+**Why:** modeling it as a table now costs nothing and avoids a painful migration; enforcing one-per-user now removes an entire class of "which practice am I in?" UI from Beta.
 
 `Approved.`
 
@@ -192,13 +194,13 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ### C1. Google OAuth via django-allauth, invite-only
 
-**Choice:** `django-allauth` for tenant-user Google sign-in, with the OAuth consent screen configured as **user type Internal** on the `getexecutivesnow.com` Workspace. Sign-in **fails** unless a `Membership` (or pending invitation) already exists for that email address. No self-serve signup, per `CLAUDE.md`.
+**Choice:** `django-allauth` for practice-user Google sign-in, with the OAuth consent screen configured as **user type Internal** on the `getexecutivesnow.com` Workspace. Sign-in **fails** unless a `Membership` (or pending invitation) already exists for that email address. No self-serve signup, per `CLAUDE.md`.
 
 **Amended during the `05` review — Internal, not External/Testing.** Two reasons, the second of which would otherwise have produced a recurring mystery bug:
 1. **No Google verification is required for restricted scopes** under Internal.
 2. **External apps left in Testing expire refresh tokens after 7 days.** Every Gmail connection and Drive watch would silently break about weekly, presenting as an intermittent fault rather than a configuration choice.
 
-**The constraint this creates:** only `@getexecutivesnow.com` accounts can sign in with Google, so **any CF or VA needs an account in the Workspace domain**. Client users are unaffected — magic links only (C3, C4). Moving to External with CASA verification is the V1 task.
+**The constraint this creates:** only `@getexecutivesnow.com` accounts can sign in with Google, so **any associate or assistant needs an account in the Workspace domain**. Client users are unaffected — magic links only (C3, C4). Moving to External with CASA verification is the V1 task.
 
 **Why:** allauth handles the OAuth dance, token refresh, and email verification correctly; writing that by hand is unpaid risk.
 
@@ -208,7 +210,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** sign-in requests only `openid email profile`. A distinct "Connect Gmail" action requests `gmail.send` with offline access and stores a per-user refresh token (encrypted, per E1).
 
-**Why:** a VA who will never send from the fractional's address should not be asked to grant send scope to log in, and Google's verification review is easier when the sensitive scope is optional and separately justified.
+**Why:** an assistant who will never send from the fractional's address should not be asked to grant send scope to log in, and Google's verification review is easier when the sensitive scope is optional and separately justified.
 
 **Carried to `05_dev_environment.md`:** `gmail.send` is a **restricted scope**, but under the **Internal** consent screen in C1 it needs no verification at all during Beta, and refresh tokens do not expire. Google verification with a **CASA security assessment** becomes necessary only when the app moves to **External** so that another fractional's practice can use it — a **V1 task** with the longest lead time in the V1 plan, flagged now so it is not discovered the week of launch.
 
@@ -223,7 +225,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 2. **TTL 20 minutes, single use.** Consuming a token invalidates every other outstanding token for that user.
 3. **The link lands on a page with a "Sign in" button that POSTs**, rather than logging in on GET. Corporate mail scanners and link-preview bots follow GET links and would otherwise burn the token before the client clicks it. One extra click; removes the most common magic-link support ticket.
 4. Request endpoint is **rate limited** (5/hour per email, 20/hour per IP) and always returns the same response — "if that address has access, we've sent a link" — so it cannot be used to enumerate client users.
-5. On success: an ordinary Django session, **30-day rolling** for client users (they should not re-request a link weekly), 12-hour idle for tenant users.
+5. On success: an ordinary Django session, **30-day rolling** for client users (they should not re-request a link weekly), 12-hour idle for practice users.
 6. `redirect_to` is validated against an allow-list of internal paths, never an arbitrary URL.
 
 **Why:** stateless signed tokens (`itsdangerous`-style) cannot be revoked or made single-use without a table anyway, so the table is the honest design; hashing means a database read never yields a working credential.
@@ -232,7 +234,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ### C4. No passwords anywhere in Beta
 
-**Choice:** tenant users use Google only; client users use magic links only. Django's password field stays unusable (`set_unusable_password()`) except for the local `createsuperuser` account.
+**Choice:** practice users use Google only; client users use magic links only. Django's password field stays unusable (`set_unusable_password()`) except for the local `createsuperuser` account.
 
 **Why:** no password reset flow to build, no credential-stuffing surface, and one fewer thing to get wrong.
 
@@ -246,7 +248,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** `uuid4` primary keys, not auto-incrementing integers.
 
-**Why:** record ids appear in magic links, client portal URLs, and emailed PDF links; sequential integers advertise your record counts and invite "what's at id-1?" probing across tenants.
+**Why:** record ids appear in magic links, client portal URLs, and emailed PDF links; sequential integers advertise your record counts and invite "what's at id-1?" probing across practices.
 
 `Approved.`
 
@@ -276,9 +278,9 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ### D5. Enumerations live in tables, not Python enums, where V1 will customize them
 
-**Choice:** `PipelineStage` and `ContactType` are per-tenant rows seeded from a preset; task status and role codes stay as Python choices.
+**Choice:** `PipelineStage` and `ContactType` are per-practice rows seeded from a preset; task status and role codes stay as Python choices.
 
-**Why:** V1 promises multi-discipline presets and per-tenant customization of pipeline and contact types; status and role semantics are wired into permission logic and should not be user-editable.
+**Why:** V1 promises multi-discipline presets and per-practice customization of pipeline and contact types; status and role semantics are wired into permission logic and should not be user-editable.
 
 `Approved.`
 
@@ -286,18 +288,18 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ## E. Secrets and the Anthropic key
 
-### E1. Per-tenant Anthropic key: encrypted at rest, write-only, validated on rotation **[BLOCKING]**
+### E1. Per-practice Anthropic key: encrypted at rest, write-only, validated on rotation **[BLOCKING]**
 
 **Choice:**
 1. `TenantSecret(tenant, kind, ciphertext, last4, created_at, rotated_at, verified_at, verified_by)` — `kind` covers the Anthropic key today and Gmail/Drive refresh tokens tomorrow.
 2. Encrypted with **Fernet** (`cryptography`) using `FIELD_ENCRYPTION_KEY` from the environment. **The encryption key never lives in the database**, so a database dump — including the nightly GCS backup — contains no usable credential.
 3. The field is **write-only across the entire API**: no serializer, admin page, log line, or error message ever returns it. The UI shows `sk-ant-…{last4}`.
-4. **Rotation:** FF pastes a new key → the app makes one cheap validating call to the Anthropic API → on success the ciphertext is replaced atomically and `rotated_at` set; on failure nothing changes and the old key keeps working. One active key per tenant, no overlap window.
+4. **Rotation:** practice owner pastes a new key → the app makes one cheap validating call to the Anthropic API → on success the ciphertext is replaced atomically and `rotated_at` set; on failure nothing changes and the old key keeps working. One active key per practice, no overlap window.
 5. **Master-key rotation:** `manage.py rotate_field_encryption_key` re-encrypts every `TenantSecret` under a new Fernet key, supporting `MultiFernet` decrypt-old/encrypt-new so it can run without downtime.
-6. **Development fallback:** if a tenant has no stored key, an `ANTHROPIC_API_KEY` from `.env` is used — local only, refused when `PUBLIC_BASE_URL` is not localhost — so Beta build-out is never blocked on the secrets UI existing.
-7. Every Claude call records tokens and cost against the tenant (`AiCall` row) so key usage is attributable and you can see spend per module.
+6. **Development fallback:** if a practice has no stored key, an `ANTHROPIC_API_KEY` from `.env` is used — local only, refused when `PUBLIC_BASE_URL` is not localhost — so Beta build-out is never blocked on the secrets UI existing.
+7. Every Claude call records tokens and cost against the practice (`AiCall` row) so key usage is attributable and you can see spend per module.
 
-**Why:** `CLAUDE.md` requires encrypted per-tenant keys; the parts worth being deliberate about are that the key is unrecoverable from a backup, unreadable through any API path, and that rotation validates before it destroys the working key.
+**Why:** `CLAUDE.md` requires encrypted per-practice keys; the parts worth being deliberate about are that the key is unrecoverable from a backup, unreadable through any API path, and that rotation validates before it destroys the working key.
 
 `Approved.`
 
@@ -315,7 +317,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ### F1. `Contact` is the canonical person; a portal login is attached to it
 
-**Choice:** every human is a `Contact` row. Granting portal access creates a `User` linked 1:1 to that Contact and consumes a seat on the client company. Tenant staff also have a Contact row.
+**Choice:** every human is a `Contact` row. Granting portal access creates a `User` linked 1:1 to that Contact and consumes a seat on the client company. Practice staff also have a Contact row.
 
 **Why:** otherwise a client founder exists twice — once in the CRM and once as a login — and their meeting history splits between the two.
 
@@ -339,7 +341,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ### F4. Referral touches are generated ahead into a queue, never sent on a timer
 
-**Choice:** a scheduled job drafts each due referral touch **3 days before** its cadence date into the Outbox. The FF/VA approves (or edits, or skips) and the app sends. An unapproved draft expires rather than sending.
+**Choice:** a scheduled job drafts each due referral touch **3 days before** its cadence date into the Outbox. The practice owner/assistant approves (or edits, or skips) and the app sends. An unapproved draft expires rather than sending.
 
 **Why:** it preserves the review rule while still meaning you open the app to a ready-made queue instead of a blank page — the automation buys drafting time, not send authority.
 
@@ -361,8 +363,8 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 - Optional per-note 4–6 digit PIN, stored as a Django password hash. **The note body is not encrypted** — `CLAUDE.md` says the PIN gates viewing, and I am not quietly upgrading that.
 - Unlocking a note grants access to *that note* for the browser session (or 30 minutes, whichever is shorter).
 - 5 wrong attempts → 15-minute lockout on that note, logged as an `AuditEvent`.
-- **Reset is FF-only, by emailed link, and clears the PIN rather than revealing it.** The note becomes readable to anyone with normal access from that point, and the reset is audited.
-- **Stated plainly so it is not mistaken for something stronger:** this protects a note from a shoulder-surfer, a VA, and a casual browse. It does not protect it from the FF, from a database dump, or from the backup file. If a note needs protection from those, it should not be in the app.
+- **Reset is practice owner-only, by emailed link, and clears the PIN rather than revealing it.** The note becomes readable to anyone with normal access from that point, and the reset is audited.
+- **Stated plainly so it is not mistaken for something stronger:** this protects a note from a shoulder-surfer, an assistant, and a casual browse. It does not protect it from the practice owner, from a database dump, or from the backup file. If a note needs protection from those, it should not be in the app.
 
 **Search behavior:** a locked note appears in search results as a locked stub — title and linked contact only, no body or summary — unless unlocked.
 
@@ -374,7 +376,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Amended per your mark:**
 - **(1) Consent reminder.** Starting a recording shows a one-line reminder to confirm the other parties consent to being recorded. Dismissible per session, not per recording.
-- **(2) Retention is a per-tenant setting**, `audio_retention_days`, **defaulting to 30** rather than being fixed. Transcript and summary are always retained. Setting it to `0` means delete as soon as transcription succeeds; the UI states plainly that this forfeits the ability to re-run a failed or poor transcription.
+- **(2) Retention is a per-practice setting**, `audio_retention_days`, **defaulting to 30** rather than being fixed. Transcript and summary are always retained. Setting it to `0` means delete as soon as transcription succeeds; the UI states plainly that this forfeits the ability to re-run a failed or poor transcription.
 
 **Why:** the transcript is the artefact of value; retained meeting audio is a liability with no offsetting use, and 30 days is enough to re-run a failed transcription.
 
@@ -409,15 +411,15 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 ### F11. Progress digests: generated ahead, approved in a batch, never auto-sent when AI-written **[BLOCKING — most important item in this document]**
 
 **Choice:**
-1. A digest is assembled from **`TaskUpdate` events**, not from a diff of the row. When a tenant user changes status or adds narrative, the update carries an optional **client-facing line** ("what this means for you"). Digest content = status transitions + those lines, in the fractional's words.
+1. A digest is assembled from **`TaskUpdate` events**, not from a diff of the row. When a practice user changes status or adds narrative, the update carries an optional **client-facing line** ("what this means for you"). Digest content = status transitions + those lines, in the fractional's words.
 2. **Claude drafts the connective prose** — the opening summary that turns a list of transitions into "here is the value delivered this week." It never invents a status or a fact; it is given only the transitions and the human-written lines.
 3. **Every AI-drafted digest is generated 24 hours before its send window and lands in an approval screen** listing all pending digests, with per-digest approve / edit / skip and an "approve all" for a reviewed batch. **An unapproved digest does not send.** It expires and rolls into the next period.
-4. **Deterministic digests may send without approval** — *gated by the master switch in 4a.* If a tenant turns off AI prose, the digest is a template containing only status transitions and text a human wrote: no AI output, therefore no review requirement.
-4a. **Master switch, per tenant: `hold_all_digests`, default ON for Beta.** While ON, **every** digest waits in the approval screen regardless of how it was composed — AI-drafted or deterministic. When switched OFF, behavior is exactly as item 4 describes: AI-drafted digests still require approval, deterministic digests send on cadence. This is the safe default and the answer to H4.
-5. **Cadence** per stakeholder: `every_update` (batched with a 30-minute quiet window so one editing session sends one email, not six), `weekly` (default; anchored to a per-tenant send day and hour in tenant timezone), `monthly`.
+4. **Deterministic digests may send without approval** — *gated by the master switch in 4a.* If a practice turns off AI prose, the digest is a template containing only status transitions and text a human wrote: no AI output, therefore no review requirement.
+4a. **Master switch, per practice: `hold_all_digests`, default ON for Beta.** While ON, **every** digest waits in the approval screen regardless of how it was composed — AI-drafted or deterministic. When switched OFF, behavior is exactly as item 4 describes: AI-drafted digests still require approval, deterministic digests send on cadence. This is the safe default and the answer to H4.
+5. **Cadence** per stakeholder: `every_update` (batched with a 30-minute quiet window so one editing session sends one email, not six), `weekly` (default; anchored to a per-practice send day and hour in practice timezone), `monthly`.
 6. Every digest send is an `AuditEvent` and is visible on the task/project timeline, so "did they hear about this?" is answerable.
 
-**Why:** this is the part of the product the client experiences, so it is the part that must never surprise you by sending. Generating ahead is what makes a review queue tolerable at weekly cadence instead of a chore that gets switched off. Point 4 is a real distinction worth having — it lets a tenant who wants reliable unattended weekly reporting have it, without ever letting AI-written prose reach a client unreviewed — and 4a means a tenant has to make a deliberate, visible decision before any digest sends unattended. Beta ships held.
+**Why:** this is the part of the product the client experiences, so it is the part that must never surprise you by sending. Generating ahead is what makes a review queue tolerable at weekly cadence instead of a chore that gets switched off. Point 4 is a real distinction worth having — it lets a practice who wants reliable unattended weekly reporting have it, without ever letting AI-written prose reach a client unreviewed — and 4a means a practice has to make a deliberate, visible decision before any digest sends unattended. Beta ships held.
 
 `Approved.`
 
@@ -438,7 +440,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 - The live in-call view **polls every 5 seconds**. No WebSockets/ASGI in Beta.
 - Claude's drafted Strategy Map rows and the mirror land in an **accept / edit / discard tray** beside the live view — the fractional's acceptance is what creates a row.
 - PDF via **WeasyPrint** (HTML + CSS, so the brand palette is one stylesheet).
-- "Emailed same day" = the FF reviews the generated PDF and clicks send. Not automatic.
+- "Emailed same day" = the practice owner reviews the generated PDF and clicks send. Not automatic.
 
 **Why:** polling removes a whole deployment tier for a screen one person looks at for an hour; WeasyPrint means the PDF is styled with the same CSS discipline as the app.
 
@@ -504,7 +506,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 ### F14. Conversion: each map row becomes a Goal **or** a Project, chosen per row
 
-**Choice:** on conversion to client, the Strategy Map is shown as a proposed tree where the fractional picks **per row** whether it lands as a Goal or a Project (per the seed), with everything editable and de-selectable. The row's owner, 30/60/90 target, and measurable carry across. Nothing is created until the FF confirms. Created rows keep a link back to the map row that produced them.
+**Choice:** on conversion to client, the Strategy Map is shown as a proposed tree where the fractional picks **per row** whether it lands as a Goal or a Project (per the seed), with everything editable and de-selectable. The row's owner, 30/60/90 target, and measurable carry across. Nothing is created until the practice owner confirms. Created rows keep a link back to the map row that produced them.
 
 **Why:** the seed specifies the per-row choice; the back-link is what later lets a progress report say "this is the bottleneck you told us about in March," and what makes the 90-day scope in §9 auditable against what was actually delivered.
 
@@ -571,7 +573,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Current design.** Gmail is not a fallback for personal sends any more — it is **the transport for everything** (A3). That collapses the two tiers into one path:
 
-- **Outbound:** the FF's connection sends all app mail as the tenant alias. A CF may still connect their own Gmail to send as themselves to contacts on assigned companies (H7); those sends are recorded on the same threads.
+- **Outbound:** the practice owner's connection sends all app mail as the practice alias. An associate may still connect their own Gmail to send as themselves to contacts on assigned companies (H7); those sends are recorded on the same threads.
 - **Inbound:** `users.threads.get` polling over the threads the app started, on a 15-minute schedule. Cursor-based like Drive (A6) and equally tolerant of a laptop being closed.
 
 **Why polling known thread ids rather than `users.history.list`** — unchanged, and now load-bearing rather than an optimization: Gmail's history has a limited retention window, so a laptop closed for ten days can return `404 historyId not found` and force a full resync. The set of threads the app started is always known and bounded.
@@ -586,7 +588,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** as listed, with the brand palette (`#0A3A65`, `#F58220`, `#6D6E71`, `#939598`) defined once as CSS custom properties and referenced through Tailwind theme tokens.
 
-**Why:** shadcn/ui is copy-in components you own and can restyle, which suits a product that must be re-themable per tenant in V1; the token indirection is what makes that a config change rather than a find-and-replace.
+**Why:** shadcn/ui is copy-in components you own and can restyle, which suits a product that must be re-themable per practice in V1; the token indirection is what makes that a config change rather than a find-and-replace.
 
 `Approved.`
 
@@ -616,7 +618,7 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **Choice:** `PRODUCT_NAME = "Execs NOW HQ"` in `config/branding.py`, exposed to the frontend through a single `/api/branding` payload alongside the palette.
 
-**Why:** `CLAUDE.md` asks for one constant; routing it through the same payload as the palette means V1 per-tenant white-labeling changes data, not code.
+**Why:** `CLAUDE.md` asks for one constant; routing it through the same payload as the palette means V1 per-practice white-labeling changes data, not code.
 
 `Approved.`
 
@@ -628,17 +630,17 @@ The **Outbox remains the single queue and the complete send log** (FR-1.15). Onl
 
 **H2. Mail addressing — ANSWERED, then REVISED by the transport change.**
 
-**Still true:** app-originated mail is `From: info@getexecutivesnow.com`. Per-tenant sending domains remain a V1 concern, and `Tenant.from_address` exists as a field from migration 1.
+**Still true:** app-originated mail is `From: info@getexecutivesnow.com`. Per-practice sending domains remain a V1 concern, and `Tenant.from_address` exists as a field from migration 1.
 
-**No longer true:** `reply+<token>@inbound.getexecutivesnow.com`. With Gmail as the transport there is **no inbound domain and no inbound MX record in Beta** — replies come back through Tier 2 polling of the tenant's own mailbox (F16). `Tenant.inbound_domain` stays on the model for the V1 Postmark transport, unused in Beta.
+**No longer true:** `reply+<token>@inbound.getexecutivesnow.com`. With Gmail as the transport there is **no inbound domain and no inbound MX record in Beta** — replies come back through Tier 2 polling of the practice's own mailbox (F16). `Tenant.inbound_domain` stays on the model for the V1 Postmark transport, unused in Beta.
 
-**`info@getexecutivesnow.com` must be added as a Gmail "Send mail as" address** on the FF's account and confirmed, or the app refuses to send with an error naming that exact step (A3).
+**`info@getexecutivesnow.com` must be added as a Gmail "Send mail as" address** on the practice owner's account and confirmed, or the app refuses to send with an error naming that exact step (A3).
 
-**H3. Timezone — ANSWERED.** Tenant default **`America/Denver`**. Applied to D4.
+**H3. Timezone — ANSWERED.** Practice default **`America/Denver`**. Applied to D4.
 
 **H4. Digest carve-out — ANSWERED.** The carve-out exists, gated by **`hold_all_digests`, default ON for Beta**. Applied to F11 as item 4a.
 
-**H5. Referral touch default cadence — ANSWERED.** **Monthly**, when the FF has not set one per contact.
+**H5. Referral touch default cadence — ANSWERED.** **Monthly**, when the practice owner has not set one per contact.
 
 **H6. Real outbound mail from the laptop — ANSWERED (middle path), UNCHANGED by the transport switch.**
 
@@ -650,9 +652,9 @@ A4 stands, plus a **`DEV_REAL_SEND_ALLOWLIST`** of exact addresses that receive 
 - The allow-list is **exact-address match only** — a bare domain or wildcard is rejected at startup, because one wildcard entry would put every colleague and client at that domain back in range.
 - Every real send from a localhost build is **logged as an `AuditEvent` and badged in the UI**, so a message you did not expect to leave the machine is visible after the fact.
 
-**What the transport change adds:** a real send from the laptop now goes out through the FF's actual Gmail and lands in their Sent folder. That is a feature for the manual checks — AC-1.6 and AC-1.20 become exercisable to an allow-listed address without any third-party account.
+**What the transport change adds:** a real send from the laptop now goes out through the practice owner's actual Gmail and lands in their Sent folder. That is a feature for the manual checks — AC-1.6 and AC-1.20 become exercisable to an allow-listed address without any third-party account.
 
-**H7. Gmail send authority — ANSWERED.** **VAs** draft into the Outbox for FF approval and **cannot connect Gmail send at all** (the connect action is not offered to them). **CFs** can connect their own Gmail and send from their own address, but only to contacts on client companies they are **assigned to**. **FF** unrestricted. Carried into `03_access_matrix.md` as three distinct rows: *connect Gmail*, *send from own address*, and *draft into Outbox*.
+**H7. Gmail send authority — ANSWERED.** **Assistants** draft into the Outbox for practice owner approval and **cannot connect Gmail send at all** (the connect action is not offered to them). **Associates** can connect their own Gmail and send from their own address, but only to contacts on client companies they are **assigned to**. **Practice owner** unrestricted. Carried into `03_access_matrix.md` as three distinct rows: *connect Gmail*, *send from own address*, and *draft into Outbox*.
 
 ---
 
@@ -680,31 +682,31 @@ This register is the reference for every later document in Phase 0. Nothing in i
 
 ## I. White-label (owner ruling, 2026-09-15)
 
-### I1. No client of any tenant ever sees the product
+### I1. No client of any practice ever sees the product
 
-**The rule.** Every client-facing surface renders the **tenant's** display name, colors
-and logo, read from the tenant row: the portal shell and every portal screen, the
+**The rule.** Every client-facing surface renders the **practice's** display name, colors
+and logo, read from the practice row: the portal shell and every portal screen, the
 magic-link sign-in page, the signed-out page, the refused-access page, the cadence page,
 and every email. Never a hardcoded `Executives Now`, never `Execs NOW HQ`. The product
-name appears **only on staff-facing screens** (FF/CF/VA) — `/api/branding` returns it to
+name appears **only on staff-facing screens** (practice owner/associate/assistant) — `/api/branding` returns it to
 staff and returns `null` to everyone else.
 
 **Consequence for defaults.** The product cannot brand a practice by default, so the code
 defaults are a practice's own name over neutral greys (`#1F2933` / `#52606D`). Executives
-Now's name and palette are **data on its tenant row** (migration `tenancy 0005`), exactly
-as another practice's would be. A V1 tenant that sets nothing looks like itself, never
+Now's name and palette are **data on its practice row** (migration `tenancy 0005`), exactly
+as another practice's would be. A V1 practice that sets nothing looks like itself, never
 like Executives Now.
 
-**Tenant resolution.** Signed in, it is the member's own practice. Otherwise the
+**Practice resolution.** Signed in, it is the member's own practice. Otherwise the
 **hostname** decides: V1 gives each practice its own portal domain
 (`portal.<tenantbrand>.com`), resolved by `Host`. **Beta's `app.getexecutivesnow.com` is
-the single-tenant case of that same rule** — one row, so it resolves to that row. With
-more than one tenant and no hostname mapping yet, an unauthenticated page shows neutral
+the single-practice case of that same rule** — one row, so it resolves to that row. With
+more than one practice and no hostname mapping yet, an unauthenticated page shows neutral
 branding rather than guessing.
 
 **Not covered by this rule:** `from_address` and `inbound_domain` are real addresses a
 practice configures, not branding text; Beta's are Executives Now's because that is whose
-practice it is. V1 sets them per tenant at onboarding.
+practice it is. V1 sets them per practice at onboarding.
 
 **Tested by** `tests/test_white_label.py`, including an assertion that no client-facing
 response or client-bound email contains the product name.

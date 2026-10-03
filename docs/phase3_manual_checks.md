@@ -1,5 +1,7 @@
 # Phase 3 — Manual Checks
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Module 3: Task engine + client portal · for the owner**
 
 The six manual checks from `04_build_plan.md` Phase 3. Check 1 is the one that
@@ -151,7 +153,7 @@ Set the company's `seat_count` to 2, use both, then try a third grant.
   words. **SkyRun Park City** and **Academy of America** are both in that state.
 - **The founder user is the company's `primary_contact`.** Acme Facilities has
   none set, so everyone there would be granted as an *employee* user. Set the
-  primary contact on the company first if Check 5 needs an FCC.
+  primary contact on the company first if Check 5 needs a client owner.
 - **A stakeholder is a contact, not a login.** Adding someone as a stakeholder
   consumes no seat and creates no user; they get the email and never need to
   sign in. Portal access is a separate thing you grant separately.

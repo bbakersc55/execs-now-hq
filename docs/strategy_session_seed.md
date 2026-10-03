@@ -1,5 +1,7 @@
 # Strategy Session Seed — Operations (Beta template)
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 This is the owner's actual strategy session structure, generalized from a real client session. Seed it verbatim as the default Operations template. Items in `{braces}` are merge fields filled per session (from the contact/company record or by the fractional when scheduling). Every question carries an `ask_when` value: **precall** (goes on the web form sent to the prospect ahead of the call) or **live** (captured in-app during the call). The fractional can override `ask_when` per question when editing their template.
 
 Session flow and timing (about 75 minutes): 1) Where you are, where you're going — 10 min. 2) Diagnostic — 25 min. 3) The mirror — 5 min. 4) Strategy Map — 15 min. 5) Two paths — 5 min. 6) What you value & next steps — 10 min. Scope agreement (Section 9) has its own 5 minutes (owner, 2026-09-26: every live section has a budget), so the app's total is 75. The 60-minute cut runs 10 / 20 / 5 / 10 / 5 / 10, plus Scope agreement's 5.

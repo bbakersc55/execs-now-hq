@@ -32,14 +32,16 @@ This repo is unrelated to the owner's other project (a school SIS called Aris, r
 
 Every domain table carries `tenant_id`. Query scoping goes through a single tenant-aware manager/middleware; never rely on views remembering to filter.
 
+**Vocabulary (P1, 2026-10-02).** A tenant is a **Practice** everywhere a person reads it: screens, emails, PDFs, API messages and owner-facing docs. Roles are shown by **name**, never by code; the codes stay in code and data. Names come from one place (`apps/tenancy/roles.py`, mirrored in `frontend/src/lib/roles.ts`), and `tests/test_vocabulary.py` plus `frontend/src/test/vocabulary.test.ts` fail on a code or "tenant" in readable text. Client-facing text names the practice ("Executives Now"), not "your fractional". Runbooks and incident notes use the new words going forward and are not rewritten.
+
 Roles (per tenant):
-| Code | Who | Access |
-|---|---|---|
-| FF | Founder fractional (tenant owner) | Everything, including all financials, billing, settings, PIN resets |
-| CF | Contractor/employee fractional | Nearly everything; financials limited to clients they are assigned to (e.g. their fee split) |
-| VA | Virtual assistant | Contacts, pipeline, tasks, notes, meeting review queue, email; no financials, no settings |
-| FCC | Founder of client company | Client portal: their company's tasks/projects/goals, progress reports, comments; can create tasks; later: manage their own users |
-| ECC | Employee of client company | Client portal: same as FCC minus user management |
+| Code | Name (shown) | Who | Access |
+|---|---|---|---|
+| FF | Practice owner | Founder fractional (tenant owner) | Everything, including all financials, billing, settings, PIN resets |
+| CF | Associate | Contractor/employee fractional | Nearly everything; financials limited to clients they are assigned to (e.g. their fee split) |
+| VA | Assistant | Virtual assistant | Contacts, pipeline, tasks, notes, meeting review queue, email; no financials, no settings |
+| FCC | Client owner | Founder of client company | Client portal: their company's tasks/projects/goals, progress reports, comments; can create tasks; later: manage their own users |
+| ECC | Client team member | Employee of client company | Client portal: same as FCC minus user management |
 
 Client users belong to a **client company** which belongs to a tenant. A client user never sees anything outside their company. Client seats are allocated by the FF (block-of-users or flat per company; model this as a per-company seat count, pricing decided later).
 

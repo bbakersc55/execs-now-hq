@@ -1,5 +1,7 @@
 # 01 — Product Requirements: Beta
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Phase 0 · Execs NOW HQ · for owner review**
 **Built on:** `CLAUDE.md`, `00_assumptions.md` (all marks applied), `strategy_session_seed.md`.
 
@@ -25,24 +27,24 @@ These are not a module. They ship in Phase 1 and every later module inherits the
 
 **FR-0.1 — Tenancy.** Every domain row carries `tenant_id`. Scoping is enforced by the fail-closed manager in assumption B1: an unscoped query raises rather than returning rows. No view is trusted to remember.
 
-**FR-0.2 — Client-company scoping is a second, independent layer.** FCC/ECC requests bind both `current_tenant` and `current_client_company`. A bug in one layer must not defeat the other.
+**FR-0.2 — Client-company scoping is a second, independent layer.** client owner/client team member requests bind both `current_tenant` and `current_client_company`. A bug in one layer must not defeat the other.
 
-**FR-0.3 — Roles.** FF, CF, VA, FCC, ECC exactly as `CLAUDE.md` defines them. `03_access_matrix.md` is the source of truth; this document must not contradict it.
+**FR-0.3 — Roles.** practice owner, associate, assistant, client owner, client team member exactly as `CLAUDE.md` defines them. `03_access_matrix.md` is the source of truth; this document must not contradict it.
 
 **FR-0.4 — Audit.** Every approval, rejection, send, PIN action, stage change, role change, import, and delete writes an `AuditEvent`.
 
-**FR-0.5 — Time.** Stored UTC. Rendered in the recipient's timezone. Tenant default `America/Denver`.
+**FR-0.5 — Time.** Stored UTC. Rendered in the recipient's timezone. Practice default `America/Denver`.
 
 **FR-0.6 — Branding.** `PRODUCT_NAME` and the palette (`#0A3A65`, `#F58220`, `#6D6E71`, `#939598`) come from one config surface, served to the frontend as data.
 
-**FR-0.8 — Tenant staff management is FF-only.** Inviting a CF or VA, changing a member's role, and removing a member are all FF-only actions (matrix rows 3.16–3.18).
+**FR-0.8 — Practice staff management is practice owner-only.** Inviting an associate or assistant, changing a member's role, and removing a member are all practice owner-only actions (matrix rows 3.16–3.18).
 **FR-0.8a** — invitation is by email against a pre-created `membership`; sign-in fails for any address without one (C1).
 
 **FR-0.8a.1** — **a staff invite creates or links the invitee's contact row** and sets `membership.contact`. *(Added 2026-09-22.)* Assumption F1 says every human is a Contact and a login attaches to one; client users always arrived that way round, because portal access is granted *on* a contact, while a staff invite starts from an address and left the field null. Resolution is **email, then name** — the same order as every other match in this product. An existing contact is **linked and not modified**: the practice's own people are frequently in the CRM as something else first, and an invite is no reason to overwrite that. A contact the invite **creates** is typed `coworker` and sourced `staff invite`, and carries the address, so the next lookup is unambiguous. A name matching more than one contact is not a match — a new row carrying the address is created instead, because attaching a login to the wrong person is worse than holding a near-duplicate. A membership that already points at a contact is never repointed. `manage.py link_staff_contacts` (dry-run by default) backfills memberships invited before this existed.
 **FR-0.8b** — a role change takes effect on the member's next request.
-**FR-0.8c** — **removal cascades:** sessions invalidated; for a CF, every live `client_assignment` closed and their Gmail connection deleted with its stored token. Nothing they authored is removed — a departed CF's tasks, notes, and sent mail stay on the record.
+**FR-0.8c** — **removal cascades:** sessions invalidated; for an associate, every live `client_assignment` closed and their Gmail connection deleted with its stored token. Nothing they authored is removed — a departed associate's tasks, notes, and sent mail stay on the record.
 
-**FR-0.9 — AI spend is visible to the FF only.** The `ai_call` log and any per-module cost view are FF-only (matrix row 3.19). Spend is financial: `CLAUDE.md` gives a VA no financials, and a CF's financial visibility is limited to their assigned clients, which tenant-wide API spend is not.
+**FR-0.9 — AI spend is visible to the practice owner only.** The `ai_call` log and any per-module cost view are practice owner-only (matrix row 3.19). Spend is financial: `CLAUDE.md` gives an assistant no financials, and an associate's financial visibility is limited to their assigned clients, which practice-wide API spend is not.
 
 **FR-0.7 — Outbound mail safety. On a build where `PUBLIC_BASE_URL` is localhost, mail goes to the dev outbox unless the recipient is an exact match in `DEV_REAL_SEND_ALLOWLIST`. Real sends from a dev build are audited and badged in the UI.
 
@@ -59,7 +61,7 @@ There are **two review surfaces**, not one, and keeping them distinct matters be
 
 | # | Producer | Module | Surface | What is held | Effect if approved | Effect if never actioned |
 |---|---|---|---|---|---|---|
-| R1 | AI-drafted referral touch | 1 | Outbox | 3–5 line email draft | Sends from tenant address | Expires unsent at cadence date |
+| R1 | AI-drafted referral touch | 1 | Outbox | 3–5 line email draft | Sends from practice address | Expires unsent at cadence date |
 | R2 | Stage-change email rule | 1 | Outbox | Template-filled draft | Sends | Expires unsent |
 | R3 | Claude summary of a recording | 2 | Inline accept/edit | Summary text | Attached to the Note | Note saves with transcript, no summary |
 | R4 | **AI-drafted progress digest** | 3 | **Digest approval screen** | Whole digest, per stakeholder | Sends to stakeholder | Expires; content rolls into next period |
@@ -82,7 +84,7 @@ Stated explicitly so the rule is applied where it belongs and not everywhere:
 
 1. **A stage rule creating an internal task** (FR-1.14). Deterministic, configured by you, no outside-world effect. Approved as assumption F3.
 2. **A client user creating a task or comment** (FR-3.31). A human writing about their own work. Putting a review queue in front of your client's own task list would make the portal useless.
-3. **A tenant user's own email, written by hand and sent from their own Gmail.** No AI involved.
+3. **A practice user's own email, written by hand and sent from their own Gmail.** No AI involved.
 4. **Deterministic digests when `hold_all_digests` is OFF** (FR-3.24). No AI output in the message — only status transitions and text a person wrote. This is the single carve-out, it is off by default in Beta, and turning it on is a deliberate, visible act.
 
 ---
@@ -95,45 +97,45 @@ The record of every person and company the practice deals with, and the spine ev
 
 ### User stories
 
-**FF — Founder fractional**
-- As the FF, I import my existing contacts from a CSV and see exactly what will be created, updated, and skipped **before** anything is written, so my book of business is not silently mangled.
-- As the FF, I move a prospect from lead to qualified lead and have the follow-up task created for me, so the next action never depends on my memory.
-- As the FF, I configure what happens on each stage change once, rather than doing it by hand every time.
-- As the FF, I open the Outbox and see referral touches already drafted for the partners due this month, so maintaining those relationships is a review task, not a writing task.
-- As the FF, I find a vendor by service category when a client asks me who does commercial HVAC.
-- As the FF, I merge two contacts that turned out to be the same person after an import, without losing the history on either.
-- As the FF, I assign a CF to a client company so they can see and work that account.
+**Practice owner** (`FF`)
+- As the practice owner, I import my existing contacts from a CSV and see exactly what will be created, updated, and skipped **before** anything is written, so my book of business is not silently mangled.
+- As the practice owner, I move a prospect from lead to qualified lead and have the follow-up task created for me, so the next action never depends on my memory.
+- As the practice owner, I configure what happens on each stage change once, rather than doing it by hand every time.
+- As the practice owner, I open the Outbox and see referral touches already drafted for the partners due this month, so maintaining those relationships is a review task, not a writing task.
+- As the practice owner, I find a vendor by service category when a client asks me who does commercial HVAC.
+- As the practice owner, I merge two contacts that turned out to be the same person after an import, without losing the history on either.
+- As the practice owner, I assign an associate to a client company so they can see and work that account.
 
-**CF — Contractor/employee fractional**
-- As a CF, I see the contacts on the client companies I am assigned to, plus prospects I own, so my view is my actual work.
-- As a CF, I move my own prospects through the pipeline and get the same automations the FF gets.
-- As a CF, I draft an email to a contact on one of my assigned accounts and send it from my own address.
+**Associate** (`CF`, a contractor or employee fractional)
+- As an associate, I see the contacts on the client companies I am assigned to, plus prospects I own, so my view is my actual work.
+- As an associate, I move my own prospects through the pipeline and get the same automations the practice owner gets.
+- As an associate, I draft an email to a contact on one of my assigned accounts and send it from my own address.
 
-**VA — Virtual assistant**
-- As a VA, I add and correct contacts, companies, and categories, because keeping the CRM clean is my job.
-- As a VA, I run a CSV import and review the dry run, but the commit is mine to perform and mine to roll back if it looks wrong.
-- As a VA, I draft referral touches into the Outbox for the FF to approve, because nothing I write goes to a client without the FF seeing it.
+**Assistant** (`VA`)
+- As an assistant, I add and correct contacts, companies, and categories, because keeping the CRM clean is my job.
+- As an assistant, I run a CSV import and review the dry run, but the commit is mine to perform and mine to roll back if it looks wrong.
+- As an assistant, I draft referral touches into the Outbox for the practice owner to approve, because nothing I write goes to a client without the practice owner seeing it.
 
-**FCC / ECC — client users**
+**Client owner / client team member — client users**
 - **No stories. Module 1 has no client-facing surface.** Client users never see the CRM, the pipeline, other client companies, vendors, referral partners, or the Outbox. This is a deliberate, permanent boundary, not a Beta limitation.
 
 ### Functional requirements
 
 **Records**
 
-1. A **Contact** has: first name, last name, title, one or more email addresses (one primary), one or more phone numbers, linked Company (nullable), owner (tenant user), source, **`background`** (a short "who this is / how we met" line), tags, and timestamps.
+1. A **Contact** has: first name, last name, title, one or more email addresses (one primary), one or more phone numbers, linked Company (nullable), owner (practice user), source, **`background`** (a short "who this is / how we met" line), tags, and timestamps.
 1a. **There is exactly one thing in this product called a note, and it is a `note` record** (Module 2). A CSV notes column is imported as a real note linked to the contact with `source = import`, not as a blob on the contact — so imported context is searchable, PIN-able, and on the timeline like any other note.
-2. A Contact has **one or more contact types** from the per-tenant list (prospect, client, referral partner, vendor, coworker), with one marked primary for display. Multi-type is required because a referral partner is frequently also a client, and forcing a single type would make one of those relationships invisible.
+2. A Contact has **one or more contact types** from the per-practice list (prospect, client, referral partner, vendor, coworker), with one marked primary for display. Multi-type is required because a referral partner is frequently also a client, and forcing a single type would make one of those relationships invisible.
 3. A **Company** has: name, domain(s), address, industry, an **ordered list of named locations** (used by Module 4's `{Location A}` / `{Location B}` merge fields), a **`primary_contact`** (nullable FK to a Contact at that company), and a flag `is_client_company` with a `seat_count` when set. Contacts belong to at most one Company.
-3a. **`primary_contact` is the designated recipient of company-level communication** — the person Module 3 addresses when something concerns the company rather than a specific task, and the default grantee of FCC when portal access is first given. It is nullable, because a prospect company has no designated contact until someone is chosen.
+3a. **`primary_contact` is the designated recipient of company-level communication** — the person Module 3 addresses when something concerns the company rather than a specific task, and the default grantee of client owner when portal access is first given. It is nullable, because a prospect company has no designated contact until someone is chosen.
 4. Contacts and Companies are soft-deleted (`deleted_at`), never hard-deleted through the UI.
 5. Every Contact and Company has an **activity timeline** aggregating: stage changes, notes, emails sent and received, meeting proposals approved, and tasks — in one reverse-chronological view.
 
 **Pipeline**
 
-6. **A practice runs more than one pipeline.** A `pipeline` is a per-tenant row with a `name`, a `kind` ∈ {`sales`, `referral`, `custom`}, and a position. Two are seeded: **"Sales"** (`sales`) and **"Referral partners"** (`referral`) — a sales funnel and a nurture track are different processes, and collapsing them made every referral partner look like a stalled prospect.
-6b. **A stage belongs to one pipeline and carries a `semantic` independent of its label**: `entry · working · qualified · won · lost · parked · none`. The FF renames, reorders, adds and removes stages freely; **every rule in the app keys on the semantic, never on the label**, so renaming "Closed Won" to "Signed" changes nothing behavioral. Stage codes are unique *per pipeline*, so "Qualified" may legitimately exist in two. A `sales`-kind pipeline must have **exactly one `won` stage**; removing the last one is refused, because without it nothing can ever become a client.
-6c. **Seeded stages are the owner's own**, not a generic funnel. *Sales:* Initial Contact Made (`entry`) → Prospecting (`working`) → Follow Up Needed (`working`) → Qualified (`qualified`) → Consult Given (`qualified`) → Proposal Given (`qualified`) → Decision Making (`qualified`) → Negotiation (`qualified`) → **Closed Won (`won`)** → Closed Lost (`lost`) → Nurture (`parked`). *Referral partners:* New Partner (`entry`) → Follow-up Sent (`working`) → Flyer Sent (`working`) → Nurturing (`working`) → Active Referrer (`qualified`) → Dormant (`parked`). The FF edits these after import.
+6. **A practice runs more than one pipeline.** A `pipeline` is a per-practice row with a `name`, a `kind` ∈ {`sales`, `referral`, `custom`}, and a position. Two are seeded: **"Sales"** (`sales`) and **"Referral partners"** (`referral`) — a sales funnel and a nurture track are different processes, and collapsing them made every referral partner look like a stalled prospect.
+6b. **A stage belongs to one pipeline and carries a `semantic` independent of its label**: `entry · working · qualified · won · lost · parked · none`. The practice owner renames, reorders, adds and removes stages freely; **every rule in the app keys on the semantic, never on the label**, so renaming "Closed Won" to "Signed" changes nothing behavioral. Stage codes are unique *per pipeline*, so "Qualified" may legitimately exist in two. A `sales`-kind pipeline must have **exactly one `won` stage**; removing the last one is refused, because without it nothing can ever become a client.
+6c. **Seeded stages are the owner's own**, not a generic funnel. *Sales:* Initial Contact Made (`entry`) → Prospecting (`working`) → Follow Up Needed (`working`) → Qualified (`qualified`) → Consult Given (`qualified`) → Proposal Given (`qualified`) → Decision Making (`qualified`) → Negotiation (`qualified`) → **Closed Won (`won`)** → Closed Lost (`lost`) → Nurture (`parked`). *Referral partners:* New Partner (`entry`) → Follow-up Sent (`working`) → Flyer Sent (`working`) → Nurturing (`working`) → Active Referrer (`qualified`) → Dormant (`parked`). The practice owner edits these after import.
 6d. **A contact holds an independent position in each pipeline they belong to** (`contact_pipeline_position`, unique per contact per pipeline). A referral partner who becomes a prospect is genuinely in both; the single `contact.stage_id` this replaces forced a choice that lost one of the two facts. **Contact type does not gate pipeline membership** — being in the referral pipeline and carrying the `referral_partner` type are separate facts.
 6a. **The client invariant. A `won` stage in a `sales` pipeline is the single source of truth for who is a client.** Three things can each say "client" — the contact's position, the contact's type, and the company's `is_client_company` flag — so exactly one is authoritative and the other two are derived from it:
     1. **Moving a contact to a `won` stage in a `sales` pipeline** (by hand, by CSV import, or by Module 4 conversion) **adds contact type `client`** to that contact and **sets `is_client_company = true`** on their company. Both derivations are idempotent and audited.
@@ -147,46 +149,46 @@ The record of every person and company the practice deals with, and the spine ev
 
 **Assignment**
 
-9a. A **`ClientAssignment`** is a row joining a **tenant user** to a **client company**, with the date assigned and by whom. **This is the record every "assigned accounts" rule in Modules 1 through 6 depends on** — CF contact visibility, CF digest approval, CF Gmail send authority, and CF access to meeting proposals all resolve through it, so it exists as an explicit table rather than as a rule reimplemented per module.
-9b. **Only the FF creates, changes, or removes assignments.** CFs and VAs cannot.
-9c. **A CF's visible universe is exactly:** all contacts at client companies they are assigned to, **plus** prospects they personally own, **plus** contacts with no company that they own. Nothing else in the tenant — not other CFs' prospects, not unassigned client companies.
-9d. **VAs see all contacts in the tenant.** A VA's restriction is on financials and settings (`CLAUDE.md`), not on the CRM.
-9e. Removing an assignment takes effect immediately on the CF's next request; it does not delete anything they created.
+9a. A **`ClientAssignment`** is a row joining a **practice user** to a **client company**, with the date assigned and by whom. **This is the record every "assigned accounts" rule in Modules 1 through 6 depends on** — associate contact visibility, associate digest approval, associate Gmail send authority, and associate access to meeting proposals all resolve through it, so it exists as an explicit table rather than as a rule reimplemented per module.
+9b. **Only the practice owner creates, changes, or removes assignments.** associates and assistants cannot.
+9c. **An associate's visible universe is exactly:** all contacts at client companies they are assigned to, **plus** prospects they personally own, **plus** contacts with no company that they own. Nothing else in the practice — not other associates' prospects, not unassigned client companies.
+9d. **Assistants see all contacts in the practice.** An assistant's restriction is on financials and settings (`CLAUDE.md`), not on the CRM.
+9e. Removing an assignment takes effect immediately on the associate's next request; it does not delete anything they created.
 
 **Automations**
 
-10. A **stage automation rule** is a per-tenant row **scoped to one pipeline**: `pipeline`, `from_stage` (or any), `to_stage`, and an action. A "becomes Qualified" rule on Sales does **not** fire for the referral pipeline's own Qualified stage.
+10. A **stage automation rule** is a per-practice row **scoped to one pipeline**: `pipeline`, `from_stage` (or any), `to_stage`, and an action. A "becomes Qualified" rule on Sales does **not** fire for the referral pipeline's own Qualified stage.
 11. Action type **create_task**: creates a task from a template (title, offset-based due date, owner defaulting to the contact's owner). Fires immediately, no approval.
 12. Action type **draft_email**: renders a template into an Outbox draft in `pending_approval` with a **send-by date defaulting to 7 days out, configurable per rule**. **⛔ REVIEW QUEUE (R2).** Never sends itself; on the send-by date it expires (FR-1.18).
 13. Rules are listed per pipeline in one settings screen with a plain-English summary of each, **naming the pipeline** ("When a contact reaches *Qualified* in Sales, create task 'Book strategy session' due in 3 days").
-14. **Task creation from a rule is not gated by a review queue** and this is intentional — it is deterministic, configured by the tenant, and has no effect outside the app (assumption F3).
+14. **Task creation from a rule is not gated by a review queue** and this is intentional — it is deterministic, configured by the practice, and has no effect outside the app (assumption F3).
 
 **Outbox**
 
-15. **Every app-originated email is an Outbox row.** The Outbox is therefore two things at once: the approval queue, and the complete send log for the tenant. If a message left the app, there is a row for it.
+15. **Every app-originated email is an Outbox row.** The Outbox is therefore two things at once: the approval queue, and the complete send log for the practice. If a message left the app, there is a row for it.
 15a. **Not every Outbox row passes through `pending_approval`.** States are `draft → pending_approval → approved → sent`, plus `rejected` and `expired` — but a send that a human has **explicitly clicked** is written **directly as `sent`**, with no pending state, because the click *is* the approval. Requiring a second approval for a button the user just pressed would be theatre.
-15b. The direct-to-`sent` producers are: **the strategy session PDF** (R8 — the fractional reviews a true preview and clicks send), **stakeholder cadence-change confirmations** (FR-3.33), **magic links** (assumption A2a, sent synchronously in the request), and **note PIN resets** (FR-2.12, added in Phase 2). *All of them go through the Outbox and the configured transport like every other email — Phase 2 found magic links and PIN resets going straight through Django's mail backend, bypassing both and the dev allow-list. For the two that carry a one-time link, the Outbox row stores the message with the link removed; the link is delivered but never stored, because the Outbox is readable by every tenant user (assumption C3).* Everything else — stage-rule drafts, referral touches, digests, referral onboarding — enters at `pending_approval`.
-15ba. **The address a message goes out from is the one on its row** (FR-1.15c). A person's own address goes through that person's own Gmail connection (FF or CF, verified); anything else — the alias, a VA's address (H7), an unverified or unknown one — goes through the FF's connection as the alias, and the row is updated to say so. *Fixed 2026-09-15: the per-producer defaults and the per-draft override were resolved and recorded on the row, but the Gmail transport sent every message as the alias and overwrote the row to match, so "my own address" never reached a recipient.*
+15b. The direct-to-`sent` producers are: **the strategy session PDF** (R8 — the fractional reviews a true preview and clicks send), **stakeholder cadence-change confirmations** (FR-3.33), **magic links** (assumption A2a, sent synchronously in the request), and **note PIN resets** (FR-2.12, added in Phase 2). *All of them go through the Outbox and the configured transport like every other email — Phase 2 found magic links and PIN resets going straight through Django's mail backend, bypassing both and the dev allow-list. For the two that carry a one-time link, the Outbox row stores the message with the link removed; the link is delivered but never stored, because the Outbox is readable by every practice user (assumption C3).* Everything else — stage-rule drafts, referral touches, digests, referral onboarding — enters at `pending_approval`.
+15ba. **The address a message goes out from is the one on its row** (FR-1.15c). A person's own address goes through that person's own Gmail connection (practice owner or associate, verified); anything else — the alias, an assistant's address (H7), an unverified or unknown one — goes through the practice owner's connection as the alias, and the row is updated to say so. *Fixed 2026-09-15: the per-producer defaults and the per-draft override were resolved and recorded on the row, but the Gmail transport sent every message as the alias and overwrote the row to match, so "my own address" never reached a recipient.*
 15c. This reconciles FR-1.15 with §2 of this document: R8 is a review queue, and its review is the preview-and-click, not a queue the message waits in afterwards.
 16. An Outbox item shows: recipient, subject, body, what produced it, whether AI wrote any of it, and the send-by date.
-16a. **Every app-originated email is HTML with a text/plain alternative built from the same content** *(email presentation pass, 2026-09-15)*. Two layouts, table-based with inline styles only (Gmail strips `<style>`): a **base** layout — the practice's logo on a white header (its name when there is no logo, or the logo cannot be read — a logo never stops a send), a bar in the header color and an accent rule, a 680px body at 16px, a small footer with the practice name and, on digests, the recipient's cadence link — for digests, client-activity notices and sign-in/PIN links; and a **personal** layout — typography only, no header — for referral touches and onboarding, manual and stage-rule drafts, which read as a person writing. Its one branded element is the **sign-off**: when a draft ends with a staff member's signature (their saved signature, or the default name-over-practice), it is set as a block — the practice's mark beside the name and contact lines, email addresses and URLs linked, an accent rule — while the text part keeps the words exactly. A sign-off someone edited or removed is left as written. Sign-in emails name the practice ("Sign in to Executives Now", from the tenant's display name), never the product: a client signs in to their fractional's portal.
-16b. **White-label - no client of any tenant ever sees the product** *(owner ruling, 2026-09-15; assumption I1)*. Every client-facing surface renders the **tenant's** display name, colors and logo from the tenant row: the portal shell and screens, the magic-link sign-in page, the signed-out and refused pages, the cadence page, and every email. `Execs NOW HQ` appears only on staff screens - `/api/branding` returns the product name to FF/CF/VA and `null` to anyone else, alongside the practice's name, palette and `logo_url` (served by `/api/branding/logo`, which can only ever return the requesting tenant's own). The code's branding defaults are a practice's own name over neutral greys; **Executives Now's name and palette are data on its tenant row** (migration `tenancy 0005`), so a V1 tenant inherits nothing. Unauthenticated pages resolve the tenant by **hostname** - V1 gives each practice its own portal domain, and Beta's `app.getexecutivesnow.com` is the single-tenant case of that rule. Branding (display name, header and accent colors, logo) comes from the tenant row. The logo travels as an inline image part (`cid:`), because Gmail blocks embedded `data:` images and a laptop URL cannot be fetched by Gmail's image proxy. A one-time link's stored copy never holds the link or its button. On a localhost build every Outbox item and pending digest can be previewed exactly as it sends.
+16a. **Every app-originated email is HTML with a text/plain alternative built from the same content** *(email presentation pass, 2026-09-15)*. Two layouts, table-based with inline styles only (Gmail strips `<style>`): a **base** layout — the practice's logo on a white header (its name when there is no logo, or the logo cannot be read — a logo never stops a send), a bar in the header color and an accent rule, a 680px body at 16px, a small footer with the practice name and, on digests, the recipient's cadence link — for digests, client-activity notices and sign-in/PIN links; and a **personal** layout — typography only, no header — for referral touches and onboarding, manual and stage-rule drafts, which read as a person writing. Its one branded element is the **sign-off**: when a draft ends with a staff member's signature (their saved signature, or the default name-over-practice), it is set as a block — the practice's mark beside the name and contact lines, email addresses and URLs linked, an accent rule — while the text part keeps the words exactly. A sign-off someone edited or removed is left as written. Sign-in emails name the practice ("Sign in to Executives Now", from the practice's display name), never the product: a client signs in to their fractional's portal.
+16b. **White-label - no client of any practice ever sees the product** *(owner ruling, 2026-09-15; assumption I1)*. Every client-facing surface renders the **practice's** display name, colors and logo from the practice row: the portal shell and screens, the magic-link sign-in page, the signed-out and refused pages, the cadence page, and every email. `Execs NOW HQ` appears only on staff screens - `/api/branding` returns the product name to practice owner/associate/assistant and `null` to anyone else, alongside the practice's name, palette and `logo_url` (served by `/api/branding/logo`, which can only ever return the requesting practice's own). The code's branding defaults are a practice's own name over neutral greys; **Executives Now's name and palette are data on its practice row** (migration `tenancy 0005`), so a V1 practice inherits nothing. Unauthenticated pages resolve the practice by **hostname** - V1 gives each practice its own portal domain, and Beta's `app.getexecutivesnow.com` is the single-practice case of that rule. Branding (display name, header and accent colors, logo) comes from the practice row. The logo travels as an inline image part (`cid:`), because Gmail blocks embedded `data:` images and a laptop URL cannot be fetched by Gmail's image proxy. A one-time link's stored copy never holds the link or its button. On a localhost build every Outbox item and pending digest can be previewed exactly as it sends.
 17. Approving sends. Editing then approving sends the edited version. Rejecting keeps the row as `rejected` with the actor recorded.
 18. **An item that reaches its send-by date without approval expires. It does not send.**
-19. VAs can create and edit Outbox drafts. VAs cannot approve or send (assumption H7), **with one exception: a VA may send a `precall_invite` directly** (assumption H7a, FR-4.6a).
-19a. An email a tenant user composes by hand in the app has producer `manual`. **Sent by an FF or CF it is written directly as `sent`** via their own Gmail; **composed by a VA it enters `pending_approval`** like any other VA draft.
+19. Assistants can create and edit Outbox drafts. Assistants cannot approve or send (assumption H7), **with one exception: an assistant may send a `precall_invite` directly** (assumption H7a, FR-4.6a).
+19a. An email a practice user composes by hand in the app has producer `manual`. **Sent by a practice owner or associate it is written directly as `sent`** via their own Gmail; **composed by an assistant it enters `pending_approval`** like any other assistant draft.
 
 **Referral touches**
 
 20. A referral-partner contact carries a touch cadence: monthly (default), bi-monthly, or quarterly.
 20a. A referral-partner contact also carries **`referral_fee_terms`** — free text, e.g. "10% of first 3 months". Optional; many partnerships have no fee.
 21. A scheduled job drafts each due touch **3 days before** its due date into the Outbox. **⛔ REVIEW QUEUE (R1).**
-21a. The tenant carries an FF-maintained **"what I'm working on lately" blurb** with a `last_updated_at`, editable from settings. It is the substance of every touch — the thing that makes the email worth a partner's attention rather than a checkbox.
+21a. The practice carries a practice owner-maintained **"what I'm working on lately" blurb** with a `last_updated_at`, editable from settings. It is the substance of every touch — the thing that makes the email worth a partner's attention rather than a checkbox.
 22. A touch draft is **3–5 lines** composed from three parts:
-    1. **the tenant's current blurb** — what the fractional has been working on lately;
+    1. **the practice's current blurb** — what the fractional has been working on lately;
     2. **a fee reminder**, included only when `referral_fee_terms` is set, phrased as a reminder of the arrangement rather than a demand;
     3. **a reciprocal line** — what the fractional is looking for, so the partner can send referrals *and* knows what to send. A touch that only asks is a worse email than one that also offers.
-    The draft is AI-drafted from those inputs plus the contact's history, or rendered from an FF-written template — the tenant chooses per contact.
+    The draft is AI-drafted from those inputs plus the contact's history, or rendered from a practice owner-written template — the practice chooses per contact.
 22a. **If the blurb is older than the cadence period** (a monthly cadence with a blurb last updated 40 days ago), **the Outbox item carries a visible warning** to the reviewer, naming the blurb's age. It does not block sending — sometimes last month's work is still this month's news — but nobody should mail twelve partners the same stale paragraph without noticing.
 23. An AI-drafted touch is labeled as such in the Outbox, so the reviewer knows what they are reading.
 
@@ -195,13 +197,13 @@ The record of every person and company the practice deals with, and the spine ev
 23a. **When a contact first becomes a referral partner** — by hand, or by a reviewer confirming that type on a Module 5 meeting proposal — two things happen: they are **placed at the referral pipeline's `entry` stage** ("New Partner"), and a **"post-meeting follow-up" Outbox draft is created immediately** in `pending_approval` (the R2 path). It is the first touch, sent while the meeting is fresh, not on the next cadence date.
 23a.i. **The placement is an ordinary stage change.** It writes a normal `stage_change` row and appears on the timeline like any other move — there is no second, invisible way for a contact to enter a pipeline. If they are **already** in the referral pipeline, onboarding does not reset their progress, and **it never disturbs their position in any other pipeline**: a live prospect who becomes a referral partner keeps their sales stage.
 23a.ii. Movement within the referral pipeline afterwards ("Follow-up Sent", "Flyer Sent", "Nurturing", "Active Referrer", "Dormant") is ordinary stage-change behavior, with its own per-pipeline automations.
-23b. The onboarding draft **attaches the tenant's marketing flyer** — a single tenant-uploaded PDF held in settings. The flyer is **optional**: if none is uploaded, the draft is created without it and says so in the Outbox, rather than being suppressed.
+23b. The onboarding draft **attaches the practice's marketing flyer** — a single practice-uploaded PDF held in settings. The flyer is **optional**: if none is uploaded, the draft is created without it and says so in the Outbox, rather than being suppressed.
 23c. **The touch cadence clock starts from the date the onboarding draft is created**, not from the contact's creation date — so a partner onboarded on the 3rd is next touched a month after the 3rd.
 23d. Becoming a referral partner a second time (type removed and re-added) does **not** re-trigger onboarding.
 
 **Vendors**
 
-24. Per-tenant **service categories**; a vendor contact carries one or more.
+24. Per-practice **service categories**; a vendor contact carries one or more.
 25. Vendors are searchable and filterable by service category.
 
 **CSV import**
@@ -217,9 +219,9 @@ The record of every person and company the practice deals with, and the spine ev
 
 **Search and merge**
 
-33. Global search covers contacts, companies, and notes, using Postgres full-text search. Results are tenant-scoped and respect note PIN locking (Module 2).
+33. Global search covers contacts, companies, and notes, using Postgres full-text search. Results are practice-scoped and respect note PIN locking (Module 2).
 34. Two contacts can be **merged**: pick the surviving record, choose field-by-field where they conflict, and all history (notes, tasks, emails, timeline) moves to the survivor. The merged-away record is soft-deleted with a pointer to the survivor.
-34a. **Merge is available to the FF and the VA** (not CF), and **writes an `AuditEvent` naming both records and the actor.** Post-import de-duplication is the bulk of CRM hygiene and the VA is the one running imports; withholding merge would route the cleanup half of the VA's own work back to the FF.
+34a. **Merge is available to the practice owner and the assistant** (not associate), and **writes an `AuditEvent` naming both records and the actor.** Post-import de-duplication is the bulk of CRM hygiene and the assistant is the one running imports; withholding merge would route the cleanup half of the assistant's own work back to the practice owner.
 34b. **Soft-deleted contacts and companies can be restored** by anyone who could delete them, which is what makes delegating deletion safe (D2).
 
 ### Out of scope for Beta
@@ -255,43 +257,43 @@ Mapping a value to a **`won` stage in a `sales` pipeline** fires FR-1.6a exactly
 
 > **Exercised live on 2026-09-11:** the owner drafted a touch to his own allow-listed address, approved it, and **received it in Gmail from `info@getexecutivesnow.com`** — a real send, through the real Gmail transport, with the verified send-as alias on the From line. This is the first acceptance criterion in Module 1 proven against real delivery rather than against the dev outbox.
 
-**AC-1.7 — VA cannot send.** Signed in as a VA, open the Outbox. Drafts are visible and editable; the approve and send controls are absent, and calling the approve endpoint directly returns 403.
+**AC-1.7 — assistant cannot send.** Signed in as an assistant, open the Outbox. Drafts are visible and editable; the approve and send controls are absent, and calling the approve endpoint directly returns 403.
 
-**AC-1.8 — Vendor search by category.** Tag three vendors with "Commercial HVAC" and two with "IT". Searching the category returns exactly the three, and no contact from another tenant.
+**AC-1.8 — Vendor search by category.** Tag three vendors with "Commercial HVAC" and two with "IT". Searching the category returns exactly the three, and no contact from another practice.
 
 **AC-1.9 — Merge preserves history.** Create two contacts for the same person, attach a note to each and a task to one. Merge them. The survivor shows both notes and the task; the merged-away record is gone from search but its ID still resolves to the survivor.
 
-**AC-1.10 — Tenant isolation.** As a user in tenant A, attempt to open a contact, company, ImportBatch, and Outbox item belonging to tenant B by direct URL. All four return 404 (not 403 — existence is not confirmed).
+**AC-1.10 — Practice isolation.** As a user in practice A, attempt to open a contact, company, ImportBatch, and Outbox item belonging to practice B by direct URL. All four return 404 (not 403 — existence is not confirmed).
 
-**AC-1.11 — Client users are absent from this module.** Signed in as FCC, no CRM navigation exists, and direct requests to contact, pipeline, vendor, and Outbox endpoints return 403.
+**AC-1.11 — Client users are absent from this module.** Signed in as client owner, no CRM navigation exists, and direct requests to contact, pipeline, vendor, and Outbox endpoints return 403.
 
-**AC-1.21 — VA can merge, and it is audited. (FR-1.34a, matrix 4.5.)** As a VA, merge two duplicate contacts created by an import. It succeeds, history moves to the survivor, and an `AuditEvent` names both records and the VA as actor. As a CF, confirm the merge control is absent and the endpoint returns 403.
+**AC-1.21 — assistant can merge, and it is audited. (FR-1.34a, matrix 4.5.)** As an assistant, merge two duplicate contacts created by an import. It succeeds, history moves to the survivor, and an `AuditEvent` names both records and the assistant as actor. As an associate, confirm the merge control is absent and the endpoint returns 403.
 
-**AC-1.22 — Delete and restore are delegable. (FR-1.34b, matrix 4.4/4.4a.)** As a VA, soft-delete a contact and a company: both succeed and disappear from search. Restore both: they return with their timelines intact.
+**AC-1.22 — Delete and restore are delegable. (FR-1.34b, matrix 4.4/4.4a.)** As an assistant, soft-delete a contact and a company: both succeed and disappear from search. Restore both: they return with their timelines intact.
 
-**AC-1.23 — Pipelines and their stages are FF-only; types and categories are not. (Matrix 3.14/3.14a/3.15/3.15a.)** As a VA, create a contact type and a service category: both succeed. Attempt to create a pipeline, or to rename, reorder, add or delete a pipeline stage: **403** for each. Confirm a VA can still **read** pipelines and stages — they work the board every day.
+**AC-1.23 — Pipelines and their stages are practice owner-only; types and categories are not. (Matrix 3.14/3.14a/3.15/3.15a.)** As an assistant, create a contact type and a service category: both succeed. Attempt to create a pipeline, or to rename, reorder, add or delete a pipeline stage: **403** for each. Confirm an assistant can still **read** pipelines and stages — they work the board every day.
 
-**AC-1.24 — Staff removal cascades. (FR-0.8c.)** As FF, remove a CF who holds two client assignments and a Gmail connection. Confirm: their session no longer authenticates, both `client_assignment` rows are closed, the Gmail connection and its stored token are gone, and every task, note, and sent message they authored still exists.
+**AC-1.24 — Staff removal cascades. (FR-0.8c.)** As practice owner, remove an associate who holds two client assignments and a Gmail connection. Confirm: their session no longer authenticates, both `client_assignment` rows are closed, the Gmail connection and its stored token are gone, and every task, note, and sent message they authored still exists.
 
-**AC-1.25 — AI spend is FF-only. (FR-0.9, matrix 3.19.)** As FF, open the AI usage view and confirm it shows `ai_call` totals. As CF and as VA, confirm no navigation exists and the endpoint returns 403.
+**AC-1.25 — AI spend is practice owner-only. (FR-0.9, matrix 3.19.)** As practice owner, open the AI usage view and confirm it shows `ai_call` totals. As associate and as assistant, confirm no navigation exists and the endpoint returns 403.
 
 **AC-1.12 — The client invariant derives forward and does not reverse. (FR-1.6a.)** Take a prospect at a company with `is_client_company = false` and no `client` type. Move them to the sales pipeline's **`won`** stage (*Closed Won*). Confirm the contact now carries type `client` **and** the company is flagged. Now move them to *Closed Lost* (`lost`): **confirm the type is still present and the company is still flagged.** Separately, add type `client` by hand to a different contact and confirm no position changes. Move a contact with no company to `won` and confirm it succeeds with no company row invented. **Then rename the `won` stage** to "Signed" and repeat with a third contact: the invariant still fires, because it keys on the semantic and not the label. **Finally, move a contact to "Active Referrer" in the referral pipeline** and confirm their company is **not** flagged and no `client` type is added — a nurture pipeline's end state is not a sale.
 
 **AC-1.12a — A contact holds a position in two pipelines at once. (FR-1.6d.)** Place one contact at *Negotiation* in Sales and at *Active Referrer* in Referral partners. Confirm both boards show them, the contact detail screen lists both positions, and moving them in Sales leaves the referral position untouched. Confirm that removing their `referral_partner` type does not remove them from the referral pipeline — type does not gate membership.
 
-**AC-1.12b — A sales pipeline cannot lose its only `won` stage. (FR-1.6b.)** As the FF, delete *Closed Won* from the Sales pipeline: **refused with a message naming the reason**, and the stage is still there afterwards. Mark another stage `won` first, and the delete then succeeds. Attempt to delete a stage that still holds contacts: refused, naming the count.
+**AC-1.12b — A sales pipeline cannot lose its only `won` stage. (FR-1.6b.)** As the practice owner, delete *Closed Won* from the Sales pipeline: **refused with a message naming the reason**, and the stage is still there afterwards. Mark another stage `won` first, and the delete then succeeds. Attempt to delete a stage that still holds contacts: refused, naming the count.
 
-**AC-1.13 — Assignment governs CF visibility. (FR-1.9a–9e.)** Assign a CF to client company A only. As that CF: contacts at A are visible; a prospect the CF owns is visible; a contact at unassigned client company B returns 404; another CF's prospect returns 404. As FF, remove the assignment; the CF's next request for a company-A contact returns 404, and any contact the CF created still exists.
+**AC-1.13 — Assignment governs associate visibility. (FR-1.9a–9e.)** Assign an associate to client company A only. As that associate: contacts at A are visible; a prospect the associate owns is visible; a contact at unassigned client company B returns 404; another associate's prospect returns 404. As practice owner, remove the assignment; the associate's next request for a company-A contact returns 404, and any contact the associate created still exists.
 
-**AC-1.14 — Only the FF assigns.** As CF and as VA, confirm no assignment control is offered and the assignment endpoints return 403.
+**AC-1.14 — Only the practice owner assigns.** As associate and as assistant, confirm no assignment control is offered and the assignment endpoints return 403.
 
-**AC-1.15 — VA sees the whole CRM.** As a VA, confirm contacts at every client company and every CF's prospects are visible — the VA restriction is financials and settings, not the CRM.
+**AC-1.15 — assistant sees the whole CRM.** As an assistant, confirm contacts at every client company and every associate's prospects are visible — the assistant restriction is financials and settings, not the CRM.
 
 **AC-1.16 — Stage-rule drafts expire on schedule. (FR-1.12.)** Create a rule with the default send-by. Trigger it and confirm the Outbox item's send-by date is 7 days out. Change the rule to 2 days, trigger again, and confirm the new item reflects it. Advance the clock past both: both are `expired` and the dev outbox is empty.
 
 **AC-1.17 — The Outbox is the complete send log. (FR-1.15–15c.)** Perform one of each: approve a referral touch, send a strategy PDF, and trigger a magic link. **Confirm all three appear as Outbox rows.** Confirm the touch passed through `pending_approval`, and that the PDF and magic link were written **directly as `sent`** with no pending state.
 
-**AC-1.18 — Touch composition includes all three parts. (FR-1.22.)** Set a tenant blurb, and set `referral_fee_terms` on partner X but leave it empty on partner Y. Generate both touches. X's draft contains blurb content, a fee reminder, and a reciprocal line. Y's contains blurb content and a reciprocal line and **no fee language whatsoever**. Both are 3–5 lines.
+**AC-1.18 — Touch composition includes all three parts. (FR-1.22.)** Set a practice blurb, and set `referral_fee_terms` on partner X but leave it empty on partner Y. Generate both touches. X's draft contains blurb content, a fee reminder, and a reciprocal line. Y's contains blurb content and a reciprocal line and **no fee language whatsoever**. Both are 3–5 lines.
 
 **AC-1.19 — Stale blurb warns but does not block. (FR-1.22a.)** Set the blurb's `last_updated_at` to 40 days ago and generate a monthly touch. The Outbox item shows a warning naming the blurb's age. Confirm the item can still be approved and sent.
 
@@ -309,20 +311,20 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 
 ### User stories
 
-**FF**
-- As the FF, I capture a thought in one action from anywhere in the app, without deciding first what it belongs to.
-- As the FF, I record a client call in the browser and get a transcript and a draft summary, so my recollection is not the only record.
-- As the FF, I put a PIN on a note about a sensitive personnel matter so it does not appear when a VA glances at the contact.
-- As the FF, I reset a PIN on a note when I have forgotten it, knowing this clears the PIN rather than revealing it, and that the reset is logged.
+**Practice owner**
+- As the practice owner, I capture a thought in one action from anywhere in the app, without deciding first what it belongs to.
+- As the practice owner, I record a client call in the browser and get a transcript and a draft summary, so my recollection is not the only record.
+- As the practice owner, I put a PIN on a note about a sensitive personnel matter so it does not appear when an assistant glances at the contact.
+- As the practice owner, I reset a PIN on a note when I have forgotten it, knowing this clears the PIN rather than revealing it, and that the reset is logged.
 
-**CF**
-- As a CF, I do everything the FF does with notes on my assigned accounts, except reset PINs.
+**Associate**
+- As an associate, I do everything the practice owner does with notes on my assigned accounts, except reset PINs.
 
-**VA**
-- As a VA, I read and write notes that are not PIN-locked, so I can support the practice without seeing what has been screened off.
-- As a VA, I see that a locked note exists on a contact — its title and nothing else — so I am not misled into thinking the record is empty.
+**Assistant**
+- As an assistant, I read and write notes that are not PIN-locked, so I can support the practice without seeing what has been screened off.
+- As an assistant, I see that a locked note exists on a contact — its title and nothing else — so I am not misled into thinking the record is empty.
 
-**FCC / ECC**
+**Client owner / client team member**
 - **No stories. Client users have no access to notes in Beta.** Notes are the fractional's working memory, including candid assessments of the client. There is no client-visible note type, and adding one later would be a deliberate product decision, not an oversight.
 
 ### Functional requirements
@@ -349,18 +351,18 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 11. A locked note appears in search results and on timelines as a **stub: title and linked record only**. No body, no summary, no excerpt.
 11a. **Setting a PIN on a note whose title was auto-derived requires the user to type a real title first**, and the PIN dialog says why: the title is shown on the locked stub, and an auto-derived title *is the first line of the body* — so a note PIN'd without this step would display on its own stub the very sentence it was hidden to protect. *(Built as a dialog rule. The API accepts a PIN on an auto-titled note — AC-2.3 requires that bypass to succeed — and FR-2.11b plus the generated search index keep it safe.)*
 11b. **Defense in depth: a locked stub never renders an auto-derived title under any circumstance.** If one is somehow encountered — a note PIN'd through the API, a title auto-derived after the PIN was set, a data migration — the stub renders **"Locked note"** instead. FR-2.11a is the workflow; this is the invariant that holds when the workflow is bypassed.
-12. **PIN reset is FF-only**, performed by an emailed link, and **clears the PIN rather than revealing it**. The note becomes readable to everyone with normal access from that moment. The reset is audited.
-13. The PIN-set screen states plainly what the PIN does and does not do: it screens the note from other users of the app; it does not protect it from the FF, from a database dump, or from the nightly backup.
+12. **PIN reset is practice owner-only**, performed by an emailed link, and **clears the PIN rather than revealing it**. The note becomes readable to everyone with normal access from that moment. The reset is audited.
+13. The PIN-set screen states plainly what the PIN does and does not do: it screens the note from other users of the app; it does not protect it from the practice owner, from a database dump, or from the nightly backup.
 
 **Recording and transcription**
 
 14. Recording uses the browser's `MediaRecorder`. **It captures this device's microphone only**, and the recorder says so before recording starts: it is for in-person conversations and dictation. The other side of a video call is not captured; meetings arrive through Module 5. *(Added from Phase 2 manual check 1.)* **Soft cap 120 minutes, with a warning at 110** — a strategy session runs 75 minutes to the seed's timing, and a cap that cannot hold the tool's own flagship session would be a self-inflicted limit.
 15. **Starting a recording shows a one-line reminder to confirm all parties consent to being recorded.** Dismissible per session, not per recording.
 16. Audio uploads to GCS; transcription runs asynchronously via Google Speech-to-Text; the note is usable (with a "transcribing" state) throughout.
-17. When the transcript is ready, Claude drafts a summary. **⛔ REVIEW QUEUE (R3):** the summary is presented beside the transcript for the author to **accept, edit, or discard**. No summary is attached silently. *(The reviewer is the note's author, or the FF. Enforced in the database: `summary` can be non-null only when `summary_state = 'accepted'`.)*
+17. When the transcript is ready, Claude drafts a summary. **⛔ REVIEW QUEUE (R3):** the summary is presented beside the transcript for the author to **accept, edit, or discard**. No summary is attached silently. *(The reviewer is the note's author, or the practice owner. Enforced in the database: `summary` can be non-null only when `summary_state = 'accepted'`.)*
 18. If transcription fails, the note keeps the audio and shows a retry control. If Claude fails, the note keeps the transcript.
 18a. **No speech is its own outcome.** When Speech-to-Text returns nothing, or fewer than 5 words per recorded minute, the note says **"No speech detected"** (or "Almost no speech detected"), lists what to check — microphone permission, headphones on a call, a muted microphone or call — keeps the audio for retry, and drafts no summary. *(Added from Phase 2 manual check 1: a 6-minute video call transcribed as one word.)*
-19. **Audio retention is a per-tenant setting, `audio_retention_days`, default 30.** Transcript and summary are retained indefinitely. Setting it to 0 deletes audio on successful transcription, and the setting screen states that this forfeits re-transcription.
+19. **Audio retention is a per-practice setting, `audio_retention_days`, default 30.** Transcript and summary are retained indefinitely. Setting it to 0 deletes audio on successful transcription, and the setting screen states that this forfeits re-transcription.
 19a. **Audio whose transcription never succeeded is not deleted by retention** (owner decision, 2026-09-11). It is the only record of the call; the note is flagged until someone retries the transcription or discards the audio.
 19b. **Recording audio is not in the nightly backup** (owner decision, 2026-09-11), so that retention actually deletes it. It relies on GCS durability and the media bucket's 7-day soft delete.
 
@@ -372,7 +374,7 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 4. Note templates.
 5. Collaborative or simultaneous editing.
 6. File or image attachments on notes.
-7. Note sharing between tenants or export beyond the database backup.
+7. Note sharing between practices or export beyond the database backup.
 8. Encryption of note bodies — explicitly excluded, per `CLAUDE.md` and FR-2.8.
 9. PIN on anything other than a note (no PIN'd contacts, tasks, or companies).
 
@@ -382,13 +384,13 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 
 **AC-2.2 — Linking is optional, mutable, and dual. (FR-2.3.)** Create an unlinked note; confirm it saves. Link it to a contact; confirm it appears on that contact's timeline. **Now also link it to a task, and confirm it appears on both the contact timeline and the task, as one note and not two.** Confirm the UI offers no way to link a Contact and a Company simultaneously.
 
-**AC-2.3 — A locked note shows as a stub, not a hole, and the stub leaks nothing. (FR-2.11, 2.11a, 2.11b.)** Set a PIN on a note attached to a contact. Sign in as a VA. The contact timeline shows the note's title with a locked indicator, no body and no summary text anywhere in the page source, and search for a distinctive word from the body returns nothing.
+**AC-2.3 — A locked note shows as a stub, not a hole, and the stub leaks nothing. (FR-2.11, 2.11a, 2.11b.)** Set a PIN on a note attached to a contact. Sign in as an assistant. The contact timeline shows the note's title with a locked indicator, no body and no summary text anywhere in the page source, and search for a distinctive word from the body returns nothing.
 
-**Then test the title leak specifically.** Create a note with **no title**, whose first line of body is the distinctive string `CONFIDENTIAL SEVERANCE DISCUSSION`. Attempt to set a PIN: **the dialog requires a typed title before proceeding**, and explains why. Supply the title `HR matter` and set the PIN. As a VA, confirm the stub shows `HR matter` and that `CONFIDENTIAL SEVERANCE DISCUSSION` appears **nowhere** in the page source or any API response. Finally, set a PIN on an auto-titled note **through the API, bypassing the dialog**, and confirm the stub renders **"Locked note"** rather than the derived title.
+**Then test the title leak specifically.** Create a note with **no title**, whose first line of body is the distinctive string `CONFIDENTIAL SEVERANCE DISCUSSION`. Attempt to set a PIN: **the dialog requires a typed title before proceeding**, and explains why. Supply the title `HR matter` and set the PIN. As an assistant, confirm the stub shows `HR matter` and that `CONFIDENTIAL SEVERANCE DISCUSSION` appears **nowhere** in the page source or any API response. Finally, set a PIN on an auto-titled note **through the API, bypassing the dialog**, and confirm the stub renders **"Locked note"** rather than the derived title.
 
 **AC-2.4 — Lockout works and is recorded.** Enter a wrong PIN five times. The note refuses further attempts for 15 minutes with a clear message, and an `AuditEvent` records the attempts and the actor.
 
-**AC-2.5 — Reset clears, does not reveal, and is FF-only.** As a CF and again as a VA, confirm no reset control is offered and the reset endpoint returns 403. As FF, request a reset; an email arrives with a link; following it clears the PIN. The note is now readable with no PIN. **At no point is the original PIN displayed or emailed.** The reset appears in the audit log.
+**AC-2.5 — Reset clears, does not reveal, and is practice owner-only.** As an associate and again as an assistant, confirm no reset control is offered and the reset endpoint returns 403. As practice owner, request a reset; an email arrives with a link; following it clears the PIN. The note is now readable with no PIN. **At no point is the original PIN displayed or emailed.** The reset appears in the audit log.
 
 **AC-2.5a — Recording cap. (FR-2.14.)** Begin a recording and advance to 110 minutes: a warning appears. Advance to 120: the recording stops cleanly and the audio captured so far is retained and transcribable.
 
@@ -403,7 +405,7 @@ Capture that is fast enough to actually use during a call. A fractional's most v
 
 **AC-2.9 — Retention setting is honored.** Set `audio_retention_days` to 1, create a recording, and run the retention job with a clock 2 days ahead. The audio object is gone from GCS; the transcript and summary remain. A recording that never transcribed is **kept** by the same run and flagged (FR-2.19a).
 
-**AC-2.10 — Tenant isolation.** A note in tenant B is not returned by tenant A's search, timeline, or direct URL — including when the note is unlocked in tenant B.
+**AC-2.10 — Practice isolation.** A note in practice B is not returned by practice A's search, timeline, or direct URL — including when the note is unlocked in practice B.
 
 ---
 
@@ -417,33 +419,33 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 ### User stories
 
-**FF**
-- As the FF, I create a Goal for a client engagement, break it into Projects, and fill those with Tasks, so the strategic work and the daily work are the same system.
-- As the FF, when I move a task forward I am prompted for one line on what it means for the client, so the weekly digest writes itself out of work I was doing anyway.
-- As the FF, I review all pending digests in one screen before they go anywhere, and approve them in a batch when they look right.
-- As the FF, I can see exactly what was sent, to whom, and when, on the task itself — so "did they know?" is a question I can answer.
-- As the FF, I turn off AI-written prose for a client who prefers a plain list, and the digest still sends on cadence.
-- As the FF, I keep every digest held for approval, and I know that this is the default until I deliberately change it.
-- As the FF, I keep internal comments on a task separate from what the client sees, so the record does not fork into a private tool and a shown tool.
+**Practice owner**
+- As the practice owner, I create a Goal for a client engagement, break it into Projects, and fill those with Tasks, so the strategic work and the daily work are the same system.
+- As the practice owner, when I move a task forward I am prompted for one line on what it means for the client, so the weekly digest writes itself out of work I was doing anyway.
+- As the practice owner, I review all pending digests in one screen before they go anywhere, and approve them in a batch when they look right.
+- As the practice owner, I can see exactly what was sent, to whom, and when, on the task itself — so "did they know?" is a question I can answer.
+- As the practice owner, I turn off AI-written prose for a client who prefers a plain list, and the digest still sends on cadence.
+- As the practice owner, I keep every digest held for approval, and I know that this is the default until I deliberately change it.
+- As the practice owner, I keep internal comments on a task separate from what the client sees, so the record does not fork into a private tool and a shown tool.
 
-**CF**
-- As a CF, I do all of the above on the client companies I am assigned to, and nothing on the ones I am not.
-- As a CF, I approve digests for my own accounts, because I am the one accountable for what that client is told.
+**Associate**
+- As an associate, I do all of the above on the client companies I am assigned to, and nothing on the ones I am not.
+- As an associate, I approve digests for my own accounts, because I am the one accountable for what that client is told.
 
-**VA**
-- As a VA, I create and update tasks, chase status, and prepare digest content, so the FF's review is quick.
-- As a VA, I **cannot approve or send a digest**, because nothing I prepare reaches a client without a fractional seeing it.
-- As a VA, I comment internally on tasks without any risk of the client seeing it.
+**Assistant**
+- As an assistant, I create and update tasks, chase status, and prepare digest content, so the practice owner's review is quick.
+- As an assistant, I **cannot approve or send a digest**, because nothing I prepare reaches a client without a fractional seeing it.
+- As an assistant, I comment internally on tasks without any risk of the client seeing it.
 
-**FCC — Founder of client company**
+**Client owner** (`FCC`, the client company's founder)
 - As the client founder, I see my company's goals, projects, and tasks — and nothing from any other company.
 - As the client founder, I create tasks for my own team and assign them among my own users, so this is my task tool and not just a viewing window.
 - As the client founder, I comment on a task and the fractional sees it on the same record.
 - As the client founder, I open a progress report on demand instead of waiting for the email.
 - As the client founder, I change how often I get emailed without asking anyone.
 
-**ECC — Employee of client company**
-- As a client employee, I have the same access to my company's work as the founder does. **In Beta, FCC and ECC are functionally identical.** The only distinction is that FCC is the designated recipient for company-level communications; the user-management capability that will separate them is V1 (`CLAUDE.md` says "later"). The two roles exist separately in the model and the access matrix from day one so V1 does not require a migration — but I am not going to invent a Beta difference that does not exist.
+**Client team member** (`ECC`, the client company's employees)
+- As a client employee, I have the same access to my company's work as the founder does. **In Beta, client owner and client team member are functionally identical.** The only distinction is that client owner is the designated recipient for company-level communications; the user-management capability that will separate them is V1 (`CLAUDE.md` says "later"). The two roles exist separately in the model and the access matrix from day one so V1 does not require a migration — but I am not going to invent a Beta difference that does not exist.
 
 ### Functional requirements
 
@@ -452,7 +454,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 1. A **Goal** has: title, description, client company (nullable — internal goals exist), owner, target date, status, and an optional link back to the Strategy Map row that produced it (Module 4).
 2. A **Project** has: title, description, parent Goal (nullable), client company, owner, start and target dates, status.
 3. A **Task** has: title, description, parent Project (nullable), parent Goal (nullable), client company (nullable), assignee, status, priority, due date, `is_client_visible`, checklist items, comments, and stakeholders.
-3a. **Goals, Projects, and Tasks each carry a `client_owner_contact_id` alongside the tenant-side owner** — *who on the client side is accountable*. It is a Contact, not a user, because the two things that populate it name client people who often have no login: a Strategy Map row's owner (usually the client's Integrator) and a meeting action item's owner.
+3a. **Goals, Projects, and Tasks each carry a `client_owner_contact_id` alongside the practice-side owner** — *who on the client side is accountable*. It is a Contact, not a user, because the two things that populate it name client people who often have no login: a Strategy Map row's owner (usually the client's Integrator) and a meeting action item's owner.
 4. **Depth is capped at three levels.** A task cannot parent another task. The "sub-step" need is served by **checklist items** — a flat, ordered list of strings with a done flag — so three levels does not quietly become unlimited.
 5. `project` and `goal` are both nullable on a Task, so a standalone task is a first-class thing (assumption F8).
 6. Deleting a Goal or Project does not delete its children; they are detached and reported.
@@ -461,12 +463,12 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 7. Task status is exactly: **Not started · In progress · Blocked · Waiting on client · Done · Cancelled.**
 8. "Waiting on client" is distinct from "Blocked" and is rendered distinctly in the client portal, because the difference between *we are stuck* and *you are the blocker* is the most useful thing a progress report can say.
-9. A task's assignee may be a tenant user or a client user. **Client users may only assign to users within their own company.**
+9. A task's assignee may be a practice user or a client user. **Client users may only assign to users within their own company.**
 9a. **What a client user may change, stated as one rule** (because "tasks they created" and "tasks they are assigned" are different sets and the overlap was previously ambiguous):
 
 > A client user may **edit, change the status of, and reassign** any task that is **client-visible, in their own company, and either assigned to a client-side user or created by a client user**.
 
-  1. **A task assigned to a tenant user is read-only to client users**, apart from posting shared comments. If the fractional owns the work, the client asks rather than edits.
+  1. **A task assigned to a practice user is read-only to client users**, apart from posting shared comments. If the fractional owns the work, the client asks rather than edits.
   2. **Reassignment by a client user is always bounded to users in their own company** — they can hand work to a colleague, never to a fractional, and never outside the company.
   3. **Soft-deleting is narrower than editing:** a client user may delete only tasks **they created**. Deleting work a fractional assigned is not a client's call.
   4. This rule is the `client-editable` scope in `03_access_matrix.md` rows 7.4–7.6.
@@ -475,17 +477,17 @@ Everything the fractional does for a client, in a structure the client can see, 
 **Visibility**
 
 11. Every Task carries `is_client_visible`, defaulting to true when the task has a client company and false otherwise.
-12. **Comments carry `visibility ∈ {internal, shared}`.** Tenant users choose per comment and the current choice is unmistakable in the UI before posting. Client users see only `shared` comments and can only create `shared` ones.
-12a. **A tenant user's comment defaults to `internal`.** The two failure modes are not symmetric: a comment meant for the client that stayed internal is noticed and reposted, while an internal remark that went to the client cannot be recalled. The safe default is the recoverable one.
+12. **Comments carry `visibility ∈ {internal, shared}`.** Practice users choose per comment and the current choice is unmistakable in the UI before posting. Client users see only `shared` comments and can only create `shared` ones.
+12a. **A practice user's comment defaults to `internal`.** The two failure modes are not symmetric: a comment meant for the client that stayed internal is noticed and reposted, while an internal remark that went to the client cannot be recalled. The safe default is the recoverable one.
 13. A client user sees only: their company's goals, projects, and client-visible tasks, and shared comments on them.
 14. Changing a task from client-visible to hidden is audited, and the reverse warns that prior activity will become visible.
 
 **Updates — the source material for digests**
 
 15. Every meaningful change writes a **`TaskUpdate`** event: status change, assignee change, due-date change, comment added, checklist item completed, task created, task completed. Each records actor, timestamp, and from/to values.
-16. **On a status change, a tenant user is prompted — not forced — for a one-line "what this means for the client".** Optional, skippable, and the prompt states why it is being asked.
+16. **On a status change, a practice user is prompted — not forced — for a one-line "what this means for the client".** Optional, skippable, and the prompt states why it is being asked.
 17. Digest quality depends on FR-3.16, so the client-facing line is a first-class field on the update, not a comment.
-18. A tenant user can add a client-facing narrative to a task at any time without changing status.
+18. A practice user can add a client-facing narrative to a task at any time without changing status.
 
 **Digest assembly**
 
@@ -495,16 +497,16 @@ Everything the fractional does for a client, in a structure the client can see, 
 20b. Where a stakeholder Contact *does* have a linked User, the portal and the digest are two views of the same entitlement — no separate subscription list exists.
 21. Each stakeholder carries a cadence: **`every_update`, `weekly` (default), `monthly`.**
 22. `every_update` is **batched with a 30-minute quiet window**, so one editing session produces one email rather than six.
-23. `weekly` and `monthly` fire on a per-tenant send day and hour, in tenant timezone. **Default: Friday 08:00.** *(Owner decision 2026-09-11: a **monthly** digest goes out on the **first send-day of the month and covers the previous calendar month** — 3 October covers all of September. Generated the day before, like the weekly.)* A Friday send means the approval batch is generated Thursday morning, inside a working day; a Monday send would put the batch in front of you on Sunday, where it would not be actioned and every digest would expire.
+23. `weekly` and `monthly` fire on a per-practice send day and hour, in practice timezone. **Default: Friday 08:00.** *(Owner decision 2026-09-11: a **monthly** digest goes out on the **first send-day of the month and covers the previous calendar month** — 3 October covers all of September. Generated the day before, like the weekly.)* A Friday send means the approval batch is generated Thursday morning, inside a working day; a Monday send would put the batch in front of you on Sunday, where it would not be actioned and every digest would expire.
 
 **Digest composition and approval**
 
-24. Two composition modes, held as **`company.digest_ai_prose`** on each client company (seeded from a tenant-level default, changeable per client at any time):
+24. Two composition modes, held as **`company.digest_ai_prose`** on each client company (seeded from a practice-level default, changeable per client at any time):
     - **AI prose on** — Claude writes the connective narrative that turns transitions into a report. It is given **only** the status transitions and the human-written client-facing lines, and is instructed that it must not assert any fact not present in that input.
     - **AI prose off** — deterministic template: status transitions and human-written text only, no AI output whatsoever.
 24a. **The narrative says what the work is FOR** *(owner decision, 2026-09-18, after Check 2's delivered digest read well but read as work done rather than work toward something)*. Each block of updates is passed to Claude under **the goal it serves** — the goal's title and, where the fractional wrote one, its outcome statement (`goal.description` today; `goal.outcome_statement` once Module 4B adds it) — and the model is instructed to frame movement in terms of that goal rather than as a list of actions. **The AC-3.5 constraint governs the goal exactly as it governs everything else:** the narrative may say this work belongs to that goal and may repeat what the input says happened; it may **not** say the goal has advanced, is closer, is on track, is nearly met or will be met, and it may use **no number, proportion or comparison to before** unless a line in the input states it. Work attached to no goal is reported on its own terms and is never filed under one. The **update list is grouped the same way** — goal, then task — with goal-less work in an unheaded section last.
 24b. **The measured version of FR-3.24a is Module 4B, not Module 3.** "Three of five sites now inspected weekly, up from one" requires the measurable's **baseline and current value**, which live in `goal.baseline_value` and `goal_measurement` — neither exists until 4B. Module 3 therefore frames work by the goal it serves and says nothing about distance traveled, because it has nothing true to say about it. **This requirement comes off the books when 4B lands** (FR-4B.43): the measured sentence is 4B's to write, in the value report, and the digest is not retrofitted to write it.
-25. **`hold_all_digests` is a per-tenant setting, default ON for Beta.**
+25. **`hold_all_digests` is a per-practice setting, default ON for Beta.**
 26. **While `hold_all_digests` is ON, every digest waits for approval — AI-drafted and deterministic alike.** ⛔ **REVIEW QUEUE (R4, R5).**
 27. When `hold_all_digests` is OFF: **AI-drafted digests still require approval** (⛔ R4); deterministic digests send on cadence without approval.
 28. **Scheduled digests** (`weekly`, `monthly`) are **generated 24 hours before their send window**, so review is possible without being urgent. With the FR-3.23 default this is **Thursday 08:00 generation, Friday 08:00 send** — a full working day to review, and no approval batch landing on a weekend.
@@ -527,41 +529,41 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **Portal access and seats**
 
-33c. **Portal access is granted per Contact by a tenant user** — the FF, or a CF assigned to that client company (FR-1.9a). **VAs cannot grant, revoke, or change portal access.**
-33d. Granting access to a Contact at a client company: creates the linked **User** (FR-1.1 / assumption F1), assigns role **FCC or ECC** (defaulting to FCC when the Contact is the company's `primary_contact` and ECC otherwise), **consumes one seat against the company's `seat_count`**, and sends a magic link.
+33c. **Portal access is granted per Contact by a practice user** — the practice owner, or an associate assigned to that client company (FR-1.9a). **Assistants cannot grant, revoke, or change portal access.**
+33d. Granting access to a Contact at a client company: creates the linked **User** (FR-1.1 / assumption F1), assigns role **Client owner or client team member** (defaulting to client owner when the Contact is the company's `primary_contact` and client team member otherwise), **consumes one seat against the company's `seat_count`**, and sends a magic link.
 33e. **When seats are exhausted, the grant fails with a clear message naming the company's seat count and how many are in use** — not a generic error, and never by silently succeeding without a seat.
-33f. Seat count is set by the **FF only**. Changing it below the number in use does not revoke anyone; it blocks new grants until usage falls below the new number, and says so.
+33f. Seat count is set by the **Practice owner only**. Changing it below the number in use does not revoke anyone; it blocks new grants until usage falls below the new number, and says so.
 33g. **Revoking access** frees the seat, **invalidates the user's active sessions and every outstanding magic link**, and leaves the Contact, their stakeholder rows, and all their comments and tasks intact. Revocation is not deletion — a revoked person keeps receiving digests if they are still a stakeholder, because those are separate entitlements (FR-3.20).
 33h. Grants, revocations and role changes are audited with actor and timestamp.
-33i. **An existing portal user's role can be changed between FCC and ECC** by the same people who grant (FR-3.33c). A change that narrows (FCC → ECC) invalidates their sessions and outstanding magic links as a revoke does; their access and seat continue, and they sign in again with a fresh link. Setting a company's `primary_contact` changes only the default for future grants, never an existing role.
+33i. **An existing portal user's role can be changed between client owner and client team member** by the same people who grant (FR-3.33c). A change that narrows (client owner → client team member) invalidates their sessions and outstanding magic links as a revoke does; their access and seat continue, and they sign in again with a fresh link. Setting a company's `primary_contact` changes only the default for future grants, never an existing role.
 
 **Client portal**
 
-34. The portal is scoped by both tenant and client company (FR-0.2).
+34. The portal is scoped by both practice and client company (FR-0.2).
 35. Client users can **create tasks**, comment, complete, and assign within their company, subject to FR-3.9a.
 35a. **Client users may also create Projects** — `own-company`, no parent Goal, `created_by_client = true` — so the portal is usable as a real task tool rather than a list that only ever grows. **Goals remain fractional-only:** a Goal is the strategy the engagement is being judged against, and it is not the client's to author.
-35b. A client-created project is visible to the tenant staff on that account like any other, and its tasks follow the ordinary stakeholder and digest rules.
+35b. A client-created project is visible to the practice staff on that account like any other, and its tasks follow the ordinary stakeholder and digest rules.
 36. **A client user creating a task or comment does not pass through any review queue.** It is a person writing about their own work; a queue there would make the portal unusable. Stated explicitly so the review rule is not over-applied.
-37. Client-created tasks default to client-visible, and notify the tenant owner of the parent project (or the company's assigned fractional if none) subject to the same 30-minute quiet window.
+37. Client-created tasks default to client-visible, and notify the practice owner of the parent project (or the company's assigned fractional if none) subject to the same 30-minute quiet window.
 38. ~~The portal offers an **on-demand progress report** rendering the same content as a digest for a chosen period~~ — **replaced by Module 4B (FR-4B.1, FR-4B.5), 2026-09-21.** It answered *what happened lately*, which is the wrong question; the client value report answers whether the work is working. **Two things survive the replacement**: the report needs no email and no approval, because a client pulling a report has no outward effect (FR-4B.37); and it **requires a login** — a cadence token does not reach it (AC-4B.21). Its implementation is removed rather than left alongside: two answers to "how is it going" that disagree is worse than either.
 39. List view and board (status-column) view. Both filterable by **client company**, project, assignee, and status. Choosing a client **narrows the project and assignee filters to that client**, as the New task form already does — an option that cannot match anything is worse than no option.
 
 39a. **Work and Tasks carry a company dimension.** *(Owner request, 2026-09-17.)* A fractional runs several accounts at once, and an undifferentiated list asks them to remember which client each goal belongs to. On **Work**, goals are **grouped under a heading per client company**, with the practice's own work — anything with no client company — in its own group, last. "Projects with no goal" and "Tasks filed under nothing" group the same way. On both screens a selector narrows to **one client, or to internal**; the default on both is **All clients**, and the last choice is **remembered per user in that browser** (each screen remembers its own). A group appears only when there is work in it, so a client with nothing filed is not given an empty heading. **This is not out-of-scope item 11** (cross-client reporting or portfolio dashboards): it is a filter over work the person can already see, with no roll-up, no comparison and no numbers across accounts.
 
-39b. **The dimension never widens what a role may see.** The filter is applied to the queryset role scoping has already decided, so a CF naming an unassigned company asks for nothing rather than for more, and a company id from another tenant simply matches nothing. **The portal has no selector** — a client user has exactly one company and every row they can see belongs to it — and the grouping headings are off there for the same reason.
+39b. **The dimension never widens what a role may see.** The filter is applied to the queryset role scoping has already decided, so an associate naming an unassigned company asks for nothing rather than for more, and a company id from another practice simply matches nothing. **The portal has no selector** — a client user has exactly one company and every row they can see belongs to it — and the grouping headings are off there for the same reason.
 
-**Tenant notifications**
+**Practice notifications**
 
-40. Tenant users are notified in-app and by email when a client comments or creates a task, batched on the same 30-minute quiet window. *(Owner decision 2026-09-11: the in-app half is a **feed built from the `task_update` rows already recorded** for client actions — no notification table and no per-user read state. The email half is batched as specified.)*
+40. Practice users are notified in-app and by email when a client comments or creates a task, batched on the same 30-minute quiet window. *(Owner decision 2026-09-11: the in-app half is a **feed built from the `task_update` rows already recorded** for client actions — no notification table and no per-user read state. The email half is batched as specified.)*
 
 **Activity log and acting as** *(added 2026-09-15, Phase 3 manual checks)*
 
-41. **The practice has a read-only activity feed**, visible to **FF, CF and VA — never to a client**. One chronological list of every action touching any contact, company, referral partner or prospect: task, project and goal movement (`task_update`), comments **of both visibilities**, notes written, mail sent, stage changes, imports, portal grants and revokes, acting-as sessions, and digest approvals and sends. Filterable by company, contact, the person who acted, type, and date range. **FF and VA see the whole tenant; a CF sees their assigned companies plus contacts they own** — the same universe `contact_queryset_for` already defines (FR-1.9c). Read-only for every role, with no create, edit or delete route in existence. *Meetings and inbound email join as sources with Modules 5 and 6.*
+41. **The practice has a read-only activity feed**, visible to **Practice owner, associate and assistant — never to a client**. One chronological list of every action touching any contact, company, referral partner or prospect: task, project and goal movement (`task_update`), comments **of both visibilities**, notes written, mail sent, stage changes, imports, portal grants and revokes, acting-as sessions, and digest approvals and sends. Filterable by company, contact, the person who acted, type, and date range. **Practice owner and assistant see the whole practice; an associate sees their assigned companies plus contacts they own** — the same universe `contact_queryset_for` already defines (FR-1.9c). Read-only for every role, with no create, edit or delete route in existence. *Meetings and inbound email join as sources with Modules 5 and 6.*
 
-41a. **This reverses the original FR-3.41** (2026-09-13), which gave the log to FCC and ECC as their company's own history. **Owner ruling, 2026-09-16, after using it:** the log's value is to the practice, which runs several accounts and needs to see across them including its own team's work; a founder does not want an audit feed of their own company. **The client's window into the engagement is the value report (Module 4B)**, which answers whether the work is working rather than listing what was touched. A client user is refused the endpoint outright, and there is no nav entry.
-41a. **It never shows** an internal comment in any form (not even "someone commented"), a task hidden from the client, or anything belonging to another company or tenant. Hidden work is excluded by its current visibility, so hiding a task removes its history from the log.
-41b. **Nobody can edit or delete an entry** — the endpoint has no write methods for any role. Tenant staff do not see this log; they see the same history on each task.
-42. **Acting as.** (a) An FF, or a CF on a company they are assigned, may act as any live client user at a client company they could grant portal access to (FR-3.33c). (b) An FCC may act as any other live user in their own company. Nobody else may; never across a company or tenant boundary, never as tenant staff or themselves, and never nested.
+41a. **This reverses the original FR-3.41** (2026-09-13), which gave the log to client owner and client team member as their company's own history. **Owner ruling, 2026-09-16, after using it:** the log's value is to the practice, which runs several accounts and needs to see across them including its own team's work; a founder does not want an audit feed of their own company. **The client's window into the engagement is the value report (Module 4B)**, which answers whether the work is working rather than listing what was touched. A client user is refused the endpoint outright, and there is no nav entry.
+41a. **It never shows** an internal comment in any form (not even "someone commented"), a task hidden from the client, or anything belonging to another company or practice. Hidden work is excluded by its current visibility, so hiding a task removes its history from the log.
+41b. **Nobody can edit or delete an entry** — the endpoint has no write methods for any role. Practice staff do not see this log; they see the same history on each task.
+42. **Acting as.** (a) A practice owner, or an associate on a company they are assigned, may act as any live client user at a client company they could grant portal access to (FR-3.33c). (b) A client owner may act as any other live user in their own company. Nobody else may; never across a company or practice boundary, never as practice staff or themselves, and never nested.
 42a. While acting, the app behaves exactly as it would for the acted-as user, and **a persistent banner names both people**; the only way out is an explicit **Stop acting as**.
 42b. **Every `task_update`, `comment` and `audit_event` written while acting carries `acting_user` (the real person) and `acted_as_user`**, stamped at save time so no write path can omit them.
 42c. **No email of any kind sends while acting.** A message created during the session is kept in the Outbox as `suppressed` and never delivered, with an `email.suppressed` audit event. A `task_update` written while acting is excluded from every digest and client-activity notice, and that suppression is audited when the update is written.
@@ -575,12 +577,12 @@ Everything the fractional does for a client, in a structure the client can see, 
 3. Time tracking or billable hours.
 4. File attachments on tasks or comments.
 5. Custom statuses or custom fields.
-6. **Client user management by the FCC** — `CLAUDE.md` places it later; seats are allocated by the FF in Beta.
+6. **Client user management by the client owner** — `CLAUDE.md` places it later; seats are allocated by the practice owner in Beta.
 7. Calendar view and calendar sync.
 8. Native mobile applications (the portal is responsive web).
 9. @-mentions and notification rules beyond stakeholder cadence.
 10. Task templates (the Strategy Map conversion in Module 4 is the only bulk-create path).
-11. Cross-client reporting or portfolio dashboards for the FF.
+11. Cross-client reporting or portfolio dashboards for the practice owner.
 
 ### Acceptance criteria
 
@@ -590,7 +592,7 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **AC-3.3 — The client-facing line is prompted, not forced.** Move a task to In progress. The prompt for "what this means for the client" appears. Skip it — the status change saves. Move another task and supply the line; confirm it is stored on the update, not as a comment.
 
-**AC-3.4 — Internal comments never leak.** Post an internal comment and a shared comment on a client-visible task. Sign in as FCC: only the shared comment is visible, and the internal comment's text does not appear anywhere in the page source or API response. Confirm the FCC comment form offers no visibility choice.
+**AC-3.4 — Internal comments never leak.** Post an internal comment and a shared comment on a client-visible task. Sign in as client owner: only the shared comment is visible, and the internal comment's text does not appear anywhere in the page source or API response. Confirm the client owner comment form offers no visibility choice.
 
 **AC-3.5 — Digest content is faithful.** Create a project with two tasks and one stakeholder on weekly cadence. Move both to In progress, adding a client-facing line to one. Run generation. The pending digest names both transitions and quotes your line **verbatim**. Read the AI narrative: **it contains no fact, name, date, or claim that is not present in those two transitions and that one line.** With the tasks under a goal (FR-3.24a), the narrative may name the goal and say the work belongs to it; it must **not** claim the goal has advanced, is on track or is nearly met, and must show **no number or comparison to before** — none of that is in the input.
 
@@ -608,17 +610,17 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **AC-3.12 — Self-service cadence.** From a delivered digest, follow the footer link. Without signing in with a password, change cadence from weekly to monthly. Confirm the stakeholder record updated and the change is audited.
 
-**AC-3.13 — Client task creation works and is not queued.** As FCC, create a task, assign it to an ECC in the same company, and comment. All three take effect immediately with no approval step. The tenant owner receives a notification within the quiet window.
+**AC-3.13 — Client task creation works and is not queued.** As client owner, create a task, assign it to a client team member in the same company, and comment. All three take effect immediately with no approval step. The practice owner receives a notification within the quiet window.
 
-**AC-3.14 — Client assignment is bounded.** As FCC, open the assignee picker. It lists only users in your own company. Attempt via the API to assign a task to a user in another company and to a tenant user not on your account: both are rejected.
+**AC-3.14 — Client assignment is bounded.** As client owner, open the assignee picker. It lists only users in your own company. Attempt via the API to assign a task to a user in another company and to a practice user not on your account: both are rejected.
 
-**AC-3.15 — The client's report needs no approval. (FR-3.38, carried onto FR-4B.37.)** As FCC, open the client value report. It renders immediately and **sends no email** — a client pulling a report has no outward effect. **The criterion outlives the screen it was written for**: FR-3.38's implementation is replaced by Module 4B, and this rule moves onto it unchanged.
+**AC-3.15 — The client's report needs no approval. (FR-3.38, carried onto FR-4B.37.)** As client owner, open the client value report. It renders immediately and **sends no email** — a client pulling a report has no outward effect. **The criterion outlives the screen it was written for**: FR-3.38's implementation is replaced by Module 4B, and this rule moves onto it unchanged.
 
 **AC-3.16 — "Waiting on client" is visibly distinct.** Set a task to Waiting on client. In the portal it is rendered distinctly from Blocked, and the distinction survives into the digest text.
 
-**AC-3.17 — Client-company isolation.** As FCC of company A, request by direct URL: a goal, a project, a task, a comment, and a progress report belonging to company B **in the same tenant**. All return 404. Repeat for a company in a different tenant. All return 404.
+**AC-3.17 — Client-company isolation.** As client owner of company A, request by direct URL: a goal, a project, a task, a comment, and a progress report belonging to company B **in the same practice**. All return 404. Repeat for a company in a different practice. All return 404.
 
-**AC-3.18 — Role boundary on digest approval.** As a VA, open the digest approval screen: content is visible, approve and send controls are absent, and calling the approve endpoint returns 403. As a CF, confirm approval succeeds for an assigned client company and returns 403 for an unassigned one.
+**AC-3.18 — Role boundary on digest approval.** As an assistant, open the digest approval screen: content is visible, approve and send controls are absent, and calling the approve endpoint returns 403. As an associate, confirm approval succeeds for an assigned client company and returns 403 for an unassigned one.
 
 **AC-3.19 — Hidden tasks stay out of digests.** Set a task to not client-visible and update it. Confirm the update appears in no stakeholder digest and is absent from the client portal, while remaining fully visible internally.
 
@@ -626,15 +628,15 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **AC-3.21 — A late update rolls forward, and never rewrites a sent digest. (FR-3.30b.)** Approve a digest. After approval, update a covered task. Confirm the approved digest's stored content is **byte-for-byte unchanged**, that no second email is produced for the current period, and that the late update appears in the next period's pending draft.
 
-**AC-3.37 — The client-edit rule holds at all four boundaries. (FR-3.9a.)** In one client company, set up four client-visible tasks: (i) created by a client user, (ii) assigned to a client user, (iii) assigned to a **tenant** user, (iv) created by a client user in a **different** company. As an ECC: edit and restatus (i) and (ii) — both succeed. Attempt to edit (iii): **refused**, while posting a shared comment on it succeeds. Attempt (iv): **404**. Then attempt to reassign (i) to a tenant user and to a user at another company: **both refused**; reassigning to a colleague in their own company succeeds.
+**AC-3.37 — The client-edit rule holds at all four boundaries. (FR-3.9a.)** In one client company, set up four client-visible tasks: (i) created by a client user, (ii) assigned to a client user, (iii) assigned to a **practice** user, (iv) created by a client user in a **different** company. As a client team member: edit and restatus (i) and (ii) — both succeed. Attempt to edit (iii): **refused**, while posting a shared comment on it succeeds. Attempt (iv): **404**. Then attempt to reassign (i) to a practice user and to a user at another company: **both refused**; reassigning to a colleague in their own company succeeds.
 
-**AC-3.38 — Clients delete only what they created. (FR-3.9a.3, matrix 7.6a.)** As an FCC, soft-delete a task you created: succeeds. Attempt to delete a task a fractional created and assigned to a client user — editable under FR-3.9a but **not deletable**: refused.
+**AC-3.38 — Clients delete only what they created. (FR-3.9a.3, matrix 7.6a.)** As a client owner, soft-delete a task you created: succeeds. Attempt to delete a task a fractional created and assigned to a client user — editable under FR-3.9a but **not deletable**: refused.
 
-**AC-3.39 — Clients create projects but not goals. (FR-3.35a, matrix 7.2/7.2a.)** As an FCC, create a project: it succeeds with `created_by_client = true`, no parent goal, and your own company set. Add two tasks to it and confirm they behave like any other task. Confirm **no control exists to create a Goal** and that the goal-create endpoint returns 403.
+**AC-3.39 — Clients create projects but not goals. (FR-3.35a, matrix 7.2/7.2a.)** As a client owner, create a project: it succeeds with `created_by_client = true`, no parent goal, and your own company set. Add two tasks to it and confirm they behave like any other task. Confirm **no control exists to create a Goal** and that the goal-create endpoint returns 403.
 
-**AC-3.40 — The activity feed is the practice's, read-only, and refused to clients. (FR-3.41/3.41a, matrix 7.16–7.17.)** As an FF, confirm the feed lists work, comments of both visibilities, notes, mail sent, stage changes, imports, portal grants, acting-as sessions and digest sends, and that each filter narrows it. As a CF, confirm an unassigned company's activity is absent and a contact they own is present. **As an FCC and as an ECC, confirm the endpoint is refused and no nav entry exists.** Confirm no role can create, edit or delete an entry. Confirm a PIN-gated note contributes a row that names neither its body nor its title.
+**AC-3.40 — The activity feed is the practice's, read-only, and refused to clients. (FR-3.41/3.41a, matrix 7.16–7.17.)** As a practice owner, confirm the feed lists work, comments of both visibilities, notes, mail sent, stage changes, imports, portal grants, acting-as sessions and digest sends, and that each filter narrows it. As an associate, confirm an unassigned company's activity is absent and a contact they own is present. **As a client owner and as a client team member, confirm the endpoint is refused and no nav entry exists.** Confirm no role can create, edit or delete an entry. Confirm a PIN-gated note contributes a row that names neither its body nor its title.
 
-**AC-3.41 — Acting as is bounded, attributed and silent. (FR-3.42, matrix 9.6–9.10.)** As FF, act as an ECC and add a comment: the banner names both people, the comment is stored with both, and the client's log shows it "by <FF> on behalf of <ECC>". Request a magic link while acting: nothing arrives and the Outbox shows it `suppressed`. Confirm a VA is refused, an FCC cannot act as someone at another company, and nobody can act across tenants. Stop acting: the session ends and both ends are audited.
+**AC-3.41 — Acting as is bounded, attributed and silent. (FR-3.42, matrix 9.6–9.10.)** As practice owner, act as a client team member and add a comment: the banner names both people, the comment is stored with both, and the client's log shows it "by <practice owner> on behalf of <client team member>". Request a magic link while acting: nothing arrives and the Outbox shows it `suppressed`. Confirm an assistant is refused, a client owner cannot act as someone at another company, and nobody can act across practices. Stop acting: the session ends and both ends are audited.
 
 **AC-3.33 — One update reaches two recipients independently. (Data model: `digest_item`.)** Put contact X on a Goal at weekly and contact Y on one task inside it at `every_update`. Make one status change on that task. Confirm: Y's `every_update` digest generates on quiet-window close and, once sent, **X's weekly digest still contains that same update**. Approve X's weekly digest; confirm the update now shows as consumed for both and is not repeated to either next period.
 
@@ -644,27 +646,27 @@ Everything the fractional does for a client, in a structure the client can see, 
 
 **AC-3.36 — Derived status is not stored. (FR-3.10.)** Set a Goal's status by override, then clear the override; confirm it returns to the value derived from its children. Change a child task's status directly in the database and re-read the Goal: the derived status reflects the change with no recalculation step.
 
-**AC-3.23 — Comment default is internal. (FR-3.12a.)** Open a comment form as a tenant user and post without touching the visibility control. The comment is `internal`. Confirm as FCC that it is not visible and its text is absent from the API response.
+**AC-3.23 — Comment default is internal. (FR-3.12a.)** Open a comment form as a practice user and post without touching the visibility control. The comment is `internal`. Confirm as client owner that it is not visible and its text is absent from the API response.
 
 **AC-3.24 — A stakeholder needs no login. (FR-3.20.)** Add a Contact with no linked User as a weekly stakeholder. Generate and approve a digest. It is delivered to that Contact's primary email. Confirm no User row was created and no portal seat was consumed.
 
 **AC-3.25 — Cadence link works without a session. (FR-3.33a–33b.)** From that delivered digest, in a private window with no session, follow the footer link and change weekly to monthly. It succeeds; the stakeholder row updates; the change is audited. Then attempt, using the same token, to fetch a task, a digest, and another stakeholder's row: **all are refused.** Remove the stakeholder and confirm the token no longer works.
 
-**AC-3.26 — The client's report requires a login. (FR-3.38, carried onto FR-4B.37.)** Confirm the client value report is unreachable with only a cadence token, and reachable by a signed-in FCC. **The criterion outlives the screen it was written for**: FR-3.38's implementation is replaced by Module 4B, and this login rule moves onto it unchanged — see **AC-4B.21**, which is where it is tested once 4B lands.
+**AC-3.26 — The client's report requires a login. (FR-3.38, carried onto FR-4B.37.)** Confirm the client value report is unreachable with only a cadence token, and reachable by a signed-in client owner. **The criterion outlives the screen it was written for**: FR-3.38's implementation is replaced by Module 4B, and this login rule moves onto it unchanged — see **AC-4B.21**, which is where it is tested once 4B lands.
 
-**AC-3.27 — Portal grant creates the user and consumes a seat. (FR-3.33c–33d.)** Set a client company's `seat_count` to 2. As FF, grant portal access to the company's `primary_contact`: a User is created with role **FCC**, one seat is consumed, and a magic link is sent. Grant to a second contact: role defaults to **ECC**, second seat consumed.
+**AC-3.27 — Portal grant creates the user and consumes a seat. (FR-3.33c–33d.)** Set a client company's `seat_count` to 2. As practice owner, grant portal access to the company's `primary_contact`: a User is created with role **Client owner**, one seat is consumed, and a magic link is sent. Grant to a second contact: role defaults to **Client team member**, second seat consumed.
 
 **AC-3.28 — Seat exhaustion fails clearly. (FR-3.33e.)** With both seats used, attempt a third grant. It fails with a message naming the seat count and current usage. **Confirm no User was created and no magic link was sent.**
 
-**AC-3.29 — Revoke frees the seat and cuts access. (FR-3.33g.)** Sign in as an ECC in one browser. In another, revoke their access. Confirm: their session no longer authenticates, a magic link issued before revocation no longer works, the seat is free, and their Contact, comments, and tasks all still exist. If they were a stakeholder, confirm they still receive digests.
+**AC-3.29 — Revoke frees the seat and cuts access. (FR-3.33g.)** Sign in as a client team member in one browser. In another, revoke their access. Confirm: their session no longer authenticates, a magic link issued before revocation no longer works, the seat is free, and their Contact, comments, and tasks all still exist. If they were a stakeholder, confirm they still receive digests.
 
-**AC-3.30 — Only FF and assigned CF grant access. (FR-3.33c.)** As a VA, confirm no grant or revoke control exists and both endpoints return 403. As a CF assigned to company A, confirm granting on A succeeds and on unassigned company B returns 403.
+**AC-3.30 — Only practice owner and assigned associate grant access. (FR-3.33c.)** As an assistant, confirm no grant or revoke control exists and both endpoints return 403. As an associate assigned to company A, confirm granting on A succeeds and on unassigned company B returns 403.
 
-**AC-3.31 — Seat count is FF-only and does not revoke retroactively. (FR-3.33f.)** As FF with 2 seats in use, lower `seat_count` to 1. Confirm no one loses access, and the next grant is refused with an explanatory message. As CF and VA, confirm the seat-count control is absent and the endpoint returns 403.
+**AC-3.31 — Seat count is practice owner-only and does not revoke retroactively. (FR-3.33f.)** As practice owner with 2 seats in use, lower `seat_count` to 1. Confirm no one loses access, and the next grant is refused with an explanatory message. As associate and assistant, confirm the seat-count control is absent and the endpoint returns 403.
 
 **AC-3.32 — `every_update` generates on quiet-window close. (FR-3.28a–28c.)** With `hold_all_digests` ON, set a stakeholder to `every_update` and make two changes. **30 minutes after the last change**, one digest appears in the approval screen — not 24 hours later. It sends only on approval. Turn `hold_all_digests` OFF with AI prose OFF and repeat: the digest sends on quiet-window close with no approval.
 
-**AC-3.22 — Send timing default.** With tenant timezone `America/Denver` and defaults unchanged, confirm a weekly digest generates **Thursday 08:00 local** and its send window is **Friday 08:00 local**, and that both shift correctly across a daylight-saving boundary.
+**AC-3.22 — Send timing default.** With practice timezone `America/Denver` and defaults unchanged, confirm a weekly digest generates **Thursday 08:00 local** and its send window is **Friday 08:00 local**, and that both shift correctly across a daylight-saving boundary.
 
 ---
 
@@ -676,21 +678,21 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 
 ### User stories
 
-**FF**
-- As the FF, I send a prospect a pre-call form and see their Snapshot and Six Key Components ratings before the call, so I arrive knowing where to look first.
-- As the FF, I run the call from one screen that keeps me on time and shows me which must-ask questions I have not covered yet.
-- As the FF, I get candidate Strategy Map rows drafted as answers land, and I accept, edit, or bin each one — the map is mine, drafted faster.
-- As the FF, I see exactly what the prospect will receive before I send it, with my private notes and the investment range excluded by default.
-- As the FF, I convert a won session into Goals and Projects, choosing per row, and edit them before the engagement starts.
+**Practice owner**
+- As the practice owner, I send a prospect a pre-call form and see their Snapshot and Six Key Components ratings before the call, so I arrive knowing where to look first.
+- As the practice owner, I run the call from one screen that keeps me on time and shows me which must-ask questions I have not covered yet.
+- As the practice owner, I get candidate Strategy Map rows drafted as answers land, and I accept, edit, or bin each one — the map is mine, drafted faster.
+- As the practice owner, I see exactly what the prospect will receive before I send it, with my private notes and the investment range excluded by default.
+- As the practice owner, I convert a won session into Goals and Projects, choosing per row, and edit them before the engagement starts.
 
-**CF**
-- As a CF, I run sessions for my own prospects with the same tooling, and I can use the tenant's template without being able to edit the template itself.
+**Associate**
+- As an associate, I run sessions for my own prospects with the same tooling, and I can use the practice's template without being able to edit the template itself.
 
-**VA**
-- As a VA, I schedule sessions and send pre-call form links directly, so the FF only does the call. **This is the single exception to "a VA never sends"** (assumption H7a): a pre-call invite is a template-only, non-AI email from the tenant address carrying a tokenised form link, with no discretionary content for a reviewer to catch.
-- As a VA, I can see the session and its answers **except the §9 investment range and reaction**, which are financial and outside my access.
+**Assistant**
+- As an assistant, I schedule sessions and send pre-call form links directly, so the practice owner only does the call. **This is the single exception to "an assistant never sends"** (assumption H7a): a pre-call invite is a template-only, non-AI email from the practice address carrying a tokenised form link, with no discretionary content for a reviewer to catch.
+- As an assistant, I can see the session and its answers **except the §9 investment range and reaction**, which are financial and outside my access.
 
-**FCC / ECC**
+**Client owner / client team member**
 - **No stories.** A strategy session subject is a prospect, not a portal user. The pre-call form is a public tokenised page requiring no account (assumption F13). If the prospect converts, they become a client user afterwards, in Module 3.
 
 ### Functional requirements
@@ -700,13 +702,13 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 1. A **StrategyTemplate** contains ordered **Sections**, each containing ordered **Questions**. Beta seeds the Operations template verbatim from `strategy_session_seed.md`, all nine sections.
 2. Every Question carries: `ask_when ∈ {precall, live}` (**fractional-overridable per question**), `must_ask` (the ★ flag), `order`, `group` (the diagnostic's six areas), a `response_schema`, and an optional **fractional-only note field never rendered to the prospect or in the PDF**.
 3. Five response schemas, per assumption F13b: `free_text`, `rating_1_10` (value + optional comment), `diagnostic_triple` (*what they said* / *who or what causes it* / *what they tried and why it didn't stick*), `value_pair`, `agreed_note`. Section 8 uses a fixed two-row `path_reaction` structure.
-4. Only the FF may edit the tenant's template. CFs and VAs use it.
+4. Only the practice owner may edit the practice's template. Associates and assistants use it.
 5. **A session snapshots the template version it was run against.** Editing the template later never rewrites the content or structure of a past session.
 
 **Pre-call form**
 
 6. The pre-call form is a **public URL bearing a signed, expiring token** (30 days). No login.
-6a. The invitation carrying that link is producer `precall_invite` — **template-only, non-AI, from the tenant address — and FF, CF, and VA may all send it directly** (H7a). It is the only send a VA may make without approval.
+6a. The invitation carrying that link is producer `precall_invite` — **template-only, non-AI, from the practice address — and practice owner, associate, and assistant may all send it directly** (H7a). It is the only send an assistant may make without approval.
 7. It renders exactly the questions whose effective `ask_when` is `precall` — seeded as Section 1 (Snapshot) and Section 2 (Six Key Components), with Section 3 items 1–3 flippable.
 8. It autosaves and is resumable from the same link.
 9. Merge fields resolve at render: `{Visionary} {Integrator} {Location A} {Location B} {Company} {Session date} {Fractional name}`. **An unresolved `{Integrator}` renders a "no Integrator identified" note**, never a blank or a literal brace.
@@ -725,7 +727,7 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 10. Submission notifies the session owner. The prospect may edit until the session starts.
 10a. **The questions can go in the body of an email instead of behind a link** *(owner, 2026-09-21)* — the path for **a prospect who will not click a link**, and the one used when the app is running on the fractional's laptop rather than a host the prospect could reach. Producer `precall_questions`: the pre-call questions with their merge fields resolved, the Snapshot items and the six ratings with the **1–10 scale explained once**, under a short intro **the fractional edits before it goes**. It carries no token and nothing to sign in to, so unlike the invite there is nothing to withhold from the stored copy.
 10b. **It goes from the fractional's own address, direct-to-sent** (FR-1.15c's `self`, falling back to the practice alias when they have no verified address of their own): the prospect answers by hitting reply, and a reply has to land somewhere a person reads.
-10c. **It is not a VA's to send.** H7a gives a VA the *invite* because it is template-only with nothing discretionary in it; this one carries words a person wrote and goes from their address. Matrix **10.3a**.
+10c. **It is not an assistant's to send.** H7a gives an assistant the *invite* because it is template-only with nothing discretionary in it; this one carries words a person wrote and goes from their address. Matrix **10.3a**.
 10d. **Nothing the fractional keeps to themselves is in it**: a question marked as their own observation (FR-4.17) and a financial question (ruling 3) are both excluded, while the content is built rather than hidden in the template — the same standard as the PDF.
 10e. **The answers are typed into the live view as the replies arrive**, which staff may already do on a pre-call answer. They carry `answered_by = fractional`, and the session records that the questions went out this way, so the live view marks those answers **"typed in · questions emailed"**. **That marks the session, not the sentence**: it says the pre-call came back by email and a fractional typed it, and it does not claim a particular line was copied from a reply, which nobody can know.
 
@@ -747,7 +749,7 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 18. Claude proposes **candidate Strategy Map rows** into a side tray with columns: bottleneck, root cause, the fix, owner, 30/60/90, measurable, notes. ⛔ **REVIEW QUEUE (R6):** a candidate becomes a map row **only when the fractional accepts it**. Accept, edit-then-accept, and discard are all one click.
 18a. **Claude is not called on every answer save.** Drafting is triggered by exactly two things: **(a) an explicit "Draft rows" button**, always available, and **(b) automatically when every question in a diagnostic area has been answered.** Nothing else triggers a call.
 18b. **Why:** a call per keystroke-save would be slow, expensive, and would fill the tray with candidates drafted from half a sentence — actively worse than no suggestion, because the fractional is mid-call and cannot afford to read noise.
-18c. **Every Claude call in this module writes an `AiCall` row** (assumption E1.7) recording tenant, session, trigger, tokens, and cost — so the per-session cost of the tool is a number you can look up, not a guess.
+18c. **Every Claude call in this module writes an `AiCall` row** (assumption E1.7) recording practice, session, trigger, tokens, and cost — so the per-session cost of the tool is a number you can look up, not a guess.
 18d. A draft run never removes or alters candidates already in the tray, and never touches accepted rows.
 19. Claude drafts the **mirror** — the stated goal and which bottleneck, if fixed first, unlocks it — from Sections 3 and 4. ⛔ **REVIEW QUEUE (R7):** proposed, edited by the fractional, never auto-saved.
 20. Map rows are reorderable, with the seed's sequence prompt available: "What has to happen first for the rest to work?"
@@ -758,7 +760,7 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 21b-i. **The rewordings are a selection, not a queue** *(owner, 2026-09-21, after the dry run)*. Each one carries a checkbox and is **editable in place** — the fractional simplifies a few before using them — and **"Apply selected to the template"** writes every chosen rewording into the editor as pending changes **in one step**, leaving one Save. Copying a single one still works and carries the edit with it. An edit is **kept on the prep** so it survives the trip, because the editor reads the prep rather than being handed text in a URL; **keeping an edit is not applying it**, and the template is untouched either way.
 21c. **A pinned question is a prompt, not an answer.** It shows under **"Your questions"** with a **fractional-only note field**, carries no `question_key`, is never scored, and never enters the session's snapshot — so AC-4.12 still holds, and the open V1 question about where a generated question's answer lands is not answered by accident here.
 21d. **The brief marks what it read and what it is guessing.** A fact taken from the site or another source begins *"Their site says"*; an inference begins *"Likely"*. Outside those two, it asserts nothing its inputs carry — the constraint every other Claude call in this product works under — and it is told not to invent revenue, headcount, customer counts, locations, names or dates.
-21e. **It is fractional-only, in every direction.** The brief never reaches the prospect: not the pre-call form, not the questions email, not the PDF — and it is **absent from a VA's payload**, not hidden in it, on the same standard as §9's money. A test asserts all four.
+21e. **It is fractional-only, in every direction.** The brief never reaches the prospect: not the pre-call form, not the questions email, not the PDF — and it is **absent from an assistant's payload**, not hidden in it, on the same standard as §9's money. A test asserts all four.
 
 22a. **§8 carries pros and cons, 2–3 of each per path, drafted by Claude into the tray** *(owner, 2026-09-21)*. ⛔ **REVIEW QUEUE (R6a):** they land `proposed` with the same accept / edit / discard controls the map rows have, and **only an accepted one reaches the prospect's PDF**. Two triggers and no others, matching FR-4.18a: **an explicit button, and once when §8 is captured** — both paths answered — recorded on the session so it cannot re-fire. **Every run writes an `ai_call`.** The draft is made from this session's own material under the AC-3.5 constraint: the diagnostic, the mirror, what they value, the map rows, and **their reaction, stated risk and leaning on each path**.
 22b. **The reaction and the honest risk are the fractional's record, not the prospect's document** *(owner, 2026-09-21)*. They are captured on the call, they stay in the live view and in the session payload, they **are** input to the draft above — and they **never appear in the PDF**. A prospect reading their own reaction quoted back at them is a different and worse document. This is an exclusion with no toggle: unlike FR-4.24's five, there is no flag that turns it on.
@@ -769,7 +771,7 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 23a. **It is a sales document, and it is two pages.** *(Owner, 2026-09-21, before the first real prospect session.)* Visual over verbose, in the email layout's brand system via WeasyPrint. **Page one:** the Snapshot as a strip of chips in the header — a prospect knows their own numbers, and the document's job is what to do about them — the **Six Key Components as a bar chart** with the lowest score in the accent color, the **mirror as a callout**, and the **Strategy Map as cards** under a **30/60/90 strip that says which fix lands when**. **Page two:** the **two paths side by side**, what they value, and **the agreed next steps as a checklist with dates**, sized as the last thing the reader reads *(owner, 2026-09-21)*. Two pages is a requirement, not an aspiration: the page count is asserted in the suite against a full nine-row map, so a later loosening fails a test rather than a prospect's inbox.
 23b. **Nothing is inferred to make the document more persuasive.** Neither path is highlighted as the one they favor — both carry a leaning line saying what they actually said — and a row with no horizon sits in its own column rather than being given a date it was never agreed.
 23c. **The map is grouped by horizon, in priority order, three cards to a column** *(owner, 2026-09-21)*. A fourth row in a horizon is **listed by title beneath that column as "Also noted — lower priority"**, so it is neither forgotten nor presented as a headline.
-23d. **The decision page is written to the person deciding**, in the second person, and names the practice from the **tenant's display name** rather than any hardcoded string. Each path carries two lines on what taking it means, then its accepted pros and cons, then their leaning.
+23d. **The decision page is written to the person deciding**, in the second person, and names the practice from the **practice's display name** rather than any hardcoded string. Each path carries two lines on what taking it means, then its accepted pros and cons, then their leaning.
 23f. **The preview is the document, at page size.** `@page` is ignored by a browser, so a preview built from the same HTML ran its text to the window's edges while the PDF did not — it was not showing what would be sent. Each page is a `.sheet`, which carries the page's own margins on screen and nothing in print, laid on a neutral background. *(Owner, 2026-09-21.)*
 23e. **The header carries three chips — revenue, team, customers** — with labels short enough to read whole. The rest of the Snapshot is not on the document: a prospect knows their own numbers.
 24. **Excluded by default, each with an explicit per-block "include in PDF" toggle defaulted off:**
@@ -787,7 +789,7 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 28. On conversion to client, the map is presented as a proposed tree. **The fractional chooses per row whether it becomes a Goal or a Project.**
 29. Owner, 30/60/90 target date, and measurable carry across to the created record.
 29a. **The map row's `owner_text` maps to `client_owner_contact_id` when it resolves to exactly one Contact at the company.** When it does not — "Maria in dispatch", or two people with the same first name — **the free text is preserved as written** and the FK stays null. An ambiguous owner is never guessed, and a useful scrap of text is never dropped because it failed to resolve.
-30. ⛔ **REVIEW QUEUE (R9):** every row is editable and de-selectable, and **nothing is created until the FF confirms**.
+30. ⛔ **REVIEW QUEUE (R9):** every row is editable and de-selectable, and **nothing is created until the practice owner confirms**.
 31. Created records keep a **link back to the map row** that produced them, so a later progress report can point at the bottleneck the client named.
 32. Conversion also flips the contact's pipeline stage to `client` and creates the client company if needed — subject to the same single confirmation.
 
@@ -826,13 +828,13 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 
 **AC-4.11 — Conversion is per-row and confirmed.** Convert a session with four map rows. Choose Goal for two and Project for two, de-select one, and edit a title. **Before confirming, verify no Goal, Project, or Task exists.** Confirm: exactly three records are created, matching your choices, carrying owner, target date, and measurable, each linking back to its map row.
 
-**AC-4.12 — Template snapshot protects history.** Convert a session, then edit the tenant template heavily (delete a section, reword questions). Reopen the completed session: its structure and content are unchanged.
+**AC-4.12 — Template snapshot protects history.** Convert a session, then edit the practice template heavily (delete a section, reword questions). Reopen the completed session: its structure and content are unchanged.
 
-**AC-4.13 — VA financial boundary.** As a VA, open a completed session. Sections 1–8 are visible; **§9's investment range and their reaction are not rendered**, and the API response for the session does not contain those values.
+**AC-4.13 — assistant financial boundary.** As an assistant, open a completed session. Sections 1–8 are visible; **§9's investment range and their reaction are not rendered**, and the API response for the session does not contain those values.
 
 **AC-4.17 — Client owner resolves or is preserved. (FR-4.29a.)** Convert a session with three map rows: one whose `owner_text` is exactly a Contact's name at the company, one reading "Maria in dispatch" with no matching Contact, and one matching two Contacts with the same first name. Confirm the first sets `client_owner_contact_id`; the second and third leave it null and **retain the original text verbatim**.
 
-**AC-4.18 — A VA can send a pre-call invite and nothing else. (FR-4.6a, H7a.)** As a VA, send a pre-call invite: it is delivered directly with no approval step and appears in the Outbox as `sent`. Then compose a manual email to a contact: it enters `pending_approval` and is not delivered. Confirm the referral-touch and digest approve endpoints still return 403.
+**AC-4.18 — An assistant can send a pre-call invite and nothing else. (FR-4.6a, H7a.)** As an assistant, send a pre-call invite: it is delivered directly with no approval step and appears in the Outbox as `sent`. Then compose a manual email to a contact: it enters `pending_approval` and is not delivered. Confirm the referral-touch and digest approve endpoints still return 403.
 
 **AC-4.19 — Template edits cannot reach a completed session. (FR-4.5; data model §6.)** Complete a session. Then, in the live template: delete an entire section, reword three questions, and change one question's `response_schema`. Reopen the completed session: **every section, prompt, and answer renders exactly as before.** Confirm the deleted question row carries `deleted_at` rather than being removed, and that the session's answers still resolve by `question_key` against its own snapshot.
 
@@ -840,7 +842,7 @@ The instrument that turns a 75-minute diagnostic conversation into a document th
 
 **AC-4.16 — Drafting triggers only twice, and is costed. (FR-4.18a–18d.)** Answer one diagnostic question and save. **Confirm no Claude call was made** — no new `AiCall` row, no new candidates. Click "Draft rows": one `AiCall` row appears with tokens and cost. Then complete every question in one diagnostic area: a second call fires automatically. Confirm candidates already in the tray, and any accepted rows, are unchanged by the second run.
 
-**AC-4.14 — Tenant isolation.** A session, its pre-call form token, and its PDF from tenant B are unreachable from tenant A, including by direct token URL.
+**AC-4.14 — Practice isolation.** A session, its pre-call form token, and its PDF from practice B are unreachable from practice A, including by direct token URL.
 
 ---
 
@@ -858,22 +860,22 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 ### User stories
 
-**FF**
-- As the FF, I open a client's report and see, per goal, what was promised, where the measure stood when we started, where it stands now, and where it is meant to land — without assembling it.
-- As the FF, I record this week's reading on a goal in one action, and the chart builds itself over the engagement.
-- As the FF, I write the sentence that says what a goal is really for, in the client's language, and change it as my understanding changes.
-- As the FF, I resolve a goal as **changed course** with a reason, and it reads as the judgment it was rather than as a failure.
-- As the FF, I get Claude's connective narrative for a goal drafted from that goal's own material, and I edit and accept it — or leave it, and the client still sees the numbers.
-- As the FF, I export a branded PDF for a quarterly review, and the document we held the conversation over still reads that way a year later.
+**Practice owner**
+- As the practice owner, I open a client's report and see, per goal, what was promised, where the measure stood when we started, where it stands now, and where it is meant to land — without assembling it.
+- As the practice owner, I record this week's reading on a goal in one action, and the chart builds itself over the engagement.
+- As the practice owner, I write the sentence that says what a goal is really for, in the client's language, and change it as my understanding changes.
+- As the practice owner, I resolve a goal as **changed course** with a reason, and it reads as the judgment it was rather than as a failure.
+- As the practice owner, I get Claude's connective narrative for a goal drafted from that goal's own material, and I edit and accept it — or leave it, and the client still sees the numbers.
+- As the practice owner, I export a branded PDF for a quarterly review, and the document we held the conversation over still reads that way a year later.
 
-**CF**
-- As a CF, I do all of the above on the client companies I am assigned to, including resolving a goal and accepting a narrative — they are my client relationship to judge.
+**Associate**
+- As an associate, I do all of the above on the client companies I am assigned to, including resolving a goal and accepting a narrative — they are my client relationship to judge.
 
-**VA**
-- As a VA, I record a measurement and export a PDF, because neither is a judgment about the relationship.
-- As a VA, I cannot resolve a goal or accept a narrative, and the endpoints refuse me rather than hiding the buttons.
+**Assistant**
+- As an assistant, I record a measurement and export a PDF, because neither is a judgment about the relationship.
+- As an assistant, I cannot resolve a goal or accept a narrative, and the endpoints refuse me rather than hiding the buttons.
 
-**FCC / ECC**
+**Client owner / client team member**
 - As a client, I open the report whenever I want — it is a place I can go, not a document someone remembered to send me.
 - As a client, I see per goal what we are moving, how far it has moved, what is still to come, and what my fractional says it adds up to.
 - As a client, I never see a draft narrative nobody has accepted, and I never see another company's goals.
@@ -885,7 +887,7 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 1. The report is organized **by goal, not by period**. It shows **all** of a client company's goals — **current first, historical below** — with no date range to choose and no period to scope.
 2. **Any single goal is openable on its own**, at its own URL. It is the unit a quarterly-review conversation actually walks through, one goal at a time.
 3. Goals come from two places and **the report does not distinguish them**: Phase 4's map-row conversion, and goals added by hand as the engagement runs. A goal added in month four reports exactly as well as one the engagement opened with.
-4. **Internal goals never appear** (ruling 10). A goal with no `client_company_id` is the practice's own work; the client value report is a client artifact and has nothing to say about it. This is a filter on the report, not a permission rule — tenant staff still see internal goals everywhere else.
+4. **Internal goals never appear** (ruling 10). A goal with no `client_company_id` is the practice's own work; the client value report is a client artifact and has nothing to say about it. This is a filter on the report, not a permission rule — practice staff still see internal goals everywhere else.
 5. **FR-3.38's implementation is removed, not left alongside.** `Report.tsx`, `ProgressReportView` and the on-demand report endpoint go. Two answers to "how is it going" that disagree is worse than either.
 
 **What a goal carries**
@@ -894,11 +896,11 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
    - **Numeric** — a name, an optional unit, a **baseline** (value and date), a **target**, a **direction of good**, and a dated measurement history.
    - **Qualitative** — a **"how we'll know" sentence** in place of a number. *"Reduce supervisor overload"* is the ordinary case, not the exception.
    - **None** — **deliberately not measurable**, chosen explicitly. The goal reports from its outcome statement and its milestones alone.
-6a. **Null is not a fourth kind: it means nobody has decided yet** (ruling A). A goal with no `measurable_kind` **carries a standing nudge** — on the goal and in the report's tenant-side view, **never to the client** — until one of the three is chosen, and reports as a `none` goal in the meantime. *"Not yet decided"* and *"decided: not measurable"* are different facts, and the nudge is the whole of what stops the first quietly becoming the second. **It nudges; it never blocks** — no save, conversion or report is refused for it.
+6a. **Null is not a fourth kind: it means nobody has decided yet** (ruling A). A goal with no `measurable_kind` **carries a standing nudge** — on the goal and in the report's practice-side view, **never to the client** — until one of the three is chosen, and reports as a `none` goal in the meantime. *"Not yet decided"* and *"decided: not measurable"* are different facts, and the nudge is the whole of what stops the first quietly becoming the second. **It nudges; it never blocks** — no save, conversion or report is refused for it.
 7. **A direction of good on every numeric measurable** — `up_is_good` or `down_is_good`, **stored explicitly** and set at conversion or creation (ruling 2). **Never inferred.** Inference is silently wrong when baseline and target are equal — a goal can be set to hold a number steady — and has nothing to work from at all before a target is set.
 8. **The unit drives display and never arithmetic.** "hours/week" and "%" are labels; no conversion, no scaling, no comparison across units.
 9. **A 30/60/90 horizon**, carried from the map row (`horizon_days`).
-10. **A short outcome statement** — the fractional's own sentence about what this goal is really for, in client language. It is **not the description**, which is internal scoping; this is the line a founder would repeat to their board. Hand-written and updatable as understanding changes. **FF and an assigned CF only — a VA may not write it** (**ruling H, 2026-09-21**, which ruling 6 had not reached): it is the sentence a founder repeats to their board, and it goes out under the fractional's name. Recording a reading is administration; saying what the work is for is not.
+10. **A short outcome statement** — the fractional's own sentence about what this goal is really for, in client language. It is **not the description**, which is internal scoping; this is the line a founder would repeat to their board. Hand-written and updatable as understanding changes. **Practice owner and an assigned associate only — an assistant may not write it** (**ruling H, 2026-09-21**, which ruling 6 had not reached): it is the sentence a founder repeats to their board, and it goes out under the fractional's name. Recording a reading is administration; saying what the work is for is not.
 11. **Optional milestones** — dated beats: *"area lead hired"*, *"inspection app live"*. A goal may have none.
 
 **Asking for the measurable without blocking on it**
@@ -937,7 +939,7 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 27. **Each resolution requires a one-line reason**, `NOT NULL` at the database rather than by serializer convention.
 28. **Resolutions append; they never erase** (ruling 7). Resuming a paused goal appends. **Un-achieving an achieved goal is allowed** and appends a new line with its own reason. **No resolution line is ever edited or deleted** — the history of how the thinking changed is the part worth keeping. A goal's current state is its latest row; a goal with no rows is current.
 29. **"Changed course" is normal consulting**, and is frequently the most valuable judgment the fractional made all quarter. **The required reason line is the whole mechanism** that makes it read as judgment rather than as failure: a resolution vocabulary with no reason attached makes "changed course" indistinguishable from "gave up".
-30. **FF and an assigned CF may resolve a goal. A VA may not** (ruling 6) — it is a judgment about the client relationship, not administration of it. **Client roles never may**, on their own goals or any other.
+30. **Practice owner and an assigned associate may resolve a goal. An assistant may not** (ruling 6) — it is a judgment about the client relationship, not administration of it. **Client roles never may**, on their own goals or any other.
 30a. **The client sees the resolution and its reason** (**ruling G, 2026-09-21**). There is no internal-only resolution and no visibility flag on the line: the reason is the mechanism that makes *changed course* read as judgment rather than as giving up (FR-4B.29), and a reason the client cannot read cannot do that job. **A resolution reason is written to be read by the client**, and the UI says so where it is typed.
 
 **The AI narrative**
@@ -948,8 +950,8 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 33a. **Every acceptance writes a dated snapshot** (ruling B). The living narrative is what the client reads *now*; the snapshots are the record of what it said *then* — **append-only, never edited, never deleted**, each carrying its text, who accepted it and when. A redraft replaces what the client reads and takes nothing away from the record of what they were told before.
 33b. **An export cites the snapshot current at export** (FR-4B.39), so a PDF and the goal's version history still agree with each other a year later — which a live-rendered narrative inside a snapshot PDF would not.
 34. **The structural half shows regardless** (ruling 3). A goal whose narrative has not been accepted still shows its measurable, its progress, its milestones and its timeline. Holding the goal back until someone writes prose would make the report's availability depend on the fractional's backlog, which is the failure mode of the artifact it replaces.
-35. **FF and an assigned CF may accept a narrative; a VA may not** (ruling 6).
-36. **Every draft run writes an `ai_call`** with tenant, goal, tokens and cost, like every other Claude call in the product (assumption E1.7).
+35. **Practice owner and an assigned associate may accept a narrative; an assistant may not** (ruling 6).
+36. **Every draft run writes an `ai_call`** with practice, goal, tokens and cost, like every other Claude call in the product (assumption E1.7).
 
 **The engagement timeline** *(owner, 2026-09-21)*
 
@@ -985,7 +987,7 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 4. **Client-recorded measurements.** The reading is the fractional's, and a client typing their own numbers into the report they are being shown changes what the artifact is.
 5. **Automatic measurement capture** from a connector (QBO, a dashboard, a spreadsheet). V1 at the earliest, and it waits on connectors.
 6. **Forecasting, trend lines, or projected completion dates** from the measurement series. Three readings do not support a projection, and a projection on a client's screen becomes a promise.
-7. **Per-client branding of the PDF.** One tenant brand in Beta, as everywhere else.
+7. **Per-client branding of the PDF.** One practice brand in Beta, as everywhere else.
 8. **Scheduled or emailed delivery of the report.** It is a place in the portal plus an export; sending it is an ordinary Outbox message.
 9. **Comments on the report itself.** Comments live on the work (FR-3.12); a second comment surface on the same material would split the conversation.
 
@@ -993,9 +995,9 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 **AC-4B.1 — The report is anchored on goals, not on a period.** Open a client company's report. Every goal for that company appears, current first and historical below, **with no date range to choose**. Confirm a goal whose tasks all sit outside any recent period still appears with its measurable and its history.
 
-**AC-4B.2 — A single goal opens on its own.** Open one goal at its own URL as an FCC. It renders the same content as its block in the full report, and nothing from any other goal.
+**AC-4B.2 — A single goal opens on its own.** Open one goal at its own URL as a client owner. It renders the same content as its block in the full report, and nothing from any other goal.
 
-**AC-4B.3 — Internal goals never appear.** Create a goal with `client_company_id = null` and a goal for the client. **The report shows only the second**, and the internal goal is **absent from the API response**, not merely unrendered. Confirm it is still visible on the Work screen to tenant staff.
+**AC-4B.3 — Internal goals never appear.** Create a goal with `client_company_id = null` and a goal for the client. **The report shows only the second**, and the internal goal is **absent from the API response**, not merely unrendered. Confirm it is still visible on the Work screen to practice staff.
 
 **AC-4B.4 — Direction is stored, never inferred.** Create a numeric goal whose baseline and target are **equal** (hold the number steady) with `direction = down_is_good`. The report describes a later reading **below** both as better. Confirm no code path derives direction from baseline-versus-target: set direction to `up_is_good` on the same data and the same reading now reads as worse.
 
@@ -1011,11 +1013,11 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 **AC-4B.9 — A goal created by hand gets the measurable prompt, three ways.** Create a goal through the UI. The form asks for the kind as **three choices with no default** — numeric, a "how we'll know" sentence, or **not measurable** — plus name, unit, baseline, target and direction. Choose *not measurable*: `measurable_kind = 'none'`. Choose the sentence and leave it blank: the goal still saves — **prompting is not blocking**. Create a goal by an API call that omits the kind entirely: it saves with **null**, which is a different stored value from `'none'`.
 
-**AC-4B.9a — A kind not yet decided is nudged, and only to the practice.** On the null-kind goal from AC-4B.9, confirm a **standing nudge** appears on the goal and in the tenant-side report, that it is **absent from the client's API response**, and that nothing — saving the goal, converting, recording a milestone, rendering the report — is refused because of it. Choose a kind: the nudge goes. Confirm a `'none'` goal **never** nudges.
+**AC-4B.9a — A kind not yet decided is nudged, and only to the practice.** On the null-kind goal from AC-4B.9, confirm a **standing nudge** appears on the goal and in the practice-side report, that it is **absent from the client's API response**, and that nothing — saving the goal, converting, recording a milestone, rendering the report — is refused because of it. Choose a kind: the nudge goes. Confirm a `'none'` goal **never** nudges.
 
 **AC-4B.10 — A resolution cannot be stored without its reason.** Attempt to insert a `goal_resolution` with a null reason **directly at the database**: it fails. Attempt it through the API: 400, with a sentence naming what is missing.
 
-**AC-4B.10a — The client reads the resolution and its reason.** Resolve a goal as **changed course** with a reason. As an FCC, fetch the goal: the resolution **and its reason text** are both in the response body. Confirm there is no visibility flag on a resolution and no code path that withholds a reason from a client.
+**AC-4B.10a — The client reads the resolution and its reason.** Resolve a goal as **changed course** with a reason. As a client owner, fetch the goal: the resolution **and its reason text** are both in the response body. Confirm there is no visibility flag on a resolution and no code path that withholds a reason from a client.
 
 **AC-4B.11 — Resolutions append and the first survives.** Pause a goal with a reason, resume it, achieve it, then un-achieve it — each with its own reason. **All four lines are readable in full, in order**, the goal's current state is the latest, and **no endpoint exists that edits or deletes a resolution row**.
 
@@ -1029,7 +1031,7 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 **AC-4B.14a — The draft may say what the goal set out to change.** On a goal converted from a map row, with an outcome statement and one resolution, confirm the prompt carries **the outcome statement, the resolution and its reason, and the map row's bottleneck, root cause and fix**, and that the draft may refer to any of them. Then assert the constraint still binds: a **distinctive marker string placed in a field that is not an input** — a fractional-only note, an internal comment, a sibling goal's measurable — **does not appear in the draft**.
 
-**AC-4B.15 — An unaccepted narrative is invisible to the client.** Draft a narrative and do not accept it. As an FCC, fetch the goal: the draft is **absent from the response body**. Accept it: it appears. Edit-then-accept: the client sees the edited text, never the draft.
+**AC-4B.15 — An unaccepted narrative is invisible to the client.** Draft a narrative and do not accept it. As a client owner, fetch the goal: the draft is **absent from the response body**. Accept it: it appears. Edit-then-accept: the client sees the edited text, never the draft.
 
 **AC-4B.15a — One living narrative, versioned on every acceptance.** Accept a narrative, redraft it, edit it and accept again. Confirm: **one narrative row for the goal** (a second accept does not create a second living narrative), **two dated snapshots** carrying their text, who accepted and when, **the client reads the later one**, the earlier one is **still readable in full** by the practice, and **no endpoint updates or deletes a snapshot**. Confirm no narrative anywhere is keyed to a period.
 
@@ -1037,9 +1039,9 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 **AC-4B.16 — The structural half shows regardless.** With the narrative unaccepted, the client's response still carries the measurable, the readings, the completion bar, the milestones and the timeline.
 
-**AC-4B.17 — A VA may measure and export, and may not judge.** As a VA: record a measurement (2xx) and export a PDF (2xx); **write the outcome statement (403)**, resolve a goal (**403**) and accept a narrative (**403**), asserted against the API response. As a CF **not** assigned to the company: all are **404**.
+**AC-4B.17 — An assistant may measure and export, and may not judge.** As an assistant: record a measurement (2xx) and export a PDF (2xx); **write the outcome statement (403)**, resolve a goal (**403**) and accept a narrative (**403**), asserted against the API response. As an associate **not** assigned to the company: all are **404**.
 
-**AC-4B.18 — Client-company isolation, both ways.** An FCC at company A requests a goal, a measurement, a narrative and an export belonging to company B: **404** for each. Cross-tenant: **404**. Confirm the report endpoint for company B returns 404 rather than an empty report.
+**AC-4B.18 — Client-company isolation, both ways.** A client owner at company A requests a goal, a measurement, a narrative and an export belonging to company B: **404** for each. Cross-practice: **404**. Confirm the report endpoint for company B returns 404 rather than an empty report.
 
 **AC-4B.19 — The PDF is a snapshot, and every one is kept.** Export a goal's PDF. Record two more measurements and change the outcome statement. **Re-open the stored export: it is unchanged**, and a new export reflects the new state. **Both are listed on the goal and on the client company**, with their dates. Confirm **no scheduled job deletes an export** — there is no retention setting for them and no cleanup task that can reach them.
 
@@ -1047,9 +1049,9 @@ The anchor is the **goal**, because the goal is where the engagement's promise l
 
 **AC-4B.20a — The engagement timeline spans the whole company.** Give a client company three goals: one from a map row with a `start_date` and two milestones, one with a dated baseline and three readings, and one resolved as *changed course* last month. Open the all-goals report: **one timeline** carries all three goals' spans, both milestones, the three readings and the resolution **with its reason**, in date order. Confirm the resolved goal's span **ends at its resolution** and the others run to today. Export the all-goals PDF: the same timeline is in it. Then confirm it is **absent from a single goal's page**, that an **internal** goal contributes nothing to it, and that hiding a milestone's task removes that mark from the client's response body.
 
-**AC-4B.21 — The report requires a login.** Confirm the report is unreachable with only a `stakeholder_token` (a cadence link), and reachable by a signed-in FCC. *(This is AC-3.26's requirement, carried onto this module — FR-3.38's login rule outlives its implementation.)*
+**AC-4B.21 — The report requires a login.** Confirm the report is unreachable with only a `stakeholder_token` (a cadence link), and reachable by a signed-in client owner. *(This is AC-3.26's requirement, carried onto this module — FR-3.38's login rule outlives its implementation.)*
 
-**AC-4B.22 — Every narrative draft is costed.** Each draft run writes exactly one `ai_call` with tenant, goal, tokens and cost. Accepting, editing and exporting write none.
+**AC-4B.22 — Every narrative draft is costed.** Each draft run writes exactly one `ai_call` with practice, goal, tokens and cost. Accepting, editing and exporting write none.
 
 **AC-4B.23 — FR-3.38 is gone, not shadowed.** The on-demand progress report endpoint and screen **do not exist**; no route serves them and no test asserts their behavior.
 
@@ -1063,31 +1065,31 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 
 ### User stories
 
-**FF**
-- As the FF, meeting notes I never open turn into a queue of proposed contacts and tasks I can clear in a few minutes.
-- As the FF, when a name in the notes might be someone we already know, I am shown ranked candidates and I pick — the app does not guess.
-- As the FF, I approve some items from a meeting and reject others, without all-or-nothing.
-- As the FF, I press "sync now" instead of waiting for a timer when I have just finished a call.
+**Practice owner**
+- As the practice owner, meeting notes I never open turn into a queue of proposed contacts and tasks I can clear in a few minutes.
+- As the practice owner, when a name in the notes might be someone we already know, I am shown ranked candidates and I pick — the app does not guess.
+- As the practice owner, I approve some items from a meeting and reject others, without all-or-nothing.
+- As the practice owner, I press "sync now" instead of waiting for a timer when I have just finished a call.
 
-**CF**
-- As a CF, I review proposals for meetings on my assigned accounts.
+**Associate**
+- As an associate, I review proposals for meetings on my assigned accounts.
 
-**VA**
-- As a VA, clearing the meeting queue is my job, and I can approve contacts and tasks from it — but any email it would generate still goes to the Outbox for FF approval.
+**Assistant**
+- As an assistant, clearing the meeting queue is my job, and I can approve contacts and tasks from it — but any email it would generate still goes to the Outbox for practice owner approval.
 
-**FCC / ECC**
+**Client owner / client team member**
 - **No stories. Client users have no access to meeting ingestion, the Drive connection, or the review queue** — including for meetings about their own company. What reaches them is the resulting task, once a human has approved it.
 
 ### Functional requirements
 
 **Connection and polling**
 
-1. A tenant connects a Google Drive folder, stored as a **`DriveWatch`** with folder id, `page_token`, `last_polled_at`, and `last_error`.
+1. A practice connects a Google Drive folder, stored as a **`DriveWatch`** with folder id, `page_token`, `last_polled_at`, and `last_error`.
 1a. **Connecting the folder happens on the meeting queue screen, in two steps that fail separately.** *(Added 2026-09-22, after Phase 5 shipped a queue with no way to point it at a folder.)*
-   - **Step one — Drive access.** The FF grants the app `drive.readonly` on their Google connection. It is asked for **separately from the Gmail scopes** (assumption C1) and alongside them, so re-consenting for Drive re-grants sending rather than replacing it. A practice can have a healthy mail connection that Drive refuses, and the screen says which of the two is missing rather than "it didn't work".
-   - **Step two — the folder.** The FF pastes the folder's **web address or its id**; the app extracts the id. Before any watch is saved it **reads the folder live** and shows its name, how many files are in it, and **how many of those can be read as notes** — a folder of twelve PDFs is a connected folder that will never produce a proposal, and that is worth learning now rather than from an empty queue tomorrow. Nothing is saved until the fractional confirms that folder.
+   - **Step one — Drive access.** The practice owner grants the app `drive.readonly` on their Google connection. It is asked for **separately from the Gmail scopes** (assumption C1) and alongside them, so re-consenting for Drive re-grants sending rather than replacing it. A practice can have a healthy mail connection that Drive refuses, and the screen says which of the two is missing rather than "it didn't work".
+   - **Step two — the folder.** The practice owner pastes the folder's **web address or its id**; the app extracts the id. Before any watch is saved it **reads the folder live** and shows its name, how many files are in it, and **how many of those can be read as notes** — a folder of twelve PDFs is a connected folder that will never produce a proposal, and that is worth learning now rather than from an empty queue tomorrow. Nothing is saved until the fractional confirms that folder.
    - **Disconnect** stops the ten-minute check and **keeps the cursor and every proposal already made**. Reconnecting the same folder resumes; connecting a different one starts a fresh cursor.
-   - **FF only** (matrix 11.10–11.11). Pointing the app at a folder grants a standing read of a whole Drive. Every staff role sees the folder's name, last poll and last error (11.12), because a queue that is empty and a queue that is asleep look identical to whoever has to clear it.
+   - **Practice owner only** (matrix 11.10–11.11). Pointing the app at a folder grants a standing read of a whole Drive. Every staff role sees the folder's name, last poll and last error (11.12), because a queue that is empty and a queue that is asleep look identical to whoever has to clear it.
 1b. **The folder's past is a choice, not a default.** *(Added 2026-09-22. Diagnosed on the owner's own folder: "Sync now" reported **0 waiting** on 167 readable notes.)* Drive's `changes.list` starts from a token meaning **"now"**, so a freshly watched folder is, to the poller, empty until the next meeting happens. Reading what is already there is a separate thing, because it costs one Claude call per note and fills the review queue with months of work that may be long settled. So on connecting, the app **states what the folder already holds** — the readable count and the date range — and offers three, with **the count and an estimated AI cost shown before confirming**:
    - **(a) Start from now** — only new notes. Recorded as a decision, not left as an absence, so "why did the queue start empty" has an answer with a date and a name on it.
    - **(b) Also import notes since a date** — the count and cost are recalculated each time the date changes.
@@ -1117,12 +1119,12 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 9c. **Confirming `vendor` prompts for service categories inline in the review queue** (FR-1.24–1.25), so a vendor is searchable the moment they are created rather than being fixed up later.
 9d. For a participant matched to an **existing** contact, a confirmed type is **added** to that contact's types; it never replaces the existing set, and never alters their pipeline stage (FR-1.6a.3).
 9e1. **A new contact is created with its company, or deliberately without one.** *(Added 2026-09-22 from real use: approving Mike Eller created the contact and never the company, though the notes named one. A contact created without its company is a contact somebody has to go back and fix.)* The proposal shows the company the notes named, ranked candidates for it — **email domain first, then name, then a partial name match**, each with its reason — and a create path. Creating goes through **`CompanySerializer`**, so the Add company form's rules apply unchanged: the duplicate-name refusal in its own words, and the domain row that makes the *next* participant match without anybody choosing. A public mail provider is never written on as a company domain. **One create covers the meeting**: having made a company for the first participant from it, every other pending participant in that proposal finds it already matched, so three people from one company do not become three companies.
-9e. **A participant who is on the practice's own staff is recognized, not asked about.** *(Added 2026-09-22, from real proposals: the FF came back as a participant in **every** meeting, asking whether he was new and "what they are to us" — with only the five contact types offered, none of which is true. The practice is not a prospect, a client, a referral partner, a vendor or a coworker of itself. The question was wrong, not the answer.)*
+9e. **A participant who is on the practice's own staff is recognized, not asked about.** *(Added 2026-09-22, from real proposals: the practice owner came back as a participant in **every** meeting, asking whether he was new and "what they are to us" — with only the five contact types offered, none of which is true. The practice is not a prospect, a client, a referral partner, a vendor or a coworker of itself. The question was wrong, not the answer.)*
    - Matching is **email, then name**, the same order and for the same reason as FR-5.10: an address is an identity, a name is a coincidence waiting to happen. A name that matches more than one contact resolves to **no contact** — one of the two "Bryan Baker" rows in the owner's own CRM is exactly that case.
    - A recognized participant is **shown** on the proposal (who was in the room is the point of the record), carries **no contact type**, offers **no candidates**, and **needs no approval**. It creates and changes nothing: no contact, no type, no pipeline stage, no send.
    - On approval of the proposal's other participants, the meeting records them as **attended-by**: `meeting_participant.is_practice` with the staff user on the row. The practice never decides which client company a meeting belongs to.
    - **A staff row never holds a proposal open.** It is excluded from the proposal's state entirely — it is not a question that was answered, so it is not evidence of work either. Proposals parsed before this rule are checked live, so the eight already stuck at `partially_actioned` settle without a migration; `manage.py recognise_practice_participants` (dry-run by default) marks them properly.
-   - **Client users are never the practice.** An FCC has a membership too, and is a client.
+   - **Client users are never the practice.** A client owner has a membership too, and is a client.
 10. **Match order is exactly:** email address → email domain + name → name alone. The reason is displayed ("matched on email domain + name").
 11. ⛔ **REVIEW QUEUE (R10):** no contact is created or linked until a human picks. Where candidates exist, the human chooses one or rejects them all and creates new.
 12. An **action-item proposal** holds: text, proposed owner, proposed due date, and the source excerpt it came from. ⛔ **REVIEW QUEUE (R11).** On approval the proposed owner becomes the task's **`client_owner_contact_id`**; where that Contact also holds a portal login, the task may additionally be assigned to them. A client owner without a login is recorded as such — no user is invented to hold the field.
@@ -1131,7 +1133,7 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 15. **Partial approval is required:** each item is independently approvable and rejectable. Approving three action items and rejecting one is a normal outcome.
 16. Rejection is persistent — a rejected proposal is retained as `rejected` and **does not reappear** on the next poll.
 17. A proposal can be **re-parsed** on demand (for example after a prompt improvement), producing a fresh proposal that supersedes the pending one; already-approved items are untouched.
-18. Approving items creates real records via the same paths as manual creation, so all Module 1 and Module 3 rules — including tenant scoping, stakeholder cadence, and client visibility — apply identically.
+18. Approving items creates real records via the same paths as manual creation, so all Module 1 and Module 3 rules — including practice scoping, stakeholder cadence, and client visibility — apply identically.
 19. **If an approved deliverable would notify a stakeholder, that notification enters the Outbox or the digest approval flow like any other** — approving a proposal creates the record; it does not authorize a send.
 
 ### Out of scope for Beta
@@ -1141,7 +1143,7 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 3. Audio or video files in the watched folder.
 4. Calendar integration to pre-populate attendees.
 5. **Auto-approval of any kind, at any confidence level, ever.** Not a Beta limitation — a product rule.
-6. Watching more than one folder per tenant.
+6. Watching more than one folder per practice.
 7. Extracting decisions, risks, or sentiment; Beta extracts participants, action items, and deliverables only.
 8. Editing the source document from within the app.
 
@@ -1149,17 +1151,17 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 
 **AC-5.1 — Cursor survives downtime.** Note the cursor. Stop the app. Add three documents to the folder. Wait past two poll intervals. Start the app. **All three are ingested**, in order, exactly once.
 
-**AC-5.1a — Connecting the folder, from the queue screen.** As the FF, on a tenant with no `DriveWatch`: the meeting queue shows the two steps. Grant Drive access and return; step one shows the account. Paste the folder's **full Drive URL including `?usp=sharing`**; the check names the folder and reports its file count and readable count, and **no watch exists yet**. Confirm; the watch is saved with the name Drive gave. Paste a file's URL instead of a folder's, and a folder id that does not exist, and confirm each is refused with a reason and saves nothing. Disconnect, and confirm proposals already made are still listed and reconnecting the same folder does not re-read it. As a CF and as a VA, confirm the folder's state is visible and **no connect control is**.
+**AC-5.1a — Connecting the folder, from the queue screen.** As the practice owner, on a practice with no `DriveWatch`: the meeting queue shows the two steps. Grant Drive access and return; step one shows the account. Paste the folder's **full Drive URL including `?usp=sharing`**; the check names the folder and reports its file count and readable count, and **no watch exists yet**. Confirm; the watch is saved with the name Drive gave. Paste a file's URL instead of a folder's, and a folder id that does not exist, and confirm each is refused with a reason and saves nothing. Disconnect, and confirm proposals already made are still listed and reconnecting the same folder does not re-read it. As an associate and as an assistant, confirm the folder's state is visible and **no connect control is**.
 
 **AC-5.1b — The folder's past, as a choice.** On a folder holding notes older than the watch: confirm the queue states **how many readable notes are already there** and their date range, and says that watching alone will not find them. Confirm each of the three options shows **a count and an estimated cost before you confirm it**, and that changing the date in (b) re-counts and re-prices. Choose (c). Confirm notes arrive **oldest first, a few a minute**, that the panel shows progress and **money spent so far**, and that each one appears in the review queue as a proposal with nothing created. Stop it midway; confirm what was read stays. Start it again; confirm it plans only what was left. Confirm `0 waiting` never again describes a folder full of notes.
 
 **AC-5.1c — Subfolders.** On a folder whose notes are one level down, confirm the connect screen **names the subfolders** and their readable counts, and that a poll and a backfill both read them.
 
-**AC-5.9e — The practice is recognized, not asked about.** Ingest a note whose attendees include the FF, a CF and a client contact. Confirm the two staff rows are **shown on the proposal as the practice**, with no contact type offered, no candidate picker, and no approve or reject control; confirm the client contact is still a question. Confirm no contact was created or modified and nothing was added to anybody's types. Approve the client participant and confirm the meeting carries **all three** — the client on the client's side, the two staff marked as the practice with the right user on each. Then confirm a proposal whose only remaining unactioned item is a staff row closes as **actioned**, not `partially_actioned`.
+**AC-5.9e — The practice is recognized, not asked about.** Ingest a note whose attendees include the practice owner, an associate and a client contact. Confirm the two staff rows are **shown on the proposal as the practice**, with no contact type offered, no candidate picker, and no approve or reject control; confirm the client contact is still a question. Confirm no contact was created or modified and nothing was added to anybody's types. Approve the client participant and confirm the meeting carries **all three** — the client on the client's side, the two staff marked as the practice with the right user on each. Then confirm a proposal whose only remaining unactioned item is a staff row closes as **actioned**, not `partially_actioned`.
 
 **AC-5.10a — A participant arrives with their company.** Ingest a note naming three people at one company we do not hold. Confirm each participant proposal shows the company the notes named and any candidates with their reason. Create it on the first; confirm the other two now show it as *created a moment ago in this review* and that approving them links rather than creating a second. Confirm the domain was written on (and that a `gmail.com` address puts nothing on). Try to create a company whose name already exists and confirm the Add company form's own refusal, with nothing approved.
 
-**AC-5.8d — Call notes read on the record.** Open a contact who attended an approved meeting. Confirm a **Call notes** section shows the date, the accepted summary, who else was there, and a link that opens the source Doc. Discard a summary and confirm the section says so rather than showing something else. Open their company and confirm the same section aggregates its contacts' meetings. As FCC and ECC, confirm neither the section nor the endpoint is reachable.
+**AC-5.8d — Call notes read on the record.** Open a contact who attended an approved meeting. Confirm a **Call notes** section shows the date, the accepted summary, who else was there, and a link that opens the source Doc. Discard a summary and confirm the section says so rather than showing something else. Open their company and confirm the same section aggregates its contacts' meetings. As client owner and client team member, confirm neither the section nor the endpoint is reachable.
 
 **AC-5.1b.1 — The import offer persists.** After importing part of a folder, reopen the queue. Confirm it states how many readable notes remain unimported with their date range, offers the same three choices priced against what is left, and that the watched-folder card says **"watching for new notes; N older notes not imported"**. Import the rest; confirm the offer goes quiet and says nothing older is left unread.
 
@@ -1181,7 +1183,7 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 
 **AC-5.10 — Failure is retryable and does not lose position.** With an invalid Anthropic key, sync a valid document. The file is recorded, the parse fails visibly, and the cursor has not advanced past it. Restore the key, retry, and confirm the proposal is produced.
 
-**AC-5.16 — CF proposal scope has exactly two limbs. (Matrix `proposal-scope`, `drive_file_owner_email`.)** Ingest three files: (a) one whose participants match a company the CF is assigned to, (b) one owned in Drive by that CF with no matched participants, (c) one owned by the FF with no matched participants — an FF prospect meeting. As the CF: (a) and (b) are visible, **(c) returns 404**. As FF and as VA: all three are visible. Confirm `drive_file_owner_email` was captured at ingestion for all three.
+**AC-5.16 — associate proposal scope has exactly two limbs. (Matrix `proposal-scope`, `drive_file_owner_email`.)** Ingest three files: (a) one whose participants match a company the associate is assigned to, (b) one owned in Drive by that associate with no matched participants, (c) one owned by the practice owner with no matched participants — a practice owner prospect meeting. As the associate: (a) and (b) are visible, **(c) returns 404**. As practice owner and as assistant: all three are visible. Confirm `drive_file_owner_email` was captured at ingestion for all three.
 
 **AC-5.12 — Approval creates the meeting on every participant's timeline. (FR-5.8a–8c.)** Ingest a note with three participants. Review the drafted summary, edit one sentence, and approve all three participants. Confirm **one** `Meeting` record exists carrying your edited summary and a working link to the source Drive file, and that it appears on the timeline of **all three** contacts and once on the client company. Repeat with the summary discarded: the Meeting is created with no summary.
 
@@ -1191,7 +1193,7 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 
 **AC-5.15 — Vendor confirmation captures categories inline. (FR-5.9c.)** Confirm a participant as `vendor`. The queue prompts for service categories before approval completes. Supply two. Confirm the created vendor is immediately returned by a category search (AC-1.8's path).
 
-**AC-5.11 — Role and tenant boundaries.** As FCC and ECC, confirm no navigation to the queue exists and the endpoints return 403. As a user in tenant A, confirm tenant B's `DriveWatch`, source files, and proposals return 404.
+**AC-5.11 — Role and practice boundaries.** As client owner and client team member, confirm no navigation to the queue exists and the endpoints return 403. As a user in practice A, confirm practice B's `DriveWatch`, source files, and proposals return 404.
 
 ---
 
@@ -1199,46 +1201,46 @@ Meeting notes arrive in a Google Drive folder (Gemini notes, in Beta) and become
 
 ### Purpose
 
-One place where the whole conversation with a client lives, so FF, CF, and VA see the same history instead of three partial copies in three mailboxes. Mail the app sends carries a per-thread reply address; when the client replies, the reply is matched back to the thread and appears on the client's record. Where a reply cannot be matched confidently it goes to an unmatched queue for a person to file, because a misfiled email is worse than a queued one. **This module's inbound half requires a publicly reachable webhook and therefore only functions after the Railway move** (assumption F16); it is built against replayed Postmark payloads locally, and the Phase 6 plan in `04_build_plan.md` sequences it accordingly.
+One place where the whole conversation with a client lives, so practice owner, associate, and assistant see the same history instead of three partial copies in three mailboxes. Mail the app sends carries a per-thread reply address; when the client replies, the reply is matched back to the thread and appears on the client's record. Where a reply cannot be matched confidently it goes to an unmatched queue for a person to file, because a misfiled email is worse than a queued one. **This module's inbound half requires a publicly reachable webhook and therefore only functions after the Railway move** (assumption F16); it is built against replayed Postmark payloads locally, and the Phase 6 plan in `04_build_plan.md` sequences it accordingly.
 
 ### User stories
 
-**FF**
-- As the FF, I open a client's record and see the full email history — mine, my CF's, and the app's digests — in one thread list.
-- As the FF, when a client replies from a personal address I have never seen, it lands in a queue for me to file rather than vanishing.
+**Practice owner**
+- As the practice owner, I open a client's record and see the full email history — mine, my associate's, and the app's digests — in one thread list.
+- As the practice owner, when a client replies from a personal address I have never seen, it lands in a queue for me to file rather than vanishing.
 
-**CF**
-- As a CF, I send from my own Gmail address to contacts on client companies I am assigned to, and those sends appear on the shared record automatically.
+**Associate**
+- As an associate, I send from my own Gmail address to contacts on client companies I am assigned to, and those sends appear on the shared record automatically.
 
-**VA**
-- As a VA, I see the full communication history so I can pick up a thread's context, and I file unmatched inbound mail.
-- As a VA, I **draft replies into the Outbox** for FF approval; I cannot connect Gmail and cannot send from any address (assumption H7).
+**Assistant**
+- As an assistant, I see the full communication history so I can pick up a thread's context, and I file unmatched inbound mail.
+- As an assistant, I **draft replies into the Outbox** for practice owner approval; I cannot connect Gmail and cannot send from any address (assumption H7).
 
-**FCC / ECC**
-- **No stories.** Client users interact through the portal and through email they receive; they have no view of the tenant's communication history, which includes internal correspondence about them.
+**Client owner / client team member**
+- **No stories.** Client users interact through the portal and through email they receive; they have no view of the practice's communication history, which includes internal correspondence about them.
 
 ### Functional requirements
 
 **Outbound and threading**
 
-1. Every app-originated email belongs to an **`EmailThread`** carrying a `thread_token`, the tenant, and the linked Contact and/or client company.
+1. Every app-originated email belongs to an **`EmailThread`** carrying a `thread_token`, the practice, and the linked Contact and/or client company.
 2. **Outbound mail carries the thread token in its headers, not in a reply address.** Beta has no inbound domain (assumption A3 — Gmail is the transport), so there is no `reply+<token>@` address. Instead:
     1. `Message-ID: <{thread_token}.{random}@{tenant-domain}>` — the token is recoverable from the Message-ID alone;
     2. `X-ExecsNowHQ-Thread: {thread_token}` as a custom header;
     3. `In-Reply-To` / `References` set to the last Message-ID we issued on that thread, so a follow-up threads in the client's mail client rather than starting a new conversation;
     4. Gmail's own `threadId`, stored on the thread at first send and reused on every later send.
-2a. **`From` is the tenant's send-as alias**, verified against Gmail's `settings.sendAs` before any send. An unverified alias is a hard error naming the exact step to fix it — never a silent fallback to the fractional's personal address (FR-6.2b).
-3. Personal sends via the Gmail API (FF, and CF on assigned accounts) are recorded to the same thread structure, so a personal reply and an app digest sit in one history.
+2a. **`From` is the practice's send-as alias**, verified against Gmail's `settings.sendAs` before any send. An unverified alias is a hard error naming the exact step to fix it — never a silent fallback to the fractional's personal address (FR-6.2b).
+3. Personal sends via the Gmail API (practice owner, and associate on assigned accounts) are recorded to the same thread structure, so a personal reply and an app digest sit in one history.
 
 **Personal sends, and how their replies come back**
 
 3a. **The problem this used to solve is now mostly gone.** In the Postmark design, app mail and personal mail traveled by different routes and only the former was threadable. With Gmail as the transport (assumption A3), **everything goes out through Gmail**, so there is one route and one recovery mechanism.
 
-3b. **App mail** is sent by the FF's connection as the tenant alias (FR-6.2a). **Personal mail** is sent by an FF or CF as themselves — a CF only to contacts on client companies they are assigned to (H7). Both are recorded on the same `EmailThread` and carry the same threading headers.
+3b. **App mail** is sent by the practice owner's connection as the practice alias (FR-6.2a). **Personal mail** is sent by a practice owner or associate as themselves — an associate only to contacts on client companies they are assigned to (H7). Both are recorded on the same `EmailThread` and carry the same threading headers.
 
 3c. **Replies are recovered by polling** the threads the app started (FR-6.5), which also captures a reply the fractional types **natively in Gmail** rather than in the app. The old Tier 1 blind spot no longer exists: it was a consequence of not reading the mailbox, and Beta now reads the threads it created.
 
-3d. **VAs get neither** — they cannot connect Gmail at all, and app mail never picks up a VA's connection even if a row existed (H7).
+3d. **Assistants get neither** — they cannot connect Gmail at all, and app mail never picks up an assistant's connection even if a row existed (H7).
 
 3e. **Scopes:** `gmail.send` to send, `gmail.settings.basic` to verify the send-as alias, `gmail.readonly` to poll threads. All three are restricted scopes and all three are **free under the Internal consent screen** (C1) — no verification, no CASA assessment, no refresh-token expiry. **The bill arrives at V1**, and the Postmark transport option is what keeps a security assessment from being the only road to launch.
 
@@ -1250,7 +1252,7 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 8. ⛔ **REVIEW QUEUE (R13):** an unmatched message enters the **unmatched queue** and is **never dropped**. A human files it to a contact or thread, which optionally adds the sending address to that contact.
 9. Quoted history and signatures are trimmed for display, with the full raw message retained and viewable.
 10. Attachments are stored and downloadable, with size limits enforced.
-11. **Authenticity comes from the transport, not from a shared secret.** With polling there is no webhook to forge: messages are read from the tenant's own mailbox over an authenticated Google API call. The Postmark webhook and its `POSTMARK_INBOUND_WEBHOOK_SECRET` verification are **V1**, arriving with the Postmark transport option.
+11. **Authenticity comes from the transport, not from a shared secret.** With polling there is no webhook to forge: messages are read from the practice's own mailbox over an authenticated Google API call. The Postmark webhook and its `POSTMARK_INBOUND_WEBHOOK_SECRET` verification are **V1**, arriving with the Postmark transport option.
 12. Inbound processing is idempotent on the provider's message id — **a re-poll of the same thread does not duplicate a message**, which matters more with polling than with webhooks because every poll re-reads the whole thread.
 
 **Local development**
@@ -1262,8 +1264,8 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 
 **Visibility**
 
-16. Communication history is visible to FF and VA for all contacts, and to CF for contacts on assigned client companies.
-17. Threads inherit the client-company scope; nothing in this module is exposed to FCC or ECC.
+16. Communication history is visible to practice owner and assistant for all contacts, and to associate for contacts on assigned client companies.
+17. Threads inherit the client-company scope; nothing in this module is exposed to client owner or client team member.
 
 ### Out of scope for Beta
 
@@ -1272,7 +1274,7 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 1b. **A third-party delivery log.** Postmark's per-message activity trail does not exist in Beta. The Outbox is the only send log, and bounces are visible only in the fractional's Gmail. This is one of three trade-offs the owner accepted in choosing the Gmail transport (assumption A3).
 2. IMAP or Outlook/O365 connection.
 3. Shared-inbox workflow: assignment, SLA timers, canned replies, read receipts.
-4. Sending from a tenant alias other than the configured `info@` address.
+4. Sending from a practice alias other than the configured `info@` address.
 5. Automatic contact creation from an unmatched sender — filing is manual (assumption F16 and the review rule).
 6. Threading of SMS or any non-email channel.
 7. AI-drafted replies. Beta records and threads; it does not compose.
@@ -1293,23 +1295,23 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 
 **AC-6.7 — Authenticity is enforced.** Post an unsigned/unauthenticated payload to the webhook. It is rejected without creating a message.
 
-**AC-6.8 — VA send boundary.** As a VA, confirm no Gmail connect control and no send control exist, and that both endpoints return 403. Confirm the VA can still read history and file unmatched mail.
+**AC-6.8 — assistant send boundary.** As an assistant, confirm no Gmail connect control and no send control exist, and that both endpoints return 403. Confirm the assistant can still read history and file unmatched mail.
 
-**AC-6.9 — CF assignment boundary.** As a CF, send to a contact on an assigned client company: it succeeds and is recorded. Attempt the same for an unassigned company: 403.
+**AC-6.9 — associate assignment boundary.** As an associate, send to a contact on an assigned client company: it succeeds and is recorded. Attempt the same for an unassigned company: 403.
 
-**AC-6.10 — Client users see nothing.** As FCC and ECC, confirm no navigation to communication history, and that thread, message, and unmatched-queue endpoints return 403.
+**AC-6.10 — Client users see nothing.** As client owner and client team member, confirm no navigation to communication history, and that thread, message, and unmatched-queue endpoints return 403.
 
-**AC-6.11 — Tenant isolation.** Threads, messages, and unmatched items from tenant B are unreachable from tenant A, including by direct URL.
+**AC-6.11 — Practice isolation.** Threads, messages, and unmatched items from practice B are unreachable from practice A, including by direct URL.
 
-**AC-6.13 — Outbound carries the token in its headers, and From is the alias. (FR-6.2, 6.2a.)** Send an app email to an allow-listed address. Inspect the delivered message: `From` is the **tenant alias**, not the fractional's personal address; `Message-ID` contains the thread token; `X-ExecsNowHQ-Thread` carries the same token. Send a second message on the same thread and confirm `In-Reply-To` quotes the first.
+**AC-6.13 — Outbound carries the token in its headers, and From is the alias. (FR-6.2, 6.2a.)** Send an app email to an allow-listed address. Inspect the delivered message: `From` is the **practice alias**, not the fractional's personal address; `Message-ID` contains the thread token; `X-ExecsNowHQ-Thread` carries the same token. Send a second message on the same thread and confirm `In-Reply-To` quotes the first.
 
-**AC-6.14 — An unverified send-as alias is a hard error. (FR-6.2a.)** Point the tenant's `from_address` at an alias that is not a confirmed "Send mail as" address on the connected account. Attempt any send. It **fails with a message naming the alias, the Gmail settings path to fix it, and which addresses are available** — and **nothing is delivered from the fractional's personal address instead.**
+**AC-6.14 — An unverified send-as alias is a hard error. (FR-6.2a.)** Point the practice's `from_address` at an alias that is not a confirmed "Send mail as" address on the connected account. Attempt any send. It **fails with a message naming the alias, the Gmail settings path to fix it, and which addresses are available** — and **nothing is delivered from the fractional's personal address instead.**
 
 **AC-6.15 — Polling captures a Gmail-native reply. (FR-6.5.)** Reply to an app-sent message from the client's mailbox, and separately type a reply into Gmail as the fractional. Poll. Both appear on the thread and on the contact's timeline. Confirm a second poll of the same thread creates no duplicates (FR-6.12).
 
 **AC-6.16 — Polling tolerates downtime. (FR-6.5.)** Stop the app. Reply to two known threads. Wait past several poll intervals. Start the app: both are ingested exactly once, with no full-mailbox resync.
 
-**AC-6.17 — A revoked Gmail token names its consequence. (Assumption A3, trade-off 1.)** Revoke the FF's Gmail credential and request a magic link. The failure message states that app mail — **including client sign-in** — cannot be sent until Gmail is reconnected. It does not surface as a generic 500, and no token is silently used from another account.
+**AC-6.17 — A revoked Gmail token names its consequence. (Assumption A3, trade-off 1.)** Revoke the practice owner's Gmail credential and request a magic link. The failure message states that app mail — **including client sign-in** — cannot be sent until Gmail is reconnected. It does not surface as a generic 500, and no token is silently used from another account.
 
 **AC-6.12 — Live round trip.** Send a real digest to an allow-listed address and reply to it. The reply appears on the contact's timeline within one poll interval. **This now runs on the laptop** — polling needs no public endpoint, which is why Module 6 no longer waits for the Railway move.
 
@@ -1319,10 +1321,10 @@ One place where the whole conversation with a client lives, so FF, CF, and VA se
 
 Beta is complete when all six modules pass their acceptance criteria and the following hold across the whole application:
 
-1. **Tenant isolation suite passes** against the registry described in assumption B3, with every domain model and endpoint registered. An unregistered model fails the meta-test.
-2. **Role boundary suite passes** for all five roles against `03_access_matrix.md`, with VA-financial and ECC-cross-company cases explicitly covered.
+1. **Practice isolation suite passes** against the registry described in assumption B3, with every domain model and endpoint registered. An unregistered model fails the meta-test.
+2. **Role boundary suite passes** for all five roles against `03_access_matrix.md`, with assistant-financial and client team member-cross-company cases explicitly covered.
 3. **No path exists by which AI output reaches a client or creates a record without a human action**, verified by walking every row of the register in §2 and confirming its "if never actioned" behavior.
-4. **`hold_all_digests` is ON**, and turning it off is a deliberate, logged, single-tenant action.
+4. **`hold_all_digests` is ON**, and turning it off is a deliberate, logged, single-practice action.
 5. The nightly backup has run, and **a restore into a scratch database has been performed at least once** and verified — a backup that has never been restored is a hypothesis.
 6. `.env.example` is current and no secret is committed.
 7. **The owner's real practice has run on the app with real clients**, measured concretely rather than by feel:
@@ -1337,8 +1339,8 @@ Beta is complete when all six modules pass their acceptance criteria and the fol
 **First review round** (closed):
 
 1. **A2a — approved.** Magic-link emails send synchronously in the request; everything else queues.
-2. **FCC and ECC stay functionally identical in Beta**, with the role codes kept distinct throughout the model, the access matrix, and the permission tests, so V1 user management attaches to FCC without a migration. `03_access_matrix.md` carries two columns whose Beta cells are identical rather than one merged column.
-3. **Digest cadence default: generation Thursday 08:00, send Friday 08:00**, tenant time, with the reasoning written into FR-3.23 so it is not silently reverted.
+2. **Client owner and client team member stay functionally identical in Beta**, with the role codes kept distinct throughout the model, the access matrix, and the permission tests, so V1 user management attaches to client owner without a migration. `03_access_matrix.md` carries two columns whose Beta cells are identical rather than one merged column.
+3. **Digest cadence default: generation Thursday 08:00, send Friday 08:00**, practice time, with the reasoning written into FR-3.23 so it is not silently reverted.
 4. **FR-3.30a / FR-3.30b** — stale-draft flagging and late-update roll-forward, covered by AC-3.20 to AC-3.22.
 
 **Second review round** — all 17 items applied:
@@ -1346,9 +1348,9 @@ Beta is complete when all six modules pass their acceptance criteria and the fol
 | # | Change | Where |
 |---|---|---|
 | 1 | Client invariant: a `won` stage in a `sales` pipeline is authoritative, one-directional | FR-1.6a · AC-1.12 |
-| 2 | `ClientAssignment` + CF visible universe | FR-1.9a–9e · AC-1.13–1.15 |
+| 2 | `ClientAssignment` + associate visible universe | FR-1.9a–9e · AC-1.13–1.15 |
 | 3 | `Company.primary_contact` | FR-1.3, 1.3a |
-| 4 | Referral fee terms, tenant blurb, 3-part touch, onboarding + flyer | FR-1.20a, 1.21a, 1.22, 1.22a, 1.23a–23d · AC-1.18–1.20 |
+| 4 | Referral fee terms, practice blurb, 3-part touch, onboarding + flyer | FR-1.20a, 1.21a, 1.22, 1.22a, 1.23a–23d · AC-1.18–1.20 |
 | 5 | Stage-draft send-by, 7 days default | FR-1.12 · AC-1.16 |
 | 6 | Outbox = approval queue **and** complete send log | FR-1.15–15c · AC-1.17 |
 | 7 | Note links to Contact/Company **and** Task | FR-2.3, 2.3a · AC-2.2 |

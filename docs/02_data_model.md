@@ -1,5 +1,7 @@
 # 02 — Data Model: Beta
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Phase 0 · Execs NOW HQ · for owner review**
 **Built on:** `CLAUDE.md`, `00_assumptions.md` (closed), `01_prd.md` (approved with 17 changes applied), `strategy_session_seed.md`.
 
@@ -12,16 +14,16 @@ These apply to **every** table in this document and are not repeated per table.
 | Convention | Rule | Source |
 |---|---|---|
 | Primary key | `id UUID` (uuid4), not sequential | D1 |
-| Tenant | `tenant_id UUID NOT NULL FK → tenant` on every domain table, `ON DELETE PROTECT`, indexed | `CLAUDE.md`, B1 |
+| Practice | `tenant_id UUID NOT NULL FK → tenant` on every domain table, `ON DELETE PROTECT`, indexed | `CLAUDE.md`, B1 |
 | Timestamps | `created_at`, `updated_at` — `timestamptz`, UTC | D4 |
 | Soft delete | `deleted_at timestamptz NULL` on Contact, Company, Note, Goal, Project, Task, Comment | D2 |
 | Actor columns | `created_by`, `updated_by` → `user`, nullable (system actions have no user) | — |
 | Money | none in Beta beyond free-text fee terms | D5 |
-| Enum style | Python choices for anything permission logic depends on; **tables** for anything V1 lets a tenant customize | D5 |
+| Enum style | Python choices for anything permission logic depends on; **tables** for anything V1 lets a practice customize | D5 |
 
-**Tenant scoping is enforced by the fail-closed manager in B1, not by the schema.** `tenant_id` is on every row so the filter is *possible*; the manager is what makes it *unavoidable*. Two schema-level supports:
+**Practice scoping is enforced by the fail-closed manager in B1, not by the schema.** `tenant_id` is on every row so the filter is *possible*; the manager is what makes it *unavoidable*. Two schema-level supports:
 
-- Every unique constraint that could otherwise collide across tenants is scoped: `UNIQUE (tenant_id, …)`, never a bare `UNIQUE (…)`.
+- Every unique constraint that could otherwise collide across practices is scoped: `UNIQUE (tenant_id, …)`, never a bare `UNIQUE (…)`.
 - Every FK between two domain tables carries a **model-level `clean()` check that both sides share a `tenant_id`**. Postgres cannot express this as a simple FK, so it is a validation rule plus a test in the isolation registry (B3), not a constraint.
 
 **Legend:** `PK` primary key · `FK→x` foreign key · `?` nullable · `U(a,b)` unique together · `IX` indexed.
@@ -58,7 +60,7 @@ The practice. One row in Beta.
 > `tenant` is the one table with **no** `tenant_id`. It is the root.
 
 ### `user`
-Django's user, extended. Tenant staff **and** client portal users.
+Django's user, extended. Practice staff **and** client portal users.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -67,11 +69,11 @@ Django's user, extended. Tenant staff **and** client portal users.
 | `full_name` | text | |
 | `is_active` | bool | |
 | `password` | text | **always unusable** except the local superuser (C4) |
-| `timezone` | text? | overrides tenant default |
+| `timezone` | text? | overrides practice default |
 | `last_login_at` | timestamptz? | |
 
 ### `membership`
-User × tenant × role. Exists as a table from migration 1; **enforced one-per-user in Beta** (B4).
+User × practice × role. Exists as a table from migration 1; **enforced one-per-user in Beta** (B4).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -79,25 +81,25 @@ User × tenant × role. Exists as a table from migration 1; **enforced one-per-u
 | `tenant_id` | FK→`tenant` | |
 | `user_id` | FK→`user` | |
 | `role` | text | `FF` · `CF` · `VA` · `FCC` · `ECC` |
-| `client_company_id` | FK→`company`? | **required when role is FCC/ECC, null otherwise** — the second scope layer (FR-0.2) |
+| `client_company_id` | FK→`company`? | **required when role is client owner/client team member, null otherwise** — the second scope layer (FR-0.2) |
 | `contact_id` | FK→`contact`? | the person this login belongs to (F1). **Set on every invite** — from the contact portal access was granted on, and since 2026-09-22 (FR-0.8a.1) from a staff invite's create-or-link too. Nullable only for memberships older than that |
 | `invited_by` / `invited_at` | FK→`user`? / timestamptz | |
 | `revoked_at` | timestamptz? | set on revoke; frees a seat (FR-3.33g) |
 
-> **Revoking a tenant staff member cascades** (FR-0.8c): sessions are invalidated, and for a CF every live `client_assignment` is closed (`removed_at` set) and their `gmail_connection` is deleted along with its `tenant_secret`. Nothing they authored is deleted — a departed CF's tasks, notes, and sent mail remain.
+> **Revoking a practice staff member cascades** (FR-0.8c): sessions are invalidated, and for an associate every live `client_assignment` is closed (`removed_at` set) and their `gmail_connection` is deleted along with its `tenant_secret`. Nothing they authored is deleted — a departed associate's tasks, notes, and sent mail remain.
 | | | `U(tenant_id, user_id)` |
 
 **Check constraint:** `role IN ('FCC','ECC') = (client_company_id IS NOT NULL)`. This is the one invariant worth expressing in the database rather than in code, because a client user without a company is an unbounded client user.
 
 ### `client_assignment`
-Tenant user × client company (FR-1.9a). **Every "assigned accounts" rule in Modules 1–6 resolves here.**
+Practice user × client company (FR-1.9a). **Every "assigned accounts" rule in Modules 1–6 resolves here.**
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
-| `user_id` | FK→`user` | must hold a CF (or FF) membership |
+| `user_id` | FK→`user` | must hold an associate (or practice owner) membership |
 | `company_id` | FK→`company` | must have `is_client_company` |
-| `assigned_by` / `assigned_at` | FK→`user` / timestamptz | FF only (FR-1.9b) |
+| `assigned_by` / `assigned_at` | FK→`user` / timestamptz | Practice owner only (FR-1.9b) |
 | `removed_at` | timestamptz? | soft removal keeps the audit trail |
 | | | `U(tenant_id, user_id, company_id)` where `removed_at IS NULL` |
 
@@ -180,7 +182,7 @@ One place for GCS-backed blobs: recording audio, flyers, PDFs, inbound attachmen
 | `bucket` / `object_key` | text / text | **`object_key` is unique per upload** (`<prefix>/<uuid>/<filename>`) and a write never overwrites (Phase 2) |
 | `content_type` / `byte_size` | text / bigint | `byte_size` measured from what was written |
 | `purpose` | text | `recording_audio` · `marketing_flyer` · `outbox_attachment` · `session_pdf` · `email_attachment` |
-| `delete_after` | timestamptz? | **not used** — retention is computed from the tenant's *current* `audio_retention_days` at run time, so changing the setting applies to existing recordings (Phase 2) |
+| `delete_after` | timestamptz? | **not used** — retention is computed from the practice's *current* `audio_retention_days` at run time, so changing the setting applies to existing recordings (Phase 2) |
 
 **`recording_audio` lives under `recordings/` and nothing else does** — enforced in
 `apps/tenancy/storage.py`. The backup excludes that prefix so retention actually deletes
@@ -199,9 +201,9 @@ audio (owner decision, Phase 2); the prefix is therefore the whole rule.
 | `industry` | text? | |
 | `address` | jsonb? | |
 | `is_client_company` | bool | derived by FR-1.6a.1, cleared only by hand |
-| `seat_count` | int? | FF-set; null until it is a client company (FR-3.33f). Null is **no seats allocated**, not unlimited: a grant is refused saying so |
+| `seat_count` | int? | Practice owner-set; null until it is a client company (FR-3.33f). Null is **no seats allocated**, not unlimited: a grant is refused saying so |
 | `digest_ai_prose` | bool | **FR-3.24 — AI prose on/off for this client's digests**, seeded from `tenant.digest_ai_prose_default` |
-| `primary_contact_id` | FK→`contact`? | FR-1.3a — designated recipient, FCC default |
+| `primary_contact_id` | FK→`contact`? | FR-1.3a — designated recipient, client owner default |
 | `deleted_at` | timestamptz? | |
 
 **Circular FK note:** `company.primary_contact_id → contact` and `contact.company_id → company` reference each other. Both are nullable and created in two migrations (company, then contact, then the FK), which is the ordinary Django resolution. It is called out because it is the only cycle in the schema.
@@ -231,7 +233,7 @@ Ordered list. Feeds `{Location A}` / `{Location B}` (FR-1.3, FR-4.9a).
 | `first_name` / `last_name` | text / text | IX on both |
 | `title` | text? | |
 | `company_id` | FK→`company`? | |
-| `owner_id` | FK→`user` | drives CF visibility (FR-1.9c) |
+| `owner_id` | FK→`user` | drives associate visibility (FR-1.9c) |
 | `source` | text? | |
 | `background` | text? | short "who this is / how we met". **Renamed from `notes`** — one concept in this product is called a note, and it is the `note` table (§12.2) |
 | `tags` | text[] (ArrayField, GIN-indexed) | |
@@ -256,13 +258,13 @@ Multiple per contact, one primary each (FR-1.1). Stakeholder delivery uses the p
 | `is_primary` | bool | at most one true per contact |
 
 ### `contact_type` / `contact_type_link`
-Per-tenant list (D5); many-to-many (FR-1.2).
+Per-practice list (D5); many-to-many (FR-1.2).
 
 `contact_type`: `id · tenant_id · code · label · position` — seeded `prospect, client, referral_partner, vendor, coworker`.
 `contact_type_link`: `id · tenant_id · contact_id · contact_type_id · is_primary` — `U(tenant_id, contact_id, contact_type_id)`.
 
 ### `pipeline`
-Per-tenant rows (D5, FR-1.6). **A practice runs more than one.** The owner's real
+Per-practice rows (D5, FR-1.6). **A practice runs more than one.** The owner's real
 CRM has a sales pipeline for prospects and a nurture pipeline for referral
 partners; the first draft collapsed both into one fixed funnel, which made every
 referral partner look like a stalled prospect.
@@ -270,21 +272,21 @@ referral partner look like a stalled prospect.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
-| `name` | text | `U(tenant_id, name)` — the FF's to change |
+| `name` | text | `U(tenant_id, name)` — the practice owner's to change |
 | `kind` | text | `sales` · `referral` · `custom`. **Behavior keys on this**, not on the name |
 | `position` | smallint | order of the board selector |
 
-Seeded per tenant: **"Sales"** (`sales`) and **"Referral partners"** (`referral`).
+Seeded per practice: **"Sales"** (`sales`) and **"Referral partners"** (`referral`).
 
 ### `pipeline_stage`
-Per-tenant, **per pipeline**. The FF may rename, reorder, add and remove.
+Per-practice, **per pipeline**. The practice owner may rename, reorder, add and remove.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK · `tenant_id` | |
 | `pipeline_id` | FK→`pipeline` | CASCADE |
 | `code` / `label` | text / text | `U(tenant_id, pipeline_id, code)` — "Qualified" may legitimately exist in two pipelines |
-| `semantic` | text | `entry · working · qualified · won · lost · parked · none`. **Independent of the label**: the FF renames "Closed Won" to "Signed" and every rule still works |
+| `semantic` | text | `entry · working · qualified · won · lost · parked · none`. **Independent of the label**: the practice owner renames "Closed Won" to "Signed" and every rule still works |
 | `position` | smallint | |
 
 `is_terminal` is **derived** (`semantic ∈ {lost, parked}`), not stored — a second
@@ -382,7 +384,7 @@ Per FR-1.15 the Outbox is **both** the approval queue and the complete send log.
 | `producer` | text IX | `stage_rule · referral_touch · referral_onboarding · digest · strategy_pdf · precall_invite · magic_link · cadence_change · inbound_forward · manual` |
 | `to_contact_id` | FK→`contact`? | |
 | `to_address` | citext | resolved at creation; survives contact edits |
-| `from_address` | citext | tenant alias, or a user's own address for Gmail sends |
+| `from_address` | citext | practice alias, or a user's own address for Gmail sends |
 | `subject` / `body_html` / `body_text` | text | |
 | `is_ai_generated` | bool | drives the Outbox label (FR-1.23) and the approval rule (FR-3.27) |
 | `warning` | text? | e.g. the stale-blurb notice (FR-1.22a) |
@@ -395,14 +397,14 @@ Per FR-1.15 the Outbox is **both** the approval queue and the complete send log.
 | `dev_real_send` | bool | true when delivered from a localhost build via the allow-list (H6) |
 | `source_type` / `source_id` | text / UUID? | the digest, session, or stage change that produced it |
 
-**Direct-to-`sent` producers** (FR-1.15b): `strategy_pdf`, `magic_link`, `cadence_change`, `inbound_forward`, `precall_invite`, and `manual` **when sent by an FF or CF**.
+**Direct-to-`sent` producers** (FR-1.15b): `strategy_pdf`, `magic_link`, `cadence_change`, `inbound_forward`, `precall_invite`, and `manual` **when sent by a practice owner or associate**.
 
 **Two producers whose routing depends on the sender's role:**
 
-| Producer | FF / CF | VA |
+| Producer | Practice owner / associate | Assistant |
 |---|---|---|
-| `precall_invite` | direct-to-`sent` | **direct-to-`sent`** — template-only, non-AI, from the tenant address (H7a) |
-| `manual` | direct-to-`sent`, via their own Gmail | **`pending_approval`** — a VA never sends to a contact (H7) |
+| `precall_invite` | direct-to-`sent` | **direct-to-`sent`** — template-only, non-AI, from the practice address (H7a) |
+| `manual` | direct-to-`sent`, via their own Gmail | **`pending_approval`** — an assistant never sends to a contact (H7) |
 
 Everything else enters at `pending_approval`.
 
@@ -423,7 +425,7 @@ Everything else enters at `pending_approval`.
 | `title` | text | blank allowed |
 | `title_is_auto` | bool | **derived from the first body line; gates PIN-setting (FR-2.11a) and stub rendering (FR-2.11b)** |
 | `body` | text | markdown; **not encrypted** (FR-2.8) |
-| `created_by_id` | FK→`user`? | ***added*** — CF "owned" scope (matrix 6.2) and "the author reviews" (R3) |
+| `created_by_id` | FK→`user`? | ***added*** — associate "owned" scope (matrix 6.2) and "the author reviews" (R3) |
 | `contact_id` | FK→`contact`? | |
 | `company_id` | FK→`company`? | |
 | `task_id` | FK→`task`? | **independent of the above (FR-2.3)**. ***Moved from Module 3 to Phase 2*** — Phase 2 done-means #1 and AC-2.2 require it, and `task` already existed |
@@ -464,7 +466,7 @@ accepts a PIN on an auto-titled note — AC-2.3 requires that bypass to succeed 
 stub then renders **"Locked note"** (FR-2.11b), with nothing of the title in the index.
 
 **Audio retention (FR-2.19, owner decision 2026-09-11):** the job deletes audio only when
-`transcription_state = 'done'` and the recording is older than the tenant's
+`transcription_state = 'done'` and the recording is older than the practice's
 `audio_retention_days`. **Audio whose transcription never succeeded is kept**, and the note
 is flagged until someone retries or discards it — it is the only record of the call.
 
@@ -474,7 +476,7 @@ Valid only while `expires_at > now()` **and** `unlocked_at >= note.pin_set_at` �
 resetting a PIN revokes every open unlock without touching these rows.
 
 **PIN reset uses `magic_link_token`** with `purpose = 'pin_reset'` and `redirect_to = 'note:<id>'`
-— the table Phase 0.5 built for it: hashed, single-use, 20 minutes, tenant-scoped. A link
+— the table Phase 0.5 built for it: hashed, single-use, 20 minutes, practice-scoped. A link
 is also void once the note's `pin_set_at` is later than the token, so it can only clear the
 PIN it was issued for.
 
@@ -498,7 +500,7 @@ PIN it was issued for.
 | `id` | UUID PK · `tenant_id` | |
 | `title` / `description` | text / text? | |
 | `client_company_id` | FK→`company`? | null = internal |
-| `owner_id` | FK→`user` | the accountable **tenant** user |
+| `owner_id` | FK→`user` | the accountable **practice** user |
 | `client_owner_contact_id` | FK→`contact`? | **who on the client side is accountable** — see below |
 | `target_date` | date? | |
 | `status_override` | text? | **FR-3.10: null means derive from children at read time; never store the derived value** |
@@ -523,7 +525,7 @@ Same shape — including `owner_id`, `client_owner_contact_id`, and `status_over
 
 ### Client-side ownership on `goal` / `project` / `task`
 
-`owner_id` is the accountable **tenant** user and never changes meaning. `client_owner_contact_id` answers a different question — *who on the client side is accountable* — and it exists because both upstream sources name client people, not app users:
+`owner_id` is the accountable **practice** user and never changes meaning. `client_owner_contact_id` answers a different question — *who on the client side is accountable* — and it exists because both upstream sources name client people, not app users:
 
 | Source | Field | Mapping on conversion / approval |
 |---|---|---|
@@ -678,7 +680,7 @@ The join written at generation. **This is what makes multi-stakeholder delivery 
 | `response_schema` | text | `free_text · rating_1_10 · diagnostic_triple · value_pair · agreed_note · path_reaction` (FR-4.3) |
 | `is_fractional_observation` | bool | §3 item 4 — shown, never asked aloud (FR-4.17) |
 | `has_fractional_note` | bool | enables the private note field |
-| `is_financial` | bool | **§9 investment fields — hidden from VA (AC-4.13)** |
+| `is_financial` | bool | **§9 investment fields — hidden from assistant (AC-4.13)** |
 | `position` | smallint | |
 
 ### `strategy_session`
@@ -876,7 +878,7 @@ Three columns, and only three — the rest arrived with Phase 4 (§5):
 | `how_we_will_know` | text? | **qualitative only**: the sentence that stands in for a number. Blank is legitimate — prompting is not blocking (FR-4B.13a) |
 | `outcome_statement` | text? | the fractional's client-facing sentence; **the headline for a qualitative goal** |
 
-> **A model-level check, not a database constraint:** `direction` is required when `measurable_kind = 'numeric'` (ruling 2), and `how_we_will_know` is meaningless when it is not `qualitative`. Both are `clean()` rules with tests, on the same precedent as the cross-tenant FK checks in §0 — the alternative is a partial `CHECK` that a data migration over pre-module goals would have to fight.
+> **A model-level check, not a database constraint:** `direction` is required when `measurable_kind = 'numeric'` (ruling 2), and `how_we_will_know` is meaningless when it is not `qualitative`. Both are `clean()` rules with tests, on the same precedent as the cross-practice FK checks in §0 — the alternative is a partial `CHECK` that a data migration over pre-module goals would have to fight.
 >
 > **Why `none` and null are two values and not one** (ruling A). They render identically to a client (FR-4B.19) and mean opposite things to the practice: *"we decided this one is not measurable"* versus *"nobody has looked at it yet"*. Collapsing them would make the deliberate choice the owner asked for indistinguishable from the empty field it was meant to replace — and the nudge that chases a null would then chase every goal that had already been settled. **The nudge never blocks and never reaches a client**; it is the whole mechanism keeping a null from quietly ageing into a decision nobody made.
 
@@ -915,7 +917,7 @@ later.
 ### `meeting_source_file`
 `id · tenant_id · drive_file_id · drive_version · name · mime_type · `**`drive_file_owner_email citext IX`**` · state (recorded|parsing|parsed|skipped|failed) · skip_reason? · fetched_at`
 
-> **`drive_file_owner_email` is captured at ingestion and is load-bearing for permissions**, not metadata: it is the second limb of the CF `proposal-scope` rule in `03_access_matrix.md` — a CF sees a proposal from their *own* meeting even before any participant is matched to a company. — **`U(tenant_id, drive_file_id, drive_version)` is the idempotency guarantee** (FR-5.4).
+> **`drive_file_owner_email` is captured at ingestion and is load-bearing for permissions**, not metadata: it is the second limb of the associate `proposal-scope` rule in `03_access_matrix.md` — an associate sees a proposal from their *own* meeting even before any participant is matched to a company. — **`U(tenant_id, drive_file_id, drive_version)` is the idempotency guarantee** (FR-5.4).
 
 ### `meeting_proposal`
 
@@ -1009,7 +1011,7 @@ a thread, and the whole point of this row is that we do not know which.
 
 | Column | Type | Notes |
 |---|---|---|
-| `provider` / `provider_message_id` | text | **Unique per tenant.** Every poll re-reads the whole thread, so this is what stops the queue growing by one every 15 minutes |
+| `provider` / `provider_message_id` | text | **Unique per practice.** Every poll re-reads the whole thread, so this is what stops the queue growing by one every 15 minutes |
 | `gmail_thread_id` | text | |
 | `from_address` / `from_name` / `to_addresses` / `subject` | | |
 | `body_text` / `body_html` / `body_stripped` / `raw` | text / jsonb | Trimming is for display; `raw` is the whole thing |
@@ -1072,7 +1074,7 @@ Per user (C2, F19).
 | `last_polled_at` | timestamptz? | 15-minute thread poll |
 | `secret_id` | FK→`tenant_secret` | the encrypted refresh token |
 
-> **A VA has no row here.** The connect action is not offered and the endpoint returns 403 (FR-6.3h, H7).
+> **An assistant has no row here.** The connect action is not offered and the endpoint returns 403 (FR-6.3h, H7).
 
 ---
 
@@ -1175,7 +1177,7 @@ Claude drafts the mirror.
 
 Sections 7, 8, 9 are captured live.
 
-- `strategy_answer` — 3 `value_pair` rows, 2 `path_reaction` rows, 9 `agreed_note` rows. The §9 investment row has `is_financial = true` on its question, so a VA never sees it (AC-4.13).
+- `strategy_answer` — 3 `value_pair` rows, 2 `path_reaction` rows, 9 `agreed_note` rows. The §9 investment row has `is_financial = true` on its question, so an assistant never sees it (AC-4.13).
 
 ---
 
@@ -1212,9 +1214,9 @@ The client invariant fires (FR-1.6a.1):
 - `company.is_client_company → true`.
 - `audit_event` — 3 rows: `stage.changed`, `contact_type.derived`, `company.flagged`.
 
-You assign a CF to the account.
+You assign an associate to the account.
 
-- `client_assignment` — 1 row (FR-1.9a). From here, that CF sees Acme's contacts.
+- `client_assignment` — 1 row (FR-1.9a). From here, that associate sees Acme's contacts.
 
 ---
 
@@ -1291,12 +1293,12 @@ Dana clicks the footer link to switch to monthly.
 
 **Step 9 — Dana uses it as her own tool (FR-3.35–3.37)**
 
-She creates a task for her site manager, whom you granted ECC access earlier.
+She creates a task for her site manager, whom you granted client team member access earlier.
 
-- `task` — 1 row, `created_by_client = true`, `assignee_id →` the ECC's user, `client_company_id → Acme`.
+- `task` — 1 row, `created_by_client = true`, `assignee_id →` the client team member's user, `client_company_id → Acme`.
 - `task_update` — 1 row, `is_client_actor = true`.
 - **No review queue** (FR-3.36) — she is a person writing about her own work.
-- A notification to the tenant owner batches on the 30-minute quiet window.
+- A notification to the practice owner batches on the 30-minute quiet window.
 
 ---
 
@@ -1308,7 +1310,7 @@ She creates a task for her site manager, whom you granted ECC access earlier.
 | `contact` · `contact_email` · `contact_type_link` | 1 · 1 · **2** (prospect + client) |
 | `stage_change` | 3 |
 | `client_assignment` | 1 |
-| `user` · `membership` | 1 · 1 (FCC, 1 seat) |
+| `user` · `membership` | 1 · 1 (client owner, 1 seat) |
 | `strategy_session` · `strategy_answer` · `strategy_map_row` | 1 · ~41 · 4 (3 accepted, 1 discarded) |
 | `goal` · `project` · `task` | 2 · 1 · 4 |
 | `task_update` | 8 |
@@ -1328,7 +1330,7 @@ She creates a task for her site manager, whom you granted ECC access earlier.
 1. **Migration order** is: `tenant` → `user`/`membership` → `company` (no `primary_contact_id`) → `contact` → add `company.primary_contact_id` → everything else. The one FK cycle in the schema is broken by adding that column last.
 2. **Seed data** in a separate data migration: `pipeline` (2) with `pipeline_stage` (11 + 6), `contact_type` (5), the Operations `strategy_template` from `strategy_session_seed.md`, and the worked example map row (FR-4.21).
 3. **`search_vector` columns** are maintained by triggers, with GIN indexes, and Dana's PIN'd notes are excluded at index time, not filtered at query time (FR-2.11) — a filter someone can forget is not an access control.
-4. **Every table in §1–§8 registers in the tenant-isolation registry** (B3). The meta-test fails on an unregistered model, which is what keeps this document and the code from drifting apart.
+4. **Every table in §1–§8 registers in the practice-isolation registry** (B3). The meta-test fails on an unregistered model, which is what keeps this document and the code from drifting apart.
 
 ---
 
@@ -1350,13 +1352,13 @@ All three items marked, and eleven further changes applied from the data-model r
 | 2 | `digest` keyed `(tenant_id, contact_id, cadence, period_start)`; `stakeholder_id` dropped | §5 `digest` |
 | 3 | `client_owner_contact_id` on goal / project / task, with mapping table | §5 |
 | 4 | `question_key` + snapshot as source of truth; `strategy_question.key` + `deleted_at` | §6 |
-| 5 | Partial unique index for one Anthropic key per tenant | §1 `tenant_secret` |
+| 5 | Partial unique index for one Anthropic key per practice | §1 `tenant_secret` |
 | 6 | `company.digest_ai_prose` + `tenant.digest_ai_prose_default` | §1, §2 |
 | 7 | `status_override`; effective status derived at read time | §5 |
 | 8 | `task_update.actor_id` nullable, plus `source` / `source_id` | §5 |
 | 9 | `precall_invite` and `manual` producers, with role-dependent routing | §3 |
 | 10 | `strategy_question.group` → `area` | §6 |
-| 11 | VA may send `precall_invite` directly (H7a) | §3, `00_assumptions.md`, `03_access_matrix.md` |
+| 11 | Assistant may send `precall_invite` directly (H7a) | §3, `00_assumptions.md`, `03_access_matrix.md` |
 
 **On change 1 — this was the significant one.** The single `digest_id` column was wrong in a way that would have surfaced only with a second stakeholder on the same entity: one column cannot be consumed for Dana on weekly and unconsumed for Marcus on `every_update` at the same time. Consumption is per recipient, so it belongs in a join. §10 Step 8 now runs both stakeholders through one `task_update` to show the mechanism working, including what expiry releases and what it leaves alone.
 

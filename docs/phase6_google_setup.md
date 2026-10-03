@@ -1,5 +1,7 @@
 # Phase 6 — what to set up on the Google side
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 One scope, on the OAuth client you already have, in the **Execs NOW HQ** GCP
 project. Read §3 before you grant it.
 

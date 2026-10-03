@@ -1,5 +1,7 @@
 # Phase 1 — Manual Checks
 
+> **Vocabulary (P1, 2026-10-02).** A *practice* is what the code calls a tenant. Roles: practice owner (`FF`), associate (`CF`), assistant (`VA`), client owner (`FCC`), client team member (`ECC`). The codes stay in code and data.
+
 **Module 1: Contacts & pipeline · for the owner**
 
 The five manual checks from `04_build_plan.md` Phase 1, as click paths through the actual UI. Everything here is something I cannot verify for you: it needs your real data, or it needs your judgment.
@@ -77,13 +79,13 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 ### 0d — Confirm the boundaries
 
-**0.10 — A VA cannot do any of this (H7).** If you have a VA account, sign in as them: **Email settings does not appear in the sidebar**, and the URL `/settings/email` returns *"A VA does not connect a mailbox."* A VA never holds a credential that can send as your practice.
+**0.10 — An assistant cannot do any of this (H7).** If you have an assistant account, sign in as them: **Email settings does not appear in the sidebar**, and the URL `/settings/email` returns *"An assistant does not connect a mailbox."* An assistant never holds a credential that can send as your practice.
 
-**0.11 — A CF connects their own, not yours.** A CF sees this page for **their own** mailbox. Yours is not shown to them as theirs — but the practice sending status *is* visible to them, because a broken token of yours stops their mail too.
+**0.11 — An associate connects their own, not yours.** An associate sees this page for **their own** mailbox. Yours is not shown to them as theirs — but the practice sending status *is* visible to them, because a broken token of yours stops their mail too.
 
 **0.12 — Disconnect is real.** Click **Disconnect**, confirm the page returns to **not connected**, then reconnect. The stored refresh token is deleted with the connection, not orphaned — the same cascade that runs when you remove a staff member.
 
-**What you are checking:** that the app asked for the narrowest possible permission, that it tells you the truth about the alias before you rely on it, and that a VA cannot get near it.
+**What you are checking:** that the app asked for the narrowest possible permission, that it tells you the truth about the alias before you rely on it, and that an assistant cannot get near it.
 
 > **If Check 4's send fails later with "Reconnect Gmail in Settings",** come back here — that is the token having been revoked, and this page is where it is fixed.
 
@@ -191,7 +193,7 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 **2.0b** Fill in the person as you actually hold them: first and last name, title, **email** (click *Add another email* for a second one — the **primary** radio decides which is the primary, and only one can be), **phone**, **source**, **tags** (comma or semicolon separated), and the short **background** line.
 
-> **Owner defaults to you.** The form says so at the bottom. That default is what drives a CF's own visibility later (FR-1.9c), so leave it alone unless you are entering someone else's contact.
+> **Owner defaults to you.** The form says so at the bottom. That default is what drives an associate's own visibility later (FR-1.9c), so leave it alone unless you are entering someone else's contact.
 
 **2.0c — Company: pick or create.** The **Company** dropdown lists every company you have. If theirs is not there, leave the dropdown on *none* and type the name in **…or a new company** — it is created on save. Typing a name that already exists (any capitalization) **attaches them to the existing company** rather than creating a second one; that is the same duplicate the merge screen exists to clean up.
 
@@ -205,15 +207,15 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 > **There is no "client company" checkbox, deliberately.** That flag is derived when one of their contacts reaches the sales pipeline's **Closed Won** stage (FR-1.6a). One answer to "is this a client", not two that can disagree.
 
-**2.0h** If you are the FF you also get **Client seat count**. A VA does not see the field at all — matrix 4.12 — and the API refuses it from them even if they try.
+**2.0h** If you are the practice owner you also get **Client seat count**. An assistant does not see the field at all — matrix 4.12 — and the API refuses it from them even if they try.
 
 **2.0i — Confirm the duplicate guard.** Try to add a second company with a name you already have. → **Refused**, naming the existing one and telling you to open it instead.
 
 **2.0j — Now edit what you just added.** Open the contact → **Edit contact** (top right). Every field from the add form is here and prefilled. Change the title, **remove one email address**, add a phone, and use the **primary** radio to move the primary to the new number. Save, and confirm the **Details** panel matches.
 
-> **Only an FF sees the Owner field.** Ownership drives a CF's entire visible universe (FR-1.9c), so reassigning it is not CRM hygiene. A VA editing the same contact does not see the field at all.
+> **Only a practice owner sees the Owner field.** Ownership drives an associate's entire visible universe (FR-1.9c), so reassigning it is not CRM hygiene. An assistant editing the same contact does not see the field at all.
 
-**2.0k** Open a company → **Edit company**. Same thing: name, industry, domains, address, and (FF only) the seat count.
+**2.0k** Open a company → **Edit company**. Same thing: name, industry, domains, address, and (practice owner only) the seat count.
 
 **What you are checking:** that you can get a real person into the system without a CSV, that one primary email is genuinely enforced, that typing an existing company name attaches rather than duplicates, and that everything you can add you can also change.
 
@@ -315,7 +317,7 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 **4.5** → A banner tells you a follow-up draft is waiting. Set *Cadence* and, if you have one, *Fee terms* (e.g. `10% of first 3 months`).
 
-**4.6** Click **Outbox** in the sidebar — it is there for you, a CF and a VA. Filter **pending approval**, and open the **referral onboarding** draft. → It carries the **AI-drafted** tag and the flyer.
+**4.6** Click **Outbox** in the sidebar — it is there for you, an associate and an assistant. Filter **pending approval**, and open the **referral onboarding** draft. → It carries the **AI-drafted** tag and the flyer.
 
 > **If the Outbox is empty, its empty state tells you what lands there and from where** — stage rules, referral touches, onboarding, and anything you send from a contact. Nothing in it ever sends itself.
 
@@ -420,11 +422,11 @@ Two things must exist before the button will work. Both are in `docs/05_dev_envi
 
 These are not in the build plan, but they exercise the parts most likely to bite you later.
 
-**Staff.** Sidebar → **Staff** → invite a colleague as a VA. They can now sign in with Google; an address without a membership is refused. Then remove them and read the banner: it names how many sessions were killed, how many client assignments were closed, and how many Gmail connections were removed — and says their work stays on the record.
+**Staff.** Sidebar → **Staff** → invite a colleague as an assistant. They can now sign in with Google; an address without a membership is refused. Then remove them and read the banner: it names how many sessions were killed, how many client assignments were closed, and how many Gmail connections were removed — and says their work stays on the record.
 
 **Vendors.** Sidebar → **Vendors** → add a category like `Commercial HVAC`, then tag two vendor contacts with it and search. This is the "a client just asked me who does X" path.
 
-**AI usage.** Sidebar → **AI usage**. Empty for now — Module 1's AI drafting writes rows here once a tenant Anthropic key is configured. Worth knowing where it lives, because it is the only place your per-module Claude spend is visible.
+**AI usage.** Sidebar → **AI usage**. Empty for now — Module 1's AI drafting writes rows here once a practice Anthropic key is configured. Worth knowing where it lives, because it is the only place your per-module Claude spend is visible.
 
 ---
 
