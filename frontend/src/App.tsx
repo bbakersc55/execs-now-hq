@@ -1,7 +1,7 @@
 import { Fragment, useEffect } from "react";
 import {
   Activity as ActivityIcon, BarChart3, Building2, CalendarCheck, CheckSquare,
-  ClipboardList,
+  ClipboardList, Palette,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail, PanelLeftClose,
   PanelLeftOpen,
   Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone, Send, Hourglass,
@@ -39,6 +39,7 @@ import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
+import { Branding } from "./screens/Branding";
 import { Dashboard } from "./screens/Dashboard";
 import { Meetings } from "./screens/Meetings";
 import { Replies } from "./screens/Replies";
@@ -110,6 +111,7 @@ const NAV: NavItem[] = [
   { to: "/outbox", label: "Outbox (send log)", roles: TENANT , icon: Inbox },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] , icon: Upload },
   { to: "/settings/email", label: "Email settings", roles: ["FF", "CF"] , group: "Settings" , icon: Mail },
+  { to: "/settings/branding", label: "Branding", roles: ["FF"] , icon: Palette },
   { to: "/referrals", label: "Referral settings", roles: ["FF"] , icon: Users },
   { to: "/rules", label: "Stage automations", roles: ["FF"] , icon: Workflow },
   { to: "/staff", label: "Staff", roles: ["FF"] , icon: UserCog },
@@ -257,6 +259,7 @@ export function App() {
             <Route path="/outbox" element={<Outbox />} />
             <Route path="/import" element={<ImportWizard />} />
             <Route path="/settings/email" element={<EmailSettings me={me} />} />
+            <Route path="/settings/branding" element={<Branding />} />
             <Route path="/referrals" element={<ReferralSettings />} />
             <Route path="/rules" element={<StageRules />} />
             <Route path="/staff" element={<Staff />} />

@@ -41,6 +41,7 @@ export const api = {
   get: <T,>(path: string) => request<T>("GET", path),
   post: <T,>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T,>(path: string, body?: unknown) => request<T>("PATCH", path, body),
+  put: <T,>(path: string, body?: unknown) => request<T>("PUT", path, body),
   del: <T,>(path: string) => request<T>("DELETE", path),
 };
 
@@ -49,6 +50,8 @@ export interface Me {
   email: string;
   full_name: string;
   role: "FF" | "CF" | "VA" | "FCC" | "ECC" | null;
+  /** What the role is called (P1): never show `role` itself. */
+  role_label?: string | null;
   tenant: string | null;
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */
