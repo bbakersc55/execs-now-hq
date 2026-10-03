@@ -10,7 +10,7 @@ because a quoted `sh -c '…'` start command was not run as written.
 
 | Service | File | Runs |
 |---|---|---|
-| `web` | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database; on the demo (`APP_ENVIRONMENT=demo`) applies unapplied migrations; otherwise **refuses to start while any migration is unapplied**. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
+| `web` (named **`execs-now-hq`** in the production project) | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database; on the demo (`APP_ENVIRONMENT=demo`) applies unapplied migrations; otherwise **refuses to start while any migration is unapplied**. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
 | `qcluster` | `railway/qcluster.json` | the Django-Q2 worker, with the same unapplied-migration refusal. **No public domain.** Starts at 0 replicas and is scaled to 1 only at runbook C9. |
 | `backup` | `railway/backup.json` | `scripts/backup_db_railway.sh`, nightly at 08:00 UTC (02:00 Mountain). |
 

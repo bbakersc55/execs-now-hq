@@ -233,7 +233,7 @@ Anything destructive or data-rewriting has your explicit yes on the dry run
 | R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else |
 | R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report |
 | R5 | Worker resumes by itself | `railway logs --service qcluster` | `migrations current`, then `Q Cluster … starting`, within 30 s |
-| R6 | Web onto the new code | `railway redeploy --service web -y` | Deployment active; `curl -s -o /dev/null -w '%{http_code}' https://app.getexecutivesnow.com/healthz` is `200` |
+| R6 | Web onto the new code | `railway redeploy --service execs-now-hq -y` (production's web service is named `execs-now-hq`, not `web`) | Deployment active; `curl -s -o /dev/null -w '%{http_code}' https://app.getexecutivesnow.com/healthz` is `200` |
 | R7 | Report | | R1–R6 results, the migration names, and the time from R2 to R6 |
 
 **What it costs.** The worker is paused from R2 to R5. That is intended, so no
@@ -243,12 +243,21 @@ meantime, as it does for a failed health check, **has not been observed yet**:
 if it does, nothing goes down; if not, web is down from R2 to R6, a few minutes
 when R4 follows R3 immediately. The first migration release records which.
 
-**Not yet observed on Railway:** a waiting `qcluster` counting as active for
-`railway ssh`, and `railway redeploy` on the backup cron. The waiting itself is
-tested locally (2026-10-02: it waited on a database with every migration
-unapplied, and started the cluster 4 s after `migrate` ran by hand). If R4 finds
-no instance, stop and report. Do not improvise another route.
+**Observed at Release 2 (2026-10-03, 7 migrations, P1 + P2):**
 
+| Step | UTC | |
+|---|---|---|
+| R1 | 03:58 | newest dump 2026-10-02 08:02, 2.9 MB |
+| R2 | 03:58:38 | `main` fast-forwarded to `27aea5a` and pushed |
+| R3 | 04:00:53 | the new worker `WAITING`, listing exactly the 7 migrations |
+| R4 | 04:01:25–29 | `railway ssh --service qcluster -- python manage.py migrate`: all OK. **A waiting worker does count as active for `railway ssh`.** |
+| R5 | 04:01:58 | `migrations current`; cluster started 04:02:00 |
+| R6 | 04:02:33 | redeploy; the new code answering by 04:03:00 |
+
+- **R2 to R6: 4 min 22 s**, most of it the build (push to `WAITING` was 2 min 15 s).
+- **The old web kept serving the whole time.** Production was polled every 5 s from before the push: 53 samples from the old code, then 4 from the new, **every one a 200**, with the switch between 04:02:55 and 04:03:00. The refused new web deployment showed as FAILED, and the old one stayed live. **No web downtime** was observed at 5-second resolution.
+- **The worker was paused about 68 s** (new worker waiting at 04:00:52, running at 04:02:00), as intended.
+- `railway redeploy` on the backup cron is still unobserved.
 ---
 
 ## Part A — the owner's steps, in order
