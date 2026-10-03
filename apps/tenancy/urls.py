@@ -13,6 +13,7 @@ router.register("act-as", views_acting.ActAsViewSet, basename="act-as")
 
 urlpatterns = router.urls + [
     path("settings/branding", views.BrandingSettingsView.as_view(), name="branding-settings"),
+    path("getting-started", views.GettingStartedView.as_view(), name="getting-started"),
     path("settings/branding/reset", views.BrandingResetView.as_view(), name="branding-reset"),
     re_path(r"^settings/branding/(?P<kind>logo|mark)$", views.BrandingImageView.as_view(),
             name="branding-image"),

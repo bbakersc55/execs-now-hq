@@ -308,3 +308,14 @@ class BrandingResetView(APIView):
     def post(self, request):
         branding.reset(request.tenant, actor=request.user)
         return Response(branding.current(request.tenant))
+
+
+class GettingStartedView(APIView):
+    """P2: the practice owner's checklist, from the practice's own data."""
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def get(self, request):
+        from apps.tenancy import getting_started
+
+        return Response(getting_started.items(request.tenant))

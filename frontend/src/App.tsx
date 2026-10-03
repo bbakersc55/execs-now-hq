@@ -22,6 +22,7 @@ import { PRODUCT_FAVICON, setFavicon, useBranding } from "./lib/branding";
 import { applyPortalTokens } from "./lib/palette";
 import { LinkBranded } from "./components/LinkBranded";
 import { AreaSwitch } from "./components/AreaSwitch";
+import { AgreementGate } from "./components/AgreementGate";
 import { roleLabel } from "./lib/roles";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
@@ -214,6 +215,10 @@ export function App() {
   if (isError || !me?.authenticated) {
     return <SignedOut practice={brand?.display_name || ""} />;
   }
+
+  // P2: a practice owner reads and accepts the beta agreement before anything
+  // else; the server refuses every other call until then.
+  if (me.agreement_required) return <AgreementGate />;
 
   const visible = platform ? PLATFORM_NAV
     : NAV.filter((n) => !n.roles || (me.role && n.roles.includes(me.role)));

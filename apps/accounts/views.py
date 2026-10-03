@@ -177,6 +177,12 @@ def branding_logo(request):
                         content_type=tenant.email_logo.content_type or "image/png")
 
 
+def _agreement_required(request) -> bool:
+    from apps.platform import agreement
+
+    return agreement.required(request)
+
+
 def _home_practice(user) -> str | None:
     from apps.crm.services import email_layout
     from apps.tenancy.models import Membership
@@ -202,6 +208,8 @@ def me(request):
         "area": getattr(request, "area", "practice"),
         # The switch's other label, readable from the Practices area too.
         "home_practice": _home_practice(request.user) if request.user.is_platform_owner else None,
+        # P2: a practice owner sees the beta agreement before anything else.
+        "agreement_required": _agreement_required(request),
         "tenant": str(membership.tenant_id) if membership else None,
         "client_company": (
             str(membership.client_company_id)

@@ -6,6 +6,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { GettingStarted } from "../components/GettingStarted";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { Dashboard as Board, Me, Pipeline, aiPausedMessage, api } from "../lib/api";
@@ -235,6 +236,9 @@ export function Dashboard({ me }: { me: Me }) {
             </button>
           </span>
         } />
+
+      {/* P2: the practice owner's Getting started list, until it is all done. */}
+      {me.role === "FF" && <GettingStarted />}
 
       {board.data.ai_paused && (
         <Banner kind="warn">

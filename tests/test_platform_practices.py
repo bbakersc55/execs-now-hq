@@ -232,7 +232,10 @@ def test_you_cannot_archive_your_own_practice(api, platform_owner, seeded_tenant
 #: What `apps/platform` may name. Everything a practice holds (contacts,
 #: notes, tasks, email, meetings, sessions) is absent on purpose.
 ALLOWED_MODELS = {"Tenant", "Membership", "Role", "AiCall", "Company", "AuditEvent",
-                  "User", "StoredFile", "Feedback", "AgreementAcceptance", "TenantScopedModel"}
+                  "User", "StoredFile", "Feedback", "AgreementAcceptance", "TenantScopedModel",
+                  # mail.py writes platform mail into the sender practice's
+                  # Outbox and names only its producer values; it reads none.
+                  "OutboxMessage"}
 
 
 def test_apps_platform_names_nothing_a_practice_holds():

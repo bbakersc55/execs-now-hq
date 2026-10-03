@@ -65,6 +65,12 @@ export function Practices() {
       : `${row.display_name} is back.`),
     onError: failed,
   });
+  const invite = useMutation({
+    mutationFn: (id: string) =>
+      api.post<{ sent_to: string }>(`/api/platform/practices/${id}/invite`),
+    onSuccess: (r) => done(`Invitation sent to ${r.sent_to}.`),
+    onError: failed,
+  });
   const save = useMutation({
     mutationFn: (id: string) => api.patch<PracticeRow>(`/api/platform/practices/${id}`, draft),
     onSuccess: (row) => { setEditing(null); done(`${row.display_name} updated.`); },
@@ -126,6 +132,10 @@ export function Practices() {
                         setEditing(p.id);
                         setDraft({ legal_name: p.legal_name, domain: p.domain });
                       }}>Edit</button>
+                    )}
+                    {p.status === "invited" && (
+                      <button className="ghost" disabled={invite.isPending}
+                        onClick={() => invite.mutate(p.id)}>Invite owner</button>
                     )}
                     {p.status === "archived" ? (
                       <button className="ghost" disabled={act.isPending}

@@ -738,6 +738,10 @@ class OutboxMessage(TenantScopedModel):
         INBOUND_FORWARD = "inbound_forward", "Inbound forward"
         CAMPAIGN = "campaign", "Campaign"
         MANUAL = "manual", "Manual"
+        # P2: platform mail, sent through the platform owner's own practice
+        # (D2) and logged in its Outbox like any other send.
+        PRACTICE_INVITE = "practice_invite", "Practice invitation"
+        FEEDBACK_NOTICE = "feedback_notice", "Feedback notice"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -750,6 +754,8 @@ class OutboxMessage(TenantScopedModel):
         # fractional who is about to run the call (AC-4.3).
         Producer.PRECALL_COMPLETE,
         Producer.CADENCE_CHANGE, Producer.INBOUND_FORWARD,
+        # P2: platform mail to a practice owner or the platform owner.
+        Producer.PRACTICE_INVITE, Producer.FEEDBACK_NOTICE,
     }
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)

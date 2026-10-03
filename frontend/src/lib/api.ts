@@ -58,6 +58,8 @@ export interface Me {
   area?: "practice" | "platform";
   /** P2: the platform owner's own practice, for the switch's label. */
   home_practice?: string | null;
+  /** P2: a practice owner who has not accepted the beta agreement yet. */
+  agreement_required?: boolean;
   tenant: string | null;
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */

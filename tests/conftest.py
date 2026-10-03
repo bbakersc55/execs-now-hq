@@ -137,6 +137,14 @@ def api():
 
 
 @pytest.fixture(autouse=True)
+def _no_agreement_gate(settings):
+    """The beta agreement gate (P2) is tested in test_platform_onboarding.py,
+    which turns it back on. Everywhere else a practice owner is assumed to
+    have accepted it."""
+    settings.BETA_AGREEMENT_REQUIRED = False
+
+
+@pytest.fixture(autouse=True)
 def _isolated_media(tmp_path, settings):
     """Every test writes blobs into its own directory.
 

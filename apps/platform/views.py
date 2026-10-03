@@ -92,3 +92,50 @@ def _is_own(tenant, user) -> bool:
 
     return Membership.all_objects.filter(tenant=tenant, user=user,
                                          revoked_at__isnull=True).exists()
+
+
+class InviteView(APIView):
+    """POST: send the practice owner's invitation. Never automatic."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def post(self, request, pk):
+        from apps.platform import mail
+        from apps.tenancy.models import Tenant
+
+        tenant = Tenant.objects.filter(pk=pk).first()
+        if tenant is None:
+            return Response({"detail": "No such practice."}, status=404)
+        if tenant.status == Tenant.Status.ARCHIVED:
+            return Response({"detail": "Unarchive the practice before inviting anyone."},
+                            status=409)
+        try:
+            message = mail.send_invitation(tenant, actor=request.user)
+        except mail.PlatformMailUnavailable as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response({"sent_to": message.to_address, "state": message.state})
+
+
+class AgreementView(APIView):
+    """GET the current beta agreement; POST {version, sha256} to accept it.
+    For a signed-in practice member; only a practice owner is asked."""
+
+    def get(self, request):
+        from apps.platform import agreement
+
+        if getattr(request, "membership", None) is None:
+            return Response({"detail": "Sign in first."}, status=403)
+        return Response({**agreement.current(), "required": agreement.required(request)})
+
+    def post(self, request):
+        from apps.platform import agreement
+
+        if not agreement.required(request):
+            return Response({"detail": "Nothing to accept."}, status=409)
+        try:
+            agreement.accept(request, version=request.data.get("version", ""),
+                             sha256=request.data.get("sha256", ""))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response({"accepted": True})
+

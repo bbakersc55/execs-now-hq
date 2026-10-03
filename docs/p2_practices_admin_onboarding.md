@@ -289,6 +289,15 @@ filled in by you on the Practices screen; no data migration.
 
 ---
 
+## 10a. At release (owner, in the Railway shell, after the migration)
+
+```
+python manage.py set_platform_owner bryan.baker@getexecutivesnow.com
+```
+
+Without it you're an ordinary practice owner in production: no Practices
+area, and the beta agreement screen on your next sign-in.
+
 ## 11. Build order (after approval)
 
 1. Schema, the platform-owner flag and command, the area switch and fail-closed Practices area, the isolation family.
