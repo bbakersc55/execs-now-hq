@@ -1,0 +1,23 @@
+[
+  {
+    "baseline_at": null,
+    "baseline_value": null,
+    "client_company_id": "<id-2>",
+    "client_owner_contact_id": "<id-5>",
+    "deleted_at": null,
+    "description": "Root cause: Reports are built by hand\n\nThe fix: A five-line scorecard reviewed every Monday",
+    "direction": "",
+    "horizon_days": 30,
+    "how_we_will_know": "",
+    "measurable": "Scorecard reviewed 4 weeks in a row",
+    "measurable_kind": "",
+    "measurable_unit": "",
+    "outcome_statement": "",
+    "owner_id": "<id-31>",
+    "source_map_row_id": "<id-15>",
+    "status_override": null,
+    "target_date": "2026-10-31",
+    "target_value": null,
+    "title": "No weekly numbers"
+  }
+]

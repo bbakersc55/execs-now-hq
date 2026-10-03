@@ -1,0 +1,24 @@
+{
+  "proposed": [
+    {
+      "basis": "Numbers: 2/10",
+      "from_ai": true,
+      "id": "<id-13>",
+      "prompt": "Which numbers would you want every Monday?",
+      "question_key": "",
+      "rule": "lowest_rating",
+      "rule_label": "One of the two lowest ratings",
+      "state": "proposed"
+    },
+    {
+      "basis": "Team: 3/10 — \"Two seats empty\"",
+      "from_ai": true,
+      "id": "<id-14>",
+      "prompt": "Which seats are empty, and since when?",
+      "question_key": "",
+      "rule": "lowest_rating",
+      "rule_label": "One of the two lowest ratings",
+      "state": "proposed"
+    }
+  ]
+}

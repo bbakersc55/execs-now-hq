@@ -1,0 +1,10 @@
+{
+  "basis": "",
+  "from_ai": false,
+  "id": "<id-6>",
+  "prompt": "Who decides on price?",
+  "question_key": "dx<3>",
+  "rule": "manual",
+  "rule_label": "Added by hand during the session",
+  "state": "accepted"
+}

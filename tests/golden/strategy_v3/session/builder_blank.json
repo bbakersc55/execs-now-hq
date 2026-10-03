@@ -1,0 +1,217 @@
+{
+  "archived_at": null,
+  "format": "v3",
+  "id": "<id-1>",
+  "is_default": false,
+  "merge_fields": [
+    "Company",
+    "Fractional name",
+    "Integrator",
+    "Location A",
+    "Location B",
+    "Practice",
+    "Second-in-command",
+    "Session date",
+    "Visionary"
+  ],
+  "missing": [
+    "Ratings needs at least 2 rated items (it has 0)."
+  ],
+  "name": "Our strategy session",
+  "ready": false,
+  "sections": [
+    {
+      "code": "snapshot",
+      "fixed_count": false,
+      "included": true,
+      "kind": "precall",
+      "most": 20,
+      "optional": false,
+      "questions": [],
+      "response_schema": "free_text",
+      "time_budget_minutes": null,
+      "title": "Before the call"
+    },
+    {
+      "code": "six_key_components",
+      "fixed_count": false,
+      "included": true,
+      "kind": "ratings",
+      "most": 8,
+      "optional": false,
+      "questions": [],
+      "response_schema": "rating_1_10",
+      "time_budget_minutes": 5,
+      "title": "Ratings"
+    },
+    {
+      "code": "diagnostic",
+      "fixed_count": false,
+      "included": true,
+      "kind": "diagnostic",
+      "most": 8,
+      "optional": false,
+      "questions": [],
+      "response_schema": "diagnostic_triple",
+      "time_budget_minutes": 15,
+      "title": "Diagnostic"
+    },
+    {
+      "code": "mirror",
+      "fixed_count": false,
+      "included": true,
+      "kind": "mirror",
+      "most": 5,
+      "optional": false,
+      "questions": [],
+      "response_schema": "free_text",
+      "time_budget_minutes": 10,
+      "title": "The mirror and where they want to go"
+    },
+    {
+      "code": "strategy_map",
+      "fixed_count": false,
+      "included": true,
+      "kind": "map",
+      "most": 0,
+      "optional": false,
+      "questions": [],
+      "response_schema": null,
+      "time_budget_minutes": 10,
+      "title": "Strategy Map"
+    },
+    {
+      "code": "what_they_value",
+      "fixed_count": false,
+      "included": true,
+      "kind": "values",
+      "most": 5,
+      "optional": true,
+      "questions": [],
+      "response_schema": "value_pair",
+      "time_budget_minutes": 5,
+      "title": "What they value"
+    },
+    {
+      "code": "two_paths",
+      "fixed_count": true,
+      "included": true,
+      "kind": "paths",
+      "most": 2,
+      "optional": false,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "two_paths<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Path A — Continue to run it yourselves",
+          "response_schema": "path_reaction"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "two_paths<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Path B — Work with us",
+          "response_schema": "path_reaction"
+        }
+      ],
+      "response_schema": "path_reaction",
+      "time_budget_minutes": 5,
+      "title": "Two paths"
+    },
+    {
+      "code": "scope_agreement",
+      "fixed_count": false,
+      "included": true,
+      "kind": "scope",
+      "most": 12,
+      "optional": false,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Scope — what is in the first 90 days",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Start date",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": true,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<3>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 2,
+          "prompt": "Investment discussed",
+          "response_schema": "agreed_note"
+        }
+      ],
+      "response_schema": "agreed_note",
+      "time_budget_minutes": 5,
+      "title": "Scope"
+    }
+  ],
+  "settings": {
+    "advisor_role": "advisor",
+    "diagnostic_size": 3,
+    "path_a_points": [
+      "Use the map {Practice} handed you",
+      "Your team carries the work alongside the day job"
+    ],
+    "path_a_title": "Continue to run it yourself",
+    "path_b_points": [
+      "{Practice} works the map with you, in priority order",
+      "Alongside your team, not a report handed over"
+    ],
+    "path_b_title": "Work with {Practice}",
+    "rating_scale": "1 means not true today, 10 means completely true"
+  }
+}

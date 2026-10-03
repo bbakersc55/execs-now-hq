@@ -1,0 +1,21 @@
+{
+  "drafted": [
+    {
+      "bottleneck": "No cover for supervisors",
+      "converted_to": "",
+      "from_ai": true,
+      "header": "A Supervisor Bench",
+      "horizon": 90,
+      "id": "<id-19>",
+      "measurable": "Leads signed off",
+      "mechanics_note": "",
+      "merged_from": [],
+      "owner_text": "Jen Park",
+      "position": 4,
+      "root_cause": "No bench",
+      "state": "proposed",
+      "statement": "Two supervisors ready to step up.",
+      "the_fix": "Train two leads"
+    }
+  ]
+}

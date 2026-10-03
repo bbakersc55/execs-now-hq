@@ -1,0 +1,21 @@
+{
+  "drafted": [
+    {
+      "bottleneck": "Pricing is from memory",
+      "converted_to": "",
+      "from_ai": true,
+      "header": "A Price Book",
+      "horizon": 90,
+      "id": "<id-18>",
+      "measurable": "Quotes priced from the book",
+      "mechanics_note": "",
+      "merged_from": [],
+      "owner_text": "Dana Reyes",
+      "position": 3,
+      "root_cause": "No price book",
+      "state": "proposed",
+      "statement": "Price every job the same way.",
+      "the_fix": "Write the price book"
+    }
+  ]
+}

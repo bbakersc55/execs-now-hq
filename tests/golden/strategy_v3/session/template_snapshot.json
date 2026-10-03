@@ -1,0 +1,387 @@
+{
+  "sections": [
+    {
+      "code": "snapshot",
+      "intro": "",
+      "kind": "precall",
+      "position": 0,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "snapshot<1>",
+          "label": "Sells",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "What does {Company} sell, and to whom?",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "snapshot<2>",
+          "label": "Team",
+          "must_ask": false,
+          "pdf_chip": true,
+          "position": 1,
+          "prompt": "How many people work there?",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "snapshot<3>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 2,
+          "prompt": "What do you want from {Practice}?",
+          "response_schema": "free_text"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": null,
+      "title": "Before the call"
+    },
+    {
+      "code": "six_key_components",
+      "intro": "",
+      "kind": "ratings",
+      "position": 1,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "six_key_components<1>",
+          "label": "Plan",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Plan — Our plan is written down and shared.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "six_key_components<2>",
+          "label": "Team",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Team — The right people are in the right seats.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "six_key_components<3>",
+          "label": "Numbers",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 2,
+          "prompt": "Numbers — We run the week from a few numbers.",
+          "response_schema": "rating_1_10"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 8,
+      "title": "Three things we rate"
+    },
+    {
+      "code": "diagnostic",
+      "intro": "",
+      "kind": "diagnostic",
+      "position": 2,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": true,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "diagnostic<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Where does work get stuck waiting for you?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": true,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "diagnostic<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "What breaks when you take a week off?",
+          "response_schema": "diagnostic_triple"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 15,
+      "title": "Diagnostic"
+    },
+    {
+      "code": "mirror",
+      "intro": "",
+      "kind": "mirror",
+      "position": 3,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "mirror<1>",
+          "label": "",
+          "must_ask": true,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Three years from now, what does {Company} look like?",
+          "response_schema": "free_text"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 10,
+      "title": "The mirror and where they want to go"
+    },
+    {
+      "code": "strategy_map",
+      "intro": "",
+      "kind": "map",
+      "position": 4,
+      "questions": [],
+      "show_in_pdf": false,
+      "time_budget_minutes": 10,
+      "title": "Strategy Map"
+    },
+    {
+      "code": "what_they_value",
+      "intro": "",
+      "kind": "values",
+      "position": 5,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "what_they_value<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Value 2 — in their words, and why",
+          "response_schema": "value_pair"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "what_they_value<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Value 1 — in their words, and why",
+          "response_schema": "value_pair"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 5,
+      "title": "What they value"
+    },
+    {
+      "code": "two_paths",
+      "intro": "",
+      "kind": "paths",
+      "position": 6,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "two_paths<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Path A — Keep running it yourselves",
+          "response_schema": "path_reaction"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "two_paths<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Path B — Work with us",
+          "response_schema": "path_reaction"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 5,
+      "title": "Two paths"
+    },
+    {
+      "code": "scope_agreement",
+      "intro": "",
+      "kind": "scope",
+      "position": 7,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Scope — what is in the first 90 days",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Start date",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": true,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<3>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 2,
+          "prompt": "Investment discussed",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<4>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 3,
+          "prompt": "Follow-up call booked",
+          "response_schema": "agreed_note"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 5,
+      "title": "Scope"
+    }
+  ],
+  "snapshot_version": 2,
+  "taken_at": "<time>",
+  "template": {
+    "discipline": "operations",
+    "format": "v3",
+    "id": "<id-1>",
+    "name": "Our strategy session",
+    "settings": {
+      "advisor_role": "business consultant",
+      "diagnostic_size": 4,
+      "path_a_points": [
+        "Use the map {Practice} handed you",
+        "Your team carries the work alongside the day job"
+      ],
+      "path_a_title": "Continue to run it yourself",
+      "path_b_points": [
+        "{Practice} works the map with you",
+        "On site every week"
+      ],
+      "path_b_title": "Work with {Practice}",
+      "rating_scale": "1 is not yet, 10 is every week"
+    },
+    "version": 1
+  }
+}

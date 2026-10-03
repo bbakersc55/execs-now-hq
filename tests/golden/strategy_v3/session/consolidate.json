@@ -1,0 +1,32 @@
+{
+  "drafted": [
+    {
+      "bottleneck": "The week is run from memory",
+      "converted_to": "",
+      "from_ai": true,
+      "header": "Run On Numbers",
+      "horizon": 60,
+      "id": "<id-20>",
+      "measurable": "Scorecard reviewed weekly",
+      "mechanics_note": "",
+      "merged_from": [
+        {
+          "bottleneck": "No weekly numbers",
+          "id": "<id-15>",
+          "state": "accepted"
+        },
+        {
+          "bottleneck": "Scheduling lives in one person's head",
+          "id": "<id-16>",
+          "state": "accepted"
+        }
+      ],
+      "owner_text": "Jen Park",
+      "position": 5,
+      "root_cause": "No systems",
+      "state": "proposed",
+      "statement": "One scorecard and one schedule.",
+      "the_fix": "Scorecard and dispatch tool"
+    }
+  ]
+}

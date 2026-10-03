@@ -1,0 +1,35 @@
+{
+  "answered": 0,
+  "company": "Acme Facilities",
+  "complete": false,
+  "first_name": "Dana",
+  "of": 3,
+  "practice": "Tenant A",
+  "sections": [
+    {
+      "code": "snapshot",
+      "questions": [
+        {
+          "key": "snapshot<1>",
+          "prompt": "What does Acme Facilities sell, and to whom?",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "snapshot<2>",
+          "prompt": "How many people work there?",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "snapshot<3>",
+          "prompt": "What do you want from Tenant A?",
+          "response_schema": "free_text",
+          "value": null
+        }
+      ],
+      "scale": "",
+      "title": "Before the call"
+    }
+  ]
+}

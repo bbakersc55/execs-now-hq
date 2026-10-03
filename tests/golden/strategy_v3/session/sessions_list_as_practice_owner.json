@@ -1,0 +1,59 @@
+[
+  {
+    "archived_at": null,
+    "budget_minutes": 58,
+    "company": {
+      "id": "<id-2>",
+      "name": "Acme Facilities"
+    },
+    "contact": {
+      "id": "<id-3>",
+      "name": "Dana Reyes"
+    },
+    "converted_at": null,
+    "created_at": "<time>",
+    "current_section": "",
+    "current_section_at": null,
+    "delete_refusal": "Archive the session first. Permanent delete is only from Archived.",
+    "format": "v3",
+    "has_pdf": false,
+    "id": "<id-4>",
+    "integrator": {
+      "id": "<id-5>",
+      "name": "Jen Park"
+    },
+    "may_archive": true,
+    "may_delete": true,
+    "mirror": {
+      "goal": "Two branches running without Dana in the room.",
+      "unlocks": "Weekly numbers first. Everything else leans on them."
+    },
+    "owner": "Pat Owner",
+    "pdf_include_flags": {
+      "alignment_observation": false,
+      "diagnostic_observations": false,
+      "fractional_notes": false,
+      "investment": false,
+      "mechanics": false
+    },
+    "precall_expires_at": "<time>",
+    "precall_questions_sent_at": null,
+    "precall_sent": true,
+    "proposed_mirror": {
+      "goal": "Two branches running without Dana in the room.",
+      "unlocks": "Weekly numbers first. Everything else leans on them."
+    },
+    "reset_refusal": "The questions on a session are a record of what a real person was asked, so they are fixed once it has reached anyone. This one is “in the call”.",
+    "scheduled_at": "<time>",
+    "started_at": "<time>",
+    "state": "in_call",
+    "template": {
+      "id": "<id-1>",
+      "name": "Our strategy session"
+    },
+    "visionary": {
+      "id": "<id-3>",
+      "name": "Dana Reyes"
+    }
+  }
+]

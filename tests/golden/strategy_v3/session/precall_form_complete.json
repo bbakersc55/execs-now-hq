@@ -1,0 +1,41 @@
+{
+  "answered": 3,
+  "company": "Acme Facilities",
+  "complete": true,
+  "first_name": "Dana",
+  "of": 3,
+  "practice": "Tenant A",
+  "sections": [
+    {
+      "code": "snapshot",
+      "questions": [
+        {
+          "key": "snapshot<1>",
+          "prompt": "What does Acme Facilities sell, and to whom?",
+          "response_schema": "free_text",
+          "value": {
+            "text": "Office cleaning, to property managers"
+          }
+        },
+        {
+          "key": "snapshot<2>",
+          "prompt": "How many people work there?",
+          "response_schema": "free_text",
+          "value": {
+            "text": "22 people. Scheduling is in Jen's head."
+          }
+        },
+        {
+          "key": "snapshot<3>",
+          "prompt": "What do you want from Tenant A?",
+          "response_schema": "free_text",
+          "value": {
+            "text": "Help to open a second branch next year"
+          }
+        }
+      ],
+      "scale": "",
+      "title": "Before the call"
+    }
+  ]
+}

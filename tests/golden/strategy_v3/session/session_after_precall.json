@@ -1,0 +1,595 @@
+{
+  "answers": [
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "snapshot<1>",
+      "updated_at": "<time>",
+      "value": {
+        "text": "Office cleaning, to property managers"
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "snapshot<2>",
+      "updated_at": "<time>",
+      "value": {
+        "text": "22 people. Scheduling is in Jen's head."
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "snapshot<3>",
+      "updated_at": "<time>",
+      "value": {
+        "text": "Help to open a second branch next year"
+      }
+    }
+  ],
+  "archived_at": null,
+  "budget_minutes": 58,
+  "company": {
+    "id": "<id-2>",
+    "name": "Acme Facilities"
+  },
+  "contact": {
+    "id": "<id-3>",
+    "name": "Dana Reyes"
+  },
+  "converted_at": null,
+  "created_at": "<time>",
+  "current_section": "",
+  "current_section_at": null,
+  "delete_refusal": "Archive the session first. Permanent delete is only from Archived.",
+  "diagnostic": {
+    "most": 8,
+    "size": 4
+  },
+  "diagnostic_proposals": [
+    {
+      "basis": "What do you want from Tenant A?: \"…Help to open a second branch next year…\"",
+      "from_ai": true,
+      "id": "<id-7>",
+      "prompt": "What has to be true before the second branch opens?",
+      "question_key": "dx<1>",
+      "rule": "growth",
+      "rule_label": "They mentioned growth or expansion",
+      "state": "accepted"
+    },
+    {
+      "basis": "Scheduling is in Jen's head",
+      "from_ai": true,
+      "id": "<id-8>",
+      "prompt": "What does only Jen know?",
+      "question_key": "dx<2>",
+      "rule": "precall_gap",
+      "rule_label": "An evident gap in the pre-call answers",
+      "state": "accepted"
+    },
+    {
+      "basis": "Scheduling is in Jen's head",
+      "from_ai": true,
+      "id": "<id-9>",
+      "prompt": "Who covers scheduling when Jen is away?",
+      "question_key": "",
+      "rule": "precall_gap",
+      "rule_label": "An evident gap in the pre-call answers",
+      "state": "proposed"
+    },
+    {
+      "basis": "to property managers",
+      "from_ai": true,
+      "id": "<id-10>",
+      "prompt": "How do property managers find you today?",
+      "question_key": "",
+      "rule": "precall_gap",
+      "rule_label": "An evident gap in the pre-call answers",
+      "state": "discarded"
+    },
+    {
+      "basis": "",
+      "from_ai": false,
+      "id": "<id-6>",
+      "prompt": "Who decides on price?",
+      "question_key": "dx<3>",
+      "rule": "manual",
+      "rule_label": "Added by hand during the session",
+      "state": "accepted"
+    }
+  ],
+  "format": "v3",
+  "fractional_note": "",
+  "has_pdf": false,
+  "id": "<id-4>",
+  "integrator": {
+    "id": "<id-5>",
+    "name": "Jen Park"
+  },
+  "map_rows": [],
+  "may_archive": true,
+  "may_delete": true,
+  "mirror": {
+    "goal": "",
+    "unlocks": ""
+  },
+  "must_ask": {
+    "answered": 0,
+    "of": 1,
+    "outstanding": [
+      "mirror<1>"
+    ]
+  },
+  "owner": "Pat Owner",
+  "path_notes": [],
+  "pdf_include_flags": {
+    "alignment_observation": false,
+    "diagnostic_observations": false,
+    "fractional_notes": false,
+    "investment": false,
+    "mechanics": false
+  },
+  "pinned_questions": [],
+  "precall_default_intro": "Hi Dana,\n\nAhead of our session on 8 October 2026, here are a few questions. Answer them straight back in a reply — no form, no login, and rough numbers are fine. It means we spend the call on what is actually in the way rather than on getting the background straight.",
+  "precall_expires_at": "<time>",
+  "precall_questions_sent_at": null,
+  "precall_sent": true,
+  "prep": {
+    "bottlenecks": [
+      "Likely supervisor span of control",
+      "Likely no-show cover"
+    ],
+    "dropped_rewordings": [
+      "snapshot<2>"
+    ],
+    "id": "<id-11>",
+    "notes": "Met Dana at the chamber lunch.",
+    "questions": [
+      {
+        "id": "<id-12>",
+        "is_pinned": false,
+        "note": "",
+        "position": 0,
+        "text": "How are night supervisors measured?",
+        "why": "Their site says nights"
+      }
+    ],
+    "rewordings": [
+      {
+        "current": "What does Acme Facilities sell, and to whom?",
+        "key": "snapshot<1>",
+        "suggested": "What does {Company} clean, and for whom?",
+        "why": "Their site says cleaning"
+      }
+    ],
+    "state": "ready",
+    "summary": "Their site says they clean offices across two counties.",
+    "web_searches": 2,
+    "website_url": "https://acme.invalid"
+  },
+  "proposed_mirror": {
+    "goal": "",
+    "unlocks": ""
+  },
+  "rating_scale": "1 is not yet, 10 is every week",
+  "reset_refusal": "The questions on a session are a record of what a real person was asked, so they are fixed once it has reached anyone. This one is “pre-call form complete”.",
+  "scheduled_at": "<time>",
+  "sections": [
+    {
+      "code": "snapshot",
+      "intro": "",
+      "kind": "precall",
+      "position": 0,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "snapshot<1>",
+          "label": "Sells",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "What does Acme Facilities sell, and to whom?",
+          "prompt_template": "What does {Company} sell, and to whom?",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "snapshot<2>",
+          "label": "Team",
+          "must_ask": false,
+          "pdf_chip": true,
+          "position": 1,
+          "prompt": "How many people work there?",
+          "prompt_template": "How many people work there?",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "snapshot<3>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 2,
+          "prompt": "What do you want from Tenant A?",
+          "prompt_template": "What do you want from {Practice}?",
+          "response_schema": "free_text"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": null,
+      "title": "Before the call"
+    },
+    {
+      "code": "six_key_components",
+      "intro": "",
+      "kind": "ratings",
+      "position": 1,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "six_key_components<1>",
+          "label": "Plan",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Plan — Our plan is written down and shared.",
+          "prompt_template": "Plan — Our plan is written down and shared.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "six_key_components<2>",
+          "label": "Team",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Team — The right people are in the right seats.",
+          "prompt_template": "Team — The right people are in the right seats.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "six_key_components<3>",
+          "label": "Numbers",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 2,
+          "prompt": "Numbers — We run the week from a few numbers.",
+          "prompt_template": "Numbers — We run the week from a few numbers.",
+          "response_schema": "rating_1_10"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 8,
+      "title": "Three things we rate"
+    },
+    {
+      "code": "diagnostic",
+      "intro": "",
+      "kind": "diagnostic",
+      "position": 2,
+      "questions": [
+        {
+          "area": "From the pre-call form",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "dynamic": true,
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "dx<1>",
+          "must_ask": false,
+          "position": 2,
+          "prompt": "What has to be true before the second branch opens?",
+          "prompt_template": "What has to be true before the second branch opens?",
+          "proposal": "<id-7>",
+          "response_schema": "diagnostic_triple",
+          "rule": "growth"
+        },
+        {
+          "area": "From the pre-call form",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "dynamic": true,
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "dx<2>",
+          "must_ask": false,
+          "position": 3,
+          "prompt": "What does only Jen know?",
+          "prompt_template": "What does only Jen know?",
+          "proposal": "<id-8>",
+          "response_schema": "diagnostic_triple",
+          "rule": "precall_gap"
+        },
+        {
+          "area": "From the pre-call form",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "dynamic": true,
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "dx<3>",
+          "must_ask": false,
+          "position": 4,
+          "prompt": "Who decides on price?",
+          "prompt_template": "Who decides on price?",
+          "proposal": "<id-6>",
+          "response_schema": "diagnostic_triple",
+          "rule": "manual"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 15,
+      "title": "Diagnostic"
+    },
+    {
+      "code": "mirror",
+      "intro": "",
+      "kind": "mirror",
+      "position": 3,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "mirror<1>",
+          "label": "",
+          "must_ask": true,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Three years from now, what does Acme Facilities look like?",
+          "prompt_template": "Three years from now, what does {Company} look like?",
+          "response_schema": "free_text"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 10,
+      "title": "The mirror and where they want to go"
+    },
+    {
+      "code": "strategy_map",
+      "intro": "",
+      "kind": "map",
+      "position": 4,
+      "questions": [],
+      "show_in_pdf": false,
+      "time_budget_minutes": 10,
+      "title": "Strategy Map"
+    },
+    {
+      "code": "what_they_value",
+      "intro": "",
+      "kind": "values",
+      "position": 5,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "what_they_value<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Value 2 — in their words, and why",
+          "prompt_template": "Value 2 — in their words, and why",
+          "response_schema": "value_pair"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "what_they_value<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Value 1 — in their words, and why",
+          "prompt_template": "Value 1 — in their words, and why",
+          "response_schema": "value_pair"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 5,
+      "title": "What they value"
+    },
+    {
+      "code": "two_paths",
+      "intro": "",
+      "kind": "paths",
+      "position": 6,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "two_paths<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Path A — Keep running it yourselves",
+          "prompt_template": "Path A — Keep running it yourselves",
+          "response_schema": "path_reaction"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "two_paths<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Path B — Work with us",
+          "prompt_template": "Path B — Work with us",
+          "response_schema": "path_reaction"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 5,
+      "title": "Two paths"
+    },
+    {
+      "code": "scope_agreement",
+      "intro": "",
+      "kind": "scope",
+      "position": 7,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<1>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 0,
+          "prompt": "Scope — what is in the first 90 days",
+          "prompt_template": "Scope — what is in the first 90 days",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<2>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 1,
+          "prompt": "Start date",
+          "prompt_template": "Start date",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": true,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<3>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 2,
+          "prompt": "Investment discussed",
+          "prompt_template": "Investment discussed",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "scope_agreement<4>",
+          "label": "",
+          "must_ask": false,
+          "pdf_chip": false,
+          "position": 3,
+          "prompt": "Follow-up call booked",
+          "prompt_template": "Follow-up call booked",
+          "response_schema": "agreed_note"
+        }
+      ],
+      "show_in_pdf": false,
+      "time_budget_minutes": 5,
+      "title": "Scope"
+    }
+  ],
+  "six_key_components": {
+    "answered": 0,
+    "average": null,
+    "complete": false,
+    "lowest": null,
+    "of": 3,
+    "ratings": {},
+    "scores": []
+  },
+  "started_at": null,
+  "state": "precall_complete",
+  "template": {
+    "id": "<id-1>",
+    "name": "Our strategy session"
+  },
+  "visionary": {
+    "id": "<id-3>",
+    "name": "Dana Reyes"
+  }
+}

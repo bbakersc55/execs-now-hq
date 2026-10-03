@@ -1,0 +1,195 @@
+[
+  {
+    "answer": {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "dx<1>",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "",
+        "said": "A second supervisor team",
+        "tried": ""
+      }
+    },
+    "drafted": [],
+    "path_notes": [],
+    "six_key_components": {
+      "answered": 3,
+      "average": 4.0,
+      "complete": true,
+      "lowest": "six_key_components<3>",
+      "of": 3,
+      "ratings": {
+        "six_key_components<1>": 7,
+        "six_key_components<2>": 3,
+        "six_key_components<3>": 2
+      },
+      "scores": [
+        {
+          "answered_by": "fractional",
+          "comment": "Written, not shared",
+          "key": "six_key_components<1>",
+          "rating": 7
+        },
+        {
+          "answered_by": "fractional",
+          "comment": "Two seats empty",
+          "key": "six_key_components<2>",
+          "rating": 3
+        },
+        {
+          "answered_by": "fractional",
+          "comment": "",
+          "key": "six_key_components<3>",
+          "rating": 2
+        }
+      ]
+    }
+  },
+  {
+    "answer": {
+      "answered_by": "fractional",
+      "fractional_note": "PRIVATE-DIAGNOSTIC-NOTE",
+      "question_key": "dx<2>",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "No system of record",
+        "said": "Who is off, and who can cover",
+        "tried": "A spreadsheet"
+      }
+    },
+    "drafted": [],
+    "path_notes": [],
+    "six_key_components": {
+      "answered": 3,
+      "average": 4.0,
+      "complete": true,
+      "lowest": "six_key_components<3>",
+      "of": 3,
+      "ratings": {
+        "six_key_components<1>": 7,
+        "six_key_components<2>": 3,
+        "six_key_components<3>": 2
+      },
+      "scores": [
+        {
+          "answered_by": "fractional",
+          "comment": "Written, not shared",
+          "key": "six_key_components<1>",
+          "rating": 7
+        },
+        {
+          "answered_by": "fractional",
+          "comment": "Two seats empty",
+          "key": "six_key_components<2>",
+          "rating": 3
+        },
+        {
+          "answered_by": "fractional",
+          "comment": "",
+          "key": "six_key_components<3>",
+          "rating": 2
+        }
+      ]
+    }
+  },
+  {
+    "answer": {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "dx<3>",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "No price book",
+        "said": "Dana, every time",
+        "tried": ""
+      }
+    },
+    "drafted": [
+      {
+        "bottleneck": "No weekly numbers",
+        "converted_to": "",
+        "from_ai": true,
+        "header": "A Weekly Scorecard",
+        "horizon": 30,
+        "id": "<id-15>",
+        "measurable": "Scorecard reviewed 4 weeks in a row",
+        "mechanics_note": "",
+        "merged_from": [],
+        "owner_text": "Jen Park",
+        "position": 0,
+        "root_cause": "Reports are built by hand",
+        "state": "proposed",
+        "statement": "Run the week from five numbers.",
+        "the_fix": "A five-line scorecard reviewed every Monday"
+      },
+      {
+        "bottleneck": "Scheduling lives in one person's head",
+        "converted_to": "",
+        "from_ai": true,
+        "header": "Scheduling Out Of One Head",
+        "horizon": 60,
+        "id": "<id-16>",
+        "measurable": "Schedule published by Friday noon",
+        "mechanics_note": "",
+        "merged_from": [],
+        "owner_text": "",
+        "position": 1,
+        "root_cause": "No system",
+        "state": "proposed",
+        "statement": "Put the schedule in a system.",
+        "the_fix": "Move scheduling into the dispatch tool"
+      },
+      {
+        "bottleneck": "Quality is checked by complaint",
+        "converted_to": "",
+        "from_ai": true,
+        "header": "Supervisors Who Audit",
+        "horizon": null,
+        "id": "<id-17>",
+        "measurable": "Inspections per month",
+        "mechanics_note": "",
+        "merged_from": [],
+        "owner_text": "Nobody Named",
+        "position": 2,
+        "root_cause": "No inspection cadence",
+        "state": "proposed",
+        "statement": "Inspect every site monthly.",
+        "the_fix": "A monthly inspection per site"
+      }
+    ],
+    "path_notes": [],
+    "six_key_components": {
+      "answered": 3,
+      "average": 4.0,
+      "complete": true,
+      "lowest": "six_key_components<3>",
+      "of": 3,
+      "ratings": {
+        "six_key_components<1>": 7,
+        "six_key_components<2>": 3,
+        "six_key_components<3>": 2
+      },
+      "scores": [
+        {
+          "answered_by": "fractional",
+          "comment": "Written, not shared",
+          "key": "six_key_components<1>",
+          "rating": 7
+        },
+        {
+          "answered_by": "fractional",
+          "comment": "Two seats empty",
+          "key": "six_key_components<2>",
+          "rating": 3
+        },
+        {
+          "answered_by": "fractional",
+          "comment": "",
+          "key": "six_key_components<3>",
+          "rating": 2
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,12 @@
+[
+  {
+    "code": "snapshot",
+    "is_rating": false,
+    "questions": [
+      "What does Acme Facilities sell, and to whom?",
+      "How many people work there?",
+      "What do you want from Tenant A?"
+    ],
+    "title": "Before the call"
+  }
+]
