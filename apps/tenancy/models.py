@@ -90,8 +90,32 @@ class TenantScopedModel(UUIDModel):
 class Tenant(UUIDModel):
     """The practice. One row in Beta. The only table with no tenant_id."""
 
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        #: Provisioned; the practice owner has not signed in yet.
+        INVITED = "invited", "Invited"
+        #: Nobody signs in, nothing runs or sends; every row is kept.
+        ARCHIVED = "archived", "Archived"
+
+    class OAuthClient(models.TextChoices):
+        #: The Executives Now Workspace client (consent screen Internal).
+        INTERNAL = "internal", "Executives Now Workspace"
+        #: The second client, External (P2 D1), for every other practice.
+        EXTERNAL = "external", "External"
+
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
+    # P2 (2026-10-02): the Practices area.
+    legal_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    domain = models.CharField(max_length=253, blank=True, default="", db_default="")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE,
+                              db_default=Status.ACTIVE)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    oauth_client = models.CharField(max_length=12, choices=OAuthClient.choices,
+                                    default=OAuthClient.INTERNAL,
+                                    db_default=OAuthClient.INTERNAL)
     timezone = models.CharField(max_length=64, default="America/Denver")  # D4
     from_address = models.EmailField(default="info@getexecutivesnow.com")  # H2
     inbound_domain = models.CharField(

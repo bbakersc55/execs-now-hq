@@ -37,6 +37,9 @@ def _branding_tenant(request):
     """
     from apps.tenancy.models import Tenant
 
+    # The Practices area wears no practice's branding (P2).
+    if getattr(request, "area", None) == "platform":
+        return None
     membership = getattr(request, "membership", None)
     if membership is not None:
         return membership.tenant
@@ -79,7 +82,9 @@ def branding(request):
     membership = getattr(request, "membership", None)
     from apps.tenancy import contrast
 
-    staff = membership is not None and membership.role in STAFF_ROLES
+    # The Practices area is a staff screen with no practice bound (P2).
+    platform = getattr(request, "area", None) == "platform"
+    staff = platform or (membership is not None and membership.role in STAFF_ROLES)
     brand = tenant_branding(_branding_tenant(request))
     return JsonResponse({
         "display_name": brand["display_name"],
@@ -151,6 +156,10 @@ def me(request):
         "full_name": request.user.full_name,
         "role": membership.role if membership else None,
         "role_label": role_label(membership.role) if membership else None,
+        # P2: the Practices area switch. `area` is "platform" only for the
+        # platform owner after switching; then no practice is bound.
+        "is_platform_owner": request.user.is_platform_owner,
+        "area": getattr(request, "area", "practice"),
         "tenant": str(membership.tenant_id) if membership else None,
         "client_company": (
             str(membership.client_company_id)

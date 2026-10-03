@@ -65,7 +65,8 @@ def with_identity(html: str, request) -> str:
     from apps.accounts.views import STAFF_ROLES, _branding_tenant, tenant_branding
 
     membership = getattr(request, "membership", None)
-    if membership is not None and membership.role in STAFF_ROLES:
+    platform = getattr(request, "area", None) == "platform"
+    if platform or (membership is not None and membership.role in STAFF_ROLES):
         title = PRODUCT_NAME
         static = settings.STATIC_URL if settings.STATIC_URL.startswith("/") \
             else "/" + settings.STATIC_URL

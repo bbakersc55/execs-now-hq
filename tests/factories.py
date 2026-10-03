@@ -22,6 +22,7 @@ from apps.meetings.models import (
     MeetingParticipant, MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.notes.models import Note, NotePinUnlock
+from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
     Comment, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
@@ -885,3 +886,29 @@ class EmailAttachmentFactory(TenantScopedFactory):
     stored_file = factory.SubFactory(StoredFileFactory,
                                      tenant=factory.SelfAttribute("..tenant"))
     filename = "q3-margin.csv"
+
+
+# --- P2: the platform layer ---
+
+class AgreementAcceptanceFactory(TenantScopedFactory):
+    class Meta:
+        model = AgreementAcceptance
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+    version = "v1"
+    text_sha256 = "0" * 64
+
+
+class FeedbackFactory(TenantScopedFactory):
+    class Meta:
+        model = Feedback
+
+    tenant = factory.SubFactory(TenantFactory)
+    practice_name = factory.SelfAttribute("tenant.name")
+    submitted_by = factory.SubFactory(UserFactory)
+    role = "FF"
+    doing = "Approving a digest"
+    happened = "The button did nothing"
+    expected = "The digest to be approved"
+    page_url = "/digests"

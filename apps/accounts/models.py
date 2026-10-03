@@ -44,6 +44,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     timezone = models.CharField(max_length=64, blank=True, default="")
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    #: P2: may open the Practices area. Set only by `manage.py
+    #: set_platform_owner`; no screen or API writes it. Grants **no** access
+    #: inside any practice (apps/platform/README in docs/p2…).
+    is_platform_owner = models.BooleanField(default=False, db_default=False)
     last_login_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -18,6 +18,7 @@ from apps.crm.models import (
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.notes.models import Note, NotePinUnlock
+from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
     Comment, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
@@ -152,3 +153,10 @@ register(StrategySessionPrep, factories.StrategySessionPrepFactory, api_exposed=
 register(StrategySection, factories.StrategySectionFactory, api_exposed=False)
 register(StrategyQuestion, factories.StrategyQuestionFactory, api_exposed=False)
 register(StrategyAnswer, factories.StrategyAnswerFactory, api_exposed=False)
+
+# --- P2: the platform layer ---
+# Accepted once, on the agreement screen; never read back by id.
+register(AgreementAcceptance, factories.AgreementAcceptanceFactory, api_exposed=False)
+# Staff send it and list their own (/api/feedback/); the platform owner reads
+# it through apps/platform/feedback.py, the one crossing.
+register(Feedback, factories.FeedbackFactory, api_exposed=False)

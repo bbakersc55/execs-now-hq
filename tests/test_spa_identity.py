@@ -63,3 +63,13 @@ def test_a_practice_name_is_escaped(seeded_tenant):
     seeded_tenant.save()
     html = page(_member(seeded_tenant, "FCC", ClientCompanyFactory(tenant=seeded_tenant)))
     assert "<script>x" not in html and "&lt;script&gt;" in html
+
+
+@pytest.mark.django_db
+def test_the_practices_area_gets_the_product_name_and_icon(seeded_tenant):
+    owner = _member(seeded_tenant, "FF")
+    request = RequestFactory().get("/practices")
+    request.membership, request.area = None, "platform"
+    html = with_identity(SHELL, request)
+    assert f"<title>{PRODUCT_NAME}</title>" in html and "/static/brand/favicon.ico" in html
+    assert owner  # the practice exists; the Practices area still names none of it
