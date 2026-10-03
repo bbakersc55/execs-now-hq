@@ -65,6 +65,8 @@ NEEDS: tuple[Need, ...] = (
          "reading and writing every stored secret, including API keys"),
     Need("requests", "requests",
          "sending mail through Gmail, and the Google OAuth token exchange"),
+    Need("PIL", "pillow",
+         "writing the product's tab icons from its mark (manage.py build_favicons)"),
 )
 
 

@@ -276,7 +276,7 @@ export function App() {
             <Route path="/settings/branding" element={<Branding />} />
             <Route path="/referrals" element={<ReferralSettings />} />
             <Route path="/rules" element={<StageRules />} />
-            <Route path="/staff" element={<Staff />} />
+            <Route path="/staff" element={<Staff me={me} />} />
             <Route path="/ai-usage" element={<AiUsage />} />
             <Route path="/notes" element={<Notes me={me} />} />
             <Route path="/notes/pin-reset/:token" element={<PinReset />} />

@@ -3,11 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { api, StaffMember } from "../lib/api";
+import { api, Me, StaffMember } from "../lib/api";
 import { STAFF_ROLES, roleLabel } from "../lib/roles";
 
-export function Staff() {
+export function Staff({ me }: { me: Me }) {
   const qc = useQueryClient();
+  // The example address is at the inviter's own domain: Google sign-in is
+  // restricted to it (banner below). Never another practice's domain.
+  const domain = me.email.split("@")[1] || "example.com";
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState("VA");
@@ -68,7 +71,7 @@ export function Staff() {
       <Card title="Invite someone">
         <div className="row">
           <Field label="Email"><input value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@getexecutivesnow.com" /></Field>
+            placeholder={`name@${domain}`} /></Field>
           <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="Role">
             <select value={role} onChange={(e) => setRole(e.target.value)}>
