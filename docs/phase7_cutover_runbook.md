@@ -258,6 +258,13 @@ when R4 follows R3 immediately. The first migration release records which.
 - **The old web kept serving the whole time.** Production was polled every 5 s from before the push: 53 samples from the old code, then 4 from the new, **every one a 200**, with the switch between 04:02:55 and 04:03:00. The refused new web deployment showed as FAILED, and the old one stayed live. **No web downtime** was observed at 5-second resolution.
 - **The worker was paused about 68 s** (new worker waiting at 04:00:52, running at 04:02:00), as intended.
 - `railway redeploy` on the backup cron is still unobserved.
+
+**Observed at Release 3 (2026-10-03, 1 migration, `crm 0031`, the three
+backlog items):** pushed 04:58:17; worker `WAITING` 04:58:52 listing exactly
+`crm.0031`; applied 04:59:16–19; worker running 04:59:26; web redeployed
+04:59:51; new code serving by 05:00:27. **Push to new code: 2 min 10 s.**
+Old web served throughout: 29 samples at 5 s, every one 200. **Worker paused
+36 s.**
 ---
 
 ## Part A — the owner's steps, in order
