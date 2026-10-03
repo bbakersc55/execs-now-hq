@@ -1,10 +1,20 @@
 # Execs NOW HQ — handoff to the next chat
 
-Written 2026-10-03, replacing the 2026-09-22 version; updated the same evening
-after Release 4 (P3). Upload this at the
+Written 2026-10-03, replacing the 2026-09-22 version; updated at the end of that
+day, after Release 4 (P3) and the part two spec. **The next session starts at
+"Next" below.** Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it leaves
 off." The specs in `docs/` are the source of truth; this covers what they
 don't, and what changed since 9/30.
+
+## Next
+
+Bryan runs **two test sessions in production** (part two, decision 14): one
+v3 and one v2, with a test contact, before any part two code. **Start by
+creating the test contact** (Contacts → Add contact, with an email address
+Bryan can open). These two sessions are the first time any P3 screen is seen
+in a browser and the first real Claude call on v3. Part two phase 2 (custom
+sections) starts only after them, and after anything they turn up is fixed.
 
 ## What this is, in one paragraph
 
@@ -54,8 +64,9 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | Modules 0.5–6 | Built and in use; details below in "Open threads" |
 | Phase 7 cutover | Done 9/30 (Release 1); B7 laptop move done 10/2 |
 | **P1** vocabulary, roles, branding | **Released 10/3** |
-| **P2** Practices admin and onboarding | **Released 10/3**, except creating Blue Sky |
+| **P2** Practices admin and onboarding | **Released 10/3**; Blue Sky created and its owner invited 10/3 |
 | **P3** strategy template builder and session v3 | **Released 10/3 (Release 4, `main` at `0a07322`)**, phases 1–5; **no screen seen in a browser yet**; the demo dry run was waived |
+| **P3 part two** custom sections, AI per section, per-session rewordings | **Spec approved 10/3** (`docs/p3_part2_custom_sections_ai.md`); **phase 1 done** (v3 pinned by 43 golden files); phase 2 waits on the two test sessions |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
@@ -144,10 +155,13 @@ unregistered model; the isolation family now includes the platform owner.
 - **"Restore from seed" is refused** (and not shown) for a practice with no
   classic or v2 template, so another practice cannot take the Operations
   questions.
-- **Deferred (spec §7, phase 6):** custom sections; adding, removing and
+- **Deferred from P3, now in part two:** custom sections; adding, removing and
   reordering sections; talk tracks; starting from a copy of a classic or v2
-  template; the pre-call form preview in the builder; automatic next-step
-  sentences in a v3 covering note.
+  template; the pre-call form preview in the builder; next-step sentences in a
+  v3 covering note.
+- **v3 is pinned too** (part two, phase 1): `tests/test_strategy_v3_golden.py`,
+  43 files for a builder template and one session from it. They must stay
+  identical for a template that uses no part two feature.
 - **Found and left alone, for the owner to decide:**
   - Duplicating "Operations — focused" in the old editor gives a *classic*
     copy. Do not duplicate it before 10/8.
@@ -156,21 +170,27 @@ unregistered model; the isolation family now includes the platform owner.
 
 ## Blocked on the owner
 
-1. **Blue Sky Business Consulting LLC** (display name "Blue Sky Business
-   Consulting", blueskybizconsulting.com, owner Shawn): the owner has Shawn's
-   email, the External client exists in production and Shawn is a test user
-   (owner, 10/3). **Still the owner's to do:** Practices → Add a practice, then
-   Invite owner. Branding is Shawn's own to set (Settings → Branding); the
-   mark must be a **square PNG, at least 64 × 64 px, up to 500 KB**. Any staff
-   he adds must be test users on the External client first.
+1. **Blue Sky Business Consulting** (blueskybizconsulting.com, owner Shawn):
+   **the practice is created and the owner invitation is sent (owner, 10/3).**
+   **Bryan meets Shawn Monday 10/5 in the afternoon.** For that meeting:
+   - Shawn signs in under Staff with Google, passes Google's unverified-app
+     warning, and accepts the beta agreement.
+   - Branding is Shawn's own to set (Settings → Branding); the mark must be a
+     **square PNG, at least 64 × 64 px, up to 500 KB**.
+   - He connects Gmail, enters his Anthropic key, and reconnects Google every
+     7 days until the app is verified.
+   - His first template is built in the builder (Strategy → Manage the
+     templates → New template). "Restore from seed" is not offered to him.
+   - Any staff he adds must be test users on the External client first.
 2. **Google verification** (`docs/google_verification.md`), the owner's steps:
-   - Set up the new GCP project and verify `getexecutivesnow.com` in Search
-     Console.
-   - Publish the homepage and privacy policy (both drafted; have a lawyer
-     read the policy).
-   - Configure the consent screen and the OAuth client; add test users.
-   - Record the demo video (script drafted) and submit with the drafted scope
-     justifications.
+   - **Steps 4–6 are done (owner, 10/3):** the consent screen and the External
+     client exist, its two variables are in production on web
+     (`execs-now-hq`) and `qcluster`, and Shawn is a test user.
+   - **Open before step 7** (the demo video, which opens on that page): the
+     `/hq` homepage copy, and the privacy policy beside it (drafted; have a
+     lawyer read the policy).
+   - Then record the demo video (script drafted) and submit with the drafted
+     scope justifications.
    - Answer Google's emails, then the annual CASA assessment for the
      restricted scopes, then publish.
    - Scope classifications and costs are marked to confirm in the console.
@@ -255,16 +275,31 @@ unregistered model; the isolation family now includes the platform owner.
    for one v3 and one v2 session is in the 10/3 chat; the demo is ready for it
    ("Operations — focused" is its default, migration applied), and needs an
    Anthropic key entered on its AI usage screen.
-6. **Cory Muscato, 10/8:** a v2 session. Production holds one draft session on
-   the focused format, created before P3 was released, so its questions were
-   frozen first. Run it on v2 as planned.
+6. **Cory Muscato, 10/8:** his session is created in production on
+   "Operations — focused", **with the form not sent**. It was created before P3
+   was released, so its questions were frozen first. Bryan emailed Cory a
+   questionnaire some time ago and has **no reply yet**. Run it on v2 as
+   planned.
 7. **No real Claude call has been made on v3.** Every P3 test scripts Claude;
-   how the model words v3 diagnostic questions and rows is unseen until a real
-   session or the demo dry run.
+   how the model words v3 diagnostic questions and rows is unseen until the
+   two test sessions in production ("Next", above).
+8. **Small items, open, each the owner's to decide:**
+   - The v2 **"Six Key Components"** label wording (the live view's summary
+     card and the PDF heading say six; "Operations — focused" rates five).
+   - The **mechanics note does not print on a card map** (v2 and v3), whatever
+     its PDF flag says.
+   - **Duplicating "Operations — focused"** in the old editor gives a
+     *classic* copy. Do not duplicate it before 10/8.
+   - The **`/hq` homepage copy**, needed before Google verification step 7.
+   Any change to the first three touches v2, so it moves the v2 goldens and
+   needs the owner's yes before they are regenerated.
 
 ## Roadmap (recorded, not scheduled)
 
-- **P3 phase 6** (the deferred builder items above).
+- **P3 part two** (`docs/p3_part2_custom_sections_ai.md`), which takes in the
+  items P3 deferred: custom sections and talk tracks, AI per section,
+  per-session rewordings and the form preview, the PDF and covering note,
+  starting from a copy. Two releases.
 - **Then**, in this order: P4 billing, Microsoft 365 transport per its spec,
   the campaign/sequence editor, task dependencies, private tasks, notes stacks,
   Google Calendar, an in-app AI helper (inbox triage first), other AI models

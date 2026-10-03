@@ -13,6 +13,18 @@ pre-questionnaire. The owner also asked for a plain statement of what Prepare
 already does, so nothing is built twice: §5.0. Build order: phase 1 (pin v3)
 first, alone, with no schema change and no application code.
 
+**Amended the same day, after §5.0 was read: the owner chooses the smaller
+pre-questionnaire.** Accepted rewordings apply to **that session only**; there
+are **no new-question proposals for now**. That replaces D10 and narrows D8
+and D9, and it removes from this round: the `strategy_precall_proposal` table
+(§2.2, and its `CREATE TABLE` in §2.3), the `precall_size` setting (§2.4), the
+tray of §5.3 and guardrail 7 of §5.4, and matrix rows 10.3d–10.3f. What is
+built instead is in §5.6. Where §5.1–§5.5 describe Claude proposing new
+questions, they are the fuller version, kept for the record and **not built**.
+
+**Phase 1 is done (2026-10-03):** `tests/test_strategy_v3_golden.py`, 43 golden
+files for a v3 session as released. Phase 2 waits on D14.
+
 It builds on
 `docs/p3_strategy_templates_session_v3.md` (P3, released 2026-10-03 as
 Release 4) and uses its words: *classic*, *v2* ("Operations — focused"), *v3*
@@ -393,6 +405,35 @@ that sentence stays.
 
 ---
 
+### 5.6 What is built: the smaller version (owner, 2026-10-03)
+
+Prepare is unchanged: one call, the same brief, the same one-for-one
+rewordings of the template's own pre-call questions, the same five extra
+questions for the call. One thing changes, for a v3 session only:
+
+- Beside the ticked rewordings, **"Use for this session"** writes the accepted
+  wording into **this session's own questions**. The template is not touched,
+  and no reset is needed.
+- It is offered only while the session is a draft that has reached nobody
+  (the existing `reset_refusal` rule). After that the questions are fixed and
+  the button says why.
+- A rewording still cannot change a question's shape, or use a merge field
+  that does not exist.
+- "Copy into the builder" stays, for wording the practice wants to keep for
+  every later session.
+- **Preview the form** (§7.1) stays in this phase.
+
+**Schema:** nothing. The accepted wording lives in the session's snapshot and
+the suggestions stay where they are, on the prep row. Migration 0017 is then
+the three columns of §2.1 only.
+
+**Tests:** the template is byte-for-byte unchanged by "Use for this session";
+another session from the same template still asks the template's wording;
+refused once the form or the questions have gone out, or the prospect has
+answered; an assistant cannot do it (403); another practice cannot reach it
+(404); nothing from the prep brief reaches the form or the email; classic and
+v2 prep unchanged (v2 goldens).
+
 ## 6. The PDF
 
 ### 6.1 What prints
@@ -503,7 +544,7 @@ move earlier if it matters more.
 | **1. Pin v3** | Golden files for one v3 session run end to end as released (snapshot, form, payloads, every prompt, PDF, conversion), beside the v2 goldens. No product code. | The goldens themselves, green on today's `dev` | — |
 | **2. Custom sections and talk tracks** | Migration 0017 (SQL shown first). Add, remove, rename, reorder; the three answer kinds; removing built-in parts and the new ready-to-run rule; talk tracks; the live view in template order. | Isolation and role tests on every new verb. A template without each part starts and runs. A custom section's answers reach no prompt and no PDF by default. Key never reused after remove and put back. **v2 goldens identical; v3 goldens identical for a template that uses none of it.** | The builder's reordering; the live view with custom sections |
 | **3. AI per section** | `feeds_map` and, if D2, `ai_drafts`: the switches, the drafting input, the controls hidden where drafting is off. | A switched-on custom section reaches the rows, mirror and pros-and-cons input, and a switched-off one does not. Scope never does. Money and private notes never do. Drafting off: no button, no automatic call, no `ai_call`. Defaults reproduce the v3 goldens exactly. | — |
-| **4. Pre-questionnaire and form preview** | The tray, "Use this questionnaire", per-session wording, the form preview in the builder and on the session. | Proposed, never asked. Draft sessions only. Shape rules (written answers, 20 at most, known merge fields). Nothing private on the form or in the email. One `ai_call`, attended, against the right practice. Assistant: 403 and absent from the payload. Another practice: 404. The template is unchanged by anything a session accepts. Classic and v2 prep prompt unchanged (v2 goldens). | The tray; the preview |
+| **4. Per-session rewordings and form preview** *(the smaller version, §5.6; no tray, no new questions, no new table)* | "Use for this session" on prep's rewordings, the form preview in the builder and on the session. | Proposed, never asked. Draft sessions only. Shape rules (written answers, 20 at most, known merge fields). Nothing private on the form or in the email. One `ai_call`, attended, against the right practice. Assistant: 403 and absent from the payload. Another practice: 404. The template is unchanged by anything a session accepts. Classic and v2 prep prompt unchanged (v2 goldens). | The tray; the preview |
 | **5. PDF and covering note** | Printing custom sections; the flowing layout; parts that are absent; `cover_line`. | AC-4.9 on custom sections (no private note, no said/cause/tried, no money). Two-page layout still two pages. Flowing layout: every printing section present, in order. Cover sentence only when agreed and dated. v2 PDF golden identical. | **How both layouts look**, especially page breaks |
 | **6. Start from a copy** | "Start from" on New template; the classic and v2 mapping. | The copy is v3 and ready or says what is missing; the source is byte-for-byte unchanged; each mapped part holds what the table in §7.2 says. | — |
 
@@ -527,7 +568,7 @@ feature.
 | D7 | PDF: keep two pages as the default and add a "flowing" layout per template that follows the template's order and runs as long as it needs | Yes, both. A hard two-page limit and custom sections cannot both hold. | **Yes.** |
 | **D8** | **A pre-questionnaire accepted for a prospect changes that session only, never the template.** "Copy into the builder" stays for wording you want to keep. | **Yes** | **Yes.** |
 | D9 | One Prepare run drafts the brief and the questionnaire together (one call, one read of the site), rather than a second button and a second call | Yes | **Yes.** |
-| D10 | Questionnaire size: Claude aims for the template's own number of pre-call questions (12 if it has none), 20 at most, and never drops a template question without showing it as "not included" | Yes | **Yes.** |
+| D10 | Questionnaire size: Claude aims for the template's own number of pre-call questions (12 if it has none), 20 at most, and never drops a template question without showing it as "not included" | Yes | **Yes**, then **withdrawn the same day:** no new-question proposals for now; rewordings apply to that session only (§5.6). |
 | D11 | Next-step sentences: the practice writes one per scope item, with `{date}`; none are written for it | Yes | **Yes.** |
 | D12 | Phase order: pin v3, custom sections and talk tracks, AI per section, pre-questionnaire and form preview, PDF and covering note, start from a copy | Yes. Say if the pre-questionnaire should come before custom sections. | **Yes, as proposed.** Custom sections take priority over the pre-questionnaire. |
 | D13 | "Start from a copy" of a classic or v2 template is offered only to a practice that has one (Executives Now) | Yes | **Yes.** |
