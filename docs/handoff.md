@@ -1,6 +1,7 @@
 # Execs NOW HQ — handoff to the next chat
 
-Written 2026-10-03, replacing the 2026-09-22 version. Upload this at the
+Written 2026-10-03, replacing the 2026-09-22 version; updated the same evening
+after Release 4 (P3). Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it leaves
 off." The specs in `docs/` are the source of truth; this covers what they
 don't, and what changed since 9/30.
@@ -35,7 +36,11 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 - **The release sequence is proven** (Release 2, 10/3, P1 + P2, 7
   migrations): push to new code serving took **4 min 22 s**, and the **old web
   kept serving throughout** (polled every 5 s, every response 200). The worker
-  paused about 68 s. Recorded in `docs/phase7_cutover_runbook.md`.
+  paused about 68 s. Releases 3 and 4 the same day took 2 min 10 s and 2 min
+  28 s. Recorded in `docs/phase7_cutover_runbook.md`.
+- **The demo is reached without relinking the CLI**, which stays linked to
+  production: `railway ssh -p <demo project id> -e production -s execs-now-hq --
+  <command>`. Check `$APP_ENVIRONMENT` is `demo` in the same command.
 - Laptop session (five tabs): see `docs/05_dev_environment.md` §8. Tab 1 runs
   `gcloud config configurations activate execs-now-hq`, `git pull`, the
   installs, `migrate` and `ensure_schedules`; then runserver 8100, qcluster,
@@ -50,12 +55,13 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | Phase 7 cutover | Done 9/30 (Release 1); B7 laptop move done 10/2 |
 | **P1** vocabulary, roles, branding | **Released 10/3** |
 | **P2** Practices admin and onboarding | **Released 10/3**, except creating Blue Sky |
-| P3 strategy template builder and session v3 | **Not started**; spec not yet written |
+| **P3** strategy template builder and session v3 | **Released 10/3 (Release 4, `main` at `0a07322`)**, phases 1–5; **no screen seen in a browser yet**; the demo dry run was waived |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
 
-Tests on `dev` as of 10/3: **2076 backend, 538 frontend**. The
+Tests on `dev` as of 10/3, after P3: the backend suite green (P3 added 65
+tests across four files), **566 frontend**. The
 tenant-isolation and role-boundary families are registries that fail on an
 unregistered model; the isolation family now includes the platform owner.
 
@@ -109,13 +115,54 @@ unregistered model; the isolation family now includes the platform owner.
     days until Google verifies the app.
   - **Staff sign-in is email-first:** the address decides which client.
 
+### P3 in brief (`docs/p3_strategy_templates_session_v3.md`)
+
+- **Three template formats, side by side.** Classic, v2 ("Operations —
+  focused") and **v3**, made in the builder. A session keeps the format it was
+  created with, frozen in its snapshot. Nothing converts one into another.
+- **The builder** (Strategy → Manage the templates → New template; practice
+  owner only): eight parts in session order.
+  - The practice's own pre-call questions, rated items with labels, fixed
+    diagnostic questions, mirror questions, values, the two paths and scope.
+  - Settings per template: diagnostic questions per session (1 to 8, default
+    3), the rating scale line, each path's words on the PDF, and how Claude
+    describes the practice.
+  - "What they value" can be taken out. A template needs two rated items to be
+    **ready to run**; one that is not ready cannot start a session.
+- **A v3 session:** pre-call questions, ratings on the call, a diagnostic
+  proposed from the pre-call answers (plus "Propose from the ratings" and "Add
+  a question" by hand, eight at most), the mirror under its own questions, the
+  five-row card map, the two-page PDF with the template's own chips, labels and
+  path copy. Conversion and prep are the existing code.
+- **Every AI output still lands as proposed.** A rejected map row or
+  diagnostic question is told to Claude and not proposed again.
+- **v2 is pinned.** `tests/test_strategy_v2_golden.py` holds 34 golden files
+  each for a classic and a v2 session, and
+  `scripts/strategy_session_fingerprints.py --check` compares the real sessions
+  on the laptop against a baseline. **Both must stay identical; a golden is
+  never regenerated to make a test pass.**
+- **"Restore from seed" is refused** (and not shown) for a practice with no
+  classic or v2 template, so another practice cannot take the Operations
+  questions.
+- **Deferred (spec §7, phase 6):** custom sections; adding, removing and
+  reordering sections; talk tracks; starting from a copy of a classic or v2
+  template; the pre-call form preview in the builder; automatic next-step
+  sentences in a v3 covering note.
+- **Found and left alone, for the owner to decide:**
+  - Duplicating "Operations — focused" in the old editor gives a *classic*
+    copy. Do not duplicate it before 10/8.
+  - On a card map (v2 and v3) the mechanics note never prints, whatever its
+    PDF flag says.
+
 ## Blocked on the owner
 
 1. **Blue Sky Business Consulting LLC** (display name "Blue Sky Business
-   Consulting", blueskybizconsulting.com, owner Shawn): created through
-   Practices → Add a practice **when Shawn's email arrives**. Inviting him also
-   needs steps 1–6 of the Google verification plan (the External client and its
-   two variables in Railway, Shawn as a test user).
+   Consulting", blueskybizconsulting.com, owner Shawn): the owner has Shawn's
+   email, the External client exists in production and Shawn is a test user
+   (owner, 10/3). **Still the owner's to do:** Practices → Add a practice, then
+   Invite owner. Branding is Shawn's own to set (Settings → Branding); the
+   mark must be a **square PNG, at least 64 × 64 px, up to 500 KB**. Any staff
+   he adds must be test users on the External client first.
 2. **Google verification** (`docs/google_verification.md`), the owner's steps:
    - Set up the new GCP project and verify `getexecutivesnow.com` in Search
      Console.
@@ -202,12 +249,22 @@ unregistered model; the isolation family now includes the platform owner.
 4. **Meeting ingestion:** live pickup of a brand-new Google Meet meeting had not
    been observed at last check.
 5. **Not seen in a browser yet:** P1 (Branding screen, portal colors), P2
-   (Practices, switcher fix, agreement, checklist, feedback), and the three
-   backlog items.
+   (Practices, switcher fix, agreement, checklist, feedback), the three
+   backlog items, and **all of P3** (the builder, the v3 live view, the v3
+   PDF, and that the v2 screens look as they did). The click-by-click checklist
+   for one v3 and one v2 session is in the 10/3 chat; the demo is ready for it
+   ("Operations — focused" is its default, migration applied), and needs an
+   Anthropic key entered on its AI usage screen.
+6. **Cory Muscato, 10/8:** a v2 session. Production holds one draft session on
+   the focused format, created before P3 was released, so its questions were
+   frozen first. Run it on v2 as planned.
+7. **No real Claude call has been made on v3.** Every P3 test scripts Claude;
+   how the model words v3 diagnostic questions and rows is unseen until a real
+   session or the demo dry run.
 
 ## Roadmap (recorded, not scheduled)
 
-- **P3:** strategy template builder and session v3.
+- **P3 phase 6** (the deferred builder items above).
 - **Then**, in this order: P4 billing, Microsoft 365 transport per its spec,
   the campaign/sequence editor, task dependencies, private tasks, notes stacks,
   Google Calendar, an in-app AI helper (inbox triage first), other AI models

@@ -265,6 +265,15 @@ backlog items):** pushed 04:58:17; worker `WAITING` 04:58:52 listing exactly
 04:59:51; new code serving by 05:00:27. **Push to new code: 2 min 10 s.**
 Old web served throughout: 29 samples at 5 s, every one 200. **Worker paused
 36 s.**
+
+**Observed at Release 4 (2026-10-03, 1 migration, `strategy 0016`, P3):**
+backup confirmed (dump of 08:03 UTC, 2.9 MB); pushed 21:42:56; worker
+`WAITING` 21:43:53 listing exactly `strategy.0016_template_builder`; applied
+21:44:10–17; `migrations current` 21:44:29, worker running 21:44:33; web
+redeployed 21:44:48; new code serving by 21:45:24. **Push to new code: 2 min
+28 s.** Web answered 200 at every sample (about every 9 s). **Worker paused
+about 40 s.**
+
 ---
 
 ## Part A — the owner's steps, in order
