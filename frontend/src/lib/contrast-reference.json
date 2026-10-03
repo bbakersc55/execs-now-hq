@@ -1,0 +1,25 @@
+{
+  "comment": "Reference pairs for apps/tenancy/contrast.py and frontend/src/lib/contrast.ts. Ratios to two decimals.",
+  "ratios": [
+    {"a": "#0A3A65", "b": "#FFFFFF", "ratio": 11.63},
+    {"a": "#F58220", "b": "#FFFFFF", "ratio": 2.59},
+    {"a": "#F58220", "b": "#0A3A65", "ratio": 4.48},
+    {"a": "#000000", "b": "#FFFFFF", "ratio": 21.0},
+    {"a": "#777777", "b": "#FFFFFF", "ratio": 4.48},
+    {"a": "#1F2933", "b": "#52606D", "ratio": 2.29},
+    {"a": "#1F2933", "b": "#7B8794", "ratio": 4.03},
+    {"a": "#FFFFFF", "b": "#FFFFFF", "ratio": 1.0}
+  ],
+  "text_on": [
+    {"fill": "#0A3A65", "text": "#FFFFFF"},
+    {"fill": "#F58220", "text": "#1F2933"},
+    {"fill": "#FFD700", "text": "#1F2933"},
+    {"fill": "#52606D", "text": "#FFFFFF"}
+  ],
+  "verdicts": [
+    {"primary": "#0A3A65", "accent": "#F58220", "blocked": [], "warned": ["accent_on_white"]},
+    {"primary": "#1F2933", "accent": "#52606D", "blocked": ["accent_on_primary"], "warned": []},
+    {"primary": "#1F2933", "accent": "#7B8794", "blocked": [], "warned": []},
+    {"primary": "#7FB3E0", "accent": "#0A3A65", "blocked": ["primary_on_white"], "warned": []}
+  ]
+}

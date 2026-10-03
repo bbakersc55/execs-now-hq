@@ -41,7 +41,9 @@ FONT_STACK = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
 #: tenant's do.
 DEFAULT_DISPLAY_NAME = ""
 DEFAULT_HEADER_COLOR = "#1F2933"
-DEFAULT_ACCENT_COLOR = "#52606D"
+# The accent passes every contrast rule against the default primary
+# (apps/tenancy/contrast.py; the old #52606D was 2.29 : 1 against it).
+DEFAULT_ACCENT_COLOR = "#7B8794"
 TEXT_COLOR = "#333333"
 MUTED_COLOR = "#6D6E71"
 FAINT_COLOR = "#939598"

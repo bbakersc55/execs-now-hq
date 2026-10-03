@@ -9,13 +9,14 @@
 - The **mark** (``--mark``) is the square symbol beside the sign-off on mail
   from a person, fitted into 56 x 56 px.
 
-PNG or JPEG, at most 500 KB. Supply each at about twice the size it should show;
+The logo is a PNG or JPEG; the mark a square PNG of at least 64 px. At most
+500 KB. Supply each at about twice the size it should show;
 it is never enlarged. Files are kept in media storage like the marketing flyer;
 a replaced file is left in place (storage never overwrites or deletes on a
 re-upload).
 
-Beta sets these from the terminal, as the colours are set on the tenant row; a
-Settings screen for them is V1.
+Settings → Branding does the same from the app (P1); this command calls the
+same service, `apps/tenancy/branding.py`.
 """
 
 from __future__ import annotations
@@ -38,8 +39,7 @@ class Command(BaseCommand):
                             help="Check the file and show the size it will display at")
 
     def handle(self, *args, **options):
-        from apps.crm.services import email_layout
-        from apps.tenancy import storage
+        from apps.tenancy import branding
         from apps.tenancy.models import Tenant
 
         tenant = self._tenant(Tenant, options["tenant"])
@@ -64,20 +64,11 @@ class Command(BaseCommand):
         if not path.is_file():
             raise CommandError(f"No file at {path}.")
         content = path.read_bytes()
-        if len(content) > email_layout.LOGO_MAX_BYTES:
-            raise CommandError(
-                f"{path.name} is {len(content) // 1024} KB; the limit is "
-                f"{email_layout.LOGO_MAX_BYTES // 1024} KB. Large images slow every email "
-                "and some clients clip them.")
+        # The same rules and the same write as Settings → Branding (P1).
+        kind = "mark" if mark else "logo"
         try:
-            content_type, width, height = email_layout.image_size(content)
-            if mark:
-                display = email_layout.logo_display_size(
-                    width, height, max_width=email_layout.MARK_MAX,
-                    max_height=email_layout.MARK_MAX)
-            else:
-                display = email_layout.logo_display_size(width, height)
-        except ValueError as exc:
+            content_type, width, height, display = branding.check_image(kind, content)
+        except branding.BrandingInvalid as exc:
             raise CommandError(f"{path.name}: {exc}") from exc
 
         summary = (f"{path.name}: {content_type}, {width} x {height} px, "
@@ -85,18 +76,7 @@ class Command(BaseCommand):
         if options["dry_run"]:
             self.stdout.write(f"{tenant.name}: would set the {what} — {summary}.")
             return
-
-        extension = "jpg" if content_type == "image/jpeg" else "png"
-        name = "email-mark" if mark else "email-logo"
-        stored = storage.save(
-            tenant=tenant, content=content,
-            object_key=storage.object_key(f"branding/{tenant.slug}", f"{name}.{extension}"),
-            content_type=content_type, purpose=field,
-        )
-        setattr(tenant, field, stored)
-        setattr(tenant, f"{field}_width", display[0])
-        setattr(tenant, f"{field}_height", display[1])
-        tenant.save(update_fields=fields)
+        branding.set_image(tenant, actor=None, kind=kind, content=content)
         self.stdout.write(f"{tenant.name}: {what} set — {summary}.")
 
     def _tenant(self, Tenant, slug):

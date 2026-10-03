@@ -55,6 +55,10 @@ def tenant_branding(tenant):
         "accent_color": brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR,
         "logo_url": ("/api/branding/logo"
                      if tenant is not None and tenant.email_logo_id else ""),
+        # Always an image when the practice is known: its own mark, or its
+        # initials on gray (P1, D2). Never the product's mark.
+        "mark_url": "/api/branding/mark" if tenant is not None else "",
+        "footer_text": getattr(tenant, "brand_footer_text", "") if tenant is not None else "",
     }
 
 
@@ -70,19 +74,49 @@ def branding(request):
     filled in only for signed-in staff, whose screens may name the product.
     """
     membership = getattr(request, "membership", None)
+    from apps.tenancy import contrast
+
     staff = membership is not None and membership.role in STAFF_ROLES
     brand = tenant_branding(_branding_tenant(request))
     return JsonResponse({
         "display_name": brand["display_name"],
         "logo_url": brand["logo_url"],
+        "mark_url": brand["mark_url"],
+        "footer_text": brand["footer_text"],
         "palette": {
             "header": brand["header_color"],
             "accent": brand["accent_color"],
+            # Text placed on each fill: white or near-black, whichever reads.
+            "on_header": contrast.text_on(brand["header_color"]),
+            "on_accent": contrast.text_on(brand["accent_color"]),
             "gray_dark": PALETTE["gray_dark"],
             "gray_light": PALETTE["gray_light"],
         },
         "product_name": PRODUCT_NAME if staff else None,
     })
+
+
+def branding_mark(request):
+    """The practice's mark: its uploaded PNG, or its initials on gray (D2).
+
+    Like the logo, addressed by whose page it is and never by an id, so no
+    practice can fetch another's. Used as the client portal's favicon.
+    """
+    from apps.tenancy import branding as practice_branding
+    from apps.tenancy import storage
+
+    tenant = _branding_tenant(request)
+    if tenant is None:
+        raise Http404
+    if tenant.email_mark_id:
+        try:
+            content = storage.read(tenant.email_mark)
+        except storage.StorageError:
+            content = None
+        if content:
+            return HttpResponse(content, content_type=tenant.email_mark.content_type or "image/png")
+    name = tenant.email_display_name or tenant.name
+    return HttpResponse(practice_branding.initials_svg(name), content_type="image/svg+xml")
 
 
 def branding_logo(request):

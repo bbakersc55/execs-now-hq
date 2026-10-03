@@ -129,8 +129,8 @@ class Tenant(UUIDModel):
     email_display_name = models.CharField(max_length=80, blank=True, default="", db_default="")
     email_header_color = models.CharField(max_length=7, default="#1F2933",
                                           db_default="#1F2933")
-    email_accent_color = models.CharField(max_length=7, default="#52606D",
-                                          db_default="#52606D")
+    email_accent_color = models.CharField(max_length=7, default="#7B8794",
+                                          db_default="#7B8794")
     # The header logo (PNG or JPEG) and its DISPLAY size in px, fitted to the
     # header when it is set (`manage.py set_email_logo`). No logo: the header
     # shows `email_display_name`.
@@ -148,6 +148,12 @@ class Tenant(UUIDModel):
     )
     email_mark_width = models.PositiveSmallIntegerField(default=0, db_default=0)
     email_mark_height = models.PositiveSmallIntegerField(default=0, db_default=0)
+    # P1 (2026-10-02): the practice-wide footer under every client-facing email
+    # (address, phone, website), and when the practice owner last saved
+    # Settings → Branding. Null = never set: the neutral defaults, and P2's
+    # "Set branding" checklist item still open. apps/tenancy/branding.py.
+    brand_footer_text = models.TextField(blank=True, default="", db_default="")
+    branding_updated_at = models.DateTimeField(null=True, blank=True)
     audio_retention_days = models.PositiveIntegerField(default=30)  # F7
 
     referral_blurb = models.TextField(blank=True, default="")  # FR-1.21a

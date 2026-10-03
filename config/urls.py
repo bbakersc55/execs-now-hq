@@ -26,6 +26,7 @@ urlpatterns = [
     # The practice's logo for client-facing pages: no id in the URL, so it can
     # only ever serve the requesting tenant's own (white-label).
     path("api/branding/logo", account_views.branding_logo, name="branding-logo"),
+    path("api/branding/mark", account_views.branding_mark, name="branding-mark"),
     path("api/me", account_views.me, name="me"),
     path("api/", include("apps.crm.urls")),
     path("api/", include("apps.tenancy.urls")),

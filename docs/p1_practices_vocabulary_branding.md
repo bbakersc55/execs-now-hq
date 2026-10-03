@@ -277,11 +277,18 @@ That's the expected SQL. The exact `sqlmigrate` output is shown before the
 migration is generated (CLAUDE.md). It reaches production only by "Releasing a
 migration".
 
-Under D2-B the resolver checks `branding_updated_at` before the stored colors.
-Executives Now's row (colors set in tenancy 0005, logo and mark set) gets
-`branding_updated_at` set when you first save the Branding screen. Until then,
-the existing logo and mark keep being used, and so do the stored colors, which
-are already Executives Now's. **No data migration.**
+**As built (step 2).** The stored colors are used as before; a new practice
+gets the neutral defaults from the column defaults, so D2 needs no special case.
+`branding_updated_at` only records whether the practice owner ever saved, for
+P2's checklist. (The draft above said the resolver would check it first; that
+would have turned Executives Now's own colors gray until you saved.)
+
+**The neutral accent changed: `#52606D` → `#7B8794`.** The old default fails
+D4's blocking rule against the default primary (2.29 : 1). The new one passes
+all three rules (4.03 against the primary, 3.66 against white). Existing rows
+keep their stored values. The migration also carries
+`ALTER TABLE "tenant" ALTER COLUMN "email_accent_color" SET DEFAULT '#7B8794';`
+(a default only; no data is rewritten), and three no-op choice-label changes.
 
 ---
 

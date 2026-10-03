@@ -6,9 +6,10 @@ from django.conf import settings
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.crm.permissions import IsFF, IsTenantStaff
-from apps.tenancy import services
+from apps.tenancy import branding, services
 from apps.tenancy.models import AiCall, Membership
 from apps.tenancy.roles import role_label
 
@@ -251,3 +252,59 @@ class AiGuardView(viewsets.ViewSet):
             target_type="tenant", target_id=tenant.pk,
             payload={"before": before, "after": str(cap)})
         return Response(ai_guard.status(tenant, financial=True))
+
+
+# ------------------------------------------------------------------ branding
+
+class BrandingSettingsView(APIView):
+    """Settings → Branding (P1, 2026-10-02). The practice owner only: an
+    associate, an assistant and every client user get 403."""
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def get(self, request):
+        return Response(branding.current(request.tenant))
+
+    def put(self, request):
+        data = request.data
+        try:
+            branding.save(request.tenant, actor=request.user,
+                          display_name=data.get("display_name", ""),
+                          primary_color=data.get("primary_color", ""),
+                          accent_color=data.get("accent_color", ""),
+                          footer_text=data.get("footer_text", ""))
+        except branding.BrandingInvalid as exc:
+            return Response({"detail": str(exc), "errors": exc.errors}, status=400)
+        return Response(branding.current(request.tenant))
+
+
+class BrandingImageView(APIView):
+    """Upload (multipart `file`) or clear the logo or the mark."""
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def post(self, request, kind):
+        upload = request.FILES.get("file")
+        if upload is None:
+            return Response({"detail": "Choose a file."}, status=400)
+        if upload.size > branding.IMAGE_MAX_BYTES:
+            return Response({"detail": f"The file is {upload.size // 1024} KB; the limit is "
+                                       f"{branding.IMAGE_MAX_BYTES // 1024} KB."}, status=400)
+        try:
+            shown = branding.set_image(request.tenant, actor=request.user, kind=kind,
+                                       content=upload.read())
+        except branding.BrandingInvalid as exc:
+            return Response({"detail": str(exc), "errors": exc.errors}, status=400)
+        return Response({**branding.current(request.tenant), "uploaded": shown})
+
+    def delete(self, request, kind):
+        branding.clear_image(request.tenant, actor=request.user, kind=kind)
+        return Response(branding.current(request.tenant))
+
+
+class BrandingResetView(APIView):
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def post(self, request):
+        branding.reset(request.tenant, actor=request.user)
+        return Response(branding.current(request.tenant))
