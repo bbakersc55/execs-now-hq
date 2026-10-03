@@ -185,8 +185,10 @@ unregistered model; the isolation family now includes the platform owner.
   fails with "Reauthentication failed".
 - **Secrets:** `FIELD_ENCRYPTION_KEY` is in the owner's password manager;
   losing it loses every stored token and key.
-- **Test data in production:** Acme Facilities, Noble Baker, and Fake Practice,
-  LLC (an outside-practice test) exist; keep them out of external demos.
+- **Test data:** Acme Facilities and Noble Baker are test rows in production;
+  keep them out of external demos. "Fake Practice, LLC" was made while testing
+  P2 before P2 reached production, so it's on the laptop or the demo, not
+  production. Archive it wherever it lives once it has served.
 
 ## Open threads
 
