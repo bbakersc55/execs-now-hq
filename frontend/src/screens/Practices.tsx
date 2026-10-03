@@ -65,11 +65,15 @@ export function Practices() {
       : `${row.display_name} is back.`),
     onError: failed,
   });
+  // The answer to Invite shows in that practice's own row, where the button
+  // was pressed: a refusal only at the top of the page went unseen (2026-10-03).
+  const [rowNote, setRowNote] = useState<{ id: string; kind: "ok" | "bad"; text: string } | null>(null);
   const invite = useMutation({
     mutationFn: (id: string) =>
       api.post<{ sent_to: string }>(`/api/platform/practices/${id}/invite`),
-    onSuccess: (r) => done(`Invitation sent to ${r.sent_to}.`),
-    onError: failed,
+    onMutate: () => setRowNote(null),
+    onSuccess: (r, id) => setRowNote({ id, kind: "ok", text: `Invitation sent to ${r.sent_to}.` }),
+    onError: (e: Error, id) => setRowNote({ id, kind: "bad", text: `Not sent: ${e.message}` }),
   });
   const save = useMutation({
     mutationFn: (id: string) => api.patch<PracticeRow>(`/api/platform/practices/${id}`, draft),
@@ -135,7 +139,15 @@ export function Practices() {
                     )}
                     {p.status === "invited" && (
                       <button className="ghost" disabled={invite.isPending}
-                        onClick={() => invite.mutate(p.id)}>Invite owner</button>
+                        onClick={() => invite.mutate(p.id)}>
+                        {invite.isPending && invite.variables === p.id ? "Inviting…" : "Invite owner"}
+                      </button>
+                    )}
+                    {rowNote?.id === p.id && (
+                      <div role={rowNote.kind === "bad" ? "alert" : "status"}
+                        style={{ maxWidth: "22rem", marginTop: "0.4rem" }}>
+                        <Banner kind={rowNote.kind}>{rowNote.text}</Banner>
+                      </div>
                     )}
                     {p.status === "archived" ? (
                       <button className="ghost" disabled={act.isPending}

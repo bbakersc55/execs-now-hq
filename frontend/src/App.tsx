@@ -236,8 +236,10 @@ export function App() {
           {/* P1: staff see which practice they are in, under the product. */}
           {staff && brand?.display_name && (
             <div className="practice" aria-label="Practice">{brand.display_name}</div>)}
-          <AreaSwitch me={me} />
         </div>
+        {/* Its own block, above the New note button: inside the brand block it
+            overflowed under the button and the dropdown could not be reached. */}
+        <AreaSwitch me={me} />
         {me.role && TENANT.includes(me.role) && <NoteCapture defaults={captureDefaults(location.pathname)} />}
         <nav>
           {visible.map((n) => (

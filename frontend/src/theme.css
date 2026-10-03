@@ -142,8 +142,12 @@ h4 { font-size: var(--t-14); font-weight: 600; color: var(--text); }
 .sidebar .brand .practice { flex-basis: 100%; font-size: var(--t-12); color: #9ab4cc;
                             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .layout.collapsed .sidebar .brand .practice { display: none; }
-/* P2: the platform owner's switch between their practice and Practices. */
-.sidebar .area-switch { flex-basis: 100%; margin-top: var(--s2); }
+/* P2: the platform owner's switch between their practice and Practices. Its
+   own block between the brand and the New note button. Nothing at the top of
+   the sidebar may shrink: the sidebar is a full-height column, and a shrunk
+   brand block let its content run under the button (2026-10-03). */
+.sidebar .brand, .sidebar .area-switch, .sidebar .capture-trigger { flex-shrink: 0; }
+.sidebar .area-switch { display: block; margin: calc(-1 * var(--s3)) var(--s4) var(--s4); }
 .sidebar .area-switch select { width: 100%; background: rgba(255, 255, 255, .08);
   color: #fff; border: 1px solid rgba(255, 255, 255, .2); border-radius: var(--radius-sm);
   padding: var(--s1) var(--s2); font-size: var(--t-13); }

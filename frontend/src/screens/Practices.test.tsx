@@ -83,3 +83,46 @@ describe("the area switch", () => {
     expect(screen.queryByText("Contacts")).toBeNull();
   });
 });
+
+describe("P2 fixes (2026-10-03)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("shows an Invite refusal in that practice's row, with the reason", async () => {
+    const user = userEvent.setup();
+    const fake: PracticeRow = { ...EN, id: "33333333-3333-4333-8333-333333333333",
+      display_name: "Fake Practice, LLC", status: "invited", oauth_client: "external" };
+    vi.stubGlobal("fetch", mockApi({
+      [`POST /api/platform/practices/${fake.id}/invite`]: () => ({ status: 409, body: {
+        detail: "Google sign-in for this practice is not set up yet: the External OAuth "
+          + "client is not configured." } }),
+      "GET /api/platform/practices": [EN, fake],
+    }));
+    renderRoute(<Practices />);
+    const row = (await screen.findByText("Fake Practice, LLC")).closest("tr")!;
+    await user.click(within(row).getByRole("button", { name: "Invite owner" }));
+    const alert = await within(row).findByRole("alert");
+    expect(alert).toHaveTextContent("Not sent: Google sign-in for this practice is not set up yet");
+    const other = screen.getByText("Executives Now").closest("tr")!;
+    expect(within(other).queryByRole("alert")).toBeNull();
+  });
+
+  it("puts the area switch in its own block, above the New note button", async () => {
+    const { App } = await import("../App");
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/me": { ...aMe({ role: "FF" }), is_platform_owner: true, area: "practice",
+        home_practice: "Executives Now" },
+      "GET /api/branding": { display_name: "Executives Now", logo_url: "", mark_url: "",
+        footer_text: "", palette: null, product_name: "Execs NOW HQ" },
+      "GET /api/": [],
+    }));
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+    const select = await screen.findByLabelText("Area");
+    const block = select.closest(".area-switch")!;
+    const sidebar = block.closest("aside.sidebar")!;
+    expect(block.parentElement).toBe(sidebar);
+    expect(block.closest(".brand")).toBeNull();
+    const newNote = within(sidebar as HTMLElement).getByTitle("New note (n)");
+    // DOCUMENT_POSITION_FOLLOWING: the button comes after the switch.
+    expect(block.compareDocumentPosition(newNote) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
