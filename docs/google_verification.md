@@ -68,8 +68,12 @@ and `drive.readonly` stay. Those two are Modules 5 and 6, so I'd keep them.
    reviewed); homepage, privacy and terms URLs from step 3; authorized domain
    `getexecutivesnow.com`; developer contact. Add the scopes in §1.
 5. **[you] Create the OAuth client** (Web application) with these redirect URIs:
-   - `https://app.getexecutivesnow.com/accounts/google/login/callback/`
-   - `https://app.getexecutivesnow.com/accounts/gmail/callback`
+   - `https://app.getexecutivesnow.com/accounts/google/external/callback` (signing in)
+   - `https://app.getexecutivesnow.com/accounts/gmail/callback` (connecting Gmail and Drive)
+
+   (Not allauth's `/accounts/google/login/callback/`: that one belongs to the
+   Internal client. Outside practices sign in through the app's own External
+   flow, built in P2 step 4.)
 
    Add the client ID and secret to Railway as
    `GOOGLE_OAUTH_EXTERNAL_CLIENT_ID` and `GOOGLE_OAUTH_EXTERNAL_CLIENT_SECRET`

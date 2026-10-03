@@ -88,8 +88,21 @@ class GmailOAuthError(Exception):
     """Consent or token exchange failed. Always surfaced, never swallowed."""
 
 
-def is_configured() -> bool:
-    return bool(settings.GOOGLE_OAUTH_CLIENT_ID and settings.GOOGLE_OAUTH_CLIENT_SECRET)
+def client_for(tenant=None) -> tuple[str, str]:
+    """`(client_id, client_secret)` for a practice's OAuth client (P2 D1).
+
+    Executives Now's Workspace uses the Internal client; every other practice
+    the External one. A refresh token only works with the client that issued
+    it, so connecting, exchanging and refreshing all go through here.
+    """
+    if getattr(tenant, "oauth_client", "internal") == "external":
+        return (settings.GOOGLE_OAUTH_EXTERNAL_CLIENT_ID,
+                settings.GOOGLE_OAUTH_EXTERNAL_CLIENT_SECRET)
+    return settings.GOOGLE_OAUTH_CLIENT_ID, settings.GOOGLE_OAUTH_CLIENT_SECRET
+
+
+def is_configured(tenant=None) -> bool:
+    return all(client_for(tenant))
 
 
 def redirect_uri() -> str:
@@ -114,7 +127,7 @@ def workspace_domain(email: str) -> str:
 
 
 def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
-                      drive: bool = False, inbound: bool = False) -> str:
+                      drive: bool = False, inbound: bool = False, tenant=None) -> str:
     """The consent URL.
 
     `login_hint` + `hd` exist because the browser, not the app, chooses which
@@ -128,7 +141,7 @@ def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
     account and never shows the picker.
     """
     params = {
-        "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+        "client_id": client_for(tenant)[0],
         "redirect_uri": redirect_uri(),
         "response_type": "code",
         "scope": " ".join(scopes_for(drive=drive, inbound=inbound)),
@@ -146,11 +159,12 @@ def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
     return f"{AUTH_URL}?" + urlencode(params)
 
 
-def exchange_code(code: str) -> dict:
+def exchange_code(code: str, *, tenant=None) -> dict:
     """Authorization code -> tokens. Raises rather than returning a partial."""
+    client_id, client_secret = client_for(tenant)
     response = requests.post(TOKEN_URL, data={
-        "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
-        "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        "client_id": client_id,
+        "client_secret": client_secret,
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri(),

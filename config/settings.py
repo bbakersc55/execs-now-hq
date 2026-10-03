@@ -122,6 +122,11 @@ ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_USER_MODEL_EMAIL_FIELD = "email"
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+# P2 D1: the second OAuth client, in its own GCP project, consent screen
+# External. Practices not on the Executives Now Workspace sign in and connect
+# Gmail through it (tenant.oauth_client = "external"). Empty: none can yet.
+GOOGLE_OAUTH_EXTERNAL_CLIENT_ID = env("GOOGLE_OAUTH_EXTERNAL_CLIENT_ID", default="")
+GOOGLE_OAUTH_EXTERNAL_CLIENT_SECRET = env("GOOGLE_OAUTH_EXTERNAL_CLIENT_SECRET", default="")
 
 SOCIALACCOUNT_PROVIDERS = {
     "google": {

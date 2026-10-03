@@ -117,9 +117,13 @@ def access_token_for(connection):
             f"{connection.email_address} has no stored Gmail credential. "
             "Reconnect Gmail in Settings."
         )
+    from apps.crm.services.gmail_oauth import client_for
+
+    # The client that issued this token: the practice's own (P2 D1).
+    client_id, client_secret = client_for(connection.tenant)
     response = requests.post(TOKEN_URL, data={
-        "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
-        "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        "client_id": client_id,
+        "client_secret": client_secret,
         "refresh_token": refresh_token,
         "grant_type": "refresh_token",
     }, timeout=20)

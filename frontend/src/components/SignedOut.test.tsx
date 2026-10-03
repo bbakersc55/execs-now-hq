@@ -29,12 +29,15 @@ describe("the signed-out screen (2026-09-30)", () => {
     expect((init.body as FormData).get("email")).toBe("bbakersc1@gmail.com");
   });
 
-  it("keeps Google sign-in for staff", () => {
+  it("keeps Google sign-in for staff, email first (P2: the address picks the client)", () => {
     respond(200, {});
-    render(<SignedOut practice="Executives Now" />);
-    expect(screen.getByRole("link", { name: "Sign in with Google" }))
-      .toHaveAttribute("href", "/accounts/google/login/");
-    expect(screen.getByRole("heading", { name: "Executives Now" })).toBeInTheDocument();
+    render(<SignedOut practice="" />);
+    const button = screen.getByRole("button", { name: "Sign in with Google" });
+    const form = button.closest("form")!;
+    expect(form).toHaveAttribute("action", "/accounts/google/start");
+    expect(form).toHaveAttribute("method", "get");
+    expect(screen.getByLabelText("Your work email")).toHaveAttribute("name", "email");
+    expect(screen.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
   it("says so when rate-limited", async () => {

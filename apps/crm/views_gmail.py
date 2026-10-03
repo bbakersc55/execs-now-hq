@@ -81,7 +81,7 @@ def _status_payload(request, *, send_as=None, send_as_error=""):
                 dj_settings.APP_MAIL_TRANSPORT, dj_settings.APP_MAIL_TRANSPORT
             ),
             "practice_sending": _practice_sending_state(tenant),
-            "oauth_configured": gmail_oauth.is_configured(),
+            "oauth_configured": gmail_oauth.is_configured(tenant),
             # FR-0.7 — gates the dev-only allow-list section in the UI.
             "is_local_build": dj_settings.IS_LOCAL,
         }
@@ -116,7 +116,7 @@ def _status_payload(request, *, send_as=None, send_as_error=""):
             dj_settings.APP_MAIL_TRANSPORT, dj_settings.APP_MAIL_TRANSPORT
         ),
         "practice_sending": _practice_sending_state(tenant),
-        "oauth_configured": gmail_oauth.is_configured(),
+        "oauth_configured": gmail_oauth.is_configured(tenant),
         "is_local_build": dj_settings.IS_LOCAL,
     }
 
@@ -136,7 +136,7 @@ class GmailConnectionViewSet(viewsets.ViewSet):
 
         if environment.is_demo():
             return Response({"detail": environment.DEMO_REFUSAL}, status=409)
-        if not gmail_oauth.is_configured():
+        if not gmail_oauth.is_configured(request.tenant):
             return Response({"detail": (
                 "Google sign-in isn't configured on this server, so there is "
                 "nothing to connect to. Contact support."
@@ -157,7 +157,7 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         return Response({
             "authorization_url": gmail_oauth.authorization_url(
                 state, login_hint=email, hd=gmail_oauth.workspace_domain(email),
-                inbound=inbound,
+                inbound=inbound, tenant=request.tenant,
             ),
             "redirect_uri": gmail_oauth.redirect_uri(),
         })
@@ -236,7 +236,8 @@ def gmail_callback(request):
         ))
 
     try:
-        tokens = gmail_oauth.exchange_code(code)
+        # The practice's own OAuth client issued this code (P2 D1).
+        tokens = gmail_oauth.exchange_code(code, tenant=getattr(request, "tenant", None))
         missing = gmail_oauth.missing_scopes(tokens)
         if missing:
             return HttpResponseRedirect(_spa_url(where, gmail_error=(

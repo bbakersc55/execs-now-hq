@@ -68,7 +68,13 @@ export function SignedOut({ practice }: { practice: string }) {
 
       <section style={{ marginTop: "2rem", textAlign: "left" }}>
         <h3 style={{ marginBottom: ".25rem" }}>Staff</h3>
-        <a className="btn" href="/accounts/google/login/">Sign in with Google</a>
+        {/* Email first (P2 D1): the address decides which Google sign-in your
+            practice uses. A plain GET form: the server answers with a redirect. */}
+        <form method="get" action="/accounts/google/start" className="row tight">
+          <input type="email" name="email" required aria-label="Your work email"
+            placeholder="you@yourpractice.com" autoComplete="email" />
+          <button className="btn" type="submit">Sign in with Google</button>
+        </form>
       </section>
     </main>
   );

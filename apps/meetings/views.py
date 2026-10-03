@@ -245,7 +245,7 @@ class DriveWatchViewSet(MeetingViewSetBase):
 
         if environment.is_demo():
             return Response({"detail": environment.DEMO_REFUSAL}, status=409)
-        if not gmail_oauth.is_configured():
+        if not gmail_oauth.is_configured(request.tenant):
             return Response({"detail": (
                 "Google sign-in isn't configured on this server, so there is "
                 "nothing to connect to. Contact support."
@@ -259,7 +259,7 @@ class DriveWatchViewSet(MeetingViewSetBase):
         return Response({
             "authorization_url": gmail_oauth.authorization_url(
                 state, login_hint=email, hd=gmail_oauth.workspace_domain(email),
-                drive=True),
+                drive=True, tenant=request.tenant),
             "redirect_uri": gmail_oauth.redirect_uri(),
         })
 

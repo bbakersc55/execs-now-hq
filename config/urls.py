@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path, re_path
 
+from apps.accounts import google_external
 from apps.accounts import views as account_views
 from apps.crm import views_gmail
 from apps.strategy import views_precall as strategy_precall
@@ -21,6 +22,11 @@ urlpatterns = [
     # allauth's. Declared BEFORE the allauth include so the path is ours.
     path("accounts/gmail/callback", views_gmail.gmail_callback,
          name="gmail-callback"),
+    # P2 D1: staff sign-in is email first; External practices sign in through
+    # the second OAuth client. Declared BEFORE the allauth include.
+    path("accounts/google/start", google_external.google_start, name="google-start"),
+    path("accounts/google/external/callback", google_external.google_external_callback,
+         name="google-external-callback"),
     path("accounts/", include("allauth.urls")),
     path("api/branding", account_views.branding, name="branding"),
     # The practice's logo for client-facing pages: no id in the URL, so it can
