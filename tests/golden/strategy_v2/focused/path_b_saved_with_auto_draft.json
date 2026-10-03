@@ -1,0 +1,126 @@
+{
+  "answer": {
+    "answered_by": "fractional",
+    "fractional_note": "",
+    "question_key": "s8_path_b",
+    "updated_at": "<time>",
+    "value": {
+      "leaning": "Leaning this way",
+      "path": "",
+      "reaction": "Interested",
+      "risk": "Cost"
+    }
+  },
+  "drafted": [],
+  "path_notes": [
+    {
+      "from_ai": true,
+      "id": "<id-17>",
+      "kind": "pro",
+      "path": "a",
+      "position": 0,
+      "state": "proposed",
+      "text": "You keep full control of the pace"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-18>",
+      "kind": "pro",
+      "path": "a",
+      "position": 1,
+      "state": "proposed",
+      "text": "No new cost"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-19>",
+      "kind": "con",
+      "path": "a",
+      "position": 0,
+      "state": "proposed",
+      "text": "Your team carries it on top of the day job"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-20>",
+      "kind": "con",
+      "path": "a",
+      "position": 1,
+      "state": "proposed",
+      "text": "No outside push"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-21>",
+      "kind": "con",
+      "path": "a",
+      "position": 2,
+      "state": "proposed",
+      "text": "A third"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-22>",
+      "kind": "pro",
+      "path": "b",
+      "position": 0,
+      "state": "proposed",
+      "text": "Someone owns the list every week"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-23>",
+      "kind": "con",
+      "path": "b",
+      "position": 0,
+      "state": "proposed",
+      "text": "A monthly cost before results show"
+    }
+  ],
+  "six_key_components": {
+    "answered": 5,
+    "average": 4.8,
+    "complete": true,
+    "lowest": "s2_data",
+    "of": 5,
+    "ratings": {
+      "s2_data": 2,
+      "s2_issues": 6,
+      "s2_people": 4,
+      "s2_process": 5,
+      "s2_vision": 7
+    },
+    "scores": [
+      {
+        "answered_by": "prospect",
+        "comment": "Written, not shared",
+        "key": "s2_vision",
+        "rating": 7
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "",
+        "key": "s2_people",
+        "rating": 4
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "We have no weekly numbers",
+        "key": "s2_data",
+        "rating": 2
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "",
+        "key": "s2_issues",
+        "rating": 6
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "",
+        "key": "s2_process",
+        "rating": 5
+      }
+    ]
+  }
+}

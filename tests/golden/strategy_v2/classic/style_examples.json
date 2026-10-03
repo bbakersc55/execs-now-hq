@@ -1,0 +1,32 @@
+[
+  {
+    "accepted": "A monthly cost before the results show",
+    "kind": "con",
+    "proposed": "A monthly cost before results show",
+    "source_type": "strategy_path_note"
+  },
+  {
+    "accepted": "The Monday Scorecard",
+    "kind": "map_header",
+    "proposed": "A Weekly Scorecard",
+    "source_type": "strategy_map_row"
+  },
+  {
+    "accepted": "Five numbers, every Monday.",
+    "kind": "map_statement",
+    "proposed": "Run the week from five numbers.",
+    "source_type": "strategy_map_row"
+  },
+  {
+    "accepted": "The schedule, in a system.",
+    "kind": "map_statement",
+    "proposed": "Put the schedule in a system.",
+    "source_type": "strategy_map_row"
+  },
+  {
+    "accepted": "You set the pace",
+    "kind": "pro",
+    "proposed": "You keep full control of the pace",
+    "source_type": "strategy_path_note"
+  }
+]

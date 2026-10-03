@@ -1,0 +1,102 @@
+{
+  "answered": 0,
+  "company": "Acme Facilities",
+  "complete": false,
+  "first_name": "Dana",
+  "of": 13,
+  "practice": "Tenant A",
+  "sections": [
+    {
+      "code": "snapshot",
+      "questions": [
+        {
+          "key": "s1_revenue",
+          "prompt": "Revenue — last year / this year",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_team",
+          "prompt": "Team — full-time / part-time / admin & management",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_sites",
+          "prompt": "Active customer sites (or active accounts)",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_service_mix",
+          "prompt": "Service mix — contract / projects / supplies / other",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_branches",
+          "prompt": "Branches or locations — established vs. finding footing",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_top_accounts",
+          "prompt": "Top 5 accounts as % of revenue",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_software",
+          "prompt": "Software stack — and what lives in someone's head instead of a system",
+          "response_schema": "free_text",
+          "value": null
+        }
+      ],
+      "scale": "",
+      "title": "Snapshot: where they are today"
+    },
+    {
+      "code": "six_key_components",
+      "questions": [
+        {
+          "key": "s2_vision",
+          "prompt": "Vision — Our 3-year picture is clear, written down, and shared by the whole leadership team.",
+          "response_schema": "rating_1_10",
+          "value": null
+        },
+        {
+          "key": "s2_people",
+          "prompt": "People — We have the right people in the right seats, and every seat on the chart is filled.",
+          "response_schema": "rating_1_10",
+          "value": null
+        },
+        {
+          "key": "s2_data",
+          "prompt": "Data — We run the week from a short scorecard of numbers (utilization, pipeline, cash).",
+          "response_schema": "rating_1_10",
+          "value": null
+        },
+        {
+          "key": "s2_issues",
+          "prompt": "Issues — Problems get raised openly and solved for good, not worked around.",
+          "response_schema": "rating_1_10",
+          "value": null
+        },
+        {
+          "key": "s2_process",
+          "prompt": "Process — Our core processes are documented, simplified, and followed by everyone.",
+          "response_schema": "rating_1_10",
+          "value": null
+        },
+        {
+          "key": "s2_traction",
+          "prompt": "Traction — Everyone has quarterly priorities and a weekly meeting that keeps them on track.",
+          "response_schema": "rating_1_10",
+          "value": null
+        }
+      ],
+      "scale": "Rate each one from 1 to 10 — 1 means not true today, 10 means completely true.",
+      "title": "Six Key Components: self-rating"
+    }
+  ]
+}

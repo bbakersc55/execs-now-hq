@@ -1,0 +1,28 @@
+[
+  {
+    "code": "snapshot",
+    "is_rating": false,
+    "questions": [
+      "Revenue — last year / this year",
+      "Team — full-time / part-time / admin & management",
+      "Active customer sites (or active accounts)",
+      "Service mix — contract / projects / supplies / other",
+      "Branches or locations — established vs. finding footing",
+      "Top 5 accounts as % of revenue",
+      "Software stack — and what lives in someone's head instead of a system"
+    ],
+    "title": "Snapshot: where they are today"
+  },
+  {
+    "code": "six_key_components",
+    "is_rating": true,
+    "questions": [
+      "Vision — Our 3-year picture is clear, written down, and shared by the whole leadership team.",
+      "People — We have the right people in the right seats, and every seat on the chart is filled.",
+      "Data — We run the week from a short scorecard of numbers (utilization, pipeline, cash).",
+      "Issues — Problems get raised openly and solved for good, not worked around.",
+      "Process — Our core processes are documented, simplified, and followed by everyone."
+    ],
+    "title": "Five Key Components: self-rating"
+  }
+]

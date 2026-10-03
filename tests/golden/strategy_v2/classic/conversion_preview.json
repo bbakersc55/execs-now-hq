@@ -1,0 +1,49 @@
+{
+  "rows": [
+    {
+      "client_owner_contact": {
+        "id": "<id-5>",
+        "name": "Jen Park"
+      },
+      "horizon": 30,
+      "measurable": "Scorecard reviewed 4 weeks in a row",
+      "needs_baseline": true,
+      "owner_text": "Jen Park",
+      "position": 0,
+      "root_cause": "Reports are built by hand",
+      "row": "<id-8>",
+      "suggested": "goal",
+      "target_date": "2026-10-31",
+      "the_fix": "A five-line scorecard reviewed every Monday",
+      "title": "No weekly numbers"
+    },
+    {
+      "client_owner_contact": null,
+      "horizon": 60,
+      "measurable": "Schedule published by Friday noon",
+      "needs_baseline": true,
+      "owner_text": "",
+      "position": 1,
+      "root_cause": "No system",
+      "row": "<id-9>",
+      "suggested": "goal",
+      "target_date": "2026-11-30",
+      "the_fix": "Move scheduling into the dispatch tool",
+      "title": "Scheduling lives in one person's head"
+    },
+    {
+      "client_owner_contact": null,
+      "horizon": null,
+      "measurable": "Inspections per month",
+      "needs_baseline": true,
+      "owner_text": "Nobody Named",
+      "position": 2,
+      "root_cause": "No inspection cadence",
+      "row": "<id-10>",
+      "suggested": "goal",
+      "target_date": null,
+      "the_fix": "A monthly inspection per site",
+      "title": "Quality is checked by complaint"
+    }
+  ]
+}

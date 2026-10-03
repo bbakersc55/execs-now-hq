@@ -1,0 +1,1359 @@
+{
+  "answers": [
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s1_branches",
+      "updated_at": "<time>",
+      "value": {
+        "text": "One, and we want to open a second branch next year"
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s1_revenue",
+      "updated_at": "<time>",
+      "value": {
+        "text": "3m last year, 3.4m this year"
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s1_sites",
+      "updated_at": "<time>",
+      "value": {
+        "text": "61 sites"
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s1_software",
+      "updated_at": "<time>",
+      "value": {
+        "text": "Spreadsheets. Scheduling is in Jen's head."
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s1_team",
+      "updated_at": "<time>",
+      "value": {
+        "text": "22 full-time, 9 part-time, 4 in the office"
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s2_data",
+      "updated_at": "<time>",
+      "value": {
+        "comment": "We have no weekly numbers",
+        "rating": 2
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s2_issues",
+      "updated_at": "<time>",
+      "value": {
+        "comment": "",
+        "rating": 6
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s2_people",
+      "updated_at": "<time>",
+      "value": {
+        "comment": "",
+        "rating": 4
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s2_process",
+      "updated_at": "<time>",
+      "value": {
+        "comment": "",
+        "rating": 5
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s2_traction",
+      "updated_at": "<time>",
+      "value": {
+        "comment": "No rhythm",
+        "rating": 3
+      }
+    },
+    {
+      "answered_by": "prospect",
+      "fractional_note": "",
+      "question_key": "s2_vision",
+      "updated_at": "<time>",
+      "value": {
+        "comment": "Written, not shared",
+        "rating": 7
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s3_alignment_observation",
+      "updated_at": "<time>",
+      "value": {
+        "text": "PRIVATE-ALIGNMENT-OBSERVATION"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s3_three_year_picture",
+      "updated_at": "<time>",
+      "value": {
+        "text": "Two branches, 6m, Dana out of the day to day"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s4_accountability_chart",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "Turnover",
+        "said": "Two seats empty",
+        "tried": "Ads"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "PRIVATE-DIAGNOSTIC-NOTE",
+      "question_key": "s4_decisions_stall",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "No price book",
+        "said": "Pricing waits for Dana",
+        "tried": ""
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s4_integrator_owns",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "",
+        "said": "Scheduling",
+        "tried": ""
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s7_value_1",
+      "updated_at": "<time>",
+      "value": {
+        "value": "Straight talk",
+        "why": "They have been oversold before"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s7_value_2",
+      "updated_at": "<time>",
+      "value": {
+        "value": "Someone on site",
+        "why": ""
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s8_path_a",
+      "updated_at": "<time>",
+      "value": {
+        "leaning": "",
+        "path": "",
+        "reaction": "We have tried",
+        "risk": "It slips again"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s8_path_b",
+      "updated_at": "<time>",
+      "value": {
+        "leaning": "Leaning this way",
+        "path": "",
+        "reaction": "Interested",
+        "risk": "Cost"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s9_follow_up_call",
+      "updated_at": "<time>",
+      "value": {
+        "agreed": true,
+        "notes": "Next Tuesday"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s9_investment_range",
+      "updated_at": "<time>",
+      "value": {
+        "agreed": true,
+        "notes": "PRIVATE-INVESTMENT-RANGE"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s9_proposal_due",
+      "updated_at": "<time>",
+      "value": {
+        "agreed": false,
+        "notes": "10/15"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s9_scope",
+      "updated_at": "<time>",
+      "value": {
+        "agreed": true,
+        "notes": "Rows 1 and 2"
+      }
+    },
+    {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "s9_start_date",
+      "updated_at": "<time>",
+      "value": {
+        "agreed": true,
+        "notes": "November 3"
+      }
+    }
+  ],
+  "archived_at": null,
+  "budget_minutes": 75,
+  "company": {
+    "id": "<id-2>",
+    "name": "Acme Facilities"
+  },
+  "contact": {
+    "id": "<id-3>",
+    "name": "Dana Reyes"
+  },
+  "converted_at": "<time>",
+  "created_at": "<time>",
+  "current_section": "",
+  "current_section_at": null,
+  "delete_refusal": "Archive the session first. Permanent delete is only from Archived.",
+  "diagnostic_proposals": [],
+  "format": "classic",
+  "fractional_note": "",
+  "has_pdf": false,
+  "id": "<id-4>",
+  "integrator": {
+    "id": "<id-5>",
+    "name": "Jen Park"
+  },
+  "map_rows": [
+    {
+      "bottleneck": "No weekly numbers",
+      "converted_to": "goal",
+      "from_ai": true,
+      "header": "The Monday Scorecard",
+      "horizon": 30,
+      "id": "<id-8>",
+      "measurable": "Scorecard reviewed 4 weeks in a row",
+      "mechanics_note": "PRIVATE-MECHANICS-NOTE",
+      "merged_from": [],
+      "owner_text": "Jen Park",
+      "position": 0,
+      "root_cause": "Reports are built by hand",
+      "state": "accepted",
+      "statement": "Five numbers, every Monday.",
+      "the_fix": "A five-line scorecard reviewed every Monday"
+    },
+    {
+      "bottleneck": "Scheduling lives in one person's head",
+      "converted_to": "project",
+      "from_ai": true,
+      "header": "Scheduling Out Of One Head",
+      "horizon": 60,
+      "id": "<id-9>",
+      "measurable": "Schedule published by Friday noon",
+      "mechanics_note": "",
+      "merged_from": [],
+      "owner_text": "",
+      "position": 1,
+      "root_cause": "No system",
+      "state": "accepted",
+      "statement": "The schedule, in a system.",
+      "the_fix": "Move scheduling into the dispatch tool"
+    },
+    {
+      "bottleneck": "Quality is checked by complaint",
+      "converted_to": "",
+      "from_ai": true,
+      "header": "Supervisors Who Audit",
+      "horizon": null,
+      "id": "<id-10>",
+      "measurable": "Inspections per month",
+      "mechanics_note": "",
+      "merged_from": [],
+      "owner_text": "Nobody Named",
+      "position": 2,
+      "root_cause": "No inspection cadence",
+      "state": "accepted",
+      "statement": "Inspect every site monthly.",
+      "the_fix": "A monthly inspection per site"
+    },
+    {
+      "bottleneck": "Pricing is from memory",
+      "converted_to": "",
+      "from_ai": true,
+      "header": "A Price Book",
+      "horizon": 90,
+      "id": "<id-11>",
+      "measurable": "Quotes priced from the book",
+      "mechanics_note": "",
+      "merged_from": [],
+      "owner_text": "Dana Reyes",
+      "position": 3,
+      "root_cause": "No price book",
+      "state": "discarded",
+      "statement": "Price every job the same way.",
+      "the_fix": "Write the price book"
+    },
+    {
+      "bottleneck": "The week is run from memory",
+      "converted_to": "",
+      "from_ai": true,
+      "header": "Run On Numbers",
+      "horizon": 60,
+      "id": "<id-12>",
+      "measurable": "Scorecard reviewed weekly",
+      "mechanics_note": "",
+      "merged_from": [
+        {
+          "bottleneck": "No weekly numbers",
+          "id": "<id-8>",
+          "state": "accepted"
+        },
+        {
+          "bottleneck": "Scheduling lives in one person's head",
+          "id": "<id-9>",
+          "state": "accepted"
+        }
+      ],
+      "owner_text": "Jen Park",
+      "position": 4,
+      "root_cause": "No systems",
+      "state": "proposed",
+      "statement": "One scorecard and one schedule.",
+      "the_fix": "Scorecard and dispatch tool"
+    }
+  ],
+  "may_archive": true,
+  "may_delete": true,
+  "mirror": {
+    "goal": "Two branches running without Dana in the room.",
+    "unlocks": "Weekly numbers first. Everything else leans on them."
+  },
+  "must_ask": {
+    "answered": 2,
+    "of": 7,
+    "outstanding": [
+      "s4_turnover",
+      "s4_span_of_control",
+      "s4_done_right",
+      "s4_gross_margin",
+      "s4_double_customers"
+    ]
+  },
+  "owner": "Pat Owner",
+  "path_notes": [
+    {
+      "from_ai": true,
+      "id": "<id-15>",
+      "kind": "con",
+      "path": "a",
+      "position": 0,
+      "state": "accepted",
+      "text": "Your team carries it on top of the day job"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-16>",
+      "kind": "con",
+      "path": "a",
+      "position": 1,
+      "state": "discarded",
+      "text": "No outside push"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-17>",
+      "kind": "con",
+      "path": "a",
+      "position": 2,
+      "state": "proposed",
+      "text": "A third"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-13>",
+      "kind": "pro",
+      "path": "a",
+      "position": 0,
+      "state": "accepted",
+      "text": "You set the pace"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-14>",
+      "kind": "pro",
+      "path": "a",
+      "position": 1,
+      "state": "accepted",
+      "text": "No new cost"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-19>",
+      "kind": "con",
+      "path": "b",
+      "position": 0,
+      "state": "accepted",
+      "text": "A monthly cost before the results show"
+    },
+    {
+      "from_ai": true,
+      "id": "<id-18>",
+      "kind": "pro",
+      "path": "b",
+      "position": 0,
+      "state": "accepted",
+      "text": "Someone owns the list every week"
+    },
+    {
+      "from_ai": false,
+      "id": "<id-20>",
+      "kind": "pro",
+      "path": "b",
+      "position": 1,
+      "state": "accepted",
+      "text": "We have done this for a company your size"
+    }
+  ],
+  "pdf_include_flags": {
+    "alignment_observation": false,
+    "diagnostic_observations": false,
+    "fractional_notes": false,
+    "investment": false,
+    "mechanics": false
+  },
+  "pinned_questions": [],
+  "precall_default_intro": "Hi Dana,\n\nAhead of our session on 8 October 2026, here are a few questions. Answer them straight back in a reply — no form, no login, and rough numbers are fine. It means we spend the call on what is actually in the way rather than on getting the background straight.",
+  "precall_expires_at": "<time>",
+  "precall_questions_sent_at": null,
+  "precall_sent": true,
+  "prep": {
+    "bottlenecks": [
+      "Likely supervisor span of control",
+      "Likely no-show cover"
+    ],
+    "dropped_rewordings": [
+      "s2_vision"
+    ],
+    "id": "<id-6>",
+    "notes": "Met Dana at the chamber lunch.",
+    "questions": [
+      {
+        "id": "<id-7>",
+        "is_pinned": false,
+        "note": "",
+        "position": 0,
+        "text": "How are night supervisors measured?",
+        "why": "Their site says nights"
+      }
+    ],
+    "rewordings": [
+      {
+        "current": "Revenue — last year / this year",
+        "key": "s1_revenue",
+        "suggested": "Revenue last year and this year, in contracts",
+        "why": "Their site says contracts"
+      }
+    ],
+    "state": "ready",
+    "summary": "Their site says they clean offices across two counties.",
+    "web_searches": 2,
+    "website_url": "https://acme.invalid"
+  },
+  "proposed_mirror": {
+    "goal": "Two branches running without Dana in the room.",
+    "unlocks": "Weekly numbers first. Everything else leans on them."
+  },
+  "reset_refusal": "The questions on a session are a record of what a real person was asked, so they are fixed once it has reached anyone. This one is “converted to work”.",
+  "scheduled_at": "<time>",
+  "sections": [
+    {
+      "code": "snapshot",
+      "position": 0,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s1_revenue",
+          "must_ask": false,
+          "position": 0,
+          "prompt": "Revenue — last year / this year",
+          "prompt_template": "Revenue — last year / this year",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s1_team",
+          "must_ask": false,
+          "position": 1,
+          "prompt": "Team — full-time / part-time / admin & management",
+          "prompt_template": "Team — full-time / part-time / admin & management",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s1_sites",
+          "must_ask": false,
+          "position": 2,
+          "prompt": "Active customer sites (or active accounts)",
+          "prompt_template": "Active customer sites (or active accounts)",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s1_service_mix",
+          "must_ask": false,
+          "position": 3,
+          "prompt": "Service mix — contract / projects / supplies / other",
+          "prompt_template": "Service mix — contract / projects / supplies / other",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s1_branches",
+          "must_ask": false,
+          "position": 4,
+          "prompt": "Branches or locations — established vs. finding footing",
+          "prompt_template": "Branches or locations — established vs. finding footing",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s1_top_accounts",
+          "must_ask": false,
+          "position": 5,
+          "prompt": "Top 5 accounts as % of revenue",
+          "prompt_template": "Top 5 accounts as % of revenue",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s1_software",
+          "must_ask": false,
+          "position": 6,
+          "prompt": "Software stack — and what lives in someone's head instead of a system",
+          "prompt_template": "Software stack — and what lives in someone's head instead of a system",
+          "response_schema": "free_text"
+        }
+      ],
+      "time_budget_minutes": null,
+      "title": "Snapshot: where they are today"
+    },
+    {
+      "code": "six_key_components",
+      "position": 1,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s2_vision",
+          "must_ask": false,
+          "position": 0,
+          "prompt": "Vision — Our 3-year picture is clear, written down, and shared by the whole leadership team.",
+          "prompt_template": "Vision — Our 3-year picture is clear, written down, and shared by the whole leadership team.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s2_people",
+          "must_ask": false,
+          "position": 1,
+          "prompt": "People — We have the right people in the right seats, and every seat on the chart is filled.",
+          "prompt_template": "People — We have the right people in the right seats, and every seat on the chart is filled.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s2_data",
+          "must_ask": false,
+          "position": 2,
+          "prompt": "Data — We run the week from a short scorecard of numbers (utilization, pipeline, cash).",
+          "prompt_template": "Data — We run the week from a short scorecard of numbers (utilization, pipeline, cash).",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s2_issues",
+          "must_ask": false,
+          "position": 3,
+          "prompt": "Issues — Problems get raised openly and solved for good, not worked around.",
+          "prompt_template": "Issues — Problems get raised openly and solved for good, not worked around.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s2_process",
+          "must_ask": false,
+          "position": 4,
+          "prompt": "Process — Our core processes are documented, simplified, and followed by everyone.",
+          "prompt_template": "Process — Our core processes are documented, simplified, and followed by everyone.",
+          "response_schema": "rating_1_10"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "precall",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s2_traction",
+          "must_ask": false,
+          "position": 5,
+          "prompt": "Traction — Everyone has quarterly priorities and a weekly meeting that keeps them on track.",
+          "prompt_template": "Traction — Everyone has quarterly priorities and a weekly meeting that keeps them on track.",
+          "response_schema": "rating_1_10"
+        }
+      ],
+      "time_budget_minutes": null,
+      "title": "Six Key Components: self-rating"
+    },
+    {
+      "code": "where_they_want_to_go",
+      "position": 2,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s3_three_year_picture",
+          "must_ask": false,
+          "position": 0,
+          "prompt": "3-year picture — revenue, locations, Dana Reyes's role, Jen Park's role",
+          "prompt_template": "3-year picture — revenue, locations, {Visionary}'s role, {Integrator}'s role",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s3_current_rocks",
+          "must_ask": false,
+          "position": 1,
+          "prompt": "Current Rocks (quarterly priorities) — which is most at risk?",
+          "prompt_template": "Current Rocks (quarterly priorities) — which is most at risk?",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s3_stalled_goal",
+          "must_ask": false,
+          "position": 2,
+          "prompt": "A goal that has been on the list for over a year — what has been in the way?",
+          "prompt_template": "A goal that has been on the list for over a year — what has been in the way?",
+          "response_schema": "free_text"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": true,
+          "key": "s3_alignment_observation",
+          "must_ask": false,
+          "position": 3,
+          "prompt": "Do Dana Reyes and Jen Park describe the destination the same way?",
+          "prompt_template": "Do {Visionary} and {Integrator} describe the destination the same way?",
+          "response_schema": "free_text"
+        }
+      ],
+      "time_budget_minutes": 10,
+      "title": "Where they want to go"
+    },
+    {
+      "code": "diagnostic",
+      "position": 3,
+      "questions": [
+        {
+          "area": "Leadership & succession",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_decisions_stall",
+          "must_ask": true,
+          "position": 0,
+          "prompt": "Where do decisions stall because they need Dana Reyes?",
+          "prompt_template": "Where do decisions stall because they need {Visionary}?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Leadership & succession",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_integrator_owns",
+          "must_ask": true,
+          "position": 1,
+          "prompt": "What does Jen Park own outright? Is Jen Park empowered to say no?",
+          "prompt_template": "What does {Integrator} own outright? Is {Integrator} empowered to say no?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Leadership & succession",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_accountability_chart",
+          "must_ask": false,
+          "position": 2,
+          "prompt": "Is every seat on the Accountability Chart filled — right person, right seat?",
+          "prompt_template": "Is every seat on the Accountability Chart filled — right person, right seat?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "People & labor",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_turnover",
+          "must_ask": true,
+          "position": 3,
+          "prompt": "Turnover, time-to-fill, who recruits and how much of their week it takes",
+          "prompt_template": "Turnover, time-to-fill, who recruits and how much of their week it takes",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "People & labor",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_no_show",
+          "must_ask": false,
+          "position": 4,
+          "prompt": "If a frontline worker no-shows tonight: what happens, who covers?",
+          "prompt_template": "If a frontline worker no-shows tonight: what happens, who covers?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "People & labor",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_span_of_control",
+          "must_ask": true,
+          "position": 5,
+          "prompt": "Span of control per supervisor / area manager",
+          "prompt_template": "Span of control per supervisor / area manager",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Sales engine",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_new_business",
+          "must_ask": false,
+          "position": 6,
+          "prompt": "Source of new business, close rate, who owns it",
+          "prompt_template": "Source of new business, close rate, who owns it",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Sales engine",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_referrals_stopped",
+          "must_ask": false,
+          "position": 7,
+          "prompt": "If referrals stopped for 90 days?",
+          "prompt_template": "If referrals stopped for 90 days?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Operations & quality",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_done_right",
+          "must_ask": true,
+          "position": 8,
+          "prompt": "How do you know a site (job) was done right last night? Inspection cadence and tooling",
+          "prompt_template": "How do you know a site (job) was done right last night? Inspection cadence and tooling",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Operations & quality",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_location_parity",
+          "must_ask": false,
+          "position": 9,
+          "prompt": "Is their second location run the way their first location is? (no second location on file; no locations on file)",
+          "prompt_template": "Is {Location B} run the way {Location A} is?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Money",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_gross_margin",
+          "must_ask": true,
+          "position": 10,
+          "prompt": "Gross margin by site / service line. Pricing method.",
+          "prompt_template": "Gross margin by site / service line. Pricing method.",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Money",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_cash_pinch",
+          "must_ask": false,
+          "position": 11,
+          "prompt": "Cash pinch points. Projects and supplies: profit centers or distractions?",
+          "prompt_template": "Cash pinch points. Projects and supplies: profit centers or distractions?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Customer loss",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_lost_accounts",
+          "must_ask": false,
+          "position": 12,
+          "prompt": "The last two lost accounts: what did they have in common?",
+          "prompt_template": "The last two lost accounts: what did they have in common?",
+          "response_schema": "diagnostic_triple"
+        },
+        {
+          "area": "Scaling stress test",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": true,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s4_double_customers",
+          "must_ask": true,
+          "position": 13,
+          "prompt": "If you doubled customer count in 18 months, what breaks first?",
+          "prompt_template": "If you doubled customer count in 18 months, what breaks first?",
+          "response_schema": "diagnostic_triple"
+        }
+      ],
+      "time_budget_minutes": 25,
+      "title": "Diagnostic: where it's breaking"
+    },
+    {
+      "code": "mirror",
+      "position": 4,
+      "questions": [],
+      "time_budget_minutes": 5,
+      "title": "The mirror"
+    },
+    {
+      "code": "strategy_map",
+      "position": 5,
+      "questions": [],
+      "time_budget_minutes": 15,
+      "title": "Strategy Map"
+    },
+    {
+      "code": "what_they_value",
+      "position": 6,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s7_value_1",
+          "must_ask": false,
+          "position": 0,
+          "prompt": "Value 1 — in their words, and why it matters to them",
+          "prompt_template": "Value 1 — in their words, and why it matters to them",
+          "response_schema": "value_pair"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s7_value_2",
+          "must_ask": false,
+          "position": 1,
+          "prompt": "Value 2 — in their words, and why it matters to them",
+          "prompt_template": "Value 2 — in their words, and why it matters to them",
+          "response_schema": "value_pair"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s7_value_3",
+          "must_ask": false,
+          "position": 2,
+          "prompt": "Value 3 — in their words, and why it matters to them",
+          "prompt_template": "Value 3 — in their words, and why it matters to them",
+          "response_schema": "value_pair"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s7_value_4",
+          "must_ask": false,
+          "position": 3,
+          "prompt": "Value 4 — in their words, and why it matters to them",
+          "prompt_template": "Value 4 — in their words, and why it matters to them",
+          "response_schema": "value_pair"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s7_value_5",
+          "must_ask": false,
+          "position": 4,
+          "prompt": "Value 5 — in their words, and why it matters to them",
+          "prompt_template": "Value 5 — in their words, and why it matters to them",
+          "response_schema": "value_pair"
+        }
+      ],
+      "time_budget_minutes": 10,
+      "title": "What they value"
+    },
+    {
+      "code": "two_paths",
+      "position": 7,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s8_path_a",
+          "must_ask": false,
+          "position": 0,
+          "prompt": "Path A — They run it: Jen Park owns the map; rows become next quarter's Rocks; reviewed at every L10; progress depends on capacity they already have.",
+          "prompt_template": "Path A — They run it: {Integrator} owns the map; rows become next quarter's Rocks; reviewed at every L10; progress depends on capacity they already have.",
+          "response_schema": "path_reaction"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s8_path_b",
+          "must_ask": false,
+          "position": 1,
+          "prompt": "Path B — Run it together: fractional operator alongside Jen Park; weekly working sessions plus on-site days; 90-day sprints with measurables; execution load carried, not just advised.",
+          "prompt_template": "Path B — Run it together: fractional operator alongside {Integrator}; weekly working sessions plus on-site days; 90-day sprints with measurables; execution load carried, not just advised.",
+          "response_schema": "path_reaction"
+        }
+      ],
+      "time_budget_minutes": 5,
+      "title": "Two paths"
+    },
+    {
+      "code": "scope_agreement",
+      "position": 8,
+      "questions": [
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s9_scope",
+          "must_ask": false,
+          "position": 0,
+          "prompt": "Scope — which map rows are in the first 90 days",
+          "prompt_template": "Scope — which map rows are in the first 90 days",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s9_start_date",
+          "must_ask": false,
+          "position": 1,
+          "prompt": "Start date",
+          "prompt_template": "Start date",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s9_cadence",
+          "must_ask": false,
+          "position": 2,
+          "prompt": "Sprint length / check-in cadence",
+          "prompt_template": "Sprint length / check-in cadence",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": true,
+          "is_fractional_observation": false,
+          "key": "s9_investment_range",
+          "must_ask": false,
+          "position": 3,
+          "prompt": "Investment range discussed ($/month × months)",
+          "prompt_template": "Investment range discussed ($/month × months)",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": true,
+          "is_fractional_observation": false,
+          "key": "s9_reaction_to_range",
+          "must_ask": false,
+          "position": 4,
+          "prompt": "Their reaction to the range",
+          "prompt_template": "Their reaction to the range",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s9_who_else",
+          "must_ask": false,
+          "position": 5,
+          "prompt": "Who else needs to weigh in, and by when",
+          "prompt_template": "Who else needs to weigh in, and by when",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s9_follow_up_call",
+          "must_ask": false,
+          "position": 6,
+          "prompt": "Follow-up call booked (date/time)",
+          "prompt_template": "Follow-up call booked (date/time)",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s9_map_sent",
+          "must_ask": false,
+          "position": 7,
+          "prompt": "Strategy Map sent (same day) — time",
+          "prompt_template": "Strategy Map sent (same day) — time",
+          "response_schema": "agreed_note"
+        },
+        {
+          "area": "",
+          "ask_if_time": false,
+          "ask_when": "live",
+          "has_fractional_note": false,
+          "is_diagnostic_fallback": false,
+          "is_financial": false,
+          "is_fractional_observation": false,
+          "key": "s9_proposal_due",
+          "must_ask": false,
+          "position": 8,
+          "prompt": "Proposal due date",
+          "prompt_template": "Proposal due date",
+          "response_schema": "agreed_note"
+        }
+      ],
+      "time_budget_minutes": 5,
+      "title": "Scope agreement"
+    }
+  ],
+  "six_key_components": {
+    "answered": 6,
+    "average": 4.5,
+    "complete": true,
+    "lowest": "s2_data",
+    "of": 6,
+    "ratings": {
+      "s2_data": 2,
+      "s2_issues": 6,
+      "s2_people": 4,
+      "s2_process": 5,
+      "s2_traction": 3,
+      "s2_vision": 7
+    },
+    "scores": [
+      {
+        "answered_by": "prospect",
+        "comment": "Written, not shared",
+        "key": "s2_vision",
+        "rating": 7
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "",
+        "key": "s2_people",
+        "rating": 4
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "We have no weekly numbers",
+        "key": "s2_data",
+        "rating": 2
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "",
+        "key": "s2_issues",
+        "rating": 6
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "",
+        "key": "s2_process",
+        "rating": 5
+      },
+      {
+        "answered_by": "prospect",
+        "comment": "No rhythm",
+        "key": "s2_traction",
+        "rating": 3
+      }
+    ]
+  },
+  "started_at": "<time>",
+  "state": "converted",
+  "template": {
+    "id": "<id-1>",
+    "name": "Operations — strategy session"
+  },
+  "visionary": {
+    "id": "<id-3>",
+    "name": "Dana Reyes"
+  }
+}

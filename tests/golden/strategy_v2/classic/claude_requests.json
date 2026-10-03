@@ -1,0 +1,99 @@
+[
+  {
+    "betas": [
+      "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default",
+    "max_tokens": 8000,
+    "messages": [
+      {
+        "content": "PROSPECT: Dana Reyes\nCOMPANY: Acme Facilities\nWEBSITE: https://acme.invalid — read this.\n\nWHAT THE FRACTIONAL ALREADY KNOWS (pasted emails, call notes, anything):\nMet Dana at the chamber lunch.\n\nTHE PRE-CALL QUESTIONS, to reword one for one:\n  s1_revenue: Revenue — last year / this year\n  s1_team: Team — full-time / part-time / admin & management\n  s1_sites: Active customer sites (or active accounts)\n  s1_service_mix: Service mix — contract / projects / supplies / other\n  s1_branches: Branches or locations — established vs. finding footing\n  s1_top_accounts: Top 5 accounts as % of revenue\n  s1_software: Software stack — and what lives in someone's head instead of a system\n  s2_vision: Vision — Our 3-year picture is clear, written down, and shared by the whole leadership team. [rated 1-10 — lead-in only, starts with the component name]\n  s2_people: People — We have the right people in the right seats, and every seat on the chart is filled. [rated 1-10 — lead-in only, starts with the component name]\n  s2_data: Data — We run the week from a short scorecard of numbers (utilization, pipeline, cash). [rated 1-10 — lead-in only, starts with the component name]\n  s2_issues: Issues — Problems get raised openly and solved for good, not worked around. [rated 1-10 — lead-in only, starts with the component name]\n  s2_process: Process — Our core processes are documented, simplified, and followed by everyone. [rated 1-10 — lead-in only, starts with the component name]\n  s2_traction: Traction — Everyone has quarterly priorities and a weekly meeting that keeps them on track. [rated 1-10 — lead-in only, starts with the component name]",
+        "role": "user"
+      }
+    ],
+    "model": "claude-golden",
+    "system": "You are preparing a fractional operations executive for a strategy session with a prospect. You are given the prospect's website and whatever the fractional already knows, and you may search the web to read the site and anything public about the company.\n\nProduce four things.\n\n1. \"summary\": what the company does and how it sells — two or three sentences.\n2. \"bottlenecks\": 3 to 5 of the ordinary operational bottlenecks for a business of this shape and size. These are the patterns of the trade, not claims about this company.\n3. \"rewordings\": for EACH pre-call question you are given, a rewording in this prospect's own vocabulary — their words for their work, their units, their trade. Keep the question asking exactly what it asked before.\n\n**A rewording changes the words, never the shape.** A question marked [rated 1-10] is a one-line lead-in to a number, not a question to answer in prose: you may reword after it, but it must start with the component's name (\"Vision\", \"People\", \"Data\", \"Issues\", \"Process\", \"Traction\"), stay under 120 characters, and be something a score answers — a statement rated for how true it is (\"Our plan is written down.\") — never how, what, why, which, who, where, when, describe, tell me, walk me through, explain or list. Getting this wrong sent a prospect six essay questions under the heading \"rate each one from 1 to 10\". If a question is already right for them, return it unchanged and say so in \"why\".\n4. \"questions\": five extra questions worth asking live, that the template does not cover and that only make sense because of what you have read.\n\n**Marking what you know.** Anything you took from the website or another source you read starts with \"Their site says\" or \"Their <source> says\". Anything you are inferring starts with \"Likely\" or \"If that is right\". Outside those two kinds of sentence, assert nothing that is not in the material you were given. **Do not invent** revenue, headcount, customer counts, locations, names or dates. If the site says little, say that — a short honest brief is worth more than a long invented one, and the fractional is about to be in the room.\n\nReply with JSON only: {\"summary\": \"\", \"bottlenecks\": [], \"rewordings\": [{\"key\": \"\", \"suggested\": \"\", \"why\": \"\"}], \"questions\": [{\"text\": \"\", \"why\": \"\"}]}. No prose around it, no markdown fence.",
+    "tools": [
+      {
+        "max_uses": 6,
+        "name": "web_search",
+        "type": "web_search_20250305"
+      }
+    ]
+  },
+  {
+    "betas": [
+      "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default",
+    "max_tokens": 4000,
+    "messages": [
+      {
+        "content": "Where they want to go:\n3-year picture — revenue, locations, Dana Reyes's role, Jen Park's role\n  Two branches, 6m, Dana out of the day to day\nDo Dana Reyes and Jen Park describe the destination the same way?\n  PRIVATE-ALIGNMENT-OBSERVATION\n\nDiagnostic — what is breaking:\n[Leadership & succession] Where do decisions stall because they need Dana Reyes?\n  they said: Pricing waits for Dana\n  who or what causes it: No price book\n[Leadership & succession] What does Jen Park own outright? Is Jen Park empowered to say no?\n  they said: Scheduling\n[Leadership & succession] Is every seat on the Accountability Chart filled — right person, right seat?\n  they said: Two seats empty\n  who or what causes it: Turnover\n  what they tried, and why it did not stick: Ads",
+        "role": "user"
+      }
+    ],
+    "model": "claude-golden",
+    "system": "You are drafting candidate rows for a fractional operations executive's Strategy Map, from what a prospect said in a diagnostic conversation.\n\nA row has: a header, a focus statement, the bottleneck, root cause, the fix, an owner, a horizon of 30, 60 or 90 days, and a measurable. The header is 3 to 6 words naming what the row is about, in title case, no full stop. The focus statement is one sentence saying what will change and why it matters, in plain words the prospect would use.\n\nYou are given ONLY the questions asked and the answers captured — what they said, who or what causes it, and what they have already tried. You must not assert any fact, figure, name, date or cause that is not in that input. Do not invent a measurable the conversation does not support, do not estimate numbers, and do not name an owner nobody mentioned: leave the owner empty instead. If an area is thin, draft fewer rows. Propose AT MOST FIVE rows; fewer is better than padded.\n\nYou may also be given the rows already on the map or waiting in the tray. Do not propose a row on a theme one of them already covers, even in other words — a new row has to be about a different bottleneck. If nothing new is left, reply [].\n\nThe fix is what would actually be done, in the plain words an operator would use. The measurable is how they would know it worked — a thing already being counted, or an obvious count of what the answer describes. The horizon is your read of how long the fix takes, and only 30, 60 or 90.\n\nReply with JSON only: a list of objects with the keys \"header\", \"statement\", \"bottleneck\", \"root_cause\", \"the_fix\", \"owner_text\", \"horizon\", \"measurable\". No prose around it, no markdown fence."
+  },
+  {
+    "betas": [
+      "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default",
+    "max_tokens": 4000,
+    "messages": [
+      {
+        "content": "Where they want to go:\n3-year picture — revenue, locations, Dana Reyes's role, Jen Park's role\n  Two branches, 6m, Dana out of the day to day\nDo Dana Reyes and Jen Park describe the destination the same way?\n  PRIVATE-ALIGNMENT-OBSERVATION\n\nDiagnostic — what is breaking:\n[Leadership & succession] Where do decisions stall because they need Dana Reyes?\n  they said: Pricing waits for Dana\n  who or what causes it: No price book\n[Leadership & succession] What does Jen Park own outright? Is Jen Park empowered to say no?\n  they said: Scheduling\n[Leadership & succession] Is every seat on the Accountability Chart filled — right person, right seat?\n  they said: Two seats empty\n  who or what causes it: Turnover\n  what they tried, and why it did not stick: Ads\nRows already on the map or in the tray — do not repeat their themes:\n- (in the tray) No weekly numbers — fix: A five-line scorecard reviewed every Monday\n- (in the tray) Scheduling lives in one person's head — fix: Move scheduling into the dispatch tool\n- (in the tray) Quality is checked by complaint — fix: A monthly inspection per site",
+        "role": "user"
+      }
+    ],
+    "model": "claude-golden",
+    "system": "You are drafting candidate rows for a fractional operations executive's Strategy Map, from what a prospect said in a diagnostic conversation.\n\nA row has: a header, a focus statement, the bottleneck, root cause, the fix, an owner, a horizon of 30, 60 or 90 days, and a measurable. The header is 3 to 6 words naming what the row is about, in title case, no full stop. The focus statement is one sentence saying what will change and why it matters, in plain words the prospect would use.\n\nYou are given ONLY the questions asked and the answers captured — what they said, who or what causes it, and what they have already tried. You must not assert any fact, figure, name, date or cause that is not in that input. Do not invent a measurable the conversation does not support, do not estimate numbers, and do not name an owner nobody mentioned: leave the owner empty instead. If an area is thin, draft fewer rows. Propose AT MOST FIVE rows; fewer is better than padded.\n\nYou may also be given the rows already on the map or waiting in the tray. Do not propose a row on a theme one of them already covers, even in other words — a new row has to be about a different bottleneck. If nothing new is left, reply [].\n\nThe fix is what would actually be done, in the plain words an operator would use. The measurable is how they would know it worked — a thing already being counted, or an obvious count of what the answer describes. The horizon is your read of how long the fix takes, and only 30, 60 or 90.\n\nReply with JSON only: a list of objects with the keys \"header\", \"statement\", \"bottleneck\", \"root_cause\", \"the_fix\", \"owner_text\", \"horizon\", \"measurable\". No prose around it, no markdown fence."
+  },
+  {
+    "betas": [
+      "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default",
+    "max_tokens": 4000,
+    "messages": [
+      {
+        "content": "1. (accepted) bottleneck: No weekly numbers\n   header: The Monday Scorecard\n   focus statement: Five numbers, every Monday.\n   root cause: Reports are built by hand\n   fix: A five-line scorecard reviewed every Monday\n   owner: Jen Park\n   horizon: 30\n   measurable: Scorecard reviewed 4 weeks in a row\n2. (accepted) bottleneck: Scheduling lives in one person's head\n   header: Scheduling Out Of One Head\n   focus statement: The schedule, in a system.\n   root cause: No system\n   fix: Move scheduling into the dispatch tool\n   horizon: 60\n   measurable: Schedule published by Friday noon\n3. (accepted) bottleneck: Quality is checked by complaint\n   header: Supervisors Who Audit\n   focus statement: Inspect every site monthly.\n   root cause: No inspection cadence\n   fix: A monthly inspection per site\n   owner: Nobody Named\n   measurable: Inspections per month\n\nHow this practice rewrites drafts like these — your version, then the one they kept. Write in their style: their length, their words, their tone. These are examples of style only; assert nothing from them about this prospect.\n- map row focus statement: drafted \"Put the schedule in a system.\" → kept \"The schedule, in a system.\"\n- map row focus statement: drafted \"Run the week from five numbers.\" → kept \"Five numbers, every Monday.\"\n- map row header: drafted \"A Weekly Scorecard\" → kept \"The Monday Scorecard\"",
+        "role": "user"
+      }
+    ],
+    "model": "claude-golden",
+    "system": "You are consolidating a fractional operations executive's Strategy Map. You are given numbered rows — some already accepted onto the map, some proposed — each with a bottleneck, root cause, fix, owner, horizon (30/60/90 days) and measurable. Many repeat the same theme in different words.\n\nMerge them into three to five main targets (never more than ten). Each target cites, in \"merges\", the numbers of the rows it combines; every target merges at least one row, and a row may be cited by only one target.\n\nUse ONLY what the rows say. Do not assert any fact, figure, name, date, owner or cause that is not in one of the rows it merges; do not estimate numbers; if the merged rows name different owners or horizons, keep one they state or leave it empty — never invent one. Plain operator's words.\n\nEach target also has a \"header\" of 3 to 6 words naming it, in title case, and a \"statement\": one sentence saying what will change and why it matters.\n\nReply with JSON only: a list of objects with the keys \"header\", \"statement\", \"bottleneck\", \"root_cause\", \"the_fix\", \"owner_text\", \"horizon\", \"measurable\", \"merges\". No prose around it, no markdown fence."
+  },
+  {
+    "betas": [
+      "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default",
+    "max_tokens": 1000,
+    "messages": [
+      {
+        "content": "Where they want to go:\n3-year picture — revenue, locations, Dana Reyes's role, Jen Park's role\n  Two branches, 6m, Dana out of the day to day\nDo Dana Reyes and Jen Park describe the destination the same way?\n  PRIVATE-ALIGNMENT-OBSERVATION\n\nDiagnostic — what is breaking:\n[Leadership & succession] Where do decisions stall because they need Dana Reyes?\n  they said: Pricing waits for Dana\n  who or what causes it: No price book\n[Leadership & succession] What does Jen Park own outright? Is Jen Park empowered to say no?\n  they said: Scheduling\n[Leadership & succession] Is every seat on the Accountability Chart filled — right person, right seat?\n  they said: Two seats empty\n  who or what causes it: Turnover\n  what they tried, and why it did not stick: Ads",
+        "role": "user"
+      }
+    ],
+    "model": "claude-golden",
+    "system": "You are drafting \"the mirror\" for a fractional operations executive: two sentences read back to a prospect near the start of a strategy session.\n\n- \"goal\": their stated destination, in THEIR words. Quote and compress what they said; do not improve it, do not add ambition they did not state.\n- \"unlocks\": which single bottleneck, if fixed first, most unlocks that goal — and one clause saying why, drawn from what they said.\n\nYou are given only their answers. Assert nothing that is not in them. Name no cause the input does not name. If they never stated a destination, say so in the \"goal\" field rather than inventing one.\n\nReply with JSON only: an object with the keys \"goal\" and \"unlocks\". No prose around it, no markdown fence."
+  },
+  {
+    "betas": [
+      "server-side-fallback-2026-07-01"
+    ],
+    "fallbacks": "default",
+    "max_tokens": 1500,
+    "messages": [
+      {
+        "content": "Where they want to go:\n3-year picture — revenue, locations, Dana Reyes's role, Jen Park's role\n  Two branches, 6m, Dana out of the day to day\nDo Dana Reyes and Jen Park describe the destination the same way?\n  PRIVATE-ALIGNMENT-OBSERVATION\n\nDiagnostic — what is breaking:\n[Leadership & succession] Where do decisions stall because they need Dana Reyes?\n  they said: Pricing waits for Dana\n  who or what causes it: No price book\n[Leadership & succession] What does Jen Park own outright? Is Jen Park empowered to say no?\n  they said: Scheduling\n[Leadership & succession] Is every seat on the Accountability Chart filled — right person, right seat?\n  they said: Two seats empty\n  who or what causes it: Turnover\n  what they tried, and why it did not stick: Ads\n\nThe mirror, as read back to them:\n  their goal: Two branches running without Dana in the room.\n  what unlocks it: Weekly numbers first. Everything else leans on them.\n\nWhat they told us they value:\n  Straight talk — because They have been oversold before\n  Someone on site\n\nThe map they were just given, in priority order:\n  1. No weekly numbers (30 days)\n  2. Scheduling lives in one person's head (60 days)\n  3. Quality is checked by complaint\n\nThe two paths, and what they said about each:\nPath A — They run it: Jen Park owns the map; rows become next quarter's Rocks; reviewed at every L10; progress depends on capacity they already have.\n  their reaction: We have tried\n  the honest risk, in their words: It slips again\nPath B — Run it together: fractional operator alongside Jen Park; weekly working sessions plus on-site days; 90-day sprints with measurables; execution load carried, not just advised.\n  their reaction: Interested\n  the honest risk, in their words: Cost\n  leaning: Leaning this way",
+        "role": "user"
+      }
+    ],
+    "model": "claude-golden",
+    "system": "You are drafting the pros and cons of two paths, for the decision page of a document a prospect keeps after a strategy session with a fractional operations executive.\n\nPath A is that they carry on themselves, using the strategy map they were just given. Path B is that they work with Tenant A to do it.\n\nWrite 2 to 3 pros and 2 to 3 cons for EACH path. Address the reader directly as \"you\" and \"your team\". One line each, no more than about fifteen words, no headings, no bullet characters, no trailing full stops unless the line is a sentence.\n\nYou are given only this session's own material: what they said in the diagnostic, the mirror, what they told us they value, the map rows drafted from the conversation, and their reaction, stated risk and leaning on each path. **Assert nothing that is not in that input.** No figures they did not give, no timelines nobody agreed, no claim about Tenant A's results elsewhere, and no promise of an outcome. A con of Path B is a real cost or risk of bringing someone in — write it honestly; a document where one column has no downside persuades nobody.\n\nReply with JSON only: {\"a\": {\"pros\": [], \"cons\": []}, \"b\": {\"pros\": [], \"cons\": []}}. No prose around it, no markdown fence."
+  }
+]

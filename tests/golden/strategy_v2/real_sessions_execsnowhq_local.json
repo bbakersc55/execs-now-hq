@@ -1,0 +1,70 @@
+{
+  "commit": "cef599e",
+  "database": "execsnowhq_local",
+  "sessions": {
+    "83b7d59bb9af": {
+      "archived": false,
+      "data": "3866ad907734a40e674aa16a4097cac5dcada2a9c34f4c63da1e46395d0b2ac4",
+      "format": "classic",
+      "outputs": {
+        "conversion_preview": "5ab344fc90229358357c69d1dde34b5b2585ffacbce5597c899c14580722942a",
+        "must_ask": "786fdb1f56c509e2d8ae3f10e39458396974ba9f661345f81431a936e88afd53",
+        "payload_assistant": "f3a85a76ee2c475a5e0bcdb0a0bbc90857ffceb13b05d58955c087414cf8c068",
+        "payload_practice_owner": "52b1bacc24c1df9b56409bfdffed5e34831669cb30c92c1655a57febb7b22b2c",
+        "pdf_cover_note": "a63534969c875e5423e9006df6d820f5abdddbebaa0e00ec8b0ea71fd0cffe04",
+        "pdf_html": "ba629a08787ac7138ac9d8a327fac241975d331976e8f3ebec34c4b533c6aa21",
+        "precall_questions": "43c5ce10af2f850ae70eb3d148e6e8a54c655fff237402b76b8218026cc93c79",
+        "ratings": "073b8c652eca63d0f1594ffa022b417b1cdf1d1d1a538d1b61014495bb2fa1cc"
+      },
+      "state": "complete"
+    },
+    "a782e416c08e": {
+      "archived": false,
+      "data": "932b86c5abb2e508ddf7f185bea8bf02826015de9df18fe8a539b4c4317806e4",
+      "format": "classic",
+      "outputs": {
+        "conversion_preview": "780dfaf72becad312ab8f6c9c3df68f04eef5fef2e8b6ad32142115c15227469",
+        "must_ask": "97259a0493f18a443a91f78ced68277aa6602fc1f78900d74d748172aa07f56a",
+        "payload_assistant": "5001999504c70114a316e63b136f3fb21814a6edf10534ba55d75c7550dd897f",
+        "payload_practice_owner": "0232fb8c9828408796bea3e837f4b2554d6a29aac86a9730fd8cf3abe47b0316",
+        "pdf_cover_note": "2e4869d8deea9793876b6efaf525fac0e6219d87b5a8863a00b1b71695b96b94",
+        "pdf_html": "ac2e7192be6affc689d540328c7860ab35da18bad5519910d02a48988379a466",
+        "precall_questions": "1b391089c849f0880aa7ea544dd5a078c13d0b188293385cb3fd52c412da7aa9",
+        "ratings": "8c55e945d1f07fa8e7ad69ceae37b0d057b2767cc148ed77d6062b11368a0a21"
+      },
+      "state": "converted"
+    },
+    "d8026aed1042": {
+      "archived": false,
+      "data": "bc5fd63e56615d0211d05086c4fd1d6ae18818460dc3f28f48b7e4955b539952",
+      "format": "classic",
+      "outputs": {
+        "conversion_preview": "ac460ff78d26d4a433a7db5f0a94a5bd4db88c8f2ac529d2a4ca93916a3e36ea",
+        "must_ask": "bdeea443fd0829c9b1578fb5b46d6e3629c73d32caa0ebccd045e2a06e5bc007",
+        "payload_assistant": "c0ba4a0fb9f2e385ee1b23e87aa1fe7b746d3f9899b8caf100ac8aef6eb1302a",
+        "payload_practice_owner": "4633f27bbe03df558a483e4cc376c0ca844cea4a50d6913faf2a5a59f84d7662",
+        "pdf_cover_note": "49355841c9a25c0756dddc0c37c69f762369c0497d2cf7a9ad8a8c4f3dd84de4",
+        "pdf_html": "b5d0543346dd9ea7955cdcd4e89eadc2d49c9032cc0b40763452584d952de5c4",
+        "precall_questions": "48092300623407edfdcd81dedaa20d1731271b37dd4b463410d02c1435bba2cb",
+        "ratings": "12eadd3d3191f89423046d89c0a3a2e7617e4206cd1c0930c2010b2464f502db"
+      },
+      "state": "complete"
+    },
+    "f4ce4b3837d0": {
+      "archived": true,
+      "data": "94413f1a5146b9585ccf9edffbae2cbc0cc2e8d845eea396c8da93ee7eb445a7",
+      "format": "classic",
+      "outputs": {
+        "conversion_preview": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "must_ask": "7433aa423c5ce373d5da78131870cf8da7bf5ce2a03319b533980561ada09e9b",
+        "payload_assistant": "f415151a167df4a15f18208503fdcb6d13a6e4500cdaa8486f1b560bb8e66e92",
+        "payload_practice_owner": "fb19a735d247e0984081fa7ad816f524af456994775a5834eb543e817f3129e1",
+        "pdf_cover_note": "bd9ef81412f5050d603ec7869d54addc60e297893f91327bc7bec18ba362fc70",
+        "pdf_html": "e83dd58eae009ab3068e2dc13688aaa8e4e53d97c71aeae941cdd80af1e9bdba",
+        "precall_questions": "1b391089c849f0880aa7ea544dd5a078c13d0b188293385cb3fd52c412da7aa9",
+        "ratings": "dce824115922028fb8cb7bb0ddbe18ef2ab16c97b005f0756e37e80cac06891c"
+      },
+      "state": "draft"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "model": "claude-golden",
+    "purpose": "session_prep",
+    "succeeded": true,
+    "target_type": "strategy_session",
+    "trigger": "button",
+    "unattended": false
+  },
+  {
+    "model": "claude-golden",
+    "purpose": "strategy_diagnostic_questions",
+    "succeeded": true,
+    "target_type": "strategy_session",
+    "trigger": "auto",
+    "unattended": true
+  },
+  {
+    "model": "claude-golden",
+    "purpose": "strategy_rows",
+    "succeeded": true,
+    "target_type": "strategy_session",
+    "trigger": "auto",
+    "unattended": false
+  },
+  {
+    "model": "claude-golden",
+    "purpose": "strategy_rows",
+    "succeeded": true,
+    "target_type": "strategy_session",
+    "trigger": "button",
+    "unattended": false
+  },
+  {
+    "model": "claude-golden",
+    "purpose": "strategy_rows_consolidate",
+    "succeeded": true,
+    "target_type": "strategy_session",
+    "trigger": "button",
+    "unattended": false
+  },
+  {
+    "model": "claude-golden",
+    "purpose": "strategy_mirror",
+    "succeeded": true,
+    "target_type": "strategy_session",
+    "trigger": "button",
+    "unattended": false
+  },
+  {
+    "model": "claude-golden",
+    "purpose": "strategy_path_notes",
+    "succeeded": true,
+    "target_type": "strategy_session",
+    "trigger": "auto",
+    "unattended": false
+  }
+]

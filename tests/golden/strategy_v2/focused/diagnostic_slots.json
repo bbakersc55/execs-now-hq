@@ -1,0 +1,17 @@
+[
+  {
+    "basis": "Data: 2/10 — \"We have no weekly numbers\"",
+    "reason": "Data is one of their two lowest ratings (2 of 10)",
+    "rule": "lowest_rating"
+  },
+  {
+    "basis": "People: 4/10",
+    "reason": "People is one of their two lowest ratings (4 of 10)",
+    "rule": "lowest_rating"
+  },
+  {
+    "basis": "Branches or locations — established vs. finding footing: \"…One, and we want to open a second branch next year…\"",
+    "reason": "They mentioned growth or expansion",
+    "rule": "growth"
+  }
+]

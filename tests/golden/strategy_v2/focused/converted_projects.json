@@ -1,0 +1,16 @@
+[
+  {
+    "client_company_id": "<id-2>",
+    "client_owner_contact_id": null,
+    "created_by_client": false,
+    "deleted_at": null,
+    "description": "Root cause: No system\n\nThe fix: Move scheduling into the dispatch tool",
+    "goal_id": null,
+    "owner_id": "<id-27>",
+    "source_map_row_id": "<id-13>",
+    "start_date": null,
+    "status_override": null,
+    "target_date": "2026-11-30",
+    "title": "Scheduling lives in one person's head"
+  }
+]

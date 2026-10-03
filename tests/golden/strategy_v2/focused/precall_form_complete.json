@@ -1,0 +1,121 @@
+{
+  "answered": 10,
+  "company": "Acme Facilities",
+  "complete": true,
+  "first_name": "Dana",
+  "of": 12,
+  "practice": "Tenant A",
+  "sections": [
+    {
+      "code": "snapshot",
+      "questions": [
+        {
+          "key": "s1_revenue",
+          "prompt": "Revenue — last year / this year",
+          "response_schema": "free_text",
+          "value": {
+            "text": "3m last year, 3.4m this year"
+          }
+        },
+        {
+          "key": "s1_team",
+          "prompt": "Team — full-time / part-time / admin & management",
+          "response_schema": "free_text",
+          "value": {
+            "text": "22 full-time, 9 part-time, 4 in the office"
+          }
+        },
+        {
+          "key": "s1_sites",
+          "prompt": "Active customer sites (or active accounts)",
+          "response_schema": "free_text",
+          "value": {
+            "text": "61 sites"
+          }
+        },
+        {
+          "key": "s1_service_mix",
+          "prompt": "Service mix — contract / projects / supplies / other",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_branches",
+          "prompt": "Branches or locations — established vs. finding footing",
+          "response_schema": "free_text",
+          "value": {
+            "text": "One, and we want to open a second branch next year"
+          }
+        },
+        {
+          "key": "s1_top_accounts",
+          "prompt": "Top 5 accounts as % of revenue",
+          "response_schema": "free_text",
+          "value": null
+        },
+        {
+          "key": "s1_software",
+          "prompt": "Software stack — and what lives in someone's head instead of a system",
+          "response_schema": "free_text",
+          "value": {
+            "text": "Spreadsheets. Scheduling is in Jen's head."
+          }
+        }
+      ],
+      "scale": "",
+      "title": "Snapshot: where they are today"
+    },
+    {
+      "code": "six_key_components",
+      "questions": [
+        {
+          "key": "s2_vision",
+          "prompt": "Vision — Our 3-year picture is clear, written down, and shared by the whole leadership team.",
+          "response_schema": "rating_1_10",
+          "value": {
+            "comment": "Written, not shared",
+            "rating": 7
+          }
+        },
+        {
+          "key": "s2_people",
+          "prompt": "People — We have the right people in the right seats, and every seat on the chart is filled.",
+          "response_schema": "rating_1_10",
+          "value": {
+            "comment": "",
+            "rating": 4
+          }
+        },
+        {
+          "key": "s2_data",
+          "prompt": "Data — We run the week from a short scorecard of numbers (utilization, pipeline, cash).",
+          "response_schema": "rating_1_10",
+          "value": {
+            "comment": "We have no weekly numbers",
+            "rating": 2
+          }
+        },
+        {
+          "key": "s2_issues",
+          "prompt": "Issues — Problems get raised openly and solved for good, not worked around.",
+          "response_schema": "rating_1_10",
+          "value": {
+            "comment": "",
+            "rating": 6
+          }
+        },
+        {
+          "key": "s2_process",
+          "prompt": "Process — Our core processes are documented, simplified, and followed by everyone.",
+          "response_schema": "rating_1_10",
+          "value": {
+            "comment": "",
+            "rating": 5
+          }
+        }
+      ],
+      "scale": "Rate each one from 1 to 10 — 1 means not true today, 10 means completely true.",
+      "title": "Five Key Components: self-rating"
+    }
+  ]
+}

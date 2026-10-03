@@ -1,0 +1,176 @@
+[
+  {
+    "answer": {
+      "answered_by": "fractional",
+      "fractional_note": "PRIVATE-DIAGNOSTIC-NOTE",
+      "question_key": "dx_<1>",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "No system of record",
+        "said": "Dana builds them on Sunday night",
+        "tried": ""
+      }
+    },
+    "drafted": [],
+    "path_notes": [],
+    "six_key_components": {
+      "answered": 5,
+      "average": 4.8,
+      "complete": true,
+      "lowest": "s2_data",
+      "of": 5,
+      "ratings": {
+        "s2_data": 2,
+        "s2_issues": 6,
+        "s2_people": 4,
+        "s2_process": 5,
+        "s2_vision": 7
+      },
+      "scores": [
+        {
+          "answered_by": "prospect",
+          "comment": "Written, not shared",
+          "key": "s2_vision",
+          "rating": 7
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "",
+          "key": "s2_people",
+          "rating": 4
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "We have no weekly numbers",
+          "key": "s2_data",
+          "rating": 2
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "",
+          "key": "s2_issues",
+          "rating": 6
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "",
+          "key": "s2_process",
+          "rating": 5
+        }
+      ]
+    }
+  },
+  {
+    "answer": {
+      "answered_by": "fractional",
+      "fractional_note": "",
+      "question_key": "dx_<2>",
+      "updated_at": "<time>",
+      "value": {
+        "cause": "Pay",
+        "said": "Night supervisors",
+        "tried": "A bonus"
+      }
+    },
+    "drafted": [
+      {
+        "bottleneck": "No weekly numbers",
+        "converted_to": "",
+        "from_ai": true,
+        "header": "A Weekly Scorecard",
+        "horizon": 30,
+        "id": "<id-12>",
+        "measurable": "Scorecard reviewed 4 weeks in a row",
+        "mechanics_note": "",
+        "merged_from": [],
+        "owner_text": "Jen Park",
+        "position": 0,
+        "root_cause": "Reports are built by hand",
+        "state": "proposed",
+        "statement": "Run the week from five numbers.",
+        "the_fix": "A five-line scorecard reviewed every Monday"
+      },
+      {
+        "bottleneck": "Scheduling lives in one person's head",
+        "converted_to": "",
+        "from_ai": true,
+        "header": "Scheduling Out Of One Head",
+        "horizon": 60,
+        "id": "<id-13>",
+        "measurable": "Schedule published by Friday noon",
+        "mechanics_note": "",
+        "merged_from": [],
+        "owner_text": "",
+        "position": 1,
+        "root_cause": "No system",
+        "state": "proposed",
+        "statement": "Put the schedule in a system.",
+        "the_fix": "Move scheduling into the dispatch tool"
+      },
+      {
+        "bottleneck": "Quality is checked by complaint",
+        "converted_to": "",
+        "from_ai": true,
+        "header": "Supervisors Who Audit",
+        "horizon": null,
+        "id": "<id-14>",
+        "measurable": "Inspections per month",
+        "mechanics_note": "",
+        "merged_from": [],
+        "owner_text": "Nobody Named",
+        "position": 2,
+        "root_cause": "No inspection cadence",
+        "state": "proposed",
+        "statement": "Inspect every site monthly.",
+        "the_fix": "A monthly inspection per site"
+      }
+    ],
+    "path_notes": [],
+    "six_key_components": {
+      "answered": 5,
+      "average": 4.8,
+      "complete": true,
+      "lowest": "s2_data",
+      "of": 5,
+      "ratings": {
+        "s2_data": 2,
+        "s2_issues": 6,
+        "s2_people": 4,
+        "s2_process": 5,
+        "s2_vision": 7
+      },
+      "scores": [
+        {
+          "answered_by": "prospect",
+          "comment": "Written, not shared",
+          "key": "s2_vision",
+          "rating": 7
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "",
+          "key": "s2_people",
+          "rating": 4
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "We have no weekly numbers",
+          "key": "s2_data",
+          "rating": 2
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "",
+          "key": "s2_issues",
+          "rating": 6
+        },
+        {
+          "answered_by": "prospect",
+          "comment": "",
+          "key": "s2_process",
+          "rating": 5
+        }
+      ]
+    }
+  }
+]
