@@ -8,8 +8,13 @@ practices get a $50 monthly AI budget and a $5 daily unattended cap; Blue Sky's
 display name is "Blue Sky Business Consulting"; signed-out practice resolution
 as in §2 (owner, 2026-10-02); per-practice subdomains are V1.
 
-Still to come from the owner: Shawn's email (§8), the beta agreement text (§6),
-and **decision D1, which blocks Blue Sky** (§4).
+**Approved 2026-10-02.** D1 **A**: a second OAuth client in a new GCP project,
+External/Testing, outside practices' staff added as test users, Executives Now
+unchanged; Google verification of that app started in parallel
+(`docs/google_verification.md`). D2–D9 as recommended. Agreement text
+received: `docs/legal/beta_agreement_v1.md`, with the server-access sentence
+added to clause 2. **Build now everything that does not need Shawn's email;**
+Blue Sky is created when it arrives.
 
 ---
 
