@@ -120,6 +120,14 @@ should say so. This goes in `01_prd.md` and a short
   token names one. The "refused" page names no practice.
 - Per-practice subdomains are V1.
 
+**As built (step 2).** Instead of each token endpoint adding `branding` to its
+payload, `/api/branding`, `/api/branding/mark` and `/api/branding/logo` accept
+`?via=<kind>:<token>` for `cadence`, `precall` and `unsubscribe`. The token
+resolves to its practice exactly as the page's own endpoint does, and an
+invalid or another practice's token names nothing. The app's token pages wrap
+in `LinkBranded`, which applies the practice's colors, tab icon and title once
+the answer arrives. One mechanism serves the page, its images and its icon.
+
 ---
 
 ## 3. Provisioning a practice

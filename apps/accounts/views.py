@@ -29,25 +29,50 @@ STAFF_ROLES = ("FF", "CF", "VA")
 
 
 def _branding_tenant(request):
-    """Whose branding a surface wears.
+    """Whose branding a surface wears (P2, owner 2026-10-02).
 
-    Signed in: that person's own practice. Otherwise the hostname decides —
-    V1 gives each practice its own portal domain, and Beta's single tenant on
-    app.getexecutivesnow.com is that same rule with one row.
+    - Signed in: that person's own practice.
+    - The Practices area: none.
+    - Signed out: **only a practice an emailed link names.** The app's token
+      pages pass their token as `?via=<kind>:<token>` (cadence, pre-call,
+      unsubscribe); the token resolves to its practice, exactly as the page's
+      own endpoint does. Nothing else names one: the client sign-in page needs
+      no practice, because the email entered finds it. *(Until P2 a signed-out
+      visitor got "the one practice", which a second practice would break.)*
     """
-    from apps.tenancy.models import Tenant
-
-    # The Practices area wears no practice's branding (P2).
     if getattr(request, "area", None) == "platform":
         return None
     membership = getattr(request, "membership", None)
     if membership is not None:
         return membership.tenant
-    tenants = list(Tenant.objects.all()[:2])
-    return tenants[0] if len(tenants) == 1 else None
+    return tenant_from_link(request.GET.get("via", ""))
 
 
-def tenant_branding(tenant):
+def tenant_from_link(via: str):
+    """The practice an emailed link names, or None. `via` is `<kind>:<token>`."""
+    kind, _, token = (via or "").partition(":")
+    if not token:
+        return None
+    if kind == "cadence":
+        from apps.work.models import StakeholderToken
+
+        record = StakeholderToken.resolve(token)
+        return record.tenant if record else None
+    if kind == "precall":
+        from apps.strategy.services import session_for_precall_token
+
+        session = session_for_precall_token(token)
+        return session.tenant if session else None
+    if kind == "unsubscribe":
+        from apps.crm.services import unsubscribe
+        from apps.tenancy.models import Tenant
+
+        data = unsubscribe.read_token(token)
+        return Tenant.objects.filter(pk=data["t"]).first() if data else None
+    return None
+
+
+def tenant_branding(tenant, *, via: str = ""):
     """Name, colours and logo for a page — the same values the email layout uses."""
     from apps.crm.services import email_layout
     from apps.tenancy import contrast
@@ -59,13 +84,19 @@ def tenant_branding(tenant):
         "accent_color": brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR,
         "on_accent_color": contrast.text_on(
             brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR),
-        "logo_url": ("/api/branding/logo"
+        "logo_url": ("/api/branding/logo" + _via_query(via)
                      if tenant is not None and tenant.email_logo_id else ""),
         # Always an image when the practice is known: its own mark, or its
         # initials on gray (P1, D2). Never the product's mark.
-        "mark_url": "/api/branding/mark" if tenant is not None else "",
+        "mark_url": "/api/branding/mark" + _via_query(via) if tenant is not None else "",
         "footer_text": getattr(tenant, "brand_footer_text", "") if tenant is not None else "",
     }
+
+
+def _via_query(via: str) -> str:
+    from urllib.parse import quote
+
+    return f"?via={quote(via, safe=':')}" if via else ""
 
 
 # The signed-out screen's first call, so it also sets the CSRF cookie the
@@ -85,7 +116,7 @@ def branding(request):
     # The Practices area is a staff screen with no practice bound (P2).
     platform = getattr(request, "area", None) == "platform"
     staff = platform or (membership is not None and membership.role in STAFF_ROLES)
-    brand = tenant_branding(_branding_tenant(request))
+    brand = tenant_branding(_branding_tenant(request), via=request.GET.get("via", ""))
     return JsonResponse({
         "display_name": brand["display_name"],
         "logo_url": brand["logo_url"],

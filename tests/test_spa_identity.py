@@ -52,9 +52,12 @@ def test_each_practice_gets_its_own_name(seeded_tenant, tenant_b):
 
 
 @pytest.mark.django_db
-def test_a_signed_out_visitor_never_gets_the_product(seeded_tenant):
+def test_a_signed_out_visitor_gets_the_product_icon_and_no_name(seeded_tenant):
+    """P2 (owner, 2026-10-02): no practice is known yet, so the tab shows the
+    product's icon and "Sign in"; the page never names the product."""
     html = page(None)
-    assert PRODUCT_NAME not in html and "/static/brand/" not in html
+    assert "<title>Sign in</title>" in html and "/static/brand/favicon.ico" in html
+    assert PRODUCT_NAME not in html and seeded_tenant.name not in html
 
 
 @pytest.mark.django_db

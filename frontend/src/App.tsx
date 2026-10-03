@@ -20,6 +20,7 @@ import { PendingUploads } from "./components/PendingUploads";
 import { api, Me } from "./lib/api";
 import { PRODUCT_FAVICON, setFavicon, useBranding } from "./lib/branding";
 import { applyPortalTokens } from "./lib/palette";
+import { LinkBranded } from "./components/LinkBranded";
 import { roleLabel } from "./lib/roles";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
@@ -147,9 +148,12 @@ export function App() {
   if (isPublic) {
     return (
       <Routes>
-        <Route path="/updates/:token" element={<CadenceLink />} />
-        <Route path="/strategy/precall/:token" element={<PreCallForm />} />
-        <Route path="/unsubscribe/:token" element={<Unsubscribe />} />
+        <Route path="/updates/:token"
+          element={<LinkBranded kind="cadence"><CadenceLink /></LinkBranded>} />
+        <Route path="/strategy/precall/:token"
+          element={<LinkBranded kind="precall"><PreCallForm /></LinkBranded>} />
+        <Route path="/unsubscribe/:token"
+          element={<LinkBranded kind="unsubscribe"><Unsubscribe /></LinkBranded>} />
       </Routes>
     );
   }
@@ -192,7 +196,8 @@ export function App() {
   // a sign-in within the page right.
   useEffect(() => {
     if (!brand) return;
-    setFavicon(staff ? PRODUCT_FAVICON : brand.mark_url);
+    // Signed out, no practice is known: the product's icon (P2).
+    setFavicon(staff || !brand.mark_url ? PRODUCT_FAVICON : brand.mark_url);
   }, [brand, staff]);
 
   if (isLoading) return <main style={{ padding: "2rem" }}>Loading…</main>;

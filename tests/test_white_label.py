@@ -73,9 +73,14 @@ def test_branding_is_the_practices_and_the_product_name_is_staff_only(
 
 
 @pytest.mark.django_db
-def test_a_signed_out_visitor_gets_the_practices_branding_not_the_products(practice, client):
+def test_a_signed_out_visitor_gets_neither_a_practice_nor_the_product(practice, client):
+    """P2 (owner, 2026-10-02): the sign-in page needs no practice; the email
+    entered finds it. So, signed out, nothing names one, and still nothing
+    names the product."""
     body = client.get("/api/branding").json()
-    assert body["display_name"] == "Executives Now" and body["product_name"] is None
+    assert body["display_name"] == "" and body["product_name"] is None
+    assert body["mark_url"] == ""
+    assert client.get("/api/branding/mark").status_code == 404
 
 
 @pytest.mark.django_db
@@ -90,9 +95,12 @@ def test_no_client_facing_page_names_the_product(practice, company, client, in_t
     ]
 
     for page in pages:
-        text = page.content.decode()
-        assert PRODUCT_NAME not in text, page.request["PATH_INFO"]
-        assert "Executives Now" in text or "This workspace" in text, page.request["PATH_INFO"]
+        assert PRODUCT_NAME not in page.content.decode(), page.request["PATH_INFO"]
+    # The live link names its practice, from the token. The other two know of
+    # no practice and name none (P2: no "the one practice" fallback).
+    assert "Executives Now" in pages[1].content.decode()
+    for page in (pages[0], pages[2]):
+        assert "Executives Now" not in page.content.decode(), page.request["PATH_INFO"]
 
 
 @pytest.mark.django_db
@@ -105,16 +113,25 @@ def test_the_logo_endpoint_serves_only_the_requesters_own_practice(practice, tmp
     path.write_bytes(png(440, 100))
     call_command("set_email_logo", str(path), "--tenant", practice.slug)
 
-    response = client.get("/api/branding/logo")
+    # Signed out with no link: no practice, so no logo (P2).
+    assert client.get("/api/branding/logo").status_code == 404
+
+    # An emailed link names its practice; its logo is served through it.
+    from apps.crm.services import unsubscribe
+
+    token = unsubscribe.token_for(tenant_id=practice.pk, category="updates",
+                                  address="dana@client.invalid")
+    response = client.get(f"/api/branding/logo?via=unsubscribe:{token}")
     assert response.status_code == 200
     assert response["Content-Type"] == "image/png"
     assert response.content == png(440, 100)
 
-    # A second practice exists: the single-tenant shortcut must stop resolving,
-    # and no URL can name another practice's logo.
-    TenantFactory(name="Northwind Advisory")
-    assert client.get("/api/branding/logo").status_code == 404
-    assert client.get("/api/branding").json()["display_name"] == ""
+    # Another practice's link never reaches this practice's logo.
+    other = TenantFactory(name="Northwind Advisory")
+    theirs = unsubscribe.token_for(tenant_id=other.pk, category="updates",
+                                   address="dana@client.invalid")
+    assert client.get(f"/api/branding/logo?via=unsubscribe:{theirs}").status_code == 404
+    assert client.get("/api/branding/logo?via=unsubscribe:forged").status_code == 404
 
 
 @pytest.mark.django_db
@@ -191,10 +208,24 @@ def test_a_clients_email_carries_no_product_named_header(practice, ff, dev_outbo
 
 
 @pytest.mark.django_db
-def test_beta_is_the_single_tenant_case_of_the_v1_hostname_rule(practice, client):
-    """One practice on one domain resolves to that practice; more than one waits
-    for V1's per-tenant domains rather than guessing."""
-    assert client.get("/api/branding").json()["display_name"] == "Executives Now"
-    TenantFactory(name="Northwind Advisory")
-    assert client.get("/api/branding").json()["display_name"] == ""
+def test_signed_out_only_an_emailed_link_names_a_practice(practice, client, in_tenant_a):
+    """P2 (owner, 2026-10-02): with two practices, each link brands as its own
+    practice and nothing else guesses. Per-practice subdomains are V1."""
+    from apps.work.models import StakeholderToken
+
+    from .factories import StakeholderFactory
+
+    other = TenantFactory(name="Northwind Advisory", email_display_name="Northwind")
     assert Tenant.objects.count() == 2
+    assert client.get("/api/branding").json()["display_name"] == ""
+
+    _, mine = StakeholderToken.issue(StakeholderFactory(tenant=practice))
+    _, theirs = StakeholderToken.issue(StakeholderFactory(tenant=other))
+    assert client.get(f"/api/branding?via=cadence:{mine}").json()["display_name"] == \
+        "Executives Now"
+    body = client.get(f"/api/branding?via=cadence:{theirs}").json()
+    assert body["display_name"] == "Northwind" and body["product_name"] is None
+    assert body["mark_url"] == f"/api/branding/mark?via=cadence:{theirs}"
+    mark = client.get(body["mark_url"])
+    assert mark.status_code == 200 and b">N<" in mark.content
+    assert client.get("/api/branding?via=cadence:not-a-token").json()["display_name"] == ""

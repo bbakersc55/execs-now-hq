@@ -58,3 +58,43 @@ describe("branding in the shell (P1)", () => {
     expect(document.title).toBe("Execs NOW HQ");
   });
 });
+
+describe("signed out (P2: no practice until one is known)", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    document.documentElement.removeAttribute("style");
+    document.head.querySelectorAll("link[rel='icon']").forEach((l) => l.remove());
+    document.title = "Sign in";
+  });
+
+  it("shows the product's icon and a plain sign-in, naming no practice", async () => {
+    const { App } = await import("../App");
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/me": () => ({ status: 401, body: { authenticated: false } }),
+      "GET /api/branding": { ...BRAND, display_name: "", mark_url: "", product_name: null },
+    }));
+    renderRoute(<App />, { path: "*", route: "/" });
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    await waitFor(() => expect(icon()).toMatch(/brand\/favicon-32\.png$/));
+    expect(document.body.textContent).not.toMatch(/Blue Sky|Execs NOW HQ/);
+  });
+
+  it("switches to the practice an emailed link names", async () => {
+    const { App } = await import("../App");
+    const link = "a-stakeholder-token";
+    const fetchMock = mockApi({
+      [`GET /api/cadence/${link}`]: { practice: "Blue Sky Business Consulting",
+        name: "Dana Reyes", cadence: "weekly", is_muted: false,
+        choices: [{ value: "weekly", label: "Weekly" }] },
+      "GET /api/branding": { ...BRAND, product_name: null,
+        mark_url: `/api/branding/mark?via=cadence:${link}` },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<App />, { path: "*", route: `/updates/${link}` });
+    await waitFor(() => expect(icon()).toBe(`/api/branding/mark?via=cadence:${link}`));
+    expect(fetchMock.calls.map((c) => c.url))
+      .toContain(`/api/branding?via=${encodeURIComponent(`cadence:${link}`)}`);
+    expect(document.title).toBe("Blue Sky Business Consulting");
+    expect(token("--navy")).toBe("#2E7D32");
+  });
+});

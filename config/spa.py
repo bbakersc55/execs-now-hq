@@ -54,11 +54,14 @@ _ICON = re.compile(r'<link rel="icon"[^>]*>')
 
 
 def with_identity(html: str, request) -> str:
-    """The tab's title and icon for whoever is asking (P1).
+    """The tab's title and icon for whoever is asking (P1; P2 for signed out).
 
-    Staff: the product's name and icon. Anyone else — a client user, or a
-    visitor who is not signed in — the practice's display name and its mark
-    (or its initials), never the product's, from the first byte.
+    - Staff, and the Practices area: the product's name and icon.
+    - A signed-in client user: their practice's name and mark (or initials),
+      from the first byte.
+    - Signed out (owner, 2026-10-02): the product's icon and "Sign in". No
+      practice is known yet; the app switches to the practice's mark once one
+      is (a sign-in, or a token page's own link).
     """
     from config.branding import PRODUCT_NAME
 
@@ -66,15 +69,16 @@ def with_identity(html: str, request) -> str:
 
     membership = getattr(request, "membership", None)
     platform = getattr(request, "area", None) == "platform"
-    if platform or (membership is not None and membership.role in STAFF_ROLES):
-        title = PRODUCT_NAME
+    staff = platform or (membership is not None and membership.role in STAFF_ROLES)
+    tenant = None if staff else _branding_tenant(request)
+    if tenant is None:
+        title = PRODUCT_NAME if staff else "Sign in"
         static = settings.STATIC_URL if settings.STATIC_URL.startswith("/") \
             else "/" + settings.STATIC_URL
         icons = (f'<link rel="icon" href="{static}brand/favicon.ico" sizes="any" />'
                  f'<link rel="icon" type="image/png" href="{static}brand/favicon-32.png" />'
                  f'<link rel="apple-touch-icon" href="{static}brand/apple-touch-icon.png" />')
     else:
-        tenant = _branding_tenant(request)
         title = tenant_branding(tenant)["display_name"] or "Portal"
         icons = '<link rel="icon" href="/api/branding/mark" />'
     html = _TITLE.sub(f"<title>{escape(title)}</title>", html, count=1)
