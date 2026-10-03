@@ -159,4 +159,4 @@ register(StrategyAnswer, factories.StrategyAnswerFactory, api_exposed=False)
 register(AgreementAcceptance, factories.AgreementAcceptanceFactory, api_exposed=False)
 # Staff send it and list their own (/api/feedback/); the platform owner reads
 # it through apps/platform/feedback.py, the one crossing.
-register(Feedback, factories.FeedbackFactory, api_exposed=False)
+register(Feedback, factories.FeedbackFactory, endpoints=("/api/feedback/",))

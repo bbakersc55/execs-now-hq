@@ -3,11 +3,17 @@ the numbers come from `stats.py`, feedback from `feedback.py`."""
 
 from __future__ import annotations
 
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.platform import provisioning, stats
+from apps.accounts.ratelimit import RateLimit
+from apps.crm.permissions import IsTenantStaff
 from apps.platform.permissions import IsPlatformOwner, IsPlatformOwnerInPracticesArea
+
+#: Spec §7: ten an hour per person.
+FEEDBACK_LIMIT = RateLimit(limit=10, window_seconds=3600, prefix="feedback")
 from apps.tenancy.middleware import AREA_PLATFORM, AREA_PRACTICE, AREA_SESSION_KEY
 
 
@@ -139,3 +145,67 @@ class AgreementView(APIView):
             return Response({"detail": str(exc)}, status=409)
         return Response({"accepted": True})
 
+
+
+class FeedbackView(APIView):
+    """Staff (practice owner, associate, assistant): send feedback, and list
+    what you have sent. Clients never see the button or reach this."""
+
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    permission_classes = [IsTenantStaff]
+
+    def get(self, request):
+        from apps.platform import feedback
+
+        return Response(feedback.own(request))
+
+    def post(self, request):
+        from apps.accounts.ratelimit import too_many
+        from apps.platform import feedback
+
+        if too_many(FEEDBACK_LIMIT, str(request.user.pk)):
+            return Response({"detail": "That's a lot of feedback in an hour. Try again later."},
+                            status=429)
+        data = request.data
+        try:
+            row = feedback.submit(request, doing=data.get("doing", ""),
+                                  happened=data.get("happened", ""),
+                                  expected=data.get("expected", ""),
+                                  page_url=data.get("page_url", ""),
+                                  screenshot=request.FILES.get("screenshot"))
+        except feedback.FeedbackInvalid as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({"id": str(row.pk)}, status=201)
+
+
+class PlatformFeedbackView(APIView):
+    """The platform owner reads all feedback, and marks it seen or closed."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def get(self, request, pk=None):
+        from django.http import Http404, HttpResponse
+
+        from apps.platform import feedback
+        from apps.tenancy import storage
+
+        if pk is None:
+            return Response(feedback.for_platform())
+        row = feedback.platform_get(pk)
+        if row is None or row.screenshot is None:
+            raise Http404
+        return HttpResponse(storage.read(row.screenshot),
+                            content_type=row.screenshot.content_type or "image/png")
+
+    def patch(self, request, pk=None):
+        from apps.platform import feedback
+        from apps.platform.models import Feedback
+
+        row = feedback.platform_get(pk) if pk else None
+        status = request.data.get("status")
+        if row is None:
+            return Response({"detail": "No such feedback."}, status=404)
+        if status not in Feedback.Status.values:
+            return Response({"detail": "New, seen or closed."}, status=400)
+        Feedback.all_objects.filter(pk=row.pk).update(status=status)
+        return Response({"id": str(row.pk), "status": status})

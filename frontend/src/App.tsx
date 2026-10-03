@@ -23,6 +23,7 @@ import { applyPortalTokens } from "./lib/palette";
 import { LinkBranded } from "./components/LinkBranded";
 import { AreaSwitch } from "./components/AreaSwitch";
 import { AgreementGate } from "./components/AgreementGate";
+import { FeedbackButton } from "./components/FeedbackButton";
 import { roleLabel } from "./lib/roles";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
@@ -45,6 +46,7 @@ import { Activity } from "./screens/Activity";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
+import { PlatformFeedback } from "./screens/PlatformFeedback";
 import { Dashboard } from "./screens/Dashboard";
 import { Meetings } from "./screens/Meetings";
 import { Replies } from "./screens/Replies";
@@ -79,6 +81,7 @@ type NavItem = {
 /** The Practices area's whole navigation (P2). */
 const PLATFORM_NAV: NavItem[] = [
   { to: "/practices", label: "Practices", group: "Platform", icon: Building2 },
+  { to: "/feedback", label: "Feedback", icon: Inbox },
 ];
 
 const NAV: NavItem[] = [
@@ -272,8 +275,11 @@ export function App() {
         <DemoBanner me={me} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
+          {/* P2 §7: on every staff screen in a practice. Clients never see it. */}
+          {me.role && TENANT.includes(me.role) && <FeedbackButton />}
           {platform ? (
             <Routes>
+              <Route path="/feedback" element={<PlatformFeedback />} />
               <Route path="*" element={<Practices />} />
             </Routes>
           ) : (

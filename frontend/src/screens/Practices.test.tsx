@@ -79,7 +79,7 @@ describe("the area switch", () => {
     expect(await screen.findByText("Platform owner")).toBeInTheDocument();
     const nav = screen.getByRole("navigation");
     await waitFor(() => expect(within(nav).getAllByRole("link").map((a) => a.textContent))
-      .toEqual(["Practices"]));
+      .toEqual(["Practices", "Feedback"]));
     expect(screen.queryByText("Contacts")).toBeNull();
   });
 });
