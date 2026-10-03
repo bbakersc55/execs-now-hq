@@ -1,0 +1,485 @@
+# P3 — Strategy template builder and session v3
+
+**Practices beta program, phase 3 of 4 · spec for owner review · 2026-10-03**
+
+**Approved 2026-10-03.** D1–D13 as recommended, with two amendments from the
+owner: D4 (a practice sets its own diagnostic size, and a question can be added
+during a session; §2.3, §3c, §4.2) and D13 (AI in the session is required; §3e
+and §3g now say exactly what Claude proposes and how duplicates are kept out).
+D12 adds the owner's own judgment after the dry run. The decisions are recorded
+in §8. Build order: phase 1 (pin v2) first, alone, with no schema change and no
+P3 code.
+Written from `docs/handoff.md`, `04_build_plan.md` (Phase 4 and "Strategy
+session v2"), `01_prd.md` (FR-4.x, AC-4.x), `02_data_model.md` §6,
+`03_access_matrix.md` §10, and the code under `apps/strategy/`,
+`templates/strategy/` and `frontend/src/screens/Session*.tsx`.
+
+**Words used here.** *Classic* is the original nine-section format. *v2* is
+"Operations — focused" (`format = focused`). *v3* is the new format this spec
+adds. *Builder* is the new screen where a practice owner makes a v3 template.
+
+---
+
+## 0. What the code does today, and what v3 runs into
+
+| Finding | Consequence |
+|---|---|
+| **A session renders from its own frozen snapshot** (`template_snapshot`, taken when the session is created). Nothing in a session points at a live template row. | v3 can be added without touching any session that exists. This is the base of §6. |
+| **Behavior is keyed on section codes written into the code**: `snapshot`, `six_key_components`, `what_you_need`, `where_they_want_to_go`, `diagnostic`, `mirror`, `strategy_map`, `what_they_value`, `two_paths`, `scope_agreement` (`ai.py`, `pdf.py`, `services.py`, `SessionDetail.tsx`). | A practice cannot add, remove or rename a section's role today. v3 gives each section a **kind** (§2). |
+| **Today's editor edits questions only**: add, remove (archive), reorder within a section, reword, time budgets, rename, duplicate, set default, archive. It cannot add or remove a section. | The builder is a new screen (§4). Today's editor stays for classic and v2 templates. |
+| **The only way to get a first template is "Restore from seed"**, which creates the owner's Operations template. Provisioning gives a new practice no template (P2 §3). | A new practice can only start from Executives Now's questions. See D3. |
+| **Operations wording is in the code**: the three PDF header chips are tied to `s1_revenue`, `s1_team`, `s1_sites`; the rating names are tied to `s2_*` keys; the PDF's Path A/B copy says "Improve operations incrementally"; every Claude prompt says "fractional operations executive"; the cover email's next-step sentences are tied to `s9_*` keys. | These are the "custom templated portions" (§2.3). In v3 they come from the template. In classic and v2 they stay exactly as they are. |
+| **v2's diagnostic rests on pre-call ratings** (two lowest, then third lowest), a growth mention, and Snapshot gaps. | In v3 the ratings are taken on the call, so they do not exist when the diagnostic is first proposed. §3c. |
+| **The proposal after the pre-call form runs on the worker**; a button re-proposes. | The demo has no worker (§7, D10). |
+| **Conversion to goals, Consolidate, pros and cons, prep, and "learn from my edits" do not depend on the question set.** They read map rows, path notes and pre-call questions. | v3 reuses them as they are. |
+| **On the laptop's copy of production**, "Operations — focused" is the Executives Now default and **no session has been started from it yet**. The four sessions there are all classic. | v2 has not been run on a real session. Its proof (§6) has to rest on fixtures plus the real classic sessions. |
+
+---
+
+## 1. Assumptions
+
+1. **v3 is a third format, beside classic and focused.** A template's format is
+   fixed when it is created and frozen into each session's snapshot. Nothing
+   converts a template or a session from one format to another.
+2. **Only the practice owner builds templates** (matrix 10.1, unchanged).
+   Associates and assistants can read them, as today.
+3. **Templates never cross practices.** There is no shared library, no copy
+   from another practice, and nothing for the platform owner to see.
+4. **The builder makes v3 templates only.** Classic and v2 templates keep
+   today's editor and today's rules. The builder's verbs refuse them.
+5. **The eight parts have fixed behavior and a fixed order in the first cut**
+   (a–h below). What a practice controls: every question, every title, the
+   rated items, the templated text, and whether "What they value" is there.
+   Adding, removing and reordering sections comes after Tuesday (§7, D1).
+6. **Ratings are 1–10 and on the call in v3.** v3 does not offer ratings on
+   the pre-call form. The 9/22 rule still holds: a rating's wording is a
+   statement of a line, not an open question.
+7. **v3 uses the v2 map**: cards with a header and a focus statement, at most
+   five accepted rows, Consolidate aiming for three to five. And the v2 PDF
+   layout (two pages).
+8. **Every AI output still lands as proposed** and reaches the session, the
+   PDF or an email only when a person accepts it. The builder itself makes no
+   AI calls.
+9. **AI calls keep their existing purposes** (`strategy_diagnostic_questions`,
+   `strategy_rows`, `strategy_rows_consolidate`, `strategy_mirror`,
+   `strategy_path_notes`, `session_prep`), so each writes an `ai_call` row
+   with its cost, counts against the practice's credits and monthly budget, and
+   the worker's one call counts against the daily unattended cap.
+10. **Discipline stays out of sight.** Builder templates carry the existing
+    `discipline` value, and "Set default" clears every other default in the
+    practice, so "the default" means one template.
+11. **A blank v3 template is not blank inside the fixed-shape parts.** Two
+    paths starts with two neutral path items, and Scope with three neutral
+    items, because the session and the PDF need them. Everything else starts
+    empty (D2).
+12. **Migrations are additive, with database defaults on every new column**,
+    because the old web keeps serving for about two minutes against the new
+    schema during a release.
+
+---
+
+## 2. Data model changes
+
+No new table. Seven columns on three tables, one migration
+(`strategy 0016`), plus two choice lists that change no SQL.
+
+### 2.1 Columns
+
+| Table | Column | Meaning |
+|---|---|---|
+| `strategy_template` | `settings` jsonb, default `{}` | The template's own text and limits (§2.3). Empty on every classic and v2 template, and never read for them. |
+| `strategy_section` | `kind` varchar(16), default `''` | What the section does in v3: `precall`, `ratings`, `diagnostic`, `mirror`, `map`, `values`, `paths`, `scope`, `custom`. Empty on classic and v2. |
+| `strategy_section` | `intro` text, default `''` | The practice's own talk track for the section, shown to staff in the live view. Never on the pre-call form, the email or the PDF. |
+| `strategy_section` | `show_in_pdf` boolean, default false | A custom section's answers print on page two. Fixed-kind sections ignore it. |
+| `strategy_section` | `deleted_at` timestamptz, null | A removed section. Kept so its code and its questions' keys stay spent. |
+| `strategy_question` | `label` varchar(60), default `''` | A short name: the bar label for a rated item, the chip label for a pre-call question. |
+| `strategy_question` | `pdf_chip` boolean, default false | Pre-call questions only: show the answer in the PDF header (three at most). |
+
+Choice lists (Django records them; PostgreSQL does nothing):
+`StrategyTemplate.format` gains `v3`; `StrategyDiagnosticProposal.rule` gains
+`precall_gap` and `manual`.
+
+**A v3 built-in section keeps the code the engine already knows**
+(`snapshot`, `six_key_components`, `diagnostic`, `mirror`, `strategy_map`,
+`what_they_value`, `two_paths`, `scope_agreement`), with its `kind` beside
+it. That is deliberate: the shared code (scores, the tray, the PDF context,
+pros and cons) keeps reading by code and is not rewritten. A custom section
+gets a generated code (`custom_` plus eight hex characters).
+
+### 2.2 Planned migration SQL
+
+Expected output of `sqlmigrate strategy 0016`. The exact output is shown before
+the migration is generated, as the rule requires.
+
+```sql
+BEGIN;
+ALTER TABLE "strategy_template" ADD COLUMN "settings" jsonb DEFAULT '{}'::jsonb NOT NULL;
+
+ALTER TABLE "strategy_section" ADD COLUMN "kind" varchar(16) DEFAULT '' NOT NULL;
+ALTER TABLE "strategy_section" ADD COLUMN "intro" text DEFAULT '' NOT NULL;
+ALTER TABLE "strategy_section" ADD COLUMN "show_in_pdf" boolean DEFAULT false NOT NULL;
+ALTER TABLE "strategy_section" ADD COLUMN "deleted_at" timestamp with time zone NULL;
+
+ALTER TABLE "strategy_question" ADD COLUMN "label" varchar(60) DEFAULT '' NOT NULL;
+ALTER TABLE "strategy_question" ADD COLUMN "pdf_chip" boolean DEFAULT false NOT NULL;
+
+-- AlterField strategy_template.format (choices): no SQL
+-- AlterField strategy_diagnostic_proposal.rule (choices): no SQL
+COMMIT;
+```
+
+Nothing is dropped, rewritten or backfilled. No row of any existing template,
+question or session changes. `strategy_session`, `strategy_answer`,
+`strategy_map_row` and `strategy_path_note` are not touched.
+
+**Where it gets applied.** Laptop: by me, on `execsnowhq_local`, once the full
+suite is green with the migration present. Demo: by itself at start, on the
+push to `dev`. Production: only on your "release", by the runbook's
+"Releasing a migration".
+
+### 2.3 `settings`: the templated portions
+
+Read only for v3, validated against this list on save, frozen into the
+snapshot. Every text takes the existing merge fields plus `{Practice}`. A
+merge field that does not exist is refused at save.
+
+| Key | Used in | Default for a new template |
+|---|---|---|
+| `advisor_role` | Every Claude prompt for the session, where v2 says "fractional operations executive" | "advisor" |
+| `rating_scale` | Above the rated items in the live view and under the PDF chart | "1 means not true today, 10 means completely true" |
+| `path_a_title`, `path_a_points` (two lines) | PDF decision page | "Continue to run it yourself"; two neutral lines |
+| `path_b_title`, `path_b_points` (two lines) | PDF decision page | "Work with {Practice}"; two neutral lines |
+| `diagnostic_size` | How many diagnostic questions Claude proposes for and a session starts with. Set by the practice owner per template, **1 to 8** | 3 (D4) |
+| `precall_intro` *(after Tuesday)* | The pre-call form and the questions email | today's wording |
+
+### 2.4 The v3 snapshot
+
+`snapshot_version` 2, same shape as today plus: `template.format = "v3"`,
+`template.settings`, each section's `kind`, `intro`, `show_in_pdf`, and each
+question's `label`, `pdf_chip`. **A classic or v2 snapshot is written exactly
+as it is today, with no new key** (§6).
+
+---
+
+## 3. Session v3: the flow
+
+| | Part | Section kind (code) | Where | What is new against v2 |
+|---|---|---|---|---|
+| a | Pre-call | `precall` (`snapshot`) | Form link, or questions by email, as today | About a dozen free-text questions, all the practice's own. No ratings on the form. |
+| b | Ratings | `ratings` (`six_key_components`) | Live | Taken on the call. Two to eight rated items, each the practice's own statement with a short label. No Traction, because there is no built-in list at all. |
+| c | Diagnostic | `diagnostic` | Live | Proposed from the pre-call answers. Holds three by default. |
+| d | Mirror and where they want to go | `mirror` | Live | One section: the destination questions, then the mirror. |
+| e | The map | `map` (`strategy_map`) | Live | As v2. |
+| f | What they value | `values` (`what_they_value`) | Live | Optional per template. |
+| g | Two paths | `paths` (`two_paths`) | Live | As v2, with the PDF copy from the template. |
+| h | Scope | `scope` (`scope_agreement`) | Live | As v2. Money items keep `is_financial`. |
+
+**a. Pre-call.** Same form, same token, same two ways to send, same
+"nothing sends without the full body on screen". A template with no pre-call
+questions sends no form, and the diagnostic uses its fixed questions.
+
+**b. Ratings.** The live view shows the scale line once, then each item with
+a 1–10 input and a comment. The average and "where to look first" work as
+today. The PDF chart uses each item's `label`.
+
+**c. Diagnostic.** What each proposed question is for is still decided in
+code, and Claude only words it:
+
+- one for a mention of growth or expansion in the pre-call answers (v2's rule);
+- up to two for an evident gap in the pre-call answers (`precall_gap`), which
+  is the one judgment Claude makes, and it may find none;
+- once ratings are in, **"Propose from the ratings"** adds one each for the
+  two lowest (v2's rule, moved to a button on the call).
+
+The tray, accept, edit, discard and "take it back out" work as in v2.
+Nothing is asked until a person accepts it. If nothing is accepted, the
+template's fixed diagnostic questions are asked. The first proposal is queued
+when the prospect completes the form (worker, daily cap); the button does the
+same on demand.
+
+**How many (D4, amended).** The number belongs to the practice, per template:
+**"Diagnostic questions per session"** on the builder's Diagnostic card,
+default 3, from 1 to 8. It is how many Claude proposes for and how many the
+session starts with. The template's fixed fallback questions follow the same
+range. I raised the top from 5 to 8: v2 holds five, and a practice that runs a
+longer call should not hit Executives Now's number. Above eight the section
+stops being the "much shorter diagnostic" v3 is for, and a practice that wants
+that many can put them in a custom section once those exist (phase 6).
+
+**Adding a question during a session (D4, amended).** The template's number
+is where a session starts, not a wall. In the live view's diagnostic section:
+
+- **"Add a question"**: the person on the call types one. It goes straight into
+  the session, because a person wrote it (`rule = manual`), under a new key in
+  the session's own snapshot, exactly as an accepted proposal does.
+- **"Propose more"** and **"Propose from the ratings"**: Claude's, into the
+  tray, accepted one at a time.
+
+Either way a session holds at most **8** diagnostic questions; a ninth is
+refused with a sentence saying to take one out first. An unanswered question
+can be taken back out; an answered one stays (v2's rule). Nothing can be added
+once the session is complete. Adding to a session never changes the template.
+
+**d. Mirror.** The section asks its own questions first (for example a
+three-year picture and what should be different in 90 days). "Draft the
+mirror" then reads those answers and the diagnostic and proposes the goal in
+their words and what unlocks it. Proposed, then accepted, as today
+(`proposed_mirror_*`, `mirror_*`). On the PDF the mirror prints where it does
+in v2.
+
+**e. Map (D13a).** Claude proposes the map rows; each lands in the tray as
+proposed, and the person accepts, edits or discards each one. Only an accepted
+row is on the map, the PDF or a goal. Draft rows (button, and once when the
+diagnostic is fully answered), Consolidate, cards, cap of five and learn from
+my edits are v2's code. The drafting input for v3 also carries the pre-call
+answers and the ratings with their comments, labeled as what they wrote before
+the call. Private notes, Scope and money stay out, as today.
+
+*Keeping duplicates out.* Today's code already does three things, and v3
+keeps them: Claude is shown every row on the map and in the tray and told not
+to repeat a theme; a proposal whose bottleneck matches an existing row word
+for word is dropped; a run proposes five at most. **v3 adds three**, because
+today a discarded theme can come back in other words:
+
+1. Claude is also shown the rows that were **discarded**, as "already
+   rejected, do not propose again".
+2. The word-for-word check ignores case, punctuation and spacing, and covers
+   the header as well as the bottleneck.
+3. A run proposes no more rows than the map has room for (five less the
+   accepted ones). When the map is full, Draft says so and makes no call.
+
+What code cannot promise is that Claude never restates a theme in different
+words; the prompt is what guards that, the tray is where a person catches it,
+and Consolidate merges what is left. v2 sessions get none of these three
+changes.
+
+**f and h.** As v2. A template without "What they value" has no such section
+in the live view, the pros-and-cons input or the PDF.
+
+**g. Two paths (D13b).** Claude makes the first attempt at the pros and cons:
+two to three pros and two to three cons **for each of the two paths**, from
+this session's own material only. They land in the tray as proposed. The
+person accepts, edits or discards each line, and can write their own. **Only
+an accepted line reaches the PDF.** The draft runs once by itself when both
+paths have a reaction captured, and on the "Draft pros and cons" button at
+any time. A line identical to one already there is dropped. This is v2's
+code and v2's rule, unchanged; the practice's own edits teach the next draft
+(learn from my edits).
+
+**After the call.** The 2-page PDF (v2 layout), the cover email with the full
+body on screen, conversion to goals and projects, and the prep panel are the
+existing code. Three v3 differences in the PDF: header chips are the
+pre-call questions marked `pdf_chip` (three at most, labeled by `label`);
+chart labels come from `label`; Path A/B copy comes from `settings`. In the
+first cut a v3 cover email has no automatic "we agreed to speak again on…"
+sentences (they are tied to `s9_*` keys); the practice writes them in the
+body before sending.
+
+---
+
+## 4. Screens
+
+### 4.1 Templates list (`/strategy/template`, existing screen)
+
+- Shows every template, as today. A v3 template opens in the builder; a
+  classic or v2 template opens in today's editor, unchanged.
+- **New template** (practice owner): a name, then the builder.
+- **A practice with no template** sees one sentence and the New template
+  button. Whether it also sees "Restore from seed" is D3.
+- Rename, duplicate, set default and archive work on v3 templates as on the
+  others. Duplicating a v3 template gives a v3 template.
+
+### 4.2 The builder (`/strategy/templates/<id>/build`, new)
+
+One page, the eight parts in session order, each a card:
+
+| Card | What the practice owner does |
+|---|---|
+| Header | Name; "Ready to run" checklist; Set as default; Preview the pre-call form |
+| Before the call | Add, reword, reorder, remove questions. Per question: a short label and "Show in the PDF header" (three at most). |
+| Ratings | Title; scale line; add, reword, reorder, remove rated items, each with a label. A wording that asks an open question is refused with the 9/22 explanation. |
+| Diagnostic | **Diagnostic questions per session** (1 to 8, default 3); the fixed questions asked when nothing proposed is accepted. |
+| Mirror and where they want to go | The destination questions. |
+| The map | Time budget only. |
+| What they value | **On / off.** When on: the value items. |
+| Two paths | The wording of the two paths; the PDF's title and two lines for each. |
+| Scope | The agreement items; which are money (hidden from assistants and from the PDF by default, as today). |
+| Wording for Claude | How to describe the practice in prompts (`advisor_role`). |
+
+Every card has a time budget for live sections. Saves are per card. Removing
+a question archives it (its key stays spent), as today.
+
+**Ready to run** is computed, not stored: at least two rated items, each with
+a label; exactly two path items; a name. A template that is not ready can be
+saved and edited, and **cannot start a session**: Start refuses and lists
+what is missing.
+
+**Editing a template never reaches a session already created.** The screen
+says so in one line, as today's editor does.
+
+After Tuesday (§7 phase 6): add a custom section anywhere among the live
+parts, remove and reorder sections, a talk track per section, "start from a
+copy of an existing template", and a read-only preview of the live view.
+
+### 4.3 Starting and running a session
+
+- The start form's template picker lists v3 templates beside the others. The
+  default is whatever the practice set; **P3 changes no practice's default.**
+- The live view is the existing screen. For a v3 session it shows the scale
+  line and rating inputs in part b, the diagnostic tray with "Propose from
+  the ratings", and the mirror under its questions. Classic and v2 sessions
+  render through the same branches they do today.
+
+---
+
+## 5. Access matrix changes
+
+No role gains or loses anything it has today. New rows for §10:
+
+| # | Capability | Practice owner | Associate | Assistant | Client owner | Client team member | Notes |
+|---|---|---|---|---|---|---|---|
+| 10.1 | Edit a template's questions *(existing)* | ✅ | ❌ | ❌ | — | — | Unchanged |
+| 10.1a | **Create a template; edit its sections, rated items and templated text** | ✅ | ❌ | ❌ | — | — | Builder verbs. 403 for everyone else |
+| 10.1b | **Read templates** (list, picker, builder read-only) | ✅ | ✅ | ✅ | — | — | As the list does today |
+| 10.5a | **Propose the diagnostic** (v3, including "from the ratings") | ✅ | 🔸 own prospects | ❌ | — | — | Same rule as 10.5: costs money against the practice key |
+| 10.5b | **Add a diagnostic question by hand during a session** (v3) | ✅ | 🔸 own prospects | ❌ | — | — | Same rule as 10.4: running the call |
+| 10.13 | Complete the pre-call form *(existing)* | — | — | — | — | — | Public token. Sees v3's pre-call questions only: never a talk track, a label-only field, or `settings` |
+
+**Platform owner:** nothing. In the Practices area no practice is bound, so
+every builder route returns 403 or 404. `apps/platform/stats.py` gains no
+template data.
+
+---
+
+## 6. How v2 and v3 coexist, and how v2 is proved unchanged
+
+### 6.1 Why they cannot collide
+
+1. **Format is frozen per session.** A session created from "Operations —
+   focused" carries `format: focused` in its own snapshot, and every branch
+   reads the snapshot.
+2. **No data changes.** The migration adds columns with defaults. No template,
+   question, session, answer, row or note is rewritten. "Operations — focused"
+   stays the Executives Now default until you change it.
+3. **v3 code is added beside v2 code.** v3's differences live in new modules
+   (`apps/strategy/v3.py`, `builder.py`) and new frontend components. Where a
+   shared function needs a v3 branch, the branch is taken only when the
+   snapshot says `v3`.
+4. **Classic and v2 templates are closed to the builder.** Its verbs refuse
+   them, so none of the new columns can ever be non-default on one.
+5. **A classic or v2 snapshot and API payload gain no key.** New fields are
+   emitted for v3 only.
+
+### 6.2 The proof
+
+**Phase 1, before any P3 code: golden files.** Written and committed against
+today's `dev`, green there, and required to stay **byte-identical** through
+every later phase. Two fixed sessions (one classic, one v2), fixed clock,
+Claude stubbed:
+
+| Golden | What it pins |
+|---|---|
+| Session payload as practice owner and as assistant | The live view's data, including the absent money fields |
+| Template snapshot from each template | No new key reaches a v2 snapshot |
+| Pre-call form payload and questions email body | What a prospect receives |
+| Every prompt sent to Claude: diagnostic proposals, draft rows, Consolidate, mirror, pros and cons, prep (system and input text) | The AI behavior, word for word |
+| Diagnostic slots and accept / remove results | The v2 diagnostic rules |
+| PDF HTML and page count (two) | The sales PDF |
+| Conversion preview and the goals and projects created | Conversion |
+| Style examples reaching the prompt | Learn from my edits |
+
+**Existing tests are not edited.** `tests/test_strategy_focused.py`,
+`tests/test_module4_*.py` and `Strategy.test.tsx` must pass untouched. Each
+phase report includes `git diff --stat` for those files, which must be empty.
+
+**The real sessions.** A script hashes the payload and the PDF HTML of every
+session on `execsnowhq_local` (the three live classic sessions and the
+archived draft) at the pre-P3 commit and again at each phase's head. The
+hashes must match. This runs on the laptop only.
+
+**What tests cannot prove.** How the v2 live view looks and behaves in a
+browser. That is a manual check: one full v2 session on the demo after P3 is
+on `dev` (D11), before go/no-go.
+
+### 6.3 The 10/8 session
+
+- If Tuesday is **no-go**, nothing is released and production stays exactly
+  as it is today.
+- If Tuesday is **go**, the 10/8 session runs on v2 through the same code
+  paths the goldens pin. I also recommend creating that session in production
+  **before** the release (D9): its questions are then frozen before P3
+  arrives.
+
+---
+
+## 7. Build phases
+
+The goal of phases 1–5 is one thing: **the smallest complete v3 session you
+can run end to end on the demo by Monday morning.**
+
+| Phase | When | What | Tests | Not verifiable without a browser |
+|---|---|---|---|---|
+| **1. Pin v2** | Sat | Golden files and the real-session hash script. No product code. | The goldens themselves, green on today's `dev` | — |
+| **2. Schema and template** | Sat | Migration 0016 (SQL shown first). `v3` format. Create a blank v3 template. Builder API: questions with label and chip, rated items, What they value on/off, `settings`, Ready to run. v3 snapshot. | **Isolation:** every builder route with another practice's template returns 404; platform owner 403/404. **Roles:** associate, assistant and client roles 403 on every builder verb. Builder verbs refuse classic and v2 templates. Rating wording rule. Unknown merge field refused. Start refuses a template that is not ready. Goldens unchanged. | — |
+| **3. Session engine** | Sat–Sun | Pre-call form and email on v3 questions. Ratings live. Diagnostic from pre-call answers, and from the ratings on the button. Mirror with its questions. Rows input with pre-call answers and ratings. Cap and Consolidate. Values optional. | Proposals land proposed, never asked. Claude's input holds only this session's answers. Fallback questions when nothing is accepted. `diagnostic_size` and the ceiling of eight enforced. A hand-added question joins the session's snapshot and never the template. Discarded rows reach the prompt; a normalized duplicate is dropped; a full map makes no call. Mirror never overwrites accepted text. A session without What they value. Each call writes an `ai_call` against the right practice; the worker's call obeys the daily cap. Assistant payload has no money fields. Goldens unchanged. | — |
+| **4. PDF and after** | Sun | v3 PDF context (chips, labels, path copy). Conversion and prep on a v3 session. | PDF is two pages; no private note, mechanics, observation or money without its flag (AC-4.9 on v3). Conversion creates the same goals and projects as for a v2 session with the same rows. Goldens unchanged. | **How the PDF looks**: spacing, wrapping of long labels, the chart with 2 and with 8 items |
+| **5. Screens** | Sun | The builder screen. v3 branches in the live view. Template list and picker. Vocabulary and American English checks. | Frontend tests for each builder card and the v3 live view; vocabulary guard; `Strategy.test.tsx` untouched and green. Full suite green, then push to `dev`. | **Everything visual**: the builder's layout, save feedback, the live view on a call-sized window, pacing bar, tray behavior while typing |
+| **Mon–Tue** | | Your dry run on the demo. I fix what it finds; nothing new is started unless the dry run is clean. | Regression test per fix | The dry run is the browser check |
+| **6. After go/no-go** | later | Custom sections; add, remove, reorder sections; talk tracks; start from a copy; live-view preview; `precall_intro`. | Per item, plus isolation and role tests for each new verb | Section drag and drop; preview |
+
+### What I would cut or defer to hit Tuesday, plainly
+
+**Not in the Tuesday build:**
+
+1. Custom sections, and adding, removing or reordering sections. Only "What
+   they value" can be switched off. *This is the largest cut: "sections are
+   customizable" is delivered as titles, content and one optional section,
+   not as a free layout.*
+2. Talk tracks per section, and the editable pre-call intro.
+3. Starting a v3 template from a copy of a classic or v2 template. You type
+   your questions into the builder on the demo, which is also its test.
+4. Automatic next-step sentences in a v3 cover email.
+5. Learn from my edits for diagnostic question wording (it keeps working for
+   map rows and pros and cons).
+6. A v3-specific PDF design. v3 prints on v2's layout.
+7. A per-template map cap, rating scales other than 1–10, and moving a
+   question between sections.
+
+**First to go if the weekend runs short**, in this order: the PDF header
+chips (v3 would print none), "Propose from the ratings", the pre-call form
+preview in the builder.
+
+**Not cut under any pressure:** phase 1, the two mandatory test families,
+and review-before-it-lands on every AI output.
+
+### Limits of a dry run on the demo
+
+- **The demo has no Anthropic key.** Claude's buttons say so until you enter
+  one on the demo's AI usage screen. It spends on that key.
+- **The demo has no worker.** The automatic proposal after the pre-call form
+  will not run there. The Propose button does the same work.
+- **The demo sends no mail.** The pre-call form link exists only inside the
+  unsent message. To be confirmed in phase 3: whether the link can be copied
+  from the demo's Outbox entry. If not, that leg runs on the laptop (Mailpit),
+  or the answers are typed into the session.
+- **The demo's practice has no v2 template.** See D11.
+
+---
+
+## 8. Decisions for the owner
+
+| # | Question | Recommendation | Owner, 2026-10-03 |
+|---|---|---|---|
+| **D1** | **Accept the Tuesday cut**: eight fixed parts in fixed order, only "What they value" optional, custom sections and section reordering after go/no-go? | **Yes.** It is the only version I would call safe for the 10/8 constraint in one weekend. | **Yes.** |
+| D2 | A new template starts with the eight parts laid out, neutral wording in Two paths and Scope, and no questions anywhere else | Yes | **Yes.** Other practices build from the blank eight-part start, and it works for Executives Now too. |
+| D3 | A practice that has never had a seeded template (Blue Sky, every new practice) does **not** see "Restore from seed", so your Operations questions stay yours | Yes: hide it. Executives Now keeps it. | **Yes.** |
+| D4 | Diagnostic size in v3: a session holds **3** questions (template can set 2–5); up to 3 fixed questions as the fallback | 3 | **Yes, 3 by default, amended:** a practice sets its own number (1 to 8), and a question can be added during a session. §3c. |
+| D5 | Diagnostic rules in v3: growth mention, up to two evident gaps in the pre-call answers, and "Propose from the ratings" (two lowest) once the ratings are taken on the call | Yes, all three | **Yes, all three.** |
+| D6 | The mirror section asks its "where they want to go" questions first, then one Draft button; the PDF prints the mirror where v2 does | Yes | **Yes, exactly as described.** |
+| D7 | v3 uses v2's map (cards, five at most) and v2's 2-page PDF layout; header chips are up to three pre-call questions you mark | Yes | **Yes.** |
+| D8 | Templated text in the first cut: how Claude describes the practice, the rating scale line, and Path A/B title and two lines each | Yes; pre-call intro and talk tracks after go/no-go | **Yes.** |
+| **D9** | **Create the 10/8 session in production on "Operations — focused" before any P3 release**, so its questions are frozen first | **Yes** | **Yes.** The owner creates it himself: Cory Muscato, 10/8. |
+| **D10** | **Where the dry run happens.** Demo, with a key you enter on its AI usage screen, the Propose button standing in for the worker, and the pre-call leg on the laptop if the link cannot be copied from the demo's Outbox | Demo for the session; laptop for the pre-call leg if needed | **Yes.** Demo, with a separate Anthropic key that has a small spending limit. |
+| D11 | Add "Operations — focused" to the demo's fictional practice (`add_focused_template`, dry run then `--apply`, in the demo's Railway shell) so you can rehearse a v2 session there on the P3 code | Yes. It is the only browser proof that v2 is unchanged. | **Yes.** Done in the demo's Railway shell when P3 reaches `dev`. |
+| D12 | Go/no-go rule for Tuesday: goldens byte-identical, real-session hashes identical, existing strategy tests unedited and green, full suite green, one v3 and one v2 session completed on the demo | Yes, all five | **Yes, all five, plus the owner's own judgment after the dry run.** |
+| D13 | The builder makes no AI calls in P3 (no "draft my template") | Yes; revisit after Blue Sky has used it | **Yes for the builder.** AI in the session is required: Claude proposes the map without duplicates (§3e) and drafts the pros and cons for each path (§3g). |
