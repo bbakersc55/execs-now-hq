@@ -221,34 +221,53 @@ Nothing else: no links, no preview. The whole card is the link.
   shows every note that matches, best match first, not the latest twenty. Past
   200 matches it shows 200 and offers the rest.
 - **Filters** beside the search, as dropdowns: **Company**, **Contact**,
-  **Date** (today, last 7 days, last 30 days, custom from/to), and **Name**.
+  **Date** (today, last 7 days, last 30 days, custom from/to), **Name**, and
+  **All notes / Locked only**.
   Name is a small text box, "Name contains": a dropdown of every note's name
   would be the list again. Each active filter is also a chip under the bar with
   an x, and "Clear all", as on Contacts. Filters and search combine. A filtered
   view shows every match, like a search.
-- A note linked to a contact also counts for that contact's company.
-- The Company and Contact dropdowns list only companies and contacts that have
-  a note the person can read.
+- A note linked to a contact also counts for that contact's company, for
+  anyone who may see that contact.
+- The Company and Contact dropdowns list the companies and contacts that have
+  a note the person is shown, locked or not.
 
 **Opening a note.** Clicking a card opens the note as the page, replacing the
-list-beside-note split. It is read at the app's normal page width, not
-stretched across a wide monitor. "← Back to notes" returns to the grid with the
+list-beside-note split. *Owner, 2026-10-05: the open note used about half the
+screen.* It is now two columns up to 1760px wide (the other pages stop at
+1320): the note's text, and the transcript under it for a recording, in the
+wider column at a larger size and a line of at most about 100 characters;
+beside it "About this note" (what it is linked to, when it was created, who
+wrote it), the recording's state, and the summary, which is read against the
+transcript. It does not stretch across the whole of a very wide monitor,
+because past that the lines are too long to read. Below 1000px the columns
+stack. "← Back to notes" returns to the grid with the
 same search, filters and number of older notes shown; they are kept in the
 address, so the browser's Back does the same. A note opened from somewhere else
 (a contact, a link) goes back to the plain grid.
 
-**Locked notes.** Unchanged in what they are: found by a typed title only, a
-PIN to read. Two things are stricter here than on the note itself, where a
-locked note's stub shows what it is linked to:
+**Locked notes.** *Owner, 2026-10-05, replacing the first version of this
+rule, which left locked notes out of the Company and Contact filters: search
+and filters exist to find notes you only half remember, so locked notes must
+still come up; you just cannot open one without the PIN.*
 
-- A locked note **never matches the Company or Contact filter and never adds an
-  option to those dropdowns**, so a filter cannot confirm what one is linked
-  to. It still appears in the unfiltered grid and under Date, since its date is
-  on the card anyway. The filter bar says so in one line when either filter is
-  on. Someone who has unlocked a note in their session filters it normally,
-  until the unlock lapses.
-- **Name** matches the name as shown. A locked note whose title was taken from
-  its first line shows "Locked note" and matches nothing.
+- A locked note appears in the grid and in **every** filter like any other
+  note, as a card with its name, its date and the lock. A company or contact
+  that has only locked notes is still in the dropdowns. **Locked only** shows
+  just the locked ones.
+- **This reveals nothing new, and that was checked before it was built.** The
+  grid and a note's own page are served through the same scope, so everyone
+  who is shown a locked note's card is also shown, on the note's page, what it
+  is linked to (the locked page has always named its contact, company or
+  task). That holds for the practice owner, an associate and an assistant, and
+  a test asserts it for each; client users reach neither. One narrowing was
+  needed to keep it true: a note on a contact counts for that contact's
+  company only for someone who may see the contact.
+- **Contents never match.** A text search finds a locked note by its typed
+  title only, never by its body, transcript or summary. **Name** matches the
+  name as shown: a locked note whose title was taken from its first line shows
+  "Locked note" and matches nothing.
+- Opening one still asks for the PIN, exactly as before.
 
 The card payload carries only id, name, locked and date.
 
@@ -258,14 +277,16 @@ scope as the list); "New note" and `n`; recording, transcript and summary; the
 top bar and Settings are built (item 3).
 
 **API.** One new read endpoint, `GET /api/notes/browse/`, with `q`, `company`,
-`contact`, `name`, `after`, `before` and `limit`; it returns `total`, the
+`contact`, `name`, `locked`, `after`, `before` and `limit`; it returns `total`, the
 cards, and the two option lists. The existing `/api/notes/` list is untouched,
 because the contact, company and task pages use it. No migration.
 
 **Tests.** Backend: latest twenty and order; the card's four fields; search
-returns every match; each filter; bad filters refused; a locked note's links
-are not confirmed by a filter or an option; an unlock is per session; a hidden
-title and body match nothing; an associate's scope; plus the new route in the
+returns every match; each filter; bad filters refused; a locked note is found
+by every filter as a card and nothing more; for each staff role, whoever gets
+a locked card already sees its links on the note; no search or filter matches
+a locked note's contents; an associate's scope, and a contact's company not
+given to someone who cannot see the contact; plus the new route in the
 role-boundary matrix, the tenant-isolation test and the locked-note leak sweep.
 Frontend: cards show name, date and lock only; Show older; search and each
 filter reach the server; chips clear; Back to notes keeps the search and

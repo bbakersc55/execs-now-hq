@@ -113,18 +113,27 @@ class NoteViewSet(viewsets.GenericViewSet):
         """The Notes screen's grid (UI spec §9): cards of a name and a date.
 
         Newest first, `limit` at a time; `total` is every match, so the screen
-        can offer the rest. `q` is the same search as the list (FR-2.7: a
-        locked note is found by a typed title only). The filters are stricter
-        than the stub, which shows a locked note's links: **a locked note never
-        matches `company` or `contact`, and never supplies a filter option**,
-        so filtering cannot be used to learn what one is linked to. `name`
-        matches the title as displayed, so never a locked note's hidden one.
-        Someone who has unlocked a note in this session filters it like any
-        other. Dates are the created date every card already shows.
+        can offer the rest.
+
+        A locked note is on the grid and in every filter like any other note
+        (owner, 2026-10-05: search and filters are for finding a note you half
+        remember; the PIN is what stops you opening it). That reveals nothing
+        new: anyone who is served a locked note's card is served its stub by
+        `retrieve`, through the same `get_queryset`, and the stub already names
+        what the note is linked to. What a locked note's **content** may match
+        is unchanged: `q` is the list's search (FR-2.7, a typed title only,
+        never body, transcript or summary), and `name` matches the title as
+        displayed, so never a title taken from the body (FR-2.11b).
         """
         params = request.query_params
         qs = self.get_queryset()
-        readable = access.readable_q(request)
+        # A note on a contact counts for that contact's company, but only for
+        # someone who may see the contact: an associate can still be served a
+        # note they wrote on a contact since moved out of their scope, and the
+        # note names the contact, not where the contact works.
+        from apps.crm.models import Contact
+
+        seen_contacts = crm_perms.contact_queryset_for(request, Contact.objects.all())
 
         for link in ("company", "contact"):
             value = params.get(link)
@@ -132,10 +141,16 @@ class NoteViewSet(viewsets.GenericViewSet):
                 continue
             if not _is_uuid(value):
                 return Response({"detail": f"{link} must be an id."}, status=400)
-            # A note on a contact is a note about that contact's company too.
-            match = Q(company_id=value) | Q(contact__company_id=value) \
+            match = Q(company_id=value) | Q(
+                contact__company_id=value, contact_id__in=seen_contacts.values("pk")) \
                 if link == "company" else Q(contact_id=value)
-            qs = qs.filter(readable).filter(match)
+            qs = qs.filter(match)
+
+        locked = params.get("locked") or ""
+        if locked not in ("", "only"):
+            return Response({"detail": "locked must be 'only' or left out."}, status=400)
+        if locked:
+            qs = qs.filter(pin_hash__isnull=False)
 
         name = (params.get("name") or "").strip()
         if name:
@@ -164,14 +179,17 @@ class NoteViewSet(viewsets.GenericViewSet):
         except ValueError:
             return Response({"detail": "limit must be a number."}, status=400)
 
-        # Options come from notes whose links this user may see, whatever else
-        # is filtered: the dropdowns do not shrink as you narrow.
-        linked = self.get_queryset().filter(readable)
+        # Options come from every note this user is served, whatever else is
+        # filtered: the dropdowns do not shrink as you narrow.
+        linked = self.get_queryset()
         companies = {}
         contacts = {}
-        for note in linked.filter(Q(company__isnull=False) | Q(contact__isnull=False)) \
-                .select_related("contact__company"):
-            company = note.company or (note.contact.company if note.contact_id else None)
+        linked = linked.filter(Q(company__isnull=False) | Q(contact__isnull=False))
+        seen = set(seen_contacts.filter(
+            pk__in=linked.values("contact_id")).values_list("pk", flat=True))
+        for note in linked.select_related("contact__company"):
+            company = note.company or (
+                note.contact.company if note.contact_id in seen else None)
             if company is not None:
                 companies[str(company.pk)] = company.name
             if note.contact_id:

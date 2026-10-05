@@ -137,13 +137,43 @@ describe("the notes grid", () => {
                         "Date: Last 7 days", "Name: kick"]) {
       expect(screen.getByRole("button", { name: `Clear filter ${chip}` })).toBeInTheDocument();
     }
-    // Said where the filter is, not left to be discovered.
-    expect(screen.getByText(/Locked notes are left out of the company and contact filters/))
-      .toBeInTheDocument();
+    // A locked note is found by these like any other; nothing says otherwise.
+    expect(screen.queryByText(/Locked notes are left out/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Clear filter Company: Acme Freight" }));
     await vi.waitFor(() => expect(asked(fetchMock).get("company")).toBeNull());
     expect(asked(fetchMock).get("contact")).toBe("c1");
+  });
+
+  it("filters to locked notes only, and they stay cards with a lock", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show("/notes", {
+      "GET /api/notes/browse/?locked=only": grid([CARDS[0]]),
+    });
+    await screen.findByRole("link", { name: /Acme kickoff/ });
+
+    await user.selectOptions(screen.getByLabelText("Filter by lock"), "only");
+
+    await vi.waitFor(() => expect(asked(fetchMock).get("locked")).toBe("only"));
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("link", { name: /Acme kickoff/ })).not.toBeInTheDocument());
+    const card = screen.getByRole("link", { name: /Private thoughts/ });
+    expect(within(card).getByLabelText("Locked")).toBeInTheDocument();
+    expect(card).toHaveTextContent(/^Private thoughtsSep 21, 2026$/);
+
+    await user.click(screen.getByRole("button", { name: "Clear filter Locked only" }));
+    await vi.waitFor(() => expect(asked(fetchMock).get("locked")).toBeNull());
+  });
+
+  it("opens a note with what it is linked to beside the text", async () => {
+    show("/notes/n1");
+
+    const text = await screen.findByText("Dispatch is the bottleneck.");
+    expect(text.closest(".note-main")).not.toBeNull();
+    const about = screen.getByRole("heading", { name: "About this note" }).closest(".note-side");
+    expect(about).not.toBeNull();
+    expect(within(about as HTMLElement).getByRole("link", { name: /Dana Reyes/ }))
+      .toHaveAttribute("href", "/contacts/c1");
   });
 
   it("takes a custom date range as whole days", async () => {

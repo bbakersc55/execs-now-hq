@@ -45,14 +45,35 @@ export function NoteDetail(_: { me: Me }) {
   const n = note.data;
 
   return (
-    <>
+    <div className="note-page">
       {/* Back to the grid as it was left: its search and filters ride along
           from the card that was clicked. */}
       <p className="small"><Link to={`/notes${from}`}>← Back to notes</Link></p>
       <h2>{n.is_locked && "🔒 "}{n.title}</h2>
-      <p className="sub"><LinkChips note={n} /> · {when(n.created_at)}</p>
-      {n.stub ? <LockedNote note={n} onUnlocked={refresh} /> : <OpenNote note={n} onChange={refresh} />}
-    </>
+      {n.stub ? (
+        <div className="note-cols">
+          <div className="note-main"><LockedNote note={n} onUnlocked={refresh} /></div>
+          <aside className="note-side"><About note={n} /></aside>
+        </div>
+      ) : <OpenNote note={n} onChange={refresh} />}
+    </div>
+  );
+}
+
+/**
+ * What the note is about, beside it: the wide page's second column, so the
+ * text keeps a readable line and the page is not half empty. For a locked
+ * note this is the stub's own content, links and date, and nothing more.
+ */
+function About({ note }: { note: Note }) {
+  return (
+    <Card title="About this note">
+      <dl className="facts">
+        <dt>Linked to</dt><dd><LinkChips note={note} /></dd>
+        <dt>Created</dt><dd>{when(note.created_at)}</dd>
+        {!note.stub && note.created_by_name && <><dt>Written by</dt><dd>{note.created_by_name}</dd></>}
+      </dl>
+    </Card>
   );
 }
 
@@ -136,9 +157,13 @@ function OpenNote({ note, onChange }: { note: NoteFull; onChange: (n?: Note) => 
       onDone={(n) => { setPinDialog(false); onChange(n); }} />;
   }
 
+  const recorded = note.source === "recording" || note.transcription_state !== "none";
+
   return (
     <>
       {error && <Banner kind="bad">{error}</Banner>}
+      <div className="note-cols">
+      <div className="note-main">
       <Card title="Note" actions={
         <div className="row">
           {!editing && <button className="ghost small" onClick={() => setEditing(true)}>Edit</button>}
@@ -163,32 +188,42 @@ function OpenNote({ note, onChange }: { note: NoteFull; onChange: (n?: Note) => 
             </div>
           </>
         ) : (
-          <div style={{ whiteSpace: "pre-wrap" }}>{note.body || <span className="muted">No typed notes.</span>}</div>
+          <div className="note-body">{note.body || <span className="muted">No typed notes.</span>}</div>
         )}
         <p className="small muted">
-          {note.created_by_name && <>By {note.created_by_name}. </>}
           <button className="ghost small" onClick={remove}>Delete note</button>
         </p>
       </Card>
+      {note.transcript && (
+        <Card title="Transcript">
+          <div className="note-body small" style={{ maxHeight: "32rem", overflowY: "auto" }}>
+            {note.transcript}
+          </div>
+        </Card>
+      )}
+      </div>
 
-      {note.source === "recording" || note.transcription_state !== "none"
-        ? <RecordingPanel note={note} retention={settings.data?.audio_retention_days} act={act.mutate} />
-        : null}
+      {/* Beside the text: what it is linked to, and for a recording its
+          state and the summary, which is read against the transcript. */}
+      <aside className="note-side">
+        <About note={note} />
+        {recorded && <RecordingCard note={note}
+          retention={settings.data?.audio_retention_days} act={act.mutate} />}
+        {note.transcript && <SummaryCard note={note} act={act.mutate} />}
+      </aside>
+      </div>
     </>
   );
 }
 
-function RecordingPanel({ note, retention, act }: {
+function RecordingCard({ note, retention, act }: {
   note: NoteFull; retention?: number;
   act: (a: { path: string; data?: object }) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(note.proposed_summary ?? "");
   const [uploadMessage, setUploadMessage] = useState("");
   const duration = note.audio_duration_seconds ? clock(note.audio_duration_seconds) : "";
 
   return (
-    <>
       <Card title={`Recording${duration ? ` · ${duration}` : ""}`}>
         {note.transcription_state === "uploading" && (
           <>
@@ -247,14 +282,16 @@ function RecordingPanel({ note, retention, act }: {
           )}
         </div>
       </Card>
+  );
+}
 
-      {note.transcript && (
-        <div className="board" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          <Card title="Transcript">
-            <div className="small" style={{ whiteSpace: "pre-wrap", maxHeight: "32rem", overflowY: "auto" }}>
-              {note.transcript}
-            </div>
-          </Card>
+function SummaryCard({ note, act }: {
+  note: NoteFull; act: (a: { path: string; data?: object }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note.proposed_summary ?? "");
+
+  return (
           <Card title="Summary">
             {note.summary_state === "drafting" && <p className="muted">Claude is drafting a summary…</p>}
             {note.summary_state === "proposed" && (
@@ -288,8 +325,5 @@ function RecordingPanel({ note, retention, act }: {
               </>
             )}
           </Card>
-        </div>
-      )}
-    </>
   );
 }

@@ -110,7 +110,8 @@ function NotesGrid() {
   const name = get("name");
   const range = get("date");
   const { after, before } = bounds(range, get("from"), get("to"));
-  const narrowed = !!(q || company || contact || name || after || before);
+  const locked = get("locked");
+  const narrowed = !!(q || company || contact || name || after || before || locked);
   const step = narrowed ? MATCH_PAGE : PAGE;
   const limit = Number(get("show")) || step;
 
@@ -119,6 +120,7 @@ function NotesGrid() {
   if (company) request.set("company", company);
   if (contact) request.set("contact", contact);
   if (name) request.set("name", name);
+  if (locked) request.set("locked", locked);
   if (after) request.set("after", after.toISOString());
   if (before) request.set("before", before.toISOString());
   request.set("limit", String(limit));
@@ -145,7 +147,7 @@ function NotesGrid() {
       <PageHead title="Notes"
         sub={<>Press <span className="mono">n</span> anywhere to write one. Search
           covers titles, text and accepted summaries; a locked note is found by
-          its title only.</>} />
+          its title only, and by every filter.</>} />
 
       <div className="listbar">
         <SearchField label="Search notes" value={term} onChange={setTerm}
@@ -170,6 +172,11 @@ function NotesGrid() {
           </select>
           <input aria-label="Filter by name" placeholder="Name contains…" value={nameTerm}
             onChange={(e) => setNameTerm(e.target.value)} />
+          <select aria-label="Filter by lock" value={locked}
+            onChange={(e) => set({ locked: e.target.value })}>
+            <option value="">All notes</option>
+            <option value="only">Locked only</option>
+          </select>
         </div>
       </div>
 
@@ -200,14 +207,9 @@ function NotesGrid() {
               : RANGES[range]}`}
             onClear={() => set({ date: "", from: "", to: "" })} />}
           {name && <Chip label={`Name: ${name}`} onClear={() => setNameTerm("")} />}
+          {locked && <Chip label="Locked only" onClear={() => set({ locked: "" })} />}
         </FilterBar>
       )}
-      {(company || contact) && (
-        <p className="small muted">
-          Locked notes are left out of the company and contact filters.
-        </p>
-      )}
-
       {grid.isError && (
         <Banner kind="bad">Notes could not be loaded. Reload the page to try again.</Banner>
       )}

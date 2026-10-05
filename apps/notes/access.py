@@ -84,18 +84,3 @@ def unlocked_note_ids(request, notes) -> set:
 def can_read(request, note) -> bool:
     return not note.is_locked or note.pk in unlocked_note_ids(request, [note])
 
-
-def readable_q(request) -> Q:
-    """Notes whose content and links this user may see right now: not locked,
-    or unlocked by them in this session. For filtering *by* a link or a
-    title, where matching a locked note would say what it is linked to."""
-    from apps.notes.models import NotePinUnlock
-
-    session_key = getattr(request.session, "session_key", None)
-    if not session_key:
-        return Q(pin_hash__isnull=True)
-    unlocked = NotePinUnlock.objects.filter(
-        user_id=request.user.pk, session_key=session_key,
-        expires_at__gt=timezone.now(), unlocked_at__gte=F("note__pin_set_at"),
-    ).values("note_id")
-    return Q(pin_hash__isnull=True) | Q(pk__in=unlocked)

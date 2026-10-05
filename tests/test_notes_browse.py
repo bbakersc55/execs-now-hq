@@ -20,6 +20,7 @@ from .factories import (
 )
 
 URL = "/api/notes/browse/"
+SECRET = "CONFIDENTIAL SEVERANCE DISCUSSION"
 
 
 def post(client, url, data=None):
@@ -116,39 +117,86 @@ def test_a_bad_filter_is_refused_rather_than_ignored(seeded_tenant, ff, api):
 
 
 @pytest.mark.django_db
-def test_filters_do_not_reveal_what_a_locked_note_is_linked_to(seeded_tenant, ff, va, api):
-    """The stub shows a locked note's links; a filter must not confirm them."""
+def test_a_locked_note_is_found_by_every_filter_as_a_card(seeded_tenant, ff, va, api):
+    """Owner, 2026-10-05: filters are for finding a note you half remember, so
+    a locked one must come up; the PIN is what stops you opening it."""
     acme = CompanyFactory(tenant=seeded_tenant, name="Acme Freight")
     dana = ContactFactory(tenant=seeded_tenant, first_name="Dana", last_name="Reyes",
                           company=acme)
-    locked = note(api.as_(ff), title="HR matter", contact=str(dana.pk))
+    locked = note(api.as_(ff), title="HR matter", contact=str(dana.pk), body=SECRET)
     lock(api.as_(ff), locked["id"])
+    note(api.as_(ff), title="Open one")
     viewer = api.as_(va)
 
     body = viewer.get(URL).json()
-    # It is on the grid, by its typed title, and marked.
-    assert [(n["title"], n["is_locked"]) for n in body["results"]] == [("HR matter", True)]
-    # It offers no filter option, and matches neither filter.
-    assert body["companies"] == [] and body["contacts"] == []
-    assert titles(viewer, contact=str(dana.pk)) == []
-    assert titles(viewer, company=str(acme.pk)) == []
-    assert "Dana" not in viewer.get(URL).content.decode()
+    # A company or contact with only a locked note is still an option.
+    assert body["companies"] == [{"id": str(acme.pk), "name": "Acme Freight"}]
+    assert body["contacts"] == [{"id": str(dana.pk), "name": "Dana Reyes"}]
+
+    today = (timezone.now() - timezone.timedelta(hours=1)).isoformat()
+    for params in ({"contact": str(dana.pk)}, {"company": str(acme.pk)},
+                   {"name": "hr mat"}, {"after": today, "name": "HR"}, {"locked": "only"}):
+        cards = viewer.get(URL, params).json()["results"]
+        assert [(c["title"], c["is_locked"]) for c in cards] == [("HR matter", True)], params
+        # Still only a card: nothing of the note comes with it.
+        assert set(cards[0]) == {"id", "title", "is_locked", "created_at"}
+
+    assert viewer.get(URL, {"locked": "sometimes"}).status_code == 400
 
 
 @pytest.mark.django_db
-def test_an_unlocked_note_filters_like_any_other_for_that_session_only(
-    seeded_tenant, ff, va, api
+@pytest.mark.parametrize("role", ["FF", "CF", "VA"])
+def test_whoever_gets_a_locked_card_already_sees_its_links_on_the_note(
+    seeded_tenant, ff, api, role
 ):
+    """Why the filters reveal nothing new: for every role that is served a
+    locked note's card, the note's own page already names what it is linked to
+    (the stub), and nothing else."""
+    theirs = ClientCompanyFactory(tenant=seeded_tenant, name="Theirs Ltd")
+    dana = ContactFactory(tenant=seeded_tenant, first_name="Dana", last_name="Reyes",
+                          company=theirs)
+    on_contact = note(api.as_(ff), title="HR matter", contact=str(dana.pk), body=SECRET)
+    on_company = note(api.as_(ff), title="Board matter", company=str(theirs.pk), body=SECRET)
+    for made in (on_contact, on_company):
+        lock(api.as_(ff), made["id"])
+    viewer_membership = MembershipFactory(tenant=seeded_tenant, role=role)
+    if role == "CF":
+        ClientAssignmentFactory(tenant=seeded_tenant, user=viewer_membership.user,
+                                company=theirs)
+    viewer = api.as_(viewer_membership)
+
+    cards = viewer.get(URL, {"company": str(theirs.pk)}).json()["results"]
+    assert {c["id"] for c in cards} == {on_contact["id"], on_company["id"]}
+
+    for card in cards:
+        stub = viewer.get(f"/api/notes/{card['id']}/").json()
+        assert stub["stub"] is True
+        assert stub["contact_name"] == "Dana Reyes" or stub["company_name"] == "Theirs Ltd"
+        assert "body" not in stub
+    assert SECRET not in viewer.get(URL, {"company": str(theirs.pk)}).content.decode()
+
+
+@pytest.mark.django_db
+def test_no_filter_or_search_gives_away_a_locked_notes_content(seeded_tenant, ff, va, api):
+    """Contents never leak; links may be used by the filters."""
     dana = ContactFactory(tenant=seeded_tenant, first_name="Dana", last_name="Reyes")
-    locked = note(api.as_(ff), title="HR matter", contact=str(dana.pk))
+    locked = note(api.as_(ff), title="HR matter", contact=str(dana.pk),
+                  body=SECRET + " The ops lead is leaving.")
     lock(api.as_(ff), locked["id"])
+    viewer = api.as_(va)
 
-    opener = api.as_(va)
-    assert post(opener, f"/api/notes/{locked['id']}/unlock/", {"pin": "4821"}).status_code == 200
-    assert titles(opener, contact=str(dana.pk)) == ["HR matter"]
+    # Body words find nothing, alone or combined with a filter that does match.
+    for params in ({"q": "severance"}, {"q": "confidential"}, {"name": "severance"},
+                   {"q": "severance", "contact": str(dana.pk)},
+                   {"q": "leaving", "locked": "only"}):
+        assert titles(viewer, **params) == [], params
+    # The title does, by search as well as by name.
+    assert titles(viewer, q="HR") == ["HR matter"]
+    assert titles(viewer, q="HR", contact=str(dana.pk), locked="only") == ["HR matter"]
 
-    someone_else = api.as_(MembershipFactory(tenant=seeded_tenant, role="VA"))
-    assert titles(someone_else, contact=str(dana.pk)) == []
+    for params in ({}, {"contact": str(dana.pk)}, {"locked": "only"}, {"q": "HR"}):
+        blob = viewer.get(URL, params).content.decode()
+        assert SECRET not in blob and "ops lead" not in blob, params
 
 
 @pytest.mark.django_db
@@ -190,3 +238,25 @@ def test_an_associate_sees_and_filters_only_their_own_scope(seeded_tenant, ff, a
     assert [n["title"] for n in body["results"]] == ["In scope"]
     assert [c["name"] for c in body["companies"]] == ["Theirs Ltd"]
     assert titles(api.as_(cf), company=str(not_theirs.pk)) == []
+
+
+@pytest.mark.django_db
+def test_a_contacts_company_is_not_given_to_someone_who_cannot_see_the_contact(
+    seeded_tenant, ff, api
+):
+    """An associate keeps a note they wrote on a contact that has since left
+    their scope. The note names the contact; the filters must not add where
+    that contact works."""
+    elsewhere = CompanyFactory(tenant=seeded_tenant, name="Someone Else Inc")
+    cf = MembershipFactory(tenant=seeded_tenant, role="CF")
+    contact = ContactFactory(tenant=seeded_tenant, company=elsewhere, owner=cf.user)
+    written = note(api.as_(cf), title="My note", contact=str(contact.pk))
+    type(contact).all_objects.filter(pk=contact.pk).update(owner=ff.user)
+
+    body = api.as_(cf).get(URL).json()
+
+    assert [n["id"] for n in body["results"]] == [written["id"]]
+    assert body["companies"] == []
+    assert titles(api.as_(cf), company=str(elsewhere.pk)) == []
+    # The practice owner sees the contact, so for them it counts.
+    assert titles(api.as_(ff), company=str(elsewhere.pk)) == ["My note"]
