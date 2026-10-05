@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from django.conf import settings
-from django.contrib.auth import login
+from django.contrib.auth import login, logout
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -225,6 +225,15 @@ def me(request):
         # user; this names both people, for the banner that never goes away.
         "acting": _acting(request),
     })
+
+
+@csrf_protect
+@require_http_methods(["POST"])
+def sign_out(request):
+    """The top bar's Sign out. Ends the session on the server; signing out
+    while acting as someone ends that too, audited (tenancy.acting)."""
+    logout(request)
+    return JsonResponse({"signed_out": True})
 
 
 def _tenant_of(record):

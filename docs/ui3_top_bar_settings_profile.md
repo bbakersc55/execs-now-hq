@@ -1,6 +1,21 @@
 # UI 3 — the top bar, Settings and Profile
 
-**Spec for owner review · 2026-10-05 · no code and no migration until approved**
+**Spec · 2026-10-05**
+
+**Approved 2026-10-05: D1–D12 as recommended**, with two additions from the
+owner: the session rules in §2a (staff now; clients wait on his decision), and
+two-factor authentication as a roadmap note in §10. Build order: phases 1 to 4;
+phase 5 later.
+
+**One correction to D2, found while building.** The spec said "Act as a
+colleague (practice owner only, as today)". That was wrong about today. "Act as
+a colleague" is the **client owner's** control, for acting as someone else at
+their own company. Practice staff act as a *client* user from "View portal
+as…" on a company or contact page. **Nobody can act as an associate or an
+assistant; that does not exist.** What was built keeps today's behavior: the
+control moved into the profile menu for the people who already had it (client
+owners). Letting the practice owner view the app as a member of staff would be
+a new permission, and is not built.
 
 The owner's words: *move settings and profile out of the bottom of the sidebar
 into a bar across the top, with the profile picture at the top right. Clicking
@@ -49,12 +64,52 @@ returns focus, a click outside closes.
    practice.
 2. **Profile**
 3. **Settings** (only for someone who has at least one setting; §4)
-4. **Act as a colleague** (practice owner only, as today; D2)
+4. **Act as a colleague** (client owner only, as today; D2 and the correction
+   above)
 5. **Sign out**, separated at the bottom
 
 **Sign out** is new. `POST /auth/sign-out` ends the session on the server and
 returns to the sign-in screen. If the person is acting as a colleague, it ends
 that first and records it, as stopping does today. Client users get it too.
+
+## 2a. Session rules (owner, 2026-10-05)
+
+**How people sign in today.** Staff sign in with Google. Client portal users
+sign in with a link emailed to them, and that session then lasts 30 days from
+their last visit, so they are not asking for a new link every week.
+
+**Rule 1: closing the browser signs the person out.** The sign-in cookie
+becomes one the browser is meant to drop when it closes. What that can and
+cannot guarantee:
+
+- It works when the whole browser is quit. Closing one tab or one window while
+  others stay open does not sign anyone out.
+- **A browser set to reopen its previous session keeps the cookie.** Chrome's
+  "Continue where you left off", Edge's and Firefox's equivalents, and a
+  browser restored after a crash all bring the sign-in back. Phones rarely
+  "close" a browser at all. The app cannot detect or override this.
+- So rule 1 is a convenience, and **rule 2 is the one that can be relied on**.
+
+**Rule 2: 12 hours without activity signs the person out.** Before this, any
+request kept a session alive, so a screen left open on Digests or Activity
+(which refresh themselves) stayed signed in indefinitely. Now each request
+says how long it has been since the person last clicked, typed or scrolled in
+that tab, and the server keeps the time of the last real activity. Background
+refreshes report an old time and do not move it. After 12 hours the next
+request, including a background one, signs the session out and the screen
+shows the sign-in page.
+
+The idle time is reported by the person's own browser. Someone could make
+their own browser lie to stay signed in; that only affects their own session,
+which they hold anyway.
+
+**Who it applies to.** Staff (practice owner, associate, assistant, and the
+platform owner): both rules, now. **Client portal users: unchanged, 30 days,
+until the owner decides.** Recommendation: leave clients as they are. They
+sign in by emailed link, so signing them out on every browser close, or
+overnight, means a new email round trip each morning for someone who visits a
+few times a month. If something tighter is wanted for clients, a shorter
+rolling period (say 7 days) is the lever, not these two rules.
 
 ## 3. What moves out of the sidebar, and what stays
 
@@ -229,3 +284,24 @@ screens read, and it is checked against the goldens before anything is merged.
 | D10 | Where pictures appear | **Top bar and Profile first; everywhere initials show as a later phase; never in emails, digests or PDFs.** |
 | D11 | Can client portal users have a profile picture? | **Yes.** Same page, same rules; a client never sees another company's people. |
 | D12 | Does Feedback move into the top bar or stay floating? | **Into the bar**, at the right, staff only. The floating button covers the bottom of long pages and the Pipeline's last column. |
+
+## 10. Roadmap (recorded, not built)
+
+**Two-factor authentication.** The owner wants it at some point (2026-10-05).
+
+How it relates to Google sign-in: staff sign in with Google and the app holds
+no passwords, so **a staff member's second factor is whatever their Google
+account enforces**. If the practice's Google Workspace requires 2-Step
+Verification, staff already have two-factor sign-in today, and the app could
+not add anything stronger than that on top. The first step is therefore a
+Workspace setting, not app work. What the app cannot currently do is *know* or
+*require* it; if that matters, the options are to trust the Workspace policy,
+or to add an app-level second step (an authenticator code) for staff, which
+would mostly duplicate Google's.
+
+Client portal users are the real gap. A sign-in link proves control of the
+mailbox and nothing else, so their security is their email account's. A second
+factor for them would be an authenticator app or a code by text message, set
+up on their Profile page, which is where this spec leaves room for it. It
+would add friction for people who sign in rarely, so it is probably a
+per-practice or per-company switch rather than a default.

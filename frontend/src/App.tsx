@@ -2,29 +2,27 @@ import { Fragment, useEffect } from "react";
 import {
   Activity as ActivityIcon, BarChart3, Building2, CalendarCheck, CheckSquare,
   ClipboardList, Palette,
-  Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail, PanelLeftClose,
-  PanelLeftOpen,
+  Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone, Send, Hourglass,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
-import { ActAsColleague, ActingBanner } from "./components/ActAs";
-import { Avatar, useNarrowWindow, useRemembered } from "./components/shell";
+import { ActingBanner } from "./components/ActAs";
+import { useNarrowWindow, useRemembered } from "./components/shell";
 import { ToastHost } from "./components/ui";
 import { DemoBanner } from "./components/DemoBanner";
 import { SignedOut } from "./components/SignedOut";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
-import { api, Me } from "./lib/api";
+import { api, Me, SIGNED_OUT_EVENT } from "./lib/api";
 import { PRODUCT_FAVICON, setFavicon, useBranding } from "./lib/branding";
 import { applyPortalTokens } from "./lib/palette";
 import { LinkBranded } from "./components/LinkBranded";
 import { AreaSwitch } from "./components/AreaSwitch";
 import { AgreementGate } from "./components/AgreementGate";
-import { FeedbackButton } from "./components/FeedbackButton";
-import { roleLabel } from "./lib/roles";
+import { TopBar } from "./components/TopBar";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
 import { Contacts } from "./screens/Contacts";
@@ -170,6 +168,7 @@ export function App() {
     );
   }
 
+  const qc = useQueryClient();
   const { data: me, isLoading, isError } = useQuery<Me>({
     queryKey: ["me"],
     queryFn: () => api.get<Me>("/api/me"),
@@ -214,6 +213,14 @@ export function App() {
     setFavicon(staff || !brand.mark_url ? PRODUCT_FAVICON : brand.mark_url);
   }, [brand, staff]);
 
+  // The server ended the session (signed out elsewhere, or 12 hours idle):
+  // ask who we are again, which shows the sign-in screen.
+  useEffect(() => {
+    const ended = () => { qc.invalidateQueries({ queryKey: ["me"] }); };
+    window.addEventListener(SIGNED_OUT_EVENT, ended);
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, ended);
+  }, [qc]);
+
   if (isLoading) return <main style={{ padding: "2rem" }}>Loading…</main>;
 
   if (isError || !me?.authenticated) {
@@ -255,31 +262,20 @@ export function App() {
             </Fragment>
           ))}
         </nav>
-        <button className="collapse"
-          aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
-          // On a narrow window the toggle expands over the content rather than
-          // fighting the width: the choice it writes is still the manual one.
-          onClick={() => setCollapsed(!chosen)}>
-          {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.75} />
-            : <><PanelLeftClose size={18} strokeWidth={1.75} /> <span>Collapse</span></>}
-        </button>
-        <div className="who">
-          <Avatar name={me.full_name || me.email} size="lg" />
-          <div className="names" style={{ minWidth: 0 }}>
-            <div className="name">{me.full_name || me.email}</div>
-            <div className="role">{platform ? "Platform owner" : roleLabel(me.role)}</div>
-            <ActAsColleague me={me} />
-          </div>
-        </div>
       </aside>
+      <div className="content">
+      {/* UI 3: who is signed in, Collapse and Feedback live in the bar now. */}
+      <TopBar me={me} practice={brand?.display_name ?? ""} collapsed={collapsed}
+        // On a narrow window the toggle expands over the content rather than
+        // fighting the width: the choice it writes is still the manual one.
+        onToggleSidebar={() => setCollapsed(!chosen)}
+        feedback={!platform && !!me.role && TENANT.includes(me.role)} />
       <main>
         {/* FR-3.42 — never dismissible; stopping is the only way out. */}
         <ActingBanner me={me} />
         <DemoBanner me={me} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
-          {/* P2 §7: on every staff screen in a practice. Clients never see it. */}
-          {me.role && TENANT.includes(me.role) && <FeedbackButton />}
           {platform ? (
             <Routes>
               <Route path="/feedback" element={<PlatformFeedback />} />
@@ -341,6 +337,7 @@ export function App() {
         </ErrorBoundary>
         <ToastHost />
       </main>
+      </div>
     </div>
   );
 }

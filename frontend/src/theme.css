@@ -84,6 +84,7 @@
   --shadow: 0 10px 15px -3px rgba(31, 41, 55, .10), 0 4px 6px -4px rgba(31, 41, 55, .10);
   --focus: 0 0 0 3px rgba(10, 58, 101, .20);
   --sidebar-w: 240px;
+  --topbar-h: 56px;
   --sidebar-collapsed-w: 56px;
 }
 
@@ -182,19 +183,6 @@ h4 { font-size: var(--t-14); font-weight: 600; color: var(--text); }
 }
 .layout.collapsed .sidebar .capture-trigger .label { display: none; }
 
-.sidebar .who {
-  display: flex; align-items: center; gap: var(--s2); margin: auto var(--s4) 0;
-  padding-top: var(--s4); border-top: 1px solid rgba(255, 255, 255, .12);
-  font-size: var(--t-13); color: #cfdcea; min-width: 0;
-}
-.sidebar .who .name { color: #fff; font-weight: 600; }
-.sidebar .who .role { color: #9ab4cc; font-size: var(--t-12); }
-.sidebar .collapse {
-  margin: var(--s3) var(--s4) 0; background: transparent; border: none;
-  color: #9ab4cc; padding: var(--s2) 0; justify-content: flex-start;
-}
-.sidebar .collapse:hover { color: #fff; background: transparent; }
-
 /* Collapsed: icons only, with the label as the tooltip. */
 .layout.collapsed .sidebar { padding-left: 0; padding-right: 0; }
 .layout.collapsed .sidebar .brand { justify-content: center; margin: 0 0 var(--s6); }
@@ -202,11 +190,44 @@ h4 { font-size: var(--t-14); font-weight: 600; color: var(--text); }
 .layout.collapsed .sidebar .nav-group { display: none; }
 .layout.collapsed .sidebar nav a { justify-content: center; padding: var(--s3) 0; gap: 0; }
 .layout.collapsed .sidebar nav a .label { display: none; }
-.layout.collapsed .sidebar .who { justify-content: center; margin: auto 0 0; }
-.layout.collapsed .sidebar .who .names { display: none; }
-.layout.collapsed .sidebar .collapse { margin: var(--s3) 0 0; justify-content: center; }
 
+/* The column beside the sidebar: the top bar, then the page. */
+.content { min-width: 0; }
 main { padding: var(--s8) var(--gutter) var(--s12); max-width: 1320px; }
+
+/* ---------------------------------------------------------- the top bar */
+
+.topbar {
+  position: sticky; top: 0; z-index: 30; height: var(--topbar-h);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  padding: 0 var(--gutter) 0 var(--s4); background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.topbar .right { display: flex; align-items: center; gap: var(--s3); }
+.profile { position: relative; }
+.profile-button { border: none; background: transparent; padding: 2px; min-height: 0;
+                  border-radius: 999px; display: flex; }
+.profile-button:hover:not(:disabled) { background: var(--hover); }
+.profile-menu {
+  position: absolute; right: 0; top: calc(100% + var(--s2)); min-width: 264px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: var(--s1);
+}
+.profile-menu .who { padding: var(--s3); border-bottom: 1px solid var(--line);
+                     margin-bottom: var(--s1); }
+.profile-menu .who .name { font-weight: 600; font-size: var(--t-14); overflow-wrap: anywhere; }
+.profile-menu .who .role { font-size: var(--t-12); color: var(--muted); }
+.profile-menu .extra { padding: 0 var(--s3) var(--s2); }
+.profile-menu [role="menuitem"] {
+  display: flex; align-items: center; gap: var(--s2); width: 100%; text-align: left;
+  border: none; background: transparent; color: var(--text); font-size: var(--t-14);
+  font-weight: 400; min-height: 36px; padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm); text-decoration: none;
+}
+.profile-menu [role="menuitem"]:hover:not(:disabled),
+.profile-menu [role="menuitem"]:focus-visible { background: var(--hover); }
+.profile-menu .sign-out { border-top: 1px solid var(--line); border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+                          margin-top: var(--s1); }
 
 /* ------------------------------------------------------- the page header */
 
@@ -428,7 +449,7 @@ main:has(.pipeline-board) .sub { max-width: 80ch; }
 .pipeline-bar .search { flex: 1 1 280px; max-width: 420px; margin-left: auto; }
 .pipeline-board {
   display: flex; gap: var(--s4); align-items: flex-start; overflow-x: auto;
-  height: max(420px, calc(100vh - 290px)); padding: var(--s1) var(--s1) var(--s3);
+  height: max(420px, calc(100vh - 290px - var(--topbar-h))); padding: var(--s1) var(--s1) var(--s3);
   margin-bottom: var(--s6);
 }
 .pipeline-board .col {
@@ -616,7 +637,7 @@ ul.work-tree > li { margin: 0; }
 
 /* The call clock stays in view while the page scrolls (dry run 2). */
 .call-clock {
-  position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap;
+  position: sticky; top: var(--topbar-h); z-index: 20; display: flex; flex-wrap: wrap;
   gap: var(--s2) var(--s6); align-items: center; margin-bottom: var(--s4);
   padding: var(--s2) var(--s4); background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--radius);
@@ -626,7 +647,7 @@ ul.work-tree > li { margin: 0; }
 .call-clock strong.over { color: var(--warn); }
 .session-layout { display: grid; grid-template-columns: 232px 1fr; gap: var(--s6);
                   align-items: start; }
-.rail { position: sticky; top: calc(var(--s4) + 44px); display: flex; flex-direction: column; gap: 2px; }
+.rail { position: sticky; top: calc(var(--topbar-h) + var(--s4) + 44px); display: flex; flex-direction: column; gap: 2px; }
 .rail button {
   justify-content: space-between; width: 100%; border: none; background: transparent;
   color: var(--muted); font-size: var(--t-13); padding: var(--s2) var(--s3);
@@ -1025,9 +1046,9 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
 }
 
 /* P2: the Feedback button, on every staff screen, out of the way. */
-.feedback-button { position: fixed; right: var(--s4); bottom: var(--s4); z-index: 20;
-  background: var(--surface); box-shadow: 0 1px 4px rgba(0, 0, 0, .15); }
-.feedback-panel { position: fixed; right: var(--s4); bottom: var(--s4); z-index: 21;
+/* In the top bar since UI 3 (D12); the panel still opens at the bottom right. */
+.feedback-button { font-size: var(--t-13); }
+.feedback-panel { position: fixed; right: var(--s4); bottom: var(--s4); z-index: 31;
   width: min(26rem, calc(100vw - 2 * var(--s4))); max-height: calc(100vh - 2 * var(--s4));
   overflow-y: auto; background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); padding: var(--s4); box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }

@@ -76,6 +76,9 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     # Binds the tenant. Must come after authentication (assumption B1).
     "apps.tenancy.middleware.TenantMiddleware",
+    # After the practice is bound, so a sign-out for idleness that ends an
+    # acting-as session can say who was acting as whom.
+    "apps.accounts.middleware.StaffIdleSignOut",
     "apps.platform.middleware.AgreementGate",
 ]
 
@@ -165,6 +168,14 @@ LOGIN_URL = "/accounts/google/login/"
 
 # C3.5: 12-hour idle for tenant users; client sessions are extended on login.
 SESSION_COOKIE_AGE = 60 * 60 * 12
+# Staff (owner, 2026-10-05): closing the browser signs them out, so their
+# cookie carries no lifetime of its own. A client session is given an explicit
+# 30 days at sign-in, which keeps its cookie persistent regardless of this.
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+# ...and 12 hours without the person doing anything signs them out, counted by
+# apps.accounts.middleware.StaffIdleSignOut. SESSION_COOKIE_AGE alone slides on
+# every request, background refreshes included.
+STAFF_IDLE_SECONDS = 60 * 60 * 12
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"

@@ -58,6 +58,7 @@ urlpatterns = [
     path("api/strategy/precall/<str:token>/complete", strategy_precall.precall_complete,
          name="precall-complete"),
     path("accounts/refused", account_views.login_refused, name="login-refused"),
+    path("auth/sign-out", account_views.sign_out, name="sign-out"),
     path("auth/magic/request", account_views.request_magic_link, name="magic-request"),
     # C3.3: GET renders a confirmation page; only POST consumes the token.
     path("auth/magic/<str:token>", account_views.magic_link_landing, name="magic-landing"),

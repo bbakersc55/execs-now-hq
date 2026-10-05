@@ -5,6 +5,24 @@ function csrfToken(): string {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+/**
+ * When the person last did something in this tab. Every request says how long
+ * ago that was, so a screen that refreshes itself does not keep a staff
+ * session alive: 12 hours without a click, a key or a scroll signs them out
+ * (UI 3 spec §2a). Loading the page counts as doing something.
+ */
+let lastActive = Date.now();
+if (typeof window !== "undefined") {
+  for (const type of ["pointerdown", "keydown", "wheel", "touchstart", "scroll"]) {
+    window.addEventListener(type, () => { lastActive = Date.now(); },
+                            { capture: true, passive: true });
+  }
+}
+
+/** Fired when the server says the session is over, so the app can show the
+ *  sign-in screen instead of a screen full of refusals. */
+export const SIGNED_OUT_EVENT = "enhq:signed-out";
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const isForm = body instanceof FormData;
   const response = await fetch(path, {
@@ -12,6 +30,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     credentials: "same-origin",
     headers: {
       "X-CSRFToken": csrfToken(),
+      "X-Idle-Seconds": String(Math.round((Date.now() - lastActive) / 1000)),
       ...(isForm || body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: isForm ? (body as FormData) : body === undefined ? undefined : JSON.stringify(body),
@@ -19,6 +38,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (response.status === 204) return undefined as T;
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
+  if (response.status === 401 && path !== "/api/me") {
+    window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+  }
   if (!response.ok) {
     throw Object.assign(new Error(refusal(response, data)), { status: response.status, data });
   }

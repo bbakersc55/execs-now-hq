@@ -76,7 +76,9 @@ describe("the area switch", () => {
       "GET /api/platform/practices": [EN],
     }));
     renderRoute(<App />, { path: "*", route: "/practices" });
-    expect(await screen.findByText("Platform owner")).toBeInTheDocument();
+    // Who is signed in is in the top bar's menu now (UI 3).
+    await userEvent.setup().click(await screen.findByRole("button", { name: /Your account/ }));
+    expect(screen.getByText(/Platform owner/)).toBeInTheDocument();
     const nav = screen.getByRole("navigation");
     await waitFor(() => expect(within(nav).getAllByRole("link").map((a) => a.textContent))
       .toEqual(["Practices", "Feedback"]));

@@ -44,7 +44,7 @@ export function ActingBanner({ me }: { me: Me }) {
   if (!a) return null;
 
   return (
-    <div role="status" aria-label="Acting as" style={{ position: "sticky", top: 0, zIndex: 5 }}>
+    <div role="status" aria-label="Acting as" style={{ position: "sticky", top: "var(--topbar-h)", zIndex: 5 }}>
       <Banner kind="warn">
         <strong>{a.real_name} is acting as {a.as_name}</strong> ({roleLabel(a.as_role)}
         {a.company_name && `, ${a.company_name}`}). Everything done here is recorded as done by
