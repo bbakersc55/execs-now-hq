@@ -274,6 +274,18 @@ redeployed 21:44:48; new code serving by 21:45:24. **Push to new code: 2 min
 28 s.** Web answered 200 at every sample (about every 9 s). **Worker paused
 about 40 s.**
 
+**Observed at Release 5 (2026-10-05, no migration, the UI work: Pipeline,
+clickable rows, Notes grid, top bar, Settings, Profile name):** `main`
+fast-forwarded from `0a07322` to `31286cf` and pushed 20:58:31 UTC, by
+`git push origin 31286cf:main` so that the unreleased commit after it on `dev`
+stayed behind. Web `SUCCESS` by 20:59:58 (gunicorn listening 20:59:51,
+"Migrations are current"); worker `migrations current` 21:00:52, running
+21:00:54. **Push to new code: about 1 min 25 s.** With no migration the worker
+never waits and R1, R3–R6 do not apply; the check is that web says
+"Migrations are current" and the worker starts. Confirmed serving the new code
+from outside: `/auth/sign-out` answers 405 to a GET and `/api/me/profile` 401
+(both 404 before).
+
 ---
 
 ## Part A — the owner's steps, in order

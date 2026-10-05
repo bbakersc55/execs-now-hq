@@ -1,13 +1,27 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; updated at the end of that
-day, after Release 4 (P3) and the part two spec. **The next session starts at
+day, after Release 4 (P3) and the part two spec, and again on **2026-10-05
+after Release 5 (the UI work)**. **The next session starts at
 "Next" below.** Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it leaves
 off." The specs in `docs/` are the source of truth; this covers what they
 don't, and what changed since 9/30.
 
 ## Next
+
+**First, from 10/5:** Bryan runs the production smoke check for Release 5 (the
+list is in the 10/5 chat: top bar and profile menu, Settings sections, Sign out
+and back in, one Pipeline drag, a Contacts row click, the Notes grid with a
+locked note, and Cory Muscato's and the Test Prospect sessions opening with the
+call clock below the top bar). Then **the profile picture bug**: adding a
+picture failed for Bryan with an error that the file was not the correct type,
+when it was. Details to follow from him; nothing has been investigated yet.
+The picture (UI 3 phase 4, commit `7094dcf`, migration `tenancy 0011`) is
+**built on the laptop's `dev` and deliberately not released and not pushed**;
+see "Where it stands".
+
+**Then, unchanged from 10/3:**
 
 Bryan runs **two test sessions in production** (part two, decision 14): one
 v3 and one v2, with a test contact, before any part two code. **Start by
@@ -67,9 +81,18 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | **P2** Practices admin and onboarding | **Released 10/3**; Blue Sky created and its owner invited 10/3 |
 | **P3** strategy template builder and session v3 | **Released 10/3 (Release 4, `main` at `0a07322`)**, phases 1–5; **no screen seen in a browser yet**; the demo dry run was waived |
 | **P3 part two** custom sections, AI per section, per-session rewordings | **Spec approved 10/3** (`docs/p3_part2_custom_sections_ai.md`); **phase 1 done** (v3 pinned by 43 golden files); phase 2 waits on the two test sessions |
+| **UI 1** Pipeline board, clickable rows, Notes grid, Work outlines | **Released 10/5 (Release 5, `main` at `31286cf`, no migration)**. Spec and UI backlog: `docs/ui1_pipeline_board.md`. Seen by Bryan on the laptop; **not yet smoke-checked in production** |
+| **UI 3** top bar, Sign out, staff session rules, Settings by role, Profile (name) | **Phases 1–3 released 10/5 (Release 5)**. Spec: `docs/ui3_top_bar_settings_profile.md`, D1–D12 accepted |
+| **UI 3 phase 4** profile picture | **Built, NOT released, NOT pushed.** Commit `7094dcf` is on the laptop's `dev` only (`origin/dev` is still at `7665c8f`). Migration `tenancy 0011` (one nullable column, `membership.avatar_id`) is applied to `execsnowhq_local` only. Held back for the upload bug above. **Do not push `dev` until it is fixed or hidden: the demo deploys from `dev` and applies its own migrations** |
+| UI 3 phase 5 pictures wherever initials show | Not started |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
+
+Tests as of 10/5: on the released commit `31286cf`, **2213 backend passed (3
+skipped, 2 xfailed), 634 frontend**, goldens unchanged, real-session
+fingerprints 4 identical. On the laptop's `dev` (`7094dcf`, with the picture):
+2250 backend, 649 frontend.
 
 Tests on `dev` as of 10/3, after P3: the backend suite green (P3 added 65
 tests across four files), **566 frontend**. The
@@ -294,7 +317,37 @@ unregistered model; the isolation family now includes the platform owner.
    Any change to the first three touches v2, so it moves the v2 goldens and
    needs the owner's yes before they are regenerated.
 
+9. **From Release 5 (10/5):**
+   - **Staff session rules are live:** quitting the browser signs staff out
+     (not when the browser restores its last session), and 12 hours without a
+     click, key or scroll signs them out; background refreshes do not count.
+     **Client portal sessions are unchanged (30 days)**, waiting on Bryan's
+     decision; the recommendation is to leave them.
+   - **"Act as a colleague" is the client owner's control only.** Staff view a
+     client's portal with "View portal as…". **Nobody can view the app as an
+     associate or assistant**; that would be a new permission, not specced.
+     The associate's and assistant's menus and Settings are covered by tests,
+     not seen by eye.
+   - **A flaky frontend test, not an app fault:** `session prep > ticks all,
+     then unticks one, before applying` in `Strategy.test.tsx` failed once in
+     a full run. Its last three lines act on the session screen after "Apply"
+     has navigated away; the test's one-route router reopens the screen as a
+     session called "template", and the control is briefly absent. Reproduced
+     on demand, passes 15 of 15 alone. Fix when convenient: move those three
+     lines before the Apply click. The test and the screen are unchanged from
+     Release 4.
+   - **Notes:** a locked note is found by every filter and by its typed title;
+     its contents never match. The open-note page is two columns up to 1760px.
+   - **Pipeline:** a column loads 100 cards, then "Show more" loads the rest
+     in one response; fine for Beta, revisit for a column in the thousands.
+
 ## Roadmap (recorded, not scheduled)
+
+- **From 10/5, recorded in the UI specs:** per-stage automations offered as a
+  prompt when a card moves, including calendar events and nurture campaigns
+  (`docs/ui1_pipeline_board.md` §8); two-factor authentication
+  (`docs/ui3_top_bar_settings_profile.md` §10: staff get it from Google
+  Workspace's 2-Step Verification; client users are the gap).
 
 - **P3 part two** (`docs/p3_part2_custom_sections_ai.md`), which takes in the
   items P3 deferred: custom sections and talk tracks, AI per section,
