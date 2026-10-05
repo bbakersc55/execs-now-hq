@@ -234,7 +234,25 @@ under the standing rule; in production it goes through "Releasing a migration"
 in the cutover runbook. A new storage purpose, `avatar`, is a constant, not
 schema.
 
+**As generated and applied (2026-10-05).** The same statement; only the
+constraint and index names are Django's own:
+
+```sql
+ALTER TABLE "membership" ADD COLUMN "avatar_id" uuid NULL
+  CONSTRAINT "membership_avatar_id_3008c5ac_fk_stored_file_id"
+  REFERENCES "stored_file"("id") DEFERRABLE INITIALLY DEFERRED;
+SET CONSTRAINTS "membership_avatar_id_3008c5ac_fk_stored_file_id" IMMEDIATE;
+CREATE INDEX "membership_avatar_id_3008c5ac" ON "membership" ("avatar_id");
+```
+
+`tenancy` 0011. Applied to `execsnowhq_local` only, after the full backend
+suite was green with the migration in place. **Not applied in production**: it
+goes with the release, by the runbook.
+
 ## 8. Build phases
+
+**Phases 1 to 4 are built on `dev` (2026-10-05), one commit each, not
+released. Phase 5 is not started.**
 
 Each phase is finished, tested and shown before the next. v2 and v3 goldens
 untouched throughout; phase 5 is the only one that changes payloads other

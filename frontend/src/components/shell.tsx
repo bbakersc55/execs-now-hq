@@ -13,12 +13,20 @@ import { Link, useNavigate } from "react-router-dom";
 
 /** Initials, and a tint derived from the name so the same person is the same
  *  colour everywhere. No photographs exist in Beta and none are invented. */
-export function Avatar({ name, size }: { name?: string | null; size?: "lg" }) {
+export function Avatar({ name, size, src }: {
+  name?: string | null; size?: "lg" | "xl";
+  /** The person's picture (UI 3); initials when there is none. */
+  src?: string | null;
+}) {
+  if (src) {
+    return <img className={`avatar picture${size ? ` ${size}` : ""}`} src={src}
+      alt="" title={name || undefined} />;
+  }
   const initials = (name ?? "").split(/\s+/).filter(Boolean).slice(0, 2)
     .map((part) => part[0]!.toUpperCase()).join("");
   const hue = [...(name ?? "")].reduce((total, ch) => total + ch.charCodeAt(0), 0) % 360;
   return (
-    <span className={`avatar${size === "lg" ? " lg" : ""}${initials ? "" : " none"}`}
+    <span className={`avatar${size ? ` ${size}` : ""}${initials ? "" : " none"}`}
       title={name || "unassigned"} aria-hidden={!name}
       style={initials ? { background: `hsl(${hue} 42% 32%)` } : undefined}>
       {initials || "—"}

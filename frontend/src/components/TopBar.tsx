@@ -94,7 +94,7 @@ function ProfileMenu({ me, practice }: { me: Me; practice: string }) {
       <button ref={button} type="button" className="profile-button"
         aria-label={`Your account: ${name}`} aria-haspopup="menu" aria-expanded={open}
         onClick={() => setOpen((o) => !o)}>
-        <Avatar name={name} size="lg" />
+        <Avatar name={name} size="lg" src={me.picture_url} />
       </button>
       {open && (
         <div className="profile-menu" role="menu" aria-label="Your account">

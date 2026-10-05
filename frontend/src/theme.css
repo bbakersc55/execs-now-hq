@@ -429,6 +429,15 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
   font-variant-numeric: normal;
 }
 .avatar.lg { width: 32px; height: 32px; font-size: var(--t-12); }
+.avatar.xl { width: 96px; height: 96px; font-size: var(--t-32); }
+img.avatar.picture { object-fit: cover; background: var(--line); padding: 0; }
+.profile-picture { display: flex; align-items: center; gap: var(--s6); flex-wrap: wrap; }
+.picture-crop { width: min(360px, calc(100vw - 2 * var(--s4))); }
+.picture-crop canvas { display: block; width: 280px; height: 280px; max-width: 100%;
+                       margin: 0 auto var(--s4); border-radius: 50%; background: var(--line);
+                       cursor: grab; touch-action: none; }
+.picture-crop canvas:active { cursor: grabbing; }
+.picture-crop .zoom { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s4); }
 .avatar.none { background: var(--line); color: var(--muted); }
 
 /* -------------------------------------------------------------- the board */

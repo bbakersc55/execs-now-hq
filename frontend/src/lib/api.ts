@@ -71,6 +71,8 @@ export interface Me {
   authenticated: boolean;
   email: string;
   full_name: string;
+  /** UI 3: the person's picture, or null for initials. */
+  picture_url?: string | null;
   role: "FF" | "CF" | "VA" | "FCC" | "ECC" | null;
   /** What the role is called (P1): never show `role` itself. */
   role_label?: string | null;

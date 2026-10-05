@@ -227,6 +227,13 @@ class Membership(TenantScopedModel):
         "crm.Contact", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="memberships",
     )
+    # UI 3: the person's profile picture, a 256x256 JPEG. On the membership,
+    # not the user: files are stored per practice, and a client user's
+    # membership is what ties the picture to their company for who may see it.
+    avatar = models.ForeignKey(
+        "tenancy.StoredFile", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
     invited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="invitations_sent",

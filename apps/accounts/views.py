@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods
 
 from config.branding import PALETTE, PRODUCT_NAME
 
+from apps.tenancy import avatars, storage
 from apps.tenancy.roles import role_label
 from .models import MagicLinkToken
 from .ratelimit import RateLimit, too_many
@@ -200,6 +201,8 @@ def me(request):
         "authenticated": True,
         "email": request.user.email,
         "full_name": request.user.full_name,
+        # UI 3: the top bar's picture; None means initials.
+        "picture_url": avatars.url_for(membership),
         "role": membership.role if membership else None,
         "role_label": role_label(membership.role) if membership else None,
         # P2: the Practices area switch. `area` is "platform" only for the
@@ -253,6 +256,10 @@ def _profile(request) -> dict:
         # A person's profile is theirs: nobody changes it from inside an
         # acting-as session, the practice owner included.
         "editable": getattr(request, "acting_as", None) is None,
+        # None in the Practices area: a picture belongs to a person *in a
+        # practice*, and none is bound there.
+        "picture_url": avatars.url_for(membership),
+        "can_have_picture": membership is not None,
     }
 
 
@@ -309,6 +316,65 @@ def profile(request):
         user.full_name = name
         user.save(update_fields=["full_name", "updated_at"])
     return JsonResponse(_profile(request))
+
+
+@csrf_protect
+@require_http_methods(["POST", "DELETE"])
+def profile_picture(request):
+    """Set (`POST`, multipart field `picture`) or remove (`DELETE`) the
+    person's own picture. Their own only, and not while acting as someone."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"authenticated": False}, status=401)
+    if getattr(request, "acting_as", None) is not None:
+        return JsonResponse(
+            {"detail": "You are acting as someone else. Their profile is theirs to change."},
+            status=403)
+    membership = getattr(request, "membership", None)
+    if membership is None:
+        return JsonResponse(
+            {"detail": "Switch to your practice to change your picture."}, status=403)
+
+    if request.method == "DELETE":
+        avatars.remove_picture(membership)
+        return JsonResponse(_profile(request))
+
+    upload = request.FILES.get("picture")
+    if upload is None:
+        return JsonResponse({"picture": "Choose a picture to upload."}, status=400)
+    if upload.size > avatars.MAX_BYTES:
+        return JsonResponse(
+            {"picture": f"That picture is {upload.size / 1024 / 1024:.1f} MB; "
+                        "the limit is 5 MB."}, status=400)
+    try:
+        avatars.set_picture(membership, upload.read())
+    except avatars.PictureInvalid as exc:
+        return JsonResponse({"picture": str(exc)}, status=400)
+    except storage.StorageError:
+        return JsonResponse(
+            {"detail": "The picture could not be saved just now. Try again."}, status=503)
+    return JsonResponse(_profile(request))
+
+
+@require_http_methods(["GET"])
+def person_picture(request, membership_id):
+    """A person's picture, to someone signed in who may see that person
+    (`avatars.visible_to`). Not found for everyone else: which people exist in
+    another practice, or another client company, is not something to confirm."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"authenticated": False}, status=401)
+    target = avatars.visible_to(getattr(request, "membership", None), membership_id)
+    if target is None:
+        raise Http404
+    try:
+        content = storage.read(target.avatar)
+    except storage.StorageError as exc:
+        raise Http404 from exc
+    response = HttpResponse(content, content_type="image/jpeg")
+    # The address changes with the picture, so the browser may keep it a while;
+    # `private` keeps it out of any shared cache.
+    response["Cache-Control"] = "private, max-age=3600"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 def _tenant_of(record):

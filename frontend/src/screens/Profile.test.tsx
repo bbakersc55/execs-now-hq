@@ -10,6 +10,7 @@ import { Profile, ProfileData } from "./Profile";
 const MINE: ProfileData = {
   email: "casey@example.invalid", full_name: "Casey Field", role_label: "Associate",
   practice: "Executives Now", client_company_name: null, editable: true,
+  picture_url: null, can_have_picture: true,
 };
 
 function show(profile: ProfileData = MINE, patch?: unknown) {

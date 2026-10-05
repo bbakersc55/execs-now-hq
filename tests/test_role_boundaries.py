@@ -240,6 +240,30 @@ def test_profile_endpoints_refuse_the_signed_out(url, client):
     assert client.get(url).status_code == 401
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_profile_picture_routes_by_role(role, seeded_tenant, api):
+    """Setting and removing: every role, their own. Fetching someone's: the
+    matrix is in test_profile_picture.py; here, that the route answers a role
+    for its own picture and refuses the signed-out."""
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (300, 300), (9, 9, 9)).save(out, format="PNG")
+    membership = _as(role, seeded_tenant)
+    client = api.as_(membership)
+
+    posted = client.post("/api/me/profile/picture",
+                         {"picture": SimpleUploadedFile("me.png", out.getvalue(), "image/png")})
+    assert posted.status_code == 200, posted.content
+    assert client.get(f"/api/people/{membership.pk}/picture").status_code == 200
+    assert client.delete("/api/me/profile/picture").status_code == 200
+    assert client.get(f"/api/people/{membership.pk}/picture").status_code == 404
+
+
 MODULE2_ENDPOINTS = [
     ("/api/notes/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
     ("/api/notes/browse/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
