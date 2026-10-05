@@ -408,6 +408,87 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
 .board .col.drop-target { outline: 2px dashed var(--orange); outline-offset: 4px;
                           border-radius: var(--radius); }
 
+/* The Pipeline board. Scoped, so the Tasks board above does not move. Each
+   column scrolls on its own under a pinned heading; the board scrolls sideways. */
+/* The board takes the whole area beside the sidebar, not the reading width
+   every other screen keeps. `min-width: 0` keeps the sideways scroll on the
+   board instead of on the page. */
+main:has(.pipeline-board) { max-width: none; min-width: 0; }
+main:has(.pipeline-board) .sub { max-width: 80ch; }
+.pipeline-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4);
+                margin-bottom: var(--s4); }
+.pipeline-bar .search { flex: 1 1 280px; max-width: 420px; margin-left: auto; }
+.pipeline-board {
+  display: flex; gap: var(--s4); align-items: flex-start; overflow-x: auto;
+  height: max(420px, calc(100vh - 290px)); padding: var(--s1) var(--s1) var(--s3);
+  margin-bottom: var(--s6);
+}
+.pipeline-board .col {
+  flex: 1 0 300px; max-height: 100%; display: flex; flex-direction: column;
+  background: color-mix(in srgb, var(--navy) 5%, transparent);
+  border-radius: var(--radius); padding: var(--s2);
+  outline: 2px dashed transparent; outline-offset: -2px;
+  transition: background .12s ease, outline-color .12s ease;
+}
+.pipeline-board .col.can-drop { outline-color: var(--line-strong); }
+.pipeline-board .col.drop-target { outline-color: var(--orange); background: var(--orange-050); }
+.pipeline-board .col-top { flex: 0 0 auto; padding: 0 var(--s1); }
+.pipeline-board .col-head { border-bottom: none; margin-bottom: 0; justify-content: space-between; }
+.pipeline-board .col-head .count { background: var(--surface); white-space: nowrap; }
+.pipeline-board .hint { font-size: var(--t-12); color: var(--muted); padding: 0 var(--s1) var(--s1); }
+.pipeline-board .col-cards {
+  flex: 1 1 auto; min-height: 64px; overflow-y: auto; display: flex; flex-direction: column;
+  gap: var(--s2); padding: var(--s2) var(--s1) var(--s1);
+}
+.pipeline-board .none { margin: 0; padding: var(--s3) var(--s1); font-size: var(--t-13);
+                        color: var(--muted); text-align: center; }
+
+.pipeline-board .more { display: flex; flex-direction: column; align-items: center;
+                        gap: var(--s2); padding: var(--s2) var(--s1) var(--s3);
+                        font-size: var(--t-13); color: var(--muted); }
+
+.contact-card {
+  flex: 0 0 auto; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s3); cursor: grab; user-select: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.contact-card:hover { border-color: var(--line-strong); }
+.contact-card:active { cursor: grabbing; box-shadow: var(--shadow); }
+.contact-card.dragging { opacity: .45; border-style: dashed; border-color: var(--navy-300);
+                         box-shadow: none; }
+.contact-card .card-top { display: flex; align-items: flex-start; gap: var(--s2);
+                          justify-content: space-between; }
+.contact-card .name { font-size: var(--t-14); font-weight: 600; color: var(--text);
+                      text-decoration: none; line-height: 1.35; padding-top: 2px; }
+.contact-card .name:hover { color: var(--navy); }
+.contact-card .line { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s1);
+                      font-size: var(--t-13); color: var(--ink-2); min-width: 0; }
+.contact-card .line svg { flex: 0 0 auto; color: var(--gray-light); }
+.contact-card .line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-card .pill { margin-top: var(--s2); }
+
+.card-menu { position: relative; flex: 0 0 auto; margin: -4px -4px 0 0; }
+.card-menu [role="menu"] {
+  position: absolute; right: 0; top: 100%; z-index: 10; min-width: 208px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow); padding: var(--s1); cursor: default;
+}
+.card-menu [role="menuitem"] {
+  display: block; width: 100%; text-align: left; border: none; background: transparent;
+  color: var(--text); font-size: var(--t-14); font-weight: 400; min-height: 36px;
+  padding: var(--s2) var(--s3); border-radius: var(--radius-sm);
+}
+.card-menu [role="menuitem"]:hover,
+.card-menu [role="menuitem"]:focus-visible { background: var(--hover); }
+
+.move-dialog {
+  position: fixed; top: 12vh; left: 50%; transform: translateX(-50%); z-index: 41;
+  width: min(680px, calc(100vw - 2 * var(--s4))); max-height: 76vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: var(--s6);
+}
+.move-dialog h3 { margin: 0 0 var(--s4); }
+
 .task-card {
   background: var(--surface); border: 1px solid var(--line);
   border-left: 3px solid var(--st-not-started); border-radius: var(--radius);

@@ -107,6 +107,8 @@ export interface Contact {
   last_name: string;
   title: string;
   company: string | null;
+  /** Pipeline board only: the company's name, "" when there is none. */
+  company_name?: string;
   owner: string | null;
   pipeline_positions: PipelinePosition[];
   source: string;
@@ -172,12 +174,18 @@ export interface Pipeline {
 
 export interface BoardColumn {
   stage: Stage;
+  /** Everyone in the stage, whatever is loaded or searched. */
   count: number;
+  /** How many of them match the board's search; the same as `count` without one. */
+  matched?: number;
+  /** The first 100 of those, or all of them once the column is expanded. */
   contacts: Contact[];
 }
 
 export interface Board {
   pipeline: Pipeline;
+  /** The search the server ran for this answer, "" when it ran none. */
+  q?: string;
   columns: BoardColumn[];
 }
 

@@ -18,7 +18,7 @@ from apps.tenancy.context import tenant_context
 
 from . import registry_config  # noqa: F401
 from .factories import (
-    CompanyFactory, ContactEmailFactory, ContactFactory,
+    CompanyFactory, ContactEmailFactory, ContactFactory, ContactPhoneFactory,
     ContactPipelinePositionFactory, EmailTemplateFactory, PipelineStageFactory,
     StageAutomationFactory,
 )
@@ -283,6 +283,129 @@ def test_a_board_shows_only_what_the_role_may_see(
     assert sum(c["count"] for c in body["columns"]) == 0
     assert sum(c["count"] for c in api.as_(ff).get(
         f"/api/pipelines/{sales.pk}/board/").json()["columns"]) == 1
+
+
+@pytest.mark.django_db
+def test_board_cards_carry_the_company_name(seeded_tenant, sales, stages, ff, api):
+    """The card shows the company; the contact payload only carries its id."""
+    company = CompanyFactory(tenant=seeded_tenant, name="Acme Freight")
+    with_company = _contact(seeded_tenant, last_name="Abbott", company=company)
+    without = _contact(seeded_tenant, last_name="Baker")
+    for contact in (with_company, without):
+        ContactPipelinePositionFactory(
+            tenant=seeded_tenant, contact=contact, pipeline=sales,
+            stage=stages["qualified"],
+        )
+    body = api.as_(ff).get(f"/api/pipelines/{sales.pk}/board/").json()
+
+    cards = next(
+        c for c in body["columns"] if c["stage"]["code"] == "qualified")["contacts"]
+    assert [c["company_name"] for c in cards] == ["Acme Freight", ""]
+
+
+@pytest.mark.django_db
+def test_board_cards_come_back_by_name(seeded_tenant, sales, stages, ff, api):
+    for last, first in [("Reyes", "Dana"), ("Abbott", "Zoe"), ("Abbott", "Al")]:
+        ContactPipelinePositionFactory(
+            tenant=seeded_tenant, pipeline=sales, stage=stages["qualified"],
+            contact=_contact(seeded_tenant, last_name=last, first_name=first),
+        )
+    body = api.as_(ff).get(f"/api/pipelines/{sales.pk}/board/").json()
+
+    cards = next(
+        c for c in body["columns"] if c["stage"]["code"] == "qualified")["contacts"]
+    assert [(c["last_name"], c["first_name"]) for c in cards] == [
+        ("Abbott", "Al"), ("Abbott", "Zoe"), ("Reyes", "Dana"),
+    ]
+
+
+def _fill(tenant, pipeline_row, stage, how_many):
+    for n in range(how_many):
+        ContactPipelinePositionFactory(
+            tenant=tenant, pipeline=pipeline_row, stage=stage,
+            contact=ContactFactory(tenant=tenant, last_name=f"Person{n:03d}"),
+        )
+
+
+def _column(body, code):
+    return next(c for c in body["columns"] if c["stage"]["code"] == code)
+
+
+@pytest.mark.django_db
+def test_a_long_column_loads_100_until_it_is_expanded(seeded_tenant, sales, stages, ff, api):
+    """The board's "Show more": `expand` lifts the cap for the columns named."""
+    _fill(seeded_tenant, sales, stages["qualified"], 103)
+    url = f"/api/pipelines/{sales.pk}/board/"
+
+    capped = _column(api.as_(ff).get(url).json(), "qualified")
+    assert (capped["count"], capped["matched"], len(capped["contacts"])) == (103, 103, 100)
+
+    full = _column(
+        api.as_(ff).get(url, {"expand": str(stages["qualified"].pk)}).json(), "qualified")
+    assert len(full["contacts"]) == 103
+
+
+@pytest.mark.django_db
+def test_board_search_reaches_cards_that_are_not_loaded(seeded_tenant, sales, stages, ff, api):
+    """Person102 sorts past the first 100, and the search still finds them."""
+    _fill(seeded_tenant, sales, stages["qualified"], 103)
+    body = api.as_(ff).get(
+        f"/api/pipelines/{sales.pk}/board/", {"q": "person102"}).json()
+
+    column = _column(body, "qualified")
+    assert body["q"] == "person102"
+    assert (column["count"], column["matched"]) == (103, 1)
+    assert [c["last_name"] for c in column["contacts"]] == ["Person102"]
+
+
+@pytest.mark.django_db
+def test_board_search_matches_name_company_email_and_phone(
+    seeded_tenant, sales, stages, ff, api
+):
+    company = CompanyFactory(tenant=seeded_tenant, name="Acme Freight")
+    by_company = ContactFactory(tenant=seeded_tenant, last_name="A", company=company)
+    by_name = ContactFactory(tenant=seeded_tenant, first_name="Dana", last_name="Reyes")
+    by_email = ContactFactory(tenant=seeded_tenant, last_name="C")
+    ContactEmailFactory(tenant=seeded_tenant, contact=by_email, address="zed@quux.invalid")
+    # Two addresses that both match must still be one card.
+    ContactEmailFactory(tenant=seeded_tenant, contact=by_email, address="zed2@quux.invalid",
+                        is_primary=False)
+    by_phone = ContactFactory(tenant=seeded_tenant, last_name="D")
+    ContactPhoneFactory(tenant=seeded_tenant, contact=by_phone, number="18575550100")
+    for contact in (by_company, by_name, by_email, by_phone):
+        ContactPipelinePositionFactory(
+            tenant=seeded_tenant, contact=contact, pipeline=sales,
+            stage=stages["qualified"],
+        )
+    url = f"/api/pipelines/{sales.pk}/board/"
+
+    def found(q):
+        column = _column(api.as_(ff).get(url, {"q": q}).json(), "qualified")
+        assert column["matched"] == len(column["contacts"])
+        return [c["id"] for c in column["contacts"]]
+
+    assert found("acme") == [str(by_company.pk)]
+    assert found("dana rey") == [str(by_name.pk)]
+    assert found("quux") == [str(by_email.pk)]
+    assert found("5550100") == [str(by_phone.pk)]
+
+
+@pytest.mark.django_db
+def test_board_search_and_expand_stay_inside_what_the_role_may_see(
+    seeded_tenant, sales, stages, cf, api
+):
+    """FR-1.9c holds for the new parameters too."""
+    contact = _contact(seeded_tenant, last_name="Findable")
+    ContactPipelinePositionFactory(
+        tenant=seeded_tenant, contact=contact, pipeline=sales, stage=stages["qualified"],
+    )
+    body = api.as_(cf).get(
+        f"/api/pipelines/{sales.pk}/board/",
+        {"q": "findable", "expand": str(stages["qualified"].pk)},
+    ).json()
+
+    assert sum(len(c["contacts"]) for c in body["columns"]) == 0
+    assert sum(c["matched"] for c in body["columns"]) == 0
 
 
 # --------------------------------------------------------------------- import

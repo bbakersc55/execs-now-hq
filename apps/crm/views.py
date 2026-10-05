@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from django.conf import settings as dj_settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Value
+from django.db.models.functions import Concat
 from django.http import Http404
 from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError
@@ -567,26 +568,56 @@ class PipelineViewSet(TenantStaffViewSet):
 
     @action(detail=True, methods=["get"])
     def board(self, request, pk=None):
-        """FR-1.9 — one board per pipeline: a column per stage with its contacts."""
+        """FR-1.9 — one board per pipeline: a column per stage with its contacts.
+
+        A column carries its first 100 cards. `expand` (stage ids, comma
+        separated) lifts that for the columns named: the board's "Show more".
+        `q` narrows every column to the cards matching it, on the server, so a
+        search reaches the cards a long column has not loaded. `count` is
+        always the whole column; `matched` is how many of it match `q`.
+        """
         pipeline_row = self.get_object()
         visible = crm_perms.contact_queryset_for(
             request, Contact.objects.filter(deleted_at__isnull=True)
         )
+        q = (request.query_params.get("q") or "").strip()
+        expand = {
+            ref for ref in (request.query_params.get("expand") or "").split(",") if ref
+        }
         columns = []
         for stage in pipeline_row.stages.order_by("position"):
             contacts = visible.filter(pipeline_positions__stage=stage)
+            count = contacts.count()
+            matching, matched = contacts, count
+            if q:
+                # The same four things the card shows, and the board filters on.
+                matching = contacts.annotate(
+                    _full_name=Concat("first_name", Value(" "), "last_name"),
+                ).filter(
+                    Q(_full_name__icontains=q) | Q(company__name__icontains=q)
+                    | Q(emails__address__icontains=q) | Q(phones__number__icontains=q)
+                ).distinct()
+                matched = matching.count()
+            # Ordered, so the 100 a long column shows are the same 100 each time.
+            ordered = matching.select_related("company").prefetch_related(
+                "emails", "phones", "type_links__contact_type",
+                "pipeline_positions__stage", "pipeline_positions__pipeline",
+            ).order_by("last_name", "first_name", "pk")
+            shown = list(ordered if str(stage.pk) in expand else ordered[:100])
+            cards = crm_serializers.ContactSerializer(shown, many=True).data
+            # The card names the company; the contact payload only carries its
+            # id. Added here, not on the serializer, so no other payload moves.
+            for card, contact in zip(cards, shown):
+                card["company_name"] = contact.company.name if contact.company else ""
             columns.append({
                 "stage": crm_serializers.PipelineStageSerializer(stage).data,
-                "count": contacts.count(),
-                "contacts": crm_serializers.ContactSerializer(
-                    contacts.prefetch_related(
-                        "emails", "phones", "type_links__contact_type",
-                        "pipeline_positions__stage", "pipeline_positions__pipeline",
-                    )[:100], many=True,
-                ).data,
+                "count": count,
+                "matched": matched,
+                "contacts": cards,
             })
         return Response({
             "pipeline": crm_serializers.PipelineSerializer(pipeline_row).data,
+            "q": q,
             "columns": columns,
         })
 
