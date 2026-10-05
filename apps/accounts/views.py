@@ -236,6 +236,81 @@ def sign_out(request):
     return JsonResponse({"signed_out": True})
 
 
+NAME_MAX = 200
+
+
+def _profile(request) -> dict:
+    """What a person's Profile page shows: themselves, and where they sit.
+    While acting as someone it describes the acted-as person, read-only."""
+    membership = getattr(request, "membership", None)
+    company = membership.client_company if membership and membership.client_company_id else None
+    return {
+        "email": request.user.email,
+        "full_name": request.user.full_name,
+        "role_label": role_label(membership.role) if membership else None,
+        "practice": email_layout_name(membership.tenant) if membership else None,
+        "client_company_name": company.name if company else None,
+        # A person's profile is theirs: nobody changes it from inside an
+        # acting-as session, the practice owner included.
+        "editable": getattr(request, "acting_as", None) is None,
+    }
+
+
+def email_layout_name(tenant) -> str:
+    from apps.crm.services import email_layout
+
+    return email_layout.branding(tenant).display_name
+
+
+@csrf_protect
+@require_http_methods(["GET", "PATCH"])
+def profile(request):
+    """UI 3 spec §5. `GET` reads it; `PATCH` changes the person's own name.
+
+    There is no id in the address: the only profile anyone can reach is their
+    own. The sign-in email is not changeable here (D6), and saying so beats
+    ignoring it.
+    """
+    import json
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"authenticated": False}, status=401)
+    if request.method == "GET":
+        return JsonResponse(_profile(request))
+
+    if getattr(request, "acting_as", None) is not None:
+        return JsonResponse(
+            {"detail": "You are acting as someone else. Their profile is theirs to change."},
+            status=403)
+    try:
+        data = json.loads(request.body or b"{}")
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        return JsonResponse({"detail": "Send the changes as JSON."}, status=400)
+    unknown = sorted(set(data) - {"full_name"})
+    if "email" in unknown:
+        return JsonResponse(
+            {"email": "The sign-in email cannot be changed here. Ask the practice owner."},
+            status=400)
+    if unknown:
+        return JsonResponse({"detail": f"Not something Profile changes: {', '.join(unknown)}."},
+                            status=400)
+    name = data.get("full_name")
+    if not isinstance(name, str) or not name.strip():
+        return JsonResponse({"full_name": "Enter your name."}, status=400)
+    name = " ".join(name.split())
+    if len(name) > NAME_MAX:
+        return JsonResponse({"full_name": f"A name is at most {NAME_MAX} characters."},
+                            status=400)
+
+    user = request.user
+    if name != user.full_name:
+        user.full_name = name
+        user.save(update_fields=["full_name", "updated_at"])
+    return JsonResponse(_profile(request))
+
+
 def _tenant_of(record):
     """The practice a sign-in link belongs to, so its page wears their brand."""
     from apps.tenancy.models import Membership

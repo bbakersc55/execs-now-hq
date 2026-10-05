@@ -34,6 +34,7 @@ urlpatterns = [
     path("api/branding/logo", account_views.branding_logo, name="branding-logo"),
     path("api/branding/mark", account_views.branding_mark, name="branding-mark"),
     path("api/me", account_views.me, name="me"),
+    path("api/me/profile", account_views.profile, name="profile"),
     path("api/", include("apps.crm.urls")),
     path("api/", include("apps.tenancy.urls")),
     path("api/", include("apps.notes.urls")),

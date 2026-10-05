@@ -218,6 +218,28 @@ def _note(api, author, **data):
     return response.json()
 
 
+# UI 3 — a person's own profile: every signed-in role, and only ever their own.
+PROFILE_ENDPOINTS = [
+    ("/api/me/profile", {"FF": 200, "CF": 200, "VA": 200, "FCC": 200, "ECC": 200}),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,expected", PROFILE_ENDPOINTS, ids=[u for u, _ in PROFILE_ENDPOINTS])
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_profile_endpoint_role_matrix(url, expected, role, seeded_tenant, api):
+    membership = _as(role, seeded_tenant)
+    response = api.as_(membership).get(url)
+    assert response.status_code == expected[role]
+    assert response.json()["email"] == membership.user.email
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url", [u for u, _ in PROFILE_ENDPOINTS])
+def test_profile_endpoints_refuse_the_signed_out(url, client):
+    assert client.get(url).status_code == 401
+
+
 MODULE2_ENDPOINTS = [
     ("/api/notes/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
     ("/api/notes/browse/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),

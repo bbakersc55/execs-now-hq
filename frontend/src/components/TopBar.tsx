@@ -102,6 +102,7 @@ function ProfileMenu({ me, practice }: { me: Me; practice: string }) {
             <div className="name">{name}</div>
             <div className="role">{role}{practice && ` · ${practice}`}</div>
           </div>
+          <Link role="menuitem" to="/profile" onClick={() => setOpen(false)}>Profile</Link>
           {settingsFor(me).length > 0 && (
             <Link role="menuitem" to="/settings" onClick={() => setOpen(false)}>Settings</Link>
           )}

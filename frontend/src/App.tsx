@@ -23,6 +23,7 @@ import { LinkBranded } from "./components/LinkBranded";
 import { AreaSwitch } from "./components/AreaSwitch";
 import { AgreementGate } from "./components/AgreementGate";
 import { TopBar } from "./components/TopBar";
+import { Profile } from "./screens/Profile";
 import { Settings } from "./screens/Settings";
 import { NotesSettingsPage } from "./screens/NotesSettingsPage";
 import { ContactDetail } from "./screens/ContactDetail";
@@ -276,6 +277,7 @@ export function App() {
           {platform ? (
             <Routes>
               <Route path="/feedback" element={<PlatformFeedback />} />
+              <Route path="/profile" element={<Profile />} />
               <Route path="*" element={<Practices />} />
             </Routes>
           ) : (
@@ -300,6 +302,8 @@ export function App() {
             <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/outbox" element={<Outbox />} />
             <Route path="/import" element={<ImportWizard />} />
+            {/* Everyone signed in, client users included (UI 3 spec §5). */}
+            <Route path="/profile" element={<Profile />} />
             {/* Settings: one page, the same addresses as before (UI 3, D4). */}
             <Route path="/settings" element={<Settings me={me} />} />
             <Route path="/settings/email"
