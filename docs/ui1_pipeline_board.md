@@ -137,6 +137,19 @@ In the owner's words:
 
 1. **Contacts and Companies:** no underlined name links, which look dated. The
    whole row is clickable and opens the contact or company.
+
+   **Built 2026-10-05.** The whole row opens the record, with a pointer and a
+   hover highlight. The name is still a real link (no underline), so the
+   keyboard, a screen reader, Ctrl+click and middle-click work as before;
+   Ctrl+click and middle-click anywhere else on the row open a new tab too. A
+   click on a control in the row (checkbox, Peek, Enroll, Set as primary) is
+   only that control's click, and dragging across a row to select text does
+   not open it. One helper, `useRowLink` in `components/shell.tsx`, so every
+   list behaves the same. Also applied to the other record tables that linked
+   by an underlined name: Campaigns, Vendors, Referral partners, the People
+   table on a company, and the Tasks list view. Not changed: Notes (item 2
+   redesigns it), the goal/project/task outlines on Work, Duplicates, and
+   feeds where the link sits inside a sentence.
 2. **Notes:** each note is a card showing only its name and date. Show the
    latest twenty in a few columns without searching. A search shows every
    match. Add dropdown filters: company, contact, date, name.

@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { BulkBar } from "../components/BulkBar";
 import {
   Avatar, Chip, FilterBar, PageHead, SearchField, Sheet, SortHeader, Sort, sorted,
+  useRowLink,
 } from "../components/shell";
 import { Banner, Card, Empty, Pill } from "../components/ui";
 import { Contact, ContactType, Me, Note, Pipeline, api } from "../lib/api";
@@ -13,6 +14,7 @@ import { NoteRow } from "./Notes";
 
 export function Contacts({ me }: { me: Me }) {
   const navigate = useNavigate();
+  const rowLink = useRowLink();
   const [term, setTerm] = useState("");
   const [active, setActive] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "name", asc: true });
@@ -220,7 +222,7 @@ export function Contacts({ me }: { me: Me }) {
             </thead>
             <tbody>
               {shown.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} {...rowLink(`/contacts/${c.id}`)}>
                   <td>
                     <input type="checkbox" checked={picked.includes(c.id)}
                       aria-label={`Select ${c.first_name} ${c.last_name}`}
@@ -231,9 +233,10 @@ export function Contacts({ me }: { me: Me }) {
                   <td>
                     <span className="named">
                       <Avatar name={`${c.first_name} ${c.last_name}`} />
-                      {/* The name opens the record; the row opens a peek. Two
-                          different intentions, so two different targets. */}
-                      <Link to={`/contacts/${c.id}`}>{c.first_name} {c.last_name}</Link>
+                      {/* The row opens the record and so does the name, which
+                          is the link a keyboard reaches. Peek stays its own
+                          button. */}
+                      <Link className="rowname" to={`/contacts/${c.id}`}>{c.first_name} {c.last_name}</Link>
                     </span>
                   </td>
                   <td className="muted">{c.title || "—"}</td>

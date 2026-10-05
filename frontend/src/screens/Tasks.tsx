@@ -8,7 +8,7 @@ import { PortalCreate } from "../components/PortalCreate";
 import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
-import { Avatar, Chip, FilterBar, PageHead, useRemembered } from "../components/shell";
+import { Avatar, Chip, FilterBar, PageHead, useRemembered, useRowLink } from "../components/shell";
 import { Banner, toast, when } from "../components/ui";
 import { TaskSheet } from "./TaskDetail";
 import { Me, PortalPerson, Task, WorkStatus, WorkParent, api } from "../lib/api";
@@ -337,6 +337,7 @@ function TaskCard({ task, board }: { task: Task; board: ReturnType<typeof useBoa
 
 /** The list view: grouped by project, collapsible, sortable. */
 function ListView({ rows }: { rows: Task[] }) {
+  const rowLink = useRowLink();
   const [sort, setSort] = useState<"title" | "due_date" | "status">("due_date");
   const groups = new Map<string, Task[]>();
   for (const task of rows) {
@@ -374,8 +375,8 @@ function ListView({ rows }: { rows: Task[] }) {
             </thead>
             <tbody>
               {sorted(list).map((t) => (
-                <tr key={t.id}>
-                  <td><Link to={`/tasks/${t.id}`}>{t.title}</Link></td>
+                <tr key={t.id} {...rowLink(`/tasks/${t.id}`)}>
+                  <td><Link className="rowname" to={`/tasks/${t.id}`}>{t.title}</Link></td>
                   <td><StatusPill status={t.status} /></td>
                   <td><span className="inline"><Avatar name={t.assignee.name} />
                     <span className="muted">{t.assignee.name || "—"}</span></span></td>

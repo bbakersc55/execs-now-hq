@@ -1,6 +1,6 @@
-import { ReactNode, useEffect, useState } from "react";
+import { MouseEvent, ReactNode, useEffect, useState } from "react";
 import { Search, X } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 /**
  * The pieces every screen is built from, per `docs/design_brief.md` Tier 1.
@@ -247,4 +247,35 @@ export function sorted<T>(rows: T[], sort: Sort, value: (row: T) => string | num
     return sort.asc ? compared : -compared;
   });
   return copy;
+}
+
+/** What a click inside a row is aimed at when it is not aimed at the row. */
+const ROW_CONTROLS = "a, button, input, select, textarea, label, summary, [role='menu']";
+
+/**
+ * A table row that opens its record (owner, 2026-10-05): the whole row is the
+ * target, with a pointer and a hover highlight.
+ *
+ * The name in the row stays a real link (`className="rowname"`), which is what
+ * a keyboard and a screen reader use, and what gives Ctrl+click and
+ * middle-click their new tab. This only adds the rest of the row for a mouse.
+ * A click on a control in the row (a checkbox, Peek) is that control's click
+ * and never opens the record, and neither does dragging across the row to
+ * select text, which is how an email address gets copied out of a list.
+ */
+export function useRowLink() {
+  const navigate = useNavigate();
+  return (to: string) => ({
+    className: "rowlink",
+    onClick: (event: MouseEvent<HTMLElement>) => {
+      if ((event.target as HTMLElement).closest(ROW_CONTROLS)) return;
+      if (window.getSelection()?.toString()) return;
+      if (event.metaKey || event.ctrlKey) window.open(to, "_blank", "noopener");
+      else navigate(to);
+    },
+    onAuxClick: (event: MouseEvent<HTMLElement>) => {
+      if (event.button !== 1 || (event.target as HTMLElement).closest(ROW_CONTROLS)) return;
+      window.open(to, "_blank", "noopener");
+    },
+  });
 }

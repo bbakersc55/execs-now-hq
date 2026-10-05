@@ -1,4 +1,4 @@
-import { PageHead } from "../components/shell";
+import { PageHead, useRowLink } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -9,6 +9,7 @@ import { api, Contact } from "../lib/api";
 interface Category { id: string; name: string; }
 
 export function Vendors() {
+  const rowLink = useRowLink();
   const qc = useQueryClient();
   const [category, setCategory] = useState("");
   const [newCategory, setNewCategory] = useState("");
@@ -57,8 +58,8 @@ export function Vendors() {
               <thead><tr><th>Name</th><th>Title</th><th>Types</th></tr></thead>
               <tbody>
                 {results.data!.map((v) => (
-                  <tr key={v.id}>
-                    <td><Link to={`/contacts/${v.id}`}>{v.first_name} {v.last_name}</Link></td>
+                  <tr key={v.id} {...rowLink(`/contacts/${v.id}`)}>
+                    <td><Link className="rowname" to={`/contacts/${v.id}`}>{v.first_name} {v.last_name}</Link></td>
                     <td className="muted">{v.title || "—"}</td>
                     <td>{v.type_codes.map((t) => <Pill key={t}>{t.replace(/_/g, " ")}</Pill>)}</td>
                   </tr>

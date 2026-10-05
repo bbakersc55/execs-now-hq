@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import {
-  Avatar, Chip, FilterBar, PageHead, SearchField, Sheet, Sort, SortHeader, sorted,
+  Avatar, Chip, FilterBar, PageHead, SearchField, Sheet, Sort, SortHeader, sorted, useRowLink,
 } from "../components/shell";
 import { Banner, Card, Empty, Pill } from "../components/ui";
 import { Company, Me, api } from "../lib/api";
@@ -20,6 +20,7 @@ import { AddCompany } from "./AddCompany";
  * and a peek before the full page.
  */
 export function Companies({ me }: { me: Me }) {
+  const rowLink = useRowLink();
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const [note, setNote] = useState("");
@@ -117,11 +118,11 @@ export function Companies({ me }: { me: Me }) {
             </thead>
             <tbody>
               {shown.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} {...rowLink(`/companies/${c.id}`)}>
                   <td>
                     <span className="named">
                       <Avatar name={c.name} />
-                      <Link to={`/companies/${c.id}`}>{c.name}</Link>
+                      <Link className="rowname" to={`/companies/${c.id}`}>{c.name}</Link>
                     </span>
                   </td>
                   <td className="muted">{c.industry || "—"}</td>

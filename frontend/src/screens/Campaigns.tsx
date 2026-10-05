@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Plus, Save, Search, Send, UserPlus } from "lucide-react";
 
 import { RichText } from "../components/RichText";
-import { Chip, FilterBar, PageHead } from "../components/shell";
+import { Chip, FilterBar, PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import {
   Campaign, CampaignCandidate, ContactType, MERGE_FIELDS, Pipeline, api,
@@ -17,6 +17,7 @@ import {
  * waiting for approval. Nothing on this screen sends — except a test to you.
  */
 export function Campaigns() {
+  const rowLink = useRowLink();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const list = useQuery<Campaign[]>({
@@ -50,8 +51,8 @@ export function Campaigns() {
               <th className="right">Unsubscribed</th><th>Created</th></tr></thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={c.id}>
-                  <td><Link to={`/campaigns/${c.id}`}>{c.name}</Link></td>
+                <tr key={c.id} {...rowLink(`/campaigns/${c.id}`)}>
+                  <td><Link className="rowname" to={`/campaigns/${c.id}`}>{c.name}</Link></td>
                   <td className="muted">{c.subject || "—"}</td>
                   <td className="right tabular">{c.stats.recipients}</td>
                   <td className="right tabular">{c.stats.queued}</td>

@@ -1,4 +1,4 @@
-import { PageHead } from "../components/shell";
+import { PageHead, useRowLink } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -19,6 +19,7 @@ interface Settings {
 }
 
 export function ReferralSettings() {
+  const rowLink = useRowLink();
   const qc = useQueryClient();
   const [blurb, setBlurb] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -207,7 +208,7 @@ export function ReferralSettings() {
             </thead>
             <tbody>
               {partners.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} {...rowLink(`/contacts/${p.id}`)}>
                   <td>
                     <input type="checkbox" checked={picked.includes(p.id)}
                       aria-label={`Select ${p.first_name} ${p.last_name}`}
@@ -215,7 +216,7 @@ export function ReferralSettings() {
                         ? [...picked, p.id]
                         : picked.filter((x) => x !== p.id))} />
                   </td>
-                  <td><Link to={`/contacts/${p.id}`}>{p.first_name} {p.last_name}</Link></td>
+                  <td><Link className="rowname" to={`/contacts/${p.id}`}>{p.first_name} {p.last_name}</Link></td>
                   <td>
                     <span className="inline">
                       {p.referral_enrolled

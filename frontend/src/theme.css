@@ -258,6 +258,11 @@ th {
 }
 tbody tr:hover { background: var(--hover); }
 tbody tr:last-child td { border-bottom: none; }
+/* A row that opens its record: the whole row is the target, and the name is
+   a link without the underline. */
+tr.rowlink { cursor: pointer; }
+a.rowname { color: var(--text); font-weight: 500; text-decoration: none; }
+tr.rowlink:hover a.rowname, a.rowname:hover { color: var(--navy); }
 
 /* ----------------------------------------------------------------- controls */
 

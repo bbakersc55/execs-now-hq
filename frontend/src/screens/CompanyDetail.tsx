@@ -2,6 +2,7 @@ import { CallNotes } from "../components/CallNotes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useRowLink } from "../components/shell";
 
 import { Banner, Card, Empty, Pill, when, positionsLabel } from "../components/ui";
 import { AddCompany } from "./AddCompany";
@@ -11,6 +12,7 @@ import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCar
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 
 export function CompanyDetail({ me }: { me: Me }) {
+  const rowLink = useRowLink();
   const { id } = useParams();
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
@@ -97,9 +99,9 @@ export function CompanyDetail({ me }: { me: Me }) {
               <thead><tr><th>Name</th><th>Title</th><th>Stage</th>{maySetPrimary && <th></th>}</tr></thead>
               <tbody>
                 {theirs.map((p) => (
-                  <tr key={p.id}>
+                  <tr key={p.id} {...rowLink(`/contacts/${p.id}`)}>
                     <td>
-                      <Link to={`/contacts/${p.id}`}>{p.first_name} {p.last_name}</Link>
+                      <Link className="rowname" to={`/contacts/${p.id}`}>{p.first_name} {p.last_name}</Link>
                       {c.primary_contact === p.id && <> <Pill>primary contact</Pill></>}
                     </td>
                     <td className="muted">{p.title || "—"}</td>
