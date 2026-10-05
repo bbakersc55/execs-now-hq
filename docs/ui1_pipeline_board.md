@@ -164,6 +164,8 @@ In the owner's words:
    person's permissions allow. Profile is where they change personal
    information and their profile picture.
 
+   **Spec written 2026-10-05, not built:** `docs/ui3_top_bar_settings_profile.md`.
+
 ## 8. Roadmap (recorded, not built)
 
 **Automation for each stage, offered when a card moves.** In the owner's words
