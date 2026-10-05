@@ -148,8 +148,13 @@ In the owner's words:
    list behaves the same. Also applied to the other record tables that linked
    by an underlined name: Campaigns, Vendors, Referral partners, the People
    table on a company, and the Tasks list view. Not changed: Notes (item 2
-   redesigns it), the goal/project/task outlines on Work, Duplicates, and
-   feeds where the link sits inside a sentence.
+   redesigns it), Duplicates, and feeds where the link sits inside a sentence.
+
+   **Work outlines, added the same day on the owner's yes:** project rows and
+   task rows on Work, the two unfiled lists, and the Projects and Tasks lists
+   on a goal's or project's page open on a click anywhere in the row. A goal's
+   header already expands and collapses on a click, so there the title is the
+   link and only loses its underline.
 2. **Notes:** each note is a card showing only its name and date. Show the
    latest twenty in a few columns without searching. A search shows every
    match. Add dropdown filters: company, contact, date, name.
@@ -198,3 +203,70 @@ How it relates to what exists:
   creating an event needs calendar write access, which is a new Google scope
   and its verification. The campaign half of this item does not depend on it
   and could ship first.
+
+## 9. Notes as a grid of cards
+
+*Owner, 2026-10-05: the Notes screen looks clunky; each entry is a note, but
+you cannot tell until you hover over it.*
+
+**The grid is the screen.** Notes opens on cards in a few columns (as many
+260px-or-wider columns as fit), across the full width beside the sidebar. A
+card shows the note's name and its date, and a small lock if it is locked.
+Nothing else: no links, no preview. The whole card is the link.
+
+- **No search:** the latest twenty, newest first, under a line that says
+  "Latest 20 of 143 notes". **Show older** at the bottom adds twenty more each
+  time.
+- **Search** (the same search as today: titles, text and accepted summaries)
+  shows every note that matches, best match first, not the latest twenty. Past
+  200 matches it shows 200 and offers the rest.
+- **Filters** beside the search, as dropdowns: **Company**, **Contact**,
+  **Date** (today, last 7 days, last 30 days, custom from/to), and **Name**.
+  Name is a small text box, "Name contains": a dropdown of every note's name
+  would be the list again. Each active filter is also a chip under the bar with
+  an x, and "Clear all", as on Contacts. Filters and search combine. A filtered
+  view shows every match, like a search.
+- A note linked to a contact also counts for that contact's company.
+- The Company and Contact dropdowns list only companies and contacts that have
+  a note the person can read.
+
+**Opening a note.** Clicking a card opens the note as the page, replacing the
+list-beside-note split. It is read at the app's normal page width, not
+stretched across a wide monitor. "← Back to notes" returns to the grid with the
+same search, filters and number of older notes shown; they are kept in the
+address, so the browser's Back does the same. A note opened from somewhere else
+(a contact, a link) goes back to the plain grid.
+
+**Locked notes.** Unchanged in what they are: found by a typed title only, a
+PIN to read. Two things are stricter here than on the note itself, where a
+locked note's stub shows what it is linked to:
+
+- A locked note **never matches the Company or Contact filter and never adds an
+  option to those dropdowns**, so a filter cannot confirm what one is linked
+  to. It still appears in the unfiltered grid and under Date, since its date is
+  on the card anyway. The filter bar says so in one line when either filter is
+  on. Someone who has unlocked a note in their session filters it normally,
+  until the unlock lapses.
+- **Name** matches the name as shown. A locked note whose title was taken from
+  its first line shows "Locked note" and matches nothing.
+
+The card payload carries only id, name, locked and date.
+
+**Unchanged:** role and practice visibility (the grid reads through the same
+scope as the list); "New note" and `n`; recording, transcript and summary; the
+"Recording audio retention" card, which stays at the bottom of Notes until the
+top bar and Settings are built (item 3).
+
+**API.** One new read endpoint, `GET /api/notes/browse/`, with `q`, `company`,
+`contact`, `name`, `after`, `before` and `limit`; it returns `total`, the
+cards, and the two option lists. The existing `/api/notes/` list is untouched,
+because the contact, company and task pages use it. No migration.
+
+**Tests.** Backend: latest twenty and order; the card's four fields; search
+returns every match; each filter; bad filters refused; a locked note's links
+are not confirmed by a filter or an option; an unlock is per session; a hidden
+title and body match nothing; an associate's scope; plus the new route in the
+role-boundary matrix, the tenant-isolation test and the locked-note leak sweep.
+Frontend: cards show name, date and lock only; Show older; search and each
+filter reach the server; chips clear; Back to notes keeps the search and
+filters.

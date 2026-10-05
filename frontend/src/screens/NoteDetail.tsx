@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { LinkPicker, Links } from "../components/LinkPicker";
 import { PinDialog } from "../components/PinDialog";
@@ -20,8 +20,9 @@ export function LinkChips({ note }: { note: NoteStub | NoteFull }) {
     : <span className="small muted">Not linked to anything</span>;
 }
 
-export function NoteDetail({ inPanel = false }: { me: Me; inPanel?: boolean }) {
+export function NoteDetail(_: { me: Me }) {
   const { id } = useParams();
+  const from = (useLocation().state as { notesFrom?: string } | null)?.notesFrom ?? "";
   const qc = useQueryClient();
   const note = useQuery<Note>({
     queryKey: ["note", id],
@@ -45,9 +46,9 @@ export function NoteDetail({ inPanel = false }: { me: Me; inPanel?: boolean }) {
 
   return (
     <>
-      {/* Inside the panel the list is already beside it, so a link back to
-          the list is a link to where you are. */}
-      {!inPanel && <p className="small"><Link to="/notes">← Notes</Link></p>}
+      {/* Back to the grid as it was left: its search and filters ride along
+          from the card that was clicked. */}
+      <p className="small"><Link to={`/notes${from}`}>← Back to notes</Link></p>
       <h2>{n.is_locked && "🔒 "}{n.title}</h2>
       <p className="sub"><LinkChips note={n} /> · {when(n.created_at)}</p>
       {n.stub ? <LockedNote note={n} onUnlocked={refresh} /> : <OpenNote note={n} onChange={refresh} />}

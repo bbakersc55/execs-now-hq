@@ -153,6 +153,10 @@ def test_note_routes_are_isolated_across_tenants(tenant_a, tenant_b, api):
                                   content_type="application/json")
         assert response.status_code == 404, (method, path, response.status_code)
     assert client.get("/api/notes/?q=bravo").json() == []
+    for query in ("", "?q=bravo", "?name=bravo"):
+        grid = client.get(f"/api/notes/browse/{query}").json()
+        assert (grid["total"], grid["results"]) == (0, [])
+        assert grid["companies"] == [] and grid["contacts"] == []
     b_note.refresh_from_db()
     assert b_note.deleted_at is None and b_note.body == "bravo body text"
 

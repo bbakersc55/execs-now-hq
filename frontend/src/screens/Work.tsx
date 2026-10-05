@@ -9,7 +9,7 @@ import {
 import { PortalCreate } from "../components/PortalCreate";
 import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
-import { Avatar, PageHead } from "../components/shell";
+import { Avatar, PageHead, useRowLink } from "../components/shell";
 import { Card, Empty, when } from "../components/ui";
 import { Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
 import { useRemembered } from "../lib/remembered";
@@ -23,6 +23,7 @@ const TENANT = ["FF", "CF", "VA"];
  *  A fractional runs several accounts at once, and an undifferentiated list of
  *  goals asks them to remember which client each one belongs to (FR-3.39a). */
 export function Work({ me }: { me: Me }) {
+  const rowLink = useRowLink();
   const isTenant = !!me.role && TENANT.includes(me.role);
   const { clients, company, choose } = useCompanyFilter(me, "work-company");
 
@@ -91,8 +92,8 @@ export function Work({ me }: { me: Me }) {
       <Card title="Projects with no goal">
         <Grouped rows={mine(orphanProjects)} headings={isTenant} empty="None."
           render={(p) => (
-            <li key={p.id}>
-              <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
+            <li key={p.id} {...rowLink(`/work/projects/${p.id}`)}>
+              <Link className="rowname" to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
               <StatusPill status={p.status} derived={p.status_is_derived} />
               {p.created_by_client && <span className="pill">client's own</span>}
               <div className="when">{p.client_company_name || "internal"}</div>
@@ -103,8 +104,8 @@ export function Work({ me }: { me: Me }) {
       <Card title="Tasks filed under nothing">
         <Grouped rows={mine(unfiled.data ?? [])} headings={isTenant} empty="None."
           render={(t) => (
-            <li key={t.id}>
-              <Link to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
+            <li key={t.id} {...rowLink(`/tasks/${t.id}`)}>
+              <Link className="rowname" to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
               <StatusPill status={t.status} />
               <div className="when">
                 {t.assignee.name ? `${t.assignee.name}` : "unassigned"}
@@ -167,6 +168,7 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
   goal: WorkParent; projects: WorkParent[]; tasks: Task[]; allTasks: Task[];
   collapsed: boolean; onToggle: () => void;
 }) {
+  const rowLink = useRowLink();
   const count = projects.length + tasks.length;
   const own = allTasks.filter((t) => t.goal === goal.id
     || projects.some((p) => p.id === t.project));
@@ -182,7 +184,9 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
           {collapsed ? <ChevronRight size={18} strokeWidth={1.75} />
             : <ChevronDown size={18} strokeWidth={1.75} />}
           <div className="grow">
-            <h3><Link to={`/work/goals/${goal.id}`}
+            {/* The head expands and collapses, so the title is what opens
+                the goal; no underline, like every other name. */}
+            <h3><Link className="rowname" to={`/work/goals/${goal.id}`}
               onClick={(e) => e.stopPropagation()}>{goal.title}</Link></h3>
             {/* The measure leads when there is one — the report's rule, on the
                 screen the practice reads (FR-4B.18). */}
@@ -233,9 +237,9 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
                 // does this task belong to" is in the markup and not only in
                 // the indentation.
                 <div key={p.id} className="project-block">
-                  <div className="subrow">
+                  <div {...rowLink(`/work/projects/${p.id}`, "subrow")}>
                     <span className="grow">
-                      <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
+                      <Link className="rowname" to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
                       {p.created_by_client && <span className="pill">client's own</span>}
                     </span>
                     {its.length > 0 && (
@@ -260,13 +264,15 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
 }
 
 function TaskLeaves({ tasks }: { tasks: Task[] }) {
+  const rowLink = useRowLink();
   if (tasks.length === 0) return null;
   return (
     <>
       {tasks.map((t) => (
-        <div className="subrow" key={t.id} style={{ paddingLeft: "var(--s6)" }}>
+        <div {...rowLink(`/tasks/${t.id}`, "subrow")} key={t.id}
+          style={{ paddingLeft: "var(--s6)" }}>
           <span className={`dot status-${t.status}`} aria-hidden="true" />
-          <span className="grow"><Link to={`/tasks/${t.id}`}>{t.title}</Link></span>
+          <span className="grow"><Link className="rowname" to={`/tasks/${t.id}`}>{t.title}</Link></span>
           {t.due_date && <span className="tiny muted">{t.due_date}</span>}
           <Avatar name={t.assignee.name} />
         </div>

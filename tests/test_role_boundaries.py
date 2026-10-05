@@ -220,6 +220,7 @@ def _note(api, author, **data):
 
 MODULE2_ENDPOINTS = [
     ("/api/notes/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
+    ("/api/notes/browse/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),
     # Matrix 3.1 — a VA does not read tenant settings.
     ("/api/notes/settings/", {"FF": 200, "CF": 200, "VA": 403, "FCC": 403, "ECC": 403}),
     ("/api/notes/consent-reminder/", {"FF": 200, "CF": 200, "VA": 200, "FCC": 403, "ECC": 403}),

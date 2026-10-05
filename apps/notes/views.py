@@ -9,7 +9,9 @@ read or change its content first requires the unlock.
 from __future__ import annotations
 
 from django.contrib.postgres.search import SearchQuery, SearchRank
+from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -23,6 +25,8 @@ from apps.tenancy.models import AuditEvent, Role
 
 CONSENT_SESSION_KEY = "notes_consent_reminder_dismissed"
 LIST_LIMIT = 200
+#: The Notes grid opens with the latest twenty.
+BROWSE_PAGE = 20
 
 
 def search_notes(request, term, *, limit=50):
@@ -103,6 +107,91 @@ class NoteViewSet(viewsets.GenericViewSet):
                     qs = qs.filter(**{f"{link}_id": value})
             notes = list(qs.order_by("-created_at")[:LIST_LIMIT])
         return Response(represent_many(notes, request=request))
+
+    @action(detail=False, methods=["get"])
+    def browse(self, request):
+        """The Notes screen's grid (UI spec §9): cards of a name and a date.
+
+        Newest first, `limit` at a time; `total` is every match, so the screen
+        can offer the rest. `q` is the same search as the list (FR-2.7: a
+        locked note is found by a typed title only). The filters are stricter
+        than the stub, which shows a locked note's links: **a locked note never
+        matches `company` or `contact`, and never supplies a filter option**,
+        so filtering cannot be used to learn what one is linked to. `name`
+        matches the title as displayed, so never a locked note's hidden one.
+        Someone who has unlocked a note in this session filters it like any
+        other. Dates are the created date every card already shows.
+        """
+        params = request.query_params
+        qs = self.get_queryset()
+        readable = access.readable_q(request)
+
+        for link in ("company", "contact"):
+            value = params.get(link)
+            if not value:
+                continue
+            if not _is_uuid(value):
+                return Response({"detail": f"{link} must be an id."}, status=400)
+            # A note on a contact is a note about that contact's company too.
+            match = Q(company_id=value) | Q(contact__company_id=value) \
+                if link == "company" else Q(contact_id=value)
+            qs = qs.filter(readable).filter(match)
+
+        name = (params.get("name") or "").strip()
+        if name:
+            qs = qs.filter(title__icontains=name).exclude(
+                pin_hash__isnull=False, title_is_auto=True)
+
+        for bound, lookup in (("after", "created_at__gte"), ("before", "created_at__lt")):
+            value = params.get(bound)
+            if not value:
+                continue
+            moment = parse_datetime(value)
+            if moment is None:
+                return Response({"detail": f"{bound} must be a date and time."}, status=400)
+            qs = qs.filter(**{lookup: moment})
+
+        term = (params.get("q") or "").strip()
+        if term:
+            query = SearchQuery(term, config=SEARCH_CONFIG, search_type="websearch")
+            qs = qs.filter(search_vector=query).annotate(
+                rank=SearchRank("search_vector", query)).order_by("-rank", "-created_at")
+        else:
+            qs = qs.order_by("-created_at")
+
+        try:
+            limit = max(1, min(int(params.get("limit") or BROWSE_PAGE), LIST_LIMIT * 5))
+        except ValueError:
+            return Response({"detail": "limit must be a number."}, status=400)
+
+        # Options come from notes whose links this user may see, whatever else
+        # is filtered: the dropdowns do not shrink as you narrow.
+        linked = self.get_queryset().filter(readable)
+        companies = {}
+        contacts = {}
+        for note in linked.filter(Q(company__isnull=False) | Q(contact__isnull=False)) \
+                .select_related("contact__company"):
+            company = note.company or (note.contact.company if note.contact_id else None)
+            if company is not None:
+                companies[str(company.pk)] = company.name
+            if note.contact_id:
+                contacts[str(note.contact_id)] = (
+                    f"{note.contact.first_name} {note.contact.last_name}".strip())
+
+        def options(found):
+            return [{"id": pk, "name": label}
+                    for pk, label in sorted(found.items(), key=lambda kv: kv[1].lower())]
+
+        return Response({
+            "total": qs.count(),
+            "results": [
+                {"id": str(note.pk), "title": access.display_title(note),
+                 "is_locked": note.is_locked, "created_at": note.created_at.isoformat()}
+                for note in qs[:limit]
+            ],
+            "companies": options(companies),
+            "contacts": options(contacts),
+        })
 
     def retrieve(self, request, pk=None):
         self._load(pk)

@@ -265,8 +265,8 @@ const ROW_CONTROLS = "a, button, input, select, textarea, label, summary, [role=
  */
 export function useRowLink() {
   const navigate = useNavigate();
-  return (to: string) => ({
-    className: "rowlink",
+  return (to: string, also = "") => ({
+    className: also ? `rowlink ${also}` : "rowlink",
     onClick: (event: MouseEvent<HTMLElement>) => {
       if ((event.target as HTMLElement).closest(ROW_CONTROLS)) return;
       if (window.getSelection()?.toString()) return;

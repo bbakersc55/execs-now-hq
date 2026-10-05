@@ -57,9 +57,12 @@ def everything_a_user_can_fetch(client, note_id, contact_id=None):
         f"/api/notes/{note_id}/", "/api/notes/", f"/api/notes/?q={BODY_WORD}",
         "/api/notes/?q=HR", f"/api/contacts/search/?q={BODY_WORD}",
         "/api/contacts/search/?q=confidential",
+        "/api/notes/browse/", f"/api/notes/browse/?q={BODY_WORD}",
+        "/api/notes/browse/?name=confidential",
     ]
     if contact_id:
-        paths += [f"/api/contacts/{contact_id}/timeline/", f"/api/notes/?contact={contact_id}"]
+        paths += [f"/api/contacts/{contact_id}/timeline/", f"/api/notes/?contact={contact_id}",
+                  f"/api/notes/browse/?contact={contact_id}"]
     blobs = {}
     for path in paths:
         response = client.get(path)

@@ -1,3 +1,4 @@
+import { useRowLink } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -17,6 +18,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
   const { id } = useParams();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const rowLink = useRowLink();
   const [message, setMessage] = useState("");
   const [newTask, setNewTask] = useState("");
   const [editing, setEditing] = useState(false);
@@ -127,8 +129,8 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
           {(children.data?.projects ?? []).length === 0 ? <Empty>No projects yet.</Empty> : (
             <ul className="timeline">
               {children.data!.projects.map((p) => (
-                <li key={p.id}>
-                  <Link to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
+                <li key={p.id} {...rowLink(`/work/projects/${p.id}`)}>
+                  <Link className="rowname" to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
                   <StatusPill status={p.status} derived={p.status_is_derived} />
                 </li>
               ))}
@@ -141,8 +143,8 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
         {(children.data?.tasks ?? []).length === 0 ? <Empty>No tasks yet.</Empty> : (
           <ul className="timeline">
             {children.data!.tasks.map((t) => (
-              <li key={t.id}>
-                <Link to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
+              <li key={t.id} {...rowLink(`/tasks/${t.id}`)}>
+                <Link className="rowname" to={`/tasks/${t.id}`}>{t.title}</Link>{" "}
                 <StatusPill status={t.status} />
                 {!t.is_client_visible && <span className="pill">internal</span>}
                 <div className="when">
