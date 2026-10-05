@@ -1,11 +1,11 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { Lock } from "lucide-react";
 
 import { Chip, FilterBar, PageHead, SearchField } from "../components/shell";
-import { Banner, Card, Empty, Field, when } from "../components/ui";
-import { Me, Note, NotesSettings, api } from "../lib/api";
+import { Banner, Empty, when } from "../components/ui";
+import { Me, Note, api } from "../lib/api";
 import { LinkChips, NoteDetail } from "./NoteDetail";
 
 export function NoteRow({ note }: { note: Note }) {
@@ -63,12 +63,7 @@ function day(value: string) {
  */
 export function Notes({ me }: { me: Me }) {
   const { id } = useParams();
-  return (
-    <>
-      {id ? <NoteDetail me={me} /> : <NotesGrid />}
-      {me.role === "FF" && <RecordingSettings />}
-    </>
-  );
+  return id ? <NoteDetail me={me} /> : <NotesGrid />;
 }
 
 function NotesGrid() {
@@ -249,40 +244,5 @@ function NotesGrid() {
         </>
       )}
     </>
-  );
-}
-
-function RecordingSettings() {
-  const qc = useQueryClient();
-  const settings = useQuery<NotesSettings>({
-    queryKey: ["notes-settings"], queryFn: () => api.get<NotesSettings>("/api/notes/settings/"),
-  });
-  const [days, setDays] = useState<string | null>(null);
-  const save = useMutation({
-    mutationFn: () => api.patch<NotesSettings>("/api/notes/settings/", { audio_retention_days: Number(days) }),
-    onSuccess: () => { setDays(null); qc.invalidateQueries({ queryKey: ["notes-settings"] }); },
-  });
-  const value = days ?? String(settings.data?.audio_retention_days ?? "");
-
-  return (
-    <Card title="Recording audio retention">
-      <p className="small">
-        Transcripts and summaries are kept indefinitely. The audio itself is deleted this many
-        days after recording — but only once it has been transcribed. Audio that never
-        transcribed is kept, and flagged on its note, until someone retries or discards it.
-      </p>
-      <Field label="Keep audio for (days)">
-        <input aria-label="Keep audio for (days)" type="number" min={0} value={value}
-          onChange={(e) => setDays(e.target.value)} style={{ maxWidth: "8rem" }} />
-      </Field>
-      {value === "0" && (
-        <Banner kind="warn">
-          At 0, audio is deleted as soon as its transcript is made. <strong>A recording can then
-          never be transcribed again</strong> — if the transcript is poor, there is nothing to retry.
-        </Banner>
-      )}
-      {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
-      <button className="primary" disabled={days === null || save.isPending} onClick={() => save.mutate()}>Save</button>
-    </Card>
   );
 }

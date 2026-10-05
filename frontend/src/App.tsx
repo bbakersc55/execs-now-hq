@@ -1,9 +1,9 @@
 import { Fragment, useEffect } from "react";
 import {
   Activity as ActivityIcon, BarChart3, Building2, CalendarCheck, CheckSquare,
-  ClipboardList, Palette,
+  ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
-  Reply, Sparkles, Store, Target, Upload, UserCog, Users, Workflow, Megaphone, Send, Hourglass,
+  Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
@@ -23,6 +23,8 @@ import { LinkBranded } from "./components/LinkBranded";
 import { AreaSwitch } from "./components/AreaSwitch";
 import { AgreementGate } from "./components/AgreementGate";
 import { TopBar } from "./components/TopBar";
+import { Settings } from "./screens/Settings";
+import { NotesSettingsPage } from "./screens/NotesSettingsPage";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
 import { Contacts } from "./screens/Contacts";
@@ -74,7 +76,7 @@ const CLIENT = ["FCC", "ECC"];
 type NavItem = {
   to: string; label: string; roles?: string[]; group?: string;
   /** Every nav item has one (design brief, Tier 1). */
-  icon: typeof Users;
+  icon: typeof Mail;
 };
 
 /** The Practices area's whole navigation (P2). */
@@ -122,12 +124,7 @@ const NAV: NavItem[] = [
   { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
   { to: "/outbox", label: "Outbox (send log)", roles: TENANT , icon: Inbox },
   { to: "/import", label: "CSV import", roles: ["FF", "VA"] , icon: Upload },
-  { to: "/settings/email", label: "Email settings", roles: ["FF", "CF"] , group: "Settings" , icon: Mail },
-  { to: "/settings/branding", label: "Branding", roles: ["FF"] , icon: Palette },
-  { to: "/referrals", label: "Referral settings", roles: ["FF"] , icon: Users },
-  { to: "/rules", label: "Stage automations", roles: ["FF"] , icon: Workflow },
-  { to: "/staff", label: "Staff", roles: ["FF"] , icon: UserCog },
-  { to: "/ai-usage", label: "AI usage", roles: ["FF"] , icon: Sparkles },
+  // Settings left the sidebar for the profile menu (UI 3): screens/Settings.
 ];
 
 /** Pre-link a new note to the record on screen; everything else stays optional. */
@@ -303,12 +300,18 @@ export function App() {
             <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/outbox" element={<Outbox />} />
             <Route path="/import" element={<ImportWizard />} />
-            <Route path="/settings/email" element={<EmailSettings me={me} />} />
-            <Route path="/settings/branding" element={<Branding />} />
-            <Route path="/referrals" element={<ReferralSettings />} />
-            <Route path="/rules" element={<StageRules />} />
-            <Route path="/staff" element={<Staff me={me} />} />
-            <Route path="/ai-usage" element={<AiUsage />} />
+            {/* Settings: one page, the same addresses as before (UI 3, D4). */}
+            <Route path="/settings" element={<Settings me={me} />} />
+            <Route path="/settings/email"
+              element={<Settings me={me}><EmailSettings me={me} /></Settings>} />
+            <Route path="/settings/branding" element={<Settings me={me}><Branding /></Settings>} />
+            <Route path="/referrals" element={<Settings me={me}><ReferralSettings /></Settings>} />
+            <Route path="/rules" element={<Settings me={me}><StageRules /></Settings>} />
+            <Route path="/staff" element={<Settings me={me}><Staff me={me} /></Settings>} />
+            <Route path="/ai-usage" element={<Settings me={me}><AiUsage /></Settings>} />
+            {/* The practice owner's only, as the card was on Notes. */}
+            {me.role === "FF" && <Route path="/settings/notes"
+              element={<Settings me={me}><NotesSettingsPage /></Settings>} />}
             <Route path="/notes" element={<Notes me={me} />} />
             <Route path="/notes/pin-reset/:token" element={<PinReset />} />
             {/* The panel owns both: a link into one note still opens it, and

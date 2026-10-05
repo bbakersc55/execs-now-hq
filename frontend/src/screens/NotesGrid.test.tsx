@@ -218,9 +218,4 @@ describe("the notes grid", () => {
     expect(await screen.findByRole("link", { name: /Back to notes/ }))
       .toHaveAttribute("href", "/notes");
   });
-
-  it("keeps the recording retention card for the practice owner", async () => {
-    show();
-    expect(await screen.findByText("Recording audio retention")).toBeInTheDocument();
-  });
 });

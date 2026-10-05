@@ -2,7 +2,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { KeyboardEvent, ReactNode, useEffect, useRef, useState } from "react";
 
+import { Link } from "react-router-dom";
+
 import { Me, api } from "../lib/api";
+import { settingsFor } from "../screens/Settings";
 import { roleLabel } from "../lib/roles";
 import { ActAsColleague } from "./ActAs";
 import { FeedbackButton } from "./FeedbackButton";
@@ -99,6 +102,9 @@ function ProfileMenu({ me, practice }: { me: Me; practice: string }) {
             <div className="name">{name}</div>
             <div className="role">{role}{practice && ` · ${practice}`}</div>
           </div>
+          {settingsFor(me).length > 0 && (
+            <Link role="menuitem" to="/settings" onClick={() => setOpen(false)}>Settings</Link>
+          )}
           <MenuExtras me={me} />
           <button type="button" role="menuitem" className="sign-out" disabled={leaving}
             onClick={signOut}>
