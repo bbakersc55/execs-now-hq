@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Company, Contact, Me, PortalPerson, Task, WorkParent, api } from "../lib/api";
+import { HOW_A_COMPANY_BECOMES_A_CLIENT } from "./ClientStatus";
 import { Banner, Card, Field } from "./ui";
 
 const TENANT_ROLES = ["FF", "CF", "VA"];
@@ -115,6 +116,7 @@ function useScopedLists(company: string) {
   const ours = (rows: WorkParent[]) => rows.filter((r) => (r.client_company ?? "") === company);
   return {
     clientCompanies: (companies.data ?? []).filter((c) => c.is_client_company),
+    otherCompanies: (companies.data ?? []).filter((c) => !c.is_client_company).length,
     goals: ours(goals.data ?? []),
     projects: ours(projects.data ?? []),
     staff: (people.data ?? []).filter((p) => TENANT_ROLES.includes(p.role)),
@@ -123,8 +125,10 @@ function useScopedLists(company: string) {
   };
 }
 
-function CompanyField({ value, onChange, companies }: {
+function CompanyField({ value, onChange, companies, others }: {
   value: string; onChange: (v: string) => void; companies: Company[];
+  /** Companies the practice has that are not clients, and so are not listed. */
+  others: number;
 }) {
   return (
     <Field label="Client company (optional)">
@@ -133,6 +137,14 @@ function CompanyField({ value, onChange, companies }: {
         <option value="">Internal</option>
         {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
+      {/* A new practice adds a company, opens this and finds only "Internal"
+          (beta feedback, 2026-10-05). Said only when a company is missing. */}
+      {others > 0 && (
+        <p className="small muted" style={{ margin: "var(--s1) 0 0" }}>
+          Only client companies are listed. {HOW_A_COMPANY_BECOMES_A_CLIENT}{" "}
+          <Link to="/companies">Companies</Link>
+        </p>
+      )}
     </Field>
   );
 }
@@ -250,7 +262,8 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
         <HierarchyNote />
         <div className="row">
           <CompanyField value={form.company} onChange={setCompany}
-            companies={lists.clientCompanies} />
+            companies={lists.clientCompanies}
+            others={lists.otherCompanies} />
           <Field label="Goal">
             {chosenProject ? (
               <p className="small muted" style={{ margin: ".35rem 0" }}>
@@ -408,7 +421,8 @@ function NewParentForm({ kind, onClose }: {
         </Field>
         <div className="row">
           <CompanyField value={form.company} onChange={setCompany}
-            companies={lists.clientCompanies} />
+            companies={lists.clientCompanies}
+            others={lists.otherCompanies} />
           {kind === "project" && (
             <Field label="Goal">
               <select aria-label="Goal for the new project" value={form.goal}

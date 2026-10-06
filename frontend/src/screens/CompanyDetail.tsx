@@ -2,6 +2,7 @@ import { CallNotes } from "../components/CallNotes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ClientStatus } from "../components/ClientStatus";
 import { useRowLink } from "../components/shell";
 
 import { Banner, Card, Empty, Pill, when, positionsLabel } from "../components/ui";
@@ -91,6 +92,8 @@ export function CompanyDetail({ me }: { me: Me }) {
         {seats && seats.seat_count !== null
           && <> · {seats.seats_in_use} of {seats.seat_count} seats used</>}
       </p>
+
+      <ClientStatus me={me} company={c} />
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1.15rem" }}>
         <Card title={`People (${theirs.length})`}>

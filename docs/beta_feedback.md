@@ -197,6 +197,52 @@ Shawn's company has no contact at Closed Won, so only Internal is offered.
 Recommendation: do 1 now, and decide 2 separately. A new practice arriving
 with existing clients will hit this on day one, as Shawn did.
 
+**Decided 2026-10-05, and built (on `dev`, not released).** Both proposals.
+Bryan's reason for the second: a client who comes from a referral should not
+have to be pushed through the sales pipeline first.
+
+*The explanation.* Under the "Client company" dropdown on New goal, New
+project and New task, whenever the practice has a company that is not listed:
+"Only client companies are listed. A company becomes a client when one of its
+contacts reaches Closed Won on the Pipeline, or when the practice owner marks
+it as a client on the company's page." On the Company page, a card headed
+"Client company" or "Not a client company" says the same and what it means.
+
+*Mark as a client.* On the Company page, practice owner only, with a
+confirmation that says what it does. **What it sets, compared with reaching
+Closed Won:**
+
+| | Closed Won on the sales pipeline | Mark as a client |
+|---|---|---|
+| The company becomes a client company | yes | **yes** |
+| The contact's stage changes, and the change is in their history | yes | no |
+| The stage's automations run (a task, a draft email) | yes | **no: none run** |
+| The contact gets the client type | yes | no |
+| Recorded in the audit trail | yes (`company.flagged`, "stage=… (won)") | yes (`company.flagged`, "marked by the practice owner") |
+
+So marking does one thing. No stage automation can fire, because no stage
+changes: the code path that runs them is never called, and a test arms a rule
+on Closed Won and shows it stays quiet. A contact's client type can still be
+added by hand on the contact, as before.
+
+*Undo.* "Marked as a client by mistake?" on the same card, practice owner
+only: "Not a client after all", with a confirmation. It is for a mistake, so it
+is allowed only while nothing has been built on the mark, and it never deletes
+or detaches anything to make itself possible. **What blocks it**, each shown
+as a sentence on the card instead of the button:
+
+- a contact at the company has reached Closed Won on the sales pipeline (then
+  it is a client by the pipeline's rule, not by a click);
+- anyone at the company has portal access;
+- any goal, project or task is filed under it;
+- an associate is assigned to it;
+- a value report has been exported for it.
+
+Recorded as `company.unflagged`. Routes:
+`POST /api/companies/<id>/mark-client/` and `/unmark-client/` (practice owner),
+`GET /api/companies/<id>/client-status/` (staff who can see the company).
+**No migration.**
+
 ### E. Digests: day, time and approval
 
 **Feedback.** Bryan wants to confirm all digests go out Friday morning, wants

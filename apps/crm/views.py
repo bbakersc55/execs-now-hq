@@ -20,7 +20,9 @@ from apps.crm.models import (
     DevSendAllowlistEntry, EmailTemplate, OutboxMessage, Pipeline, PipelineStage,
     ServiceCategory, StageAutomation, StageChange, StageSemantic, Task,
 )
-from apps.crm.services import importer, merge, outbox, pipeline, referral, search, timeline
+from apps.crm.services import (
+    clients, importer, merge, outbox, pipeline, referral, search, timeline,
+)
 from apps.notes.serializers import represent_many as note_representations
 from apps.notes.views import search_notes
 from apps.tenancy import storage
@@ -516,6 +518,15 @@ class ContactViewSet(TenantStaffViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
 
+def _client_status(company) -> dict:
+    return {
+        "id": str(company.pk),
+        "is_client_company": company.is_client_company,
+        # Empty while it is not a client, or when the mark can be undone.
+        "undo_blockers": clients.blockers(company) if company.is_client_company else [],
+    }
+
+
 class CompanyViewSet(TenantStaffViewSet):
     serializer_class = crm_serializers.CompanySerializer
 
@@ -533,7 +544,33 @@ class CompanyViewSet(TenantStaffViewSet):
     def timeline(self, request, pk=None):
         return Response(timeline.for_company(self.get_object()))
 
+    @action(detail=True, methods=["get"], url_path="client-status")
+    def client_status(self, request, pk=None):
+        """Whether it is a client company, and what would stop that being
+        undone. Read by the Company page, for anyone who may see the company."""
+        company = self.get_object()
+        return Response(_client_status(company))
+
+    @action(detail=True, methods=["post"], url_path="mark-client")
+    def mark_client(self, request, pk=None):
+        """Practice owner only. Flags the company and nothing else: no stage
+        changes, so no stage automation runs (services/clients.py)."""
+        company = clients.mark(self.get_object(), actor=request.user)
+        return Response(_client_status(company))
+
+    @action(detail=True, methods=["post"], url_path="unmark-client")
+    def unmark_client(self, request, pk=None):
+        """Practice owner only, and only while nothing has been built on it."""
+        company = self.get_object()
+        try:
+            clients.unmark(company, actor=request.user)
+        except clients.ClientMarkRefused as exc:
+            return Response({"detail": str(exc), **_client_status(company)}, status=409)
+        return Response(_client_status(company))
+
     def get_permissions(self):
+        if self.action in ("mark_client", "unmark_client"):
+            return [crm_perms.IsTenantStaff(), crm_perms.IsFF()]
         # Matrix 4.12 — seat_count is FF-only. `create` is included: a VA who
         # may not change a seat count may not set one on the way in either.
         if self.action in ("create", "update", "partial_update") and (
