@@ -49,10 +49,11 @@ sections) starts only after them, and after anything they turn up is fixed.
 **Bryan changed Executives Now's digest schedule in production to Monday at
 8:00 AM.** With the fixed 24-hour lead that means the weekly digest is written
 **Sunday 8:00 AM** and must be approved by Monday 8:00 AM or it expires
-unsent, so the whole approval window is now Sunday and early Monday. The
-options (a reminder before the cutoff; letting the owner set how far ahead a
-digest is written) were reported to Bryan in the 10/5 chat and are **not
-built; waiting on his decision.** Built on `dev` and **not released**: the
+unsent, so the whole approval window is now Sunday and early Monday. Bryan's
+answer is a redesign, **specced and not built: `docs/digest_schedule.md`**
+("Draft on" and "Send on", Update this draft, Send now, a late state, and
+reminder emails; thirteen decisions open, one migration planned as `tenancy
+0011` with a data step that needs his yes on a dry run in production). Built on `dev` and **not released**: the
 remaining "staff" wording changed to "team" (`c075766`).
 
 ## What this is, in one paragraph
@@ -354,6 +355,8 @@ unregistered model; the isolation family now includes the platform owner.
      associate or assistant**; that would be a new permission, not specced.
      The associate's and assistant's menus and Settings are covered by tests,
      not seen by eye.
+   - **The flaky test below is fixed** (`f9e8e04`, 10/5): the same three
+     steps now run before Apply. Kept here for the history.
    - **A flaky frontend test, not an app fault:** `session prep > ticks all,
      then unticks one, before applying` in `Strategy.test.tsx` failed once in
      a full run. Its last three lines act on the session screen after "Apply"
