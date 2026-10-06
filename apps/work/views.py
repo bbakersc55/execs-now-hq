@@ -746,6 +746,38 @@ class DigestViewSet(WorkViewSet):
         return Response(digest_service.upcoming_every_update(request.tenant,
                                                              contact_ids=contact_ids))
 
+    @action(detail=False, methods=["get", "patch"], url_path="schedule")
+    def schedule(self, request):
+        """The day, hour and time zone digests go by (beta feedback,
+        2026-10-05). Any member of the practice's staff may read it, since they
+        all see the Digests screen; only the practice owner changes it."""
+        role = crm_perms.role_of(request)
+        if role not in crm_perms.TENANT_ROLES:
+            return Response({"detail": "Not available."}, status=403)
+        if request.method == "GET":
+            return Response(digest_service.schedule_of(request.tenant))
+        if role != crm_perms.Role.FF:
+            return Response({"detail": "Only the practice owner can do this."}, status=403)
+        data = request.data if isinstance(request.data, dict) else {}
+        unknown = sorted(set(data) - {"day", "hour", "timezone"})
+        if unknown:
+            # Above all `hold_all_digests`: there is deliberately no switch.
+            return Response(
+                {"detail": f"Not something this changes: {', '.join(unknown)}."}, status=400)
+        try:
+            return Response(digest_service.set_schedule(
+                request.tenant, actor=request.user, day=data.get("day"),
+                hour=data.get("hour"), timezone_name=data.get("timezone")))
+        except digest_service.ScheduleInvalid as exc:
+            return Response(exc.errors, status=400)
+
+    @action(detail=False, methods=["post"], url_path="schedule/confirm")
+    def schedule_confirm(self, request):
+        """The one-time prompt's "Keep it"."""
+        if crm_perms.role_of(request) != crm_perms.Role.FF:
+            return Response({"detail": "Only the practice owner can do this."}, status=403)
+        return Response(digest_service.confirm_schedule(request.tenant, actor=request.user))
+
     @action(detail=False, methods=["get"], url_path="tick-status")
     def tick_status(self, request):
         """Whether expiry, generation and sending are running at all."""

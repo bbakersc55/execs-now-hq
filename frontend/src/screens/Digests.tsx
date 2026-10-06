@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Banner, Card, Empty, Field, Pill, countdown, when } from "../components/ui";
 import { Contact, DigestRow, Me, TickStatus, UpcomingDigest, api } from "../lib/api";
+import { DigestSchedulePrompt } from "./DigestSettings";
 
 const CAN_APPROVE = ["FF", "CF"];
 
@@ -85,6 +86,8 @@ export function Digests({ me }: { me: Me }) {
         every other email waiting for approval. The rules here are unchanged.
       </Banner>
       {note && <Banner kind="info">{note}</Banner>}
+      {/* Once, for the practice owner: the day and time (beta feedback). */}
+      <DigestSchedulePrompt me={me} />
 
       {tick.data?.stale && (
         <Banner kind="bad">

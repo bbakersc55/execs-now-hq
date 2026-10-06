@@ -301,3 +301,49 @@ new practice.
   is currently Mountain for everyone.
 - Not proposed: a switch for `hold_all_digests`. Turning approval off is a
   bigger decision than picking a day.
+
+**Decided 2026-10-05, and built (on `dev`, not released).** "Digest day and
+time" in Settings, practice owner only, with the time zone in the same
+control, and a one-time prompt on the Digests screen. **No switch for
+`hold_all_digests`**: it is not on the screen, and the endpoint refuses it by
+name.
+
+- **Settings → Digests** (a new section, practice owner only): Day, Time and
+  Time zone, saved together, under a sentence that says the result ("Digests
+  go out on Fridays at 8:00 AM Mountain (America/Denver)"). The common US zones
+  are listed first by name; every other zone follows.
+- **What the card tells the owner:** weekly digests are written 24 hours
+  before the time and sent at it; monthly ones go on the first such day of the
+  month; "every update" digests are not on this schedule and go when approved;
+  a change applies to digests written from now on, and one already waiting
+  keeps its time; every digest still waits for approval.
+- **The prompt:** the first time the practice owner opens Digests, a card asks
+  "When should your digests go out?", states the current answer, and offers
+  "Keep Fridays at 8:00 AM" or "Change the day or time" (to Settings). Either
+  answers it for good. An associate or assistant is never asked.
+- **The time zone is the practice's**, not only the digests': changing it also
+  moves the app's other daily jobs to their local hour in the new zone. The
+  card says so.
+- **Who:** every member of the practice's staff can read the schedule (they
+  all see the Digests screen); only the practice owner changes or confirms it.
+  `GET`/`PATCH /api/digests/schedule/`, `POST /api/digests/schedule/confirm/`.
+- **Recorded:** `digest_schedule.confirmed` or `digest_schedule.changed` (with
+  the before and after) in the audit trail. That record is also how the app
+  knows the prompt has been answered, so **no migration** was needed.
+
+### Other "staff" wording (reported 2026-10-05, not changed)
+
+Places where "staff" could still be read as the client's staff. None is seen
+by someone who has not yet signed in.
+
+1. **The practice owner's invitation email**, in its list of setup steps:
+   "…your contacts, your staff, your first client…" (`apps/platform/mail.py`).
+2. **Getting started**, on a new owner's dashboard: "Invite your staff".
+3. **Settings → Staff**: the section name and the page title. Its subtitle
+   does say "Your practice's own people".
+4. **Two refusals on that page**: "Client users are granted portal access on a
+   contact, not invited as staff." and "Client roles are managed through
+   portal access, not staff roles."
+5. Platform owner only, so Bryan alone: the "Staff" column on Practices, and
+   "What practice staff sent with the Feedback button."
+

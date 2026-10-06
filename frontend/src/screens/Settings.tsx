@@ -23,6 +23,7 @@ export const SETTINGS: { to: string; label: string; roles: Role[] }[] = [
   { to: "/staff", label: "Staff", roles: ["FF"] },
   { to: "/rules", label: "Stage automations", roles: ["FF"] },
   { to: "/referrals", label: "Referral settings", roles: ["FF"] },
+  { to: "/settings/digests", label: "Digests", roles: ["FF"] },
   { to: "/settings/notes", label: "Notes", roles: ["FF"] },
   { to: "/ai-usage", label: "AI usage", roles: ["FF"] },
 ];

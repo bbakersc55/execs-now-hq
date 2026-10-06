@@ -24,6 +24,7 @@ import { AreaSwitch } from "./components/AreaSwitch";
 import { AgreementGate } from "./components/AgreementGate";
 import { TopBar } from "./components/TopBar";
 import { Profile } from "./screens/Profile";
+import { DigestSettings } from "./screens/DigestSettings";
 import { Settings } from "./screens/Settings";
 import { NotesSettingsPage } from "./screens/NotesSettingsPage";
 import { ContactDetail } from "./screens/ContactDetail";
@@ -313,6 +314,8 @@ export function App() {
             <Route path="/rules" element={<Settings me={me}><StageRules /></Settings>} />
             <Route path="/staff" element={<Settings me={me}><Staff me={me} /></Settings>} />
             <Route path="/ai-usage" element={<Settings me={me}><AiUsage /></Settings>} />
+            {me.role === "FF" && <Route path="/settings/digests"
+              element={<Settings me={me}><DigestSettings /></Settings>} />}
             {/* The practice owner's only, as the card was on Notes. */}
             {me.role === "FF" && <Route path="/settings/notes"
               element={<Settings me={me}><NotesSettingsPage /></Settings>} />}

@@ -41,6 +41,96 @@ DEAD_STATES = (Digest.State.EXPIRED, Digest.State.SKIPPED)
 K = TaskUpdate.Kind
 
 
+# ------------------------------------------------------------ the schedule
+
+SCHEDULE_VERBS = ("digest_schedule.confirmed", "digest_schedule.changed")
+DAYS = {1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday",
+        6: "Saturday", 7: "Sunday"}
+
+
+class ScheduleInvalid(Exception):
+    def __init__(self, errors):
+        super().__init__("invalid")
+        self.errors = errors
+
+
+def schedule_of(tenant) -> dict:
+    """The practice's digest day, hour and time zone, and whether its owner
+    has ever looked at them (the Digests screen asks once)."""
+    return {
+        "day": tenant.digest_send_day,
+        "day_name": DAYS.get(tenant.digest_send_day, ""),
+        "hour": tenant.digest_send_hour,
+        "timezone": tenant.timezone,
+        "confirmed": AuditEvent.all_objects.filter(
+            tenant=tenant, verb__in=SCHEDULE_VERBS).exists(),
+    }
+
+
+def confirm_schedule(tenant, *, actor) -> dict:
+    """"Keep it": nothing changes except that the question is not asked again."""
+    if not schedule_of(tenant)["confirmed"]:
+        AuditEvent.all_objects.create(
+            tenant=tenant, actor=actor, verb="digest_schedule.confirmed",
+            target_type="tenant", target_id=tenant.pk,
+            payload={"day": tenant.digest_send_day, "hour": tenant.digest_send_hour,
+                     "timezone": tenant.timezone})
+    return schedule_of(tenant)
+
+
+def set_schedule(tenant, *, actor, day=None, hour=None, timezone_name=None) -> dict:
+    """Change the day, hour or time zone digests are written and sent by.
+
+    Takes effect for digests written from now on: one already waiting keeps
+    the send time it was written with, so nothing a person has read and
+    approved moves under them. `hold_all_digests` is not touched here and has
+    no switch anywhere (owner, 2026-10-05).
+    """
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    errors = {}
+    if day is not None and (isinstance(day, bool) or not isinstance(day, int)
+                            or day not in DAYS):
+        errors["day"] = "Choose a day of the week."
+    if hour is not None and (isinstance(hour, bool) or not isinstance(hour, int)
+                             or not 0 <= hour <= 23):
+        errors["hour"] = "Choose an hour of the day."
+    if timezone_name is not None:
+        try:
+            if not isinstance(timezone_name, str) or not timezone_name.strip():
+                raise ValueError
+            ZoneInfo(timezone_name)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            errors["timezone"] = "Choose a time zone from the list."
+    if errors:
+        raise ScheduleInvalid(errors)
+
+    before = {"day": tenant.digest_send_day, "hour": tenant.digest_send_hour,
+              "timezone": tenant.timezone}
+    if day is not None:
+        tenant.digest_send_day = day
+    if hour is not None:
+        tenant.digest_send_hour = hour
+    if timezone_name is not None:
+        tenant.timezone = timezone_name
+    after = {"day": tenant.digest_send_day, "hour": tenant.digest_send_hour,
+             "timezone": tenant.timezone}
+    if after != before:
+        tenant.save(update_fields=["digest_send_day", "digest_send_hour", "timezone",
+                                   "updated_at"])
+        if after["timezone"] != before["timezone"]:
+            # The practice's daily jobs run at a local hour; follow the zone.
+            from apps.tenancy.management.commands.ensure_schedules import realign_local_hours
+
+            realign_local_hours(tenant)
+    if after != before or not schedule_of(tenant)["confirmed"]:
+        AuditEvent.all_objects.create(
+            tenant=tenant, actor=actor, verb="digest_schedule.changed",
+            target_type="tenant", target_id=tenant.pk,
+            payload={"from": before, "to": after})
+    return schedule_of(tenant)
+
+
 # --------------------------------------------------------------- the windows
 
 def zone(tenant) -> ZoneInfo:

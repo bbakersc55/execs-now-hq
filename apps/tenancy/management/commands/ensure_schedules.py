@@ -95,6 +95,19 @@ def realigned_next_run(tenant, schedule_type, minutes, local_hour, next_run, now
     return _first_run(tenant, local_hour) if local_hour is not None else now
 
 
+def realign_local_hours(tenant) -> int:
+    """After the practice's time zone changes: the daily jobs that run at a
+    local hour move to that hour in the new zone. Minute and hourly jobs have
+    no local hour and are left alone."""
+    moved = 0
+    for name, _func, _type, _minutes, local_hour in SCHEDULES:
+        if local_hour is None:
+            continue
+        moved += Schedule.objects.filter(name=f"{name}:{tenant.slug}").update(
+            next_run=_first_run(tenant, local_hour))
+    return moved
+
+
 def ensure_for(tenant, write=None) -> None:
     """Create or update one practice's schedules (P2: provisioning and
     unarchiving call this for the one practice)."""
