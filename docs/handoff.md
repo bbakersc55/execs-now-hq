@@ -45,6 +45,16 @@ Bryan can open). These two sessions are the first time any P3 screen is seen
 in a browser and the first real Claude call on v3. Part two phase 2 (custom
 sections) starts only after them, and after anything they turn up is fixed.
 
+**After Release 6 (10/5, late):** it passed Bryan's production smoke check.
+**Bryan changed Executives Now's digest schedule in production to Monday at
+8:00 AM.** With the fixed 24-hour lead that means the weekly digest is written
+**Sunday 8:00 AM** and must be approved by Monday 8:00 AM or it expires
+unsent, so the whole approval window is now Sunday and early Monday. The
+options (a reminder before the cutoff; letting the owner set how far ahead a
+digest is written) were reported to Bryan in the 10/5 chat and are **not
+built; waiting on his decision.** Built on `dev` and **not released**: the
+remaining "staff" wording changed to "team" (`c075766`).
+
 ## What this is, in one paragraph
 
 Execs NOW HQ is a multi-tenant SaaS for fractional executives, built by the
