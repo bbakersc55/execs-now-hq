@@ -794,7 +794,14 @@ describe("session prep", () => {
     const fetchMock = showSession(aSession({ prep: three }), aMe(), {
       [`PATCH /api/strategy-sessions/${SESSION_ID}/prep-rewordings/`]: three,
     });
+    // Ticking all and then unticking all clears it. Checked first, while the
+    // screen is still this one: applying, the last step below, leaves it for
+    // the template editor, and these lines used to run after that and race
+    // the navigation (2026-10-05).
     await user.click(await screen.findByLabelText("Tick all rewordings"));
+    await user.click(screen.getByLabelText("Tick all rewordings"));
+    expect(screen.getByRole("button", { name: /Apply .*selected/ })).toBeDisabled();
+    await user.click(screen.getByLabelText("Tick all rewordings"));
     expect(screen.getByRole("button", { name: "Apply 3 selected to the template" }))
       .toBeEnabled();
     await user.click(screen.getByLabelText("Apply the rewording of s1_sites"));
@@ -805,10 +812,6 @@ describe("session prep", () => {
       expect((patched?.body as { rewordings: { key: string }[] }).rewordings
         .map((r) => r.key)).toEqual(["s1_revenue", "s1_team"]);
     });
-    // And unticking all clears it.
-    await user.click(screen.getByLabelText("Tick all rewordings"));
-    await user.click(screen.getByLabelText("Tick all rewordings"));
-    expect(screen.getByRole("button", { name: /Apply .*selected/ })).toBeDisabled();
   });
 
   it("still copies one on its own", async () => {
