@@ -18,8 +18,15 @@ call clock below the top bar). Then **the profile picture bug**: adding a
 picture failed for Bryan with an error that the file was not the correct type,
 when it was. Details to follow from him; nothing has been investigated yet.
 The picture (UI 3 phase 4, commit `7094dcf`, migration `tenancy 0011`) is
-**built on the laptop's `dev` and deliberately not released and not pushed**;
-see "Where it stands".
+**built and deliberately not released. Since the evening of 10/5 it lives on
+its own branch, `feature/profile-picture`, and is no longer on `dev`**; see
+"Where it stands".
+
+**Also from 10/5, built on `dev` and not released:** Shawn's (Blue Sky) first
+beta feedback, in `docs/beta_feedback.md`: sign-in wording, the practice
+address chosen by the owner, "Mark as a client" with its undo, and the digest
+day and time. No migration in any of it. Bryan has a checklist for
+localhost:5200 in the 10/5 chat.
 
 **Then, unchanged from 10/3:**
 
@@ -83,7 +90,8 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | **P3 part two** custom sections, AI per section, per-session rewordings | **Spec approved 10/3** (`docs/p3_part2_custom_sections_ai.md`); **phase 1 done** (v3 pinned by 43 golden files); phase 2 waits on the two test sessions |
 | **UI 1** Pipeline board, clickable rows, Notes grid, Work outlines | **Released 10/5 (Release 5, `main` at `31286cf`, no migration)**. Spec and UI backlog: `docs/ui1_pipeline_board.md`. Seen by Bryan on the laptop; **not yet smoke-checked in production** |
 | **UI 3** top bar, Sign out, staff session rules, Settings by role, Profile (name) | **Phases 1–3 released 10/5 (Release 5)**. Spec: `docs/ui3_top_bar_settings_profile.md`, D1–D12 accepted |
-| **UI 3 phase 4** profile picture | **Built, NOT released, NOT pushed.** Commit `7094dcf` is on the laptop's `dev` only (`origin/dev` is still at `7665c8f`). Migration `tenancy 0011` (one nullable column, `membership.avatar_id`) is applied to `execsnowhq_local` only. Held back for the upload bug above. **Do not push `dev` until it is fixed or hidden: the demo deploys from `dev` and applies its own migrations** |
+| **UI 3 phase 4** profile picture | **Built, NOT released.** Commit `7094dcf` is on the branch **`feature/profile-picture`** (on GitHub), one commit on top of `31286cf`. **It is not on `dev`**, which was rebuilt without it on 10/5 so the rest can be released and the demo never gets the broken control. Migration `tenancy 0011` (one nullable column, `membership.avatar_id`) is still applied to `execsnowhq_local`; `dev`'s code ignores the extra column. Held back for the upload bug. To bring it back once fixed: rebase the branch onto `dev`, and if `dev` has gained a `tenancy` migration by then, renumber 0011 to follow it. `backup/dev-2026-10-05` on GitHub is the old line of `dev`, kept as a copy |
+| **Beta feedback, Shawn 10/5** (`docs/beta_feedback.md`) | **Built on `dev` 10/5, not released:** "Practice sign-in" / "Client sign-in"; the practice address chosen by the owner (own email allowed); "Mark as a client" and its undo; digest day, time and time zone with a one-time prompt. No migration |
 | UI 3 phase 5 pictures wherever initials show | Not started |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
