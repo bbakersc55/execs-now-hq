@@ -48,7 +48,8 @@ export function SignedOut({ practice }: { practice: string }) {
       <p className="muted">You are not signed in.</p>
 
       <section style={{ marginTop: "2rem", textAlign: "left" }}>
-        <h3 style={{ marginBottom: ".25rem" }}>Clients</h3>
+        <h3 style={{ marginBottom: ".25rem" }}>Client sign-in</h3>
+        <p className="small muted" style={{ margin: "0 0 var(--s2)" }}>For clients of a practice</p>
         <p className="small muted" style={{ marginTop: 0 }}>
           Enter the address your portal access was set up with, and we will email
           you a one-time sign-in link.
@@ -67,7 +68,11 @@ export function SignedOut({ practice }: { practice: string }) {
       </section>
 
       <section style={{ marginTop: "2rem", textAlign: "left" }}>
-        <h3 style={{ marginBottom: ".25rem" }}>Staff</h3>
+        {/* Was "Staff", which a new practice owner read as his client's staff
+            (beta feedback, 2026-10-05). The owner's invitation email names
+            this heading: apps/platform/mail.py. */}
+        <h3 style={{ marginBottom: ".25rem" }}>Practice sign-in</h3>
+        <p className="small muted" style={{ marginTop: 0 }}>For consultants and their team</p>
         {/* Email first (P2 D1): the address decides which Google sign-in your
             practice uses. A plain GET form: the server answers with a redirect. */}
         <form method="get" action="/accounts/google/start" className="row tight">

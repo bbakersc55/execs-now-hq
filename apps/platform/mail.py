@@ -78,7 +78,8 @@ def send_invitation(tenant, *, actor):
     url = settings.PUBLIC_BASE_URL.rstrip("/")
     paragraphs = [
         f"{name} is set up in {PRODUCT_NAME}, and you are its practice owner.",
-        f"To sign in, go to {url}. Under Staff, enter {owner.user.email} and choose "
+        # "Practice sign-in" is the heading on the sign-in page (SignedOut.tsx).
+        f"To sign in, go to {url}. Under Practice sign-in, enter {owner.user.email} and choose "
         "Sign in with Google, using that same Google account.",
         "The first time, you will be asked to read and accept the beta agreement. "
         "Then the Getting started list on your dashboard walks you through the rest: "

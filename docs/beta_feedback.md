@@ -33,6 +33,17 @@ someone already inside their own practice.
 Whatever replaces it has to change in both places together, or the email will
 point at a heading that no longer exists.
 
+**Decided and built 2026-10-05 (on `dev`, not released).**
+
+- The sign-in page: "Staff" is now **Practice sign-in**, with the line "For
+  consultants and their team". "Clients" is now **Client sign-in**, with the
+  line "For clients of a practice".
+- The practice owner's invitation email says "Under Practice sign-in, enter…".
+  A test reads the page and the email together, so one cannot be reworded
+  without the other.
+- Left as they are, and reported to Bryan: every other "staff" (the list is in
+  the 10/5 chat and under "Other 'staff' wording" at the end of this entry).
+
 ### B. Practice email alias: let the practice choose it, and more than one account
 
 **Feedback.** Let the practice pick its alias instead of being pushed to

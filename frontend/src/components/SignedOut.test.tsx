@@ -40,6 +40,24 @@ describe("the signed-out screen (2026-09-30)", () => {
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
+  it("names the two ways in so neither can be mistaken for the other", () => {
+    // Beta feedback, 2026-10-05: "Staff" read as the client's staff.
+    respond(200, {});
+    render(<SignedOut practice="" />);
+
+    const practice = screen.getByRole("heading", { name: "Practice sign-in" });
+    expect(practice.closest("section")).toHaveTextContent("For consultants and their team");
+    expect(practice.closest("section")!.querySelector("form"))
+      .toHaveAttribute("action", "/accounts/google/start");
+
+    const client = screen.getByRole("heading", { name: "Client sign-in" });
+    expect(client.closest("section")).toHaveTextContent("For clients of a practice");
+    expect(client.closest("section")).toHaveTextContent("Email me a sign-in link");
+
+    expect(screen.queryByRole("heading", { name: "Staff" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Clients" })).not.toBeInTheDocument();
+  });
+
   it("says so when rate-limited", async () => {
     const user = userEvent.setup();
     respond(429, { detail: "x" });

@@ -80,6 +80,14 @@ def test_the_invitation_goes_from_the_platform_owners_practice(api, platform_own
     assert message.tenant_id == seeded_tenant.pk, "sent from Executives Now (D2)"
     assert message.to_address == NEW["owner_email"]
     assert "Sign in with Google" in message.body_text and NEW["owner_email"] in message.body_text
+    # It sends them to a heading on the sign-in page, so the two must agree
+    # (beta feedback, 2026-10-05: "Staff" read as the client's staff).
+    from pathlib import Path
+
+    assert "Under Practice sign-in, enter" in message.body_text
+    assert "Under Staff" not in message.body_text
+    page = Path(settings.BASE_DIR, "frontend/src/components/SignedOut.tsx").read_text()
+    assert ">Practice sign-in</h3>" in page
     assert AuditEvent.all_objects.filter(tenant=blue_sky, verb="practice.invited").exists()
     # Nothing about Blue Sky's own data travels; it has none yet, and the
     # invitation names only the practice and the owner's address.
