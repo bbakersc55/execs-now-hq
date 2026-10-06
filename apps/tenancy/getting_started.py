@@ -15,7 +15,8 @@ def items(tenant) -> list[dict]:
     return [
         {"key": "branding", "label": "Set your branding", "to": "/settings/branding",
          "done": tenant.branding_updated_at is not None},
-        {"key": "gmail", "label": "Connect Gmail", "to": "/settings/email",
+        {"key": "gmail", "label": "Choose your practice address and connect Gmail",
+         "to": "/settings/email",
          "done": GmailConnection.all_objects.filter(
              tenant_id=t, send_as_verified_at__isnull=False).exists()},
         {"key": "anthropic", "label": "Add your Anthropic key", "to": "/ai-usage",

@@ -412,3 +412,131 @@ def test_a_reconnect_does_not_inherit_the_old_verification(
     connected_ff.refresh_from_db()
     assert connected_ff.send_as_verified_at is None
     assert "gmail_warning" in response["Location"]
+
+
+# ------------------------------------- choosing the practice address (beta, B)
+
+ADDRESS = "/api/gmail-connection/practice-address/"
+OWN = "bryan@getexecutivesnow.com"
+
+
+def _choose(client, address):
+    import json
+
+    return client.post(ADDRESS, json.dumps({"address": address}),
+                       content_type="application/json")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,expected", [("FF", 200), ("CF", 403), ("VA", 403),
+                                           ("FCC", 403), ("ECC", 403)])
+def test_only_the_practice_owner_chooses_the_practice_address(
+    role, expected, seeded_tenant, api, gmail_net
+):
+    from .factories import ClientCompanyFactory
+
+    company = ClientCompanyFactory(tenant=seeded_tenant) if role in ("FCC", "ECC") else None
+    member = MembershipFactory(tenant=seeded_tenant, role=role, client_company=company)
+    before = seeded_tenant.from_address
+
+    response = _choose(api.as_(member), "helpdesk@getexecutivesnow.com")
+
+    assert response.status_code == expected
+    seeded_tenant.refresh_from_db()
+    assert (seeded_tenant.from_address != before) == (expected == 200)
+
+
+@pytest.mark.django_db
+def test_the_signed_out_cannot_choose_it(client, seeded_tenant):
+    assert _choose(client, "x@example.invalid").status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_choosing_an_address_changes_only_this_practice(seeded_tenant, ff, api, gmail_net):
+    other = TenantFactory(from_address="info@other.invalid")
+
+    assert _choose(api.as_(ff), "hello@getexecutivesnow.com").status_code == 200
+
+    other.refresh_from_db()
+    assert other.from_address == "info@other.invalid"
+
+
+@pytest.mark.django_db
+def test_a_new_address_is_checked_again_and_never_inherits_verification(
+    seeded_tenant, ff, api, connected_ff, gmail_net
+):
+    """The old alias was verified; the new one is not on the account."""
+    from apps.tenancy.models import AuditEvent
+
+    body = _choose(api.as_(ff), "Helpdesk@GetExecutivesNow.com").json()
+
+    assert body["alias"] == "helpdesk@getexecutivesnow.com"
+    assert body["alias_verified"] is False
+    assert "is not a send-as address" in body["verify_error"]
+    connected_ff.refresh_from_db()
+    assert connected_ff.send_as_verified_at is None
+    event = AuditEvent.all_objects.get(tenant=seeded_tenant, verb="practice.address_changed")
+    assert event.payload == {"from": ALIAS, "to": "helpdesk@getexecutivesnow.com"}
+    assert event.actor_id == ff.user.pk
+
+
+@pytest.mark.django_db
+def test_an_address_gmail_lists_is_verified_on_saving(
+    seeded_tenant, ff, api, connected_ff, gmail_net
+):
+    gmail_net.get.return_value = _response(
+        payload=_send_as(OWN, ALIAS, "helpdesk@getexecutivesnow.com"))
+
+    body = _choose(api.as_(ff), "helpdesk@getexecutivesnow.com").json()
+
+    assert body["alias_verified"] is True and "verify_error" not in body
+    connected_ff.refresh_from_db()
+    assert connected_ff.send_as_address == "helpdesk@getexecutivesnow.com"
+
+
+@pytest.mark.django_db
+def test_the_owners_own_email_may_be_the_practice_address(
+    seeded_tenant, ff, api, connected_ff, gmail_net
+):
+    """Decided 2026-10-05: allowed, because adding an alias is too much for
+    some owners. Gmail always lets an account send as itself."""
+    from apps.crm.services import sender, transport
+
+    body = _choose(api.as_(ff), OWN).json()
+
+    assert body["alias"] == OWN and body["alias_verified"] is True
+    seeded_tenant.refresh_from_db()
+    assert sender.resolve_from(seeded_tenant, ff.user, "manual") == OWN
+    assert transport.sending_connection_for(seeded_tenant, OWN).pk == connected_ff.pk
+
+
+@pytest.mark.django_db
+def test_an_address_can_be_chosen_before_anything_is_connected(seeded_tenant, ff, api, gmail_net):
+    body = _choose(api.as_(ff), "hello@getexecutivesnow.com").json()
+
+    assert body["connected"] is False and body["alias"] == "hello@getexecutivesnow.com"
+    gmail_net.get.assert_not_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bad", ["", "info", "info@", "two words@x.com", None])
+def test_something_that_is_not_an_address_is_refused(bad, seeded_tenant, ff, api, gmail_net):
+    before = seeded_tenant.from_address
+
+    response = _choose(api.as_(ff), bad)
+
+    assert response.status_code == 400 and "address" in response.json()
+    seeded_tenant.refresh_from_db()
+    assert seeded_tenant.from_address == before
+
+
+@pytest.mark.django_db
+def test_saving_the_same_address_records_nothing_and_keeps_it_verified(
+    seeded_tenant, ff, api, connected_ff, gmail_net
+):
+    from apps.tenancy.models import AuditEvent
+
+    body = _choose(api.as_(ff), ALIAS).json()
+
+    assert body["alias_verified"] is True
+    assert not AuditEvent.all_objects.filter(verb="practice.address_changed").exists()

@@ -6,6 +6,7 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { GmailStatus, Me, api } from "../lib/api";
 import { DevAllowlist } from "./DevAllowlist";
+import { PracticeAddress } from "./PracticeAddress";
 import { SenderSettings } from "./SenderSettings";
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -104,7 +105,7 @@ export function EmailSettings({ me }: { me: Me }) {
       <PageHead title="Email settings"
         sub={<>Every app-originated message — magic links, digests,
           referral touches — is sent by a connected Gmail account with{" "}
-          <strong>From</strong> set to the practice alias. This is your own
+          <strong>From</strong> set to the practice address. This is your own
           connection.</>} />
 
       {note && <Banner kind="ok">{note}</Banner>}
@@ -115,6 +116,13 @@ export function EmailSettings({ me }: { me: Me }) {
           Google sign-in isn't configured on this server, so there is nothing to connect
           to. Contact support.
         </Banner>
+      )}
+
+      {/* Before Connect: which address the practice sends from. The practice
+          owner's to choose (beta feedback, 2026-10-05). */}
+      {me.role === "FF" && (
+        <PracticeAddress me={me} status={s}
+          onSaved={(_next, said) => { setNote(said.ok ?? ""); setProblem(said.problem ?? ""); }} />
       )}
 
       <Card
@@ -184,7 +192,7 @@ export function EmailSettings({ me }: { me: Me }) {
       </Card>
 
       <Card
-        title="Practice alias"
+        title="Practice address check"
         actions={s.connected && (
           <button className="ghost" disabled={busy} onClick={() => verify.mutate()}>
             {s.alias_verified ? "Verify again" : "Verify alias"}

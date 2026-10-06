@@ -214,6 +214,14 @@ main { padding: var(--s8) var(--gutter) var(--s12); max-width: 1320px; }
   .settings-nav .heading { width: 100%; }
 }
 
+/* A short run of setup questions inside a card (Settings → Email). */
+fieldset.questions { border: none; padding: 0; margin: var(--s4) 0; min-width: 0; }
+fieldset.questions legend { font-size: var(--t-13); font-weight: 600; color: var(--ink-2);
+                            padding: 0; margin-bottom: var(--s2); }
+.indent { margin: var(--s1) 0 var(--s3) var(--s6); }
+.indent ol, .indent ul { padding-left: var(--s4); margin: var(--s2) 0; }
+.indent li { margin-bottom: var(--s1); }
+
 /* ---------------------------------------------------------- the top bar */
 
 .topbar {

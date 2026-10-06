@@ -181,6 +181,53 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         connection.refresh_from_db()
         return Response(_status_payload(request))
 
+    @action(detail=False, methods=["post"], url_path="practice-address",
+            permission_classes=[crm_perms.IsTenantStaff, crm_perms.IsFF])
+    def practice_address(self, request):
+        """Choose the address app mail is sent from (beta feedback, 2026-10-05).
+
+        Practice owner only: it is the sender on every digest and sign-in link
+        the practice's clients receive. It may be the owner's own address; a
+        separate one is recommended and not required. Changing it never
+        inherits the old address's verification: the same send-as check that
+        runs at connect runs again here, against the new address.
+        """
+        from django.core.exceptions import ValidationError
+        from django.core.validators import validate_email
+
+        tenant = request.tenant
+        address = str(request.data.get("address") or "").strip().lower()
+        try:
+            validate_email(address)
+        except ValidationError:
+            return Response({"address": "Enter an email address, like info@yourpractice.com."},
+                            status=400)
+        previous = tenant.from_address
+        if address != previous.lower():
+            tenant.from_address = address
+            tenant.save(update_fields=["from_address", "updated_at"])
+            AuditEvent.all_objects.create(
+                tenant=tenant, actor=request.user, verb="practice.address_changed",
+                target_type="tenant", target_id=tenant.pk,
+                payload={"from": previous, "to": address},
+            )
+
+        connection = _my_connection(request)
+        if connection is None:
+            # Nothing to check against yet; connecting runs the check.
+            return Response(_status_payload(request))
+        if address != previous.lower():
+            connection.send_as_verified_at = None
+            connection.send_as_error = ""
+            connection.save(update_fields=["send_as_verified_at", "send_as_error", "updated_at"])
+        try:
+            transport.verify_send_as(connection, tenant.from_address)
+        except transport.TransportUnavailable as exc:
+            connection.refresh_from_db()
+            return Response(dict(_status_payload(request), verify_error=str(exc)), status=200)
+        connection.refresh_from_db()
+        return Response(_status_payload(request))
+
     @action(detail=False, methods=["post"])
     def disconnect(self, request):
         """Deletes the stored refresh token with the row — same cascade

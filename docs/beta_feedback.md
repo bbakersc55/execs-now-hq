@@ -103,6 +103,62 @@ per person, and all app mail goes through the practice owner's.
   scope, so it also touches the verification Bryan is working through. That is
   a spec, not a tweak.
 
+**Decided 2026-10-05, and built (on `dev`, not released).** Bryan's
+decisions: the practice address is editable; **the owner's own email may be
+the practice address**; a separate address is **recommended, not required**.
+His reasoning: for less tech-savvy owners, adding an alias may be too much
+friction.
+
+*What was built.* Settings → Email now opens, for the practice owner, with a
+"Practice address" card **above** Connect. Getting started's Gmail step is
+renamed "Choose your practice address and connect Gmail" and leads there.
+
+1. **"What is your email?"** Prefilled with their sign-in address; it is the
+   Google account they will connect.
+2. **"Do you want your practice address to be something different, like info@
+   or helpdesk@, or do you want your own email to be the practice address?"**
+   "A separate practice address" is marked recommended and suggests
+   `info@<their domain>`; any address can be typed. "Use my own email" is the
+   other choice and says there is nothing to set up in Gmail.
+3. Only for a separate address: **"Do you want a separate inbox or an
+   alias?"**, under the disclaimer that a separate inbox is an extra charge
+   with Google or Microsoft and one more inbox to manage, while an alias costs
+   nothing extra and is not a separate inbox to manage.
+   - *Alias:* the steps, in order: add it in the Google Admin console
+     (Directory → Users → the user → User information → Alternate email
+     addresses); add it in Gmail (Settings → See all settings → Accounts →
+     Send mail as → Add another email address, leaving "Treat as an alias"
+     ticked); click Gmail's confirmation link if it sends one; save here. A
+     note says an alias at their own domain needs Google Workspace, and that a
+     free @gmail.com account should use its own email.
+   - *Separate inbox:* what works today, plainly. The app can send from it
+     once it is in their Gmail "Send mail as" list. Replies sent to that inbox
+     will **not** appear in client records, because the app reads only the
+     account that is connected; a second account is planned and not built. The
+     app connects to Google only; a Microsoft 365 inbox cannot be connected.
+
+- **Saving** stores the address and runs the existing "Send mail as" check
+  again against it. A changed address never inherits the old one's verified
+  mark. Before anything is connected, saving only stores it; connecting runs
+  the check.
+- **Existing practices keep their address.** Once connected and verified, the
+  card is a one-line summary with "Change".
+- **Who:** practice owner only (`POST /api/gmail-connection/practice-address/`).
+  An associate sees no questions. Recorded in the audit trail as
+  `practice.address_changed`, with the old and new address.
+- The answers to questions 1 and 3 are not stored; they only decide which
+  instructions show. **No migration.**
+- With the owner's own email as the practice address, digests and sign-in
+  links come from that person. Nothing else changes: per-person "send as
+  myself" settings keep working, and resolve to the same address.
+
+**Roadmap (needs its own spec): connect a second account or a separate
+inbox.** Bryan's reason: not every fractional practice is a one- or two-person
+shop. What it involves is listed above ("What connecting a second account
+would take"): a connection that belongs to the practice rather than a person,
+a connect flow for the other account, sending and reply-reading chosen by
+address, and the Google verification consequences of reading another mailbox.
+
 ### C. "Google hasn't verified this app"
 
 **Feedback.** Shawn saw Google's unverified-app warning.
