@@ -42,12 +42,17 @@ def tick(tenant_id: str, now=None) -> dict:
         late = digests.expire_due(tenant, now=now)
         sent = digests.send_due(tenant, now=now)
         notified = notify_client_activity(tenant, now=now)
+        # Last, so they describe what this minute's drafting and sending left.
+        from apps.work import digest_reminders
+
+        reminders = digest_reminders.run(tenant, now=now)
     return {
         "every_update_generated": len(every_update),
         "scheduled_generated": len(scheduled),
         "late": len(late),
         "sent": len(sent),
         "client_activity_notices": notified,
+        "digest_reminders": reminders,
     }
 
 

@@ -781,6 +781,10 @@ class OutboxMessage(TenantScopedModel):
         # Likewise internal: "your prospect finished the form" goes to the
         # fractional who is about to run the call (AC-4.3).
         Producer.PRECALL_COMPLETE,
+        # Internal too: "digests are waiting" to the practice owner and the
+        # associates who can approve them. Names and times, never a digest's
+        # text (apps/work/digest_reminders.py).
+        Producer.DIGEST_REMINDER,
         Producer.CADENCE_CHANGE, Producer.INBOUND_FORWARD,
         # P2: platform mail to a practice owner or the platform owner.
         Producer.PRACTICE_INVITE, Producer.FEEDBACK_NOTICE,

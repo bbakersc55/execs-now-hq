@@ -215,6 +215,10 @@ export function DigestSettings() {
             other daily jobs.</li>
           <li>Nothing here sends a digest. Every digest still waits for the practice owner
             or an associate to approve it.</li>
+          <li><strong>Reminders by email</strong> go to the practice owner, and to each
+            associate for their own clients: when digests are ready to approve, a last
+            call if any are still waiting, and a notice if any were not sent. They name
+            who each digest is for and never include its text.</li>
         </ul>
       </Card>
     </>

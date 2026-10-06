@@ -321,3 +321,65 @@ goldens and the real-session fingerprints untouched throughout.
    reminder while acting as someone; the reminder is skipped, and the
    Dashboard still shows the count, when the practice has no working mail
    connection.
+
+## 12. As built (2026-10-05, on `dev`, not released)
+
+All three phases are built, one commit each.
+
+**The SQL as generated and applied to `execsnowhq_local`** is §8's, statement
+for statement (`tenancy 0011_digest_draft_day_and_hour`):
+
+```sql
+ALTER TABLE "tenant" ADD COLUMN "digest_draft_day" smallint DEFAULT 4 NOT NULL CHECK ("digest_draft_day" >= 0);
+ALTER TABLE "tenant" ALTER COLUMN "digest_draft_day" DROP DEFAULT;
+ALTER TABLE "tenant" ADD COLUMN "digest_draft_hour" smallint DEFAULT 8 NOT NULL CHECK ("digest_draft_hour" >= 0);
+ALTER TABLE "tenant" ALTER COLUMN "digest_draft_hour" DROP DEFAULT;
+UPDATE "tenant"
+   SET "digest_draft_day" = CASE WHEN "digest_send_day" = 1 THEN 7
+                                 ELSE "digest_send_day" - 1 END,
+       "digest_draft_hour" = "digest_send_hour";
+```
+
+On the laptop that turned Executives Now (send Monday 8:00 AM) into draft
+Sunday 8:00 AM, and Fake Practice (send Friday 8:00 AM) into draft Thursday
+8:00 AM. **Production has not been touched**; that release needs the dry run
+and Bryan's yes.
+
+**Two more migration files, which run no SQL** and were not named in §8:
+`work 0006_digest_state_late` (the new "late" value, which §8 did say needs no
+SQL) and `crm 0032_outbox_producer_digest_reminder` (a new value so reminder
+emails are labeled as such in the Outbox log). Django records a changed list
+of allowed values as a migration even though the database does not change.
+In production the worker will list three migrations as waiting; two do
+nothing.
+
+**Differences from the plan above, all small:**
+
+- **Every-update digests get "ready" and "not sent" emails but no last call.**
+  The last-call rule is defined by the practice's send time, which they do not
+  have; theirs is a rolling 24 hours each.
+- **A switch, `DIGEST_REMINDERS_ENABLED`** (on by default), stops all three
+  emails without a release. The test suite turns it off except in the
+  reminder tests, so "nothing reached a client" can still be checked by
+  counting mail.
+- **The timer's own send now locks the digest too**, so a person pressing Send
+  now on an approved digest at its send time cannot cause two emails. This was
+  a gap the new button would have opened; it has its own two-connection test.
+- **"Not sent" notices are only for the last 24 hours**, so a worker that was
+  down does not announce old news when it comes back.
+- An approved digest now stays on the Digests screen until it is sent, marked
+  Approved, so that Send now can reach it.
+- Eight existing tests that asserted "expires at the send time" were changed
+  to the approved rule: late at the send time, expired when the next digest is
+  drafted. No test was removed.
+
+**How the reminders fit "every email is reviewed by a person".** That rule is
+about mail that reaches a client or creates records from AI output. The three
+reminders go only to the practice owner and to associates, about digests
+waiting for their own approval; they are composed from fixed sentences plus
+each digest's recipient name, company, cadence and times, with no AI and none
+of the digest's text; and they are logged in the Outbox like every other
+send. They sit beside the existing internal notices that also send without a
+review step: the client-activity notice, sign-in links and PIN resets. No
+reminder approves, sends or changes a digest.
+

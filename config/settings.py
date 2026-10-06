@@ -176,6 +176,12 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 # apps.accounts.middleware.StaffIdleSignOut. SESSION_COOKIE_AGE alone slides on
 # every request, background refreshes included.
 STAFF_IDLE_SECONDS = 60 * 60 * 12
+
+# Reminder emails to the practice's own people about digests waiting for
+# approval (apps/work/digest_reminders.py). On everywhere; the switch exists
+# so they can be stopped without a release, and so the test suite can count
+# client mail without them.
+DIGEST_REMINDERS_ENABLED = env.bool("DIGEST_REMINDERS_ENABLED", default=True)
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"

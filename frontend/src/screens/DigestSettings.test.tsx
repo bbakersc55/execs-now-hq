@@ -130,6 +130,8 @@ describe("Settings → Digests", () => {
     expect(card).toHaveTextContent(/every update is not on this schedule/);
     expect(card).toHaveTextContent(/One already waiting on the Digests screen keeps the time/);
     expect(card).toHaveTextContent(/Every digest still waits for the practice owner or an associate to approve it/);
+    expect(card).toHaveTextContent(/Reminders by email go to the practice owner, and to each associate for their own clients/);
+    expect(card).toHaveTextContent(/never include its text/);
   });
 
   it("offers no switch for holding digests", async () => {
