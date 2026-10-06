@@ -11,6 +11,8 @@ import ast
 import pathlib
 import re
 
+import pytest
+
 from apps.tenancy.models import Role
 from apps.tenancy.roles import ROLE_LABEL, UNKNOWN_ROLE, role_label
 
@@ -75,3 +77,35 @@ def test_me_and_the_staff_list_carry_the_name(api, ff):
     assert me["role"] == "FF" and me["role_label"] == "Practice owner"
     staff = api.as_(ff).get("/api/staff/").json()
     assert {m["role_label"] for m in staff} >= {"Practice owner"}
+
+
+@pytest.mark.django_db
+def test_the_practices_own_people_are_its_team_not_its_staff(seeded_tenant, ff, api):
+    """Beta feedback, 2026-10-05: "staff" read as the client's staff, so what a
+    practice owner reads says "team". The address /staff and the code keep
+    their names."""
+    import json
+
+    from apps.tenancy import getting_started, services
+    from apps.tenancy.models import Role
+
+    labels = [item["label"] for item in getting_started.items(seeded_tenant)]
+    assert "Invite your team" in labels
+    assert not [label for label in labels if "staff" in label.lower()]
+    assert next(i for i in getting_started.items(seeded_tenant)
+                if i["label"] == "Invite your team")["to"] == "/staff"
+
+    for call in (
+        lambda: services.invite_member(tenant=seeded_tenant, email="x@example.invalid",
+                                       role=Role.FCC, actor=ff.user),
+        lambda: services.change_role(ff, Role.ECC, actor=ff.user),
+    ):
+        with pytest.raises(services.StaffActionNotPermitted) as refused:
+            call()
+        assert "team" in str(refused.value) and "staff" not in str(refused.value).lower()
+
+    # The same refusal, as the Team screen receives it.
+    response = api.as_(ff).post("/api/staff/", json.dumps(
+        {"email": "y@example.invalid", "role": "FCC"}), content_type="application/json")
+    assert "staff" not in response.content.decode().lower()
+

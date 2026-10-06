@@ -35,7 +35,7 @@ describe("Settings", () => {
 
   it("lists every section for the practice owner", () => {
     expect(settingsFor(aMe({ role: "FF" })).map((s) => s.label)).toEqual([
-      "Email", "Branding", "Staff", "Stage automations", "Referral settings", "Digests",
+      "Email", "Branding", "Team", "Stage automations", "Referral settings", "Digests",
       "Notes", "AI usage",
     ]);
   });
@@ -75,7 +75,7 @@ describe("Settings", () => {
     await showApp(aMe({ role: "FF" }), "/tasks");
 
     const sidebar = document.querySelector(".sidebar") as HTMLElement;
-    for (const label of ["Settings", "Branding", "Staff", "AI usage", "Stage automations"]) {
+    for (const label of ["Settings", "Branding", "Team", "Staff", "AI usage", "Stage automations"]) {
       expect(within(sidebar).queryByText(label), label).not.toBeInTheDocument();
     }
 

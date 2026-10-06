@@ -97,7 +97,7 @@ export function Practices() {
           : rows.length === 0 ? <Empty>No practices yet.</Empty> : (
           <table>
             <thead><tr>
-              <th>Practice</th><th>Status</th><th>Created</th><th>Staff</th><th>Clients</th>
+              <th>Practice</th><th>Status</th><th>Created</th><th>Team</th><th>Clients</th>
               <th>AI spend this month</th><th>Last activity</th><th></th>
             </tr></thead>
             <tbody>

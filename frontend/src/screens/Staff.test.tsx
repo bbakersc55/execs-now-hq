@@ -16,6 +16,14 @@ describe("the staff screen", () => {
     expect(screen.queryByPlaceholderText(/getexecutivesnow/)).toBeNull();
   });
 
+  it("is headed Team, the word used for a practice's own people", async () => {
+    // Beta feedback, 2026-10-05: "Staff" read as the client's staff.
+    vi.stubGlobal("fetch", mockApi({ "GET /api/staff/": [] }));
+    renderRoute(<Staff me={aMe({ role: "FF" })} />);
+    expect(await screen.findByRole("heading", { name: "Team" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Staff" })).not.toBeInTheDocument();
+  });
+
   it("names the roles in its pickers", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/staff/": [] }));
     renderRoute(<Staff me={aMe({ role: "FF" })} />);

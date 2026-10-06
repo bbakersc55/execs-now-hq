@@ -86,6 +86,9 @@ def test_the_invitation_goes_from_the_platform_owners_practice(api, platform_own
 
     assert "Under Practice sign-in, enter" in message.body_text
     assert "Under Staff" not in message.body_text
+    # ...and nowhere says "staff", which he read as his client's staff.
+    assert "your team" in message.body_text
+    assert "staff" not in message.body_text.lower()
     page = Path(settings.BASE_DIR, "frontend/src/components/SignedOut.tsx").read_text()
     assert ">Practice sign-in</h3>" in page
     assert AuditEvent.all_objects.filter(tenant=blue_sky, verb="practice.invited").exists()

@@ -81,7 +81,7 @@ def invite_member(*, tenant, email, role, full_name="", actor=None):
 
     if role in (Role.FCC, Role.ECC):
         raise StaffActionNotPermitted(
-            "Client users are granted portal access on a contact, not invited as staff."
+            "Client users are granted portal access on a contact, not invited to the team."
         )
 
     user, _ = User.objects.get_or_create(
@@ -124,7 +124,7 @@ def change_role(membership, new_role, *, actor=None):
     """FR-0.8b — takes effect on the member's next request."""
     if new_role in (Role.FCC, Role.ECC) or membership.role in (Role.FCC, Role.ECC):
         raise StaffActionNotPermitted(
-            "Client roles are managed through portal access, not staff roles."
+            "Client roles are managed through portal access, not team roles."
         )
     old = membership.role
     membership.role = new_role

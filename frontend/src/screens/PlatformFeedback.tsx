@@ -24,7 +24,7 @@ export function PlatformFeedback() {
   const rows = list.data ?? [];
   return (
     <>
-      <PageHead title="Feedback" sub="What practice staff sent with the Feedback button." />
+      <PageHead title="Feedback" sub="What practice teams sent with the Feedback button." />
       {list.isError && <Banner kind="bad">{(list.error as Error).message}</Banner>}
       {rows.length === 0 ? <Empty>No feedback yet.</Empty> : rows.map((r) => (
         <Card key={r.id} title={`${r.practice_name} · ${r.role}`}

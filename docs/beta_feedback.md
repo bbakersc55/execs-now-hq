@@ -331,7 +331,18 @@ name.
   the before and after) in the audit trail. That record is also how the app
   knows the prompt has been answered, so **no migration** was needed.
 
-### Other "staff" wording (reported 2026-10-05, not changed)
+### Other "staff" wording (reported 2026-10-05; changed to "team" the same evening)
+
+**Built on `dev`, not released.** For consistency with "Practice sign-in — For
+consultants and their team", all five below now say **team**: "…your
+contacts, your team, your first client…"; "Invite your team"; the Settings
+section and its page title are "Team"; the refusals read "…not invited to the
+team." and "…not team roles."; and the platform owner sees a "Team" column and
+"What practice teams sent with the Feedback button." **The address is still
+`/staff`**, so links and bookmarks keep working, and nothing in the code or
+the data was renamed.
+
+As first reported:
 
 Places where "staff" could still be read as the client's staff. None is seen
 by someone who has not yet signed in.

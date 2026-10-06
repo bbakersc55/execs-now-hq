@@ -57,7 +57,7 @@ export function Staff({ me }: { me: Me }) {
 
   return (
     <>
-      <PageHead title="Staff"
+      <PageHead title="Team"
         sub="Your practice's own people. Sign-in is invite-only — an address with no membership
         here is refused at Google." />
 
@@ -85,7 +85,7 @@ export function Staff({ me }: { me: Me }) {
         </div>
       </Card>
 
-      <Card title="Team">
+      <Card title="Who is on the team">
         {(staff.data ?? []).length === 0 ? <Empty>Nobody yet.</Empty> : (
           <table>
             <thead><tr><th>Person</th><th>Role</th><th>Invited</th><th>Status</th><th></th></tr></thead>

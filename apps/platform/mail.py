@@ -83,7 +83,7 @@ def send_invitation(tenant, *, actor):
         "Sign in with Google, using that same Google account.",
         "The first time, you will be asked to read and accept the beta agreement. "
         "Then the Getting started list on your dashboard walks you through the rest: "
-        "your branding, Gmail, your Anthropic key, your contacts, your staff, your "
+        "your branding, Gmail, your Anthropic key, your contacts, your team, your "
         "first client and your first strategy template.",
         f"Questions: reply to this email. — {getattr(actor, 'full_name', '') or 'Executives Now'}",
     ]
