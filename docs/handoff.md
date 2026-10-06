@@ -1,72 +1,105 @@
 # Execs NOW HQ — handoff to the next chat
 
-Written 2026-10-03, replacing the 2026-09-22 version; updated at the end of that
-day, after Release 4 (P3) and the part two spec, and again on **2026-10-05
-after Release 5 (the UI work) and Release 6 (Shawn's beta feedback)**. **The next session starts at
-"Next" below.** Upload this at the
-start of the next chat with: "Read this handoff, then pick up where it leaves
-off." The specs in `docs/` are the source of truth; this covers what they
-don't, and what changed since 9/30.
+Written 2026-10-03, replacing the 2026-09-22 version; **last updated at the end
+of 2026-10-05**, after Release 5 (the UI work), Release 6 (Shawn's beta
+feedback) and the digest schedule build. **The next session starts at "Next"
+below.** Upload this at the start of the next chat with: "Read this handoff,
+then pick up where it leaves off." The specs in `docs/` are the source of
+truth; this covers what they don't, and what changed since 9/30.
 
 ## Next
 
-**First, from 10/5:** Bryan runs the production smoke check for Release 5 (the
-list is in the 10/5 chat: top bar and profile menu, Settings sections, Sign out
-and back in, one Pipeline drag, a Contacts row click, the Notes grid with a
-locked note, and Cory Muscato's and the Test Prospect sessions opening with the
-call clock below the top bar). Then **the profile picture bug**: adding a
-picture failed for Bryan with an error that the file was not the correct type,
-when it was. Details to follow from him; nothing has been investigated yet.
-The picture (UI 3 phase 4, commit `7094dcf`, migration `tenancy 0011`) is
-**built and deliberately not released. Since the evening of 10/5 it lives on
-its own branch, `feature/profile-picture`, and is no longer on `dev`**; see
-"Where it stands".
+In this order.
 
-**Also from 10/5, released the same evening (Release 6, `main` at
-`e4222f6`):** Shawn's (Blue Sky) first beta feedback, in
-`docs/beta_feedback.md`: sign-in wording, the practice address chosen by the
-owner, "Mark as a client" with its undo, and the digest day and time. No
-migration in any of it. Bryan approved all four on the laptop. Both suites, the
-goldens and the real-session fingerprints were confirmed on `e4222f6` itself
-after the release (2280 backend, 665 frontend, 4 fingerprints identical).
-**Not yet smoke-checked in production**; the list is in the 10/5 chat, and it
-is look-only: do not mark a real company as a client, change the real practice
-address, or change the real digest day while checking. Two things to do by eye: read the alias instructions on
-Settings → Email against a real Google Admin console and Gmail (they were
-written from memory of Google's screens), and tell Shawn the sign-in page and
-his options have changed.
+**1. The digest schedule: check it on the laptop, then release it.**
+(`docs/digest_schedule.md`; §12 is the as-built record. Built on `dev` 10/5 in
+three phases, not released.)
 
-**Then, unchanged from 10/3:**
+- **Restart the laptop's qcluster first.** It does not reload code, and the
+  tick is what drafts, marks late and sends reminders.
+- Bryan runs the checklist on localhost:5200 (it is in the 10/5 chat):
+  Settings → Digests with Draft on and Send on; Digests → "Generate now" with
+  the send time in 2 minutes; Update this draft; Send now… with the whole
+  email shown first; a digest going "Not sent on time" and being sent by hand;
+  an approved digest staying on the screen; and the three reminder emails in
+  Mailpit at http://localhost:8125 (ready, last call, not sent), none of which
+  contains a digest's text.
+- **If it passes, release.** This one has a migration that writes data, so it
+  goes by "Releasing a migration" in the runbook **with a dry run of the data
+  step and Bryan's yes before "release"**. `tenancy 0011` adds two columns to
+  the practice and runs one `UPDATE` that gives each practice the day before
+  its send day at the same hour, which is exactly today's behavior. The dry
+  run prints each practice's before and after. `work 0006` and `crm 0032` ride
+  along and run no SQL, so the worker will list three migrations as waiting.
+- **Then Bryan sets Draft on to Friday 3:00 PM on his own practice in
+  production** (Settings → Digests). The release deliberately does not choose
+  it for him; until he does, Executives Now is draft Sunday 8:00 AM, send
+  Monday 8:00 AM.
+- **The same release carries** the "staff" to "team" wording (`c075766`) and
+  the flaky Strategy test fix (`f9e8e04`). Neither has a migration.
+- `DIGEST_REMINDERS_ENABLED=false` stops the reminder emails without a release
+  if they turn out to be noise.
 
-Bryan runs **two test sessions in production** (part two, decision 14): one
-v3 and one v2, with a test contact, before any part two code. **Start by
-creating the test contact** (Contacts → Add contact, with an email address
-Bryan can open). These two sessions are the first time any P3 screen is seen
-in a browser and the first real Claude call on v3. Part two phase 2 (custom
-sections) starts only after them, and after anything they turn up is fixed.
+**2. Finish the v2 test session in production, then run a v3 one.**
+The v2 test session for **Test Prospect** is in production and has been taken
+as far as the diagnostic. Finish it from the diagnostic onward: the call, the
+map, the PDF, and converting to a client. Then run a **v3** test session. This
+is the rehearsal for **Cory Muscato's session on Thursday 10/8 at 1:00 PM**,
+and it gates P3 part two phase 2 (custom sections): no part two code until both
+are done and anything they turn up is fixed. The first real Claude call on v3
+happens here.
 
-**After Release 6 (10/5, late):** it passed Bryan's production smoke check.
-**Bryan changed Executives Now's digest schedule in production to Monday at
-8:00 AM.** With the fixed 24-hour lead that means the weekly digest is written
-**Sunday 8:00 AM** and must be approved by Monday 8:00 AM or it expires
-unsent, so the whole approval window is now Sunday and early Monday. Bryan's
-answer is a redesign, **built on `dev` in three phases and NOT released:
-`docs/digest_schedule.md`** (D1–D13 accepted; §12 is the as-built record).
-"Draft on" and "Send on" in Settings → Digests; Update this draft; Send now
-with the whole email shown first; a late state, so a digest nobody approved
-can still be sent by hand until the next one is drafted; and three reminder
-emails to the practice owner and to associates for their own clients.
-**The release needs a production dry run and Bryan's yes:** `tenancy 0011`
-adds two columns and runs one `UPDATE` that fills them (each practice gets
-the day before its send day at the same hour, which is today's behavior;
-Executives Now becomes draft Sunday 8:00 AM, and Bryan then sets Friday 3:00
-PM himself). `work 0006` and `crm 0032` ride along and run no SQL. Applied to
-`execsnowhq_local` only. **After pulling this, restart the laptop's qcluster:
-it does not reload, and the tick is what drafts, marks late and reminds.**
-`DIGEST_REMINDERS_ENABLED=false` stops the reminder emails without a release.
-When `feature/profile-picture` comes back, its `tenancy 0011` must be
-renumbered to follow this one. Built on `dev` and **not released**: the
-remaining "staff" wording changed to "team" (`c075766`).
+**3. The profile picture bug.** On `feature/profile-picture` (commit
+`7094dcf`), not on `dev` and not released. Adding a picture failed for Bryan
+with an error saying the file was not the correct type, when it was.
+**Waiting on Bryan's details: the file's type, its rough size, and the exact
+wording of the error.** Nothing has been investigated yet. Its migration is
+numbered `tenancy 0011`, which **now clashes with the digest migration** of the
+same number on `dev`: when the branch is rebased onto `dev` it must be
+renumbered to follow it (the laptop's database already has both applied, under
+their different names).
+
+### Where things are at the end of 10/5
+
+- **Releases 5 and 6 are live.** Production is `main` at `e4222f6`. Release 5
+  (`31286cf`): the Pipeline board, clickable rows, the Notes grid, the top bar
+  with Sign out and the staff session rules, Settings by role, and Profile
+  with the editable name. Release 6: sign-in wording, the practice address
+  chosen by the owner, "Mark as a client" with its undo, and the digest day
+  and time. Both passed Bryan's production smoke checks. Neither had a
+  migration.
+- **Bryan's production digest schedule is send Monday 8:00 AM.** Production
+  still drafts a fixed 24 hours before, so his weekly digests are written
+  **Sunday 8:00 AM** and are not sent unless approved by Monday 8:00 AM. That
+  holds until the digest release in item 1 and his change to Friday 3:00 PM.
+- **Shawn (Blue Sky Business Consulting) is set up on the beta.** Bryan is
+  telling him about the new sign-in wording ("Practice sign-in"), "Mark as a
+  client", and that **his strategy template needs two rated items**. **Any
+  staff Shawn invites must be added as Google test users first**, or Google
+  will refuse their sign-in while the app is unverified
+  (`docs/google_verification.md`). His feedback and what was done about each
+  item is in `docs/beta_feedback.md`.
+- **Still open:**
+  - the `/hq` homepage copy, needed for Google verification;
+  - connecting a second mail account or a separate inbox (roadmap; needs its
+    own spec; `docs/beta_feedback.md`, item B);
+  - stage automations offered as a prompt when a card moves (roadmap;
+    `docs/ui1_pipeline_board.md` §8);
+  - two-factor authentication (roadmap;
+    `docs/ui3_top_bar_settings_profile.md` §10);
+  - UI 3 phase 5, pictures wherever initials show (after the picture bug).
+
+### Branches at the end of 10/5
+
+| Branch | Holds | State |
+|---|---|---|
+| `main` | Releases 1–6 | Live in production, at `e4222f6` |
+| `dev` | `main` plus: the "team" wording, the flaky test fix, the digest schedule (three phases, with `tenancy 0011`, `work 0006`, `crm 0032`), and documents | **Unreleased.** Pushed. The demo deploys from it, and applies these migrations to its fictional data when it starts |
+| `feature/profile-picture` | The profile picture (UI 3 phase 4) and its own `tenancy 0011` | **Unreleased, held for the bug.** Pushed. One commit on top of `31286cf`; needs rebasing onto `dev` and its migration renumbered |
+| `backup/dev-2026-10-05` | A copy of `dev` as it was before the picture was moved off it | Nothing that is not on the two branches above. Safe to delete once the picture is released |
+
+The laptop's `execsnowhq_local` has every `dev` migration applied, **and** the
+picture's column from when that branch was on `dev`; `dev`'s code ignores it.
 
 ## What this is, in one paragraph
 
@@ -124,9 +157,15 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | **UI 3 phase 4** profile picture | **Built, NOT released.** Commit `7094dcf` is on the branch **`feature/profile-picture`** (on GitHub), one commit on top of `31286cf`. **It is not on `dev`**, which was rebuilt without it on 10/5 so the rest can be released and the demo never gets the broken control. Migration `tenancy 0011` (one nullable column, `membership.avatar_id`) is still applied to `execsnowhq_local`; `dev`'s code ignores the extra column. Held back for the upload bug. To bring it back once fixed: rebase the branch onto `dev`, and if `dev` has gained a `tenancy` migration by then, renumber 0011 to follow it. `backup/dev-2026-10-05` on GitHub is the old line of `dev`, kept as a copy |
 | **Beta feedback, Shawn 10/5** (`docs/beta_feedback.md`) | **Released 10/5 (Release 6, `main` at `e4222f6`, no migration):** "Practice sign-in" / "Client sign-in"; the practice address chosen by the owner (own email allowed); "Mark as a client" and its undo; digest day, time and time zone with a one-time prompt. No migration |
 | UI 3 phase 5 pictures wherever initials show | Not started |
+| **Digest schedule** Draft on / Send on, Update this draft, Send now, late, reminder emails | **Built on `dev` 10/5 (`21a3be2`, `c37f101`, `9eac353`), NOT released.** Spec and as-built: `docs/digest_schedule.md`. Release needs the dry run of `tenancy 0011`'s data step and Bryan's yes. Not seen in a browser by anyone yet |
+| "Staff" to "team" wording; flaky Strategy test fix | **On `dev` (`c075766`, `f9e8e04`), NOT released**; they go with the digest release |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
+
+Tests on `dev` at the end of 10/5 (`9eac353`, with the digest schedule):
+**2361 backend passed (3 skipped, 2 xfailed), 683 frontend**, goldens
+unchanged, real-session fingerprints 4 identical.
 
 Tests as of 10/5, on the released commit `e4222f6`: **2280 backend passed (3
 skipped, 2 xfailed), 665 frontend**, goldens unchanged, real-session
@@ -337,7 +376,7 @@ unregistered model; the isolation family now includes the platform owner.
    for one v3 and one v2 session is in the 10/3 chat; the demo is ready for it
    ("Operations — focused" is its default, migration applied), and needs an
    Anthropic key entered on its AI usage screen.
-6. **Cory Muscato, 10/8:** his session is created in production on
+6. **Cory Muscato, Thursday 10/8 at 1:00 PM:** his session is created in production on
    "Operations — focused", **with the form not sent**. It was created before P3
    was released, so its questions were frozen first. Bryan emailed Cory a
    questionnaire some time ago and has **no reply yet**. Run it on v2 as
