@@ -26,8 +26,12 @@ its own branch, `feature/profile-picture`, and is no longer on `dev`**; see
 `e4222f6`):** Shawn's (Blue Sky) first beta feedback, in
 `docs/beta_feedback.md`: sign-in wording, the practice address chosen by the
 owner, "Mark as a client" with its undo, and the digest day and time. No
-migration in any of it. **Not yet smoke-checked in production**; the list is
-in the 10/5 chat. Two things to do by eye: read the alias instructions on
+migration in any of it. Bryan approved all four on the laptop. Both suites, the
+goldens and the real-session fingerprints were confirmed on `e4222f6` itself
+after the release (2280 backend, 665 frontend, 4 fingerprints identical).
+**Not yet smoke-checked in production**; the list is in the 10/5 chat, and it
+is look-only: do not mark a real company as a client, change the real practice
+address, or change the real digest day while checking. Two things to do by eye: read the alias instructions on
 Settings → Email against a real Google Admin console and Gmail (they were
 written from memory of Google's screens), and tell Shawn the sign-in page and
 his options have changed.
