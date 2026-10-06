@@ -1,11 +1,11 @@
-import { PageHead } from "../components/shell";
+import { PageHead, Sheet } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { Link } from "react-router-dom";
 import { Banner, Card, Empty, Field, Pill, countdown, when } from "../components/ui";
 import { Contact, DigestRow, Me, TickStatus, UpcomingDigest, api } from "../lib/api";
-import { DigestSchedulePrompt } from "./DigestSettings";
+import { DigestSchedule, DigestSchedulePrompt, useDigestSchedule } from "./DigestSettings";
 
 const CAN_APPROVE = ["FF", "CF"];
 
@@ -39,7 +39,10 @@ export function Digests({ me }: { me: Me }) {
   // and this list used to go on showing a digest as pending after the tick had
   // expired it (Check 3). Window focus does not refetch in this app.
   const digests = useQuery<DigestRow[]>({
-    queryKey: ["digests"], queryFn: () => api.get<DigestRow[]>("/api/digests/"),
+    queryKey: ["digests"],
+    // Everything written and not yet sent: waiting, approved and waiting for
+    // its time, and late.
+    queryFn: () => api.get<DigestRow[]>("/api/digests/?state=pending,approved,late"),
     refetchInterval: 30_000,
   });
   const tick = useQuery<TickStatus>({
@@ -74,6 +77,11 @@ export function Digests({ me }: { me: Me }) {
   });
 
   const rows = digests.data ?? [];
+  const waiting = rows.filter((d) => d.state === "pending");
+  // Only the practice owner's own schedule card needs the owner; every member
+  // of staff may read when the next digest is drafted.
+  const schedule = useDigestSchedule(!!me.role && ["FF", "CF", "VA"].includes(me.role));
+  const [sending, setSending] = useState<DigestRow | null>(null);
 
   return (
     <>
@@ -139,7 +147,7 @@ export function Digests({ me }: { me: Me }) {
                   onClick={() => approveAll.mutate()}>
                   Approve {picked.length || ""} selected
                 </button>
-                <button className="ghost" onClick={() => setPicked(rows.map((d) => d.id))}>
+                <button className="ghost" onClick={() => setPicked(waiting.map((d) => d.id))}>
                   Select all
                 </button>
                 {picked.length > 0 && (
@@ -154,7 +162,7 @@ export function Digests({ me }: { me: Me }) {
 
           {rows.map((d) => (
             <Card key={d.id} title={`${d.contact.name} · ${d.cadence.replace(/_/g, " ")}`}
-              actions={mayApprove ? (
+              actions={mayApprove && d.state === "pending" ? (
                 <label className="small" style={{ display: "inline-flex", gap: ".4rem" }}>
                   <input type="checkbox" style={{ width: "auto" }}
                     aria-label={`Select the digest for ${d.contact.name}`}
@@ -178,7 +186,8 @@ export function Digests({ me }: { me: Me }) {
                 <p className="small">
                   <Pill kind="warn">Expires {countdown(d.send_window_at, now)}</Pill>{" "}
                   <span className="muted">
-                    {when(d.send_window_at)} — unapproved by then it sends nothing, and its
+                    {when(d.send_window_at)} — unapproved by then it is not sent. It can
+                    still be sent by hand until the next digest is drafted; after that its
                     updates are owed again next period.
                   </span>
                 </p>
@@ -186,24 +195,39 @@ export function Digests({ me }: { me: Me }) {
 
               {d.state === "pending" && Date.parse(d.send_window_at) <= now && (
                 <Banner kind="warn">
-                  Its window has passed. The next tick expires it unsent and its updates are
-                  owed again; approving now is refused.
+                  Its window has passed, so it was not sent and approving now is refused.
+                  You can still send it yourself with Send now.
                 </Banner>
               )}
 
-              {d.is_stale && (
+              {d.state === "late" && (
+                <Banner kind="warn">
+                  <strong>Not sent on time.</strong> Nobody approved it by{" "}
+                  {when(d.send_window_at)}, so it was not sent. You can still send it
+                  yourself{d.cadence === "weekly" && nextDraft(schedule.data, now)
+                    ? <> until <strong>{when(nextDraft(schedule.data, now))}</strong>, when
+                      the next digest is drafted</>
+                    : <> until the next digest for {d.contact.name} is drafted</>}. After that
+                  its updates move into that one.
+                </Banner>
+              )}
+
+              {d.state === "approved" && (
+                <p className="small">
+                  <Pill kind="ok">Approved</Pill>{" "}
+                  <span className="muted">
+                    by {d.approved_by?.name || "someone"}; sends {when(d.send_window_at)}.
+                    Approved is final: work finished since goes in the next digest.
+                  </span>
+                </p>
+              )}
+
+              {/* The flag is the reason; "Update this draft" below is the
+                  action, and is there with or without the flag. */}
+              {d.is_stale && d.state !== "approved" && (
                 <Banner kind="warn">
                   <strong>Overtaken by events.</strong> {d.stale_reason} You can approve it as
-                  it stands, or rebuild it with what has happened since.
-                  <br />
-                  {/* Single-submit. Two of these a few milliseconds apart raced
-                      in the engine on 2026-09-17 and left the draft skipped
-                      while it still held its claims. The server takes a row
-                      lock now; the button no longer offers the second click. */}
-                  <button disabled={act.isPending}
-                    onClick={() => act.mutate({ id: d.id, path: "regenerate" })}>
-                    {act.isPending ? "Regenerating…" : "Regenerate"}
-                  </button>
+                  it stands, or use Update this draft to bring in what has happened since.
                 </Banner>
               )}
 
@@ -213,7 +237,7 @@ export function Digests({ me }: { me: Me }) {
                     onChange={(e) => setDraft(e.target.value)} />
                   <p className="small muted">
                     Edited wording is sent as written, in plain paragraphs — without the task
-                    grouping and status chips. Regenerate to get those back.
+                    grouping and status chips. Update this draft to get those back.
                   </p>
                   <div className="row">
                     <button className="primary"
@@ -231,10 +255,26 @@ export function Digests({ me }: { me: Me }) {
               )}
 
               <div className="row" style={{ marginTop: ".75rem" }}>
-                {mayApprove && (
+                {mayApprove && d.state === "pending" && (
                   <button className="primary"
                     onClick={() => act.mutate({ id: d.id, path: "approve" })}>
                     Approve and send
+                  </button>
+                )}
+                {mayApprove && (
+                  <button onClick={() => setSending(d)}
+                    aria-label={`Send now to ${d.contact.name}`}>
+                    Send now…
+                  </button>
+                )}
+                {/* Single-submit. Two of these a few milliseconds apart raced
+                    in the engine on 2026-09-17 and left the draft skipped
+                    while it still held its claims. The server takes a row
+                    lock now; the button no longer offers the second click. */}
+                {d.state !== "approved" && (
+                  <button disabled={act.isPending}
+                    onClick={() => act.mutate({ id: d.id, path: "regenerate" })}>
+                    {act.isPending ? "Updating…" : "Update this draft"}
                   </button>
                 )}
                 {me.dev_tools && d.state === "pending" && (
@@ -243,25 +283,109 @@ export function Digests({ me }: { me: Me }) {
                     Preview email
                   </a>
                 )}
-                <button onClick={() => { setEditing(d.id); setDraft(d.body_text); }}>
-                  Edit the wording
-                </button>
-                {mayApprove && (
+                {d.state !== "approved" && (
+                  <button onClick={() => { setEditing(d.id); setDraft(d.body_text); }}>
+                    Edit the wording
+                  </button>
+                )}
+                {mayApprove && d.state !== "approved" && (
                   <button className="danger" onClick={() => act.mutate({ id: d.id, path: "skip" })}>
                     Skip this one
                   </button>
                 )}
               </div>
-              {mayApprove && (
+              {d.state !== "approved" && (
                 <p className="small muted">
-                  Skipping sends nothing and hands its content back to the next period.
+                  {d.state === "pending" && mayApprove
+                    && "Approve and send sends it at its time. "}
+                  Update this draft rebuilds it with the work finished up to now, replacing
+                  any wording you edited; it still sends at its time once approved.
+                  {mayApprove && " Skipping sends nothing and hands its content back to the next period."}
                 </p>
               )}
             </Card>
           ))}
         </>
       )}
+
+      {sending && (
+        <SendNow digest={sending} onClose={() => setSending(null)}
+          onSent={(text) => { setSending(null); setNote(text); refresh(); }} />
+      )}
     </>
+  );
+}
+
+/** When the next weekly digest is drafted, if that is still ahead. */
+function nextDraft(schedule: DigestSchedule | undefined, now: number) {
+  const at = schedule?.next_draft_at;
+  return at && Date.parse(at) > now ? at : "";
+}
+
+interface SendPreview {
+  to_name: string; to_address: string; subject: string; html: string; text: string;
+  state: string; send_window_at: string; is_stale: boolean; stale_reason: string;
+}
+
+/**
+ * "Send now" (docs/digest_schedule.md §5): a person sends one digest
+ * themselves. The whole email is read first, exactly as the recipient will get
+ * it, and only the second button sends. It is that person's approval.
+ */
+function SendNow({ digest, onClose, onSent }: {
+  digest: DigestRow; onClose: () => void; onSent: (text: string) => void;
+}) {
+  const preview = useQuery<SendPreview>({
+    queryKey: ["digest-send-preview", digest.id, digest.body_text],
+    queryFn: () => api.get<SendPreview>(`/api/digests/${digest.id}/send-preview/`),
+  });
+  const send = useMutation({
+    mutationFn: () => api.post<DigestRow>(`/api/digests/${digest.id}/send-now/`),
+    onSuccess: (sent) => onSent(sent.state === "sent"
+      ? `Sent to ${digest.contact.name}.`
+      : `Not sent: ${digest.contact.name} has left these updates.`),
+  });
+  const p = preview.data;
+
+  return (
+    <Sheet label="Send now" title={`Send now to ${digest.contact.name}`} onClose={onClose}>
+      {preview.isLoading && <p className="muted">Loading the email…</p>}
+      {preview.isError && <Banner kind="bad">{(preview.error as Error).message}</Banner>}
+      {p && (
+        <>
+          <dl className="facts">
+            <dt>To</dt><dd>{p.to_name} &lt;{p.to_address || "no email address"}&gt;</dd>
+            <dt>Subject</dt><dd>{p.subject}</dd>
+            <dt>Otherwise</dt>
+            <dd>{p.state === "late"
+              ? `It was not sent at ${when(p.send_window_at)}.`
+              : p.state === "approved"
+                ? `It is approved and would send ${when(p.send_window_at)}.`
+                : `It would wait for approval until ${when(p.send_window_at)}.`}</dd>
+          </dl>
+          {p.is_stale && (
+            <Banner kind="warn">
+              <strong>Overtaken by events.</strong> {p.stale_reason} Cancel and use Update
+              this draft if that should be in it.
+            </Banner>
+          )}
+          <p className="small muted">This is the whole email, as {p.to_name} will receive it:</p>
+          <iframe title={`The email to ${p.to_name}`} className="email-preview"
+            sandbox="" srcDoc={p.html} />
+          {send.isError && <Banner kind="bad">{(send.error as Error).message}</Banner>}
+          <div className="row tight">
+            <button className="primary" disabled={send.isPending || !p.to_address}
+              onClick={() => send.mutate()}>
+              {send.isPending ? "Sending…" : `Send to ${p.to_name} now`}
+            </button>
+            <button onClick={onClose}>Cancel</button>
+          </div>
+          <p className="small muted">
+            Sending is your approval of this digest. What it reports is not reported again.
+          </p>
+        </>
+      )}
+    </Sheet>
   );
 }
 

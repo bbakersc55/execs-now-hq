@@ -43,6 +43,10 @@ EVERY_UPDATE_LEAD = timedelta(hours=24)
 #: Draft on must come at least this long before Send on (D2).
 MIN_DRAFT_GAP_HOURS = 2
 DEAD_STATES = (Digest.State.EXPIRED, Digest.State.SKIPPED)
+#: Written and not sent: what "Update this draft", editing and skipping act on.
+#: A late digest missed its send time and can still be sent by hand.
+UNSENT_DRAFTS = (Digest.State.PENDING, Digest.State.LATE)
+FOLDED = "This digest was folded into the next one, so there is nothing here to send."
 K = TaskUpdate.Kind
 
 
@@ -696,6 +700,9 @@ def generate_scheduled(tenant, *, cadence, now=None):
         contact = Contact.objects.filter(pk=contact_id).select_related("company").first()
         if contact is None:
             continue
+        # A digest that missed last cycle's send time stops being sendable
+        # the moment this cycle's is drafted: its updates go into this one.
+        expire_late_for(tenant, contact.pk, cadence)
         digest = generate(tenant=tenant, contact=contact, cadence=cadence,
                           period_start=period_start, period_end=period_end,
                           send_window_at=window, until=now)
@@ -724,6 +731,10 @@ def close_quiet_windows(tenant, *, now=None):
         contact = Contact.objects.filter(pk=contact_id).select_related("company").first()
         if contact is None:
             continue
+        # The same rule for every_update: a late one lives until the next is
+        # drafted, which is now. Its updates join the new work.
+        if expire_late_for(tenant, contact_id, Cadence.EVERY_UPDATE):
+            owed = owed_to(contact_id, tenant=tenant, cadence=Cadence.EVERY_UPDATE)
         digest = generate(
             tenant=tenant, contact=contact, cadence=Cadence.EVERY_UPDATE,
             period_start=min(u.created_at for u, _ in owed), period_end=now,
@@ -795,7 +806,7 @@ def flag_stale_for(update: TaskUpdate):
     if not contacts:
         return 0
     pending = Digest.all_objects.filter(
-        tenant_id=update.tenant_id, state=Digest.State.PENDING,
+        tenant_id=update.tenant_id, state__in=UNSENT_DRAFTS,
         contact_id__in=list(contacts),
     )
     reason = f"{_describe(update)} landed after this draft was written."
@@ -862,8 +873,9 @@ def regenerate(digest, *, actor=None):
     and redo it against the truth.
     """
     digest = _locked(digest)
-    if digest.state != Digest.State.PENDING:
-        raise ValueError("Only a pending digest can be regenerated.")
+    if digest.state not in UNSENT_DRAFTS:
+        # Approved is final (D4): work finished after it goes in the next one.
+        raise ValueError("Only a digest that has not been approved or sent can be updated.")
     _release_claims(digest)
     owed = owed_to(digest.contact_id, tenant=digest.tenant, cadence=digest.cadence,
                    until=timezone.now())
@@ -900,15 +912,18 @@ def approve(digest, *, actor, role):
         # Matrix 8.3 — the single most important role boundary in the product.
         raise DigestActionRefused("Assistants can't approve a digest. Ask the practice owner.", status=403)
     digest = _locked(digest)
+    if digest.state == Digest.State.LATE or (
+            digest.state == Digest.State.PENDING and digest.send_window_at <= timezone.now()):
+        # The cutoff is the send time (owner, 2026-10-05). Approving is a
+        # promise that the timer will send it, and the timer has gone; what is
+        # left is a person sending it themselves. Until the next tick marks it
+        # late it is still `pending`, and approving in that gap would have let
+        # the following tick send it.
+        raise DigestActionRefused(
+            "Its send time has passed, so it was not sent. You can still send it "
+            "yourself with Send now, until the next digest is drafted.", status=409)
     if digest.state != Digest.State.PENDING:
         raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.", status=409)
-    if digest.send_window_at <= timezone.now():
-        # FR-3.30 — unapproved at its window, it never sends. Until the next tick
-        # expires it, it is still `pending`; approving it in that gap would
-        # have let the following tick send it.
-        raise DigestActionRefused(
-            "Its window has passed, so it expires unsent on the next tick and its "
-            "updates are owed again.", status=409)
     digest.state = Digest.State.APPROVED
     digest.approved_by = actor
     digest.approved_at = timezone.now()
@@ -930,7 +945,7 @@ def skip(digest, *, actor, role):
         # Skipping suppresses a client email: a send decision either way.
         raise DigestActionRefused("Assistants can't skip a digest. Ask the practice owner.", status=403)
     digest = _locked(digest)
-    if digest.state != Digest.State.PENDING:
+    if digest.state not in UNSENT_DRAFTS:
         raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.", status=409)
     _enter_dead_state(digest, Digest.State.SKIPPED)   # its claims go with it
     AuditEvent.all_objects.create(
@@ -940,7 +955,7 @@ def skip(digest, *, actor, role):
 
 
 def edit_body(digest, *, actor, role, body_text):
-    if digest.state != Digest.State.PENDING:
+    if digest.state not in UNSENT_DRAFTS:
         raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.", status=409)
     digest.body_text = body_text
     # The edit is what gets sent: the grouped HTML described the old wording.
@@ -1064,31 +1079,89 @@ def _subject(digest) -> str:
     return f"{label} from {digest.tenant.name}"
 
 
+@transaction.atomic
+def send_now(digest, *, actor, role):
+    """A person sends one digest themselves (docs/digest_schedule.md §5).
+
+    Before its send time, on a digest waiting for approval (this is that
+    person's approval, recorded as theirs) or one already approved. After it,
+    on a late digest, until the next one is drafted.
+
+    **Never twice.** It goes down `send`, the one path the timer also uses, so
+    the `digest_item` rows that keep these updates out of every later digest
+    are kept exactly as they are for a timed send. And the row is locked
+    first: the tick that drafts the next digest locks the same row before it
+    folds a late digest away (`expire_late_for`). Whichever commits first
+    wins; the other re-reads and sees it. If the fold won, this refuses and
+    sends nothing; if this won, the fold finds a sent digest and leaves it.
+    """
+    from apps.tenancy.models import Role
+
+    if role not in (Role.FF, Role.CF):
+        raise DigestActionRefused(
+            "Assistants can't send a digest. Ask the practice owner.", status=403)
+    digest = _locked(digest)
+    was = digest.state
+    if was == Digest.State.EXPIRED:
+        raise DigestActionRefused(FOLDED, status=409)
+    if was not in (Digest.State.PENDING, Digest.State.APPROVED, Digest.State.LATE):
+        raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.",
+                                  status=409)
+    if was != Digest.State.APPROVED:
+        digest.state = Digest.State.APPROVED
+        digest.approved_by = actor
+        digest.approved_at = timezone.now()
+        digest.save(update_fields=["state", "approved_by", "approved_at", "updated_at"])
+        AuditEvent.all_objects.create(
+            tenant=digest.tenant, actor=actor, verb="digest.approved",
+            target_type="digest", target_id=digest.pk,
+            payload={"contact": str(digest.contact_id), "cadence": digest.cadence,
+                     "was_stale": digest.is_stale, "by": "send_now"})
+    send(digest, actor=actor)
+    AuditEvent.all_objects.create(
+        tenant=digest.tenant, actor=actor, verb="digest.sent_by_hand",
+        target_type="digest", target_id=digest.pk,
+        payload={"was": was, "send_time": digest.send_window_at.isoformat(),
+                 "outcome": digest.state})
+    return digest
+
+
 def send_due(tenant, *, now=None):
     now = now or timezone.now()
     sent = []
     from django.db.models import Q
 
     # An approved every_update digest goes now: its window is only the deadline
-    # by which an unapproved one expires (FR-3.28d). Promptness is its point.
+    # by which an unapproved one stops being sent by the timer (FR-3.28d).
     due = Q(send_window_at__lte=now) | Q(cadence=Cadence.EVERY_UPDATE)
-    for digest in Digest.objects.filter(due, state=Digest.State.APPROVED).select_related(
-                                            "contact", "tenant"):
-        send(digest, actor=digest.approved_by)
-        sent.append(digest)
+    for pk in list(Digest.objects.filter(due, state=Digest.State.APPROVED)
+                   .values_list("pk", flat=True)):
+        # Locked and re-read: a person may be pressing Send now on this very
+        # digest, and it must go once.
+        with transaction.atomic():
+            digest = (Digest.objects.select_for_update().select_related("contact", "tenant")
+                      .filter(pk=pk).first())
+            if digest is None or digest.state != Digest.State.APPROVED:
+                continue
+            send(digest, actor=digest.approved_by)
+            sent.append(digest)
     return sent
 
 
 def expire_due(tenant, *, now=None):
-    """FR-3.30 — an unapproved digest never sends. Its items are deleted, so
-    everything in it is owed again next period: deferred, not dropped.
+    """The send time is the cutoff: an unapproved digest is **not sent**.
 
-    One locked transaction per digest: the tick must not expire a draft that a
-    person is regenerating or approving in the same second, and a dead state is
-    never written while its claims survive.
+    It used to expire here and hand its updates straight back. It now goes
+    `late` and keeps them, so a person can still send it by hand; it expires,
+    and its updates roll into the next digest, when that next one is drafted
+    (`expire_late_for`). Nothing is sent late by the timer, and nothing is
+    dropped: deferred one draft cycle, as before.
+
+    One locked transaction per digest: the tick must not move a draft that a
+    person is updating, approving or sending in the same second.
     """
     now = now or timezone.now()
-    expired = []
+    late = []
     due = list(Digest.objects.filter(state=Digest.State.PENDING,
                                      send_window_at__lte=now)
                .values_list("pk", flat=True))
@@ -1097,10 +1170,39 @@ def expire_due(tenant, *, now=None):
             digest = Digest.objects.select_for_update().filter(pk=pk).first()
             if digest is None or digest.state != Digest.State.PENDING:
                 continue           # another writer reached it while we queued
+            digest.state = Digest.State.LATE
+            digest.save(update_fields=["state", "updated_at"])
+            AuditEvent.all_objects.create(
+                tenant=digest.tenant, verb="digest.late", target_type="digest",
+                target_id=digest.pk,
+                payload={"cadence": digest.cadence,
+                         "send_time": digest.send_window_at.isoformat()})
+            late.append(digest)
+    return late
+
+
+def expire_late_for(tenant, contact_id, cadence) -> list:
+    """Fold a recipient's late digest away as the next one is drafted (FR-3.30).
+
+    Its items are deleted, so everything in it is owed again and lands in the
+    draft being written. Each row is locked and re-read first, because Send
+    now takes the same lock: a digest a person has just sent is no longer
+    late, and is left alone with its claims.
+    """
+    expired = []
+    for pk in list(Digest.all_objects.filter(
+            tenant=tenant, contact_id=contact_id, cadence=cadence,
+            state=Digest.State.LATE).values_list("pk", flat=True)):
+        with transaction.atomic():
+            digest = Digest.all_objects.select_for_update().filter(pk=pk).first()
+            if digest is None or digest.state != Digest.State.LATE:
+                continue
             _enter_dead_state(digest, Digest.State.EXPIRED)
             AuditEvent.all_objects.create(
                 tenant=digest.tenant, verb="digest.expired", target_type="digest",
-                target_id=digest.pk, payload={"cadence": digest.cadence})
+                target_id=digest.pk,
+                payload={"cadence": digest.cadence, "was": "late",
+                         "folded_into_next": True})
             expired.append(digest)
     return expired
 

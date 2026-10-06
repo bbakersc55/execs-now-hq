@@ -165,6 +165,14 @@ def test_a_claude_failure_still_produces_the_deterministic_digest(
 # ------------------------------------------------------------ AC-3.6, 3.7
 
 @pytest.mark.django_db
+def next_draft(tenant, digest):
+    """What the drafting of a recipient's next digest does to a late one: it
+    expires, and hands its updates to the new draft. Until 2026-10-05 this
+    happened at the send time itself."""
+    return digest_service.expire_late_for(tenant, digest.contact_id, digest.cadence)
+
+
+@pytest.mark.django_db
 def test_ac_3_6_nothing_sends_while_held_and_expiry_defers_rather_than_drops(
     seeded_tenant, ff, company, recipient, project, dev_outbox, in_tenant_a
 ):
@@ -179,9 +187,16 @@ def test_ac_3_6_nothing_sends_while_held_and_expiry_defers_rather_than_drops(
     digest_service.send_due(seeded_tenant, now=past_window)
 
     digest.refresh_from_db()
-    assert digest.state == Digest.State.EXPIRED
+    # The send time is the cutoff: not sent, and late (docs/digest_schedule.md).
+    assert digest.state == Digest.State.LATE
     assert dev_outbox == [], "A held digest was delivered."
     assert not OutboxMessage.all_objects.filter(producer="digest").exists()
+    assert digest.items.count() == 1, "A late digest keeps its claim until the next draft."
+
+    # The next digest being drafted is what folds it away.
+    next_draft(seeded_tenant, digest)
+    digest.refresh_from_db()
+    assert digest.state == Digest.State.EXPIRED
     assert digest.items.count() == 0, "The claim must be released."
 
     # Deferred, not dropped: the same update is owed again next period.
@@ -411,6 +426,9 @@ def test_ac_3_34_expiry_releases_one_claim_without_touching_the_other(
     danas = [d for d in generate_weekly(seeded_tenant) if d.contact_id == recipient.pk][0]
     past = danas.send_window_at + timedelta(minutes=1)
     digest_service.expire_due(seeded_tenant, now=past)
+    danas.refresh_from_db()
+    assert danas.state == Digest.State.LATE
+    next_draft(seeded_tenant, danas)
 
     danas.refresh_from_db()
     sams.refresh_from_db()
@@ -759,7 +777,7 @@ def test_generate_now_says_plainly_when_nothing_is_owed(seeded_tenant, ff, api, 
 def test_generate_now_can_put_the_send_window_in_a_moment(seeded_tenant, ff, api, company,
                                                           recipient, project, dev_outbox,
                                                           in_tenant_a):
-    """So Check 3 can watch an unapproved digest expire without waiting a week."""
+    """So Check 3 can watch an unapproved digest miss its time without waiting a week."""
     task = a_task(seeded_tenant, company, ff=ff, project=project)
     stake(seeded_tenant, recipient, project=project)
     move(task, ff, S.IN_PROGRESS, "Will expire.")
@@ -772,7 +790,8 @@ def test_generate_now_can_put_the_send_window_in_a_moment(seeded_tenant, ff, api
     digest_service.expire_due(seeded_tenant, now=later)
     digest_service.send_due(seeded_tenant, now=later)
     digest = Digest.all_objects.get(pk=created["id"])
-    assert digest.state == Digest.State.EXPIRED and dev_outbox == []
+    assert digest.state == Digest.State.LATE and dev_outbox == []
+    next_draft(seeded_tenant, digest)
     # ...and the content comes back round.
     assert "Will expire." in [u.client_facing_line for u, _ in digest_service.owed_to(
         recipient.pk, tenant=seeded_tenant, cadence=Cadence.WEEKLY)]
@@ -840,7 +859,18 @@ def test_check_3_the_tick_expires_an_unapproved_digest_past_its_window_and_relea
 
     result = run_tick(seeded_tenant, digest.send_window_at + timedelta(seconds=30))
     digest.refresh_from_db()
-    assert result["expired"] == 1
+    assert result["late"] == 1
+    assert digest.state == Digest.State.LATE
+    assert AuditEvent.all_objects.filter(verb="digest.late", target_id=digest.pk).exists()
+    assert dev_outbox == []
+    # Late keeps its claims, so the same updates are not drafted a second time
+    # while a person can still send this one by hand.
+    assert digest.items.count() == len(claimed)
+    assert digest_service.owed_to(recipient.pk, tenant=seeded_tenant,
+                                  cadence=Cadence.WEEKLY) == []
+
+    next_draft(seeded_tenant, digest)
+    digest.refresh_from_db()
     assert digest.state == Digest.State.EXPIRED
     assert digest.items.count() == 0
     assert not DigestItem.all_objects.filter(task_update_id__in=claimed).exists(), (
@@ -871,7 +901,7 @@ def test_check_4_a_held_every_update_digest_survives_the_tick_that_made_it(
 
     # Later ticks neither expire it nor pretend to generate it again.
     later = run_tick(seeded_tenant, closes + timedelta(minutes=5))
-    assert later["every_update_generated"] == 0 and later["expired"] == 0
+    assert later["every_update_generated"] == 0 and later["late"] == 0
     digest.refresh_from_db()
     assert digest.state == Digest.State.PENDING
 
@@ -895,7 +925,8 @@ def test_check_4_an_unapproved_every_update_digest_expires_after_its_review_lead
 
     run_tick(seeded_tenant, closes + digest_service.EVERY_UPDATE_LEAD + timedelta(minutes=1))
     digest.refresh_from_db()
-    assert digest.state == Digest.State.EXPIRED and digest.items.count() == 0
+    # Not sent; late, and still holding its one update until the next draft.
+    assert digest.state == Digest.State.LATE and digest.items.count() == 1
     assert dev_outbox == []
 
 
@@ -915,15 +946,31 @@ def test_check_4_an_expired_digest_does_not_block_its_content_forever(
     after_expiry = closes + digest_service.EVERY_UPDATE_LEAD + timedelta(minutes=1)
     run_tick(seeded_tenant, after_expiry)
     first.refresh_from_db()
-    assert first.state == Digest.State.EXPIRED
+    assert first.state == Digest.State.LATE
 
-    result = run_tick(seeded_tenant, after_expiry + timedelta(minutes=1))
+    # Late is not redrafted on its own: it waits, sendable by hand, until
+    # there is a next digest to draft (docs/digest_schedule.md, D12).
+    quiet = run_tick(seeded_tenant, after_expiry + timedelta(minutes=1))
+    assert quiet["every_update_generated"] == 0
+    first.refresh_from_db()
+    assert first.state == Digest.State.LATE and first.items.count() == 1
+
+    # New work arrives and settles: the next digest is drafted, the late one
+    # folds into it, and the dead row blocks nothing.
+    was_in_first = set(first.items.values_list("task_update_id", flat=True))
+    move(task, ff, S.DONE)
+    newest = TaskUpdate.all_objects.filter(task=task).order_by("-created_at").first()
+    TaskUpdate.all_objects.filter(pk=newest.pk).update(
+        created_at=after_expiry + timedelta(minutes=2))
+    result = run_tick(seeded_tenant, after_expiry + timedelta(minutes=40))
     assert result["every_update_generated"] == 1
     live = Digest.all_objects.exclude(pk=first.pk).get(cadence=Cadence.EVERY_UPDATE)
-    assert live.state == Digest.State.PENDING and live.items.count() == 1
-    assert live.period_start == first.period_start, "Same content, same period start."
+    assert live.state == Digest.State.PENDING
+    carried = set(live.items.values_list("task_update_id", flat=True))
+    assert was_in_first <= carried and len(carried) > len(was_in_first), (
+        "The late digest's update and the new work, together.")
     first.refresh_from_db()
-    assert first.state == Digest.State.EXPIRED, "History is not rewritten."
+    assert first.state == Digest.State.EXPIRED and first.items.count() == 0
 
 
 # ------------------------------------------------------- is the tick running
@@ -996,10 +1043,12 @@ def test_a_digest_past_its_window_cannot_be_approved_before_the_tick_expires_it(
 
     refused = api.as_(ff).post(f"/api/digests/{digest.pk}/approve/")
     assert refused.status_code == 409
-    assert "window has passed" in refused.json()["detail"]
+    assert "send time has passed" in refused.json()["detail"]
     run_tick(seeded_tenant, timezone.now())
     digest.refresh_from_db()
-    assert digest.state == Digest.State.EXPIRED and dev_outbox == []
+    assert digest.state == Digest.State.LATE and dev_outbox == []
+    # Late, it still cannot be approved for a timer that has gone.
+    assert api.as_(ff).post(f"/api/digests/{digest.pk}/approve/").status_code == 409
 
 
 @pytest.mark.django_db
@@ -1030,6 +1079,11 @@ def test_retest_every_update_after_an_expired_and_a_sent_digest_for_the_same_con
     tick(tenant_id, now=base + timedelta(minutes=31))
     first = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
     tick(tenant_id, now=first.send_window_at + timedelta(minutes=1))
+    first.refresh_from_db()
+    assert first.state == Digest.State.LATE
+    # In the history being reproduced it expired here; it is now folded away
+    # when the next one is drafted, which this stands in for.
+    next_draft(seeded_tenant, first)
     first.refresh_from_db()
     assert first.state == Digest.State.EXPIRED
     regenerated_at = first.send_window_at + timedelta(minutes=2)

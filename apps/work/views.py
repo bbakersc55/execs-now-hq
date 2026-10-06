@@ -796,6 +796,42 @@ class DigestViewSet(WorkViewSet):
     def skip(self, request, pk=None):
         return self._act(request, pk, digest_service.skip)
 
+    @action(detail=True, methods=["get"], url_path="send-preview")
+    def send_preview(self, request, pk=None):
+        """The whole email, exactly as "Send now" would send it: who it goes
+        to, the subject and the body. Read before the send is confirmed. The
+        recipient's own cadence link is a credential issued only at send, so a
+        placeholder stands where it goes."""
+        digest = self.load(pk)
+        if crm_perms.role_of(request) in CLIENT_ROLES:
+            raise Http404
+        if digest.state not in (Digest.State.PENDING, Digest.State.APPROVED, Digest.State.LATE):
+            return Response({"detail": digest_service.FOLDED
+                             if digest.state == Digest.State.EXPIRED
+                             else f"This digest is {digest.get_state_display().lower()}."},
+                            status=409)
+        from apps.crm.services import email_layout
+
+        html, text = digest_service.email_for(
+            digest, footer_url=digest_service.preview_footer_url())
+        html, _ = email_layout.with_logo(html, digest.tenant, as_data_uri=True)
+        contact = digest.contact
+        return Response({
+            "id": str(digest.pk), "state": digest.state,
+            "to_name": f"{contact.first_name} {contact.last_name}".strip(),
+            "to_address": contact.primary_email or "",
+            "subject": digest_service._subject(digest),
+            "html": html, "text": text,
+            "send_window_at": digest.send_window_at.isoformat(),
+            "is_stale": digest.is_stale, "stale_reason": digest.stale_reason,
+        })
+
+    @action(detail=True, methods=["post"], url_path="send-now")
+    def send_now(self, request, pk=None):
+        """A person sends it themselves: practice owner, or an associate for
+        their own clients. Never an assistant (digests.send_now)."""
+        return self._act(request, pk, digest_service.send_now)
+
     @action(detail=True, methods=["post"])
     def edit(self, request, pk=None):
         body = request.data.get("body_text")

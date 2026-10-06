@@ -532,7 +532,8 @@ export interface Stakeholder {
 export interface DigestRow {
   id: string; contact: Person; to_address: string;
   cadence: "every_update" | "weekly" | "monthly";
-  state: "pending" | "approved" | "sent" | "expired" | "skipped";
+  /** `late`: reached its send time unapproved. Not sent; still sendable by hand. */
+  state: "pending" | "approved" | "late" | "sent" | "expired" | "skipped";
   is_ai_generated: boolean; is_stale: boolean; stale_reason: string;
   period_start: string; period_end: string; send_window_at: string;
   generated_at: string; approved_by: Person; approved_at: string | null;

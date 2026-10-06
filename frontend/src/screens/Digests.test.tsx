@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,10 +31,21 @@ function aDigest(overrides: Partial<DigestRow> = {}): DigestRow {
   };
 }
 
+/** Already answered, so the one-time prompt stays out of these tests. */
+const SCHEDULE = {
+  draft_day: 5, draft_day_name: "Friday", draft_hour: 15, day: 1, day_name: "Monday", hour: 8,
+  timezone: "America/Denver", outside_working_hours: false, confirmed: true,
+  next_draft_at: new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString(),
+  next_send_at: new Date(Date.now() + 6 * 24 * 3600 * 1000).toISOString(),
+};
+
 function show(rows: DigestRow[], me = aMe(), extra: Record<string, unknown> = {}) {
   // Extras first: `GET /api/digests/` is a prefix of every digest route, and the
   // first matching key wins.
-  const fetchMock = mockApi({ "GET /api/digests/upcoming/": [], ...extra, "GET /api/digests/": rows });
+  const fetchMock = mockApi({
+    "GET /api/digests/upcoming/": [], "GET /api/digests/schedule/": SCHEDULE, ...extra,
+    "GET /api/digests/": rows,
+  });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<Digests me={me} />);
   return fetchMock;
@@ -72,7 +83,7 @@ describe("the digest approval screen", () => {
     expect(screen.getByText(/landed after this draft was written/)).toBeInTheDocument();
     // Still approvable as it stands: the flag informs, it does not block.
     expect(screen.getByRole("button", { name: "Approve and send" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "Regenerate" }));
+    await user.click(screen.getByRole("button", { name: "Update this draft" }));
     await waitFor(() => expect(
       fetchMock.calls.some((c) => c.url.endsWith("/regenerate/")),
     ).toBe(true));
@@ -94,7 +105,7 @@ describe("the digest approval screen", () => {
     expect(screen.getByText(/sends as soon as approved/)).toBeInTheDocument();
   });
 
-  it("fires Regenerate once, however many times it is clicked", async () => {
+  it("fires Update this draft once, however many times it is clicked", async () => {
     // The 2026-09-17 race started here: one click, two requests. The server
     // takes a row lock now, and the button stops offering the second click.
     const user = userEvent.setup();
@@ -115,8 +126,8 @@ describe("the digest approval screen", () => {
     }));
     renderRoute(<Digests me={aMe()} />);
 
-    await user.click(await screen.findByRole("button", { name: "Regenerate" }));
-    const busy = await screen.findByRole("button", { name: "Regenerating…" });
+    await user.click(await screen.findByRole("button", { name: "Update this draft" }));
+    const busy = await screen.findByRole("button", { name: "Updating…" });
     expect(busy).toBeDisabled();
     await user.click(busy);                      // the second click of a double-click
     expect(attempts).toHaveLength(1);
@@ -330,5 +341,118 @@ describe("Preview email (development only)", () => {
     show([aDigest()], aMe());
     await user.click(await screen.findByRole("button", { name: "Edit the wording" }));
     expect(screen.getByText(/Edited wording is sent as written/)).toBeInTheDocument();
+  });
+
+  // ---- Update this draft, Send now and late (docs/digest_schedule.md §4–5)
+
+  it("offers Update this draft whether or not the draft is flagged", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show([aDigest()], aMe(),
+      { [`POST /api/digests/${DIGEST_ID}/regenerate/`]: aDigest() });
+    expect(await screen.findByText(/Invoices now clear/)).toBeInTheDocument();
+    expect(screen.queryByText(/Overtaken by events/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Update this draft" }));
+
+    await waitFor(() => expect(
+      fetchMock.calls.some((c) => c.url.endsWith("/regenerate/"))).toBe(true));
+    expect(screen.getByText(/it still sends at its time once approved/)).toBeInTheDocument();
+  });
+
+  it("lets an assistant update a draft, and never send one", async () => {
+    show([aDigest()], aMe({ role: "VA" }));
+    expect(await screen.findByRole("button", { name: "Update this draft" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Send now/ })).not.toBeInTheDocument();
+  });
+
+  const PREVIEW = {
+    to_name: "Dana Okafor", to_address: "dana@northwind.invalid",
+    subject: "Your weekly update from Executives Now",
+    html: "<p>Invoices now clear in four days.</p>", text: "Invoices now clear in four days.",
+    state: "pending", send_window_at: "2026-09-12T14:00:00Z", is_stale: false, stale_reason: "",
+  };
+
+  it("shows the whole email before Send now sends anything", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show([aDigest()], aMe(), {
+      [`GET /api/digests/${DIGEST_ID}/send-preview/`]: PREVIEW,
+      [`POST /api/digests/${DIGEST_ID}/send-now/`]: aDigest({ state: "sent" }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Send now to Dana Okafor" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Send now" });
+    expect(await within(sheet).findByText(/dana@northwind.invalid/)).toBeInTheDocument();
+    expect(within(sheet).getByText("Your weekly update from Executives Now")).toBeInTheDocument();
+    const email = within(sheet).getByTitle("The email to Dana Okafor");
+    expect(email).toHaveAttribute("srcdoc", "<p>Invoices now clear in four days.</p>");
+    // Opening it has sent nothing.
+    expect(fetchMock.calls.some((c) => c.url.endsWith("/send-now/"))).toBe(false);
+
+    await user.click(within(sheet).getByRole("button", { name: "Send to Dana Okafor now" }));
+
+    expect(await screen.findByText("Sent to Dana Okafor.")).toBeInTheDocument();
+    expect(fetchMock.calls.filter((c) => c.url.endsWith("/send-now/"))).toHaveLength(1);
+    expect(screen.queryByRole("dialog", { name: "Send now" })).not.toBeInTheDocument();
+  });
+
+  it("can be cancelled from the email without sending", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show([aDigest()], aMe(),
+      { [`GET /api/digests/${DIGEST_ID}/send-preview/`]: PREVIEW });
+    await user.click(await screen.findByRole("button", { name: "Send now to Dana Okafor" }));
+    const sheet = await screen.findByRole("dialog", { name: "Send now" });
+    await user.click(await within(sheet).findByRole("button", { name: "Cancel" }));
+    expect(fetchMock.calls.some((c) => c.url.endsWith("/send-now/"))).toBe(false);
+  });
+
+  it("shows the server's refusal when the digest was folded into the next one", async () => {
+    const user = userEvent.setup();
+    show([aDigest({ state: "late" })], aMe(), {
+      [`GET /api/digests/${DIGEST_ID}/send-preview/`]: { ...PREVIEW, state: "late" },
+      [`POST /api/digests/${DIGEST_ID}/send-now/`]: () => ({ status: 409, body: {
+        detail: "This digest was folded into the next one, so there is nothing here to send." } }),
+    });
+    await user.click(await screen.findByRole("button", { name: "Send now to Dana Okafor" }));
+    const sheet = await screen.findByRole("dialog", { name: "Send now" });
+    await user.click(await within(sheet).findByRole("button", { name: "Send to Dana Okafor now" }));
+    expect(await within(sheet).findByText(/folded into the next one/)).toBeInTheDocument();
+  });
+
+  it("shows a late digest as not sent, still sendable, and until when", async () => {
+    show([aDigest({ state: "late", send_window_at: "2026-09-12T14:00:00Z" })]);
+
+    expect(await screen.findByText("Not sent on time.")).toBeInTheDocument();
+    const card = screen.getByText("Not sent on time.").closest("section")!;
+    expect(card).toHaveTextContent(/You can still send it yourself until/);
+    expect(card).toHaveTextContent(/when the next digest is drafted/);
+    expect(within(card).getByRole("button", { name: "Send now to Dana Okafor" }))
+      .toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Update this draft" })).toBeInTheDocument();
+    // Its time has gone: it is sent by hand or not at all.
+    expect(within(card).queryByRole("button", { name: "Approve and send" }))
+      .not.toBeInTheDocument();
+    expect(within(card).queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("shows an approved digest as final, with only Send now", async () => {
+    show([aDigest({ state: "approved", approved_by: { id: "u1", name: "Bryan Baker" } })]);
+
+    const card = (await screen.findByText("Approved")).closest("section")!;
+    expect(card).toHaveTextContent(/by Bryan Baker/);
+    expect(card).toHaveTextContent(/Approved is final/);
+    expect(within(card).getByRole("button", { name: "Send now to Dana Okafor" }))
+      .toBeInTheDocument();
+    for (const gone of ["Update this draft", "Edit the wording", "Skip this one",
+                        "Approve and send"]) {
+      expect(within(card).queryByRole("button", { name: gone })).not.toBeInTheDocument();
+    }
+  });
+
+  it("asks for waiting, approved and late digests together", async () => {
+    const fetchMock = show([aDigest()]);
+    await screen.findByText(/Invoices now clear/);
+    expect(fetchMock.calls.some((c) => c.url === "/api/digests/?state=pending,approved,late"))
+      .toBe(true);
   });
 });

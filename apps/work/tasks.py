@@ -19,10 +19,11 @@ CLIENT_ACTIVITY_QUIET = timezone.timedelta(minutes=30)   # FR-3.40, same window
 
 @unattended_job("work.tick")
 def tick(tenant_id: str, now=None) -> dict:
-    """Every minute: close quiet windows, generate, expire, send, notify.
+    """Every minute: close quiet windows, generate, mark late, send, notify.
 
-    Expiry runs before sending so that a digest which reached its window
-    unapproved can never be picked up by the same tick as if it were approved.
+    Marking late runs before sending so that a digest which reached its send
+    time unapproved can never be picked up by the same tick as if it were
+    approved.
     `now` exists for tests that run the real tick past a window; the scheduler
     never passes it.
     """
@@ -37,13 +38,14 @@ def tick(tenant_id: str, now=None) -> dict:
         scheduled = []
         for cadence in (Cadence.WEEKLY, Cadence.MONTHLY):
             scheduled += digests.generate_scheduled(tenant, cadence=cadence, now=now)
-        expired = digests.expire_due(tenant, now=now)
+        # Unapproved at its send time: not sent, and marked late.
+        late = digests.expire_due(tenant, now=now)
         sent = digests.send_due(tenant, now=now)
         notified = notify_client_activity(tenant, now=now)
     return {
         "every_update_generated": len(every_update),
         "scheduled_generated": len(scheduled),
-        "expired": len(expired),
+        "late": len(late),
         "sent": len(sent),
         "client_activity_notices": notified,
     }
