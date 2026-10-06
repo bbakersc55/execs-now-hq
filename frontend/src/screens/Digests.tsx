@@ -458,7 +458,7 @@ function GenerateNow({ onDone }: { onDone: (message: string) => void }) {
           <select aria-label="Send window" value={sendIn}
             onChange={(e) => setSendIn(e.target.value)}>
             <option value="">The real one (next Friday)</option>
-            <option value="2">In 2 minutes — to watch it expire or send</option>
+            <option value="2">In 2 minutes — to watch it go late or send</option>
             <option value="60">In an hour</option>
           </select>
         </Field>

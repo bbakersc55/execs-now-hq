@@ -50,10 +50,22 @@ sections) starts only after them, and after anything they turn up is fixed.
 8:00 AM.** With the fixed 24-hour lead that means the weekly digest is written
 **Sunday 8:00 AM** and must be approved by Monday 8:00 AM or it expires
 unsent, so the whole approval window is now Sunday and early Monday. Bryan's
-answer is a redesign, **specced and not built: `docs/digest_schedule.md`**
-("Draft on" and "Send on", Update this draft, Send now, a late state, and
-reminder emails; thirteen decisions open, one migration planned as `tenancy
-0011` with a data step that needs his yes on a dry run in production). Built on `dev` and **not released**: the
+answer is a redesign, **built on `dev` in three phases and NOT released:
+`docs/digest_schedule.md`** (D1–D13 accepted; §12 is the as-built record).
+"Draft on" and "Send on" in Settings → Digests; Update this draft; Send now
+with the whole email shown first; a late state, so a digest nobody approved
+can still be sent by hand until the next one is drafted; and three reminder
+emails to the practice owner and to associates for their own clients.
+**The release needs a production dry run and Bryan's yes:** `tenancy 0011`
+adds two columns and runs one `UPDATE` that fills them (each practice gets
+the day before its send day at the same hour, which is today's behavior;
+Executives Now becomes draft Sunday 8:00 AM, and Bryan then sets Friday 3:00
+PM himself). `work 0006` and `crm 0032` ride along and run no SQL. Applied to
+`execsnowhq_local` only. **After pulling this, restart the laptop's qcluster:
+it does not reload, and the tick is what drafts, marks late and reminds.**
+`DIGEST_REMINDERS_ENABLED=false` stops the reminder emails without a release.
+When `feature/profile-picture` comes back, its `tenancy 0011` must be
+renumbered to follow this one. Built on `dev` and **not released**: the
 remaining "staff" wording changed to "team" (`c075766`).
 
 ## What this is, in one paragraph
