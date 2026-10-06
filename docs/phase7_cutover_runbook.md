@@ -286,6 +286,19 @@ never waits and R1, R3–R6 do not apply; the check is that web says
 from outside: `/auth/sign-out` answers 405 to a GET and `/api/me/profile` 401
 (both 404 before).
 
+**Observed at Release 6 (2026-10-05 evening, no migration, Shawn's beta
+feedback: sign-in wording, practice address, Mark as a client, digest day and
+time):** `main` fast-forwarded from `31286cf` to `e4222f6` (which is `dev`;
+the profile picture had been moved to `feature/profile-picture` first) and
+pushed 02:02:13 UTC on 10/6. Web listening 02:03:05 with "Migrations are
+current"; worker `migrations current` 02:04:23, running 02:04:26. **Push to
+new code: about 55 s.** Confirmed from outside: the new routes answer 403
+signed out (404 before) and the served bundle contains "Practice sign-in".
+**Noted for rollback:** once a new deployment succeeds, Railway lists the
+previous one as REMOVED, so do not count on redeploying it from the
+dashboard; a no-migration release is rolled back by reverting on `main` and
+pushing, which is another deploy of about a minute.
+
 ---
 
 ## Part A — the owner's steps, in order

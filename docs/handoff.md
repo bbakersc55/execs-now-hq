@@ -2,7 +2,7 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; updated at the end of that
 day, after Release 4 (P3) and the part two spec, and again on **2026-10-05
-after Release 5 (the UI work)**. **The next session starts at
+after Release 5 (the UI work) and Release 6 (Shawn's beta feedback)**. **The next session starts at
 "Next" below.** Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it leaves
 off." The specs in `docs/` are the source of truth; this covers what they
@@ -22,11 +22,15 @@ The picture (UI 3 phase 4, commit `7094dcf`, migration `tenancy 0011`) is
 its own branch, `feature/profile-picture`, and is no longer on `dev`**; see
 "Where it stands".
 
-**Also from 10/5, built on `dev` and not released:** Shawn's (Blue Sky) first
-beta feedback, in `docs/beta_feedback.md`: sign-in wording, the practice
-address chosen by the owner, "Mark as a client" with its undo, and the digest
-day and time. No migration in any of it. Bryan has a checklist for
-localhost:5200 in the 10/5 chat.
+**Also from 10/5, released the same evening (Release 6, `main` at
+`e4222f6`):** Shawn's (Blue Sky) first beta feedback, in
+`docs/beta_feedback.md`: sign-in wording, the practice address chosen by the
+owner, "Mark as a client" with its undo, and the digest day and time. No
+migration in any of it. **Not yet smoke-checked in production**; the list is
+in the 10/5 chat. Two things to do by eye: read the alias instructions on
+Settings → Email against a real Google Admin console and Gmail (they were
+written from memory of Google's screens), and tell Shawn the sign-in page and
+his options have changed.
 
 **Then, unchanged from 10/3:**
 
@@ -91,16 +95,16 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | **UI 1** Pipeline board, clickable rows, Notes grid, Work outlines | **Released 10/5 (Release 5, `main` at `31286cf`, no migration)**. Spec and UI backlog: `docs/ui1_pipeline_board.md`. Seen by Bryan on the laptop; **not yet smoke-checked in production** |
 | **UI 3** top bar, Sign out, staff session rules, Settings by role, Profile (name) | **Phases 1–3 released 10/5 (Release 5)**. Spec: `docs/ui3_top_bar_settings_profile.md`, D1–D12 accepted |
 | **UI 3 phase 4** profile picture | **Built, NOT released.** Commit `7094dcf` is on the branch **`feature/profile-picture`** (on GitHub), one commit on top of `31286cf`. **It is not on `dev`**, which was rebuilt without it on 10/5 so the rest can be released and the demo never gets the broken control. Migration `tenancy 0011` (one nullable column, `membership.avatar_id`) is still applied to `execsnowhq_local`; `dev`'s code ignores the extra column. Held back for the upload bug. To bring it back once fixed: rebase the branch onto `dev`, and if `dev` has gained a `tenancy` migration by then, renumber 0011 to follow it. `backup/dev-2026-10-05` on GitHub is the old line of `dev`, kept as a copy |
-| **Beta feedback, Shawn 10/5** (`docs/beta_feedback.md`) | **Built on `dev` 10/5, not released:** "Practice sign-in" / "Client sign-in"; the practice address chosen by the owner (own email allowed); "Mark as a client" and its undo; digest day, time and time zone with a one-time prompt. No migration |
+| **Beta feedback, Shawn 10/5** (`docs/beta_feedback.md`) | **Released 10/5 (Release 6, `main` at `e4222f6`, no migration):** "Practice sign-in" / "Client sign-in"; the practice address chosen by the owner (own email allowed); "Mark as a client" and its undo; digest day, time and time zone with a one-time prompt. No migration |
 | UI 3 phase 5 pictures wherever initials show | Not started |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
 
-Tests as of 10/5: on the released commit `31286cf`, **2213 backend passed (3
-skipped, 2 xfailed), 634 frontend**, goldens unchanged, real-session
-fingerprints 4 identical. On the laptop's `dev` (`7094dcf`, with the picture):
-2250 backend, 649 frontend.
+Tests as of 10/5, on the released commit `e4222f6`: **2280 backend passed (3
+skipped, 2 xfailed), 665 frontend**, goldens unchanged, real-session
+fingerprints 4 identical. (`feature/profile-picture`, at `7094dcf`, was 2250
+and 649 when it was built on the earlier base.)
 
 Tests on `dev` as of 10/3, after P3: the backend suite green (P3 added 65
 tests across four files), **566 frontend**. The
