@@ -759,7 +759,7 @@ class DigestViewSet(WorkViewSet):
         if role != crm_perms.Role.FF:
             return Response({"detail": "Only the practice owner can do this."}, status=403)
         data = request.data if isinstance(request.data, dict) else {}
-        unknown = sorted(set(data) - {"day", "hour", "timezone"})
+        unknown = sorted(set(data) - {"day", "hour", "timezone", "draft_day", "draft_hour"})
         if unknown:
             # Above all `hold_all_digests`: there is deliberately no switch.
             return Response(
@@ -767,7 +767,8 @@ class DigestViewSet(WorkViewSet):
         try:
             return Response(digest_service.set_schedule(
                 request.tenant, actor=request.user, day=data.get("day"),
-                hour=data.get("hour"), timezone_name=data.get("timezone")))
+                hour=data.get("hour"), timezone_name=data.get("timezone"),
+                draft_day=data.get("draft_day"), draft_hour=data.get("draft_hour")))
         except digest_service.ScheduleInvalid as exc:
             return Response(exc.errors, status=400)
 

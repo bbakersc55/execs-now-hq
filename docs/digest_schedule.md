@@ -1,9 +1,13 @@
 # Digest schedule: "Draft on" and "Send on"
 
-**Spec for owner review · 2026-10-05 · no digest code and no migration until approved**
+**Spec · 2026-10-05**
 
-Decisions for the owner are numbered D1–D13 in §10, each with a recommended
-default. Everything below assumes the defaults.
+**Approved 2026-10-05: D1–D13 as recommended.** Build order: the three phases
+of §11, in order, on `dev`. The migration is applied to the laptop's
+`execsnowhq_local` once the SQL matches §8 and the full suite is green;
+**production needs the dry run and Bryan's yes** (the migration writes data).
+
+The decisions are numbered D1–D13 in §10.
 
 ## 1. Why
 

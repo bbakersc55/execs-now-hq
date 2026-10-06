@@ -7,13 +7,49 @@ import { Banner, Card, Field } from "../components/ui";
 import { Me, api } from "../lib/api";
 
 export interface DigestSchedule {
-  /** ISO weekday: 1 is Monday. */
-  day: number; day_name: string;
+  /** "Draft on": when each cycle's digests are written. ISO weekday, 1 is Monday. */
+  draft_day: number; draft_day_name: string;
   /** 0 to 23, in the practice's time zone. */
+  draft_hour: number;
+  /** "Send on": when approved digests go out, and the approval cutoff. */
+  day: number; day_name: string;
   hour: number;
   timezone: string;
+  /** The cycle now open or coming, as instants. */
+  next_draft_at?: string; next_send_at?: string;
+  /** No part of the time to approve falls Monday to Friday, 9 to 5. */
+  outside_working_hours?: boolean;
   /** Whether the practice owner has kept or changed it at least once. */
   confirmed: boolean;
+}
+
+type Times = Pick<DigestSchedule, "draft_day" | "draft_hour" | "day" | "hour">;
+
+const hourOfWeek = (day: number, hour: number) => (day - 1) * 24 + hour;
+
+/** Hours from Draft on to the Send on that follows it; 0 is the same moment. */
+export function draftGapHours(t: Times) {
+  return (((hourOfWeek(t.day, t.hour) - hourOfWeek(t.draft_day, t.draft_hour)) % 168) + 168) % 168;
+}
+
+/** True when no hour between Draft on and Send on is Monday to Friday, 9 to 5.
+ *  The same rule the server applies (`digests.outside_working_hours`). */
+export function outsideWorkingHours(t: Times) {
+  const start = hourOfWeek(t.draft_day, t.draft_hour);
+  for (let step = 0; step < draftGapHours(t); step += 1) {
+    const slot = (start + step) % 168;
+    const day = Math.floor(slot / 24);
+    const hour = slot % 24;
+    if (day < 5 && hour >= 9 && hour < 17) return false;
+  }
+  return true;
+}
+
+/** The one sentence that says what the two settings add up to. */
+export function resultSentence(t: Times) {
+  return `Work finished by ${DAYS[t.draft_day - 1]} ${hourLabel(t.draft_hour)} is included. `
+    + `Approve any time until ${DAYS[t.day - 1]} ${hourLabel(t.hour)}, when approved digests `
+    + "are sent.";
 }
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -34,6 +70,8 @@ function everyZone(): string[] {
     return [];
   }
 }
+
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 export function hourLabel(hour: number) {
   const twelve = hour % 12 === 0 ? 12 : hour % 12;
@@ -61,11 +99,12 @@ export function useDigestSchedule(enabled = true) {
 export function DigestSettings() {
   const qc = useQueryClient();
   const schedule = useDigestSchedule();
-  const [form, setForm] = useState<{ day: number; hour: number; timezone: string } | null>(null);
+  const [form, setForm] = useState<(Times & { timezone: string }) | null>(null);
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     if (schedule.data) {
-      setForm({ day: schedule.data.day, hour: schedule.data.hour,
+      setForm({ draft_day: schedule.data.draft_day, draft_hour: schedule.data.draft_hour,
+                day: schedule.data.day, hour: schedule.data.hour,
                 timezone: schedule.data.timezone });
     }
   }, [schedule.data]);
@@ -81,7 +120,10 @@ export function DigestSettings() {
   }
   const now = schedule.data;
   const changed = form.day !== now.day || form.hour !== now.hour
+    || form.draft_day !== now.draft_day || form.draft_hour !== now.draft_hour
     || form.timezone !== now.timezone;
+  const gap = draftGapHours(form);
+  const tooClose = gap < 2;
   const others = everyZone().filter((z) => !COMMON_ZONES.some(([id]) => id === z));
   const listed = COMMON_ZONES.some(([id]) => id === form.timezone)
     || others.includes(form.timezone);
@@ -90,25 +132,32 @@ export function DigestSettings() {
   return (
     <>
       <PageHead title="Digests"
-        sub="When the progress digests your clients' stakeholders receive are sent." />
+        sub="When the progress digests your clients' stakeholders receive are written and sent." />
       <Card title="Digest day and time">
-        <p className="small" style={{ marginTop: 0 }}>
-          Digests go out on <strong>{scheduleSentence(now)}</strong>.
-        </p>
         <div className="row">
-          <Field label="Day">
-            <select aria-label="Digest day" value={form.day}
-              onChange={(e) => set({ day: Number(e.target.value) })}>
-              {DAYS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
-            </select>
+          <Field label="Draft on">
+            <div className="inline">
+              <select aria-label="Draft day" value={form.draft_day}
+                onChange={(e) => set({ draft_day: Number(e.target.value) })}>
+                {DAYS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
+              </select>
+              <select aria-label="Draft time" value={form.draft_hour}
+                onChange={(e) => set({ draft_hour: Number(e.target.value) })}>
+                {HOURS.map((hour) => <option key={hour} value={hour}>{hourLabel(hour)}</option>)}
+              </select>
+            </div>
           </Field>
-          <Field label="Time">
-            <select aria-label="Digest time" value={form.hour}
-              onChange={(e) => set({ hour: Number(e.target.value) })}>
-              {Array.from({ length: 24 }, (_, hour) => (
-                <option key={hour} value={hour}>{hourLabel(hour)}</option>
-              ))}
-            </select>
+          <Field label="Send on">
+            <div className="inline">
+              <select aria-label="Send day" value={form.day}
+                onChange={(e) => set({ day: Number(e.target.value) })}>
+                {DAYS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
+              </select>
+              <select aria-label="Send time" value={form.hour}
+                onChange={(e) => set({ hour: Number(e.target.value) })}>
+                {HOURS.map((hour) => <option key={hour} value={hour}>{hourLabel(hour)}</option>)}
+              </select>
+            </div>
           </Field>
           <Field label="Time zone">
             <select aria-label="Practice time zone" value={form.timezone}
@@ -127,20 +176,38 @@ export function DigestSettings() {
             </select>
           </Field>
         </div>
+
+        {/* The two settings, said as what will happen. It follows the
+            controls, so it is read before Save is pressed. */}
+        {tooClose ? (
+          <Banner kind="bad">
+            Draft on must be at least 2 hours before Send on, so there is time to approve.
+          </Banner>
+        ) : (
+          <p aria-label="What this schedule does"><strong>{resultSentence(form)}</strong></p>
+        )}
+        {!tooClose && outsideWorkingHours(form) && (
+          <Banner kind="warn">
+            All of the time to approve these falls outside working hours (Monday to Friday,
+            9 to 5). Digests nobody approves are not sent.
+          </Banner>
+        )}
         {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
-        {saved && <Banner kind="ok">Saved. Digests now go out on {scheduleSentence(now)}.</Banner>}
-        <button className="primary" disabled={!changed || save.isPending}
+        {saved && <Banner kind="ok">Saved.</Banner>}
+        <button className="primary" disabled={!changed || tooClose || save.isPending}
           onClick={() => save.mutate()}>
           {save.isPending ? "Saving…" : "Save"}
         </button>
 
         <ul className="small muted" style={{ marginBottom: 0 }}>
-          <li><strong>Weekly</strong> digests are written 24 hours before this time, so there
-            is a day to read and approve them, and sent at this time.</li>
+          <li><strong>Weekly</strong> digests are written at Draft on and sent at Send on.
+            Each holds the work finished up to the moment it was written.</li>
           <li><strong>Monthly</strong> digests go on the first {DAYS[form.day - 1]} of the
-            month and cover the month before.</li>
-          <li>A stakeholder set to <strong>every update</strong> is not on this schedule: that
-            digest is sent as soon as it is approved.</li>
+            month, written on the {DAYS[form.draft_day - 1]} before it, and cover the month
+            before.</li>
+          <li>A stakeholder set to <strong>every update</strong> is not on this schedule:
+            that digest is written half an hour after the work settles, has a day to be
+            approved, and is sent as soon as it is.</li>
           <li>A change applies to digests written from now on. One already waiting on
             the <Link to="/digests">Digests</Link> screen keeps the time it was written
             with.</li>
@@ -169,17 +236,25 @@ export function DigestSchedulePrompt({ me }: { me: Me }) {
   });
   if (!owner || !schedule.data || schedule.data.confirmed) return null;
 
+  const t = schedule.data;
   return (
     <Card title="When should your digests go out?">
       <p style={{ marginTop: 0 }}>
-        They are set to go out on <strong>{scheduleSentence(schedule.data)}</strong>. Weekly
-        digests are written the day before so you have time to approve them.
+        They are written on <strong>{DAYS[t.draft_day - 1]}s at {hourLabel(t.draft_hour)}</strong>{" "}
+        and sent on <strong>{DAYS[t.day - 1]}s at {hourLabel(t.hour)}</strong>{" "}
+        ({zoneLabel(t.timezone)}). {resultSentence(t)}
       </p>
+      {t.outside_working_hours && (
+        <Banner kind="warn">
+          All of the time to approve these falls outside working hours (Monday to Friday,
+          9 to 5). Digests nobody approves are not sent.
+        </Banner>
+      )}
       <div className="row tight">
         <button className="primary" disabled={keep.isPending} onClick={() => keep.mutate()}>
-          Keep {DAYS[schedule.data.day - 1]}s at {hourLabel(schedule.data.hour)}
+          Keep this schedule
         </button>
-        <Link className="button" to="/settings/digests">Change the day or time</Link>
+        <Link className="button" to="/settings/digests">Change the days or times</Link>
       </div>
       <p className="small muted" style={{ marginBottom: 0 }}>
         You can change this later in Settings → Digests.
@@ -187,3 +262,4 @@ export function DigestSchedulePrompt({ me }: { me: Me }) {
     </Card>
   );
 }
+

@@ -128,6 +128,11 @@ class Tenant(UUIDModel):
     digest_ai_prose_default = models.BooleanField(default=True)  # FR-3.24
     digest_send_day = models.PositiveSmallIntegerField(default=5)  # Friday
     digest_send_hour = models.PositiveSmallIntegerField(default=8)
+    # When each cycle's digests are written (docs/digest_schedule.md). Work
+    # finished before this is in them; they can be approved from here until
+    # the send day and hour. The defaults are the old fixed "24 hours before".
+    digest_draft_day = models.PositiveSmallIntegerField(default=4)  # Thursday
+    digest_draft_hour = models.PositiveSmallIntegerField(default=8)
     # AI spend (owner, 2026-09-28). Anthropic does not tell us the account's
     # balance, so the FF types what is on the account when they top up, and the
     # app subtracts what it has logged since — an estimate, and labelled so.

@@ -610,6 +610,10 @@ class Digest(TenantScopedModel):
         PENDING = "pending", "Pending approval"
         APPROVED = "approved", "Approved"
         SENT = "sent", "Sent"
+        # Reached its send time unapproved: not sent, and still sendable by
+        # hand until the next digest for this person and cadence is drafted,
+        # when it expires into that one (docs/digest_schedule.md §5).
+        LATE = "late", "Not sent on time"
         EXPIRED = "expired", "Expired unsent"
         SKIPPED = "skipped", "Skipped"
 

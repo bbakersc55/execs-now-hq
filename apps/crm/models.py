@@ -758,6 +758,9 @@ class OutboxMessage(TenantScopedModel):
         MAGIC_LINK = "magic_link", "Magic link"
         NOTE_PIN_RESET = "note_pin_reset", "Note PIN reset"
         CLIENT_ACTIVITY = "client_activity", "Client activity notice"
+        # To the practice's own people: digests are ready, about to miss
+        # their time, or missed it. Never to a client; never a digest's text.
+        DIGEST_REMINDER = "digest_reminder", "Digest reminder"
         PRECALL_COMPLETE = "precall_complete", "Pre-call form completed"
         CADENCE_CHANGE = "cadence_change", "Cadence change"
         INBOUND_FORWARD = "inbound_forward", "Inbound forward"

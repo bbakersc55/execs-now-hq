@@ -299,7 +299,7 @@ def test_ac_3_10_and_3_32_every_update_batches_on_the_quiet_window(
     # FR-3.28d — held, it waits a review lead before it can expire. This line
     # used to assert the window was "now", which is exactly the Check 4 bug:
     # the same tick then expired it.
-    assert digest.send_window_at == later + digest_service.REVIEW_LEAD
+    assert digest.send_window_at == later + digest_service.EVERY_UPDATE_LEAD
     assert digest.items.count() >= 4
 
     # A second pass creates nothing more: the draft's claim covers those updates.
@@ -538,7 +538,7 @@ def test_ac_3_22_generation_thursday_send_friday_local_across_dst(seeded_tenant)
         local = window.astimezone(DENVER)
         assert local.isoweekday() == 5, f"{label}: not Friday"
         assert (local.hour, local.minute) == (8, 0), f"{label}: not 08:00 local"
-        generation = (window - digest_service.REVIEW_LEAD).astimezone(DENVER)
+        generation = digest_service.draft_before(seeded_tenant, window).astimezone(DENVER)
         assert generation.isoweekday() == 4 and generation.hour == 8, f"{label}: generation"
 
 
@@ -867,7 +867,7 @@ def test_check_4_a_held_every_update_digest_survives_the_tick_that_made_it(
     assert run_tick(seeded_tenant, closes)["every_update_generated"] == 1
     digest = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
     assert digest.state == Digest.State.PENDING, "It expired in the tick that made it."
-    assert digest.send_window_at == closes + digest_service.REVIEW_LEAD
+    assert digest.send_window_at == closes + digest_service.EVERY_UPDATE_LEAD
 
     # Later ticks neither expire it nor pretend to generate it again.
     later = run_tick(seeded_tenant, closes + timedelta(minutes=5))
@@ -893,7 +893,7 @@ def test_check_4_an_unapproved_every_update_digest_expires_after_its_review_lead
     run_tick(seeded_tenant, closes)
     digest = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
 
-    run_tick(seeded_tenant, closes + digest_service.REVIEW_LEAD + timedelta(minutes=1))
+    run_tick(seeded_tenant, closes + digest_service.EVERY_UPDATE_LEAD + timedelta(minutes=1))
     digest.refresh_from_db()
     assert digest.state == Digest.State.EXPIRED and digest.items.count() == 0
     assert dev_outbox == []
@@ -912,7 +912,7 @@ def test_check_4_an_expired_digest_does_not_block_its_content_forever(
     closes = timezone.now() + timedelta(minutes=31)
     run_tick(seeded_tenant, closes)
     first = Digest.all_objects.get(cadence=Cadence.EVERY_UPDATE)
-    after_expiry = closes + digest_service.REVIEW_LEAD + timedelta(minutes=1)
+    after_expiry = closes + digest_service.EVERY_UPDATE_LEAD + timedelta(minutes=1)
     run_tick(seeded_tenant, after_expiry)
     first.refresh_from_db()
     assert first.state == Digest.State.EXPIRED

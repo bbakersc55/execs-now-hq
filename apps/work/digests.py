@@ -36,7 +36,12 @@ from apps.work import updates as update_service
 from apps.work.models import Cadence, Comment, Digest, DigestItem, TaskUpdate
 
 QUIET_WINDOW = timedelta(minutes=30)      # FR-3.22
-REVIEW_LEAD = timedelta(hours=24)         # FR-3.28, and FR-3.28d for every_update
+# FR-3.28d: an every_update digest has this long to be approved. Weekly and
+# monthly digests no longer use a fixed lead: they are drafted at the
+# practice's own "Draft on" day and hour (docs/digest_schedule.md).
+EVERY_UPDATE_LEAD = timedelta(hours=24)
+#: Draft on must come at least this long before Send on (D2).
+MIN_DRAFT_GAP_HOURS = 2
 DEAD_STATES = (Digest.State.EXPIRED, Digest.State.SKIPPED)
 K = TaskUpdate.Kind
 
@@ -54,47 +59,95 @@ class ScheduleInvalid(Exception):
         self.errors = errors
 
 
-def schedule_of(tenant) -> dict:
-    """The practice's digest day, hour and time zone, and whether its owner
-    has ever looked at them (the Digests screen asks once)."""
+def _hour_of_week(day: int, hour: int) -> int:
+    return (day - 1) * 24 + hour
+
+
+def draft_gap_hours(draft_day, draft_hour, send_day, send_hour) -> int:
+    """Hours from Draft on to the Send on that follows it. 0 means the same
+    day and hour, which is not a schedule."""
+    return (_hour_of_week(send_day, send_hour) - _hour_of_week(draft_day, draft_hour)) % 168
+
+
+def outside_working_hours(draft_day, draft_hour, send_day, send_hour) -> bool:
+    """True when no hour between Draft on and Send on falls on Monday to
+    Friday, 9:00 AM to 5:00 PM: nobody would be at work to approve."""
+    start = _hour_of_week(draft_day, draft_hour)
+    for step in range(draft_gap_hours(draft_day, draft_hour, send_day, send_hour)):
+        day, hour = divmod((start + step) % 168, 24)
+        if day < 5 and 9 <= hour < 17:
+            return False
+    return True
+
+
+def _schedule_answered(tenant) -> bool:
+    """Whether the practice owner has answered the one-time prompt in its
+    current wording (D11): they changed the schedule at some point, or they
+    kept it since Draft on existed. A "Keep it" from before that is asked
+    again, once."""
+    events = AuditEvent.all_objects.filter(tenant=tenant, verb__in=SCHEDULE_VERBS)
+    return any(event.verb == "digest_schedule.changed" or "draft_day" in (event.payload or {})
+               for event in events)
+
+
+def _schedule_values(tenant) -> dict:
+    return {"draft_day": tenant.digest_draft_day, "draft_hour": tenant.digest_draft_hour,
+            "day": tenant.digest_send_day, "hour": tenant.digest_send_hour,
+            "timezone": tenant.timezone}
+
+
+def schedule_of(tenant, *, now=None) -> dict:
+    """The practice's Draft on, Send on and time zone, the next time each
+    happens, and whether its owner has ever looked at them."""
+    now = now or timezone.now()
+    send = next_weekly_window(tenant, now)
     return {
-        "day": tenant.digest_send_day,
+        **_schedule_values(tenant),
+        "draft_day_name": DAYS.get(tenant.digest_draft_day, ""),
         "day_name": DAYS.get(tenant.digest_send_day, ""),
-        "hour": tenant.digest_send_hour,
-        "timezone": tenant.timezone,
-        "confirmed": AuditEvent.all_objects.filter(
-            tenant=tenant, verb__in=SCHEDULE_VERBS).exists(),
+        # The cycle now open or coming: when it was or will be drafted, and
+        # when it sends.
+        "next_draft_at": draft_before(tenant, send).isoformat(),
+        "next_send_at": send.isoformat(),
+        "outside_working_hours": outside_working_hours(
+            tenant.digest_draft_day, tenant.digest_draft_hour,
+            tenant.digest_send_day, tenant.digest_send_hour),
+        "confirmed": _schedule_answered(tenant),
     }
 
 
 def confirm_schedule(tenant, *, actor) -> dict:
     """"Keep it": nothing changes except that the question is not asked again."""
-    if not schedule_of(tenant)["confirmed"]:
+    if not _schedule_answered(tenant):
         AuditEvent.all_objects.create(
             tenant=tenant, actor=actor, verb="digest_schedule.confirmed",
-            target_type="tenant", target_id=tenant.pk,
-            payload={"day": tenant.digest_send_day, "hour": tenant.digest_send_hour,
-                     "timezone": tenant.timezone})
+            target_type="tenant", target_id=tenant.pk, payload=_schedule_values(tenant))
     return schedule_of(tenant)
 
 
-def set_schedule(tenant, *, actor, day=None, hour=None, timezone_name=None) -> dict:
-    """Change the day, hour or time zone digests are written and sent by.
+def set_schedule(tenant, *, actor, day=None, hour=None, timezone_name=None,
+                 draft_day=None, draft_hour=None) -> dict:
+    """Change when digests are drafted and sent, or the practice's time zone.
 
-    Takes effect for digests written from now on: one already waiting keeps
+    Takes effect for digests drafted from now on: one already waiting keeps
     the send time it was written with, so nothing a person has read and
     approved moves under them. `hold_all_digests` is not touched here and has
     no switch anywhere (owner, 2026-10-05).
     """
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+    def whole(value, allowed):
+        return not isinstance(value, bool) and isinstance(value, int) and value in allowed
+
     errors = {}
-    if day is not None and (isinstance(day, bool) or not isinstance(day, int)
-                            or day not in DAYS):
+    if day is not None and not whole(day, DAYS):
         errors["day"] = "Choose a day of the week."
-    if hour is not None and (isinstance(hour, bool) or not isinstance(hour, int)
-                             or not 0 <= hour <= 23):
+    if hour is not None and not whole(hour, range(24)):
         errors["hour"] = "Choose an hour of the day."
+    if draft_day is not None and not whole(draft_day, DAYS):
+        errors["draft_day"] = "Choose a day of the week."
+    if draft_hour is not None and not whole(draft_hour, range(24)):
+        errors["draft_hour"] = "Choose an hour of the day."
     if timezone_name is not None:
         try:
             if not isinstance(timezone_name, str) or not timezone_name.strip():
@@ -102,28 +155,32 @@ def set_schedule(tenant, *, actor, day=None, hour=None, timezone_name=None) -> d
             ZoneInfo(timezone_name)
         except (ZoneInfoNotFoundError, ValueError, OSError):
             errors["timezone"] = "Choose a time zone from the list."
+
+    before = _schedule_values(tenant)
+    after = dict(before)
+    for key, value in (("day", day), ("hour", hour), ("draft_day", draft_day),
+                       ("draft_hour", draft_hour), ("timezone", timezone_name)):
+        if value is not None:
+            after[key] = value
+    if not errors and draft_gap_hours(after["draft_day"], after["draft_hour"],
+                                      after["day"], after["hour"]) < MIN_DRAFT_GAP_HOURS:
+        errors["draft"] = (f"Draft on must be at least {MIN_DRAFT_GAP_HOURS} hours before "
+                           "Send on, so there is time to approve.")
     if errors:
         raise ScheduleInvalid(errors)
 
-    before = {"day": tenant.digest_send_day, "hour": tenant.digest_send_hour,
-              "timezone": tenant.timezone}
-    if day is not None:
-        tenant.digest_send_day = day
-    if hour is not None:
-        tenant.digest_send_hour = hour
-    if timezone_name is not None:
-        tenant.timezone = timezone_name
-    after = {"day": tenant.digest_send_day, "hour": tenant.digest_send_hour,
-             "timezone": tenant.timezone}
     if after != before:
-        tenant.save(update_fields=["digest_send_day", "digest_send_hour", "timezone",
-                                   "updated_at"])
+        tenant.digest_draft_day, tenant.digest_draft_hour = after["draft_day"], after["draft_hour"]
+        tenant.digest_send_day, tenant.digest_send_hour = after["day"], after["hour"]
+        tenant.timezone = after["timezone"]
+        tenant.save(update_fields=["digest_draft_day", "digest_draft_hour", "digest_send_day",
+                                   "digest_send_hour", "timezone", "updated_at"])
         if after["timezone"] != before["timezone"]:
             # The practice's daily jobs run at a local hour; follow the zone.
             from apps.tenancy.management.commands.ensure_schedules import realign_local_hours
 
             realign_local_hours(tenant)
-    if after != before or not schedule_of(tenant)["confirmed"]:
+    if after != before or not _schedule_answered(tenant):
         AuditEvent.all_objects.create(
             tenant=tenant, actor=actor, verb="digest_schedule.changed",
             target_type="tenant", target_id=tenant.pk,
@@ -144,6 +201,19 @@ def _at_send_hour(tenant, day):
     rather than the local time the client sees (AC-3.22).
     """
     return datetime.combine(day, time(tenant.digest_send_hour), tzinfo=zone(tenant))
+
+
+def draft_before(tenant, send_window):
+    """The practice's Draft on immediately before a send time: when that
+    cycle's digests are written, and where its week of work ends."""
+    local = send_window.astimezone(zone(tenant))
+    back = (local.isoweekday() - tenant.digest_draft_day) % 7
+    candidate = datetime.combine(local.date() - timedelta(days=back),
+                                 time(tenant.digest_draft_hour), tzinfo=zone(tenant))
+    if candidate >= send_window:
+        candidate = datetime.combine(local.date() - timedelta(days=back + 7),
+                                     time(tenant.digest_draft_hour), tzinfo=zone(tenant))
+    return candidate
 
 
 def next_weekly_window(tenant, after):
@@ -186,7 +256,7 @@ def period_for(tenant, cadence, send_window):
         this_month = datetime(local.year, local.month, 1, tzinfo=zone(tenant))
         previous = (this_month - timedelta(days=1)).replace(day=1)
         return previous, this_month
-    end = send_window - REVIEW_LEAD
+    end = draft_before(tenant, send_window)
     return end - timedelta(days=7), end
 
 
@@ -612,11 +682,12 @@ def generate(*, tenant, contact, cadence, period_start, period_end, send_window_
 
 
 def generate_scheduled(tenant, *, cadence, now=None):
-    """Generate every due digest for one cadence, 24 hours before the window."""
+    """Generate every due digest for one cadence, from the practice's Draft on
+    until its Send on."""
     now = now or timezone.now()
     window = next_window(tenant, cadence, after=now)
-    if now < window - REVIEW_LEAD:
-        return []                      # not yet inside the review window
+    if now < draft_before(tenant, window):
+        return []                      # not yet this cycle's Draft on
     period_start, period_end = period_for(tenant, cadence, window)
     made = []
     for contact_id in stakeholder_service.contacts_with_attachments(tenant):
@@ -666,7 +737,7 @@ def close_quiet_windows(tenant, *, now=None):
             # tick, so it expired four seconds after it was made and nobody ever
             # saw it (Check 4). It now has the same review lead as a scheduled
             # digest, and send_due sends it as soon as it is approved.
-            digest.send_window_at = now + REVIEW_LEAD
+            digest.send_window_at = now + EVERY_UPDATE_LEAD
             digest.save(update_fields=["send_window_at", "updated_at"])
         made.append(digest)
     return made
