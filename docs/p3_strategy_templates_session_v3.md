@@ -22,9 +22,11 @@ session v2"), `01_prd.md` (FR-4.x, AC-4.x), `02_data_model.md` §6,
 `03_access_matrix.md` §10, and the code under `apps/strategy/`,
 `templates/strategy/` and `frontend/src/screens/Session*.tsx`.
 
-**Added 2026-10-08, for owner review, not built: §9, a practice with no
-template and "Start from the Operations example".** It reverses D3 and part
-two's D13 in one narrow way, and says exactly how narrow (§9.2, E1).
+**Added 2026-10-08: §9, a practice with no template and "Start from the
+Operations example". Decided by the owner the same day (E1–E11, §9.9); not
+built.** It reverses D3 and part two's D13 in one narrow way, and says exactly
+how narrow (§9.2, E1). **Building waits for the owner's words "build P3",
+after his session on 2026-10-09.**
 
 **Words used here.** *Classic* is the original nine-section format. *v2* is
 "Operations — focused" (`format = focused`). *v3* is the new format this spec
@@ -579,7 +581,8 @@ and review-before-it-lands on every AI output.
 
 ## 9. A practice with no template: a guided start, and "Start from the Operations example"
 
-**Spec for owner review · 2026-10-08 · no code, no schema change proposed.**
+**Decided 2026-10-08 (§9.9): E1 yes, E2 no, E3 named by the owner, E4–E11 as
+recommended. Not built: it waits for "build P3". No schema change.**
 Asked for by the owner so that Shawn (Blue Sky) is not facing a blank page.
 Sections 1 to 8 are built and released and are not respecified here.
 
@@ -619,7 +622,7 @@ parts by the mapping part two §7.2 already describes:
 |---|---|---|
 | Before the call | Snapshot (7 questions) | All 7, neutral wording. Three marked for the PDF header (revenue, team, sites), which a practice re-marks or relabels. |
 | Ratings | Six Key Components (6 statements) | All 6 as rated items taken on the call, each with its component as the label. The scale line is the default. |
-| Diagnostic | 14 questions | **3 fixed questions**, the fallback when nothing Claude proposes is accepted. Diagnostic questions per session stays at the default, 3. E3 asks which three. |
+| Diagnostic | 14 questions | **3 fixed questions**, the fallback when nothing Claude proposes is accepted: where decisions stall on the owner (`s4_decisions_stall`), turnover (`s4_turnover`) and the cash pinch (`s4_cash_pinch`), in neutral wording (E3). Diagnostic questions per session stays at the default, 3. |
 | The mirror and where they want to go | Where they want to go (4) | All 4. |
 | The map | none | Time budget only, as in every v3 template. |
 | What they value | 5 items | All 5, switched on. |
@@ -773,17 +776,17 @@ No migration in any phase unless E7 is yes. Release is an ordinary one.
 
 ### 9.9 Decisions for the owner
 
-| # | Question | Recommendation | Owner |
+| # | Question | Recommendation | Owner, 2026-10-08 |
 |---|---|---|---|
-| **E1** | **Reverse D3 and part two's D13 this far: any practice may start from the Operations example, which is your Operations questions in their neutral wording.** "Restore from seed", your own templates and everything in §9.2's second table stay yours. | **Yes, if you are content for another fractional to run a session on these questions.** It is the only version of this that is not a blank page on day one. | |
-| E2 | The alternative that keeps D3 whole: a **generic example written for the purpose**, none of it from your seed (invented pre-call questions, four or five plain rated items, neutral paths and scope). | No, unless E1 is no. It takes writing you would have to approve line by line, and it will be a weaker session than yours. | |
-| E3 | Which three of the 14 diagnostic questions are the example's fixed fallback. | The three marked must-ask in the seed, in seed order; if more than three are marked, the first three. I will list them by wording in the phase 1 report before anything is built on them. | |
-| E4 | Is the example offered to Executives Now as well, on New template? | Yes. It is the quickest way for you to get a v3 Operations template to work on, and it shows you exactly what Shawn sees. | |
-| E5 | Name on the button and the default template name. | "Start from the Operations example"; the template is named "Strategy session" until renamed. The word "Operations" is on the button, not forced into their template's name. | |
-| E6 | "From the example" tags on unchanged wording, computed, never stored. | Yes. It is how a practice sees what it has not yet made its own, and it costs no schema. | |
-| E7 | Record where a template came from on the template itself (one nullable column), or only in the audit event. | Audit event only. No migration. | |
-| E8 | Import in this round is "Paste several" per card. Whole-template file import and export wait. | Yes. Paste covers the document a practice arrives with; file import has no second practice to exchange with yet. | |
-| E9 | The example is versioned and copies never follow it. | Yes. A practice's template must not change under it because the example improved. | |
-| E10 | Order of work against part two (custom sections, AI per section), which is approved and, past its phase 1, not built. | This first. It is three small phases, it is what Blue Sky is waiting on, and it touches none of part two's ground. Say if part two should go first. | |
-| E11 | Who tells Shawn, and what happens to a template he has already started. | You tell him. Nothing of his changes; the new start is offered beside it. | |
+| **E1** | **Reverse D3 and part two's D13 this far: any practice may start from the Operations example, which is your Operations questions in their neutral wording.** "Restore from seed", your own templates and everything in §9.2's second table stay yours. | **Yes, if you are content for another fractional to run a session on these questions.** It is the only version of this that is not a blank page on day one. | **Yes.** |
+| E2 | The alternative that keeps D3 whole: a **generic example written for the purpose**, none of it from your seed (invented pre-call questions, four or five plain rated items, neutral paths and scope). | No, unless E1 is no. It takes writing you would have to approve line by line, and it will be a weaker session than yours. | **No.** |
+| E3 | Which three of the 14 diagnostic questions are the example's fixed fallback. | The three marked must-ask in the seed, in seed order; if more than three are marked, the first three. I will list them by wording in the phase 1 report before anything is built on them. | **Named by the owner:** decisions stall on the owner, turnover, and the cash pinch, in neutral wording. In the seed: `s4_decisions_stall` ("Where do decisions stall because they need {Visionary}?"), `s4_turnover` ("Turnover, time-to-fill, who recruits and how much of their week it takes"), `s4_cash_pinch` ("Cash pinch points. Projects and supplies: profit centers or distractions?"). The first names the owner by a merge field; phase 1 reports the exact wording the builder accepts before anything is built on it. |
+| E4 | Is the example offered to Executives Now as well, on New template? | Yes. It is the quickest way for you to get a v3 Operations template to work on, and it shows you exactly what Shawn sees. | **Yes, as recommended.** |
+| E5 | Name on the button and the default template name. | "Start from the Operations example"; the template is named "Strategy session" until renamed. The word "Operations" is on the button, not forced into their template's name. | **Yes, as recommended.** |
+| E6 | "From the example" tags on unchanged wording, computed, never stored. | Yes. It is how a practice sees what it has not yet made its own, and it costs no schema. | **Yes, as recommended.** |
+| E7 | Record where a template came from on the template itself (one nullable column), or only in the audit event. | Audit event only. No migration. | **Audit event only, as recommended.** No migration. |
+| E8 | Import in this round is "Paste several" per card. Whole-template file import and export wait. | Yes. Paste covers the document a practice arrives with; file import has no second practice to exchange with yet. | **Yes, as recommended.** |
+| E9 | The example is versioned and copies never follow it. | Yes. A practice's template must not change under it because the example improved. | **Yes, as recommended.** |
+| E10 | Order of work against part two (custom sections, AI per section), which is approved and, past its phase 1, not built. | This first. It is three small phases, it is what Blue Sky is waiting on, and it touches none of part two's ground. Say if part two should go first. | **This first, as recommended**, and only on the words "build P3", after the owner's session on 2026-10-09. |
+| E11 | Who tells Shawn, and what happens to a template he has already started. | You tell him. Nothing of his changes; the new start is offered beside it. | **As recommended:** the owner tells Shawn; nothing of his changes. |
 
