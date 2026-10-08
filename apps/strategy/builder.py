@@ -282,7 +282,8 @@ def _check_chips(template, *, adding: StrategyQuestion | None = None) -> None:
 
 @transaction.atomic
 def add_question(template, *, section, prompt, label="", pdf_chip=False,
-                 is_financial=False, must_ask=False) -> StrategyQuestion:
+                 is_financial=False, must_ask=False,
+                 observation=False) -> StrategyQuestion:
     require_v3(template)
     section = _section(template, section)
     rule = RULES.get(section.kind)
@@ -318,6 +319,14 @@ def add_question(template, *, section, prompt, label="", pdf_chip=False,
         if rule["ask_when"] != AskWhen.LIVE or section.kind == RATINGS:
             raise SessionError("Only a question asked in the call can be a must-ask.")
         flags["must_ask"] = True
+    # The advisor's own observation: never asked aloud, and off the PDF, the
+    # emails and prep unless its flag is on (FR-4.17). Set by an example
+    # (`examples.py`); the builder's API does not offer it.
+    if observation:
+        if section.kind != MIRROR:
+            raise SessionError("Only a question in the mirror's section can be your "
+                               "own observation.")
+        flags["is_fractional_observation"] = True
     last = live.order_by("-position").values_list("position", flat=True).first()
     return StrategyQuestion.objects.create(
         tenant=template.tenant, template=template, section=section, key=key,

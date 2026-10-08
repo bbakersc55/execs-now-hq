@@ -12,7 +12,7 @@ from django.http import Http404
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.strategy import builder, services
+from apps.strategy import builder, examples, services
 from apps.strategy.models import StrategyTemplate
 from apps.strategy.views import CF, FF, VA, StrategyViewSet
 from apps.tenancy.models import AuditEvent
@@ -62,11 +62,21 @@ class TemplateBuilderViewSet(StrategyViewSet):
             raise Http404
         if role != FF:
             return Response({"detail": OWNER_ONLY}, status=403)
+        # Absent means blank, as before (P3 §9.4). An example is named.
+        start_from = request.data.get("start_from")
+        payload = {}
         try:
-            template = builder.create_blank(request.tenant, name=request.data.get("name"))
+            if start_from is None:
+                template = builder.create_blank(request.tenant,
+                                                name=request.data.get("name"))
+            else:
+                template, version = examples.create(
+                    request.tenant, name=request.data.get("name"), start_from=start_from)
+                payload = {"start_from": start_from, "example_version": version}
         except services.SessionError as exc:
             return Response({"detail": str(exc)}, status=exc.status)
-        self._audit("strategy.template_created", template, {"name": template.name})
+        self._audit("strategy.template_created", template,
+                    {"name": template.name, **payload})
         return Response(builder.represent(template), status=201)
 
     def retrieve(self, request, pk=None):

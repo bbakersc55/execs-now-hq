@@ -774,6 +774,36 @@ Tests this round must add, beside the two families that are not optional:
 
 No migration in any phase unless E7 is yes. Release is an ordinary one.
 
+### As built
+
+**Phase 1 (2026-10-08, on the owner's "build P3").** `apps/strategy/examples.py`
+holds the example as data, version 1; `start_from: "operations_example"` on
+create; `tests/test_strategy_examples.py` and its pin
+(`tests/golden/strategy_examples/operations_example_v1.json`). No screen, no
+schema change. Differences from the text above:
+
+- **The request is `POST /api/strategy-template-builder/`**, which is where
+  creating a v3 template has been since part one's phase 2, not
+  `/api/strategy-templates/` as §9.4 says.
+- **The copy is never made the default**, first template or not. §9.4 calls
+  "the default if it is their first" today's rule; today's rule in the code is
+  that making a template changes no default, and a session started without a
+  choice falls back to the practice's only template. Left as it is.
+- **The three fallback questions (E3), exactly as the builder stores them:**
+  "Where do decisions stall because they need {Visionary}?", "Turnover,
+  time-to-fill, who recruits and how much of their week it takes", "Cash pinch
+  points. Projects and supplies: profit centers or distractions?". The builder
+  accepts `{Visionary}` in a v3 template. In a session it reads as the
+  prospect's name, because the person a session is with is its Visionary
+  unless someone else is named.
+- **The fourth mirror question keeps "not asked aloud".** The builder had no
+  way to mark a question as the advisor's own observation, and without the mark
+  it would be asked like any other and offered to the PDF. `builder.add_question`
+  now takes it, for a mirror question only; the builder's API does not offer it.
+- The two paths are the seed's two in neutral wording, written over the blank
+  template's two; the three blank scope items are reworded in place, so a copy
+  starts with nothing archived. Section titles are the builder's own.
+
 ### 9.9 Decisions for the owner
 
 | # | Question | Recommendation | Owner, 2026-10-08 |
