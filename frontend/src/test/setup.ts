@@ -6,6 +6,6 @@ import "@testing-library/jest-dom/vitest";
  * to whichever test file was running — noise that would sooner or later hide a
  * real one. A no-op is the right stand-in: there is nothing to scroll.
  */
-if (!Element.prototype.scrollIntoView) {
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { PageHead } from "../components/shell";
-import { Banner, Card, Field, Pill } from "../components/ui";
+import { Banner, Card, Field, Pill, RowActions } from "../components/ui";
 import {
   BuilderSection, BuilderSettings, BuilderTemplate, Me, PasteResult, SectionKind,
   StrategyQuestion, StrategySessionRow, api,
@@ -439,13 +439,14 @@ function QuestionEditor({ question, section, suggested, off, mayEdit, chips, isF
   const name = question.label || saved;
   const check = (field: string, text: string, checked: boolean, disabled = false,
                  title = "") => (
-    <label className="small" style={{ display: "inline-flex", gap: ".4rem" }} title={title}>
-      <input type="checkbox" style={{ width: "auto" }} checked={checked}
+    <label className="small" title={title}>
+      <input type="checkbox" checked={checked}
         disabled={off || disabled} aria-label={`${text}: ${name}`}
         onChange={(e) => onSave({ [field]: e.target.checked })} />
       {text}
     </label>
   );
+  const movable = mayEdit && !section.fixed_count;
   return (
     <div className="field" style={{ marginBottom: "1rem" }}>
       {suggested !== undefined && suggested !== saved && (
@@ -469,13 +470,19 @@ function QuestionEditor({ question, section, suggested, off, mayEdit, chips, isF
         {hasLabel && (
           <input aria-label={`Label of: ${saved}`} value={label} maxLength={60}
             placeholder={kind === "ratings" ? "Label" : "Label (optional)"}
-            style={{ width: "11rem" }} disabled={off}
+            style={{ flex: "0 0 11rem" }} disabled={off}
             onChange={(e) => setLabel(e.target.value)} />
         )}
         <textarea rows={2} aria-label={`Wording of: ${saved}`} value={prompt}
           style={{ flex: 1 }} disabled={off} onChange={(e) => setPrompt(e.target.value)} />
       </div>
-      <div className="row">
+      <RowActions
+        up={movable ? { label: `Move up: ${name}`, onClick: () => onMove(-1),
+                        disabled: off || isFirst } : null}
+        down={movable ? { label: `Move down: ${name}`, onClick: () => onMove(1),
+                          disabled: off || isLast } : null}
+        remove={movable ? { label: `Remove: ${name}`, onClick: onRemove, disabled: off }
+          : null}>
         {dirty && (
           <>
             <button className="primary small" disabled={off || !prompt.trim()}
@@ -496,17 +503,7 @@ function QuestionEditor({ question, section, suggested, off, mayEdit, chips, isF
         {kind === "scope" && check("is_financial", "Money", question.is_financial)}
         {(kind === "diagnostic" || kind === "mirror" || kind === "values" || kind === "scope"
           || kind === "custom") && check("must_ask", "Must ask", question.must_ask)}
-        {mayEdit && !section.fixed_count && (
-          <>
-            <button className="ghost small" disabled={off || isFirst}
-              aria-label={`Move up: ${name}`} onClick={() => onMove(-1)}>↑</button>
-            <button className="ghost small" disabled={off || isLast}
-              aria-label={`Move down: ${name}`} onClick={() => onMove(1)}>↓</button>
-            <button className="ghost small" disabled={off} aria-label={`Remove: ${name}`}
-              onClick={onRemove}>Remove</button>
-          </>
-        )}
-      </div>
+      </RowActions>
     </div>
   );
 }
@@ -529,7 +526,7 @@ function AddQuestion({ section, label, busy, onAdd }: {
         {hasLabel && (
           <input aria-label={`Label of the new one in ${section.title}`} value={name}
             maxLength={60} placeholder={rated ? "Label" : "Label (optional)"}
-            style={{ width: "11rem" }} onChange={(e) => setName(e.target.value)} />
+            style={{ flex: "0 0 11rem" }} onChange={(e) => setName(e.target.value)} />
         )}
         <textarea rows={2} aria-label={`Wording of the new one in ${section.title}`}
           value={prompt} style={{ flex: 1 }}
@@ -537,14 +534,16 @@ function AddQuestion({ section, label, busy, onAdd }: {
             : "The wording, as you would say it"}
           onChange={(e) => setPrompt(e.target.value)} />
       </div>
+      <div className="row tight" style={{ marginTop: "var(--s2)" }}>
       {section.schemas && (
         <select aria-label={`Kind of answer for the new one in ${section.title}`}
+          style={{ width: "auto" }}
           value={answer} onChange={(e) => setAnswer(e.target.value)}>
           {section.schemas.map((schema) => (
             <option key={schema} value={schema}>{ANSWER_KINDS[schema] ?? schema}</option>
           ))}
         </select>
-      )}{" "}
+      )}
       <button disabled={busy || !prompt.trim() || (rated && !name.trim())}
         onClick={() => onAdd({ prompt: prompt.trim(),
                                ...(hasLabel ? { label: name.trim() } : {}),
@@ -552,6 +551,7 @@ function AddQuestion({ section, label, busy, onAdd }: {
                              () => { setPrompt(""); setName(""); })}>
         {label}
       </button>
+      </div>
     </div>
   );
 }

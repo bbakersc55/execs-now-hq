@@ -354,9 +354,17 @@ h3 > a.rowname { color: inherit; font-weight: inherit; }
 
 /* ----------------------------------------------------------------- controls */
 
+/* One height for every control (owner, 2026-10-08): a button, an input and a
+   select beside each other are the same 36px box, so they share a top, a
+   bottom and a text baseline wherever they meet. A small button is small in
+   its type and padding, not in its height. The exceptions are not controls in
+   a row: an action inside a sentence (`button.link`), an icon button, the
+   close on a chip, and a textarea. */
+:root { --control-h: 36px; --action-w: 36px; --remove-w: 84px; }
+
 button, .btn {
   font-family: var(--f); font-size: var(--t-14); font-weight: 500; line-height: 1;
-  min-height: 36px; border: 1px solid var(--line-strong); background: var(--surface);
+  min-height: var(--control-h); border: 1px solid var(--line-strong); background: var(--surface);
   color: var(--text); border-radius: var(--radius); padding: 0 var(--s3);
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   gap: var(--s2); text-decoration: none; white-space: nowrap;
@@ -402,7 +410,7 @@ button.link:hover:not(:disabled) {
   background: color-mix(in srgb, var(--navy) 15%, var(--surface));
 }
 button.small, button.ghost.small, .btn.small {
-  min-height: 28px; font-size: var(--t-13); padding: 0 var(--s2);
+  font-size: var(--t-13); padding: 0 var(--s2);
 }
 .icon-button {
   min-height: 32px; width: 32px; padding: 0; border-color: transparent;
@@ -413,14 +421,16 @@ button.small, button.ghost.small, .btn.small {
 input, select, textarea {
   font-family: var(--f); font-size: var(--t-14); padding: var(--s2) var(--s3);
   border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
-  width: 100%; background: var(--surface); color: var(--text); min-height: 36px;
+  width: 100%; background: var(--surface); color: var(--text);
+  height: var(--control-h); min-height: var(--control-h);
 }
-textarea { min-height: auto; line-height: 1.5; }
+textarea { height: auto; min-height: auto; line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: var(--gray-light); }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--navy); box-shadow: var(--focus);
 }
-input[type="checkbox"], input[type="radio"] { width: auto; min-height: 0; }
+input[type="checkbox"], input[type="radio"] { width: auto; height: auto; min-height: 0; }
+input[type="file"], input[type="range"] { height: auto; }
 label { display: block; font-size: var(--t-13); color: var(--muted); margin-bottom: var(--s1); }
 .field > label {
   font-size: var(--t-12); font-weight: 600; letter-spacing: .04em;
@@ -430,6 +440,32 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
 .row { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
 .row > * { flex: 1 1 180px; }
 .row.tight > * { flex: 0 0 auto; }
+/* A field in a row keeps its space below on the row, not on itself: with the
+   margin on the field, its input sat 12px above the buttons beside it. The
+   same for a row inside a row (a field with its own Save). */
+.row > .field, .row > .row > .field { margin-bottom: 0; }
+.row > .row { margin-bottom: 0; }
+.row:has(> .field), .row:has(> .row > .field) { margin-bottom: var(--s3); }
+.row > .row:has(> .field) { margin-bottom: 0; }
+
+/* The actions on a row of a list (`RowActions`): flags | up | down | Remove,
+   on one grid with the same three fixed columns everywhere, so a column of
+   Remove buttons lines up down the page whatever flags a row has. A row
+   without an action keeps its empty cell. */
+.row-actions {
+  display: grid; align-items: center; gap: var(--s2);
+  grid-template-columns: minmax(0, 1fr) var(--action-w) var(--action-w) var(--remove-w);
+}
+.row-actions-flags {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
+  min-width: 0; min-height: var(--control-h);
+}
+.row-actions-flags label {
+  display: inline-flex; align-items: center; gap: var(--s2); margin: 0;
+  min-height: var(--control-h);
+}
+.row-actions-cell > button { width: 100%; padding: 0; }
+.row-actions-flags select, .row-actions-flags input:not([type="checkbox"]) { width: auto; }
 
 /* The search field, with its icon inside it. */
 .search { position: relative; flex: 1 1 260px; }

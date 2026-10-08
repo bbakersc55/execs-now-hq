@@ -38,6 +38,36 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
+type RowAction = { label: string; onClick: () => void; disabled?: boolean };
+
+/**
+ * The actions on one row of a list, on one grid everywhere: its flags, then
+ * move up, move down and Remove, each in a column of fixed width (owner,
+ * 2026-10-08). A row that lacks an action keeps the empty cell, so the columns
+ * line up down the page whatever a row has. `children` are the flags.
+ */
+export function RowActions({ children, up, down, remove }: {
+  children?: ReactNode; up?: RowAction | null; down?: RowAction | null;
+  remove?: RowAction | null;
+}) {
+  const cell = (name: string, action: RowAction | null | undefined, text: string) => (
+    <div className="row-actions-cell" data-cell={name}>
+      {action && (
+        <button className="ghost small" aria-label={action.label} disabled={action.disabled}
+          onClick={action.onClick}>{text}</button>
+      )}
+    </div>
+  );
+  return (
+    <div className="row-actions">
+      <div className="row-actions-flags" data-cell="flags">{children}</div>
+      {cell("up", up, "↑")}
+      {cell("down", down, "↓")}
+      {cell("remove", remove, "Remove")}
+    </div>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="muted small" style={{ padding: ".5rem 0" }}>{children}</p>;
 }

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { Banner, Card, Field, Pill } from "../components/ui";
+import { Banner, Card, Field, Pill, RowActions } from "../components/ui";
 import { Me, StrategySessionRow, StrategyTemplateRow as Template, api } from "../lib/api";
 
 type Edit = { prompt?: string; ask_when?: "precall" | "live"; must_ask?: boolean;
@@ -270,45 +270,40 @@ export function SessionTemplate({ me }: { me: Me }) {
                       value={edit.prompt ?? question.prompt_template ?? question.prompt}
                       onChange={(e) => setEdits({ ...edits,
                         [question.key]: { ...edit, prompt: e.target.value } })} />
-                    <div className="row">
+                    <RowActions
+                      up={{ label: `Move ${question.key} up`, onClick: () => move(index - 1),
+                            disabled: index === 0 || shape.isPending }}
+                      down={{ label: `Move ${question.key} down`,
+                              onClick: () => move(index + 1),
+                              disabled: index === keys.length - 1 || shape.isPending }}
+                      remove={{ label: `Remove ${question.key}`, disabled: shape.isPending,
+                                onClick: () => {
+                                  if (!confirm("Remove this question from the template? It is "
+                                    + "archived, not deleted: sessions that asked it keep it.")) return;
+                                  shape.mutate({ suffix: "remove-question/",
+                                                 body: { key: question.key } });
+                                } }}>
                       <select aria-label={`When to ask ${question.key}`} value={askWhen}
                         onChange={(e) => setEdits({ ...edits, [question.key]: {
                           ...edit, ask_when: e.target.value as "precall" | "live" } })}>
                         <option value="precall">On the pre-call form</option>
                         <option value="live">In the call</option>
                       </select>
-                      <label className="small"
-                        style={{ display: "inline-flex", gap: ".4rem" }}>
-                        <input type="checkbox" style={{ width: "auto" }} checked={mustAsk}
+                      <label className="small">
+                        <input type="checkbox" checked={mustAsk}
                           aria-label={`Must ask ${question.key}`}
                           onChange={(e) => setEdits({ ...edits, [question.key]: {
                             ...edit, must_ask: e.target.checked } })} />
                         Must ask
                       </label>
-                      <label className="small"
-                        style={{ display: "inline-flex", gap: ".4rem" }}>
-                        <input type="checkbox" style={{ width: "auto" }} checked={ifTime}
+                      <label className="small">
+                        <input type="checkbox" checked={ifTime}
                           aria-label={`Ask ${question.key} only if time`}
                           onChange={(e) => setEdits({ ...edits, [question.key]: {
                             ...edit, ask_if_time: e.target.checked } })} />
                         If time
                       </label>
-                      <button className="ghost small" disabled={index === 0 || shape.isPending}
-                        aria-label={`Move ${question.key} up`}
-                        onClick={() => move(index - 1)}>↑</button>
-                      <button className="ghost small"
-                        disabled={index === keys.length - 1 || shape.isPending}
-                        aria-label={`Move ${question.key} down`}
-                        onClick={() => move(index + 1)}>↓</button>
-                      <button className="ghost small" disabled={shape.isPending}
-                        aria-label={`Remove ${question.key}`}
-                        onClick={() => {
-                          if (!confirm("Remove this question from the template? It is "
-                            + "archived, not deleted: sessions that asked it keep it.")) return;
-                          shape.mutate({ suffix: "remove-question/",
-                                         body: { key: question.key } });
-                        }}>Remove</button>
-                    </div>
+                    </RowActions>
                   </div>
                 );
               })}

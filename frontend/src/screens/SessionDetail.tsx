@@ -6,7 +6,7 @@ import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 
 import { RichText } from "../components/RichText";
 import { PageHead, SendPreview } from "../components/shell";
-import { Banner, Card, Field, Pill, when } from "../components/ui";
+import { Banner, Card, Field, Pill, RowActions, when } from "../components/ui";
 import {
   AnswerValue, ConversionRow, MapRow, Me, PathNote, PrepQuestion, SendPreview as Preview,
   SessionPrep, StrategyQuestion, StrategySessionRow, StrategyTemplateRow, activeTemplates,
@@ -613,26 +613,20 @@ function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate
               <Merges row={row} />
             </span>
             {mayRun && (
-              <span className="row">
-                {/* Pruning after a consolidation (dry run 2). Back to discarded,
-                    audited; a converted row links to its goal and stays. */}
-                {!row.converted_to && (
-                  <button className="ghost small" aria-label={`Remove ${row.bottleneck} from the map`}
-                    onClick={() => {
-                      if (!confirm(`Take “${row.bottleneck}” off the map? It is kept as `
-                        + "discarded, and the change is recorded.")) return;
-                      act.mutate({ row: row.id, suffix: "remove/" });
-                    }}>Remove</button>
-                )}
-                <button className="ghost small" disabled={index === 0}
-                  onClick={() => move(index, -1)} aria-label={`Move ${row.bottleneck} up`}>
-                  ↑
-                </button>
-                <button className="ghost small" disabled={index === map.length - 1}
-                  onClick={() => move(index, 1)} aria-label={`Move ${row.bottleneck} down`}>
-                  ↓
-                </button>
-              </span>
+              /* Pruning after a consolidation (dry run 2). Back to discarded,
+                 audited; a converted row links to its goal and stays. */
+              <RowActions
+                up={{ label: `Move ${row.bottleneck} up`, onClick: () => move(index, -1),
+                      disabled: index === 0 }}
+                down={{ label: `Move ${row.bottleneck} down`, onClick: () => move(index, 1),
+                        disabled: index === map.length - 1 }}
+                remove={row.converted_to ? null : {
+                  label: `Remove ${row.bottleneck} from the map`,
+                  onClick: () => {
+                    if (!confirm(`Take “${row.bottleneck}” off the map? It is kept as `
+                      + "discarded, and the change is recorded.")) return;
+                    act.mutate({ row: row.id, suffix: "remove/" });
+                  } }} />
             )}
           </div>
           {/* The card the PDF shows (owner, 2026-09-29): the same two lines. */}
