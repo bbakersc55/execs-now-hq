@@ -299,6 +299,20 @@ previous one as REMOVED, so do not count on redeploying it from the
 dashboard; a no-migration release is rolled back by reverting on `main` and
 pushing, which is another deploy of about a minute.
 
+**Observed at Release 9 (2026-10-08, 1 migration, `strategy 0017`: a map row
+written by hand and the call notes as context for drafts):** backup confirmed
+(20:10 UTC dump, 3.1 MB) and a fresh one taken first (22:27:58 UTC, 3,091,732
+bytes). The commit released, `31c00d9`, had passed `scripts/gate.sh`. `main`
+fast-forwarded from `fc814df` and pushed 22:29:18, by
+`git push origin 31c00d9:main`; worker `WAITING` 22:30:46 listing exactly
+`strategy.0017_call_notes_and_hand_added_rows`; applied 22:31:00–04, OK;
+worker running 22:31:21; web redeployed 22:31:36; new web listening 22:32:00
+with "Migrations are current" (the call-notes route, which exists only in this
+release, answers 403). **Push to new code: 2 min 42 s.** Old web served
+throughout: 73 samples at 5 s, every one 200. **Worker paused about 35 s.**
+**Neither addition had been seen in a signed-in browser, and no real Claude
+draft or Drive pick had been made with call notes, when it went out.**
+
 **Observed at Release 8 (2026-10-08, 5 migrations: P3's example and sections,
 the alignment pass, client invoicing, the books, and the import with 1099
 payees):** backup confirmed (08:00 UTC dump, 3.1 MB), and a fresh one taken by
