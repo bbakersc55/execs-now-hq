@@ -193,7 +193,7 @@ def match(tenant, payload: dict):
         if row is not None:
             # A known person on a conversation we did not start. Their own
             # thread, so the history stays one conversation per thread.
-            thread = (EmailThread.objects.filter(contact=row.contact,
+            thread = (EmailThread.objects.filter(contact=row.contact, is_financial=False,
                                                  gmail_thread_id=gmail_thread_id).first()
                       if gmail_thread_id else None)
             return thread, row.contact, BY_SENDER, ""
@@ -372,7 +372,7 @@ def file_to_contact(row, *, contact, actor=None, thread=None, add_address=False)
         raise ValueError("That message has already been filed.")
     tenant = row.tenant
     if thread is None:
-        thread = (EmailThread.objects.filter(contact=contact,
+        thread = (EmailThread.objects.filter(contact=contact, is_financial=False,
                                              gmail_thread_id=row.gmail_thread_id).first()
                   if row.gmail_thread_id else None)
     if thread is None:

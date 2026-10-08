@@ -117,11 +117,59 @@ def company_queryset_for(request, queryset):
     return queryset.none()
 
 
-def outbox_queryset_for(request, queryset):
-    """Matrix 5.1 — CF sees messages to contacts on assigned companies."""
+#: The Outbox producer that carries money (P4A).
+INVOICE_PRODUCER = "client_invoice"
+
+
+def sees_money(request, company_id=None) -> bool:
+    """Matrix 13.4a — who may see an invoice, and so any email that is one.
+
+    The practice owner, always. An associate for a client company they are
+    assigned to, and never for an invoice to a contact (which has no company).
+    An assistant, never: `CLAUDE.md`, "no financials".
+    """
     role = role_of(request)
-    if role in (Role.FF, Role.VA):
+    if role == Role.FF:
+        return True
+    if role == Role.CF:
+        return company_id is not None and company_id in assigned_company_ids(request)
+    return False
+
+
+def without_money(request, queryset, *, thread="thread"):
+    """An Outbox queryset with every invoice the requester may not see left
+    out. The company an invoice bills is on its thread, which is its own
+    (`EmailThread.is_financial`), so this needs nothing from the billing app.
+    `thread` is the path to the thread from the rows being filtered."""
+    role = role_of(request)
+    if role == Role.FF:
+        return queryset
+    invoices = Q(producer=INVOICE_PRODUCER)
+    if role == Role.CF:
+        return queryset.exclude(invoices & ~Q(**{
+            f"{thread}__client_company_id__in": assigned_company_ids(request)}))
+    return queryset.exclude(invoices)
+
+
+def threads_without_money(request, queryset):
+    """The same rule for threads: a financial thread holds an invoice and the
+    replies to it, and is not part of the history an assistant shares."""
+    role = role_of(request)
+    if role == Role.FF:
         return queryset
     if role == Role.CF:
-        return queryset.filter(to_contact__company_id__in=assigned_company_ids(request))
+        return queryset.exclude(Q(is_financial=True) & ~Q(
+            client_company_id__in=assigned_company_ids(request)))
+    return queryset.exclude(is_financial=True)
+
+
+def outbox_queryset_for(request, queryset):
+    """Matrix 5.1 — CF sees messages to contacts on assigned companies.
+    Matrix 13.4a — and nobody sees an invoice they may not (`without_money`)."""
+    role = role_of(request)
+    if role in (Role.FF, Role.VA):
+        return without_money(request, queryset)
+    if role == Role.CF:
+        return without_money(request, queryset.filter(
+            to_contact__company_id__in=assigned_company_ids(request)))
     return queryset.none()

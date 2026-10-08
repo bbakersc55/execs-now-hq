@@ -646,8 +646,12 @@ def test_ac_2_9_the_retention_job_is_scheduled(seeded_tenant):
     assert Schedule.objects.filter(name=f"notes.process:{seeded_tenant.slug}",
                                    minutes=1).exists()
     # 3 Module 1, work.tick, Module 2's two, Module 5's two (the ten-minute
-    # poll and the one-minute backfill tick), and Module 6's inbound poll.
-    assert Schedule.objects.count() == 9
+    # poll and the one-minute backfill tick), Module 6's inbound poll, and
+    # P4A's recurring invoice drafts.
+    assert Schedule.objects.count() == 10
+    assert Schedule.objects.filter(
+        name=f"billing.run_invoice_schedules:{seeded_tenant.slug}",
+        schedule_type=Schedule.DAILY).exists()
     assert Schedule.objects.filter(name=f"meetings.poll_drive:{seeded_tenant.slug}",
                                    minutes=10).exists()
     assert Schedule.objects.filter(name=f"meetings.run_backfill:{seeded_tenant.slug}",

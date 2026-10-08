@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.strategy",
     "apps.meetings",
     "apps.platform",
+    "apps.billing",
 ]
 
 MIDDLEWARE = [

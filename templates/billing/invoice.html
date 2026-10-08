@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invoice {{ number }} — {{ practice }}</title>
+<style>
+  @page { size: Letter; margin: 0.75in; }
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-size: 10pt;
+         color: #222; line-height: 1.4; margin: 0; }
+  .head { border-bottom: 2.5pt solid {{ brand.accent_color }}; padding-bottom: 10pt;
+          margin-bottom: 18pt; overflow: hidden; }
+  .head .who { float: left; font-size: 13pt; font-weight: 600;
+               color: {{ brand.header_color }}; }
+  .head .what { float: right; text-align: right; }
+  h1 { font-size: 22pt; color: {{ brand.header_color }}; margin: 0; letter-spacing: 0.5pt; }
+  .number { font-size: 11pt; color: #6D6E71; }
+  .meta { width: 100%; margin-bottom: 20pt; border-collapse: collapse; }
+  .meta td { vertical-align: top; padding: 0; }
+  .label { font-size: 7.5pt; letter-spacing: 0.6pt; text-transform: uppercase;
+           color: #6D6E71; margin-bottom: 2pt; }
+  .dates { text-align: right; }
+  .dates td { padding: 1pt 0 1pt 14pt; }
+  .lines { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
+  .lines th { font-size: 7.5pt; letter-spacing: 0.6pt; text-transform: uppercase;
+              color: #fff; background: {{ brand.header_color }}; text-align: left;
+              padding: 5pt 7pt; }
+  .lines td { padding: 6pt 7pt; border-bottom: 0.5pt solid #D8DADC; vertical-align: top; }
+  .lines .num { text-align: right; white-space: nowrap; }
+  .lines .desc { white-space: pre-line; }
+  tr { page-break-inside: avoid; }
+  .totals { width: 44%; margin-left: 56%; border-collapse: collapse; margin-bottom: 22pt; }
+  .totals td { padding: 3pt 7pt; }
+  .totals .num { text-align: right; white-space: nowrap; }
+  .totals .total td { font-size: 12.5pt; font-weight: 700; color: {{ brand.header_color }};
+                      border-top: 1.5pt solid {{ brand.header_color }}; padding-top: 6pt; }
+  .block { margin-bottom: 14pt; page-break-inside: avoid; }
+  .block p { margin: 0; white-space: pre-line; }
+  .pay { background: #F3F6F9; border-left: 3pt solid {{ brand.accent_color }};
+         padding: 8pt 10pt; }
+  .foot { margin-top: 24pt; font-size: 8pt; color: #939598; white-space: pre-line; }
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="who"><img data-enhq-logo src="cid:enhq-logo" alt="" style="max-height:38px"></div>
+  <div class="what"><h1>Invoice</h1><div class="number">{{ number }}</div></div>
+</div>
+
+<table class="meta"><tr>
+  <td>
+    <div class="label">Bill to</div>
+    {% if bill_to.company %}<strong>{{ bill_to.company }}</strong><br>{% endif %}
+    {{ bill_to.name }}{% if bill_to.address %}<br><span style="white-space:pre-line">{{ bill_to.address }}</span>{% endif %}
+    {% if bill_to.email %}<br>{{ bill_to.email }}{% endif %}
+  </td>
+  <td>
+    <table class="dates" style="margin-left:auto">
+      <tr><td class="label">From</td><td>{{ practice }}</td></tr>
+      <tr><td class="label">Issued</td><td>{{ issue_date }}</td></tr>
+      <tr><td class="label">Due</td><td><strong>{{ due_date }}</strong></td></tr>
+    </table>
+  </td>
+</tr></table>
+
+<table class="lines">
+  <thead><tr><th>Description</th><th class="num">Quantity</th><th class="num">Price</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for line in lines %}<tr>
+    <td class="desc">{{ line.description }}</td><td class="num">{{ line.quantity }}</td>
+    <td class="num">{{ line.unit_price }}</td><td class="num">{{ line.amount }}</td>
+  </tr>{% endfor %}
+  </tbody>
+</table>
+
+<table class="totals">
+  <tr><td>Subtotal</td><td class="num">{{ subtotal }}</td></tr>
+  {% if tax %}<tr><td>Tax</td><td class="num">{{ tax }}</td></tr>{% endif %}
+  <tr class="total"><td>Total due</td><td class="num">{{ total }}</td></tr>
+</table>
+
+{% if pay_instructions %}<div class="block pay"><div class="label">How to pay</div><p>{{ pay_instructions }}</p>{% if pay_url %}<p><a href="{{ pay_url }}">Pay this invoice online</a></p>{% endif %}</div>{% endif %}
+{% if notes %}<div class="block"><div class="label">Notes</div><p>{{ notes }}</p></div>{% endif %}
+{% if terms %}<div class="block"><div class="label">Terms</div><p>{{ terms }}</p></div>{% endif %}
+{% if brand.footer_text %}<div class="foot">{{ brand.footer_text }}</div>{% endif %}
+</body>
+</html>

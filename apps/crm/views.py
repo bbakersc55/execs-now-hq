@@ -225,7 +225,9 @@ class ContactViewSet(TenantStaffViewSet):
     @action(detail=True, methods=["get"])
     def timeline(self, request, pk=None):
         """FR-1.5 — stage changes, notes, emails, and tasks in one view."""
-        return Response(timeline.for_contact(self.get_object()))
+        contact = self.get_object()
+        return Response(timeline.for_contact(
+            contact, money=crm_perms.sees_money(request, contact.company_id)))
 
     @action(detail=True, methods=["post"], url_path="change-stage")
     def change_stage(self, request, pk=None):
@@ -778,6 +780,10 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(self.get_serializer(message).data)
 
     def _editable(self, message):
+        # An invoice's message is the invoice's own: its words and its PDF
+        # are frozen with it, and changed only by sending it back to draft.
+        if message.producer == OutboxMessage.Producer.CLIENT_INVOICE:
+            return False
         return message.state in (
             OutboxMessage.State.PENDING_APPROVAL, OutboxMessage.State.DRAFT,
         )
@@ -790,6 +796,10 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
         editing one would make the Outbox stop being a record of what went out.
         """
         message = self.get_object()
+        if message.producer == OutboxMessage.Producer.CLIENT_INVOICE:
+            # Its words are the invoice's own, frozen with its PDF.
+            return Response({"detail": "An invoice's email is changed on the invoice: "
+                                       "send it back to draft there."}, status=409)
         if not self._editable(message):
             return Response(
                 {"detail": f"This message is {message.get_state_display().lower()} and can no longer be edited."},

@@ -28,7 +28,10 @@ def thread_for(tenant, contact=None, subject="", client_company=None):
     """Carve-back: every outbound message belongs to a thread with a token."""
     thread = None
     if contact is not None:
-        thread = EmailThread.all_objects.filter(tenant=tenant, contact=contact).first()
+        # Never a financial thread: that one holds an invoice and its replies,
+        # and ordinary mail on it would vanish from an assistant's view.
+        thread = EmailThread.all_objects.filter(tenant=tenant, contact=contact,
+                                                is_financial=False).first()
     if thread is None:
         thread = EmailThread.all_objects.create(
             tenant=tenant, contact=contact, client_company=client_company,
@@ -203,6 +206,9 @@ def approve(message, *, actor, role):
     """FR-1.17, FR-1.19. A VA cannot approve (H7)."""
     if role not in (Role.FF, Role.CF):
         raise SendNotPermitted("Only the practice owner or an associate can send.")
+    # Matrix 13.4c: an invoice is sent on the practice owner's approval alone.
+    if message.producer == P.CLIENT_INVOICE and role != Role.FF:
+        raise SendNotPermitted("Only the practice owner can send an invoice.")
     if message.state not in (S.DRAFT, S.PENDING_APPROVAL):
         raise SendNotPermitted(f"Cannot approve a message in state {message.get_state_display().lower()}.")
     reason = _suppress_if_unsubscribed(message, actor=actor)
@@ -219,6 +225,10 @@ def approve(message, *, actor, role):
         target_type="outbox_message", target_id=message.pk,
         payload={"producer": message.producer, "to": message.to_address},
     )
+    if message.producer == P.CLIENT_INVOICE:
+        from apps.billing import services as billing
+
+        billing.message_sent(message, actor=actor)
     return message
 
 

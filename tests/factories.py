@@ -957,3 +957,63 @@ class DuplicateDismissalFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     contact_a = factory.LazyAttribute(lambda o: o.pair[0])
     contact_b = factory.LazyAttribute(lambda o: o.pair[1])
+
+
+# --- P4A: client invoicing ---
+
+class InvoiceSettingsFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.InvoiceSettings"
+
+    tenant = factory.SubFactory(TenantFactory)
+    pay_instructions = "Pay by bank transfer to the account on file."
+
+
+class ClientInvoiceFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.ClientInvoice"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"),
+                                 company=factory.SelfAttribute("..client_company"))
+    issue_date = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 1))
+    due_date = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 16))
+
+
+class ClientInvoiceLineFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.ClientInvoiceLine"
+
+    tenant = factory.SubFactory(TenantFactory)
+    invoice = factory.SubFactory(ClientInvoiceFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    description = "Monthly retainer"
+    unit_price_cents = 500000
+    amount_cents = 500000
+
+
+class ClientInvoiceScheduleFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.ClientInvoiceSchedule"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"),
+                                 company=factory.SelfAttribute("..client_company"))
+    day_of_month = 1
+    next_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 11, 1))
+
+
+class ClientPaymentFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.ClientPayment"
+
+    tenant = factory.SubFactory(TenantFactory)
+    invoice = factory.SubFactory(ClientInvoiceFactory,
+                                 tenant=factory.SelfAttribute("..tenant"),
+                                 total_cents=500000)
+    amount_cents = 100000
+    paid_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 5))

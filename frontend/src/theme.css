@@ -1227,3 +1227,20 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
   overflow-y: auto; background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); padding: var(--s4); box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
 .feedback-panel textarea { width: 100%; }
+
+/* ------------------------------------------------------------------ invoices */
+
+.invoice-lines td, .invoice-lines th { padding: var(--s2); vertical-align: middle; }
+.invoice-lines .num, .money { text-align: right; white-space: nowrap;
+                              font-variant-numeric: tabular-nums; }
+.invoice-lines .amount { font-weight: 600; }
+.invoice-lines tfoot td { border-bottom: none; }
+.totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: var(--s3); margin-bottom: var(--s4); }
+.totals .total { background: var(--surface); border: 1px solid var(--line);
+                 border-radius: var(--radius); padding: var(--s3) var(--s4); }
+.totals .total .label { font-size: var(--t-12); font-weight: 600; letter-spacing: .04em;
+                        text-transform: uppercase; color: var(--muted); }
+.totals .total .figure { font-size: var(--t-20, 20px); font-weight: 600;
+                         font-variant-numeric: tabular-nums; }
+.totals .total.bad .figure { color: var(--bad); }

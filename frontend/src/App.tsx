@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-} from "lucide-react";
+  Receipt } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
@@ -45,6 +45,10 @@ import { StageRules } from "./screens/StageRules";
 import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
+import { ClientInvoices } from "./screens/ClientInvoices";
+import { InvoiceDetail } from "./screens/InvoiceDetail";
+import { Invoices } from "./screens/Invoices";
+import { InvoiceSettings } from "./screens/InvoiceSettings";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
@@ -131,12 +135,15 @@ const NAV: NavItem[] = [
   { to: "/activity", label: "Activity", roles: TENANT , icon: ActivityIcon },
   // The practice reads the same report the client does, per company.
   { to: "/report", label: "Value report", roles: TENANT , icon: BarChart3 },
+  // P4A. Not an assistant's: no financials (matrix 13.4a).
+  { to: "/invoices", label: "Invoices", roles: ["FF", "CF"], icon: Receipt },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
   { to: "/tasks", label: "Tasks", roles: CLIENT , icon: CheckSquare },
   // Module 4B — replaces FR-3.38's progress report. A place they can go,
   // not a document somebody remembered to send.
   { to: "/report", label: "Where we are", roles: CLIENT , icon: BarChart3 },
+  { to: "/invoices", label: "Invoices", roles: CLIENT, icon: Receipt },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
   { to: "/sending-queue", label: "Sending queue", roles: TENANT , icon: Send },
   { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
@@ -357,6 +364,13 @@ export function App() {
             <Route path="/report" element={<Report me={me} />} />
             <Route path="/report/:id" element={<Report me={me} />} />
             <Route path="/activity" element={<Activity me={me} />} />
+            {/* P4A. One address, two views: a client sees what their company
+                was sent; the practice sees and writes its invoices. */}
+            <Route path="/invoices" element={me.role && CLIENT.includes(me.role)
+              ? <ClientInvoices /> : <Invoices me={me} />} />
+            <Route path="/invoices/:id" element={<InvoiceDetail me={me} />} />
+            {me.role === "FF" && <Route path="/settings/invoices"
+              element={<Settings me={me}><InvoiceSettings /></Settings>} />}
           </Routes>
           )}
         </ErrorBoundary>

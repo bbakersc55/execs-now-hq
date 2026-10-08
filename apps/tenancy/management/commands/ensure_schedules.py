@@ -61,6 +61,10 @@ SCHEDULES = [
     ("notes.process", "apps.notes.tasks.process_notes", Schedule.MINUTES, 1, None),
     ("notes.purge_expired_audio", "apps.notes.tasks.purge_expired_audio",
      Schedule.DAILY, None, None),
+    # P4A: a recurring invoice's draft, on its day. Writes a draft only; it
+    # numbers nothing and sends nothing.
+    ("billing.run_invoice_schedules", "apps.billing.tasks.run_invoice_schedules",
+     Schedule.DAILY, None, 5),
 ]
 
 

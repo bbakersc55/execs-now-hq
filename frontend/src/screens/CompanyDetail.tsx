@@ -94,6 +94,12 @@ export function CompanyDetail({ me }: { me: Me }) {
       </p>
 
       <ClientStatus me={me} company={c} />
+      {/* P4A. Not shown to an assistant, who has no financials; an associate
+          not assigned here gets an empty list from the server. */}
+      {c.is_client_company && (me.role === "FF" || me.role === "CF") && (
+        <p className="small"><Link to={`/invoices?company=${c.id}`}>
+          Invoices for this client</Link></p>
+      )}
 
       <div className="record-cols">
         <Card title={`People (${theirs.length})`}>

@@ -38,6 +38,9 @@ from apps.strategy.models import (
 from apps.tenancy.models import (
     AiCall, AuditEvent, ClientAssignment, Membership, StoredFile, TenantSecret,
 )
+from apps.billing.models import (
+    ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
+)
 from apps.tenancy.registry import register
 
 from . import factories
@@ -174,3 +177,12 @@ register(Feedback, factories.FeedbackFactory, endpoints=("/api/feedback/",))
 # Backlog 2026-10-03: written and undone through /api/contacts/not-duplicates/;
 # never read by id.
 register(DuplicateDismissal, factories.DuplicateDismissalFactory, api_exposed=False)
+
+# --- P4A: client invoicing ---
+register(ClientInvoice, factories.ClientInvoiceFactory, endpoints=("/api/invoices/",))
+register(ClientInvoiceSchedule, factories.ClientInvoiceScheduleFactory,
+         endpoints=("/api/invoice-schedules/",))
+# Read through their invoice, or the one settings route; never by id.
+register(ClientInvoiceLine, factories.ClientInvoiceLineFactory, api_exposed=False)
+register(ClientPayment, factories.ClientPaymentFactory, api_exposed=False)
+register(InvoiceSettings, factories.InvoiceSettingsFactory, api_exposed=False)

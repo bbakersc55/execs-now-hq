@@ -549,6 +549,11 @@ class EmailThread(TenantScopedModel):
     # catching up is the same operation as keeping up.
     last_polled_at = models.DateTimeField(null=True, blank=True, db_index=True)
     poll_error = models.TextField(blank=True, default="")
+    #: A thread that carries money: an invoice and the replies to it (P4A).
+    #: Kept apart from the contact's shared history, because an assistant has
+    #: no financials and an associate only an assigned client company's
+    #: (`permissions.without_money`). Ordinary mail never lands on one.
+    is_financial = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "email_thread"
@@ -770,6 +775,9 @@ class OutboxMessage(TenantScopedModel):
         # (D2) and logged in its Outbox like any other send.
         PRACTICE_INVITE = "practice_invite", "Practice invitation"
         FEEDBACK_NOTICE = "feedback_notice", "Feedback notice"
+        # P4A: an invoice to a client, with its PDF. Financial: left out of
+        # everything an assistant sees (`permissions.without_money`).
+        CLIENT_INVOICE = "client_invoice", "Invoice"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.

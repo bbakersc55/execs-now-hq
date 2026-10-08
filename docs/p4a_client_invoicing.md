@@ -234,7 +234,49 @@ with many lines; the portal's invoices page; the list on a narrow window.
 
 ---
 
+## As built (2026-10-08)
+
+**I1–I9 as recommended (owner, 2026-10-08).** `apps/billing` (models,
+`services.py`, `pdf.py`, `views.py`, `tasks.py`), `templates/billing/invoice.html`,
+the screens `Invoices`, `InvoiceDetail`, `InvoiceSettings` and `ClientInvoices`,
+`tests/test_client_invoicing.py` and `frontend/src/screens/Invoices.test.tsx`.
+Matrix §13 rewritten as rows 13.4a–13.4g.
+
+**Migrations, applied on `execsnowhq_local` only:** `billing 0001` (the five
+tables) and **`crm 0033`, which this spec did not plan**: one column,
+`email_thread.is_financial`, default false. See the first difference below.
+
+Differences from the text above:
+
+- **An invoice and the replies to it are on a thread of their own**, marked
+  financial. §6 said nothing existing is altered; hiding the invoice's own
+  email was not enough, because a client's reply quotes it and would have
+  landed in the contact's shared history. With the column, the reply is hidden
+  from an assistant too, and ordinary mail to the same person never joins
+  that thread. An associate sees the thread for an assigned client company.
+- **Statuses and sending.** Making ready always queues the email as pending
+  approval, for anyone. The practice owner's Send on the invoice page approves
+  it (I3); approving it in the Sending queue does the same. An associate's
+  approval of an invoice is refused there as well. An invoice's message
+  cannot be edited in the Outbox: it is sent back to draft instead.
+- **A sent-back email** leaves the invoice ready, marked "sent back", with
+  "ask again" or "back to draft".
+- **`invoice_number_sequence` is not a table**: the counter is on
+  `invoice_settings`, locked when a number is given.
+- **A contact merge** moves invoices and schedules to the kept contact; what
+  a sent invoice printed does not change.
+- **The dashboard is unchanged.** §3 said its "Waiting for approval" panel
+  would count drafts written by a schedule. The count is on the Invoices
+  screen instead, as a line with "Show drafts".
+- **Preview** shows a draft as a PDF marked DRAFT without numbering it.
+- **Not built:** choosing a project or goal for a line on the screen (the
+  field is stored and the API takes it); editing a schedule's lines after it
+  is made (it is paused and a new one written); an end date for a schedule on
+  the screen (the API takes it).
+
 ## 8. Decisions for the owner
+
+**All nine as recommended (owner, 2026-10-08).**
 
 | # | Question | Recommendation |
 |---|---|---|

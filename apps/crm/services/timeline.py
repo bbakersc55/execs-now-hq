@@ -29,7 +29,9 @@ def _note_entry(note):
     return _entry("note", note.created_at, text, note_id=str(note.pk), locked=note.is_locked)
 
 
-def for_contact(contact, limit=100):
+def for_contact(contact, limit=100, *, money=False):
+    """`money`: whether the reader may see an invoice (matrix 13.4a). Off, an
+    invoice email and the replies to it are left out of the history."""
     entries = []
 
     for change in StageChange.objects.filter(contact=contact).select_related(
@@ -52,7 +54,12 @@ def for_contact(contact, limit=100):
         due = f", due {task.due_date}" if task.due_date else ""
         entries.append(_entry("task", task.created_at, f"Task: {task.title}{due}"))
 
-    for message in OutboxMessage.objects.filter(to_contact=contact):
+    sent = OutboxMessage.objects.filter(to_contact=contact)
+    replies = EmailMessage.objects.filter(contact=contact, direction="inbound")
+    if not money:
+        sent = sent.exclude(producer="client_invoice")
+        replies = replies.exclude(thread__is_financial=True)
+    for message in sent:
         verb = {
             "sent": "Sent", "pending_approval": "Drafted (awaiting approval)",
             "expired": "Draft expired unsent", "rejected": "Draft rejected",
@@ -60,7 +67,7 @@ def for_contact(contact, limit=100):
         entries.append(_entry("email", message.sent_at or message.created_at,
                               f"{verb}: {message.subject}"))
 
-    for message in EmailMessage.objects.filter(contact=contact, direction="inbound"):
+    for message in replies:
         entries.append(_entry("email", message.received_at, f"Reply received: {message.subject}"))
 
     entries.sort(key=lambda e: e["when"] or "", reverse=True)

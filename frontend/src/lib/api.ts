@@ -1392,3 +1392,75 @@ export interface CampaignCandidate {
 }
 
 export const MERGE_FIELDS = ["{FirstName}", "{Company}", "{FractionalName}"] as const;
+
+// ------------------------------------------------------------ invoices (P4A)
+
+export type InvoiceStatus = "draft" | "ready" | "sent" | "partially_paid" | "paid" | "void";
+
+/** One row of GET /api/invoices/. Amounts are whole cents. */
+export interface InvoiceRow {
+  id: string; kind: "one_off" | "recurring" | "contact"; number: string;
+  status: InvoiceStatus; status_label: string; overdue: boolean;
+  client_company: { id: string; name: string } | null;
+  contact: { id: string; name: string };
+  issue_date: string; due_date: string;
+  total_cents: number; paid_cents: number; balance_cents: number;
+  from_schedule: boolean;
+  /** For a ready invoice: is its email waiting for approval, or sent back? */
+  send_state: "" | "waiting" | "sent_back";
+}
+
+export interface InvoiceLine {
+  id?: string; description: string; quantity: string; unit_price_cents: number;
+  amount_cents?: number;
+}
+
+export interface InvoicePayment {
+  id: string; amount_cents: number; paid_on: string; method: string; method_label: string;
+  reference: string; note: string; recorded_by: string; removed: boolean;
+  remove_reason: string; removed_by: string;
+}
+
+export interface Invoice extends InvoiceRow {
+  subtotal_cents: number; tax_cents: number; currency: string;
+  notes: string; terms: string; pay_instructions: string; pay_url: string;
+  email_to: string; email_subject: string; email_body: string;
+  bill_to: { name?: string; company?: string; email?: string; address?: string };
+  has_pdf: boolean; sent_at: string | null; voided_at: string | null; void_reason: string;
+  lines: InvoiceLine[]; payments: InvoicePayment[]; merge_fields: string[];
+}
+
+export interface InvoiceTotals {
+  invoiced_cents: number; paid_cents: number; outstanding_cents: number;
+  overdue_cents: number;
+}
+
+export interface InvoiceList {
+  invoices: InvoiceRow[]; totals: InvoiceTotals; drafts_from_schedules: number;
+}
+
+export interface InvoiceSettingsData {
+  prefix: string; next_value: number; next_number: string; terms_days: number;
+  default_notes: string; default_terms: string; pay_instructions: string;
+  email_subject: string; email_body: string; merge_fields: string[];
+}
+
+export interface InvoiceSchedule {
+  id: string; client_company: { id: string; name: string };
+  contact: { id: string; name: string };
+  day_of_month: number; next_on: string; ends_on: string | null;
+  lines: InvoiceLine[]; total_cents: number; notes: string; terms: string;
+  is_active: boolean;
+}
+
+export interface InvoiceEvent {
+  at: string; what: string; by: string; before: string; after: string; reason: string;
+  amount_cents: number | null; to: string;
+}
+
+/** GET /api/portal-invoices/ — what a client sees of an invoice. */
+export interface PortalInvoice {
+  id: string; number: string; issue_date: string; due_date: string;
+  total_cents: number; balance_cents: number; status: InvoiceStatus; status_label: string;
+  overdue: boolean; pay_url: string;
+}

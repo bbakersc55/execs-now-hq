@@ -291,7 +291,14 @@ Beta ships no financial module. These rows exist so the role-boundary suite has 
 | 13.1 | View P&L / balance sheet | ✅ | ❌ | ❌ | ❌ | ❌ | |
 | 13.2 | View fee splits on assigned clients | ✅ | 🔸 | ❌ | ❌ | ❌ | `CLAUDE.md`: Associate financials limited to assigned clients |
 | 13.3 | View fee splits on **unassigned** clients | ✅ | ❌ | ❌ | ❌ | ❌ | |
-| 13.4 | Invoicing, product billing | ✅ | ❌ | ❌ | ❌ | ❌ | |
+| 13.4 | Product billing (the practice's own subscription) | ✅ | ❌ | ❌ | ❌ | ❌ | Not built (P4) |
+| 13.4a | **See and download client invoices, and the list with its totals** | ✅ every one | 🔸 `assigned` client companies | ❌ | ✅ their company's, sent and after | ✅ their company's, sent and after | P4A, owner 2026-10-08 (P4 D7, D8). A client never sees a draft, an unsent invoice, or one written to a contact. Out of scope is 404 |
+| 13.4b | Write and edit a draft; make it ready; recurring schedules | ✅ | 🔸 `assigned` | ❌ | — | — | Making ready sends nothing |
+| 13.4c | **Approve the send of an invoice; resend** | ✅ | ❌ | ❌ | — | — | Narrower than 5.3: an associate approves other mail, never an invoice |
+| 13.4d | Record or remove a payment; void | ✅ | ❌ | ❌ | — | — | Each with an audit event; remove and void need a reason |
+| 13.4e | Invoice a contact that is not a client company | ✅ | ❌ | ❌ | — | — | Email only; in no portal |
+| 13.4f | Invoice settings (prefix, next number, terms, how to pay, the email) | ✅ | ❌ (reads) | ❌ | — | — | |
+| 13.4g | **See an invoice's email anywhere else**: the Outbox, the Sending queue, the send log, a client's email history and timeline, the activity feed | ✅ | 🔸 `assigned` | **❌** | — | — | The one exception to 5.1, 5.9 and 12.x for an assistant: an invoice and the replies to it are on a thread of their own (`email_thread.is_financial`) |
 | 13.5 | Any financial endpoint | ✅ | 🔸 | **❌** | ❌ | ❌ | **The non-negotiable assistant test family** (`CLAUDE.md`) |
 
 ---

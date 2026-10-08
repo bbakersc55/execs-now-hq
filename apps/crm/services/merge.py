@@ -118,6 +118,9 @@ HANDLED_RELATIONS = {
     "email_suppression.contact", "campaign_recipient.contact",
     "stakeholder.contact", "digest.contact", "strategy_session.contact",
     "meeting_participant.contact", "commitment.contact",
+    # P4A: who an invoice or a schedule is addressed to. What was printed on a
+    # sent invoice is its own copy (`bill_to`) and does not change.
+    "client_invoice.contact", "client_invoice_schedule.contact",
 }
 
 
@@ -183,6 +186,10 @@ def _merge_later_tables(tenant, survivor, absorbed, *, actor=None) -> dict:
     move_all(Company, "primary_contact")
     move_all(Contact, "merged_into")
     move_all(StrategySession)
+    from apps.billing.models import ClientInvoice, ClientInvoiceSchedule
+
+    move_all(ClientInvoice)
+    move_all(ClientInvoiceSchedule)
     move_all(Commitment)
     move_unless_held(ContactPipelinePosition, ["pipeline_id"])
     move_unless_held(Enrollment, ["program"], live={"ended_at__isnull": True},

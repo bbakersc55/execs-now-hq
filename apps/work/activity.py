@@ -129,6 +129,7 @@ class Scope:
     """
 
     def __init__(self, request):
+        self.request = request
         self.role = crm_perms.role_of(request)
         self.everything = self.role in ("FF", "VA")
         if self.everything:
@@ -301,6 +302,8 @@ def _email_entries(scope, since, until, actor):
         qs = qs.filter(created_at__lte=until)
     if actor:
         qs = qs.filter(approved_by_id=actor)
+    # An invoice is not in the feed of anyone who may not see it (13.4a).
+    qs = crm_perms.without_money(scope.request, qs)
     out = []
     for m in qs[:SOURCE_CAP]:
         who = m.to_contact and f"{m.to_contact.first_name} {m.to_contact.last_name}".strip()
