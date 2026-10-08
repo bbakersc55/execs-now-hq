@@ -1,3 +1,7 @@
+// Read from disk: Vitest hands back an empty string for an imported stylesheet.
+// @ts-expect-error — the app has no Node types; the test runner is Node.
+import { readFileSync } from "node:fs";
+
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -183,6 +187,99 @@ describe("the board: dragging a card changes its status, the long way round", ()
   });
 });
 
+
+describe("the board keeps its sideways scroll through a filter", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  /** The server, answering a filtered request only when the test lets it — the
+   *  gap between choosing a filter and its rows arriving is where the board
+   *  used to be taken down. */
+  function openWithSlowFilters() {
+    const answered = mockApi({ ...LISTS, "/api/tasks/": TASKS });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.startsWith("/api/tasks/?") && url !== "/api/tasks/?") await held;
+      return answered(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Tasks me={aMe({ role: "FF" })} />);
+    return { release, asked: () => answered.calls.map((c) => c.url) };
+  }
+
+  it.each([
+    ["Filter by status", "done", "status=done"],
+    ["Filter by project", "pr1", "project=pr1"],
+    ["Filter by assignee", "u2", "assignee=u2"],
+  ])("%s leaves the board, and so its scrollbar, in place while the rows load",
+    async (label, value, sent) => {
+      const { release, asked } = openWithSlowFilters();
+      const user = await showBoard();
+      const boardBefore = screen.getByLabelText("Board");
+      boardBefore.scrollLeft = 400;
+
+      await user.selectOptions(screen.getByLabelText(label), value);
+
+      // Still waiting on the server: the same element, where it was scrolled
+      // to, and no "Nothing matches" in its place.
+      expect(screen.getByLabelText("Board")).toBe(boardBefore);
+      expect(boardBefore.scrollLeft).toBe(400);
+      expect(screen.queryByText(/Nothing matches these filters/)).not.toBeInTheDocument();
+
+      release();
+      await waitFor(() => expect(asked().some((url) => url.includes(sent))).toBe(true));
+      expect(screen.getByLabelText("Board")).toBe(boardBefore);
+    });
+
+  it("the priority filter, which never asks the server, leaves it in place too", async () => {
+    open(aMe({ role: "FF" }), { "/api/tasks/": [...TASKS,
+      aTask({ id: "t3", title: "The urgent one", status: "blocked", priority: 3 })] });
+    const user = await showBoard();
+    const boardBefore = screen.getByLabelText("Board");
+
+    await user.selectOptions(screen.getByLabelText("Filter by priority"), "3");
+
+    expect(screen.getByLabelText("Board")).toBe(boardBefore);
+    expect(within(boardBefore).getByText("The urgent one")).toBeInTheDocument();
+    expect(within(boardBefore).queryByText("Map the invoice process")).not.toBeInTheDocument();
+  });
+});
+
+/** jsdom lays nothing out, so what pins the headings can only be read from the
+ *  stylesheet. These are the three rules the behaviour rests on; the behaviour
+ *  itself was measured in Chrome (2026-10-07). */
+describe("the board's column headings stay put while the cards scroll", () => {
+  const themeCss: string = readFileSync("src/theme.css", "utf8");
+  const rule = (selector: string) => {
+    const at = themeCss.indexOf(`\n${selector} {`);
+    expect(at, `no rule for ${selector}`).toBeGreaterThan(-1);
+    return themeCss.slice(at, themeCss.indexOf("}", at));
+  };
+
+  it("the board is the scroller, both ways, and is no taller than the window", () => {
+    expect(rule(".board")).toMatch(/overflow: auto/);
+    expect(rule(".board")).toMatch(/max-height: [^;]*100vh/);
+  });
+
+  it("each heading is pinned to the top of it, opaque, in a column as tall as the longest", () => {
+    expect(rule(".board .col-head")).toMatch(/position: sticky; top: 0/);
+    expect(rule(".board .col-head")).toMatch(/background: var\(--bg\)/);
+    expect(rule(".board")).toMatch(/align-items: stretch/);
+  });
+
+  it("the heading carries the status name and the count", async () => {
+    vi.unstubAllGlobals();
+    open();
+    await showBoard();
+    const head = column("Not started").querySelector(".col-head") as HTMLElement;
+    expect(within(head).getByRole("heading", { name: "Not started" })).toBeInTheDocument();
+    expect(within(head).getByText("2")).toBeInTheDocument();
+  });
+});
 
 describe("Tasks carries the same company dimension as Work", () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
@@ -44,6 +44,10 @@ export function Tasks({ me }: { me: Me }) {
   const tasks = useQuery<Task[]>({
     queryKey: ["tasks", query.toString()],
     queryFn: () => api.get<Task[]>(`/api/tasks/?${query.toString()}`),
+    // A filter is a new query, and without this the screen had no rows while
+    // it loaded: the board was taken down for "Nothing matches these filters"
+    // and put back, which lost its sideways scroll with it (2026-10-07).
+    placeholderData: keepPreviousData,
   });
   const projects = useQuery<WorkParent[]>({
     queryKey: ["projects"], queryFn: () => api.get<WorkParent[]>("/api/projects/"),

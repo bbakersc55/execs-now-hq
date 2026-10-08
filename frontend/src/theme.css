@@ -441,13 +441,22 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
 
 /* -------------------------------------------------------------- the board */
 
-.board { display: flex; gap: var(--s4); overflow-x: auto; padding-bottom: var(--s2);
-         align-items: flex-start; }
+/* The Tasks board scrolls inside itself, both ways, so two things hold however
+   many cards a column has: the column headings stay pinned at the top, like a
+   spreadsheet's, and the sideways scrollbar is at the bottom of the window
+   instead of at the bottom of the longest column (2026-10-07). Columns stretch
+   to the longest one: a heading is pinned only as far as its own column
+   reaches, so a short column's heading would otherwise scroll away. */
+.board { display: flex; gap: var(--s4); overflow: auto; padding-bottom: var(--s2);
+         align-items: stretch;
+         max-height: max(420px, calc(100vh - 250px - var(--topbar-h))); }
 .board .col {
   flex: 0 0 288px; background: transparent; border: none; border-radius: var(--radius);
   padding: 0;
 }
 .board .col.collapsed { flex-basis: 44px; }
+/* Opaque, or the cards would show through the heading as they pass under it. */
+.board .col-head { position: sticky; top: 0; z-index: 1; background: var(--bg); }
 .col-head {
   display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s1);
   margin-bottom: var(--s2); border-bottom: 2px solid var(--line);
