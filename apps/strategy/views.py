@@ -15,6 +15,8 @@ A client role reaches none of it, and out-of-scope is 404 rather than 403 — a
 from __future__ import annotations
 
 from django.http import Http404, HttpResponse
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
@@ -40,6 +42,13 @@ VA = crm_perms.Role.VA
 
 # Matrix 10.4/10.5/10.6/10.10/10.11/10.12 — everything a VA may not do.
 FRACTIONAL_ONLY = {FF, CF}
+
+
+def _private(request) -> bool:
+    """Who may see the call notes and what a row drew from them: the practice
+    owner, and an associate (who reaches only their own prospects' sessions).
+    Never an assistant."""
+    return crm_perms.role_of(request) in FRACTIONAL_ONLY
 
 
 def _may_see_financial(request) -> bool:
@@ -99,6 +108,7 @@ class SessionViewSet(StrategyViewSet):
         session = self.load(pk)
         return Response(self._managed(strategy_serializers.represent_session(
             session, include_financial=_may_see_financial(request), full=True,
+            private=_private(request),
             # Prep is the fractional's preparation for their own call. A VA's
             # payload does not contain it at all, on the same standard as §9.
             include_prep=_may_see_financial(request)), session))
@@ -218,6 +228,7 @@ class SessionViewSet(StrategyViewSet):
                              "now": session.template_snapshot["template"]["name"]})
         return Response(self._managed(strategy_serializers.represent_session(
             session, include_financial=_may_see_financial(request), full=True,
+            private=_private(request),
             include_prep=_may_see_financial(request)), session))
 
     @action(detail=True, methods=["post"], url_path="reset-questions")
@@ -249,6 +260,7 @@ class SessionViewSet(StrategyViewSet):
                              "template": str(template.pk)})
         return Response(self._managed(strategy_serializers.represent_session(
             session, include_financial=_may_see_financial(request), full=True,
+            private=_private(request),
             include_prep=_may_see_financial(request)), session))
 
     def create(self, request):
@@ -336,7 +348,8 @@ class SessionViewSet(StrategyViewSet):
         if fields:
             session.save(update_fields=[*fields, "updated_at"])
         return Response(strategy_serializers.represent_session(
-            session, include_financial=_may_see_financial(request), full=True))
+            session, include_financial=_may_see_financial(request), full=True,
+            private=_private(request)))
 
     # ------------------------------------------------------------ the invite
 
@@ -353,7 +366,7 @@ class SessionViewSet(StrategyViewSet):
         return Response({"outbox_message": str(message.pk),
                          "session": strategy_serializers.represent_session(
                              session, include_financial=_may_see_financial(request),
-                             full=True)}, status=201)
+                             full=True, private=_private(request))}, status=201)
 
     # -------------------------------------------------------- the live view
 
@@ -395,7 +408,7 @@ class SessionViewSet(StrategyViewSet):
         return Response({
             "answer": strategy_serializers.represent_answer(answer),
             "six_key_components": services.six_key_components(session),
-            "drafted": [strategy_serializers.represent_map_row(r) for r in drafted],
+            "drafted": [strategy_serializers.represent_map_row(r, private=_private(request)) for r in drafted],
             "path_notes": [strategy_serializers.represent_path_note(n)
                            for n in path_notes],
         })
@@ -529,9 +542,12 @@ class SessionViewSet(StrategyViewSet):
 
             if v3.map_room(session) <= 0:         # said, rather than a silent nothing
                 return Response({"drafted": [], "detail": v3.MAP_FULL})
+        since = timezone.now()
         rows = ai.draft_map_rows(session, trigger="button")
-        return Response({"drafted": [strategy_serializers.represent_map_row(r)
-                                     for r in rows]}, status=201 if rows else 200)
+        return Response({"drafted": [strategy_serializers.represent_map_row(r, private=True)
+                                     for r in rows],
+                         **self._cost(session, ai.ROWS_PURPOSE, since)},
+                        status=201 if rows else 200)
 
     @action(detail=True, methods=["post"])
     def consolidate(self, request, pk=None):
@@ -557,11 +573,14 @@ class SessionViewSet(StrategyViewSet):
             return Response({"needs_confirmation": True, "detail": (
                 "The practice's AI credit may be running low. Consolidate anyway?")},
                 status=409)
+        since = timezone.now()
         rows = ai.consolidate_map_rows(session)
         self._session_audit("strategy.map_consolidation_proposed", session.pk,
                             {"proposed": [str(r.pk) for r in rows]})
-        return Response({"drafted": [strategy_serializers.represent_map_row(r)
-                                     for r in rows]}, status=201 if rows else 200)
+        return Response({"drafted": [strategy_serializers.represent_map_row(r, private=True)
+                                     for r in rows],
+                         **self._cost(session, ai.CONSOLIDATE_PURPOSE, since)},
+                        status=201 if rows else 200)
 
     @action(detail=True, methods=["post"], url_path="draft-paths")
     def draft_paths(self, request, pk=None):
@@ -573,9 +592,73 @@ class SessionViewSet(StrategyViewSet):
         session = self.load(pk)
         if (refused := self._fractional_only("run a Claude draft")) is not None:
             return refused
+        since = timezone.now()
         notes = ai.draft_path_notes(session, trigger="button")
         return Response({"drafted": [strategy_serializers.represent_path_note(n)
-                                     for n in notes]}, status=201 if notes else 200)
+                                     for n in notes],
+                         **self._cost(session, ai.PATHS_PURPOSE, since)},
+                        status=201 if notes else 200)
+
+    def _cost(self, session, purpose, since) -> dict:
+        """What the one call this draft made cost, for a session with call
+        notes, where a draft reads a great deal more than the answers (owner,
+        2026-10-08). AI spend is the practice owner's (FR-0.9), so an
+        associate is not sent the figure. Nothing is added for a session
+        without notes: its response is as it was."""
+        from apps.strategy import call_notes
+        from apps.tenancy.models import AiCall
+
+        if call_notes.of(session) is None or self._role() != FF:
+            return {}
+        call = (AiCall.objects.filter(target_id=session.pk, purpose=purpose,
+                                      created_at__gte=since)
+                .order_by("-created_at").first())
+        if call is None:
+            return {}
+        return {"cost_usd": f"{call.cost_usd:.4f}", "input_tokens": call.input_tokens,
+                "used_call_notes": True}
+
+    @action(detail=True, methods=["get", "post", "delete"], url_path="call-notes")
+    def call_notes(self, request, pk=None):
+        """The notes of the call, attached as context for Claude's drafts
+        (owner, 2026-10-08). The practice owner's, and an associate's on their
+        own prospect; an assistant has no route to them."""
+        from apps.meetings.models import MeetingSourceFile
+        from apps.strategy import call_notes
+
+        session = self.load(pk)
+        if (refused := self._fractional_only("see or attach the call notes")) is not None:
+            return refused
+        if not services.has_card_map(session):
+            return Response({"detail": "Call notes are attached to a session started "
+                                       "from a focused or a builder template."}, status=409)
+        if request.method == "GET":
+            return Response({"attached": call_notes.represent(session),
+                             "day": call_notes.day_of(session).isoformat(),
+                             "candidates": call_notes.candidates(session)})
+        if request.method == "DELETE":
+            call_notes.remove(session, actor=request.user)
+            return Response({"attached": None})
+        data = request.data
+        source = data.get("source")
+        try:
+            source_file = None
+            if source == "meeting_file":
+                source_file = MeetingSourceFile.objects.filter(
+                    pk=data.get("source_file")).first() if data.get("source_file") else None
+                if source_file is None:
+                    raise services.SessionError(
+                        "That file is not in this practice's meeting queue.", status=404)
+            call_notes.attach(session, actor=request.user, source=source,
+                              text=data.get("text"), source_file=source_file,
+                              link=data.get("link"))
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        except (ValueError, TypeError, DjangoValidationError):
+            # Not an id at all.
+            return Response({"detail": "That file is not in this practice's meeting "
+                                       "queue."}, status=404)
+        return Response({"attached": call_notes.represent(session)}, status=201)
 
     @action(detail=True, methods=["post"], url_path="propose-diagnostic")
     def propose_diagnostic(self, request, pk=None):
@@ -730,7 +813,7 @@ class MapRowViewSet(StrategyViewSet):
         row.save()
         if row.state == StrategyMapRow.State.ACCEPTED:
             style.record_row(row)        # edited after acceptance: still their style
-        return Response(strategy_serializers.represent_map_row(row))
+        return Response(strategy_serializers.represent_map_row(row, private=True))
 
     @action(detail=True, methods=["post"])
     def accept(self, request, pk=None):
@@ -760,7 +843,7 @@ class MapRowViewSet(StrategyViewSet):
             return refused
         row.state = state
         row.save(update_fields=["state", "updated_at"])
-        return Response(strategy_serializers.represent_map_row(row))
+        return Response(strategy_serializers.represent_map_row(row, private=True))
 
     @action(detail=True, methods=["post"])
     def remove(self, request, pk=None):
@@ -784,7 +867,7 @@ class MapRowViewSet(StrategyViewSet):
             tenant=request.tenant, actor=request.user, verb="strategy.map_row_removed",
             target_type="strategy_map_row", target_id=row.pk,
             payload={"session": str(row.session_id), "bottleneck": row.bottleneck})
-        return Response(strategy_serializers.represent_map_row(row))
+        return Response(strategy_serializers.represent_map_row(row, private=True))
 
     def create(self, request):
         """A row the fractional writes themselves — the tray is not the only
@@ -794,16 +877,38 @@ class MapRowViewSet(StrategyViewSet):
         session = self.load(request.data.get("session"))
         serializer = strategy_serializers.MapRowSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
+        data = dict(serializer.validated_data)
+        if services.has_card_map(session):
+            # A card is a header and a focus statement (owner, 2026-10-08).
+            # It counts toward the five, like any accepted row.
+            header = " ".join((data.get("header") or "").split())
+            statement = (data.get("statement") or "").strip()
+            if not header or not statement:
+                return Response({"detail": "A row needs a header and a focus "
+                                           "statement."}, status=400)
+            if StrategyMapRow.objects.filter(
+                    session=session, state=StrategyMapRow.State.ACCEPTED
+                    ).count() >= ai.FOCUSED_MAP_CAP:
+                return Response({"detail": f"The map holds {ai.FOCUSED_MAP_CAP} rows. "
+                                           "Remove one, or Consolidate, before adding "
+                                           "another."}, status=409)
+            data["header"], data["statement"] = header, statement
+            # The older column every row has; a card shows only the two above.
+            data["bottleneck"] = (data.get("bottleneck") or "").strip() or header
         if not (data.get("bottleneck") or "").strip():
             return Response({"detail": "A row needs a bottleneck."}, status=400)
         row = StrategyMapRow.objects.create(
-            tenant=request.tenant, session=session,
+            tenant=request.tenant, session=session, added_by=request.user,
             state=StrategyMapRow.State.ACCEPTED,
             position=data.get("position", StrategyMapRow.objects.filter(
                 session=session).count()),
             **{k: v for k, v in data.items() if k != "position"})
-        return Response(strategy_serializers.represent_map_row(row), status=201)
+        style.record_row(row)            # written by them: their style, as an edit is
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="strategy.map_row_added",
+            target_type="strategy_map_row", target_id=row.pk,
+            payload={"session": str(session.pk), "header": row.header})
+        return Response(strategy_serializers.represent_map_row(row, private=True), status=201)
 
     @action(detail=False, methods=["post"])
     def reorder(self, request):

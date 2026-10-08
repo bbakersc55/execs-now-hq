@@ -31,7 +31,7 @@ from apps.meetings.models import (
     MeetingParticipant, MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.strategy.models import (
-    StrategyAnswer, StrategyDiagnosticProposal, StrategyMapRow, StrategyPathNote,
+    StrategyCallNotes, StrategyAnswer, StrategyDiagnosticProposal, StrategyMapRow, StrategyPathNote,
     StrategyPrepQuestion, StrategyQuestion, StrategySection, StrategySession,
     StrategySessionPrep, StrategyStyleExample, StrategyTemplate,
 )
@@ -203,3 +203,7 @@ register(FinanceImportBatch, factories.FinanceImportBatchFactory,
 register(FinanceRule, factories.FinanceRuleFactory, endpoints=("/api/finance-rules/",))
 register(FinanceImportRow, factories.FinanceImportRowFactory, api_exposed=False)
 register(FinanceImportProfile, factories.FinanceImportProfileFactory, api_exposed=False)
+
+# The notes of a call, attached to its session: read through the session, by
+# the practice owner and an associate on their own prospect, and nobody else.
+register(StrategyCallNotes, factories.StrategyCallNotesFactory, api_exposed=False)

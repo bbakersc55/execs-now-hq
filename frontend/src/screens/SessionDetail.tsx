@@ -7,6 +7,7 @@ import { Inbox, Pin, PinOff, Play, Search, Square } from "lucide-react";
 import { RichText } from "../components/RichText";
 import { PageHead, SendPreview } from "../components/shell";
 import { Banner, Card, Field, Pill, RowActions, when } from "../components/ui";
+import { SessionCallNotes } from "../components/SessionCallNotes";
 import {
   AnswerValue, ConversionRow, MapRow, Me, PathNote, PrepQuestion, SendPreview as Preview,
   SessionPrep, StrategyQuestion, StrategySessionRow, StrategyTemplateRow, activeTemplates,
@@ -102,8 +103,15 @@ export function SessionDetail({ me }: { me: Me }) {
     onSuccess: (result) => {
       setAsk(null);
       // A v3 map that is full answers with a sentence instead of rows (P3).
-      const said = result as { detail?: string; drafted?: unknown[] } | undefined;
+      const said = result as { detail?: string; drafted?: unknown[]; cost_usd?: string;
+                               used_call_notes?: boolean } | undefined;
       if (said?.detail && said.drafted?.length === 0) setNote(said.detail);
+      // A draft that read the call notes says what its one call cost.
+      else if (said?.cost_usd) {
+        setNote(`That draft read the call notes and cost $${said.cost_usd}. `
+          + `${said.drafted?.length ?? 0} proposed; nothing is on the map until you `
+          + "accept it.");
+      }
       refresh();
     },
     onError: (e: Error, { suffix }) => asksToConfirm(e)
@@ -179,6 +187,12 @@ export function SessionDetail({ me }: { me: Me }) {
                            setNote={setNote} />}
 
       <div id="precall-card" />
+      {/* The practice owner's and an associate's, on a session with a card
+          map. An assistant is sent neither the card nor the notes. */}
+      {mayRun && (data.format === "focused" || data.format === "v3") && (
+        <SessionCallNotes path={path} attached={data.call_notes ?? null}
+          onChanged={refresh} />
+      )}
       <Card title="The pre-call questions">
         <p className="small muted">
           {data.precall_sent
@@ -299,7 +313,7 @@ export function SessionDetail({ me }: { me: Me }) {
               onChanged={refresh} />
           )}
           {section.code === "strategy_map" && (
-            <MapSection tray={tray} map={map} mayRun={mayRun}
+            <MapSection tray={tray} map={map} mayRun={mayRun} sessionId={data.id}
               focused={data.format === "focused" || data.format === "v3"}
               onDraft={() => act.mutate({ suffix: "draft-rows/" })}
               onConsolidate={() => act.mutate({ suffix: "consolidate/" })}
@@ -385,6 +399,7 @@ function TrayDrawer({ open, onToggle, rows, notes, onChanged }: {
       {rows.map((row) => (
         <div className="card" key={row.id}>
           <strong>{row.bottleneck}</strong>
+          <RowSource row={row} />
           <p className="tiny muted" style={{ margin: "var(--s1) 0" }}>
             {row.the_fix}{row.horizon ? ` · ${row.horizon} days` : ""}
           </p>
@@ -514,8 +529,95 @@ function Mirror({ data, mayRun, onDraft, onAccept }: {
   );
 }
 
+/** Where a row came from, beside it: written by a person, or drafted from the
+ *  call notes with the passage it rests on. Never on the document. */
+function RowSource({ row }: { row: MapRow }) {
+  if (!row.added_by && !row.from_call_notes) return null;
+  return (
+    <p className="tiny" style={{ margin: "2px 0" }}>
+      {row.added_by && <Pill>added by {row.added_by}</Pill>}
+      {row.from_call_notes && (
+        <>
+          <Pill kind="ai">From the call notes</Pill>{" "}
+          <span className="muted">“{row.source_passage}”</span>
+        </>
+      )}
+    </p>
+  );
+}
+
+/** A row the practice writes onto the map itself (owner, 2026-10-08): the
+ *  card the document shows, with who owns it, by when, and how it is known. */
+function AddMapRow({ sessionId, full, onAdded }: {
+  sessionId: string; full: boolean; onAdded: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const blank = { header: "", statement: "", owner_text: "", horizon: "", measurable: "" };
+  const [form, setForm] = useState(blank);
+  const [problem, setProblem] = useState("");
+  const add = useMutation({
+    mutationFn: () => api.post("/api/strategy-map-rows/", {
+      session: sessionId, header: form.header.trim(), statement: form.statement.trim(),
+      owner_text: form.owner_text.trim(), measurable: form.measurable.trim(),
+      ...(form.horizon ? { horizon: Number(form.horizon) } : {}) }),
+    onSuccess: () => { setForm(blank); setProblem(""); setOpen(false); onAdded(); },
+    onError: (e: Error) => setProblem(e.message),
+  });
+  if (full) {
+    return <p className="small muted">The map holds five. Remove one, or Consolidate,
+      to add another.</p>;
+  }
+  if (!open) return <button onClick={() => setOpen(true)}>Add a row</button>;
+  const set = (patch: Partial<typeof blank>) => setForm({ ...form, ...patch });
+  return (
+    <div className="card" aria-label="A new row for the map">
+      {problem && <Banner kind="bad">{problem}</Banner>}
+      <Field label="Header">
+        <input aria-label="Header of the new row" value={form.header} maxLength={120}
+          placeholder="Three to six words" onChange={(e) => set({ header: e.target.value })} />
+      </Field>
+      <Field label="Focus statement">
+        <textarea rows={2} aria-label="Focus statement of the new row" value={form.statement}
+          placeholder="One sentence: what will change, and why it matters"
+          onChange={(e) => set({ statement: e.target.value })} />
+      </Field>
+      <div className="row">
+        <Field label="Owner">
+          <input aria-label="Owner of the new row" value={form.owner_text} maxLength={200}
+            onChange={(e) => set({ owner_text: e.target.value })} />
+        </Field>
+        <Field label="Horizon">
+          <select aria-label="Horizon of the new row" value={form.horizon}
+            onChange={(e) => set({ horizon: e.target.value })}>
+            <option value="">—</option>
+            <option value="30">30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </Field>
+        <Field label="Measurable">
+          <input aria-label="Measurable of the new row" value={form.measurable}
+            maxLength={255} onChange={(e) => set({ measurable: e.target.value })} />
+        </Field>
+      </div>
+      <div className="row tight">
+        <button className="primary"
+          disabled={add.isPending || !form.header.trim() || !form.statement.trim()}
+          onClick={() => add.mutate()}>Add it to the map</button>
+        <button className="ghost" onClick={() => { setOpen(false); setProblem(""); }}>
+          Cancel</button>
+      </div>
+      <p className="tiny muted" style={{ marginBottom: 0 }}>
+        It goes straight onto the map, marked as added by you, and prints on the document
+        like any accepted row.
+      </p>
+    </div>
+  );
+}
+
 function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate, busy,
-  onChanged }: {
+  onChanged, sessionId }: {
+  sessionId: string;
   tray: MapRow[]; map: MapRow[]; mayRun: boolean; focused?: boolean;
   onDraft: () => void; onConsolidate: () => void; busy: boolean; onChanged: () => void;
 }) {
@@ -572,6 +674,7 @@ function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate
                   onSave={(body) => edit.mutate({ row: row.id, body })} />
               )}
               <strong className={focused ? "small" : undefined}>{row.bottleneck}</strong>
+              <RowSource row={row} />
               <p className="small muted" style={{ margin: ".2rem 0" }}>
                 {row.root_cause}{row.the_fix ? ` → ${row.the_fix}` : ""}
                 {row.horizon ? ` · ${row.horizon} days` : ""}
@@ -629,6 +732,7 @@ function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate
                   } }} />
             )}
           </div>
+          <RowSource row={row} />
           {/* The card the PDF shows (owner, 2026-09-29): the same two lines. */}
           {focused && (
             <FocusCard row={row} mayRun={mayRun}
@@ -659,6 +763,9 @@ function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate
           )}
         </div>
       ))}
+      {mayRun && focused && (
+        <AddMapRow sessionId={sessionId} full={map.length >= 5} onAdded={onChanged} />
+      )}
     </>
   );
 }

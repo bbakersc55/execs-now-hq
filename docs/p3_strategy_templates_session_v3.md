@@ -867,6 +867,47 @@ questions: `builder.paste`, `POST /api/strategy-template-builder/<id>/paste/`,
 - One audit event per confirmed list, `strategy.template_questions_pasted`,
   with the part and the keys added.
 
+**Two additions to the map (2026-10-08, asked for by the owner after his
+session that day).** For a session with a card map, v2 ("Operations —
+focused") and v3; a classic session is unchanged. `apps/strategy/call_notes.py`,
+`tests/test_strategy_call_notes.py`. Migration `strategy 0017`: three columns
+on `strategy_map_row` (`added_by_id`, `from_call_notes`, `source_passage`) and
+one table, `strategy_call_notes`.
+
+- **"Add a row"** on the live map: header, focus statement, owner, horizon,
+  measurable. It goes straight onto the map marked "added by" its author,
+  counts toward the five, and is edited, removed and printed like any accepted
+  row. The PDF does not say who added it. Both paths already had "add a pro or
+  a con"; a test now holds that.
+- **"Add the call notes"**: a file the meeting queue has read for the day of
+  the call (any state), a Drive document by its link through the practice's
+  existing Drive grant (refused, in words, when there is none), or pasted
+  text. One set per session; attaching again replaces it.
+- **Who has them:** the practice owner, and an associate on their own
+  prospect. An assistant has no route to them and neither the notes nor a
+  row's passage is in an assistant's payload. They are in a table of their
+  own, so nothing that reads a session carries them by accident. They are not
+  on the pre-call form, in an email, or on the PDF.
+- **Claude's input:** "Draft rows", "Consolidate" and the pros-and-cons draft
+  are given the notes beside the answers, in the one call each already made.
+  Claude is told the notes may hold both sides of the conversation and to
+  attribute a statement to the prospect only where the notes do. The
+  faithfulness rule is as it was: nothing beyond the notes and the answers.
+  The mirror's draft is not given the notes.
+- **"From the call notes"** is on a drafted row whose cited passage is **found
+  in the notes**, word for word (spacing and capitals aside). A passage Claude
+  cites that is not there is dropped and the row is left unmarked. A
+  consolidated row keeps the passage of a row it merged.
+- **Cost:** a draft that read the notes answers with what its call cost,
+  shown to the practice owner (AI spend is his, FR-0.9; an associate is not
+  sent the figure).
+- **A session without notes is byte for byte as before:** the same prompts,
+  the same responses, the same goldens.
+- **Notes alone are enough to draft rows from**, for a session where nothing
+  was typed in during the call.
+- Limits: 150,000 characters of notes; a PDF is not read (as in the meeting
+  queue).
+
 ### 9.9 Decisions for the owner
 
 | # | Question | Recommendation | Owner, 2026-10-08 |

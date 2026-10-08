@@ -813,6 +813,151 @@ function showSession(session = aV3Session(), me = aMe(), extra: Record<string, u
   return fetchMock;
 }
 
+describe("the two additions to the map", () => {
+  const rowOf = (more: Record<string, unknown>) => ({
+    id: "row1", position: 0, header: "Scheduling In One Head",
+    statement: "Only Jen can build the rota.", bottleneck: "Only Jen can build the rota",
+    root_cause: "", the_fix: "", owner_text: "Jen", horizon: 60, measurable: "",
+    mechanics_note: "", state: "accepted", converted_to: "", from_ai: true, merged_from: [],
+    ...more });
+  const NOTES = { source: "pasted", source_label: "Pasted in", title: "Pasted notes",
+                  characters: 1234, text: "Dana said scheduling lives in Jen's head.",
+                  added_by: "Bryan Baker", added_at: "2026-10-08T20:00:00Z" };
+  const calls = (fetchMock: ReturnType<typeof mockApi>, part: string) =>
+    fetchMock.calls.filter((c) => c.method !== "GET" && c.url.includes(part));
+
+  it("adds a row by hand: header, focus statement, owner, horizon and measurable",
+    async () => {
+      const fetchMock = showSession(aV3Session(), aMe(), {
+        "POST /api/strategy-map-rows/": () => ({ status: 201, body: rowOf({}) }) });
+      await userEvent.click(await screen.findByRole("button", { name: "Add a row" }));
+      const add = screen.getByRole("button", { name: "Add it to the map" });
+      expect(add).toBeDisabled();
+      await userEvent.type(screen.getByLabelText("Header of the new row"),
+                           "Schedule Off One Person");
+      expect(add).toBeDisabled();
+      await userEvent.type(screen.getByLabelText("Focus statement of the new row"),
+                           "Two people can build the rota.");
+      await userEvent.type(screen.getByLabelText("Owner of the new row"), "Jen");
+      await userEvent.selectOptions(screen.getByLabelText("Horizon of the new row"), "60");
+      await userEvent.type(screen.getByLabelText("Measurable of the new row"), "People able");
+      expect(screen.getByText(/marked as added by you, and prints on the document/))
+        .toBeInTheDocument();
+      await userEvent.click(add);
+      await waitFor(() => expect(calls(fetchMock, "/api/strategy-map-rows/")).toHaveLength(1));
+      expect(calls(fetchMock, "/api/strategy-map-rows/")[0].body).toEqual({
+        session: SESSION_ID, header: "Schedule Off One Person",
+        statement: "Two people can build the rota.", owner_text: "Jen", horizon: 60,
+        measurable: "People able" });
+    });
+
+  it("says who added a row by hand, and offers no sixth", async () => {
+    const five = Array.from({ length: 5 }, (_, n) => rowOf({
+      id: `r${n}`, position: n, bottleneck: `Row ${n}`,
+      ...(n === 0 ? { from_ai: false, added_by: "Bryan Baker" } : {}) }));
+    showSession(aV3Session({ map_rows: five } as Partial<StrategySessionRow>));
+    expect(await screen.findByText("added by Bryan Baker")).toBeInTheDocument();
+    // One row was written by hand; the other four say nothing of the kind.
+    expect(screen.getAllByText(/^added by Bryan/)).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Add a row" })).not.toBeInTheDocument();
+    expect(screen.getByText(/The map holds five/)).toBeInTheDocument();
+  });
+
+  it("marks a row from the call notes with the passage it rests on", async () => {
+    showSession(aV3Session({ map_rows: [
+      rowOf({ from_call_notes: true,
+              source_passage: "Dana said scheduling lives in Jen's head." }),
+      rowOf({ id: "row2", position: 1, bottleneck: "Quotes wait for Dana",
+              state: "proposed" })] } as Partial<StrategySessionRow>));
+    expect(await screen.findByText("From the call notes")).toBeInTheDocument();
+    expect(screen.getByText("“Dana said scheduling lives in Jen's head.”")).toBeInTheDocument();
+    // A row from the answers alone carries no such mark.
+    expect(screen.getAllByText("From the call notes")).toHaveLength(1);
+  });
+
+  it("attaches the call notes three ways, and says who never sees them", async () => {
+    const fetchMock = showSession(aV3Session(), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/call-notes/`]:
+        () => ({ status: 201, body: { attached: NOTES } }),
+      [`GET /api/strategy-sessions/${SESSION_ID}/call-notes/`]: {
+        attached: null, day: "2026-10-08", candidates: [
+          { id: "f1", name: "Dana call, notes", state: "Parsed", characters: 5120 }] } });
+    expect(await screen.findByText(/never on\s+the document, never sent to the prospect, and not shown to an assistant/))
+      .toBeInTheDocument();
+    expect(screen.getByText("none attached")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Add the call notes" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Attach Dana call, notes" }));
+    await waitFor(() => expect(calls(fetchMock, "call-notes/")).toHaveLength(1));
+    await userEvent.click(screen.getByRole("button", { name: "Add the call notes" }));
+    const link = await screen.findByLabelText("Link to the Drive document");
+    expect(screen.getByRole("button", { name: "Attach the document" })).toBeDisabled();
+    await userEvent.type(link, "https://docs.google.com/document/d/abc/edit");
+    await userEvent.click(screen.getByRole("button", { name: "Attach the document" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add the call notes" }));
+    await userEvent.type(await screen.findByLabelText("Pasted call notes"), "Dana said so.");
+    await userEvent.click(screen.getByRole("button", { name: "Attach what I pasted" }));
+    await waitFor(() => expect(calls(fetchMock, "call-notes/")).toHaveLength(3));
+    expect(calls(fetchMock, "call-notes/").map((c) => c.body)).toEqual([
+      { source: "meeting_file", source_file: "f1" },
+      { source: "drive", link: "https://docs.google.com/document/d/abc/edit" },
+      { source: "pasted", text: "Dana said so." }]);
+  });
+
+  it("shows attached notes, reads them on request, and says why Drive was refused",
+    async () => {
+      showSession(aV3Session({ call_notes: NOTES } as Partial<StrategySessionRow>), aMe(), {
+        [`POST /api/strategy-sessions/${SESSION_ID}/call-notes/`]: () => ({
+          status: 409, body: { detail: "The connected Google account has not granted "
+            + "access to Drive. The notes can be pasted in instead." } }),
+        [`GET /api/strategy-sessions/${SESSION_ID}/call-notes/`]:
+          { attached: NOTES, day: "2026-10-08", candidates: [] } });
+      expect(await screen.findByText("attached")).toBeInTheDocument();
+      expect(screen.getByText(/1,234 characters · attached by\s+Bryan Baker/))
+        .toBeInTheDocument();
+      expect(screen.queryByLabelText("The attached call notes")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Read them" }));
+      expect(screen.getByLabelText("The attached call notes"))
+        .toHaveTextContent("Dana said scheduling lives in Jen's head.");
+      await userEvent.click(screen.getByRole("button", { name: "Replace the call notes" }));
+      expect(await screen.findByText("The meeting queue has read no file for that day."))
+        .toBeInTheDocument();
+      await userEvent.type(screen.getByLabelText("Link to the Drive document"), "x");
+      await userEvent.click(screen.getByRole("button", { name: "Attach the document" }));
+      expect(await screen.findByText(/has not granted\s+access to Drive/)).toBeInTheDocument();
+    });
+
+  it("says what a draft that read the call notes cost", async () => {
+    showSession(aV3Session({ call_notes: NOTES } as Partial<StrategySessionRow>), aMe(), {
+      [`POST /api/strategy-sessions/${SESSION_ID}/draft-rows/`]: () => ({
+        status: 201, body: { drafted: [rowOf({ state: "proposed" })], cost_usd: "0.0412",
+                             used_call_notes: true } }) });
+    await userEvent.click(await screen.findByRole("button", { name: /Draft rows/ }));
+    expect(await screen.findByText(/read the call notes and cost \$0\.0412\. 1 proposed/))
+      .toBeInTheDocument();
+  });
+
+  it("gives an assistant no call-notes card and no way to add a row", async () => {
+    showSession(aV3Session(), aMe({ role: "VA" }));
+    await screen.findByText("Strategy Map", { selector: "span[id]" });
+    expect(screen.queryByText("The call notes")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add the call notes" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add a row" })).not.toBeInTheDocument();
+  });
+
+  it("offers a pro or a con by hand on each of the two paths", async () => {
+    const withPaths = aV3Session();
+    withPaths.sections!.push({
+      code: "two_paths", kind: "paths", title: "Two paths", position: 5,
+      time_budget_minutes: 5, questions: [
+        q("a", "Path A — Continue to run it yourselves", { response_schema: "path_reaction" }),
+        q("b", "Path B — Work with us", { response_schema: "path_reaction" })] });
+    showSession(withPaths);
+    expect(await screen.findByRole("button", { name: "Add one to Path A" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add one to Path B" })).toBeInTheDocument();
+  });
+});
+
 describe("a v3 session in the live view", () => {
   it("asks a section of the practice's own where the template put it, with a note field",
     async () => {

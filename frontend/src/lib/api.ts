@@ -849,6 +849,11 @@ export interface MapRow {
   from_ai: boolean;
   /** A consolidated row: the rows it merges, as Claude cited them. */
   merged_from?: { id: string; bottleneck: string; state: string }[];
+  /** Written by hand on the map: who wrote it. */
+  added_by?: string;
+  /** Drafted from the call notes, and the passage it rests on, word for word.
+   *  Sent only to the practice owner and an associate on their own prospect. */
+  from_call_notes?: boolean; source_passage?: string;
 }
 
 /** §8's tray (owner, 2026-09-21). A pro or a con on one of the two paths;
@@ -944,6 +949,10 @@ export interface StrategySessionRow {
   sections?: StrategySection[];
   answers?: StrategyAnswerRow[];
   map_rows?: MapRow[];
+  /** The notes of the call, attached as context for Claude's drafts. Absent
+   *  when there are none, and for anyone they are not shown to. */
+  call_notes?: { source: string; source_label: string; title: string; characters: number;
+                 text: string; added_by: string; added_at: string };
   path_notes?: PathNote[];
   prep?: SessionPrep | null;
   /** The fractional's own note on this session. Fractional-only. */

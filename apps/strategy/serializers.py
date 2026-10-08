@@ -24,8 +24,14 @@ def _contact(contact):
             "name": f"{contact.first_name} {contact.last_name}".strip()}
 
 
-def represent_map_row(row) -> dict:
-    return {
+def represent_map_row(row, *, private=False) -> dict:
+    """`private`: for the practice owner or an associate on their own
+    prospect, who may see what a row drew from the call notes. Off for
+    everyone else, and the passage is not in their payload at all.
+
+    A row written by hand, and one from the call notes, each add a key; every
+    other row is represented exactly as before."""
+    out = {
         "id": str(row.pk),
         "position": row.position,
         # The focused format's card (owner, 2026-09-29): all the PDF shows.
@@ -45,6 +51,13 @@ def represent_map_row(row) -> dict:
         # it against the originals before accepting it.
         "merged_from": _merged_from(row),
     }
+    if row.added_by_id:
+        by = row.added_by
+        out["added_by"] = (by.full_name or by.email) if by else ""
+    if private and row.from_call_notes:
+        out["from_call_notes"] = True
+        out["source_passage"] = row.source_passage
+    return out
 
 
 def _merged_from(row) -> list:
@@ -108,7 +121,7 @@ def represent_answer(answer) -> dict:
 
 
 def represent_session(session, *, include_financial=True, full=False,
-                      include_prep=True) -> dict:
+                      include_prep=True, private=False) -> dict:
     """`include_financial=False` is matrix 10.8, applied to questions *and*
     answers — a VA's payload does not contain the numbers at all."""
     merge = services.merge_context(session)
@@ -173,9 +186,19 @@ def represent_session(session, *, include_financial=True, full=False,
                           if a.question_key in allowed]
     payload["six_key_components"] = services.six_key_components(session)
     payload["must_ask"] = services.must_ask_outstanding(session)
-    payload["map_rows"] = [represent_map_row(row) for row in
+    payload["map_rows"] = [represent_map_row(row, private=private) for row in
                            StrategyMapRow.objects.filter(session=session)
+                           .select_related("added_by")
                            .order_by("position", "created_at")]
+    # The call notes (owner, 2026-10-08): the practice owner's and an
+    # associate's on their own prospect. Absent, not empty, for anyone else,
+    # and for a session with none.
+    if private:
+        from apps.strategy import call_notes
+
+        attached = call_notes.represent(session)
+        if attached is not None:
+            payload["call_notes"] = attached
     payload["path_notes"] = [represent_path_note(note) for note in
                              StrategyPathNote.objects.filter(session=session)]
     # The focused template's diagnostic tray (owner, 2026-09-29): the

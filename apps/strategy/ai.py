@@ -212,6 +212,19 @@ def _clean_row(raw) -> dict | None:
     }
 
 
+def _from_notes(raw, notes: str, inherited: str = "") -> dict:
+    """The "From the call notes" marker for a drafted row: set only when the
+    passage Claude cites is really in the notes. Nothing, for a session with
+    no notes attached."""
+    if not notes:
+        return {}
+    from apps.strategy import call_notes
+
+    passage = call_notes.passage_in(notes, raw.get("passage") if isinstance(raw, dict)
+                                    else None) or inherited
+    return {"from_call_notes": True, "source_passage": passage} if passage else {}
+
+
 def _live_rows(session):
     return list(StrategyMapRow.objects.filter(
         session=session, state__in=[StrategyMapRow.State.ACCEPTED,
@@ -255,9 +268,15 @@ def draft_map_rows(session, *, trigger="button"):
 
     from apps.strategy import style
 
+    from apps.strategy import call_notes
+
     user_text = drafting_input(session)
-    if not user_text:
+    # The call notes (owner, 2026-10-08): input beside the answers, and enough
+    # to draft from where nothing was typed into the session during the call.
+    notes = call_notes.block(session)
+    if not user_text and not notes:
         return []
+    user_text += notes
     # v3 (P3, D13a): no call when the map is full, never more rows than it has
     # room for, and the rejected rows are told to the model as well.
     is_v3 = services.is_v3(session)
@@ -276,7 +295,8 @@ def draft_map_rows(session, *, trigger="button"):
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=ROWS_PURPOSE,
-            system=_system(ROWS_SYSTEM, session),
+            system=_system(ROWS_SYSTEM, session)
+            + (call_notes.ROWS_ADDENDUM if notes else ""),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger=trigger, max_tokens=4000,
         )
@@ -307,7 +327,8 @@ def draft_map_rows(session, *, trigger="button"):
         existing.add(row["bottleneck"].lower())
         made.append(StrategyMapRow.objects.create(
             tenant=session.tenant, session=session, position=position,
-            state=StrategyMapRow.State.PROPOSED, ai_call=call, **row))
+            state=StrategyMapRow.State.PROPOSED, ai_call=call,
+            **_from_notes(raw, notes), **row))
         position += 1
         if len(made) >= most:
             break                        # the cap holds whatever the model sent
@@ -339,6 +360,18 @@ Reply with JSON only: a list of objects with the keys "header", "statement", \
 "merges". No prose around it, no markdown fence."""
 
 
+#: Added to the consolidation prompt only for a session with call notes.
+CONSOLIDATE_NOTES = """
+
+You are also given THE CALL NOTES: the notes of the conversation the rows came \
+from. Use them to judge which rows are the same theme and to keep a merged \
+target true to what was said. You may use what the notes record as well as what \
+the rows say, and still nothing beyond the two. The notes may contain both \
+sides of the conversation, including what the advisor said: attribute a \
+statement to the prospect only where the notes do. Where a target rests on the \
+notes, add the key "passage": the passage it rests on, copied word for word."""
+
+
 def consolidation_input(rows) -> str:
     """The rows as numbered text. The private mechanics note stays out, as the
     fractional's notes stay out of every draft."""
@@ -365,9 +398,12 @@ def consolidate_map_rows(session):
 
     from apps.strategy import style
 
+    from apps.strategy import call_notes
+
     rows = _live_rows(session)
     if len(rows) < 2:
         return []
+    notes = call_notes.block(session)
     # The focused map holds five (owner, 2026-09-29): Consolidate aims for
     # three to five and never proposes more.
     most = FOCUSED_MAP_CAP if services.has_card_map(session) else MAX_CONSOLIDATED
@@ -376,8 +412,8 @@ def consolidate_map_rows(session):
             tenant=session.tenant, purpose=CONSOLIDATE_PURPOSE,
             system=_system(
                 CONSOLIDATE_SYSTEM.format(most={5: "five", 10: "ten"}.get(most, most)),
-                session),
-            user_text=consolidation_input(rows) + style.prompt_block(
+                session) + (CONSOLIDATE_NOTES if notes else ""),
+            user_text=consolidation_input(rows) + notes + style.prompt_block(
                 session.tenant, [style.K.MAP_HEADER, style.K.MAP_STATEMENT]),
             target_type="strategy_session",
             target_id=session.pk, trigger="button", max_tokens=4000,
@@ -408,10 +444,16 @@ def consolidate_map_rows(session):
         if not merges:
             continue
         cited.update(merges)
+        # A target built from a row that rested on the notes still does, by
+        # that row's passage, unless Claude cites one of its own.
+        inherited = next((rows[n - 1].source_passage for n in merges
+                          if rows[n - 1].from_call_notes and rows[n - 1].source_passage),
+                         "")
         made.append(StrategyMapRow.objects.create(
             tenant=session.tenant, session=session, position=position,
             state=StrategyMapRow.State.PROPOSED, ai_call=call,
-            merged_from=[str(rows[n - 1].pk) for n in merges], **row))
+            merged_from=[str(rows[n - 1].pk) for n in merges],
+            **_from_notes(raw, notes, inherited), **row))
         position += 1
         if len(made) >= most:
             break
@@ -555,15 +597,20 @@ def draft_path_notes(session, *, trigger="button"):
 
     from apps.strategy import style
 
+    from apps.strategy import call_notes
+
     user_text = path_input(session)
-    if not user_text:
+    notes = call_notes.block(session)
+    if not user_text and not notes:
         return []
+    user_text += notes
     user_text += style.prompt_block(session.tenant, [style.K.PRO, style.K.CON])
     practice = email_layout.branding(session.tenant).display_name or "the practice"
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=PATHS_PURPOSE,
-            system=_system(PATHS_SYSTEM.format(practice=practice), session),
+            system=_system(PATHS_SYSTEM.format(practice=practice), session)
+            + (call_notes.PATHS_ADDENDUM if notes else ""),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger=trigger, max_tokens=1500,
         )

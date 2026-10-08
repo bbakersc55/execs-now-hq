@@ -489,6 +489,15 @@ class StrategyMapRow(TenantScopedModel):
     #: merges, as Claude cited them. Empty on an ordinary row. Accepting it
     #: changes nothing about the originals — pruning them is a person's act.
     merged_from = models.JSONField(default=list, blank=True)
+    #: Who wrote the row by hand, on the map (owner, 2026-10-08). Empty on a
+    #: row Claude drafted and on one written before this existed.
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="+")
+    #: A drafted row that rests on the call notes, and the passage it rests
+    #: on, word for word from those notes. The practice's own, like the notes:
+    #: never on the PDF, never to the prospect, never to an assistant.
+    from_call_notes = models.BooleanField(default=False, db_default=False)
+    source_passage = models.TextField(blank=True, default="", db_default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "strategy_map_row"
@@ -575,3 +584,36 @@ class StrategyStyleExample(TenantScopedModel):
                                     name="strategy_style_example_one_per_item"),
         ]
         indexes = [models.Index(fields=["tenant", "-updated_at"])]
+
+
+class StrategyCallNotes(TenantScopedModel):
+    """The notes of the call itself, attached to its session as context for
+    Claude's drafts (owner, 2026-10-08).
+
+    **The practice's own.** They are read by the practice owner and by an
+    associate on their own prospect, and by Claude when it drafts rows,
+    consolidates, or drafts the pros and cons. They never reach the pre-call
+    form, an email, the PDF, the prospect or an assistant.
+
+    A table of its own, not columns on the session, so nothing that reads or
+    serializes a session carries them by accident.
+    """
+
+    class Source(models.TextChoices):
+        MEETING_FILE = "meeting_file", "From the meeting queue"
+        DRIVE = "drive", "A Drive document"
+        PASTED = "pasted", "Pasted in"
+
+    session = models.OneToOneField(StrategySession, on_delete=models.CASCADE,
+                                   related_name="call_notes")
+    text = models.TextField()
+    source = models.CharField(max_length=14, choices=Source.choices)
+    title = models.CharField(max_length=255, blank=True, default="", db_default="")
+    source_file = models.ForeignKey("meetings.MeetingSourceFile", null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    drive_file_id = models.CharField(max_length=128, blank=True, default="", db_default="")
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "strategy_call_notes"

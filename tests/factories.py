@@ -1101,3 +1101,14 @@ class FinanceImportRowFactory(TenantScopedFactory):
                                tenant=factory.SelfAttribute("..tenant"))
     row_number = 2
     outcome = "new"
+
+
+class StrategyCallNotesFactory(TenantScopedFactory):
+    class Meta:
+        model = "strategy.StrategyCallNotes"
+
+    tenant = factory.SubFactory(TenantFactory)
+    session = factory.SubFactory(StrategySessionFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    text = "Call notes."
+    source = "pasted"

@@ -485,6 +485,23 @@ class DriveClient:
                 break
         return found
 
+    def file(self, file_id: str) -> DriveFile | None:
+        """One file by its id, for a document picked by its link. `None` when
+        Drive has no such file for this connection: not shared with it, or not
+        there."""
+        try:
+            raw = self._service().files().get(
+                fileId=file_id, supportsAllDrives=True,
+                fields="id,name,mimeType,version,webViewLink,trashed").execute()
+        except Exception as exc:                     # pragma: no cover - network
+            if getattr(getattr(exc, "resp", None), "status", None) in (403, 404):
+                return None
+            raise DriveUnavailable(str(exc)) from exc
+        return DriveFile(file_id=raw.get("id", ""), version=str(raw.get("version", "")),
+                         name=raw.get("name", ""), mime_type=raw.get("mimeType", ""),
+                         web_view_link=raw.get("webViewLink", ""),
+                         trashed=bool(raw.get("trashed")))
+
     def text_of(self, drive_file: DriveFile) -> str:
         """The document as text. A Doc is exported; a `.txt` is downloaded; a
         `.docx` is converted by Drive on the way out."""
