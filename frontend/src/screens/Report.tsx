@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { CommentsPanel } from "../components/CommentsPanel";
 import { Avatar, PageHead } from "../components/shell";
+import { StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import {
-  EngagementTimeline, GoalBlock, Me, ValueReport, ValueReportExport, api,
+  EngagementTimeline, GoalBlock, GoalTree, Me, Task, ValueReport, ValueReportExport,
+  WorkParent, api,
 } from "../lib/api";
 
 const TENANT = ["FF", "CF", "VA"];
@@ -31,9 +35,15 @@ function isStaff(me: Me) {
  * the **headline comes from the server** (`block.headline`), so no screen can
  * decide to lead with a percentage; and **percent-of-tasks-done is always the
  * subordinate line**, in both kinds of goal.
+ *
+ * **A goal opens in place** (2026-10-07). There is no separate page for one
+ * goal: `/report/<goal>` is this report with that goal open, which is also what
+ * clicking its title does. Closed, a goal is its headline and how much of its
+ * work is done; open, it is everything, down to the tasks.
  */
 export function Report({ me }: { me: Me }) {
   const { id } = useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const staff = isStaff(me);
   const [company, setCompany] = useState<string>("");
@@ -45,7 +55,17 @@ export function Report({ me }: { me: Me }) {
     enabled: staff,
   });
   const clients = (companies.data ?? []).filter((c) => c.is_client_company);
-  const chosen = company || clients[0]?.id || "";
+  // A link to one goal names no company, and the practice has several: the
+  // goal says whose report to open. A client has one report and needs no answer.
+  const linked = useQuery<GoalBlock>({
+    queryKey: ["value-report-goal", id],
+    queryFn: () => api.get<GoalBlock>(`/api/value-report/${id}/`),
+    enabled: staff && !!id && !company,
+    retry: false,
+  });
+  const waitingOnLink = staff && !!id && !company && linked.isLoading;
+  const chosen = company || linked.data?.client_company
+    || (waitingOnLink ? "" : clients[0]?.id) || "";
   const query = staff ? `?client_company=${chosen}` : "";
 
   const report = useQuery<ValueReport>({
@@ -53,29 +73,15 @@ export function Report({ me }: { me: Me }) {
     queryFn: () => api.get<ValueReport>(`/api/value-report/${query}`),
     enabled: !staff || !!chosen,
   });
-  const single = useQuery<GoalBlock>({
-    queryKey: ["value-report-goal", id],
-    queryFn: () => api.get<GoalBlock>(`/api/value-report/${id}/`),
-    enabled: !!id,
-  });
-
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["value-report"] });
     qc.invalidateQueries({ queryKey: ["value-report-goal"] });
+    qc.invalidateQueries({ queryKey: ["goal-tree"] });
   };
 
-  if (id) {
-    if (single.isError) return <Banner kind="bad">{(single.error as Error).message}</Banner>;
-    if (!single.data) return <p>Opening the goal…</p>;
-    return (
-      <>
-        <PageHead title={single.data.title}
-          crumbs={[{ to: "/report", label: "Where we are" }]} />
-        {note && <Banner kind="info">{note}</Banner>}
-        <GoalCard block={single.data} me={me} onChanged={refresh} setNote={setNote} />
-      </>
-    );
-  }
+  // One goal open at a time, and the address says which: a link to it opens
+  // the same report with it open.
+  const toggle = (goal: string) => navigate(goal === id ? "/report" : `/report/${goal}`);
 
   if (staff && clients.length === 0 && !companies.isLoading) {
     return <Empty>No client companies yet. The report is a client artifact.</Empty>;
@@ -85,6 +91,7 @@ export function Report({ me }: { me: Me }) {
   // not been enabled yet and there is no data and no error to show.
   if (!report.data) return <p>Building the report…</p>;
   const data = report.data;
+  const onReport = !id || [...data.current, ...data.historical].some((b) => b.id === id);
 
   return (
     <>
@@ -92,11 +99,19 @@ export function Report({ me }: { me: Me }) {
         sub="Per goal: what we set out to change, where the measure stood when we
              started, where it stands now, and what it adds up to." />
       {note && <Banner kind="info">{note}</Banner>}
+      {!onReport && (
+        <Banner kind="bad">That goal is not on this report. It may have been removed,
+          or it is not yours to see.</Banner>
+      )}
 
       {staff && clients.length > 1 && (
         <Card>
           <select aria-label="Client company" value={chosen}
-                  onChange={(e) => setCompany(e.target.value)}>
+                  onChange={(e) => {
+                    setCompany(e.target.value);
+                    // The open goal belongs to the company being left.
+                    if (id) navigate("/report");
+                  }}>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Card>
@@ -111,14 +126,16 @@ export function Report({ me }: { me: Me }) {
       )}
       {data.current.map((block) => (
         <GoalCard key={block.id} block={block} me={me} onChanged={refresh}
-                  setNote={setNote} />
+                  setNote={setNote} open={block.id === id}
+                  onToggle={() => toggle(block.id)} />
       ))}
       {data.historical.length > 0 && (
         <>
           <h3 style={{ marginTop: "1.5rem" }}>Behind us</h3>
           {data.historical.map((block) => (
             <GoalCard key={block.id} block={block} me={me} onChanged={refresh}
-                      setNote={setNote} />
+                      setNote={setNote} open={block.id === id}
+                      onToggle={() => toggle(block.id)} />
           ))}
         </>
       )}
@@ -232,6 +249,12 @@ export function layAxis(from: string, to: string, marks: AxisMark[]) {
   });
 }
 
+/** A label at either end grows inwards from its dot, so it stays on the card
+ *  instead of hanging half off the edge. */
+function edge(left: number) {
+  return left < 8 ? " at-start" : left > 92 ? " at-end" : "";
+}
+
 function Axis({ from, to, marks, legend = false }: {
   from: string; to: string; marks: AxisMark[];
   /** List under the axis whatever is shown only as a number. For an axis that
@@ -249,7 +272,7 @@ function Axis({ from, to, marks, legend = false }: {
         <span className="line" />
         {groups.map((group) => group.members.length === 1
           ? group.members.map((mark) => (
-            <span key={mark.n} className={`mark ${mark.tone} ${group.lane}`}
+            <span key={mark.n} className={`mark ${mark.tone} ${group.lane}${edge(mark.left)}`}
               style={{ left: `${mark.left}%` }} title={`${mark.n}. ${mark.detail}`}>
               <span className={group.showLabel ? "lbl" : "lbl n"}>
                 {group.showLabel ? mark.label : mark.n}
@@ -395,10 +418,25 @@ function Sparkline({ block }: { block: GoalBlock }) {
   );
 }
 
-function GoalCard({ block, me, onChanged, setNote }: {
+/**
+ * One goal. Closed: the headline and how much of the work is done. Open:
+ * the measure, the milestones, the narrative the practice accepted, how the
+ * goal has been resolved, and the projects and tasks under it, where anyone
+ * who can see the goal can add a task and comment.
+ *
+ * Recording a reading and resolving the goal stay the practice's, open or not.
+ */
+function GoalCard({ block, me, onChanged, setNote, open, onToggle }: {
   block: GoalBlock; me: Me; onChanged: () => void; setNote: (s: string) => void;
+  open: boolean; onToggle: () => void;
 }) {
   const staff = isStaff(me);
+  const card = useRef<HTMLDivElement>(null);
+  // A link to this goal lands on it, not at the top of a long report.
+  useEffect(() => {
+    if (open) card.current?.scrollIntoView({ block: "nearest" });
+    // Only when it opens: a refetch must not move the page.
+  }, [open]);
   const path = `/api/value-report/${block.id}/`;
   const [value, setValue] = useState("");
   const [body, setBody] = useState("");
@@ -431,7 +469,15 @@ function GoalCard({ block, me, onChanged, setNote }: {
   });
 
   return (
-    <Card title={<a href={`/report/${block.id}`}>{block.title}</a>}
+    <div ref={card} id={`goal-${block.id}`}>
+    <Card title={
+            <button type="button" className="goal-toggle" aria-expanded={open}
+                    aria-controls={`goal-${block.id}-body`} onClick={onToggle}>
+              {open ? <ChevronDown size={18} aria-hidden="true" />
+                    : <ChevronRight size={18} aria-hidden="true" />}
+              {block.title}
+            </button>
+          }
           actions={
             <span className="inline">
               {block.is_historical && <Pill>{block.resolution?.resolution.replace("_", " ")}</Pill>}
@@ -458,6 +504,24 @@ function GoalCard({ block, me, onChanged, setNote }: {
         </Banner>
       )}
 
+      {/* Present, and subordinate. Never the headline (FR-4B.21), and never a
+          percentage in words: the bar shows the share, the line says the count. */}
+      {block.completion.of > 0 && (
+        <div className="goal-progress">
+          <div className="meter" role="progressbar" aria-label="Work completed"
+               aria-valuemin={0} aria-valuemax={block.completion.of}
+               aria-valuenow={block.completion.done}
+               aria-valuetext={`${block.completion.done} of ${block.completion.of}`}>
+            <span style={{ width: `${100 * block.completion.done / block.completion.of}%` }} />
+          </div>
+          <span className="small muted">
+            Work completed: {block.completion.done} of {block.completion.of}
+          </span>
+        </div>
+      )}
+
+      {open && (
+      <div id={`goal-${block.id}-body`}>
       <Measure block={block} />
 
       {block.narrative?.body && <p className="narrative">{block.narrative.body}</p>}
@@ -490,12 +554,7 @@ function GoalCard({ block, me, onChanged, setNote }: {
         </ul>
       )}
 
-      {/* Present, and subordinate. Never the headline (FR-4B.21). */}
-      {block.completion.of > 0 && (
-        <p className="small muted">
-          Work completed: {block.completion.done} of {block.completion.of}
-        </p>
-      )}
+      <GoalWork block={block} me={me} onChanged={onChanged} />
 
       {staff && (
         <div className="row" style={{ marginTop: ".6rem", gap: ".4rem", flexWrap: "wrap" }}>
@@ -549,6 +608,126 @@ function GoalCard({ block, me, onChanged, setNote }: {
           </div>
         </details>
       )}
+
+      <div style={{ marginTop: "var(--s4)" }}>
+        <CommentsPanel me={me} target="goal" id={block.id} />
+      </div>
+      </div>
+      )}
     </Card>
+    </div>
+  );
+}
+
+function TaskLine({ task }: { task: Task }) {
+  return (
+    <li>
+      <Link className="rowname" to={`/tasks/${task.id}`}>{task.title}</Link>{" "}
+      <StatusPill status={task.status} />
+      <span className="when">
+        {" "}{task.assignee.name || "unassigned"}{task.due_date && ` · due ${task.due_date}`}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * The projects and tasks under a goal, with their status, and two boxes: add
+ * a task (on the goal itself or under one of its projects) and add a project. Asked for only when
+ * the goal is opened, so a long report does not fetch every goal's work.
+ */
+function GoalWork({ block, me, onChanged }: {
+  block: GoalBlock; me: Me; onChanged: () => void;
+}) {
+  const qc = useQueryClient();
+  const staff = isStaff(me);
+  const [title, setTitle] = useState("");
+  const [under, setUnder] = useState("");
+  const [project, setProject] = useState("");
+  const [error, setError] = useState("");
+
+  const tree = useQuery<GoalTree>({
+    queryKey: ["goal-tree", block.id],
+    queryFn: () => api.get<GoalTree>(`/api/goals/${block.id}/tree/`),
+  });
+  // The server sets a client's company itself, so only the practice sends one.
+  const company = staff && block.client_company ? { client_company: block.client_company } : {};
+  const added = () => {
+    setError("");
+    qc.invalidateQueries({ queryKey: ["goal-tree", block.id] });
+    qc.invalidateQueries({ queryKey: ["tasks"] });
+    qc.invalidateQueries({ queryKey: ["projects"] });
+    onChanged();
+  };
+  const addTask = useMutation({
+    mutationFn: () => api.post<Task>("/api/tasks/", {
+      title: title.trim(), ...(under ? { project: under } : { goal: block.id }), ...company,
+    }),
+    onSuccess: () => { setTitle(""); added(); },
+    onError: (e: Error) => setError(e.message),
+  });
+  const addProject = useMutation({
+    mutationFn: () => api.post<WorkParent>("/api/projects/", {
+      title: project.trim(), goal: block.id, ...company,
+    }),
+    onSuccess: () => { setProject(""); added(); },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const projects = tree.data?.projects ?? [];
+  const direct = tree.data?.tasks ?? [];
+  return (
+    <section className="goal-work" aria-label={`Work under ${block.title}`}>
+      <h4>The work under this goal</h4>
+      {error && <Banner kind="bad">{error}</Banner>}
+      {tree.isError && <Banner kind="bad">{(tree.error as Error).message}</Banner>}
+      {tree.isLoading && <p className="small muted">Loading the work…</p>}
+      {tree.data && projects.length === 0 && direct.length === 0 && (
+        <Empty>Nothing has been filed under this goal yet.</Empty>
+      )}
+      {projects.map((p) => (
+        <div key={p.id} className="goal-project">
+          <p style={{ margin: 0 }}>
+            <Link className="rowname" to={`/work/projects/${p.id}`}>{p.title}</Link>{" "}
+            <StatusPill status={p.status} derived={p.status_is_derived} />
+          </p>
+          {p.tasks.length === 0
+            ? <p className="small muted" style={{ margin: 0 }}>No tasks yet.</p>
+            : <ul>{p.tasks.map((t) => <TaskLine key={t.id} task={t} />)}</ul>}
+        </div>
+      ))}
+      {direct.length > 0 && (
+        <div className="goal-project">
+          {projects.length > 0 && <p className="small muted" style={{ margin: 0 }}>
+            Filed straight on the goal</p>}
+          <ul>{direct.map((t) => <TaskLine key={t.id} task={t} />)}</ul>
+        </div>
+      )}
+
+      <form className="row tight" style={{ marginTop: "var(--s3)", flexWrap: "wrap" }}
+            onSubmit={(e) => { e.preventDefault(); if (title.trim()) addTask.mutate(); }}>
+        <input aria-label={`New task under ${block.title}`} placeholder="Add a task"
+               style={{ flex: "1 1 240px", width: "auto" }}
+               value={title} onChange={(e) => setTitle(e.target.value)} />
+        {projects.length > 0 && (
+          <select aria-label="File the task under" value={under} style={{ width: "auto" }}
+                  onChange={(e) => setUnder(e.target.value)}>
+            <option value="">On the goal itself</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+        )}
+        <button type="submit" disabled={!title.trim() || addTask.isPending}>Add task</button>
+      </form>
+      {/* A client too (owner, 2026-10-07): a project under a goal of their own
+          company. Goals themselves stay the practice's. */}
+      <form className="row tight" style={{ marginTop: "var(--s2)" }}
+            onSubmit={(e) => { e.preventDefault(); if (project.trim()) addProject.mutate(); }}>
+        <input aria-label={`New project under ${block.title}`} placeholder="Add a project"
+               style={{ flex: "1 1 240px", width: "auto" }} value={project}
+               onChange={(e) => setProject(e.target.value)} />
+        <button type="submit" disabled={!project.trim() || addProject.isPending}>
+          Add project</button>
+      </form>
+    </section>
   );
 }

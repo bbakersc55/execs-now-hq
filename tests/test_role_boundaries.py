@@ -412,10 +412,12 @@ def test_7_2_only_the_practice_creates_a_goal(role, expected, seeded_tenant, api
 @pytest.mark.django_db
 @pytest.mark.parametrize("role,expected", [("FF", 201), ("CF", 201), ("VA", 201),
                                            ("FCC", 201), ("ECC", 201)])
-def test_7_2a_a_client_may_create_a_project_but_never_under_a_goal(
+def test_7_2a_a_client_may_create_a_project_but_never_under_a_goal_that_is_not_theirs(
     role, expected, seeded_tenant, api
 ):
-    """Matrix 7.2a / FR-3.35a."""
+    """Matrix 7.2a / FR-3.35a. A goal of their own company is allowed since
+    2026-10-07 (tests/test_goal_tree.py); this one is the practice's own,
+    internal goal, which no client can see, let alone file under."""
     from apps.work.models import Goal
 
     member = _as(role, seeded_tenant)

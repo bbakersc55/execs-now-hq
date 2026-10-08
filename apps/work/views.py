@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db.models import Q
 from django.http import Http404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -204,10 +205,45 @@ class GoalViewSet(WorkViewSet):
             "tasks": [work_serializers.represent_task(t, request=request) for t in tasks],
         })
 
+    @action(detail=True, methods=["get"])
+    def tree(self, request, pk=None):
+        """Everything under a goal in one answer: its projects, each with its
+        tasks, and the tasks filed straight on it. What the value report shows
+        when a goal is opened in place.
+
+        Scoped exactly as `children` is, one level further down: a client gets
+        their own company's client-visible work and nothing else.
+        """
+        if self.kind != "goal":
+            raise Http404
+        goal = self.load(pk)
+        projects = list(work_perms.project_queryset_for(
+            request, Project.objects.filter(goal=goal, deleted_at__isnull=True)
+        ).select_related("client_company", "owner", "client_owner_contact")
+            .order_by("created_at"))
+        tasks = work_perms.task_queryset_for(
+            request, Task.objects.filter(deleted_at__isnull=True).filter(
+                Q(goal=goal) | Q(project__in=projects))
+        ).select_related("project", "goal", "client_company", "owner", "assignee",
+                         "client_owner_contact").order_by("created_at")
+        under = {project.pk: [] for project in projects}
+        direct = []
+        for task in tasks:
+            under.get(task.project_id, direct).append(
+                work_serializers.represent_task(task, request=request))
+        return Response({
+            "projects": [
+                {**work_serializers.represent_parent(p, request=request, kind="project"),
+                 "tasks": under[p.pk]}
+                for p in projects
+            ],
+            "tasks": direct,
+        })
+
 
 class ProjectViewSet(GoalViewSet):
-    """Matrix 7.2a — a client may create one for their own company, with no
-    parent goal (FR-3.35a)."""
+    """Matrix 7.2a — a client may create one for their own company, on its own
+    or under one of that company's goals (FR-3.35a, as changed 2026-10-07)."""
 
     model = Project
     scoper = staticmethod(work_perms.project_queryset_for)
@@ -224,7 +260,6 @@ class ProjectViewSet(GoalViewSet):
         data = dict(serializer.validated_data)
         if work_perms.is_client(request):
             data["client_company"] = request.membership.client_company
-            data["goal"] = None
         project = Project.objects.create(
             tenant=request.tenant, owner=request.user,
             created_by_client=work_perms.is_client(request), **data,

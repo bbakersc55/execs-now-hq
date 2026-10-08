@@ -138,7 +138,7 @@
 |---|---|---|---|---|---|---|---|
 | 7.1 | View goals / projects / tasks | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Associate: `assigned` **or `own-work`** — work at their assigned client companies, plus work they own or are assigned **regardless of company**, the practice's internal work included. Goals and projects carry no assignee, so for those `own-work` means owner. A task reaches an associate by a fourth path as well: the contact it hangs off, if that contact is in their FR-1.9c universe (Phase 1 stage-rule tasks land this way). Client: `own-company` + `client-visible` |
 | 7.2 | Create a **goal** | ✅ | 🔸 | ✅ | ❌ | ❌ | Strategy is the fractional's |
-| 7.2a | Create a **project** | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Client: `own-company`. A client using the portal as their task tool needs a way to group their own work; a client-created project has no parent goal by definition (FR-3.35a) |
+| 7.2a | Create a **project** | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Client: `own-company`. A client using the portal as their task tool needs a way to group their own work; a client-created project has no parent goal, or one of their own company's goals (FR-3.35a, changed 2026-10-07; it was none by definition) |
 | 7.3 | Create a task | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Client: `own-company`. **No review queue** (FR-3.36) |
 | 7.4 | Edit a task | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Client: **`client-editable`** (FR-3.9a) |
 | 7.5 | Change task status | ✅ | 🔸 | ✅ | 🔸 | 🔸 | Client: **`client-editable`** (FR-3.9a) |

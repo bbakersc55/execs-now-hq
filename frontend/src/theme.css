@@ -713,6 +713,20 @@ ul.work-tree > li { margin: 0; }
 }
 .narrative { font-size: var(--t-14); line-height: 1.6; max-width: 72ch; margin: var(--s3) 0; }
 .headline { font-size: var(--t-16); font-weight: 600; color: var(--navy); }
+/* A goal's title is what opens it in place: a heading that is a button. */
+.goal-toggle {
+  display: inline-flex; align-items: center; gap: var(--s1); border: none; background: none;
+  padding: 0; min-height: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.goal-toggle:hover:not(:disabled) { background: none; color: var(--navy); }
+.goal-progress { display: flex; align-items: center; gap: var(--s3); margin: var(--s2) 0; }
+.goal-progress .meter { flex: 0 0 220px; }
+.goal-work { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
+.goal-work h4 { margin-bottom: var(--s2); }
+.goal-project { margin: var(--s2) 0; }
+.goal-project ul { list-style: none; margin: var(--s1) 0 0; padding-left: var(--s4);
+                   border-left: 2px solid var(--line); }
+.goal-project li { padding: 2px 0; }
 /* Milestones on one horizontal axis, with the labels staggered so they never
    print on each other (findings, round 1). Three rows: a label lane above, the
    line, a label lane below. */
@@ -731,6 +745,9 @@ ul.work-tree > li { margin: 0; }
 .axis .mark i { grid-row: 2; width: 9px; height: 9px; border-radius: 999px;
                 background: var(--navy); }
 .axis .mark.below .lbl { grid-row: 3; align-self: start; padding: 3px 0 0; }
+/* At either end the label grows inwards from its dot, not half off the card. */
+.axis .mark.at-start { margin-left: -5px; justify-items: start; text-align: left; }
+.axis .mark.at-end { margin-left: -127px; justify-items: end; text-align: right; }
 /* A label that could not fit leaves its number behind. */
 .axis .lbl.n { font-weight: 700; color: var(--text); }
 /* Marks on the same spot: their numbers in a column beside the dots, three to

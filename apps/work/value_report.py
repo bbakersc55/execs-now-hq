@@ -235,6 +235,8 @@ def goal_block(goal, *, request, for_client: bool, task_queryset) -> dict:
     block = {
         "id": str(goal.pk),
         "title": goal.title,
+        # So a link to one goal can open the right company's report.
+        "client_company": str(goal.client_company_id) if goal.client_company_id else None,
         "outcome_statement": goal.outcome_statement,
         "headline": headline_of(goal, measure),
         # What this goal is still waiting for somebody to write or record.

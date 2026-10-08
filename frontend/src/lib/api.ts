@@ -632,9 +632,17 @@ export interface GoalNarrativeRow {
   version_count?: number;
 }
 
+/** The work under one goal: its projects with their tasks, and the tasks
+ *  filed straight on it. */
+export interface GoalTree {
+  projects: (WorkParent & { tasks: Task[] })[];
+  tasks: Task[];
+}
+
 export interface GoalBlock {
   id: string;
   title: string;
+  client_company: string | null;
   outcome_statement: string;
   /** The product rule, decided on the server: a number leads, or the outcome
    *  statement does. **Never percent-of-tasks-done** (FR-4B.21). */

@@ -255,13 +255,9 @@ class ProjectSerializer(GoalSerializer):
     start_date = serializers.DateField(required=False, allow_null=True)
 
     def validate_goal(self, value):
-        request = self.context["request"]
-        if value is not None and work_perms.is_client(request):
-            # FR-3.35a — a client's project never hangs off a goal; strategy
-            # is the fractional's.
-            raise serializers.ValidationError(
-                "A project you create is not filed under a goal."
-            )
+        # A client may file a project under a goal (owner, 2026-10-07), and the
+        # scope is what keeps that to their own company's goals: anyone else's
+        # is "not available to you", in words.
         return self._scoped(Goal, value, work_perms.goal_queryset_for,
                             deleted_at__isnull=True)
 

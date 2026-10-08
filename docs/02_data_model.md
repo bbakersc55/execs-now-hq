@@ -521,7 +521,7 @@ PIN it was issued for.
 ### `project`
 Same shape — including `owner_id`, `client_owner_contact_id`, and `status_override` — plus `goal_id FK→goal?`, `start_date`, its own `source_map_row_id` (a map row becomes a Goal *or* a Project, chosen per row — FR-4.28), and **`created_by_client bool`**.
 
-> A **client-created project** has `created_by_client = true`, `goal_id = null` by definition (strategy stays the fractional's), and `client_company_id` set to the creator's own company. It is how a client groups their own work in the portal (FR-3.35a, matrix row 7.2a).
+> A **client-created project** has `created_by_client = true` and `client_company_id` set to the creator's own company. `goal_id` is null, or a goal of that same company *(changed 2026-10-07: it was null by definition, held by the check constraint `project_client_created_has_no_goal`, which `work` 0007 drops)*. It is how a client groups their own work in the portal (FR-3.35a, matrix row 7.2a).
 
 ### Client-side ownership on `goal` / `project` / `task`
 

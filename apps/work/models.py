@@ -373,8 +373,14 @@ class GoalReportExport(TenantScopedModel):
 
 
 class Project(WorkItem):
-    """FR-3.2. A client-created project has `created_by_client`, no parent goal,
-    and its creator's own company (FR-3.35a)."""
+    """FR-3.2. A client-created project has `created_by_client` and its
+    creator's own company (FR-3.35a).
+
+    It may sit under a goal of that company (owner, 2026-10-07): a client opens
+    a goal on the report and adds a project to it. Until then a client's
+    project had no parent goal by definition, and a check constraint said so.
+    Goals themselves are still never a client's to create.
+    """
 
     goal = models.ForeignKey(
         Goal, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects"
@@ -389,13 +395,6 @@ class Project(WorkItem):
     class Meta(WorkItem.Meta):
         db_table = "project"
         indexes = [models.Index(fields=["tenant", "client_company"])]
-        constraints = [
-            # FR-3.35a — strategy stays the fractional's.
-            models.CheckConstraint(
-                condition=models.Q(created_by_client=False) | models.Q(goal__isnull=True),
-                name="project_client_created_has_no_goal",
-            ),
-        ]
 
 
 class TaskChecklistItem(TenantScopedModel):

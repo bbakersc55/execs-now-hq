@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GoalBlock, ValueReport } from "../lib/api";
-import { aMe } from "../test/fixtures";
+import { useLocation } from "react-router-dom";
+
+import { aMe, aTask, aWorkParent } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { Report, layAxis } from "./Report";
 
@@ -14,6 +16,7 @@ function aBlock(overrides: Partial<GoalBlock> = {}): GoalBlock {
   return {
     id: GOAL,
     title: "Decisions stall waiting on the founder",
+    client_company: COMPANY,
     outcome_statement: "The founder stops being the bottleneck on day-to-day calls.",
     headline: { kind: "measure", text: "Decisions escalated per week" },
     measure: {
@@ -63,16 +66,40 @@ function aReport(overrides: Partial<ValueReport> = {}): ValueReport {
   };
 }
 
-function show(report = aReport(), me = aMe(), extra: Record<string, unknown> = {}) {
+const TREE = {
+  projects: [{
+    ...aWorkParent({ id: "pr1", kind: "project", title: "Decision ladder",
+                     status: "in_progress" }),
+    tasks: [aTask({ id: "t1", title: "Publish the ladder", status: "done" }),
+            aTask({ id: "t2", title: "Train the leads", status: "blocked" })],
+  }],
+  tasks: [aTask({ id: "t3", title: "Count this week's escalations", status: "not_started" })],
+};
+
+/** Where the app is, read from inside it: the report moves between `/report`
+ *  and `/report/<goal>` without leaving the page. */
+function Address() {
+  return <output aria-label="address">{useLocation().pathname}</output>;
+}
+
+/** The report, with the goal in `aReport()` already open unless `route` says
+ *  otherwise: most of what these tests read is inside an open goal. */
+function show(report = aReport(), me = aMe(), extra: Record<string, unknown> = {},
+              route = `/report/${GOAL}`) {
   const fetchMock = mockApi({
+    // First: the stub takes the first route a URL starts with.
+    ...extra,
     "GET /api/value-report-exports/": [],
     "GET /api/value-report/": report,
     "GET /api/companies/": [{ id: COMPANY, name: "Acme Facilities",
                               is_client_company: true }],
+    "GET /api/goals/": TREE,
+    "GET /api/comments/": [],
+    // Again, so that a route named in both keeps the test's answer.
     ...extra,
   });
   vi.stubGlobal("fetch", fetchMock);
-  renderRoute(<Report me={me} />, { path: "/report", route: "/report" });
+  renderRoute(<><Report me={me} /><Address /></>, { path: "/report/:id?", route });
   return fetchMock;
 }
 
@@ -297,15 +324,6 @@ describe("the client value report", () => {
       .toBeInTheDocument();
   });
 
-  it("keeps the timeline off a single goal's page", async () => {
-    const fetchMock = mockApi({ "GET /api/value-report/": aBlock() });
-    vi.stubGlobal("fetch", fetchMock);
-    renderRoute(<Report me={aMe({ role: "FCC" })} />,
-                { path: "/report/:id", route: `/report/${GOAL}` });
-    expect(await screen.findByText("Decisions escalated per week")).toBeInTheDocument();
-    expect(screen.queryByText("The engagement, in order")).not.toBeInTheDocument();
-  });
-
   it("gives a client no controls, no nudge and no draft", async () => {
     const block = aBlock({
       measure: { ...aBlock().measure, kind_is_undecided: true },
@@ -364,5 +382,251 @@ describe("the client value report", () => {
     expect(screen.queryByRole("button", { name: /Publish it to the client/ }))
       .not.toBeInTheDocument();
     expect(screen.queryByText("Resolve this goal")).not.toBeInTheDocument();
+  });
+});
+
+describe("a goal opens in place on the report (2026-10-07)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const TITLE = "Decisions stall waiting on the founder";
+  const OTHER = "33333333-3333-4333-8333-333333333333";
+  const stone = (id: string, title: string, at: string) => ({
+    id, title, due_date: at, occurred_at: at, state: "hit", state_label: "hit",
+    is_derived: false, source_task: null,
+  });
+  const full = () => aBlock({
+    narrative: { body: "The leads now decide routing on their own." },
+    milestones: [stone("s1", "Ladder published", "2026-08-02"),
+                 stone("s2", "First week without an escalation", "2026-09-15")],
+    resolutions: [{ id: "r1", resolution: "changed_course", label: "Changed course",
+                    reason: "The second branch mattered more.", at: "2026-09-10T12:00:00Z",
+                    by: "Bryan Baker" }],
+  } as Partial<GoalBlock>);
+  const two = () => aReport({ current: [
+    full(),
+    aBlock({ id: OTHER, title: "Close the books in five days",
+             headline: { kind: "outcome", text: "Month-end stops being a scramble." },
+             narrative: { body: "Reconciliations are weekly now." } }),
+  ] });
+  const toggle = (title = TITLE) => screen.getByRole("button", { name: title });
+  const address = () => screen.getByLabelText("address").textContent;
+
+  it("is closed until it is clicked: the headline and the work done, nothing else", async () => {
+    const fetchMock = show(two(), aMe({ role: "FCC" }), {}, "/report");
+    expect(await screen.findByText("Decisions escalated per week")).toBeInTheDocument();
+
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    const bar = screen.getAllByRole("progressbar", { name: "Work completed" })[0];
+    expect(bar).toHaveAttribute("aria-valuetext", "1 of 3");
+    expect(screen.getAllByText(/Work completed: 1 of 3/).length).toBe(2);
+
+    expect(screen.queryByText("The leads now decide routing on their own.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /3 readings/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("The work under this goal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Comments")).not.toBeInTheDocument();
+    // And nothing was asked for that only an open goal needs.
+    expect(fetchMock.calls.some((c) => c.url.includes("/tree/"))).toBe(false);
+    expect(fetchMock.calls.some((c) => c.url.startsWith("/api/comments/"))).toBe(false);
+  });
+
+  it("opens on the same page, with everything about the goal", async () => {
+    const user = userEvent.setup();
+    show(two(), aMe({ role: "FCC" }), {}, "/report");
+    await screen.findByText("Decisions escalated per week");
+
+    await user.click(toggle());
+
+    // Still the report: its heading and its timeline have not gone anywhere.
+    expect(screen.getByRole("heading", { name: "Where we are" })).toBeInTheDocument();
+    expect(screen.getByText("The engagement, in order")).toBeInTheDocument();
+    expect(address()).toBe(`/report/${GOAL}`);
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+
+    const goal = document.getElementById(`goal-${GOAL}`)!;
+    // The measurable headline and the measure...
+    expect(within(goal).getByText("Decisions escalated per week")).toBeInTheDocument();
+    expect(within(goal).getByRole("img", { name: /3 readings/ })).toBeInTheDocument();
+    // ...the progress bar...
+    expect(within(goal).getByRole("progressbar", { name: "Work completed" })).toBeInTheDocument();
+    // ...the milestones timeline...
+    const stones = within(goal).getByRole("img", { name: /2 marks between 2026-08-02/ });
+    expect(within(stones).getByText("Ladder published")).toBeInTheDocument();
+    // ...the accepted narrative...
+    expect(within(goal).getByText("The leads now decide routing on their own."))
+      .toBeInTheDocument();
+    // ...the resolution history, reason included...
+    expect(within(goal).getByText("Changed course")).toBeInTheDocument();
+    expect(within(goal).getByText(/The second branch mattered more\./)).toBeInTheDocument();
+    // ...and the projects and tasks beneath it, each with its status.
+    const work = await within(goal).findByRole("region", { name: `Work under ${TITLE}` });
+    const line = (text: string) =>
+      within(work).getByRole("link", { name: text }).closest("li, p") as HTMLElement;
+    expect(within(line("Decision ladder")).getByText(/In progress/)).toBeInTheDocument();
+    expect(within(line("Publish the ladder")).getByText("Done")).toBeInTheDocument();
+    expect(within(line("Train the leads")).getByText("Blocked")).toBeInTheDocument();
+    expect(within(line("Count this week's escalations")).getByText("Not started"))
+      .toBeInTheDocument();
+
+    // The other goal stayed shut.
+    expect(toggle("Close the books in five days")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Reconciliations are weekly now.")).not.toBeInTheDocument();
+  });
+
+  it("closes again on a second click, and opening another closes the first", async () => {
+    const user = userEvent.setup();
+    show(two(), aMe({ role: "FCC" }), {}, "/report");
+    await screen.findByText("Decisions escalated per week");
+
+    await user.click(toggle());
+    await user.click(toggle("Close the books in five days"));
+    expect(address()).toBe(`/report/${OTHER}`);
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Reconciliations are weekly now.")).toBeInTheDocument();
+
+    await user.click(toggle("Close the books in five days"));
+    expect(address()).toBe("/report");
+    expect(screen.queryByText("Reconciliations are weekly now.")).not.toBeInTheDocument();
+  });
+
+  it("the single-goal address opens the whole report with that goal open", async () => {
+    show(two(), aMe({ role: "FCC" }), {}, `/report/${OTHER}`);
+
+    expect(await screen.findByText("Reconciliations are weekly now.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Where we are" })).toBeInTheDocument();
+    expect(screen.getByText("The engagement, in order")).toBeInTheDocument();
+    expect(toggle("Close the books in five days")).toHaveAttribute("aria-expanded", "true");
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("says so when the address names a goal that is not on the report", async () => {
+    show(two(), aMe({ role: "FCC" }), {}, "/report/44444444-4444-4444-8444-444444444444");
+    expect(await screen.findByText(/That goal is not on this report/)).toBeInTheDocument();
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("lets a client add a task on the goal, or under one of its projects", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show(two(), aMe({ role: "FCC" }), {
+      "POST /api/tasks/": () => ({ status: 201, body: aTask({ id: "t9" }) }),
+    });
+    const box = await screen.findByLabelText(`New task under ${TITLE}`);
+    const posted = () => fetchMock.calls.filter(
+      (c) => c.method === "POST" && c.url === "/api/tasks/").map((c) => c.body);
+
+    await user.type(box, "Ask the leads what still comes to me");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    // Their company is the server's to set; they send none.
+    await waitFor(() => expect(posted()).toEqual(
+      [{ title: "Ask the leads what still comes to me", goal: GOAL }]));
+
+    await waitFor(() => expect(box).toHaveValue(""));
+    await user.type(box, "Shadow one decision");
+    await user.selectOptions(await screen.findByLabelText("File the task under"), "pr1");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(posted()[1]).toEqual(
+      { title: "Shadow one decision", project: "pr1" }));
+  });
+
+  it("lets a client comment on the goal", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show(two(), aMe({ role: "FCC" }), {
+      "POST /api/comments/": () => ({ status: 201, body: { id: "c1" } }),
+    });
+    await screen.findByText("Comments");
+    const goal = document.getElementById(`goal-${GOAL}`)!;
+
+    await user.type(within(goal).getByLabelText("Add a comment"),
+                    "This is the one that matters most to us.");
+    await user.click(within(goal).getByRole("button", { name: "Post comment" }));
+
+    await waitFor(() => expect(fetchMock.calls.find(
+      (c) => c.method === "POST" && c.url === "/api/comments/")?.body)
+      .toEqual({ goal: GOAL, body: "This is the one that matters most to us." }));
+  });
+
+  it("keeps readings and resolutions the practice's, open or not", async () => {
+    show(two(), aMe({ role: "FCC" }));
+    await screen.findByText("The work under this goal");
+
+    expect(screen.queryByLabelText(`Reading for ${TITLE}`)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record it" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Resolve this goal")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Draft the narrative/ })).not.toBeInTheDocument();
+  });
+
+  it("lets a client add a project under the goal", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show(two(), aMe({ role: "FCC" }), {
+      "POST /api/projects/": () => ({ status: 201, body: aWorkParent({ id: "pr9" }) }),
+    });
+
+    await user.type(await screen.findByLabelText(`New project under ${TITLE}`),
+                    "Our own follow-ups");
+    await user.click(screen.getByRole("button", { name: "Add project" }));
+
+    // Under this goal, and no company: the server sets a client's own.
+    await waitFor(() => expect(fetchMock.calls.find(
+      (c) => c.method === "POST" && c.url === "/api/projects/")?.body)
+      .toEqual({ title: "Our own follow-ups", goal: GOAL }));
+    // The tree is asked for again, so the new project shows.
+    await waitFor(() => expect(fetchMock.calls.filter(
+      (c) => c.url.includes("/tree/")).length).toBeGreaterThan(1));
+  });
+
+  it("shows the server's refusal when an add is refused", async () => {
+    const user = userEvent.setup();
+    show(two(), aMe({ role: "FCC" }), {
+      "POST /api/projects/": () => ({
+        status: 400, body: { goal: ["That goal is not available to you."] } }),
+    });
+    await user.type(await screen.findByLabelText(`New project under ${TITLE}`), "Nope");
+    await user.click(screen.getByRole("button", { name: "Add project" }));
+    expect(await screen.findByText(/That goal is not available to you/)).toBeInTheDocument();
+  });
+
+  it("is the same expansion on the practice's Value report, with its controls", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show(two(), aMe(), {
+      "POST /api/tasks/": () => ({ status: 201, body: aTask({ id: "t9" }) }),
+      "POST /api/projects/": () => ({ status: 201, body: aWorkParent({ id: "pr9" }) }),
+    }, "/report");
+    await screen.findByText("Decisions escalated per week");
+    expect(screen.queryByLabelText(`Reading for ${TITLE}`)).not.toBeInTheDocument();
+
+    await user.click(toggle());
+    expect(await screen.findByText("The work under this goal")).toBeInTheDocument();
+    expect(screen.getByLabelText(`Reading for ${TITLE}`)).toBeInTheDocument();
+    expect(screen.getByText("Resolve this goal")).toBeInTheDocument();
+
+    // The practice names the company; a client's is implied.
+    await user.type(screen.getByLabelText(`New task under ${TITLE}`), "Review the ladder");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(fetchMock.calls.find(
+      (c) => c.method === "POST" && c.url === "/api/tasks/")?.body)
+      .toEqual({ title: "Review the ladder", goal: GOAL, client_company: COMPANY }));
+
+    await user.type(screen.getByLabelText(`New project under ${TITLE}`), "Second branch");
+    await user.click(screen.getByRole("button", { name: "Add project" }));
+    await waitFor(() => expect(fetchMock.calls.find(
+      (c) => c.method === "POST" && c.url === "/api/projects/")?.body)
+      .toEqual({ title: "Second branch", goal: GOAL, client_company: COMPANY }));
+  });
+
+  it("opens the right company's report for the practice from a link to one goal", async () => {
+    const RIDGE = "55555555-5555-4555-8555-555555555555";
+    const fetchMock = show(two(), aMe(), {
+      [`GET /api/value-report/${GOAL}/`]: aBlock({ client_company: RIDGE }),
+      "GET /api/companies/": [
+        { id: COMPANY, name: "Acme Facilities", is_client_company: true },
+        { id: RIDGE, name: "Ridgeline Freight", is_client_company: true },
+      ],
+    });
+    await screen.findByText("The work under this goal");
+
+    const asked = fetchMock.calls.map((c) => c.url)
+      .filter((url) => url.startsWith("/api/value-report/?"));
+    // Ridgeline's, which the goal named, and never Acme's, the first in the list.
+    expect(asked).toEqual([`/api/value-report/?client_company=${RIDGE}`]);
+    expect(screen.getByLabelText("Client company")).toHaveValue(RIDGE);
   });
 });
