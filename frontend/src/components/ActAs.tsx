@@ -44,15 +44,17 @@ export function ActingBanner({ me }: { me: Me }) {
   if (!a) return null;
 
   return (
-    <div role="status" aria-label="Acting as" style={{ position: "sticky", top: "var(--topbar-h)", zIndex: 5 }}>
+    <div role="status" aria-label="Acting as" className="acting-bar">
       <Banner kind="warn">
-        <strong>{a.real_name} is acting as {a.as_name}</strong> ({roleLabel(a.as_role)}
-        {a.company_name && `, ${a.company_name}`}). Everything done here is recorded as done by
-        {" "}{a.real_name} on behalf of {a.as_name}, and <strong>no email is sent</strong>.{" "}
+        <span className="says">
+          <strong>{a.real_name} is acting as {a.as_name}</strong> ({roleLabel(a.as_role)}
+          {a.company_name && `, ${a.company_name}`}). Everything done here is recorded as done by
+          {" "}{a.real_name} on behalf of {a.as_name}, and <strong>no email is sent</strong>.
+          {error && <> {error}</>}
+        </span>
         <button className="primary" disabled={stop.isPending} onClick={() => stop.mutate()}>
           Stop acting as {a.as_name}
         </button>
-        {error && <div>{error}</div>}
       </Banner>
     </div>
   );

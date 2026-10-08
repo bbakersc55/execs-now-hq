@@ -71,7 +71,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
   const e = entity.data!;
 
   return (
-    <>
+    <div className="record">
       <p className="small"><Link to="/work">← Work</Link></p>
       <h2>{e.title}</h2>
       <p className="sub">
@@ -177,7 +177,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
           <button className="danger" onClick={() => remove.mutate()}>Delete this {kind}</button>
         </Card>
       )}
-    </>
+    </div>
   );
 }
 

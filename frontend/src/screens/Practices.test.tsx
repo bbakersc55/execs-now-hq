@@ -19,7 +19,7 @@ describe("the Practices area (P2)", () => {
   it("lists each practice by its totals", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/platform/practices": [EN] }));
     renderRoute(<Practices />);
-    const row = (await screen.findByText("Executives Now")).closest("tr")!;
+    const row = (await screen.findByText("Executives Now")).closest("article")!;
     expect(within(row).getByText("$0.23")).toBeInTheDocument();
     expect(within(row).getByText("3")).toBeInTheDocument();
     expect(within(row).getByText("No legal name yet · no domain yet")).toBeInTheDocument();
@@ -100,11 +100,11 @@ describe("P2 fixes (2026-10-03)", () => {
       "GET /api/platform/practices": [EN, fake],
     }));
     renderRoute(<Practices />);
-    const row = (await screen.findByText("Fake Practice, LLC")).closest("tr")!;
+    const row = (await screen.findByText("Fake Practice, LLC")).closest("article")!;
     await user.click(within(row).getByRole("button", { name: "Invite owner" }));
     const alert = await within(row).findByRole("alert");
     expect(alert).toHaveTextContent("Not sent: Google sign-in for this practice is not set up yet");
-    const other = screen.getByText("Executives Now").closest("tr")!;
+    const other = screen.getByText("Executives Now").closest("article")!;
     expect(within(other).queryByRole("alert")).toBeNull();
   });
 

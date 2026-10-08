@@ -114,7 +114,7 @@ export function Work({ me }: { me: Me }) {
             {me.role === "FCC" && <> <Link to="/report">Propose a goal</Link></>}
           </p>
         )}
-        <Grouped rows={mine(goals.data ?? [])} headings={isTenant}
+        <Grouped rows={mine(goals.data ?? [])} headings={isTenant} cards
           empty={company ? "No goals for this client yet." : "No goals yet."}
           render={(g) => (
             <GoalBranch key={g.id} goal={g}
@@ -165,8 +165,10 @@ export function Work({ me }: { me: Me }) {
  * showed and the heading would only name what they already know.
  */
 function Grouped<T extends { client_company: string | null; client_company_name: string }>(
-  { rows, headings, empty, render }: {
+  { rows, headings, empty, render, cards = false }: {
     rows: T[]; headings: boolean; empty: string; render: (row: T) => ReactNode;
+    /** Rows that are cards go side by side when the window has room. */
+    cards?: boolean;
   },
 ) {
   const groups: CompanyGroup<T>[] = groupByCompany(rows);
@@ -178,7 +180,8 @@ function Grouped<T extends { client_company: string | null; client_company_name:
           {headings && (
             <h4 style={{ margin: "1rem 0 .3rem" }}>{group.label}</h4>
           )}
-          <ul className="work-tree">{group.rows.map(render)}</ul>
+          <ul className={cards ? "work-tree card-grid" : "work-tree"}>
+            {group.rows.map(render)}</ul>
         </div>
       ))}
     </>

@@ -47,7 +47,7 @@ export function Profile() {
   const changed = name.trim() !== p.full_name && name.trim() !== "";
 
   return (
-    <>
+    <div className="record">
       <PageHead title="Profile" sub="Your name as it appears to the people you work with." />
       {!p.editable && (
         <Banner kind="warn">
@@ -85,6 +85,6 @@ export function Profile() {
           {p.client_company_name && <><dt>Company</dt><dd>{p.client_company_name}</dd></>}
         </dl>
       </Card>
-    </>
+    </div>
   );
 }

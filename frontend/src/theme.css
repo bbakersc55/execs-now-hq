@@ -139,6 +139,9 @@ h4 { font-size: var(--t-14); font-weight: 600; color: var(--text); }
 }
 .sidebar .brand h1 { font-size: var(--t-16); font-weight: 650; color: #fff; }
 .sidebar .brand img { max-height: 28px; max-width: 150px; }
+/* The practice's name as text, where its logo would be: when it has none, and
+   when the file cannot be loaded. Never a broken-image icon and its alt. */
+.sidebar .brand h1.wordmark { letter-spacing: -.01em; line-height: 1.2; overflow-wrap: anywhere; }
 .sidebar .brand { flex-wrap: wrap; }
 .sidebar .brand .practice { flex-basis: 100%; font-size: var(--t-12); color: #9ab4cc;
                             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -193,7 +196,41 @@ h4 { font-size: var(--t-14); font-weight: 600; color: var(--text); }
 
 /* The column beside the sidebar: the top bar, then the page. */
 .content { min-width: 0; }
-main { padding: var(--s8) var(--gutter) var(--s12); max-width: 1320px; }
+/* The page uses the window (2026-10-08): 1600px, where it was 1320. What goes
+   wide is what has columns to show — boards, lists, tables, grids of cards.
+   What is read or filled in does not: see "readable width" below. */
+main { padding: var(--s8) var(--gutter) var(--s12); max-width: 1600px; }
+
+/* Readable width. A form, a single record's panel and anything typed into
+   stop at about 720px however wide the window is: a 1500px text box is not
+   more room, it is a longer way for the eye to travel. */
+.record, main .card:has(> form), .settings-body > .card:not(:has(table)) { max-width: 720px; }
+main :is(textarea, select, input:not([type="checkbox"], [type="radio"], [type="range"])) {
+  max-width: 720px;
+}
+/* The screens that are a writing surface or a live workspace set their own. */
+:is(.note-page, .note-grid, .session-layout, .compose, .queue, .sheet)
+  :is(textarea, select, input) { max-width: none; }
+/* A record with a main column and a side column: both stay readable, and the
+   pair sits at the left instead of stretching apart. */
+.record-cols { display: grid; gap: var(--s4) var(--s6); align-items: start;
+               grid-template-columns: minmax(0, 720px) minmax(0, 560px); }
+@media (max-width: 1100px) { .record-cols { grid-template-columns: 1fr; } }
+
+/* A list of cards goes to two or three columns when there is room, and the
+   cards get larger type and padding with it rather than wider boxes. The one
+   that is open takes the full row: it has a tree and a thread inside it. */
+.card-grid { display: grid; gap: var(--s4); align-items: start; margin-bottom: var(--s4);
+             grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); }
+.card-grid > * { min-width: 0; }
+.card-grid > .open { grid-column: 1 / -1; }
+.card-grid .card { margin-bottom: 0; height: 100%; }
+@media (min-width: 1400px) {
+  .card-grid .card { padding: var(--s6); }
+  .card-grid h3 { font-size: 18px; }
+  .card-grid .headline, .card-grid .measure-line { font-size: var(--t-20); }
+  .card-grid .small, .card-grid .tiny { font-size: var(--t-14); }
+}
 
 /* Settings: the sections this person has, and the chosen one beside them. */
 .settings { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--s8);
@@ -333,15 +370,36 @@ button.primary, .btn.primary {
 button.primary:hover:not(:disabled), .btn.primary:hover {
   background: var(--orange-600); border-color: var(--orange-600);
 }
+/* Buttons look like buttons at rest (2026-10-08), not only under the mouse:
+   an action that reads as a link is an action people do not see. Three ranks.
+   Primary, above. Secondary: the plain bordered button, which is also what a
+   small action on a row or a panel is. Tertiary (`ghost`): a tinted fill
+   with no border, for the quieter of two. A link is for going to a record. */
 button.ghost, .btn.ghost {
-  border-color: transparent; background: transparent; color: var(--navy);
+  border-color: transparent; color: var(--navy);
+  background: color-mix(in srgb, var(--navy) 8%, var(--surface));
 }
-button.ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--navy) 6%, transparent); border-color: transparent; }
+button.ghost:hover:not(:disabled), .btn.ghost:hover {
+  background: color-mix(in srgb, var(--navy) 15%, var(--surface)); border-color: transparent;
+}
+button.ghost.small, .btn.ghost.small {
+  border-color: var(--line-strong); background: var(--surface); color: var(--text);
+}
+button.ghost.small:hover:not(:disabled), .btn.ghost.small:hover {
+  background: var(--hover); border-color: var(--line-strong);
+}
 button.danger { color: var(--bad); border-color: var(--bad-line); }
 button.danger:hover:not(:disabled) { background: var(--bad-bg); }
+/* An action inside a sentence ("Clear them", "Select all"). It was drawn as
+   an underlined link; it is a small tertiary button, sized to sit in the line. */
 button.link {
-  border: none; background: none; padding: 0; min-height: 0; color: var(--navy);
-  font-size: inherit; text-decoration: underline; text-decoration-color: var(--navy-300);
+  border: 1px solid transparent; min-height: 24px; padding: 0 var(--s2);
+  color: var(--navy); font-size: inherit; text-decoration: none;
+  background: color-mix(in srgb, var(--navy) 8%, var(--surface));
+  border-radius: var(--radius-sm); vertical-align: baseline;
+}
+button.link:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--navy) 15%, var(--surface));
 }
 button.small, button.ghost.small, .btn.small {
   min-height: 28px; font-size: var(--t-13); padding: 0 var(--s2);
@@ -416,6 +474,15 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
   padding: var(--s3); border-radius: var(--radius-sm); margin-bottom: var(--s4);
   font-size: var(--t-14); border: 1px solid; display: flex; gap: var(--s2);
 }
+/* Acting as someone: one line across the whole content area, under the top
+   bar, and it wraps as a sentence and a button when it has to. */
+.acting-bar { position: sticky; top: var(--topbar-h); z-index: 25; }
+.acting-bar .banner {
+  margin: 0; border-radius: 0; border-width: 0 0 1px; align-items: center;
+  flex-wrap: wrap; gap: var(--s2) var(--s4); padding: var(--s2) var(--gutter);
+}
+.acting-bar .banner .says { flex: 1 1 32ch; min-width: 0; }
+.acting-bar .banner button { flex: 0 0 auto; white-space: nowrap; }
 .banner.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
 .banner.bad { background: var(--bad-bg); border-color: var(--bad-line); color: var(--bad); }
 .banner.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
@@ -450,11 +517,16 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
 .board { display: flex; gap: var(--s4); overflow: auto; padding-bottom: var(--s2);
          align-items: stretch;
          max-height: max(420px, calc(100vh - 250px - var(--topbar-h))); }
+/* The board takes the whole area beside the sidebar, and its columns share
+   it: each grows to fill and none goes under 232px, so all six fit a wide
+   window and the board scrolls sideways only when they no longer can. */
+main:has(.board) { max-width: none; min-width: 0; }
+main:has(.board) .sub { max-width: 80ch; }
 .board .col {
-  flex: 0 0 288px; background: transparent; border: none; border-radius: var(--radius);
-  padding: 0;
+  flex: 1 1 232px; min-width: 232px; background: transparent; border: none;
+  border-radius: var(--radius); padding: 0;
 }
-.board .col.collapsed { flex-basis: 44px; }
+.board .col.collapsed { flex: 0 0 44px; min-width: 44px; }
 /* Opaque, or the cards would show through the heading as they pass under it. */
 .board .col-head { position: sticky; top: 0; z-index: 1; background: var(--bg); }
 .col-head {
@@ -643,6 +715,9 @@ th.sortable:hover { color: var(--text); }
    rewrite and the browser's own marker came back (findings, round 1). */
 ul.work-tree, ul.work-tree ul { list-style: none; margin: 0; padding: 0; }
 ul.work-tree > li { margin: 0; }
+/* Goals side by side when there is room; one that is open inside keeps its
+   own column, since its tree is narrow. */
+ul.work-tree.card-grid .goal-card { margin-bottom: 0; }
 
 .goal-card { margin-bottom: var(--s3); }
 .goal-card .head {
@@ -866,13 +941,9 @@ th .sorter:hover .arrow { opacity: .4; }
 th .arrow.on { opacity: 1; color: var(--orange); }
 
 .named { display: inline-flex; align-items: center; gap: var(--s2); }
-/* Row actions appear on hover, and on keyboard focus — a control that only
-   exists for a mouse is a control half the people cannot reach. */
-.records .rowactions { text-align: right; }
-.records .rowactions button { opacity: 0; transition: opacity .12s ease; }
-.records tr:hover .rowactions button,
-.records .rowactions button:focus-visible { opacity: 1; }
-@media (hover: none) { .records .rowactions button { opacity: 1; } }
+/* Row actions are there at rest (2026-10-08). They used to appear on hover,
+   which hid them from anyone who had not already found them. */
+.records .rowactions { text-align: right; white-space: nowrap; }
 
 .facts { display: grid; grid-template-columns: 8rem 1fr; gap: var(--s2) var(--s3);
          margin: 0 0 var(--s4); font-size: var(--t-14); }

@@ -95,16 +95,12 @@ export function Practices() {
       <Card title="Practices">
         {list.isError ? <Banner kind="bad">{(list.error as Error).message}</Banner>
           : rows.length === 0 ? <Empty>No practices yet.</Empty> : (
-          <table>
-            <thead><tr>
-              <th>Practice</th><th>Status</th><th>Created</th><th>Team</th><th>Clients</th>
-              <th>AI spend this month</th><th>Last activity</th><th></th>
-            </tr></thead>
-            <tbody>
+          <div className="card-grid">
               {rows.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <strong>{p.display_name}</strong>
+                <article key={p.id} className="card practice" aria-label={p.display_name}>
+                  <div className="spread" style={{ alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0 }}>
+                    <h3 style={{ margin: 0 }}>{p.display_name}</h3>
                     {editing === p.id ? (
                       <div className="row" style={{ gap: "0.4rem", marginTop: "0.3rem" }}>
                         <input aria-label={`Legal name of ${p.display_name}`} value={draft.legal_name}
@@ -122,15 +118,19 @@ export function Practices() {
                         {p.legal_name || "No legal name yet"} · {p.domain || "no domain yet"}
                       </div>
                     )}
-                  </td>
-                  <td><Pill kind={STATUS_KIND[p.status]}>{p.status === "invited"
-                    ? "Owner not signed in yet" : p.status === "active" ? "Active" : "Archived"}</Pill></td>
-                  <td>{when(p.created_at)}</td>
-                  <td>{p.staff_count}</td>
-                  <td>{p.client_count}</td>
-                  <td>${p.ai_spend_this_month_usd}</td>
-                  <td>{p.last_activity_at ? when(p.last_activity_at) : "Never"}</td>
-                  <td>
+                    </div>
+                    <Pill kind={STATUS_KIND[p.status]}>{p.status === "invited"
+                      ? "Owner not signed in yet" : p.status === "active" ? "Active" : "Archived"}</Pill>
+                  </div>
+                  <dl className="facts" style={{ margin: "var(--s3) 0" }}>
+                    <dt>Created</dt><dd>{when(p.created_at)}</dd>
+                    <dt>Team</dt><dd>{p.staff_count}</dd>
+                    <dt>Clients</dt><dd>{p.client_count}</dd>
+                    <dt>AI spend this month</dt><dd>${p.ai_spend_this_month_usd}</dd>
+                    <dt>Last activity</dt>
+                    <dd>{p.last_activity_at ? when(p.last_activity_at) : "Never"}</dd>
+                  </dl>
+                  <div className="row tight">
                     {editing !== p.id && (
                       <button className="ghost" onClick={() => {
                         setEditing(p.id);
@@ -160,11 +160,10 @@ export function Practices() {
                           + "is kept.")) act.mutate({ id: p.id, action: "archive" });
                       }}>Archive</button>
                     )}
-                  </td>
-                </tr>
+                  </div>
+                </article>
               ))}
-            </tbody>
-          </table>
+          </div>
         )}
       </Card>
 

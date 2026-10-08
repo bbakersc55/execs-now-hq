@@ -31,6 +31,21 @@ function at(element: ReactElement) {
 describe("the acting-as banner (FR-3.42)", () => {
   beforeEach(() => vi.unstubAllGlobals());
 
+  it("is one bar: the sentence, then the button, as siblings that can wrap", () => {
+    vi.stubGlobal("fetch", mockApi({}));
+    renderRoute(<ActingBanner me={aMe({ acting: ACTING })} />);
+    const bar = screen.getByRole("status", { name: "Acting as" });
+    expect(bar).toHaveClass("acting-bar");
+    const banner = bar.firstElementChild!;
+    // Two children and no more: text that takes the room, a button that keeps
+    // its width. That is what lets it sit on one line and break in one place.
+    expect([...banner.children].map((el) => el.tagName)).toEqual(["SPAN", "BUTTON"]);
+    expect(banner.children[0]).toHaveClass("says");
+    expect(banner.children[0].textContent).toMatch(
+      /^Bryan Baker is acting as Priya Shah .* no email is sent\.$/);
+    expect(banner.children[1]).toHaveTextContent("Stop acting as Priya Shah");
+  });
+
   it("names both people, says no email is sent, and stops explicitly", async () => {
     const user = userEvent.setup();
     const fetchMock = mockApi({

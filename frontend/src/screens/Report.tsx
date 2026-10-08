@@ -185,6 +185,7 @@ export function Report({ me }: { me: Me }) {
           onSent={() => { setDraft(null); refresh(); }} onReset={() => setDraft(null)}
           onDecided={refresh} setNote={setNote} />
       )}
+      <div className="card-grid">
       {current.map((block, index) => (
         <GoalCard key={block.id} block={block} me={me} onChanged={refresh}
                   setNote={setNote} open={block.id === id}
@@ -195,14 +196,17 @@ export function Report({ me }: { me: Me }) {
                   first={index === 0} last={index === current.length - 1}
                   moving={setOrder.isPending} />
       ))}
+      </div>
       {data.historical.length > 0 && (
         <>
           <h3 style={{ marginTop: "1.5rem" }}>Behind us</h3>
+          <div className="card-grid">
           {data.historical.map((block) => (
             <GoalCard key={block.id} block={block} me={me} onChanged={refresh}
                       setNote={setNote} open={block.id === id}
                       onToggle={() => toggle(block.id)} />
           ))}
+          </div>
         </>
       )}
     </>
@@ -401,7 +405,7 @@ function ExportCard({ company, setNote }: { company: string; setNote: (s: string
         A snapshot as it reads today, kept on the goal and the company. Exporting is
         not sending: it reaches a client only as an attachment you approve.
       </p>
-      <div className="row">
+      <div className="row tight">
         <a className="btn ghost" target="_blank" rel="noreferrer"
            href={`/api/value-report/pdf/?client_company=${company}`}>Preview it</a>
         <button className="primary" disabled={make.isPending || !company}
@@ -542,7 +546,7 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle, position, onM
   });
 
   return (
-    <div ref={card} id={`goal-${block.id}`}>
+    <div ref={card} id={`goal-${block.id}`} className={open ? "open" : undefined}>
     <Card title={
             <button type="button" className="goal-toggle" aria-expanded={open}
                     aria-controls={`goal-${block.id}-body`} onClick={onToggle}>

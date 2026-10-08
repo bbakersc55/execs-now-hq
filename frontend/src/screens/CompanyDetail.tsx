@@ -95,7 +95,7 @@ export function CompanyDetail({ me }: { me: Me }) {
 
       <ClientStatus me={me} company={c} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1.15rem" }}>
+      <div className="record-cols">
         <Card title={`People (${theirs.length})`}>
           {theirs.length === 0 ? <Empty>No contacts at this company.</Empty> : (
             <table>

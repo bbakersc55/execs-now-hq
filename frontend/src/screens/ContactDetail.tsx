@@ -107,7 +107,7 @@ export function ContactDetail({ me }: { me: Me }) {
       )}
       {note && <Banner kind="ok">{note}</Banner>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1.15rem" }}>
+      <div className="record-cols">
         <div>
           <Card title="Pipelines">
             <p className="muted small">

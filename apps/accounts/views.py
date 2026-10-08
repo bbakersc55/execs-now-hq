@@ -72,20 +72,38 @@ def tenant_from_link(via: str):
     return None
 
 
-def tenant_branding(tenant, *, via: str = ""):
-    """Name, colours and logo for a page — the same values the email layout uses."""
+def _logo_is_there(tenant) -> bool:
+    """Whether the logo's file can actually be served. The row can exist and
+    the file not: a laptop's copy of production has the row and no bucket."""
+    from apps.tenancy import storage
+
+    try:
+        return storage.exists(tenant.email_logo)
+    except storage.StorageError:
+        return False
+
+
+def tenant_branding(tenant, *, via: str = "", check_logo: bool = False):
+    """Name, colours and logo for a page — the same values the email layout uses.
+
+    `check_logo` is for a page Django renders itself (sign-in link, refusal):
+    with no script to catch a failed image, it asks storage first and shows the
+    practice's name as text when the file is not there. The app's own screens
+    do that in the browser instead, so every page load is not a storage call.
+    """
     from apps.crm.services import email_layout
     from apps.tenancy import contrast
 
     brand = email_layout.branding(tenant) if tenant is not None else None
+    has_logo = tenant is not None and bool(tenant.email_logo_id) and (
+        not check_logo or _logo_is_there(tenant))
     return {
         "display_name": brand.display_name if brand else "",
         "header_color": brand.header_color if brand else email_layout.DEFAULT_HEADER_COLOR,
         "accent_color": brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR,
         "on_accent_color": contrast.text_on(
             brand.accent_color if brand else email_layout.DEFAULT_ACCENT_COLOR),
-        "logo_url": ("/api/branding/logo" + _via_query(via)
-                     if tenant is not None and tenant.email_logo_id else ""),
+        "logo_url": "/api/branding/logo" + _via_query(via) if has_logo else "",
         # Always an image when the practice is known: its own mark, or its
         # initials on gray (P1, D2). Never the product's mark.
         "mark_url": "/api/branding/mark" + _via_query(via) if tenant is not None else "",
@@ -337,7 +355,7 @@ def login_refused(request):
     Anyone can reach this, a client included, so it wears the practice's name.
     """
     return render(request, "accounts/login_refused.html",
-                  tenant_branding(_branding_tenant(request)), status=403)
+                  tenant_branding(_branding_tenant(request), check_logo=True), status=403)
 
 
 @csrf_protect
@@ -501,7 +519,7 @@ def magic_link_landing(request, token: str):
     # revoke and a new grant could fix.
     spent = record or MagicLinkToken.find_sign_in(token)
 
-    brand = tenant_branding(_tenant_of(spent) or _branding_tenant(request))
+    brand = tenant_branding(_tenant_of(spent) or _branding_tenant(request), check_logo=True)
     page = {**brand, "token": token, "valid": record is not None,
             "invitation": spent is not None and spent.purpose == MagicLinkPurpose.INVITE,
             "sign_in_url": sign_in_page_url(), "sign_in_button": SIGN_IN_BUTTON}

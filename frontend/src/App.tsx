@@ -1,4 +1,4 @@
-import { Fragment, useEffect } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   Activity as ActivityIcon, BarChart3, Building2, CalendarCheck, CheckSquare,
   ClipboardList,
@@ -67,6 +67,22 @@ import { Tasks } from "./screens/Tasks";
 import { Work } from "./screens/Work";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
 
+
+/**
+ * The sidebar's brand: the practice's logo for a client, or its name as text.
+ *
+ * **Text whenever the image is not there**, not only when the practice has no
+ * logo: the row can exist and the file not (a laptop's copy of production has
+ * the row and no bucket), and an `<img>` that fails draws a broken-image icon
+ * beside its alt. A failed load falls back to the same styled name.
+ */
+export function BrandMark({ logo, name }: { logo: string; name: string }) {
+  const [failed, setFailed] = useState("");
+  if (logo && failed !== logo) {
+    return <img src={logo} alt={name} onError={() => setFailed(logo)} />;
+  }
+  return <h1 className="wordmark">{name}</h1>;
+}
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -237,9 +253,7 @@ export function App() {
     <div className={collapsed ? "layout collapsed" : "layout"}>
       <aside className="sidebar">
         <div className="brand">
-          {brand?.logo_url && !staff
-            ? <img src={brand.logo_url} alt={wordmark} />
-            : <h1>{wordmark}</h1>}
+          <BrandMark logo={staff ? "" : brand?.logo_url ?? ""} name={wordmark} />
           {/* P1: staff see which practice they are in, under the product. */}
           {staff && brand?.display_name && (
             <div className="practice" aria-label="Practice">{brand.display_name}</div>)}
@@ -269,9 +283,10 @@ export function App() {
         // fighting the width: the choice it writes is still the manual one.
         onToggleSidebar={() => setCollapsed(!chosen)}
         feedback={!platform && !!me.role && TENANT.includes(me.role)} />
+      {/* FR-3.42 — never dismissible; stopping is the only way out. Outside
+          the page's own width, so it runs the whole way across. */}
+      <ActingBanner me={me} />
       <main>
-        {/* FR-3.42 — never dismissible; stopping is the only way out. */}
-        <ActingBanner me={me} />
         <DemoBanner me={me} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
