@@ -804,6 +804,45 @@ schema change. Differences from the text above:
   template's two; the three blank scope items are reworded in place, so a copy
   starts with nothing archived. Section titles are the builder's own.
 
+**Phase 1 accepted, and three wordings changed by the owner (2026-10-08).**
+
+- **Version 2 of the example**, beside version 1, which is not edited. The
+  third fallback question is "Cash pinch points: which parts of the business
+  make money, and which are distractions?", and the Data rating is "Data — We
+  run the week from a short scorecard of numbers." (the "Data — " lead-in is
+  kept, as on the other five). New templates are made from version 2; each
+  version has its own pin.
+- **A session with no named Visionary says "the owner"**, with the note "(no
+  owner identified yet)", wherever a merge field falls back. This is in
+  `services.MISSING_NAME`, so it holds for classic and v2 sessions as well as
+  v3. No golden file and none of the four real sessions held the old words.
+
+**Phase 2 (2026-10-08).** The two starts on "Your first template" and on New
+template; the builder's note, tags and advisory line. No schema change.
+
+- **Where a template came from is read from its audit event on each read**
+  (`examples.represent`), within the template's own practice, and judged
+  against the version recorded there. A template made from an example carries
+  `example` and a `from_example` mark on each question; any other template's
+  payload is unchanged.
+- **A tag is on a question whose wording and label are both the example's.**
+  Rewording either takes it off, and putting the words back brings it back.
+  Of the settings, only Wording for Claude is the example's own, so it is the
+  only one tagged; the two paths' PDF lines are the builder's defaults.
+- **A duplicate of a copy carries no tags and no note**: it is its own
+  template, and its audit event records a duplication.
+- **The note is dismissed per browser** (local storage), since nothing about
+  it is stored with the template.
+- **New template on the list** asks for a name before either start, because
+  "Strategy session" may already be taken there. "Start from a copy" lists the
+  practice's own builder templates and uses Duplicate.
+- **Added, not in the text above:** "Start a session from this template" in
+  the builder's header when the template is ready (the second click), and a
+  "not asked aloud" mark on the fourth mirror question in the builder.
+- **Not changed:** anyone but the practice owner still meets "The template is
+  the practice owner's to edit" on the templates screen, rather than the
+  sentence and "Your practice owner builds the first template".
+
 ### 9.9 Decisions for the owner
 
 | # | Question | Recommendation | Owner, 2026-10-08 |

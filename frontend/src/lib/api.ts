@@ -753,6 +753,8 @@ export interface StrategyQuestion {
   is_financial: boolean;
   /** Asked only if the call has time — a muted tag in the live view. */
   ask_if_time?: boolean;
+  /** Builder only: still worded exactly as the example it came from. */
+  from_example?: boolean;
   position: number;
   /** A builder template's question (P3): its short name, and whether its
    *  answer shows in the PDF header. */
@@ -806,6 +808,10 @@ export interface BuilderTemplate {
   archived_at: string | null; settings: BuilderSettings;
   ready: boolean; missing: string[]; merge_fields: string[];
   sections: BuilderSection[];
+  /** Only on a template made from an example (P3 §9): which one, and which
+   *  settings are still exactly its own. Each question then carries
+   *  `from_example`. Computed by the server on every read, never stored. */
+  example?: { start_from: string; version: number; unchanged_settings: string[] };
 }
 
 /** The live ones, default first — what the start form and Apply offer. */

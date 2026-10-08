@@ -38,8 +38,11 @@ EXAMPLE = {"name": "Strategy session", "start_from": "operations_example"}
 FALLBACK = [
     "Where do decisions stall because they need {Visionary}?",
     "Turnover, time-to-fill, who recruits and how much of their week it takes",
-    "Cash pinch points. Projects and supplies: profit centers or distractions?",
+    "Cash pinch points: which parts of the business make money, and which are "
+    "distractions?",
 ]
+DATA = "Data — We run the week from a short scorecard of numbers."
+CURRENT = examples.OPERATIONS_V2
 
 
 def content_of(payload) -> dict:
@@ -51,7 +54,8 @@ def content_of(payload) -> dict:
             "kind": section["kind"], "title": section["title"],
             "time_budget_minutes": section["time_budget_minutes"],
             "included": section["included"],
-            "questions": [{k: v for k, v in question.items() if k != "key"}
+            "questions": [{k: v for k, v in question.items()
+                           if k not in ("key", "from_example")}
                           for question in section["questions"]],
         } for section in payload["sections"]],
     }
@@ -66,37 +70,53 @@ def make(api, who, **more):
 def test_the_example_is_the_seeds_neutral_wording_and_leaves_out_what_stays_yours():
     by_key = {question["key"]: question for _c, _t, _b, questions in seed.SECTIONS
               for question in questions}
-    entries = [entry for items in examples.OPERATIONS_V1["questions"].values()
-               for entry in items]
-    for entry in entries:
-        source = by_key[entry["seed_key"]]
-        assert entry["prompt"] == seed.neutral_prompt(source["prompt"], source["key"])
-        assert entry.get("is_financial", False) == source["is_financial"]
-        assert entry.get("observation", False) == source["is_fractional_observation"]
-    used = {entry["seed_key"] for entry in entries}
-    assert not used & set(seed.SERVICE_BUSINESS_KEYS)
-    assert "{Integrator}" not in json.dumps(examples.OPERATIONS_V1)
-    counts = {kind: len(items) for kind, items in examples.OPERATIONS_V1["questions"].items()}
-    assert counts == {"precall": 7, "ratings": 6, "diagnostic": 3, "mirror": 4,
-                      "values": 5, "paths": 2, "scope": 9}
-    assert [e["prompt"] for e in examples.OPERATIONS_V1["questions"]["diagnostic"]] == FALLBACK
+    for version, example in examples.EXAMPLES[examples.OPERATIONS].items():
+        own = examples.OPERATIONS_V2_PROMPTS if version >= 2 else {}
+        entries = [entry for items in example["questions"].values() for entry in items]
+        for entry in entries:
+            source = by_key[entry["seed_key"]]
+            assert entry["prompt"] == own.get(
+                source["key"], seed.neutral_prompt(source["prompt"], source["key"]))
+            assert entry.get("is_financial", False) == source["is_financial"]
+            assert entry.get("observation", False) == source["is_fractional_observation"]
+        used = {entry["seed_key"] for entry in entries}
+        assert not used & set(seed.SERVICE_BUSINESS_KEYS)
+        assert "{Integrator}" not in json.dumps(example)
+        counts = {kind: len(items) for kind, items in example["questions"].items()}
+        assert counts == {"precall": 7, "ratings": 6, "diagnostic": 3, "mirror": 4,
+                          "values": 5, "paths": 2, "scope": 9}
+    assert [e["prompt"] for e in CURRENT["questions"]["diagnostic"]] == FALLBACK
+    assert CURRENT["questions"]["ratings"][2]["prompt"] == DATA
+    assert examples.latest(examples.OPERATIONS) == 2
+
+
+def test_version_one_is_not_edited_by_version_two():
+    one = json.dumps(examples.OPERATIONS_V1)
+    assert "(utilization, pipeline, cash)" in one and "Projects and supplies" in one
+    two = json.dumps(examples.OPERATIONS_V2, ensure_ascii=False)
+    assert "utilization" not in two and "Projects and supplies" not in two
+    changed = [(a["seed_key"]) for kind in examples.OPERATIONS_V1["questions"]
+               for a, b in zip(examples.OPERATIONS_V1["questions"][kind],
+                               examples.OPERATIONS_V2["questions"][kind]) if a != b]
+    assert changed == ["s2_data", "s4_cash_pinch"]
 
 
 def test_the_builder_would_refuse_none_of_the_example():
     """Checked line by line here, so a refusal names the line; creating from
     the example (below) is the same rules run for real."""
-    for kind, items in examples.OPERATIONS_V1["questions"].items():
-        rule = builder.RULES[kind]
-        assert len(items) <= rule["most"], kind
-        for entry in items:
-            assert not builder.unknown_merge_fields(entry["prompt"]), entry
-            assert not rewording.refusal("", rule["schema"], entry["prompt"]), entry
-            assert len(entry.get("label", "")) <= 60
-            if rule.get("needs_label") or entry.get("pdf_chip"):
-                assert entry.get("label"), entry
-    chips = [e for e in examples.OPERATIONS_V1["questions"]["precall"] if e.get("pdf_chip")]
-    assert len(chips) == builder.CHIPS_MOST
-    builder.clean_settings(examples.OPERATIONS_V1["settings"])
+    for example in examples.EXAMPLES[examples.OPERATIONS].values():
+        for kind, items in example["questions"].items():
+            rule = builder.RULES[kind]
+            assert len(items) <= rule["most"], kind
+            for entry in items:
+                assert not builder.unknown_merge_fields(entry["prompt"]), entry
+                assert not rewording.refusal("", rule["schema"], entry["prompt"]), entry
+                assert len(entry.get("label", "")) <= 60
+                if rule.get("needs_label") or entry.get("pdf_chip"):
+                    assert entry.get("label"), entry
+        chips = [e for e in example["questions"]["precall"] if e.get("pdf_chip")]
+        assert len(chips) == builder.CHIPS_MOST
+        builder.clean_settings(example["settings"])
 
 
 @pytest.mark.django_db
@@ -117,7 +137,7 @@ def test_the_builder_accepts_the_visionary_merge_field_in_a_v3_template(ff, api,
 
 
 @pytest.mark.django_db
-def test_the_visionary_field_in_a_session_is_the_prospect_by_name(seeded_tenant,
+def test_the_visionary_field_is_the_prospect_by_name_or_the_owner(seeded_tenant,
                                                                          in_tenant_a, ff):
     template, _version = examples.create(seeded_tenant, name="Strategy session",
                                          start_from=examples.OPERATIONS)
@@ -129,8 +149,13 @@ def test_the_visionary_field_in_a_session_is_the_prospect_by_name(seeded_tenant,
         "Where do decisions stall because they need Dana Reyes?"
     session.visionary_contact = None
     session.save()
-    assert services.render_prompt(FALLBACK[0], services.merge_context(session)).startswith(
-        "Where do decisions stall because they need the Visionary?")
+    assert services.render_prompt(FALLBACK[0], services.merge_context(session)) == (
+        "Where do decisions stall because they need the owner? "
+        "(no owner identified yet)")
+    # Everywhere a merge field falls back, a possessive included.
+    assert services.render_prompt("{Visionary}'s role", {}).startswith("the owner's role")
+    assert "Visionary" not in json.dumps([services.MISSING_NAME["Visionary"],
+                                          services.MISSING_NOTE["Visionary"]])
 
 
 # ============================================================ start_from
@@ -169,21 +194,33 @@ def test_start_from_the_example_makes_the_practices_own_ready_template(ff, api,
         assert event.actor_id == ff.user.pk
         assert event.payload == {"name": "Strategy session",
                                  "start_from": "operations_example",
-                                 "example_version": 1}
+                                 "example_version": 2}
 
 
 @pytest.mark.django_db
-def test_the_example_is_pinned(ff, api, seeded_tenant):
-    produced = json.dumps(content_of(make(api, ff).json()), indent=2, sort_keys=True,
-                          ensure_ascii=False) + "\n"
-    path = PIN / "operations_example_v1.json"
-    if UPDATE:
+@pytest.mark.parametrize("version", sorted(examples.EXAMPLES[examples.OPERATIONS]))
+def test_each_version_of_the_example_is_pinned(seeded_tenant, in_tenant_a, version):
+    template, made = examples.create(seeded_tenant, name="Strategy session",
+                                     start_from=examples.OPERATIONS, version=version)
+    assert made == version
+    produced = json.dumps(content_of(builder.represent(template)), indent=2,
+                          sort_keys=True, ensure_ascii=False) + "\n"
+    path = PIN / f"operations_example_v{version}.json"
+    if UPDATE and not (version == 1 and path.exists()):
         PIN.mkdir(parents=True, exist_ok=True)
         path.write_text(produced)
     assert path.exists(), "the pin is missing; it is written with UPDATE_STRATEGY_EXAMPLE_PIN=1"
     assert produced == path.read_text(), (
-        "the Operations example changed. A change to it is a new version and a "
-        "decision for the owner, not an edit to version 1.")
+        f"version {version} of the Operations example changed. A change to it is a "
+        "new version and a decision for the owner, not an edit to this one.")
+
+
+@pytest.mark.django_db
+def test_the_api_makes_the_latest_version(ff, api, seeded_tenant):
+    body = make(api, ff).json()
+    assert content_of(body) == json.loads(
+        (PIN / "operations_example_v2.json").read_text())
+    assert sections_of(body)["ratings"]["questions"][2]["prompt"] == DATA
 
 
 @pytest.mark.django_db
@@ -381,3 +418,87 @@ def test_only_a_mirror_question_can_be_an_observation_and_the_api_does_not_offer
     assert added.status_code == 201
     asked = sections_of(added.json())["mirror"]["questions"]
     assert [q["is_fractional_observation"] for q in asked] == [False]
+
+
+# ============================================== "from the example" (phase 2)
+
+def tagged(payload):
+    return {kind: [q.get("from_example") for q in section["questions"]]
+            for kind, section in sections_of(payload).items()}
+
+
+@pytest.mark.django_db
+def test_every_line_of_a_fresh_copy_is_from_the_example_and_a_reworded_one_is_not(
+        ff, api, seeded_tenant):
+    made = make(api, ff).json()
+    assert made["example"] == {"start_from": "operations_example", "version": 2,
+                               "unchanged_settings": ["advisor_role"]}
+    assert all(all(marks) for marks in tagged(made).values())
+    by = sections_of(made)
+    root = f"{ROOT}{made['id']}/"
+    # Reword one, relabel another, add one of their own.
+    post(api, ff, root + "question/", {"key": by["diagnostic"]["questions"][0]["key"],
+                                       "prompt": "Where do decisions wait on the owner?"})
+    post(api, ff, root + "question/", {"key": by["ratings"]["questions"][1]["key"],
+                                       "label": "Team"})
+    post(api, ff, root + "questions/", {"section": "mirror", "prompt": "Ours entirely"})
+    after = post(api, ff, root + "settings/",
+                 {"settings": {"advisor_role": "fractional COO"}}).json()
+    marks = tagged(after)
+    assert marks["diagnostic"] == [False, True, True]
+    assert marks["ratings"] == [True, False, True, True, True, True]
+    assert marks["mirror"] == [True, True, True, True, False]
+    assert after["example"]["unchanged_settings"] == []
+    # Put the words back and the mark is back: it is compared, not remembered.
+    back = post(api, ff, root + "question/",
+                {"key": by["diagnostic"]["questions"][0]["key"], "prompt": FALLBACK[0]}).json()
+    assert tagged(back)["diagnostic"] == [True, True, True]
+    # Reading is the same for the staff who may read it.
+    assert get(api, ff, root).json()["example"]["version"] == 2
+
+
+@pytest.mark.django_db
+def test_a_copy_is_judged_against_the_version_it_was_made_from(ff, api, seeded_tenant,
+                                                               in_tenant_a):
+    old, _version = examples.create(seeded_tenant, name="Made in version 1",
+                                    start_from=examples.OPERATIONS, version=1)
+    AuditEvent.all_objects.create(
+        tenant=seeded_tenant, actor=ff.user, verb="strategy.template_created",
+        target_type="strategy_template", target_id=old.pk,
+        payload={"name": old.name, "start_from": "operations_example",
+                 "example_version": 1})
+    body = get(api, ff, f"{ROOT}{old.pk}/").json()
+    assert body["example"]["version"] == 1
+    # Version 2 reworded two lines; this copy still has version 1's, and they
+    # are still its example's words.
+    assert all(all(marks) for marks in tagged(body).values())
+
+
+@pytest.mark.django_db
+def test_a_template_not_made_from_the_example_gains_no_key(ff, api, seeded_tenant):
+    blank = post(api, ff, ROOT, {"name": "Blank"}).json()
+    assert "example" not in blank
+    # Even when it is given the example's exact words.
+    added = post(api, ff, f"{ROOT}{blank['id']}/questions/",
+                 {"section": "diagnostic", "prompt": FALLBACK[0]}).json()
+    assert "example" not in added
+    assert all("from_example" not in q for s in added["sections"] for q in s["questions"])
+    # A duplicate of a copy is its own template.
+    made = make(api, ff).json()
+    copy = post(api, ff, f"/api/strategy-templates/{made['id']}/duplicate/",
+                {"name": "A copy"}).json()
+    assert "example" not in get(api, ff, f"{ROOT}{copy['id']}/").json()
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_another_practices_audit_event_marks_nothing(
+        ff, api, seeded_tenant, tenant_b):
+    """Where a template came from is read from the audit log, so the lookup is
+    held to the template's own practice."""
+    blank = post(api, ff, ROOT, {"name": "Blank"}).json()
+    other = _member(tenant_b, "FF")
+    AuditEvent.all_objects.create(
+        tenant=tenant_b, actor=other.user, verb="strategy.template_created",
+        target_type="strategy_template", target_id=blank["id"],
+        payload={"start_from": "operations_example", "example_version": 2})
+    assert "example" not in get(api, ff, f"{ROOT}{blank['id']}/").json()

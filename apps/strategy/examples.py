@@ -25,6 +25,7 @@ from django.db import transaction
 from apps.strategy import builder
 from apps.strategy.models import StrategyQuestion
 from apps.strategy.services import SessionError
+from apps.tenancy.models import AuditEvent
 
 OPERATIONS = "operations_example"
 
@@ -120,8 +121,30 @@ OPERATIONS_V1 = {
     },
 }
 
+
+
+def reworded(example, prompts: dict) -> dict:
+    """A new version: the same example with some lines in other words."""
+    known = {entry["seed_key"] for items in example["questions"].values()
+             for entry in items}
+    assert set(prompts) <= known, set(prompts) - known
+    return {**example, "questions": {
+        kind: [{**entry, "prompt": prompts.get(entry["seed_key"], entry["prompt"])}
+               for entry in items]
+        for kind, items in example["questions"].items()}}
+
+
+#: Version 2 (owner, 2026-10-08): two lines that still spoke of a service
+#: business, in words any practice's prospect can answer.
+OPERATIONS_V2_PROMPTS = {
+    "s2_data": "Data — We run the week from a short scorecard of numbers.",
+    "s4_cash_pinch": "Cash pinch points: which parts of the business make money, "
+                     "and which are distractions?",
+}
+OPERATIONS_V2 = reworded(OPERATIONS_V1, OPERATIONS_V2_PROMPTS)
+
 #: name → {version: content}. A new version is added; none is edited.
-EXAMPLES = {OPERATIONS: {1: OPERATIONS_V1}}
+EXAMPLES = {OPERATIONS: {1: OPERATIONS_V1, 2: OPERATIONS_V2}}
 
 
 def latest(name) -> int:
@@ -136,12 +159,13 @@ def content(name, version=None) -> dict:
 
 
 @transaction.atomic
-def create(tenant, *, name, start_from):
+def create(tenant, *, name, start_from, version=None):
     """`(template, version)`: a blank v3 template filled in from the example,
     one builder call per question. A part the blank template already holds
     something in (the two paths, three scope items) has those reworded in
-    place rather than archived, so the copy starts with no spent keys."""
-    example = content(start_from)
+    place rather than archived, so the copy starts with no spent keys. The
+    version is the latest unless one is named, which only a test does."""
+    example = content(start_from, version)
     template = builder.create_blank(tenant, name=name)
     for kind, items in example["questions"].items():
         section = builder._sections(template).get(kind=kind)
@@ -156,4 +180,48 @@ def create(tenant, *, name, start_from):
             else:
                 builder.add_question(template, section=section.code, **fields)
     builder.update_settings(template, example["settings"])
-    return template, latest(start_from)
+    return template, version or latest(start_from)
+
+
+# ------------------------------------------------- "from the example" (E6)
+
+def origin(template):
+    """`(name, version)` when this template was made from an example, read
+    from the audit event of its creation: where a template came from is
+    recorded there and nowhere else (E7). A duplicate is its own template and
+    has no origin."""
+    payload = (AuditEvent.all_objects
+               .filter(tenant_id=template.tenant_id, verb="strategy.template_created",
+                       target_id=template.pk, payload__has_key="start_from")
+               .values_list("payload", flat=True).first())
+    if not payload:
+        return None
+    name, version = payload.get("start_from"), payload.get("example_version")
+    if name not in EXAMPLES or version not in EXAMPLES[name]:
+        return None
+    return name, version
+
+
+def represent(template) -> dict:
+    """The builder's view of a template, and for one made from an example,
+    which of its lines are still exactly the example's. Computed against the
+    version the copy was made from, each time, so nothing is stored and
+    nothing can drift. A template not made from an example gains no key."""
+    out = builder.represent(template)
+    made_from = origin(template)
+    if made_from is None:
+        return out
+    name, version = made_from
+    example = EXAMPLES[name][version]
+    for section in out["sections"]:
+        theirs = {(entry["prompt"], entry.get("label", ""))
+                  for entry in example["questions"].get(section["kind"], ())}
+        for question in section["questions"]:
+            question["from_example"] = (question["prompt"], question["label"]) in theirs
+    out["example"] = {
+        "start_from": name, "version": version,
+        "unchanged_settings": sorted(
+            key for key, value in example["settings"].items()
+            if out["settings"].get(key) == value),
+    }
+    return out

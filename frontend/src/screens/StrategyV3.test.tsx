@@ -256,6 +256,91 @@ describe("the template builder", () => {
   });
 });
 
+describe("a template made from the Operations example", () => {
+  const fromExample = (overrides: Partial<BuilderTemplate> = {}) => {
+    const base = aBuilder({ ready: true, missing: [] });
+    return aBuilder({
+      ready: true, missing: [],
+      settings: { ...base.settings, advisor_role: "fractional operations executive" },
+      example: { start_from: "operations_example", version: 2,
+                 unchanged_settings: ["advisor_role"] },
+      sections: base.sections.map((section) => ({
+        ...section,
+        questions: section.questions.map((question) => ({
+          ...question, from_example: question.key !== "p2",
+          is_fractional_observation: question.key === "b" })) })),
+      ...overrides });
+  };
+  beforeEach(() => { window.localStorage.clear(); });
+
+  it("says where it came from until dismissed, and stays dismissed", async () => {
+    showBuilder(fromExample());
+    expect(await screen.findByText(/Made from the Operations example/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/Made from the Operations example/)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+    showBuilder(fromExample());
+    await screen.findAllByText("from the example");
+    expect(screen.queryByText(/Made from the Operations example/)).not.toBeInTheDocument();
+  });
+
+  it("tags each line still worded as the example has it, and not a reworded one",
+    async () => {
+      showBuilder(fromExample());
+      await screen.findByText(/Made from the Operations example/);
+      // Five of the six questions, and Wording for Claude.
+      expect(screen.getAllByText("from the example")).toHaveLength(6);
+      const reworded = screen.getByLabelText("Wording of: How many people work there?");
+      expect(within(reworded.closest(".field") as HTMLElement)
+        .queryByText("from the example")).not.toBeInTheDocument();
+      // Typing in a box takes its tag off before anything is saved.
+      await userEvent.type(screen.getByLabelText("Wording of: Investment discussed"), "!");
+      expect(screen.getAllByText("from the example")).toHaveLength(5);
+    });
+
+  it("is ready to run, with advice about Claude's wording that blocks nothing", async () => {
+    showBuilder(fromExample());
+    expect(await screen.findByText("Ready to run")).toBeInTheDocument();
+    expect(screen.queryByLabelText("What this template still needs")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Worth a look"))
+      .toHaveTextContent("Wording for Claude still says fractional operations executive.");
+    expect(screen.getByRole("link", { name: "Start a session from this template" }))
+      .toHaveAttribute("href", `/strategy?template=${TEMPLATE_ID}`);
+  });
+
+  it("drops the advice and the tag once Claude's wording is the practice's own", async () => {
+    showBuilder(fromExample({
+      example: { start_from: "operations_example", version: 2, unchanged_settings: [] } }));
+    await screen.findByText(/Made from the Operations example/);
+    expect(screen.queryByLabelText("Worth a look")).not.toBeInTheDocument();
+    expect(screen.getAllByText("from the example")).toHaveLength(5);
+  });
+
+  it("marks the question that is never put to the prospect", async () => {
+    showBuilder(fromExample());
+    await screen.findByText(/Made from the Operations example/);
+    expect(screen.getAllByText("not asked aloud")).toHaveLength(1);
+  });
+
+  it("shows none of this on a template built from blank", async () => {
+    showBuilder(aBuilder({ ready: true, missing: [] }));
+    expect(await screen.findByText("Ready to run")).toBeInTheDocument();
+    expect(screen.queryByText(/Made from the Operations example/)).not.toBeInTheDocument();
+    expect(screen.queryByText("from the example")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Worth a look")).not.toBeInTheDocument();
+    expect(screen.queryByText("not asked aloud")).not.toBeInTheDocument();
+  });
+
+  it("offers no session to someone who cannot edit, or from a template not ready",
+    async () => {
+      showBuilder(fromExample(), aMe({ role: "CF" }));
+      await screen.findByText("Ready to run");
+      expect(screen.queryByRole("link", { name: "Start a session from this template" }))
+        .not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    });
+});
+
 // ========================================================= the templates list
 
 const SECTION = { code: "diagnostic", title: "Diagnostic", position: 3,
@@ -278,18 +363,79 @@ function showTemplates(rows: StrategyTemplateRow[], route = "/",
 }
 
 describe("the templates screen", () => {
-  it("gives a practice with no template a way to build one, and no seed", async () => {
+  it("gives a practice with no template two starts, a name already filled in, and no seed",
+    async () => {
+      const fetchMock = showTemplates([], "/", {
+        "POST /api/strategy-template-builder/": () => ({ status: 201, body: aBuilder() }) });
+      expect(await screen.findByText(/A strategy session runs from a template/))
+        .toBeInTheDocument();
+      expect(screen.queryByText("Loading the template…")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Restore from seed" }))
+        .not.toBeInTheDocument();
+      expect(screen.getByLabelText("Name for the new template")).toHaveValue("Strategy session");
+      expect(screen.getByText(/A complete template you can run today/)).toBeInTheDocument();
+      expect(screen.getByText(/The eight parts with nothing in them/)).toBeInTheDocument();
+      // Nothing of their own to copy yet.
+      expect(screen.queryByRole("button", { name: "Start from a copy" }))
+        .not.toBeInTheDocument();
+      // One click, with no typing.
+      await userEvent.click(
+        screen.getByRole("button", { name: "Start from the Operations example" }));
+      await waitFor(() => expect(sent(fetchMock, "/api/strategy-template-builder/"))
+        .toEqual([{ name: "Strategy session", start_from: "operations_example" }]));
+    });
+
+  it("starts blank without naming an example", async () => {
     const fetchMock = showTemplates([], "/", {
       "POST /api/strategy-template-builder/": () => ({ status: 201, body: aBuilder() }) });
-    expect(await screen.findByText(/has no strategy template yet/)).toBeInTheDocument();
-    expect(screen.queryByText("Loading the template…")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Restore from seed" })).not.toBeInTheDocument();
-    const create = screen.getByRole("button", { name: "New template" });
-    expect(create).toBeDisabled();
-    await userEvent.type(screen.getByLabelText("Name for the new template"), "Our session");
-    await userEvent.click(create);
+    const name = await screen.findByLabelText("Name for the new template");
+    await userEvent.clear(name);
+    expect(screen.getByRole("button", { name: "Start blank" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start from the Operations example" }))
+      .toBeDisabled();
+    await userEvent.type(name, "Our session");
+    await userEvent.click(screen.getByRole("button", { name: "Start blank" }));
     await waitFor(() => expect(sent(fetchMock, "/api/strategy-template-builder/"))
       .toEqual([{ name: "Our session" }]));
+  });
+
+  it("says why when a start is refused, and keeps the name", async () => {
+    showTemplates([], "/", {
+      "POST /api/strategy-template-builder/": () => ({
+        status: 409, body: { detail: "There is already a template called “Strategy session”." } }) });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Start from the Operations example" }));
+    expect(await screen.findByText(/There is already a template called/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Name for the new template")).toHaveValue("Strategy session");
+  });
+
+  it("offers every practice the same two starts, and a copy of a template it built",
+    async () => {
+      const fetchMock = showTemplates([SEEDED, BUILT], "/", {
+        "POST /api/strategy-template-builder/": () => ({ status: 201, body: aBuilder() }),
+        [`POST /api/strategy-templates/${TEMPLATE_ID}/duplicate/`]:
+          () => ({ status: 201, body: { ...BUILT, id: "copy" } }) });
+      expect(await screen.findByText("Start from")).toBeInTheDocument();
+      // On the list the name is theirs to type: "Strategy session" may be taken.
+      expect(screen.getByLabelText("Name for the new template")).toHaveValue("");
+      expect(screen.getByRole("button", { name: "Start from the Operations example" }))
+        .toBeDisabled();
+      // Only templates built here can be copied this way, not a seeded one.
+      const copyOf = screen.getByLabelText("Template to copy");
+      expect(within(copyOf).getAllByRole("option").map((o) => o.textContent))
+        .toEqual([BUILT.name]);
+      await userEvent.click(screen.getByRole("button", { name: "Start from a copy" }));
+      await waitFor(() => expect(sent(fetchMock, "/duplicate/")).toEqual([{}]));
+    });
+
+  it("starts from the example on the list once it has a name", async () => {
+    const fetchMock = showTemplates([SEEDED, BUILT], "/", {
+      "POST /api/strategy-template-builder/": () => ({ status: 201, body: aBuilder() }) });
+    await userEvent.type(await screen.findByLabelText("Name for the new template"), "Second");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start from the Operations example" }));
+    await waitFor(() => expect(sent(fetchMock, "/api/strategy-template-builder/"))
+      .toEqual([{ name: "Second", start_from: "operations_example" }]));
   });
 
   it("sends a builder template to the builder instead of the editor", async () => {
@@ -316,7 +462,7 @@ describe("the templates screen", () => {
     showTemplates([SEEDED, BUILT]);
     expect(await screen.findByLabelText("Wording of s4_done_right")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Restore from seed" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New template" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start blank" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open the builder" })).not.toBeInTheDocument();
   });
 });

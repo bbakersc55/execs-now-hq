@@ -61,6 +61,18 @@ const PARTS: Record<SectionKind, { hint: string; item: string; add: string }> = 
 
 type Problem = { where: string; text: string } | null;
 
+/** The note on a template made from an example stays until it is dismissed,
+ *  on this device: nothing about it is stored with the template. */
+const noteKey = (id: string) => `execsnowhq.example-note.${id}`;
+function noteDismissed(id: string) {
+  try { return window.localStorage.getItem(noteKey(id)) === "1"; } catch { return false; }
+}
+
+/** Quiet, beside a line still worded exactly as the example has it. */
+function FromExample() {
+  return <span className="tiny muted" style={{ fontStyle: "italic" }}>from the example</span>;
+}
+
 export function TemplateBuilder({ me }: { me: Me }) {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -68,6 +80,7 @@ export function TemplateBuilder({ me }: { me: Me }) {
   const mayEdit = me.role === "FF";
   const [problem, setProblem] = useState<Problem>(null);
   const [note, setNote] = useState("");
+  const [dismissed, setDismissed] = useState(() => noteDismissed(id ?? ""));
 
   const template = useQuery<BuilderTemplate>({
     queryKey: ["template-builder", id], queryFn: () => api.get<BuilderTemplate>(path),
@@ -130,6 +143,8 @@ export function TemplateBuilder({ me }: { me: Me }) {
   const setting = (changes: Partial<BuilderSettings>, where: string) =>
     change("settings/", { settings: changes }, where);
   const chips = t.sections.flatMap((s) => s.questions).filter((q) => q.pdf_chip).length;
+  // Made from an example (P3 §9): the role it gave Claude, while unchanged.
+  const exampleRole = !!t.example?.unchanged_settings.includes("advisor_role");
 
   return (
     <>
@@ -143,6 +158,16 @@ export function TemplateBuilder({ me }: { me: Me }) {
         </Banner>
       )}
       {note && <Banner kind="ok">{note}</Banner>}
+      {t.example && !dismissed && (
+        <Banner kind="info">
+          Made from the Operations example. Read it through once as if you were the
+          prospect: change what does not sound like you.{" "}
+          <button className="ghost small" onClick={() => {
+            try { window.localStorage.setItem(noteKey(t.id), "1"); } catch { /* not kept */ }
+            setDismissed(true);
+          }}>Dismiss</button>
+        </Banner>
+      )}
 
       <Card title="This template"
         actions={t.ready ? <Pill kind="ok">Ready to run</Pill>
@@ -151,6 +176,13 @@ export function TemplateBuilder({ me }: { me: Me }) {
           <ul aria-label="What this template still needs" className="small">
             {t.missing.map((line) => <li key={line}>{line}</li>)}
           </ul>
+        )}
+        {/* Advice, never a block: the template runs as it is. */}
+        {exampleRole && (
+          <p className="small" aria-label="Worth a look">
+            Wording for Claude still says <em>{t.settings.advisor_role}</em>. Change it
+            below if that is not what you are.
+          </p>
         )}
         <p className="small muted">
           Editing this template never changes a session already created: each session
@@ -167,6 +199,10 @@ export function TemplateBuilder({ me }: { me: Me }) {
               onClick={() => manage("set-default/", {}, "template")}>
               Make this the practice default
             </button>
+          )}
+          {mayEdit && t.ready && !t.archived_at && (
+            <Link className="btn" to={`/strategy?template=${t.id}`}>
+              Start a session from this template</Link>
           )}
         </div>
       </Card>
@@ -185,6 +221,7 @@ export function TemplateBuilder({ me }: { me: Me }) {
           Claude drafts still waits for you to accept it.
         </p>
         {said("claude")}
+        {exampleRole && <p style={{ margin: "0 0 4px" }}><FromExample /></p>}
         <Saved label="You are" ariaLabel="How Claude describes the practice"
           value={t.settings.advisor_role} disabled={!mayEdit || busy} maxLength={80}
           onSave={(advisor_role) => setting({ advisor_role }, "claude")} />
@@ -345,6 +382,13 @@ function QuestionEditor({ question, section, suggested, off, mayEdit, chips, isF
       {suggested !== undefined && suggested !== saved && (
         <p className="tiny" style={{ margin: "0 0 4px" }}>
           <Pill kind="ai">from your prep</Pill> Not saved yet.
+        </p>
+      )}
+      {(question.is_fractional_observation || (question.from_example && !dirty)) && (
+        <p style={{ margin: "0 0 4px" }}>
+          {/* Yours to notice on the call, never put to the prospect (FR-4.17). */}
+          {question.is_fractional_observation && <><Pill>not asked aloud</Pill>{" "}</>}
+          {question.from_example && !dirty && <FromExample />}
         </p>
       )}
       <div className="row" style={{ alignItems: "flex-start" }}>

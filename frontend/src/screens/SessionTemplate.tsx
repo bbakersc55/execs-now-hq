@@ -139,11 +139,10 @@ export function SessionTemplate({ me }: { me: Me }) {
       {templates.data && all.length === 0 && (
         <Card title="Your first template">
           <p className="small muted">
-            This practice has no strategy template yet. Give one a name and build it:
-            your own questions before the call, what you rate on the call, and the
-            words on the document your prospect keeps.
+            A strategy session runs from a template: what you ask before the call,
+            what you rate on it, and the words on the document your prospect keeps.
           </p>
-          <NewTemplate />
+          <NewTemplate first />
         </Card>
       )}
       {!template ? (templates.data ? null : <p>Loading the template…</p>) : (
@@ -209,10 +208,10 @@ export function SessionTemplate({ me }: { me: Me }) {
 
           <Card title="New template">
             <p className="small muted">
-              Build a template of your own: the eight parts of a session, laid out and
-              ready for your questions. It does not change the practice default.
+              A template of your own, edited in the builder. Making one does not
+              change the practice default.
             </p>
-            <NewTemplate />
+            <NewTemplate own={all.filter((t) => t.format === "v3" && !t.archived_at)} />
           </Card>
 
           {!inBuilder && template.sections.map((section) => (
@@ -441,32 +440,76 @@ function Manage({ template, onDone, hasSeeded = true }: {
   );
 }
 
-/** Name a new builder template (P3) and go and build it. */
-function NewTemplate() {
+type Start = "operations_example" | "blank" | "copy";
+
+/** A new builder template, and where it starts from (P3 §9): the Operations
+ *  example, the eight blank parts, or a copy of one the practice already
+ *  built. Whichever it is becomes the practice's own, and opens in the
+ *  builder. */
+function NewTemplate({ first = false, own = [] }: { first?: boolean; own?: Template[] }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [name, setName] = useState("");
+  // Filled in on the first-template card, so neither start waits on typing.
+  const [name, setName] = useState(first ? "Strategy session" : "");
+  const [copyOf, setCopyOf] = useState("");
+  const source = own.find((t) => t.id === copyOf) ?? own[0];
   const create = useMutation({
-    mutationFn: () => api.post<{ id: string }>("/api/strategy-template-builder/",
-                                               { name: name.trim() }),
+    mutationFn: (start: Start) => start === "copy"
+      ? api.post<{ id: string }>(`/api/strategy-templates/${source!.id}/duplicate/`,
+                                 name.trim() ? { name: name.trim() } : {})
+      : api.post<{ id: string }>("/api/strategy-template-builder/",
+                                 { name: name.trim(),
+                                   ...(start === "blank" ? {} : { start_from: start }) }),
     onSuccess: (made) => {
       qc.invalidateQueries({ queryKey: ["strategy-templates"] });
       navigate(`/strategy/templates/${made.id}/build`);
     },
   });
+  const off = !name.trim() || create.isPending;
   return (
     <>
       {create.isError && <Banner kind="bad">{(create.error as Error).message}</Banner>}
-      <div className="row">
-        <Field label="Name">
-          <input aria-label="Name for the new template" value={name}
-            placeholder="Our strategy session" onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <button className="primary" disabled={!name.trim() || create.isPending}
-          onClick={() => create.mutate()}>
-          {create.isPending ? "Creating…" : "New template"}
+      <Field label="Name">
+        <input aria-label="Name for the new template" value={name}
+          placeholder="Our strategy session" onChange={(e) => setName(e.target.value)} />
+      </Field>
+      {!first && <p className="small" style={{ marginBottom: ".25rem" }}>
+        <strong>Start from</strong></p>}
+      <div style={{ marginBottom: ".75rem" }}>
+        <button className="primary" disabled={off}
+          onClick={() => create.mutate("operations_example")}>
+          Start from the Operations example
         </button>
+        <p className="small muted" style={{ margin: ".25rem 0 0" }}>
+          A complete template you can run today and change as you go. It is written
+          for an operations practice; every question and label is yours to reword.
+        </p>
       </div>
+      <div style={{ marginBottom: ".75rem" }}>
+        <button disabled={off} onClick={() => create.mutate("blank")}>Start blank</button>
+        <p className="small muted" style={{ margin: ".25rem 0 0" }}>
+          The eight parts with nothing in them. You write every question.
+        </p>
+      </div>
+      {own.length > 0 && (
+        <div>
+          <div className="row">
+            <Field label="One of your own">
+              <select aria-label="Template to copy" value={source!.id}
+                onChange={(e) => setCopyOf(e.target.value)}>
+                {own.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </Field>
+            <button disabled={create.isPending} onClick={() => create.mutate("copy")}>
+              Start from a copy
+            </button>
+          </div>
+          <p className="small muted" style={{ margin: ".25rem 0 0" }}>
+            A full copy of a template you built. Leave the name empty to call it
+            “{source!.name} (copy)”.
+          </p>
+        </div>
+      )}
     </>
   );
 }

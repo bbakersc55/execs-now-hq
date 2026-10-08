@@ -54,7 +54,7 @@ class TemplateBuilderViewSet(StrategyViewSet):
             return Response({"detail": str(exc)}, status=exc.status)
         self._audit(verb, template, payload(result) if callable(payload) else payload)
         template.refresh_from_db()
-        return Response(builder.represent(template), status=status)
+        return Response(examples.represent(template), status=status)
 
     def create(self, request):
         role = self._role()
@@ -77,13 +77,13 @@ class TemplateBuilderViewSet(StrategyViewSet):
             return Response({"detail": str(exc)}, status=exc.status)
         self._audit("strategy.template_created", template,
                     {"name": template.name, **payload})
-        return Response(builder.represent(template), status=201)
+        return Response(examples.represent(template), status=201)
 
     def retrieve(self, request, pk=None):
         template, refused = self._template(pk, write=False)
         if refused:
             return refused
-        return Response(builder.represent(template))
+        return Response(examples.represent(template))
 
     # Not `settings`: that name is the framework's own on every view.
     @action(detail=True, methods=["post"], url_path="settings")

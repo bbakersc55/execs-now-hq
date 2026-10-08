@@ -165,7 +165,9 @@ def question_in(snapshot: dict, key: str):
 # at the end of the prompt, in brackets, where it reads as a note rather than as
 # part of the question.
 MISSING_NAME = {
-    "Visionary": "the Visionary",
+    # "the owner", not "the Visionary" (owner, 2026-10-08): a practice that has
+    # never run EOS reads this too.
+    "Visionary": "the owner",
     "Integrator": "the Integrator",
     # The same person, in the industry-neutral templates (dry run 2).
     "Second-in-command": "your second-in-command",
@@ -176,7 +178,7 @@ MISSING_NAME = {
     "Fractional name": "your name",
 }
 MISSING_NOTE = {
-    "Visionary": "no Visionary identified yet",
+    "Visionary": "no owner identified yet",
     "Integrator": "no Integrator identified yet",
     "Second-in-command": "no second-in-command identified yet",
     "Location A": "no locations on file",
