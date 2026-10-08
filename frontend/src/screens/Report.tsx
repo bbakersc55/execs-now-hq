@@ -132,6 +132,27 @@ export function Report({ me }: { me: Me }) {
  */
 function TimelineCard({ timeline }: { timeline: EngagementTimeline }) {
   if (timeline.marks.length === 0) return null;
+  // One day is not a timeline: an axis would be a single pile of dots at one
+  // end. The list says the same thing and can be read.
+  const oneDay = new Set(timeline.marks.map((mark) => mark.at.slice(0, 10))).size === 1;
+  const list = (
+    <ol style={{ listStyle: "none", padding: 0, margin: "var(--s3) 0 0" }}>
+      {timeline.marks.map((mark, index) => (
+        <li key={`${mark.goal}-${mark.kind}-${index}`} className="timeline-row small">
+          <span className="at"><span className="mark-n">{index + 1}</span> {mark.at}</span>
+          <span className="which">{mark.goal_title}</span>
+          <span>
+            {mark.kind === "start" && <>Started</>}
+            {mark.kind === "milestone" && <>{mark.label} <Pill>{mark.detail}</Pill></>}
+            {mark.kind === "reading" && <>Reading: <strong>{mark.label}</strong>
+              {mark.detail && <span className="muted"> — {mark.detail}</span>}</>}
+            {mark.kind === "resolution" && <><strong>{mark.label}</strong> — {mark.detail}</>}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+  if (oneDay) return <Card title="The engagement, in order">{list}</Card>;
   return (
     <Card title="The engagement, in order">
       <Axis from={timeline.from} to={timeline.to}
@@ -152,21 +173,7 @@ function TimelineCard({ timeline }: { timeline: EngagementTimeline }) {
         <summary className="small muted" style={{ cursor: "pointer" }}>
           Every mark, in words
         </summary>
-        <ol style={{ listStyle: "none", padding: 0, margin: "var(--s3) 0 0" }}>
-          {timeline.marks.map((mark, index) => (
-            <li key={`${mark.goal}-${mark.kind}-${index}`} className="timeline-row small">
-              <span className="at"><span className="mark-n">{index + 1}</span> {mark.at}</span>
-              <span className="which">{mark.goal_title}</span>
-              <span>
-                {mark.kind === "start" && <>Started</>}
-                {mark.kind === "milestone" && <>{mark.label} <Pill>{mark.detail}</Pill></>}
-                {mark.kind === "reading" && <>Reading: <strong>{mark.label}</strong>
-                  {mark.detail && <span className="muted"> — {mark.detail}</span>}</>}
-                {mark.kind === "resolution" && <><strong>{mark.label}</strong> — {mark.detail}</>}
-              </span>
-            </li>
-          ))}
-        </ol>
+        {list}
       </details>
     </Card>
   );
@@ -176,18 +183,25 @@ function TimelineCard({ timeline }: { timeline: EngagementTimeline }) {
  * One horizontal axis. Every mark is placed by its own date between the two
  * ends, so the gaps mean what they look like they mean.
  *
- * **Labels never overprint** (findings, 2026-09-21). They stagger above and
- * below the line, and a label that would still land on its neighbour is
- * dropped: the dot keeps its number, and the number is what ties it to the
- * list underneath. A month where six things happened is a row of numbered
- * dots and six readable lines, not a stack of words on top of each other.
+ * **Nothing overprints** (findings, 2026-09-21; again 2026-10-07, when four
+ * goals started on one day and their labels and numbers landed on each other).
+ *
+ * - Marks that fall on the same spot — the same day, or days too close to tell
+ *   apart at this scale — are one **stack**: every dot stays where its date
+ *   puts it, and their numbers are stacked beside them. A stack carries no
+ *   words; its labels are in the list, which the numbers tie it to.
+ * - Stacks and lone marks alternate above and below the line. A lone mark
+ *   keeps its label only when both of its neighbours on that side are a full
+ *   label's width away; otherwise it leaves its number.
  */
 const LABEL_GAP = 15;     // percent of the axis a label needs to itself
+const STACK_WITHIN = 3;   // marks closer than this share one stack of numbers
 
-function Axis({ from, to, marks }: {
-  from: string; to: string;
-  marks: { at: string; label: string; detail: string; tone: "hit" | "late" | "due" }[];
-}) {
+type AxisMark = { at: string; label: string; detail: string; tone: "hit" | "late" | "due" };
+
+/** Where each mark sits and what it shows. Exported for the tests: jsdom lays
+ *  nothing out, so "does not overprint" is asserted on these positions. */
+export function layAxis(from: string, to: string, marks: AxisMark[]) {
   const start = Date.parse(from);
   const span = Math.max(Date.parse(to) - start, 1);
   const placed = marks
@@ -196,36 +210,82 @@ function Axis({ from, to, marks }: {
       n: index + 1,
       left: Math.min(98, Math.max(2, 100 * (Date.parse(mark.at) - start) / span)),
     }))
-    .sort((a, b) => a.left - b.left);
+    .sort((a, b) => a.left - b.left || a.n - b.n);
 
-  // Two lanes, one above the line and one below, each with its own last-used
-  // position: alternating buys twice the room before anything has to drop.
-  const lastLabel = [-Infinity, -Infinity];
-  const laid = placed.map((mark, index) => {
-    const lane = index % 2;
-    const showLabel = mark.left - lastLabel[lane] >= LABEL_GAP;
-    if (showLabel) lastLabel[lane] = mark.left;
-    // A dot that carries neither a word nor a number is an anonymous dot, so
-    // the number is always there when the label is not: it is two characters,
-    // and its neighbour in the same lane is twice the raw spacing away.
-    return { ...mark, lane, showLabel };
+  const groups: (typeof placed)[] = [];
+  for (const mark of placed) {
+    const open = groups.at(-1);
+    if (open && mark.left - open[0].left < STACK_WITHIN) open.push(mark);
+    else groups.push([mark]);
+  }
+  return groups.map((members, index) => {
+    // The same side of the line is every other group: those are the neighbours
+    // a label could land on.
+    const clear = [groups[index - 2], groups[index + 2]].every((other) =>
+      !other || Math.abs(other[0].left - members[0].left) >= LABEL_GAP);
+    return {
+      members,
+      lane: index % 2 === 0 ? "above" as const : "below" as const,
+      left: (members[0].left + members.at(-1)!.left) / 2,
+      showLabel: members.length === 1 && clear,
+    };
   });
+}
+
+function Axis({ from, to, marks, legend = false }: {
+  from: string; to: string; marks: AxisMark[];
+  /** List under the axis whatever is shown only as a number. For an axis that
+   *  has no list of its own; the engagement timeline has one. */
+  legend?: boolean;
+}) {
+  const groups = layAxis(from, to, marks);
+  const numbered = groups.filter((g) => !g.showLabel).flatMap((g) => g.members)
+    .sort((a, b) => a.n - b.n);
 
   return (
-    <div className="axis" role="img"
-      aria-label={`${marks.length} marks between ${from} and ${to}`}>
-      <span className="line" />
-      {laid.map((mark) => (
-        <span key={`${mark.at}-${mark.n}`}
-          className={`mark ${mark.tone} ${mark.lane === 0 ? "above" : "below"}`}
-          style={{ left: `${mark.left}%` }} title={`${mark.n}. ${mark.detail}`}>
-          <span className={mark.showLabel ? "lbl" : "lbl n"}>
-            {mark.showLabel ? mark.label : mark.n}
-          </span>
-          <i />
-        </span>
-      ))}
-    </div>
+    <>
+      <div className="axis" role="img"
+        aria-label={`${marks.length} marks between ${from} and ${to}`}>
+        <span className="line" />
+        {groups.map((group) => group.members.length === 1
+          ? group.members.map((mark) => (
+            <span key={mark.n} className={`mark ${mark.tone} ${group.lane}`}
+              style={{ left: `${mark.left}%` }} title={`${mark.n}. ${mark.detail}`}>
+              <span className={group.showLabel ? "lbl" : "lbl n"}>
+                {group.showLabel ? mark.label : mark.n}
+              </span>
+              <i />
+            </span>
+          ))
+          : (
+            <span key={`pile-${group.members[0].n}`} style={{ display: "contents" }}>
+              {group.members.map((mark) => (
+                <span key={mark.n} className={`mark ${mark.tone} ${group.lane}`}
+                  style={{ left: `${mark.left}%` }} title={`${mark.n}. ${mark.detail}`}>
+                  <i />
+                </span>
+              ))}
+              <span className={`pile ${group.lane}`}
+                style={{ left: `${group.left}%`,
+                         gridTemplateRows: `repeat(${Math.min(3, group.members.length)}, 14px)` }}>
+                {group.members.map((mark) => (
+                  <span key={mark.n} className="lbl n" title={mark.detail}>{mark.n}</span>
+                ))}
+              </span>
+            </span>
+          ))}
+      </div>
+      {legend && numbered.length > 0 && (
+        <ol className="axis-legend small">
+          {numbered.map((mark) => (
+            <li key={mark.n}>
+              <span className="mark-n">{mark.n}</span> {mark.detail}
+              <span className="at muted"> · {mark.at}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
   );
 }
 
@@ -416,7 +476,7 @@ function GoalCard({ block, me, onChanged, setNote }: {
               detail: `${stone.title} · ${stone.state_label}`,
               tone: stone.state === "late" ? "late"
                 : stone.state === "due" ? "due" : "hit",
-            }))} />
+            }))} legend />
       )}
 
       {block.resolutions.length > 0 && (

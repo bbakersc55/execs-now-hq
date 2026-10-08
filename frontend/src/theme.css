@@ -732,7 +732,19 @@ ul.work-tree > li { margin: 0; }
                 background: var(--navy); }
 .axis .mark.below .lbl { grid-row: 3; align-self: start; padding: 3px 0 0; }
 /* A label that could not fit leaves its number behind. */
-.axis .mark .lbl.n { font-weight: 700; color: var(--text); }
+.axis .lbl.n { font-weight: 700; color: var(--text); }
+/* Marks on the same spot: their numbers in a column beside the dots, three to
+   a column, more columns as needed. Never a word, so nothing to overprint. */
+.axis .pile {
+  position: absolute; top: 0; height: 44px; width: 132px; margin-left: -66px;
+  display: grid; grid-auto-flow: column; grid-auto-rows: 14px; justify-content: center;
+  align-content: end; column-gap: var(--s2); padding-bottom: 2px;
+  font-size: var(--t-12); line-height: 14px; text-align: center;
+}
+.axis .pile.below { top: 52px; align-content: start; padding: 2px 0 0; }
+.axis-legend { list-style: none; padding: 0; margin: 0 0 var(--s2); color: var(--text); }
+.axis-legend li { padding: 2px 0; }
+.axis-legend .at { white-space: nowrap; }
 .axis .mark.hit i { background: var(--st-done); }
 .axis .mark.late i { background: var(--st-blocked); }
 .axis .mark.due i { background: var(--surface); border: 2px solid var(--line-strong); }
@@ -743,12 +755,14 @@ ul.work-tree > li { margin: 0; }
   padding: 0 4px; margin-right: var(--s1);
 }
 .timeline-row {
-  display: grid; grid-template-columns: 96px 176px 1fr; gap: var(--s3);
+  display: grid; grid-template-columns: 128px 176px 1fr; gap: var(--s3);
   padding: var(--s2) 0; border-bottom: 1px solid var(--line); align-items: baseline;
   font-size: var(--t-13);
 }
 .timeline-row:last-child { border-bottom: none; }
-.timeline-row .at { color: var(--muted); }
+/* The number and the date stay on one line: "3 2026-10-06" broke after the
+   year at the old 96px (2026-10-07). */
+.timeline-row .at { color: var(--muted); white-space: nowrap; }
 .timeline-row .which { color: var(--navy); font-weight: 600; }
 @media (max-width: 720px) { .timeline-row { grid-template-columns: 1fr; gap: 0; } }
 
