@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { PriceBox } from "../components/InvoiceLines";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill } from "../components/ui";
-import { FinanceAccount, FinanceCategory, api } from "../lib/api";
+import { FinanceAccount, FinanceCategory, FinanceRule, api } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
 
 /**
@@ -127,10 +127,65 @@ export function FinanceSettings() {
         </Field>
       </Card>
 
+      <Rules />
+
       <Lock lockedThrough={settings.data?.locked_through ?? null} busy={busy}
         onSet={(locked_through) => send.mutate({ url: "/api/finance-settings/",
                                                  body: { locked_through } })} />
     </>
+  );
+}
+
+/** The rules remembered from your own choices in an import (§4.4). */
+function Rules() {
+  const qc = useQueryClient();
+  const rules = useQuery<FinanceRule[]>({
+    queryKey: ["finance-rules"], queryFn: () => api.get<FinanceRule[]>("/api/finance-rules/") });
+  const done = () => qc.invalidateQueries({ queryKey: ["finance-rules"] });
+  const toggle = useMutation({
+    mutationFn: (rule: FinanceRule) => api.patch<FinanceRule>(
+      `/api/finance-rules/${rule.id}/`, { is_active: !rule.is_active }),
+    onSuccess: done });
+  const remove = useMutation({
+    mutationFn: (rule: FinanceRule) => api.del<void>(`/api/finance-rules/${rule.id}/`),
+    onSuccess: done });
+  const list = rules.data ?? [];
+  const busy = toggle.isPending || remove.isPending;
+  return (
+    <Card title="Import rules">
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Remembered from your own choices when you import: a line whose description
+        contains the text is given the category, marked as a transfer, or ignored. Each is
+        shown beside the line it decides, and you can change that line. Nothing here is
+        decided by AI.
+      </p>
+      {list.length === 0 ? <p className="small muted">None yet. Tick "remember" beside a
+        line in an import and it appears here.</p> : (
+        <table>
+          <thead><tr><th>A line containing</th><th>Is</th><th>In</th><th /></tr></thead>
+          <tbody>
+            {list.map((rule) => (
+              <tr key={rule.id}>
+                <td>“{rule.contains}”{!rule.is_active && <> <Pill>off</Pill></>}</td>
+                <td>{rule.treat_as === "ignore" ? "ignored"
+                  : rule.treat_as === "transfer" ? `a transfer, ${rule.other_account?.name}`
+                    : rule.category?.name}</td>
+                <td>{rule.account?.name ?? "any account"}</td>
+                <td className="money">
+                  <button className="ghost small" disabled={busy}
+                    aria-label={`Turn ${rule.is_active ? "off" : "on"} the rule for ${rule.contains}`}
+                    onClick={() => toggle.mutate(rule)}>
+                    {rule.is_active ? "Turn off" : "Turn on"}</button>{" "}
+                  <button className="ghost small" disabled={busy}
+                    aria-label={`Delete the rule for ${rule.contains}`}
+                    onClick={() => remove.mutate(rule)}>Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }
 

@@ -287,6 +287,11 @@ class Contact(TenantScopedModel):
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
 
+    #: P5: someone the practice may owe a 1099 at year end (a contractor, a
+    #: vendor who is a person or partnership). Set and read only in the
+    #: practice owner's finance screens; it is on no contact payload.
+    is_1099_payee = models.BooleanField(default=False, db_default=False)
+
     class Meta(TenantScopedModel.Meta):
         db_table = "contact"
         indexes = [

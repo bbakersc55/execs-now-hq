@@ -121,6 +121,9 @@ HANDLED_RELATIONS = {
     # P4A: who an invoice or a schedule is addressed to. What was printed on a
     # sent invoice is its own copy (`bill_to`) and does not change.
     "client_invoice.contact", "client_invoice_schedule.contact",
+    # P5: who an expense was paid to, for 1099 totals.
+    "finance_entry.payee_contact", "finance_rule.payee_contact",
+    "finance_import_row.payee_contact",
 }
 
 
@@ -190,6 +193,14 @@ def _merge_later_tables(tenant, survivor, absorbed, *, actor=None) -> dict:
 
     move_all(ClientInvoice)
     move_all(ClientInvoiceSchedule)
+    from apps.finance.models import FinanceEntry, FinanceImportRow, FinanceRule
+
+    for model in (FinanceEntry, FinanceRule, FinanceImportRow):
+        move_all(model, "payee_contact")
+    # A 1099 payee merged into someone else is still a 1099 payee.
+    if absorbed.is_1099_payee and not survivor.is_1099_payee:
+        survivor.is_1099_payee = True
+        Contact.all_objects.filter(pk=survivor.pk).update(is_1099_payee=True)
     move_all(Commitment)
     move_unless_held(ContactPipelinePosition, ["pipeline_id"])
     move_unless_held(Enrollment, ["program"], live={"ended_at__isnull": True},

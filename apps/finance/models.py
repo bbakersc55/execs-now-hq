@@ -111,9 +111,10 @@ class FinanceEntry(TenantScopedModel):
     EARNED = (Kind.INCOME, Kind.EXPENSE)
 
     kind = models.CharField(max_length=8, choices=Kind.choices)
-    #: Which way the money went. Fixed by the kind for income (in) and expense
-    #: (out); chosen for owner money and tax held; for a transfer, out of
-    #: `account` and in to `to_account`.
+    #: Which way the money went. Income is normally in and an expense out; the
+    #: other way round is a refund, and takes away from its category. Chosen
+    #: for owner money and tax held; for a transfer, out of `account` and in
+    #: to `to_account`.
     direction = models.CharField(max_length=3, choices=Direction.choices)
     on_date = models.DateField(db_index=True)
     amount_cents = models.BigIntegerField()
@@ -134,6 +135,12 @@ class FinanceEntry(TenantScopedModel):
     client_payment = models.ForeignKey("billing.ClientPayment", null=True, blank=True,
                                        on_delete=models.PROTECT,
                                        related_name="finance_entries")
+    #: The bank's own id for the line, where its export carries one: the
+    #: surest way to know a line is already in the books.
+    bank_id = models.CharField(max_length=120, blank=True, default="", db_default="")
+    #: Who an expense was paid to, where that is a 1099 payee (§1099).
+    payee_contact = models.ForeignKey("crm.Contact", null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     removed_at = models.DateTimeField(null=True, blank=True)
@@ -154,10 +161,8 @@ class FinanceEntry(TenantScopedModel):
                            & ~Q(account=F("to_account")))
                 | (~Q(kind="transfer") & Q(to_account__isnull=True)),
                 name="finance_entry_transfer_shape"),
-            models.CheckConstraint(
-                condition=(~Q(kind="income") | Q(direction="in"))
-                & (~Q(kind="expense") | Q(direction="out")),
-                name="finance_entry_direction_fits_kind"),
+            models.CheckConstraint(condition=Q(direction__in=("in", "out")),
+                                   name="finance_entry_direction_in_or_out"),
             # One fee entry and at most one tax entry for an invoice payment.
             models.UniqueConstraint(fields=["tenant", "client_payment", "kind"],
                                     condition=Q(removed_at__isnull=True,
@@ -168,3 +173,124 @@ class FinanceEntry(TenantScopedModel):
             models.Index(fields=["tenant", "on_date"]),
             models.Index(fields=["tenant", "kind", "on_date"]),
         ]
+
+    #: The way money normally goes for each earned kind. The other way is a
+    #: refund.
+    NATURAL = {Kind.INCOME: Direction.IN, Kind.EXPENSE: Direction.OUT}
+
+
+class FinanceRule(TenantScopedModel):
+    """Remembered from the owner's own choice: a line whose description
+    contains this text is this category (or a transfer, or ignored). Applied
+    in the next import's dry run, where it is shown beside the row it decided.
+    No AI is involved."""
+
+    class As(models.TextChoices):
+        CATEGORY = "category", "A category"
+        TRANSFER = "transfer", "A transfer"
+        IGNORE = "ignore", "Ignore"
+
+    contains = models.CharField(max_length=120)
+    #: Empty means any account.
+    account = models.ForeignKey(FinanceAccount, null=True, blank=True,
+                                on_delete=models.CASCADE, related_name="+")
+    treat_as = models.CharField(max_length=8, choices=As.choices, default=As.CATEGORY)
+    category = models.ForeignKey(FinanceCategory, null=True, blank=True,
+                                 on_delete=models.CASCADE, related_name="+")
+    other_account = models.ForeignKey(FinanceAccount, null=True, blank=True,
+                                      on_delete=models.CASCADE, related_name="+")
+    payee_contact = models.ForeignKey("crm.Contact", null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    position = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True, db_default=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_rule"
+        ordering = ["position", "created_at"]
+
+
+class FinanceImportProfile(TenantScopedModel):
+    """The column mapping for one account's export, remembered, so next
+    month's file from the same bank needs no mapping."""
+
+    account = models.OneToOneField(FinanceAccount, on_delete=models.CASCADE,
+                                   related_name="import_profile")
+    mapping = models.JSONField(default=dict)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_import_profile"
+
+
+class FinanceImportBatch(TenantScopedModel):
+    """One bank or card export, in three steps: the dry run (which writes only
+    this batch and its rows, never the books), the commit, and a rollback.
+
+    Its own tables, not the contact import's: an assistant can read those."""
+
+    class Status(models.TextChoices):
+        DRY_RUN = "dry_run", "Dry run"
+        COMMITTED = "committed", "Committed"
+        ROLLED_BACK = "rolled_back", "Rolled back"
+
+    account = models.ForeignKey(FinanceAccount, on_delete=models.PROTECT,
+                                related_name="import_batches")
+    filename = models.CharField(max_length=255)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRY_RUN)
+    #: As the dry run used it, so the commit writes what was shown.
+    mapping = models.JSONField(default=dict)
+    counts = models.JSONField(default=dict)
+    #: The bank's own running balance on the file's last line, where it has one.
+    last_balance_cents = models.BigIntegerField(null=True, blank=True)
+    last_balance_on = models.DateField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    committed_at = models.DateTimeField(null=True, blank=True)
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_import_batch"
+
+
+class FinanceImportRow(TenantScopedModel):
+    class Outcome(models.TextChoices):
+        NEW = "new", "New entry"
+        DUPLICATE = "duplicate", "Already in the books"
+        INVOICE_PAYMENT = "invoice_payment", "An invoice payment"
+        TRANSFER = "transfer", "A transfer"
+        TRANSFER_MATCH = "transfer_match", "The other side of a transfer"
+        IGNORE = "ignore", "Ignored"
+        ERROR = "error", "Cannot be read"
+
+    batch = models.ForeignKey(FinanceImportBatch, on_delete=models.CASCADE,
+                              related_name="rows")
+    row_number = models.PositiveIntegerField()
+    raw = models.JSONField(default=dict)
+    on_date = models.DateField(null=True, blank=True)
+    amount_cents = models.BigIntegerField(null=True, blank=True)
+    #: Into the account, or out of it.
+    direction = models.CharField(max_length=3, blank=True, default="", db_default="")
+    description = models.CharField(max_length=255, blank=True, default="", db_default="")
+    bank_id = models.CharField(max_length=120, blank=True, default="", db_default="")
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    category = models.ForeignKey(FinanceCategory, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="+")
+    other_account = models.ForeignKey(FinanceAccount, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    payee_contact = models.ForeignKey("crm.Contact", null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    #: What this line was matched to: an invoice payment's entry, or a
+    #: transfer already in the books from its other side.
+    matched_entry = models.ForeignKey(FinanceEntry, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="matched_rows")
+    #: The rule that decided it, shown beside the row.
+    rule = models.ForeignKey(FinanceRule, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="+")
+    error_text = models.CharField(max_length=255, blank=True, default="", db_default="")
+    #: What the commit made.
+    entry = models.ForeignKey(FinanceEntry, null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name="import_rows")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_import_row"
+        ordering = ["row_number"]
+        indexes = [models.Index(fields=["tenant", "batch", "outcome"])]

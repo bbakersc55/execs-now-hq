@@ -14,7 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.crm import permissions as crm_perms
-from apps.crm.models import Company
+from apps.crm.models import Company, Contact
 from apps.finance import reports, services
 from apps.finance.models import (
     FinanceAccount, FinanceCategory, FinanceEntry,
@@ -62,6 +62,8 @@ def represent_entry(entry) -> dict:
         "invoice": ({"id": str(payment.invoice_id), "number": payment.invoice.number}
                     if payment else None),
         "removed": entry.removed_at is not None, "remove_reason": entry.remove_reason,
+        # Who it was paid to, where that is a 1099 payee.
+        "payee_contact": str(entry.payee_contact_id or ""),
     }
 
 
@@ -136,8 +138,8 @@ class EntryViewSet(FinanceViewSet):
         services.settings_for(request.tenant)
         counted = qs.filter(removed_at__isnull=True)
         sums = counted.aggregate(
-            income=Sum("amount_cents", filter=Q(kind=K.INCOME)),
-            expenses=Sum("amount_cents", filter=Q(kind=K.EXPENSE)))
+            income=Sum(reports.SIGNED, filter=Q(kind=K.INCOME)),
+            expenses=Sum(reports.SIGNED, filter=Q(kind=K.EXPENSE)))
         income, expenses = sums["income"] or 0, sums["expenses"] or 0
         return Response({
             "entries": [represent_entry(entry) for entry in qs[:500]],
@@ -155,7 +157,8 @@ class EntryViewSet(FinanceViewSet):
         for field, model, what in (("category", FinanceCategory, "category"),
                                    ("account", FinanceAccount, "account"),
                                    ("to_account", FinanceAccount, "account"),
-                                   ("client_company", Company, "company")):
+                                   ("client_company", Company, "company"),
+                                   ("payee_contact", Contact, "person")):
             if field in data:
                 changes[field] = self._one(model, data[field], what) if data[field] else None
         return changes
@@ -387,3 +390,295 @@ class ReportView(FinanceViewSet):
         return self._csv(request, reports.export_summary(request.tenant, start=start, end=end),
                          f"summary-{start}-to-{end}.csv", "cpa_export_downloaded",
                          file="summary", start=start.isoformat(), end=end.isoformat())
+
+
+# ------------------------------------------------- the import, rules and 1099
+
+def _json(request, name):
+    import json
+
+    value = request.data.get(name)
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            raise services.FinanceError(f"{name} could not be read.") from None
+    return value
+
+
+def represent_row(row) -> dict:
+    matched = row.matched_entry
+    return {
+        "id": str(row.pk), "row_number": row.row_number,
+        "on_date": row.on_date.isoformat() if row.on_date else None,
+        "amount_cents": row.amount_cents, "direction": row.direction,
+        "description": row.description, "outcome": row.outcome,
+        "outcome_label": row.get_outcome_display(),
+        "category": ({"id": str(row.category_id), "name": row.category.name}
+                     if row.category_id else None),
+        "other_account": ({"id": str(row.other_account_id), "name": row.other_account.name}
+                          if row.other_account_id else None),
+        "payee_contact": str(row.payee_contact_id or ""),
+        # Both sides of a proposed match, so it can be judged before it is accepted.
+        "matched": ({"id": str(matched.pk), "on_date": matched.on_date.isoformat(),
+                     "description": matched.description,
+                     "counterparty": matched.counterparty,
+                     "amount_cents": row.amount_cents} if matched else None),
+        "rule": ({"id": str(row.rule_id), "contains": row.rule.contains}
+                 if row.rule_id else None),
+        "error": row.error_text,
+        "raw": row.raw if row.outcome == "error" else None,
+    }
+
+
+def represent_batch(batch, *, rows=False) -> dict:
+    from apps.finance.models import FinanceImportRow
+
+    out = {
+        "id": str(batch.pk), "account": {"id": str(batch.account_id),
+                                         "name": batch.account.name},
+        "filename": batch.filename, "status": batch.status,
+        "status_label": batch.get_status_display(), "counts": batch.counts,
+        "created_at": batch.created_at.isoformat(),
+        "committed_at": batch.committed_at.isoformat() if batch.committed_at else None,
+        "last_balance_cents": batch.last_balance_cents,
+        "last_balance_on": batch.last_balance_on.isoformat() if batch.last_balance_on
+        else None,
+    }
+    if rows:
+        out["rows"] = [represent_row(row) for row in FinanceImportRow.objects.filter(
+            batch=batch).select_related("category", "other_account", "matched_entry",
+                                        "rule").order_by("row_number")]
+    return out
+
+
+class ImportViewSet(FinanceViewSet):
+    """Matrix 13.8. Its own tables, so no bank line is ever where an assistant
+    reads the contact import."""
+
+    def _batch(self, pk):
+        from apps.finance.models import FinanceImportBatch
+
+        batch = FinanceImportBatch.objects.select_related("account").filter(pk=pk).first()
+        if batch is None:
+            raise Http404
+        return batch
+
+    def list(self, request):
+        from apps.finance.models import FinanceImportBatch
+
+        return Response([represent_batch(batch) for batch in
+                         FinanceImportBatch.objects.select_related("account")
+                         .order_by("-created_at")[:50]])
+
+    def retrieve(self, request, pk=None):
+        return Response(represent_batch(self._batch(pk), rows=True))
+
+    @action(detail=False, methods=["post"])
+    def detect(self, request):
+        """Step 1: the file's columns, a few lines, and a first guess at the
+        mapping (or the one saved for this account). Writes nothing."""
+        from apps.finance import importer
+
+        upload = request.FILES.get("file")
+        if upload is None:
+            return Response({"detail": "Choose the file your bank gave you."}, status=400)
+        try:
+            account = self._one(FinanceAccount, request.data.get("account"), "account")
+            header, rows = importer.read(upload.read())
+            saved = importer.profile_for(account)
+            usable = saved if saved and all(
+                not saved.get(key) or saved[key] in header
+                for key in ("date", "description", "amount", "debit", "credit")) else None
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response({
+            "header": header, "sample": rows[:5], "lines": len(rows),
+            "mapping": usable or importer.suggest(header, rows),
+            "from_saved": usable is not None,
+            "date_formats": [{"value": fmt, "label": label}
+                             for fmt, label in importer.DATE_FORMATS],
+        })
+
+    @action(detail=False, methods=["post"], url_path="dry-run")
+    def dry_run(self, request):
+        from apps.finance import importer
+
+        upload = request.FILES.get("file")
+        if upload is None:
+            return Response({"detail": "Choose the file your bank gave you."}, status=400)
+        try:
+            account = self._one(FinanceAccount, request.data.get("account"), "account")
+            batch = importer.dry_run(
+                request.tenant, account=account, filename=upload.name,
+                file_bytes=upload.read(), mapping=_json(request, "mapping"),
+                actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(represent_batch(batch, rows=True), status=201)
+
+    @action(detail=True, methods=["post"], url_path=r"rows/(?P<row_id>[0-9a-f-]+)")
+    def row(self, request, pk=None, row_id=None):
+        from apps.crm.models import Contact
+        from apps.finance import importer
+        from apps.finance.models import FinanceImportRow
+
+        batch = self._batch(pk)
+        row = FinanceImportRow.objects.filter(batch=batch, pk=row_id).first()
+        if row is None:
+            raise Http404
+        data = request.data
+        try:
+            fields = {}
+            if "payee_contact" in data:
+                fields["payee_contact"] = self._one(Contact, data["payee_contact"], "person") \
+                    if data["payee_contact"] else None
+            importer.decide(
+                row, decision=data.get("decision"), actor=request.user,
+                category=self._one(FinanceCategory, data["category"], "category")
+                if data.get("category") else None,
+                other_account=self._one(FinanceAccount, data["other_account"], "account")
+                if data.get("other_account") else None,
+                remember=data.get("remember") or None, **fields)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(represent_batch(self._batch(pk), rows=True))
+
+    @action(detail=True, methods=["post"])
+    def commit(self, request, pk=None):
+        from apps.finance import importer
+
+        try:
+            batch = importer.commit(self._batch(pk), actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(represent_batch(self._batch(batch.pk)))
+
+    @action(detail=True, methods=["post"])
+    def rollback(self, request, pk=None):
+        from apps.finance import importer
+
+        try:
+            result = importer.rollback(self._batch(pk), actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response({**represent_batch(self._batch(pk)), "rolled_back": result})
+
+
+class RuleViewSet(FinanceViewSet):
+
+    @staticmethod
+    def _represent(rule) -> dict:
+        return {"id": str(rule.pk), "contains": rule.contains, "treat_as": rule.treat_as,
+                "category": ({"id": str(rule.category_id), "name": rule.category.name}
+                             if rule.category_id else None),
+                "other_account": ({"id": str(rule.other_account_id),
+                                   "name": rule.other_account.name}
+                                  if rule.other_account_id else None),
+                "account": ({"id": str(rule.account_id), "name": rule.account.name}
+                            if rule.account_id else None),
+                "is_active": rule.is_active}
+
+    def _rules(self):
+        from apps.finance.models import FinanceRule
+
+        return FinanceRule.objects.select_related("category", "other_account", "account")
+
+    def list(self, request):
+        return Response([self._represent(rule) for rule in self._rules()])
+
+    def _save(self, request, rule=None):
+        from apps.finance import rules
+
+        data = request.data
+        fields = {name: data[name] for name in ("contains", "treat_as", "is_active")
+                  if name in data}
+        try:
+            for name, model, what in (("category", FinanceCategory, "category"),
+                                      ("other_account", FinanceAccount, "account"),
+                                      ("account", FinanceAccount, "account")):
+                if name in data:
+                    fields[name] = self._one(model, data[name], what) if data[name] else None
+            saved = rules.save_rule(request.tenant, actor=request.user, rule=rule, **fields)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(self._represent(self._rules().get(pk=saved.pk)),
+                        status=201 if rule is None else 200)
+
+    def create(self, request):
+        return self._save(request)
+
+    def partial_update(self, request, pk=None):
+        rule = self._rules().filter(pk=pk).first()
+        if rule is None:
+            raise Http404
+        return self._save(request, rule)
+
+    def destroy(self, request, pk=None):
+        from apps.finance import rules
+
+        rule = self._rules().filter(pk=pk).first()
+        if rule is None:
+            raise Http404
+        rules.delete_rule(rule, actor=request.user)
+        return Response(status=204)
+
+
+class PayeeView(FinanceViewSet):
+    """1099 tracking: who is a payee, what each was paid in a year, and who is
+    over the threshold. The flag is set here and shown on no contact payload."""
+
+    def _report(self, request):
+        from apps.finance import payees
+
+        today = timezone.localdate()
+        try:
+            year = int(request.query_params.get("year") or today.year)
+            threshold = request.query_params.get("threshold_cents")
+            threshold = int(threshold) if threshold not in (None, "") else None
+        except ValueError:
+            raise services.FinanceError("year and threshold_cents are whole numbers.") \
+                from None
+        if not 2000 <= year <= today.year + 1 or (threshold is not None and threshold < 0):
+            raise services.FinanceError("That is not a year or a threshold.")
+        return payees.report(request.tenant, year=year, threshold_cents=threshold)
+
+    def list(self, request):
+        try:
+            return Response(self._report(request))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
+    def create(self, request):
+        """Flag or unflag a contact as a 1099 payee."""
+        from apps.crm.models import Contact
+
+        flag = request.data.get("is_payee")
+        if not isinstance(flag, bool):
+            return Response({"detail": "is_payee is true or false."}, status=400)
+        try:
+            contact = self._one(Contact, request.data.get("contact"), "person")
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        if contact.is_1099_payee != flag:
+            contact.is_1099_payee = flag
+            contact.save(update_fields=["is_1099_payee", "updated_at"])
+            services.audit(request.tenant, "payee_flagged" if flag else "payee_unflagged",
+                           request.user, contact)
+        return self.list(request)
+
+    @action(detail=False, methods=["get"])
+    def export(self, request):
+        from apps.finance import payees
+
+        try:
+            data = self._report(request)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="finance.payees_downloaded",
+            target_type="finance_export", payload={"year": data["year"]})
+        response = HttpResponse(payees.export(data), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = (
+            f'attachment; filename="1099-payees-{data["year"]}.csv"')
+        return response

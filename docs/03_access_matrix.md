@@ -301,7 +301,8 @@ Beta ships no financial module. These rows exist so the role-boundary suite has 
 | 13.4g | **See an invoice's email anywhere else**: the Outbox, the Sending queue, the send log, a client's email history and timeline, the activity feed | ✅ | 🔸 `assigned` | **❌** | — | — | The one exception to 5.1, 5.9 and 12.x for an assistant: an invoice and the replies to it are on a thread of their own (`email_thread.is_financial`) |
 | 13.6 | **The books**: see, add, change and remove entries | ✅ | ❌ | ❌ | — | — | P5, owner 2026-10-08. Associate and assistant 403 on every route; a client user 404 |
 | 13.7 | Accounts, categories, where paid invoices are entered, the lock | ✅ | ❌ | ❌ | — | — | |
-| 13.8 | Import a bank or card export; roll one back | ✅ | ❌ | ❌ | — | — | Not built (P5, second stop) |
+| 13.8 | Import a bank or card export; roll one back; import rules | ✅ | ❌ | ❌ | — | — | Its own tables: no bank line is in the contact import an assistant runs (4.x) |
+| 13.11 | 1099 payees: flag a contact, the year's totals, the export | ✅ | ❌ | ❌ | — | — | The flag is on no contact payload or screen |
 | 13.9 | The CPA export | ✅ | ❌ | ❌ | — | — | Each download is an audit event |
 | 13.10 | The dashboard's revenue, expenses and margin | ✅ | ❌ | ❌ | — | — | Absent from everyone else's payload |
 | 13.5 | Any financial endpoint | ✅ | 🔸 | **❌** | ❌ | ❌ | **The non-negotiable assistant test family** (`CLAUDE.md`) |

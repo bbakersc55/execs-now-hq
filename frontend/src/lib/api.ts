@@ -1493,6 +1493,8 @@ export interface FinanceEntry {
   reference: string; source: "manual" | "invoice" | "import"; source_label: string;
   invoice: { id: string; number: string } | null;
   removed: boolean; remove_reason: string;
+  /** Who it was paid to, where that is a 1099 payee. */
+  payee_contact?: string;
 }
 
 export interface FinanceEntryList {
@@ -1514,7 +1516,10 @@ export interface Pnl {
 export interface BalanceView {
   as_of: string;
   cash: { id: string; name: string; kind: string; last4: string; amount_cents: number;
-          closed: boolean }[];
+          closed: boolean;
+          /** What the bank's own file said on its last line, against the books. */
+          bank_said?: { on: string; cents: number; books_cents: number;
+                        difference_cents: number } | null }[];
   unplaced_cents: number; unplaced_count: number; cash_total_cents: number;
   cards: { id: string; name: string; kind: string; last4: string; amount_cents: number;
            closed: boolean }[];
@@ -1526,4 +1531,57 @@ export interface BalanceView {
 export interface FinanceMonth {
   revenue_cents: number; expenses_cents: number; net_cents: number;
   margin_percent: number | null; month: string; year: number;
+}
+
+// ----------------------------------------- the import, rules and 1099 (P5, 2)
+
+export interface ImportMapping {
+  date: string; date_format: string; description: string; amount: string; sign: string;
+  debit: string; credit: string; balance: string; reference: string; bank_id: string;
+}
+
+export interface ImportDetected {
+  header: string[]; sample: Record<string, string>[]; lines: number;
+  mapping: ImportMapping; from_saved: boolean;
+  date_formats: { value: string; label: string }[];
+}
+
+export type ImportOutcome = "new" | "duplicate" | "invoice_payment" | "transfer"
+  | "transfer_match" | "ignore" | "error";
+
+export interface BankImportRow {
+  id: string; row_number: number; on_date: string | null; amount_cents: number | null;
+  direction: "in" | "out" | ""; description: string; outcome: ImportOutcome;
+  outcome_label: string;
+  category: { id: string; name: string } | null;
+  other_account: { id: string; name: string } | null;
+  payee_contact: string;
+  matched: { id: string; on_date: string; description: string; counterparty: string;
+             amount_cents: number } | null;
+  rule: { id: string; contains: string } | null;
+  error: string; raw: Record<string, string> | null;
+}
+
+export interface BankImportBatch {
+  id: string; account: { id: string; name: string }; filename: string;
+  status: "dry_run" | "committed" | "rolled_back"; status_label: string;
+  counts: Record<string, number>; created_at: string; committed_at: string | null;
+  last_balance_cents: number | null; last_balance_on: string | null;
+  rows?: BankImportRow[];
+  rolled_back?: { removed: number; unmatched: number;
+                  kept: { on_date: string; amount_cents: number; description: string }[] };
+}
+
+export interface FinanceRule {
+  id: string; contains: string; treat_as: "category" | "transfer" | "ignore";
+  category: { id: string; name: string } | null;
+  other_account: { id: string; name: string } | null;
+  account: { id: string; name: string } | null; is_active: boolean;
+}
+
+export interface PayeeReport {
+  year: number; threshold_cents: number; default_threshold_cents: number; over: number;
+  payees: { contact: string; name: string; company: string; is_payee: boolean;
+            total_cents: number; by_card_cents: number; reportable_cents: number;
+            over_threshold: boolean }[];
 }

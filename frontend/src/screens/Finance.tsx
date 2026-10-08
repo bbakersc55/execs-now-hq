@@ -7,9 +7,11 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
   BalanceView, EntryKind, FinanceAccount, FinanceCategory, FinanceEntry, FinanceEntryList,
-  Pnl, api,
+  PayeeReport, Pnl, api,
 } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
+import { FinanceImport } from "./FinanceImport";
+import { FinancePayees } from "./FinancePayees";
 
 /**
  * The practice's books (P5; matrix 13.1, 13.6–13.10). The practice owner's
@@ -21,10 +23,12 @@ import { dollars, longDate } from "../lib/money";
  * (and, in the next round, imported from a bank or card export).
  */
 
-type Tab = "entries" | "pnl" | "balance" | "export";
+type Tab = "entries" | "import" | "pnl" | "balance" | "payees" | "export";
 const TABS: [Tab, string, string][] = [
-  ["entries", "/finance", "Entries"], ["pnl", "/finance/pnl", "Profit and loss"],
-  ["balance", "/finance/balance", "Balance view"], ["export", "/finance/export", "For your CPA"],
+  ["entries", "/finance", "Entries"], ["import", "/finance/import", "Import"],
+  ["pnl", "/finance/pnl", "Profit and loss"],
+  ["balance", "/finance/balance", "Balance view"],
+  ["payees", "/finance/1099", "1099 payees"], ["export", "/finance/export", "For your CPA"],
 ];
 const KINDS: [EntryKind, string][] = [
   ["expense", "Expense"], ["income", "Income"], ["transfer", "Transfer between accounts"],
@@ -59,6 +63,8 @@ export function Finance({ tab }: { tab: Tab }) {
         ))}
       </nav>
       {tab === "entries" && <Entries />}
+      {tab === "import" && <Importing />}
+      {tab === "payees" && <FinancePayees />}
       {tab === "pnl" && <ProfitAndLoss />}
       {tab === "balance" && <Balance />}
       {tab === "export" && <ForTheCpa />}
@@ -66,21 +72,31 @@ export function Finance({ tab }: { tab: Tab }) {
   );
 }
 
+function Importing() {
+  const { accounts, categories, ready } = useBooks();
+  return ready ? <FinanceImport accounts={accounts} categories={categories} />
+    : <p>Opening the books…</p>;
+}
+
 // ------------------------------------------------------------------- entries
 
 type Draft = { kind: EntryKind; direction: "in" | "out"; on_date: string; amount_cents: number;
                category: string; account: string; to_account: string; description: string;
-               counterparty: string };
+               counterparty: string; payee_contact: string };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const blank = (): Draft => ({ kind: "expense", direction: "out", on_date: today(),
                               amount_cents: 0, category: "", account: "", to_account: "",
-                              description: "", counterparty: "" });
+                              description: "", counterparty: "", payee_contact: "" });
 
 function EntryForm({ start, entry, onDone, onCancel }: {
   start: Draft; entry?: FinanceEntry; onDone: () => void; onCancel?: () => void;
 }) {
   const { accounts, categories } = useBooks();
+  const payees = useQuery<PayeeReport>({
+    queryKey: ["finance-payees", "list"],
+    queryFn: () => api.get<PayeeReport>("/api/finance-payees/") });
+  const flagged = (payees.data?.payees ?? []).filter((p) => p.is_payee);
   const [form, setForm] = useState<Draft>(start);
   const [said, setSaid] = useState("");
   const set = (patch: Partial<Draft>) => setForm({ ...form, ...patch });
@@ -101,7 +117,8 @@ function EntryForm({ start, entry, onDone, onCancel }: {
             to_account: form.kind === "transfer" ? form.to_account || null : null,
             ...(form.kind === "owner" || form.kind === "held"
               ? { direction: form.direction } : {}),
-            description: form.description, counterparty: form.counterparty };
+            description: form.description, counterparty: form.counterparty,
+            payee_contact: form.kind === "expense" ? form.payee_contact || null : null };
       return entry ? api.patch<FinanceEntry>(`/api/finance-entries/${entry.id}/`, body)
         : api.post<FinanceEntry>("/api/finance-entries/", body);
     },
@@ -183,6 +200,15 @@ function EntryForm({ start, entry, onDone, onCancel }: {
           <Field label={form.kind === "income" ? "Paid by" : "Paid to"}>
             <input aria-label={`Payee or payer of ${label}`} value={form.counterparty}
               maxLength={160} onChange={(e) => set({ counterparty: e.target.value })} />
+          </Field>
+        )}
+        {form.kind === "expense" && !fromInvoice && flagged.length > 0 && (
+          <Field label="1099 payee">
+            <select aria-label={`1099 payee of ${label}`} value={form.payee_contact}
+              onChange={(e) => set({ payee_contact: e.target.value })}>
+              <option value="">Not a 1099 payee</option>
+              {flagged.map((p) => <option key={p.contact} value={p.contact}>{p.name}</option>)}
+            </select>
           </Field>
         )}
         <button className="primary" disabled={save.isPending
@@ -310,7 +336,8 @@ function Entries() {
                                account: entry.account?.id ?? "",
                                to_account: entry.to_account?.id ?? "",
                                description: entry.description,
-                               counterparty: entry.counterparty }} />
+                               counterparty: entry.counterparty,
+                               payee_contact: entry.payee_contact ?? "" }} />
                   </td></tr>
                 ) : (
                   <tr key={entry.id}>
@@ -478,7 +505,15 @@ function Balance() {
         <table aria-label="Balance view" style={{ maxWidth: 560 }}>
           <tbody>
             {v.cash.map((row) => <tr key={row.id}><td>{row.name}
-              {row.last4 && <span className="muted"> ·· {row.last4}</span>}</td>
+              {row.last4 && <span className="muted"> ·· {row.last4}</span>}
+              {row.bank_said && (
+                <div className="tiny muted">Your bank said {dollars(row.bank_said.cents)} on{" "}
+                  {longDate(row.bank_said.on)}; the books say{" "}
+                  {dollars(row.bank_said.books_cents)}
+                  {row.bank_said.difference_cents === 0 ? ", the same."
+                    : `, ${dollars(Math.abs(row.bank_said.difference_cents))} `
+                      + `${row.bank_said.difference_cents > 0 ? "more" : "less"}.`}</div>
+              )}</td>
               <td className="money">{dollars(row.amount_cents)}</td></tr>)}
             {v.unplaced_count > 0 && line(<>Received on invoices, not yet placed in an
               account ({v.unplaced_count})</>, v.unplaced_cents)}

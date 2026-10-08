@@ -1060,3 +1060,44 @@ class FinanceEntryFactory(TenantScopedFactory):
     category = factory.SubFactory(FinanceCategoryFactory,
                                   tenant=factory.SelfAttribute("..tenant"))
     description = "Software subscription"
+
+
+# --- P5, second stop: the import and rules ---
+
+class FinanceRuleFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceRule"
+
+    tenant = factory.SubFactory(TenantFactory)
+    contains = factory.Sequence(lambda n: f"VENDOR {n}")
+    treat_as = "ignore"
+
+
+class FinanceImportProfileFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceImportProfile"
+
+    tenant = factory.SubFactory(TenantFactory)
+    account = factory.SubFactory(FinanceAccountFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+
+
+class FinanceImportBatchFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceImportBatch"
+
+    tenant = factory.SubFactory(TenantFactory)
+    account = factory.SubFactory(FinanceAccountFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    filename = "export.csv"
+
+
+class FinanceImportRowFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceImportRow"
+
+    tenant = factory.SubFactory(TenantFactory)
+    batch = factory.SubFactory(FinanceImportBatchFactory,
+                               tenant=factory.SelfAttribute("..tenant"))
+    row_number = 2
+    outcome = "new"

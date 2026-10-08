@@ -42,7 +42,8 @@ from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
 )
 from apps.finance.models import (
-    FinanceAccount, FinanceCategory, FinanceEntry, FinanceSettings,
+    FinanceAccount, FinanceCategory, FinanceEntry, FinanceImportBatch,
+    FinanceImportProfile, FinanceImportRow, FinanceRule, FinanceSettings,
 )
 from apps.tenancy.registry import register
 
@@ -197,3 +198,8 @@ register(FinanceAccount, factories.FinanceAccountFactory,
 register(FinanceCategory, factories.FinanceCategoryFactory,
          endpoints=("/api/finance-categories/",))
 register(FinanceSettings, factories.FinanceSettingsFactory, api_exposed=False)
+register(FinanceImportBatch, factories.FinanceImportBatchFactory,
+         endpoints=("/api/finance-imports/",))
+register(FinanceRule, factories.FinanceRuleFactory, endpoints=("/api/finance-rules/",))
+register(FinanceImportRow, factories.FinanceImportRowFactory, api_exposed=False)
+register(FinanceImportProfile, factories.FinanceImportProfileFactory, api_exposed=False)

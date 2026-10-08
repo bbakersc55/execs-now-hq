@@ -56,6 +56,8 @@ function show(tab: "entries" | "pnl" | "balance" | "export",
               extra: Record<string, unknown> = {}, route = "/") {
   const fetchMock = mockApi({
     ...extra, "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-categories/": CATEGORIES,
+    "GET /api/finance-payees/": { year: 2026, threshold_cents: 200000,
+                                  default_threshold_cents: 200000, over: 0, payees: [] },
     "GET /api/finance-entries/": LIST });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<Finance tab={tab} />, { route });
@@ -181,7 +183,8 @@ describe("the entries", () => {
   });
 
   it("asks for an account before anything else when there is none", async () => {
-    const fetchMock = mockApi({ "GET /api/finance-accounts/": [],
+    const fetchMock = mockApi({ "GET /api/finance-payees/": { payees: [] },
+                                "GET /api/finance-accounts/": [],
                                 "GET /api/finance-categories/": CATEGORIES,
                                 "GET /api/finance-entries/": { ...LIST, entries: [], count: 0 } });
     vi.stubGlobal("fetch", fetchMock);
@@ -288,7 +291,7 @@ describe("the CPA export", () => {
 describe("accounts, categories and the lock", () => {
   function showSettings(extra: Record<string, unknown> = {}, locked: string | null = null) {
     const fetchMock = mockApi({
-      ...extra, "GET /api/finance-accounts/": ACCOUNTS,
+      ...extra, "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-rules/": [],
       "GET /api/finance-categories/": CATEGORIES,
       "GET /api/finance-settings/": { locked_through: locked, invoice_income_category: "c1" } });
     vi.stubGlobal("fetch", fetchMock);

@@ -10,7 +10,7 @@ import csv
 import io
 from datetime import date
 
-from django.db.models import Q, Sum
+from django.db.models import BigIntegerField, Case, F, Q, Sum, When
 
 from apps.finance.models import FinanceAccount, FinanceCategory, FinanceEntry
 from apps.finance.services import settings_for
@@ -25,6 +25,14 @@ MONTHS = ("January", "February", "March", "April", "May", "June", "July", "Augus
 
 def live(tenant):
     return FinanceEntry.all_objects.filter(tenant=tenant, removed_at__isnull=True)
+
+
+#: An earned entry's amount as it counts toward its category: a refund (income
+#: going out, an expense coming back in) takes away from it.
+SIGNED = Case(
+    When(Q(kind=K.INCOME, direction=D.OUT) | Q(kind=K.EXPENSE, direction=D.IN),
+         then=-F("amount_cents")),
+    default=F("amount_cents"), output_field=BigIntegerField())
 
 
 # ----------------------------------------------------------------------- P&L
@@ -44,7 +52,7 @@ def pnl(tenant, *, year: int, by: str = "month") -> dict:
     earned = live(tenant).filter(kind__in=FinanceEntry.EARNED, on_date__year=year)
     cells: dict = {}
     for row in (earned.filter(category__isnull=False)
-                .values("category_id", "on_date__month").annotate(total=Sum("amount_cents"))):
+                .values("category_id", "on_date__month").annotate(total=Sum(SIGNED))):
         amounts = cells.setdefault(row["category_id"], [0] * periods)
         amounts[index(row["on_date__month"])] += row["total"]
 
@@ -73,7 +81,7 @@ def pnl(tenant, *, year: int, by: str = "month") -> dict:
         "net": net, "net_total": sum(net),
         "uncategorized": {
             "count": loose_rows.count(),
-            "amount_cents": loose_rows.aggregate(total=Sum("amount_cents"))["total"] or 0},
+            "amount_cents": loose_rows.aggregate(total=Sum(SIGNED))["total"] or 0},
         "years": years(tenant, year),
     }
 
@@ -126,7 +134,10 @@ def balance(tenant, *, as_of: date) -> dict:
     from apps.billing import services as billing
     from apps.billing.models import ClientInvoice
 
+    from apps.finance import importer
+
     entries = live(tenant).filter(on_date__lte=as_of)
+    said = importer.bank_said(tenant)
     cash, cards = [], []
     for account in FinanceAccount.all_objects.filter(tenant=tenant).order_by("kind", "name"):
         if account.opening_on > as_of:
@@ -141,7 +152,10 @@ def balance(tenant, *, as_of: date) -> dict:
         (cards if is_card else cash).append({
             "id": str(account.pk), "name": account.name, "kind": account.kind,
             "last4": account.last4, "amount_cents": amount,
-            "closed": account.closed_at is not None})
+            "closed": account.closed_at is not None,
+            # A check, not a reconciliation: what the bank's own file said on
+            # its last line, and what the books say for that same day.
+            "bank_said": _bank_said(tenant, account, said.get(account.pk))})
 
     # Invoice payments not yet placed in an account: shown once, never lost.
     loose = entries.filter(account__isnull=True, direction=D.IN)
@@ -163,6 +177,22 @@ def balance(tenant, *, as_of: date) -> dict:
     }
 
 
+def _bank_said(tenant, account, said) -> dict | None:
+    if said is None:
+        return None
+    books = account_balance(tenant, account, said["on"])
+    return {"on": said["on"].isoformat(), "cents": said["cents"], "books_cents": books,
+            "difference_cents": books - said["cents"]}
+
+
+def account_balance(tenant, account, as_of: date) -> int:
+    flow = _flow(live(tenant).filter(on_date__lte=as_of,
+                                     on_date__gte=account.opening_on), account)
+    if account.kind == FinanceAccount.Kind.CARD:
+        return account.opening_balance_cents - flow
+    return account.opening_balance_cents + flow
+
+
 # ---------------------------------------------------------------- the dashboard
 
 def this_month(tenant, today: date) -> dict:
@@ -170,8 +200,8 @@ def this_month(tenant, today: date) -> dict:
     month = live(tenant).filter(on_date__year=today.year, on_date__month=today.month,
                                 on_date__lte=today)
     sums = month.aggregate(
-        revenue=Sum("amount_cents", filter=Q(kind=K.INCOME)),
-        expenses=Sum("amount_cents", filter=Q(kind=K.EXPENSE)))
+        revenue=Sum(SIGNED, filter=Q(kind=K.INCOME)),
+        expenses=Sum(SIGNED, filter=Q(kind=K.EXPENSE)))
     revenue, expenses = sums["revenue"] or 0, sums["expenses"] or 0
     return {
         "revenue_cents": revenue, "expenses_cents": expenses,
@@ -228,7 +258,7 @@ def export_summary(tenant, *, start: date, end: date) -> str:
     earned = _in_range(tenant, start, end).filter(kind__in=FinanceEntry.EARNED)
     by_category = {row["category_id"]: row["total"] for row in
                    earned.order_by().values("category_id").annotate(
-                       total=Sum("amount_cents"))}
+                       total=Sum(SIGNED))}
     totals = {}
     for kind, title in ((T.INCOME, "Income"), (T.EXPENSE, "Expense")):
         totals[kind] = 0
@@ -239,7 +269,7 @@ def export_summary(tenant, *, start: date, end: date) -> str:
                 writer.writerow([title, category.name, category.cpa_code, plain(amount)])
                 totals[kind] += amount
         loose = earned.filter(category__isnull=True, kind=kind).aggregate(
-            total=Sum("amount_cents"))["total"] or 0
+            total=Sum(SIGNED))["total"] or 0
         if loose:
             writer.writerow([title, "(no category yet)", "", plain(loose)])
             totals[kind] += loose

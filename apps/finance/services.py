@@ -298,7 +298,8 @@ def _state(entry) -> dict:
             "on_date": entry.on_date.isoformat(), "amount_cents": entry.amount_cents,
             "category": str(entry.category_id or ""), "account": str(entry.account_id or ""),
             "to_account": str(entry.to_account_id or ""), "description": entry.description,
-            "counterparty": entry.counterparty}
+            "counterparty": entry.counterparty,
+            "payee_contact": str(entry.payee_contact_id or "")}
 
 
 def _own(tenant, row, what):
@@ -326,10 +327,11 @@ def _shape(entry) -> None:
         return
     if entry.to_account_id is not None:
         raise FinanceError("Only a transfer names a second account.")
-    if entry.kind == K.INCOME:
-        entry.direction = D.IN
-    elif entry.kind == K.EXPENSE:
-        entry.direction = D.OUT
+    if entry.kind in FinanceEntry.NATURAL:
+        # Income comes in and an expense goes out unless it is said to be the
+        # other way round, which is a refund and takes away from its category.
+        if entry.direction not in D.values:
+            entry.direction = FinanceEntry.NATURAL[entry.kind]
     elif entry.direction not in D.values:
         raise FinanceError("Say whether the money came in or went out.")
     category = entry.category
@@ -348,7 +350,8 @@ def _an(kind) -> str:
 
 
 EDITABLE = ("kind", "direction", "on_date", "amount_cents", "category", "account",
-            "to_account", "description", "counterparty", "client_company", "reference")
+            "to_account", "description", "counterparty", "client_company", "reference",
+            "payee_contact")
 #: What stays the invoice's own on an entry made from a payment (§3).
 FROM_THE_INVOICE = ("kind", "direction", "on_date", "amount_cents", "to_account",
                     "client_company", "reference")
@@ -356,6 +359,8 @@ FROM_THE_INVOICE = ("kind", "direction", "on_date", "amount_cents", "to_account"
 
 def _apply(tenant, entry, changes: dict) -> None:
     if "kind" in changes:
+        if changes["kind"] != entry.kind and "direction" not in changes:
+            entry.direction = ""          # the new kind's own way, not the old one's
         entry.kind = changes["kind"]
     if "direction" in changes:
         entry.direction = changes["direction"] or ""
@@ -366,7 +371,8 @@ def _apply(tenant, entry, changes: dict) -> None:
     if "amount_cents" in changes:
         entry.amount_cents = _cents(changes["amount_cents"], "An amount")
     for field, what in (("category", "category"), ("account", "account"),
-                        ("to_account", "account"), ("client_company", "company")):
+                        ("to_account", "account"), ("client_company", "company"),
+                        ("payee_contact", "person")):
         if field in changes:
             setattr(entry, field, _own(tenant, changes[field], what))
     for field, most in (("description", 255), ("counterparty", 160), ("reference", 120)):

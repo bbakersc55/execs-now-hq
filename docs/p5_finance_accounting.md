@@ -373,10 +373,57 @@ Differences from the text above:
   line about the finance module arriving.
 - The entries list shows the newest 500 of what is filtered, and says so.
 
-**Second stop, not built:** the import with its own tables, rules, matching a
-deposit to an invoice payment, and 1099 tracking (a payee flag on vendors and
-contacts, expense entries to that payee totaled by calendar year, and a
-year-end report of payees over the threshold, exportable).
+**Second stop (2026-10-08): the import, rules, matching and 1099 tracking.**
+`apps/finance/importer.py`, `rules.py`, `payees.py`; the Import and 1099
+payees tabs and the rules list in Settings → Finance;
+`tests/test_finance_import.py` and `FinanceImport.test.tsx`. Matrix 13.8 and
+13.11.
+
+**Migrations, applied on `execsnowhq_local` only:** `finance 0002` (four
+tables: `finance_rule`, `finance_import_profile`, `finance_import_batch`,
+`finance_import_row`; two columns on `finance_entry`, `bank_id` and
+`payee_contact_id`; and **one check constraint replaced**, see refunds below)
+and `crm 0034` (one column, `contact.is_1099_payee`, default false).
+
+Differences from the text above:
+
+- **What "reuse the existing import tool" came to.** The three steps, the
+  shape of a batch and its rows, the saved mapping and the rollback are the
+  contact import's. The reader and the screen are finance's own: the contact
+  reader takes UTF-8 only and both are built around contacts.
+- **Refunds.** A card statement has them, and stop one could not hold one: an
+  expense had to go out. Income and expense now go either way; the other way
+  is a refund and takes away from its category, in the P&L, the dashboard, the
+  export and a payee's total. This replaced the constraint
+  `finance_entry_direction_fits_kind` with one that only requires a direction.
+- **A line is known by how the bank wrote it**, not by what its entry says
+  now, so tidying a description afterwards does not let the same line in
+  twice. A bank's own id, where the file has one, settles it whatever the
+  wording.
+- **Matching:** a deposit to an invoice payment of the same amount within 7
+  days, once; the other side of a transfer of the same amount within 5 days,
+  once. Each is shown with both sides and can be declined.
+- **Commit refuses if the books moved** under anything it was about to write
+  (a matched payment placed by hand; the same file committed from another dry
+  run) and asks for the dry run again. Nothing is written.
+- **A rule** is a category, a transfer to a named account, or ignore; it can
+  carry a 1099 payee; it can be limited to one account. Owner money and tax
+  held need no kind of their own: the category chosen says which it is.
+  Remembering the same text again replaces the older rule. Rules are listed,
+  switched off and deleted in Settings → Finance; they are written from a line
+  in a dry run, not from that screen.
+- **A line left with no category is still entered** (§4.2), and named beside
+  the P&L.
+- **1099 tracking.** The flag is set in Finance → 1099 payees and is on no
+  contact screen or payload, so an assistant never sees it. An expense names
+  its payee on the entry or in an import. **Two tax rules are built in as
+  defaults, and the screen says to confirm both with the CPA:** the threshold
+  ($600 through 2025, $2,000 from 2026, changeable on the report) and that
+  payments by credit card are shown and left out of the reportable figure.
+  Someone paid as a payee and since unflagged is still listed, marked.
+- **Not built:** editing a rule's text or category after it is made; a 1099
+  flag on the contact's own page; W-2 tracking (HRIS).
+
 
 ## 9. Decisions for the owner
 
