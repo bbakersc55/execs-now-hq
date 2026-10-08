@@ -1178,6 +1178,19 @@ class PortalAccessViewSet(WorkViewSet):
             return Response({"detail": str(exc)}, status=400)
         return Response({**work_serializers.represent_access(membership), **result})
 
+    @action(detail=True, methods=["post"])
+    def resend(self, request, pk=None):
+        """A fresh invitation, valid for a week, to someone who already has
+        access. Same scope as revoke; the earlier invitation stops working."""
+        if not self._may_manage(request):
+            return Response({"detail": "Assistants don't send portal invitations."}, status=403)
+        membership = self._live_access(request, pk)
+        try:
+            result = portal.resend_invitation(membership, actor=request.user)
+        except portal.PortalAccessRefused as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({**work_serializers.represent_access(membership), **result})
+
     def destroy(self, request, pk=None):
         if not self._may_manage(request):
             return Response({"detail": "Assistants don't revoke portal access."}, status=403)

@@ -14,6 +14,9 @@ from django.utils import timezone
 from apps.tenancy.models import TenantScopedModel
 
 MAGIC_LINK_TTL = timedelta(minutes=20)  # C3.2
+#: A portal invitation is read when the person gets to it, not while they are
+#: waiting for it, so it lasts a week. A link someone asks for stays short.
+INVITATION_TTL = timedelta(days=7)
 STAKEHOLDER_TOKEN_TTL = timedelta(days=30)  # FR-3.33b
 
 
@@ -93,14 +96,23 @@ def _hash_token(raw: str) -> str:
 
 class MagicLinkPurpose(models.TextChoices):
     SIGNIN = "signin", "Sign in"
+    INVITE = "invite", "Portal invitation"
     PIN_RESET = "pin_reset", "Note PIN reset"
 
 
-class MagicLinkToken(TenantScopedModel):
-    """Single-use, hashed, 20-minute (assumption C3).
+#: The purposes that sign a person in. An invitation is a sign-in link with a
+#: longer life; a PIN reset never signs anyone in.
+SIGN_IN_PURPOSES = (MagicLinkPurpose.SIGNIN, MagicLinkPurpose.INVITE)
+_TTL = {MagicLinkPurpose.INVITE: INVITATION_TTL}
 
-    The raw token exists only in the email. Consuming one invalidates every
-    other outstanding token for that user.
+
+class MagicLinkToken(TenantScopedModel):
+    """Single-use and hashed (assumption C3). 20 minutes, except a portal
+    invitation, which lasts `INVITATION_TTL`.
+
+    The raw token exists only in the email. Issuing one invalidates every
+    other outstanding token of its purpose for that user, and signing in with
+    one invalidates every other sign-in token they hold (`spend_sign_in_links`).
     """
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="magic_links")
@@ -125,21 +137,45 @@ class MagicLinkToken(TenantScopedModel):
         ).update(used_at=timezone.now())
         token = cls.all_objects.create(
             tenant=tenant, user=user, token_hash=_hash_token(raw), purpose=purpose,
-            expires_at=timezone.now() + MAGIC_LINK_TTL,
+            expires_at=timezone.now() + _TTL.get(purpose, MAGIC_LINK_TTL),
             redirect_to=redirect_to, requested_ip=requested_ip,
         )
         return token, raw
 
     @classmethod
     def resolve(cls, raw: str, purpose=MagicLinkPurpose.SIGNIN):
+        """The live token for `raw`, or None. `purpose` is one or several."""
+        purposes = [purpose] if isinstance(purpose, str) else list(purpose)
         return (
             cls.all_objects.select_related("user", "tenant")
             .filter(
-                token_hash=_hash_token(raw), purpose=purpose,
+                token_hash=_hash_token(raw), purpose__in=purposes,
                 used_at__isnull=True, expires_at__gt=timezone.now(),
             )
             .first()
         )
+
+    @classmethod
+    def find_sign_in(cls, raw: str):
+        """The sign-in token for `raw` in any state — used, expired or live.
+
+        For the page a dead link lands on, which says what kind of link it was.
+        It authorises nothing: only `resolve` answers whether a link works.
+        """
+        return (
+            cls.all_objects.select_related("user", "tenant")
+            .filter(token_hash=_hash_token(raw), purpose__in=SIGN_IN_PURPOSES)
+            .first()
+        )
+
+    @classmethod
+    def spend_sign_in_links(cls, *, tenant_id, user_id) -> int:
+        """End every sign-in link this person still holds. Once they are in, a
+        week-long invitation left in an inbox should not also work."""
+        return cls.all_objects.filter(
+            tenant_id=tenant_id, user_id=user_id, purpose__in=SIGN_IN_PURPOSES,
+            used_at__isnull=True,
+        ).update(used_at=timezone.now())
 
     def consume(self):
         self.used_at = timezone.now()

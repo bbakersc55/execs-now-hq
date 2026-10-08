@@ -12,3 +12,4 @@
 {% else %}<p style="margin:24px 0 20px;padding:12px 14px;background-color:#F4F4F5;font-size:16px;color:{{ muted }};">{{ redacted_note }}</p>
 {% endif %}<p style="margin:0 0 16px;font-size:16px;font-weight:600;">{{ expiry }}</p>
 {% if closing %}<p style="margin:0;font-size:16px;color:{{ muted }};">{{ closing }}</p>{% endif %}
+{% if help_url %}<p style="margin:12px 0 0;font-size:16px;"><a href="{{ help_url }}" style="color:{{ link_color }};text-decoration:underline;">{{ help_label }}</a></p>{% endif %}

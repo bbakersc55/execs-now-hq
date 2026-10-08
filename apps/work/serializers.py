@@ -17,6 +17,7 @@ from apps.crm import permissions as crm_perms
 from apps.crm.models import Company, Contact, Task
 from apps.tenancy.models import CLIENT_ROLES
 from apps.work import permissions as work_perms
+from apps.work import portal
 from apps.work import status as status_service
 from apps.work.models import (
     Cadence, Comment, Goal, GoalResolution, Priority, Project, TaskChecklistItem,
@@ -412,7 +413,15 @@ def represent_access(membership) -> dict:
         "name": membership.user.full_name or membership.user.email,
         "contact": str(membership.contact_id) if membership.contact_id else None,
         "invited_at": membership.invited_at.isoformat() if membership.invited_at else None,
+        # Whether they have ever signed in, and how long the invitation they
+        # are holding has left: what "Resend invitation" is decided on.
+        "signed_in": membership.user.last_login_at is not None,
+        "invitation_expires_at": _iso(portal.invitation_expiry(membership)),
     }
+
+
+def _iso(moment):
+    return moment.isoformat() if moment else None
 
 
 class StakeholderSerializer(ScopedFieldsMixin, serializers.Serializer):

@@ -301,7 +301,7 @@ def test_ac_3_27_a_grant_creates_the_login_consumes_a_seat_and_sends_a_link(
     first = make(api.as_(ff), "/api/portal-access/", contact=str(founder.pk))
     assert first["role"] == "FCC", "The primary contact is the founder by default."
     assert User.objects.filter(email="dana@northwind.invalid").exists()
-    assert any("Sign in to" in m.subject for m in dev_outbox)
+    assert any("Your invitation to" in m.subject for m in dev_outbox)
 
     second = make(api.as_(ff), "/api/portal-access/", contact=str(employee.pk))
     assert second["role"] == "ECC"

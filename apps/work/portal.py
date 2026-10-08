@@ -80,8 +80,8 @@ def access_rows(company):
 
 @transaction.atomic
 def grant(*, tenant, contact, role=None, actor):
-    """Create the login, consume a seat, send the magic link."""
-    from apps.accounts.models import MagicLinkToken, User
+    """Create the login, consume a seat, send the invitation."""
+    from apps.accounts.models import MagicLinkPurpose, MagicLinkToken, User
     from apps.accounts.views import _send_magic_link
 
     refused = refusal_for(contact, tenant=tenant, role=role)
@@ -117,8 +117,8 @@ def grant(*, tenant, contact, role=None, actor):
             contact=contact, invited_by=actor, invited_at=timezone.now(),
         )
 
-    _, raw = MagicLinkToken.issue(tenant=tenant, user=user)
-    _send_magic_link(membership, raw)
+    _, raw = MagicLinkToken.issue(tenant=tenant, user=user, purpose=MagicLinkPurpose.INVITE)
+    _send_magic_link(membership, raw, invitation=True)
     AuditEvent.all_objects.create(
         tenant=tenant, actor=actor, verb="portal.access_granted",
         target_type="membership", target_id=membership.pk,
@@ -126,6 +126,46 @@ def grant(*, tenant, contact, role=None, actor):
                  "seats_in_use": company.seats_in_use},
     )
     return membership
+
+
+@transaction.atomic
+def resend_invitation(membership, *, actor):
+    """A fresh invitation for someone who already has access, audited.
+
+    The earlier invitation stops working (one live invitation per person), and
+    nothing else changes: the seat, the role and any session they have stay as
+    they are. Until this existed the only way to get someone a new link was to
+    revoke them and grant again.
+    """
+    from apps.accounts.models import MagicLinkPurpose, MagicLinkToken
+    from apps.accounts.views import _send_magic_link
+
+    if membership.revoked_at is not None or membership.role not in (Role.FCC, Role.ECC):
+        raise PortalAccessRefused("That person has no portal access to invite them to.")
+    if not membership.user.is_active:
+        raise PortalAccessRefused("That sign-in has been deactivated, so no link can be sent.")
+
+    token, raw = MagicLinkToken.issue(
+        tenant=membership.tenant, user=membership.user, purpose=MagicLinkPurpose.INVITE)
+    sent = _send_magic_link(membership, raw, invitation=True)
+    AuditEvent.all_objects.create(
+        tenant_id=membership.tenant_id, actor=actor, verb="portal.invitation_resent",
+        target_type="membership", target_id=membership.pk,
+        payload={"to": membership.user.email, "sent": sent,
+                 "expires_at": token.expires_at.isoformat()},
+    )
+    return {"sent": sent, "invitation_expires_at": token.expires_at.isoformat()}
+
+
+def invitation_expiry(membership):
+    """When this person's outstanding invitation runs out (it may already
+    have), or None if they hold none: it was used, or replaced by a sign-in."""
+    from apps.accounts.models import MagicLinkPurpose, MagicLinkToken
+
+    return (MagicLinkToken.all_objects
+            .filter(tenant_id=membership.tenant_id, user_id=membership.user_id,
+                    purpose=MagicLinkPurpose.INVITE, used_at__isnull=True)
+            .order_by("-expires_at").values_list("expires_at", flat=True).first())
 
 
 def _end_sessions_and_links(membership):

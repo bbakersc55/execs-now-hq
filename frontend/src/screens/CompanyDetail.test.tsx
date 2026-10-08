@@ -143,7 +143,7 @@ describe("the portal-access picker", () => {
 
     await userEvent.click(buttons[0]);
     expect(granted).toEqual({ contact: "p1", role: "ECC" });
-    expect(await screen.findByText(/Access granted and a sign-in link sent/)).toBeInTheDocument();
+    expect(await screen.findByText(/Access granted and an invitation sent/)).toBeInTheDocument();
   });
 
   it("preselects each person's default role and grants the one chosen", async () => {

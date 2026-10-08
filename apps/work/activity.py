@@ -68,6 +68,7 @@ AUDIT = {
     "portal.access_granted": ("portal", "gave {target} access to the portal"),
     "portal.access_revoked": ("portal", "removed {target}'s portal access"),
     "portal.role_changed": ("portal", "changed {target}'s portal role"),
+    "portal.invitation_resent": ("portal", "sent {target} a new portal invitation"),
     "act_as.started": ("act_as", "began acting as {target}"),
     "act_as.stopped": ("act_as", "stopped acting as {target}"),
     "act_as.ended": ("act_as", "stopped acting as {target}"),

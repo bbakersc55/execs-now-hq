@@ -565,7 +565,12 @@ export interface PortalAccess {
   company: string; seat_count: number | null; seats_in_use: number;
   seats_available: number | null; may_manage: boolean;
   people: { id: string; role: string; email: string; name: string;
-            contact: string | null; invited_at: string | null }[];
+            contact: string | null; invited_at: string | null;
+            /** Whether they have ever signed in. */
+            signed_in: boolean;
+            /** When the invitation they still hold runs out (it may have), or
+             *  null if they hold none. */
+            invitation_expires_at: string | null }[];
 }
 
 /** Who may be granted portal access, and for anyone who may not, the reason. */

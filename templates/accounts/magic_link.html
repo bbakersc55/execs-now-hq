@@ -10,8 +10,9 @@
   .card { background:#fff; padding:2.5rem; border-radius:10px; max-width:26rem;
           box-shadow:0 1px 3px rgba(0,0,0,.12); text-align:center; }
   img { display:block; margin:0 auto 1.25rem; max-width:260px; height:auto; }
-  button { background:{{ accent_color }}; color:{{ on_accent_color|default:"#fff" }}; border:0; border-radius:6px;
-           padding:.85rem 2rem; font-size:1rem; cursor:pointer; }
+  button, a.button { background:{{ accent_color }}; color:{{ on_accent_color|default:"#fff" }}; border:0; border-radius:6px;
+           padding:.85rem 2rem; font-size:1rem; cursor:pointer;
+           display:inline-block; text-decoration:none; }
   p { color:#6D6E71; line-height:1.5; }
 </style>
 <div class="card">
@@ -24,7 +25,15 @@
     <p>Click below to finish signing in.</p>
     <form method="post">{% csrf_token %}<button type="submit">Sign in</button></form>
   {% else %}
-    <p>This link has expired or has already been used. Magic links last
-       20 minutes and work once. Please request a new one.</p>
+    {% if invitation %}
+      <p>This invitation has expired or has already been used. Invitations last
+         7 days and work once.</p>
+    {% else %}
+      <p>This link has expired or has already been used. Sign-in links last
+         20 minutes and work once.</p>
+    {% endif %}
+    <p>Your access is still there. Go to the sign-in page, enter your email
+       address and choose &ldquo;{{ sign_in_button }}&rdquo; to get a new link.</p>
+    <p><a class="button" href="{{ sign_in_url }}">Go to the sign-in page</a></p>
   {% endif %}
 </div>

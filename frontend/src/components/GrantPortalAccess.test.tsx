@@ -43,7 +43,7 @@ describe("GrantPortalAccess", () => {
     expect(screen.getByLabelText("Portal role")).toHaveValue("ECC");
     await userEvent.click(screen.getByRole("button", { name: "Grant portal access" }));
     expect(granted).toEqual({ contact: CONTACT, role: "ECC" });
-    expect(await screen.findByText(/Access granted and a sign-in link sent/)).toBeInTheDocument();
+    expect(await screen.findByText(/Access granted and an invitation sent/)).toBeInTheDocument();
   });
 
   it("preselects founder for the primary contact, and grants the role chosen", async () => {

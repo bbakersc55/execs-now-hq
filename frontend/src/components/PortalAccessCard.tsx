@@ -4,7 +4,16 @@ import { useState } from "react";
 import { Company, Me, PortalAccess, PortalCandidates, api } from "../lib/api";
 import { PORTAL_ROLE_CODES, roleLabel } from "../lib/roles";
 import { ActAsButton } from "./ActAs";
-import { Banner, Card, Empty, Field } from "./ui";
+import { Banner, Card, Empty, Field, when } from "./ui";
+
+/** Where someone stands with their invitation, in one line under their name. */
+function invitationLine(p: PortalAccess["people"][number]): string {
+  if (p.signed_in) return "Has signed in";
+  if (!p.invitation_expires_at) return "Has not signed in yet";
+  return new Date(p.invitation_expires_at) < new Date()
+    ? `Invitation expired ${when(p.invitation_expires_at)} · not signed in`
+    : `Invited · link valid until ${when(p.invitation_expires_at)}`;
+}
 
 export const PORTAL_ROLES = PORTAL_ROLE_CODES.map((value) => ({ value, label: roleLabel(value) }));
 
@@ -27,12 +36,13 @@ export function usePortalAccess(me: Me, company: Company) {
 /**
  * FR-3.33c to FR-3.33i — portal access and seats.
  *
- * Granting creates the login, consumes a seat and sends a sign-in link, as the
+ * Granting creates the login, consumes a seat and sends an invitation, as the
  * role chosen (preselected to the server's default: FCC for the primary
  * contact). Revoking frees the seat and ends their sessions, and **deletes
  * nothing**: their contact, comments, tasks and stakeholder rows all stay, and
  * they keep receiving digests if they are still a stakeholder. Changing a role
  * from founder to employee ends their sessions the same way; they keep access.
+ * "Resend invitation" sends a fresh 7-day link to someone already on the list.
  *
  * The people who can be granted are **this company's contacts**, listed
  * without typing anything: the box narrows that list rather than being the only
@@ -64,7 +74,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
     onSuccess: () => {
       setTerm("");
       setChosen({});
-      setMessage({ kind: "ok", text: "Access granted and a sign-in link sent." });
+      setMessage({ kind: "ok", text: "Access granted and an invitation sent. Its link is valid for 7 days." });
       refresh();
     },
     onError: (e: Error) => setMessage({ kind: "bad", text: e.message }),
@@ -77,6 +87,19 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
         ? "Role changed to client owner. Nothing else changed."
         : `Role changed to client team member; ${r.sessions_ended} session(s) ended. `
           + "They keep access and sign in again with a fresh link." });
+      refresh();
+    },
+    onError: (e: Error) => setMessage({ kind: "bad", text: e.message }),
+  });
+  const resend = useMutation({
+    mutationFn: (person: { id: string; email: string }) =>
+      api.post<{ sent: boolean }>(`/api/portal-access/${person.id}/resend/`, {}),
+    onSuccess: (r, person) => {
+      setMessage(r.sent
+        ? { kind: "ok", text: `A new invitation is on its way to ${person.email}. Its link is `
+            + "valid for 7 days, and the earlier one no longer works." }
+        : { kind: "bad", text: `The invitation to ${person.email} could not be sent. Check `
+            + "Settings → Email, then resend it." });
       refresh();
     },
     onError: (e: Error) => setMessage({ kind: "bad", text: e.message }),
@@ -113,7 +136,8 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
           <tbody>
             {a.people.map((p) => (
               <tr key={p.id}>
-                <td>{p.name}<div className="when">{p.email}</div></td>
+                <td>{p.name}<div className="when">{p.email}</div>
+                  <div className="when">{invitationLine(p)}</div></td>
                 <td>
                   <select aria-label={`Role for ${p.name}`} value={p.role}
                     disabled={changeRole.isPending}
@@ -132,6 +156,11 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                 <td>
                   {/* FR-3.42 — see exactly what they see; no email while acting. */}
                   {!me.acting && <><ActAsButton membership={p.id} name={p.name} />{" "}</>}
+                  {/* A fresh link for the same access: nobody is revoked to get one. */}
+                  <button className="ghost small" disabled={resend.isPending}
+                    onClick={() => resend.mutate({ id: p.id, email: p.email })}>
+                    Resend invitation
+                  </button>{" "}
                   <button className="ghost small" onClick={() => {
                     if (confirm(`Revoke access for ${p.name}? They keep their contact record, `
                                 + "comments and tasks, and any digests they are a stakeholder for.")) {

@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods
 from config.branding import PALETTE, PRODUCT_NAME
 
 from apps.tenancy.roles import role_label
-from .models import MagicLinkToken
+from .models import SIGN_IN_PURPOSES, MagicLinkPurpose, MagicLinkToken
 from .ratelimit import RateLimit, too_many
 
 # C3.4 — 5/hour per email, 20/hour per IP.
@@ -395,7 +395,49 @@ def magic_link_email(tenant, *, url):
     )
 
 
-def _send_magic_link(membership, raw_token):
+def sign_in_page_url() -> str:
+    """The signed-out screen, absolute, for an email or a page outside the app.
+
+    APP_ROOT_URL is the Vite origin in development and a bare "/" in
+    production, where the app is served from PUBLIC_BASE_URL. Signed out, the
+    app's root *is* the sign-in page, with "Email me a sign-in link" on it.
+    """
+    root = settings.APP_ROOT_URL
+    if not root.startswith("http"):
+        root = settings.PUBLIC_BASE_URL.rstrip("/") + "/" + root.lstrip("/")
+    return root
+
+
+#: The button on the sign-in page, named wherever a dead link sends someone.
+SIGN_IN_BUTTON = "Email me a sign-in link"
+
+
+def invitation_subject(tenant):
+    from apps.crm.services import email_layout
+
+    return f"Your invitation to {email_layout.branding(tenant).display_name}"
+
+
+def invitation_email(tenant, *, url):
+    """`(html, text)` for a portal invitation: the sign-in email with a week to
+    use it, and the way back in if the week runs out."""
+    from apps.crm.services import email_layout
+
+    name = email_layout.branding(tenant).display_name
+    return email_layout.action_link_email(
+        tenant, subject=invitation_subject(tenant), heading=invitation_subject(tenant),
+        paragraphs=[f"{name} has set up portal access for you. Use the button below to "
+                    "sign in. You'll see your company's work, and nothing else."],
+        button_label="Sign in", url=url,
+        expiry="This invitation is valid for 7 days and can be used once.",
+        closing=f"After that, or to sign in again later, go to the sign-in page, enter "
+                f"this email address and choose \u201c{SIGN_IN_BUTTON}\u201d.",
+        help_label="Sign-in page", help_url=sign_in_page_url(),
+        redacted_note=MAGIC_LINK_REDACTED,
+    )
+
+
+def _send_magic_link(membership, raw_token, *, invitation=False) -> bool:
     """Sent synchronously, not queued (assumption A2a).
 
     With one ORM-backed queue and no priority lanes, an enqueued magic link
@@ -408,7 +450,10 @@ def _send_magic_link(membership, raw_token):
 
     A send failure does NOT change the response: the request endpoint answers
     identically whether or not the address exists, and an error only for real
-    addresses would undo that. The failure is audited for the FF instead.
+    addresses would undo that. The failure is audited for the FF instead, and
+    returned, so a staff action (grant, resend) can say the email did not go.
+
+    `invitation=True` is the portal invitation: same link, its own words.
     """
     from apps.crm.models import OutboxMessage
     from apps.crm.services import outbox
@@ -417,8 +462,10 @@ def _send_magic_link(membership, raw_token):
     from apps.tenancy.models import AuditEvent
 
     url = f"{settings.PUBLIC_BASE_URL}/auth/magic/{raw_token}"
-    stored_html, stored_text = magic_link_email(membership.tenant, url=None)
-    html, text = magic_link_email(membership.tenant, url=url)
+    compose = invitation_email if invitation else magic_link_email
+    subject = (invitation_subject if invitation else magic_link_subject)(membership.tenant)
+    stored_html, stored_text = compose(membership.tenant, url=None)
+    html, text = compose(membership.tenant, url=url)
 
     try:
         # The requester is not signed in, so no tenant is bound (B1). Bind the
@@ -426,7 +473,7 @@ def _send_magic_link(membership, raw_token):
         with tenant_context(membership.tenant_id):
             outbox.create_message(
                 tenant=membership.tenant, producer=OutboxMessage.Producer.MAGIC_LINK,
-                to_address=membership.user.email, subject=magic_link_subject(membership.tenant),
+                to_address=membership.user.email, subject=subject,
                 body_text=stored_text, body_html=stored_html,
                 deliver_body_text=text, deliver_body_html=html,
             )
@@ -437,6 +484,8 @@ def _send_magic_link(membership, raw_token):
             payload={"producer": "magic_link", "to": membership.user.email,
                      "reason": str(exc)[:500]},
         )
+        return False
+    return True
 
 
 @require_http_methods(["GET", "POST"])
@@ -446,19 +495,25 @@ def magic_link_landing(request, token: str):
     Corporate mail scanners and link-preview bots follow GET links and would
     otherwise burn the token before the client ever clicks it.
     """
-    record = MagicLinkToken.resolve(token)
+    record = MagicLinkToken.resolve(token, purpose=SIGN_IN_PURPOSES)
+    # A dead link still says whose it was and what kind, and where to get a
+    # working one: an expired invitation used to be a dead end that only a
+    # revoke and a new grant could fix.
+    spent = record or MagicLinkToken.find_sign_in(token)
 
-    brand = tenant_branding(_tenant_of(record) or _branding_tenant(request))
+    brand = tenant_branding(_tenant_of(spent) or _branding_tenant(request))
+    page = {**brand, "token": token, "valid": record is not None,
+            "invitation": spent is not None and spent.purpose == MagicLinkPurpose.INVITE,
+            "sign_in_url": sign_in_page_url(), "sign_in_button": SIGN_IN_BUTTON}
 
     if request.method == "GET":
-        return render(request, "accounts/magic_link.html",
-                      {**brand, "valid": record is not None, "token": token})
+        return render(request, "accounts/magic_link.html", page)
 
     if record is None:
-        return render(request, "accounts/magic_link.html",
-                      {**brand, "valid": False, "token": token}, status=400)
+        return render(request, "accounts/magic_link.html", page, status=400)
 
     record.consume()
+    MagicLinkToken.spend_sign_in_links(tenant_id=record.tenant_id, user_id=record.user_id)
     user = record.user
     user.last_login_at = timezone.now()
     user.save(update_fields=["last_login_at", "updated_at"])

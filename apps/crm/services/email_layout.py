@@ -374,22 +374,29 @@ def with_logo(html, tenant, *, as_data_uri=False) -> tuple[str, list[tuple]]:
 # ------------------------------------------------------------ one-button emails
 
 def action_link_email(tenant, *, subject, heading, paragraphs, button_label, url, expiry,
-                      closing="", redacted_note="", internal=False) -> tuple[str, str]:
+                      closing="", redacted_note="", internal=False,
+                      help_label="", help_url="") -> tuple[str, str]:
     """Magic links and PIN resets: one prominent accent button, the plain URL
     beneath it for mail that blocks buttons, and the expiry said plainly.
 
     With `url=None` it renders the STORED copy: the button and the URL are
     replaced by `redacted_note`, so no row ever holds a working credential
     (assumption C3). Both copies come from this one function.
+
+    `help_url` is a second, ordinary link under the closing line (the sign-in
+    page, on an invitation). It is not a credential, so the stored copy keeps it.
     """
     ctx = template_context(tenant, internal=internal, heading=heading, paragraphs=paragraphs,
                            button_label=button_label, url=url, expiry=expiry,
-                           closing=closing, redacted_note=redacted_note)
+                           closing=closing, redacted_note=redacted_note,
+                           help_label=help_label, help_url=help_url)
     content = render_to_string("email/action_link_content.html", ctx)
     lines = [heading, "", *[p for para in paragraphs for p in (para, "")]]
     lines += [f"{button_label}: {url}" if url else redacted_note, "", expiry]
     if closing:
         lines += ["", closing]
+    if help_url:
+        lines += ["", f"{help_label}: {help_url}"]
     text = "\n".join(lines).strip()
     return document(tenant, content_html=content, subject=subject, preheader=heading,
                     internal=internal), text

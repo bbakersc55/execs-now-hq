@@ -44,7 +44,7 @@ export function GrantPortalAccess({ me, contactId }: { me: Me; contactId: string
   const grant = useMutation({
     mutationFn: (role: string) => api.post("/api/portal-access/", { contact: contactId, role }),
     onSuccess: () => {
-      setMessage({ kind: "ok", text: "Access granted and a sign-in link sent." });
+      setMessage({ kind: "ok", text: "Access granted and an invitation sent. Its link is valid for 7 days." });
       setChosen(null);
       qc.invalidateQueries({ queryKey: ["portal-candidate", contactId] });
       qc.invalidateQueries({ queryKey: ["portal-access"] });
