@@ -32,6 +32,7 @@ router.register("goal-milestones", views.GoalMilestoneViewSet,
                 basename="goal-milestone")
 router.register("goal-resolutions", views.GoalResolutionViewSet,
                 basename="goal-resolution")
+router.register("goal-order", views.GoalOrderViewSet, basename="goal-order")
 router.register("value-report-exports", views.GoalReportExportViewSet,
                 basename="value-report-export")
 

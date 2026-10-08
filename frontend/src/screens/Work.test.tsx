@@ -261,3 +261,59 @@ describe("Work carries a company dimension", () => {
     expect(fetchMock.calls.some((c) => c.url.startsWith("/api/companies/"))).toBe(false);
   });
 });
+
+describe("Work shows each client's goals in their order of priority (2026-10-07)", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  const PROPOSAL = {
+    id: "op1", company: CO, company_name: "Acme Facilities", state: "pending",
+    state_label: "Waiting for the practice", order: [], note: "", proposed_by: "Dana Okafor",
+    proposed_at: "2026-10-07T15:00:00Z", decided_by: "", decided_at: null, decision_note: "",
+  };
+
+  function openWith(routes: Record<string, unknown>, me = aMe({ role: "FF" })) {
+    const fetchMock = mockApi({ ...routes, ...LISTS, ...routes });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Work me={me} />);
+    return fetchMock;
+  }
+
+  it("keeps the server's order and numbers the current goals", async () => {
+    openWith({
+      "/api/goals/": [
+        aWorkParent({ id: "g2", kind: "goal", title: "Empty goal", ...acme, priority: 1 }),
+        aWorkParent({ id: "g1", kind: "goal", title: "Cut supervisor overload", ...acme,
+                      priority: 2 }),
+        aWorkParent({ id: "g5", kind: "goal", title: "Last year's goal", ...acme,
+                      priority: null, is_historical: true }),
+      ],
+      "/api/goal-order/pending/": [],
+    });
+    await screen.findByText("Empty goal");
+
+    const titles = [...card("Goals").querySelectorAll(".goal-card h3")]
+      .map((h) => h.textContent);
+    expect(titles).toEqual(["1Empty goal", "2Cut supervisor overload",
+                            "Last year's goal behind us"]);
+  });
+
+  it("tells the practice a client's proposed order is waiting, and links to it", async () => {
+    openWith({ "/api/goal-order/pending/": [PROPOSAL] });
+
+    const notice = (await screen.findByText(
+      /Dana Okafor proposed a new order for Acme Facilities's goals/)).closest("div")!;
+    expect(within(notice).getByRole("link", { name: "Review it on the Value report" }))
+      .toHaveAttribute("href", `/report?company=${CO}`);
+  });
+
+  it("does not ask for the waiting list on a client's Our work", async () => {
+    const fetchMock = openWith({ "/api/goal-order/pending/": [PROPOSAL] },
+                               aMe({ role: "FCC", client_company: CO }));
+    await screen.findByText("Cut supervisor overload");
+    expect(fetchMock.calls.some((c) => c.url.startsWith("/api/goal-order/"))).toBe(false);
+    expect(screen.queryByText(/proposed a new order/)).not.toBeInTheDocument();
+  });
+});

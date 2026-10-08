@@ -364,8 +364,12 @@ def goals_for_company(request, company_id):
     qs = work_perms.goal_queryset_for(
         request, Goal.objects.filter(deleted_at__isnull=True,
                                      client_company_id=company_id))
-    return list(qs.select_related("client_company", "client_owner_contact", "owner")
-                .order_by("created_at"))
+    # The company's priority order (apps.work.goal_order): the order the
+    # report, its PDF and the portal all read the goals in.
+    from apps.work import goal_order
+
+    return goal_order.ordered(
+        qs.select_related("client_company", "client_owner_contact", "owner"))
 
 
 def report_for(request, *, company, for_client: bool) -> dict:

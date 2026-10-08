@@ -26,6 +26,7 @@ from apps.tenancy.models import CLIENT_ROLES, AuditEvent, Role
 from apps.work import permissions as work_perms
 from apps.work import serializers as work_serializers
 from apps.work import digests as digest_service
+from apps.work import goal_order
 from apps.work import portal
 from apps.work import services
 from apps.work import stakeholders as stakeholder_service
@@ -152,7 +153,26 @@ class GoalViewSet(WorkViewSet):
             if not _is_uuid(company):
                 return Response({"detail": "client_company must be an id."}, status=400)
             qs = qs.filter(client_company_id=company)
-        return Response([self._represent(e) for e in qs.order_by("-created_at")[:LIST_LIMIT]])
+        if self.kind != "goal":
+            return Response([self._represent(e)
+                             for e in qs.order_by("-created_at")[:LIST_LIMIT]])
+        # Goals read in their company's priority order: current ones by rank,
+        # historical ones after (apps.work.goal_order). `priority` is the place
+        # a current goal holds in its own company, and it is what Work shows.
+        goals = list(qs)
+        historical = goal_order.historical_ids(goals)
+        place = {}
+        out = []
+        for goal in goal_order.ordered(goals, historical)[:LIST_LIMIT]:
+            data = self._represent(goal)
+            data["is_historical"] = goal.pk in historical
+            if goal.pk in historical or goal.client_company_id is None:
+                data["priority"] = None
+            else:
+                place[goal.client_company_id] = place.get(goal.client_company_id, 0) + 1
+                data["priority"] = place[goal.client_company_id]
+            out.append(data)
+        return Response(out)
 
     def retrieve(self, request, pk=None):
         return Response(self._represent(self.load(pk)))
@@ -1434,6 +1454,121 @@ class ValueReportViewSet(ValueReportBase):
         response = HttpResponse(content, content_type="application/pdf")
         response["Content-Disposition"] = 'inline; filename="value-report.pdf"'
         return response
+
+
+class GoalOrderViewSet(ValueReportBase):
+    """The order of a company's goals (2026-10-07).
+
+    - `GET ?client_company=` — the order, and any proposal waiting.
+    - `POST` — the practice owner or an assigned associate **sets** it; a
+      client **proposes** it, which changes nothing until it is accepted.
+    - `POST <proposal>/accept/`, `POST <proposal>/decline/` — the practice's.
+    - `GET pending/` — every proposal waiting, for the practice.
+
+    An assistant reads the order and decides nothing (matrix §10A: priority is
+    judgement, as resolving a goal is).
+    """
+
+    def _state(self, request, company):
+        pending = goal_order.pending_for(company)
+        decided = goal_order.last_decided_for(company)
+        return {
+            "company": str(company.pk),
+            "order": [{"id": str(g.pk), "title": g.title}
+                      for g in goal_order.current_goals(company)],
+            "may_reorder": work_perms.may_judge(request, company.pk),
+            "may_propose": self.for_client(),
+            "proposal": goal_order.represent(pending) if pending else None,
+            # What the practice last said, so a client is not left wondering.
+            "last_decided": goal_order.represent(decided) if decided else None,
+        }
+
+    def list(self, request):
+        company = self.company_or_404(request)
+        return Response(self._state(request, company))
+
+    def create(self, request):
+        company = self.company_or_404(request)
+        order = request.data.get("order")
+        try:
+            if self.for_client():
+                goal_order.propose(company, order, actor=request.user,
+                                   note=request.data.get("note") or "")
+                return Response(self._state(request, company), status=201)
+            if (refused := self.judgement_or_403(request, company)) is not None:
+                return refused
+            goal_order.set_order(company, order, actor=request.user)
+        except goal_order.OrderRefused as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(self._state(request, company))
+
+    def judgement_or_403(self, request, company):
+        if work_perms.may_judge(request, company.pk):
+            return None
+        return Response(
+            {"detail": "The order of the goals is the practice owner's or the "
+                       "assigned associate's call."}, status=403)
+
+    def _proposal_or_404(self, request, pk):
+        """In scope means the proposal's company is one this person can see:
+        any for the practice owner and an assistant, assigned ones for an
+        associate, their own for a client. Anything else is 404."""
+        from apps.crm.models import Company
+        from apps.work.models import GoalOrderProposal
+
+        if not _is_uuid(pk or ""):
+            raise Http404
+        proposal = GoalOrderProposal.objects.filter(pk=pk).select_related(
+            "client_company", "proposed_by").first()
+        if proposal is None:
+            raise Http404
+        if self.for_client():
+            if proposal.client_company_id != request.membership.client_company_id:
+                raise Http404
+        elif not crm_perms.company_queryset_for(
+                request, Company.objects.filter(pk=proposal.client_company_id,
+                                                deleted_at__isnull=True)).exists():
+            raise Http404
+        return proposal
+
+    def _decide(self, request, pk, decide):
+        proposal = self._proposal_or_404(request, pk)
+        company = proposal.client_company
+        if (refused := self.judgement_or_403(request, company)) is not None:
+            return refused
+        try:
+            decide(proposal)
+        except goal_order.OrderRefused as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response(self._state(request, company))
+
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        return self._decide(request, pk, lambda p: goal_order.accept(p, actor=request.user))
+
+    @action(detail=True, methods=["post"])
+    def decline(self, request, pk=None):
+        note = request.data.get("note") or ""
+        return self._decide(request, pk, lambda p: goal_order.decline(
+            p, actor=request.user, note=note))
+
+    @action(detail=False, methods=["get"])
+    def pending(self, request):
+        """Every order proposal waiting on the practice, for the companies
+        this person can see. The practice's list: a client has their own
+        company's on the report."""
+        from apps.crm.models import Company
+        from apps.work.models import GoalOrderProposal
+
+        if (refused := self.staff_or_403(
+                request, "This list is the practice's.")) is not None:
+            return refused
+        companies = crm_perms.company_queryset_for(
+            request, Company.objects.filter(deleted_at__isnull=True))
+        rows = GoalOrderProposal.objects.filter(
+            state=GoalOrderProposal.State.PENDING, client_company__in=companies,
+        ).select_related("client_company", "proposed_by")
+        return Response([goal_order.represent(p) for p in rows])
 
 
 class GoalReportExportViewSet(ValueReportBase):

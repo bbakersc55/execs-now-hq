@@ -24,7 +24,7 @@ from apps.meetings.models import (
 from apps.notes.models import Note, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
-    Comment, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
+    Comment, CompanyGoalOrder, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone, GoalOrderProposal,
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
@@ -653,6 +653,24 @@ class GoalMilestoneFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     goal = factory.SubFactory(GoalFactory, tenant=factory.SelfAttribute("..tenant"))
     title = factory.Sequence(lambda n: f"Milestone {n}")
+
+
+class CompanyGoalOrderFactory(TenantScopedFactory):
+    class Meta:
+        model = CompanyGoalOrder
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+
+
+class GoalOrderProposalFactory(TenantScopedFactory):
+    class Meta:
+        model = GoalOrderProposal
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
 
 
 class GoalResolutionFactory(TenantScopedFactory):

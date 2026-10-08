@@ -1,16 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "lucide-react";
 
 import { CommentsPanel } from "../components/CommentsPanel";
 import { Avatar, PageHead } from "../components/shell";
 import { StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import {
-  EngagementTimeline, GoalBlock, GoalTree, Me, Task, ValueReport, ValueReportExport,
-  WorkParent, api,
+  EngagementTimeline, GoalBlock, GoalOrder, GoalTree, Me, Task,
+  ValueReport, ValueReportExport, WorkParent, api,
 } from "../lib/api";
+import { usePracticeName } from "../lib/branding";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -40,14 +41,23 @@ function isStaff(me: Me) {
  * goal: `/report/<goal>` is this report with that goal open, which is also what
  * clicking its title does. Closed, a goal is its headline and how much of its
  * work is done; open, it is everything, down to the tasks.
+ *
+ * **The goals are in the company's order of priority** (2026-10-07), the same
+ * order Work shows. The practice owner or an assigned associate moves them and
+ * that is the order. A client moves them and that is a *proposal*: nothing
+ * changes until the practice accepts it.
  */
 export function Report({ me }: { me: Me }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const staff = isStaff(me);
-  const [company, setCompany] = useState<string>("");
+  // `?company=` is how Work links to one client's report.
+  const [params] = useSearchParams();
+  const [company, setCompany] = useState<string>(params.get("company") ?? "");
   const [note, setNote] = useState("");
+  // A client's unsent order: the goals as they have moved them, not yet proposed.
+  const [draft, setDraft] = useState<string[] | null>(null);
 
   const companies = useQuery<{ id: string; name: string; is_client_company: boolean }[]>({
     queryKey: ["companies"],
@@ -73,11 +83,26 @@ export function Report({ me }: { me: Me }) {
     queryFn: () => api.get<ValueReport>(`/api/value-report/${query}`),
     enabled: !staff || !!chosen,
   });
+  const order = useQuery<GoalOrder>({
+    queryKey: ["goal-order", staff ? chosen : "mine"],
+    queryFn: () => api.get<GoalOrder>(`/api/goal-order/${query}`),
+    enabled: !staff || !!chosen,
+  });
+
   const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["goal-order"] });
+    qc.invalidateQueries({ queryKey: ["goals"] });
     qc.invalidateQueries({ queryKey: ["value-report"] });
     qc.invalidateQueries({ queryKey: ["value-report-goal"] });
     qc.invalidateQueries({ queryKey: ["goal-tree"] });
   };
+
+  const setOrder = useMutation({
+    mutationFn: (ids: string[]) => api.post<GoalOrder>("/api/goal-order/",
+                                                       { client_company: chosen, order: ids }),
+    onSuccess: () => { setNote(""); refresh(); },
+    onError: (e: Error) => { setNote(e.message); refresh(); },
+  });
 
   // One goal open at a time, and the address says which: a link to it opens
   // the same report with it open.
@@ -91,6 +116,22 @@ export function Report({ me }: { me: Me }) {
   // not been enabled yet and there is no data and no error to show.
   if (!report.data) return <p>Building the report…</p>;
   const data = report.data;
+  const mayReorder = !!order.data?.may_reorder;
+  const mayPropose = !!order.data?.may_propose;
+  // What is on screen: the real order, or the one a client is putting together.
+  const current = draft
+    ? [...data.current].sort((a, b) => draft.indexOf(a.id) - draft.indexOf(b.id))
+    : data.current;
+  const move = (goal: string, by: -1 | 1) => {
+    const ids = current.map((b) => b.id);
+    const from = ids.indexOf(goal);
+    const to = from + by;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    if (mayReorder) { setOrder.mutate(ids); return; }
+    // Moved back to where they are: there is nothing to propose.
+    setDraft(ids.join() === data.current.map((b) => b.id).join() ? null : ids);
+  };
   const onReport = !id || [...data.current, ...data.historical].some((b) => b.id === id);
 
   return (
@@ -124,10 +165,20 @@ export function Report({ me }: { me: Me }) {
       {data.current.length === 0 && data.historical.length === 0 && (
         <Empty>No goals are being tracked for this company yet.</Empty>
       )}
-      {data.current.map((block) => (
+      {order.data && (
+        <OrderCard order={order.data} draft={draft} blocks={current}
+          onSent={() => { setDraft(null); refresh(); }} onReset={() => setDraft(null)}
+          onDecided={refresh} setNote={setNote} />
+      )}
+      {current.map((block, index) => (
         <GoalCard key={block.id} block={block} me={me} onChanged={refresh}
                   setNote={setNote} open={block.id === id}
-                  onToggle={() => toggle(block.id)} />
+                  onToggle={() => toggle(block.id)}
+                  position={index + 1}
+                  onMove={(mayReorder || mayPropose) && current.length > 1
+                    ? (by) => move(block.id, by) : undefined}
+                  first={index === 0} last={index === current.length - 1}
+                  moving={setOrder.isPending} />
       ))}
       {data.historical.length > 0 && (
         <>
@@ -426,9 +477,16 @@ function Sparkline({ block }: { block: GoalBlock }) {
  *
  * Recording a reading and resolving the goal stay the practice's, open or not.
  */
-function GoalCard({ block, me, onChanged, setNote, open, onToggle }: {
+function GoalCard({ block, me, onChanged, setNote, open, onToggle, position, onMove,
+                    first, last, moving }: {
   block: GoalBlock; me: Me; onChanged: () => void; setNote: (s: string) => void;
   open: boolean; onToggle: () => void;
+  /** Its place in the company's order. Historical goals have none. */
+  position?: number;
+  /** Present when this person may move it: the practice to reorder, a client
+   *  to propose. */
+  onMove?: (by: -1 | 1) => void;
+  first?: boolean; last?: boolean; moving?: boolean;
 }) {
   const staff = isStaff(me);
   const card = useRef<HTMLDivElement>(null);
@@ -475,11 +533,24 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle }: {
                     aria-controls={`goal-${block.id}-body`} onClick={onToggle}>
               {open ? <ChevronDown size={18} aria-hidden="true" />
                     : <ChevronRight size={18} aria-hidden="true" />}
+              {position && <span className="mark-n" aria-hidden="true">{position}</span>}
               {block.title}
             </button>
           }
           actions={
             <span className="inline">
+              {onMove && (
+                <>
+                  <button type="button" className="icon-button" disabled={first || moving}
+                          aria-label={`Move ${block.title} up`} onClick={() => onMove(-1)}>
+                    <ArrowUp size={16} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="icon-button" disabled={last || moving}
+                          aria-label={`Move ${block.title} down`} onClick={() => onMove(1)}>
+                    <ArrowDown size={16} aria-hidden="true" />
+                  </button>
+                </>
+              )}
               {block.is_historical && <Pill>{block.resolution?.resolution.replace("_", " ")}</Pill>}
               {block.client_owner_contact && <Avatar name={block.client_owner_contact} />}
             </span>
@@ -616,6 +687,136 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle }: {
       )}
     </Card>
     </div>
+  );
+}
+
+const names = (goals: { title: string }[]) => (
+  <ol className="small" style={{ margin: "var(--s2) 0", paddingLeft: "var(--s6)" }}>
+    {goals.map((g, i) => <li key={i}>{g.title}</li>)}
+  </ol>
+);
+
+/** A decision is news for a fortnight, then it is just the order. */
+const RECENT_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Everything about *proposing* an order, in one place above the goals.
+ *
+ * - A client who has moved the goals: send it, or put them back.
+ * - A client with a proposal waiting, or just answered: what was said.
+ * - The practice with a proposal waiting: the proposed order, and accept or
+ *   decline for whoever may (an assistant reads it and decides nothing).
+ *
+ * The practice's own moves need none of this: they are the order at once.
+ */
+function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }: {
+  order: GoalOrder; draft: string[] | null; blocks: GoalBlock[];
+  onSent: () => void; onReset: () => void; onDecided: () => void;
+  setNote: (s: string) => void;
+}) {
+  const practice = usePracticeName();
+  const [why, setWhy] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const pending = order.proposal;
+  const decided = order.last_decided;
+
+  const propose = useMutation({
+    mutationFn: () => api.post<GoalOrder>("/api/goal-order/",
+                                          { order: draft, ...(why.trim() ? { note: why.trim() } : {}) }),
+    onSuccess: () => { setWhy(""); setError(""); onSent(); },
+    onError: (e: Error) => setError(e.message),
+  });
+  const decide = useMutation({
+    mutationFn: (verb: "accept" | "decline") => api.post<GoalOrder>(
+      `/api/goal-order/${pending!.id}/${verb}/`,
+      verb === "decline" && reason.trim() ? { note: reason.trim() } : {}),
+    onSuccess: (_r, verb) => {
+      setReason(""); setError("");
+      setNote(verb === "accept" ? "Accepted. The goals are in the proposed order."
+                                : "Declined. The order has not changed.");
+      onDecided();
+    },
+    onError: (e: Error) => { setError(e.message); onDecided(); },
+  });
+
+  if (order.may_propose && draft) {
+    return (
+      <Card title="A new order for the goals" tone="current">
+        {error && <Banner kind="bad">{error}</Banner>}
+        <p className="small" style={{ marginTop: 0 }}>
+          You have moved the goals. {practice} sets their order, so this is a proposal:
+          nothing changes until they accept it.
+        </p>
+        {names(blocks)}
+        <textarea aria-label="Why this order (optional)" rows={2} value={why}
+                  placeholder="Why this order (optional)"
+                  onChange={(e) => setWhy(e.target.value)} />
+        <div className="row tight" style={{ marginTop: "var(--s2)" }}>
+          <button className="primary" disabled={propose.isPending}
+                  onClick={() => propose.mutate()}>Propose this order</button>
+          <button className="ghost" disabled={propose.isPending} onClick={onReset}>
+            Put them back</button>
+        </div>
+      </Card>
+    );
+  }
+
+  if (order.may_propose) {
+    if (pending) {
+      return (
+        <Card title="Your proposed order">
+          <p className="small" style={{ marginTop: 0 }}>
+            Proposed {when(pending.proposed_at)}{pending.proposed_by && ` by ${pending.proposed_by}`}.
+            {" "}{practice} has not answered yet, so the goals below are still in the
+            current order.
+          </p>
+          {names(pending.order)}
+          {pending.note && <p className="small muted">{pending.note}</p>}
+        </Card>
+      );
+    }
+    if (decided?.decided_at && Date.now() - Date.parse(decided.decided_at) < RECENT_MS) {
+      return (
+        <Banner kind={decided.state === "accepted" ? "ok" : "info"}>
+          {decided.state === "accepted"
+            ? `${practice} accepted the order proposed on ${when(decided.proposed_at)}.`
+            : `${practice} kept the current order rather than the one proposed on `
+              + `${when(decided.proposed_at)}.`}
+          {decided.decision_note && ` “${decided.decision_note}”`}
+        </Banner>
+      );
+    }
+    return blocks.length > 1
+      ? <p className="small muted">The goals are in order of priority. Use the arrows on a
+          goal to propose a different order to {practice}.</p>
+      : null;
+  }
+
+  if (!pending) return null;
+  return (
+    <Card title={`${pending.proposed_by || "The client"} proposed a new order`} tone="current">
+      {error && <Banner kind="bad">{error}</Banner>}
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Proposed {when(pending.proposed_at)}. The goals below are still in the current order.
+      </p>
+      {names(pending.order)}
+      {pending.note && <p className="small">“{pending.note}”</p>}
+      {order.may_reorder ? (
+        <div className="row tight" style={{ flexWrap: "wrap" }}>
+          <button className="primary" disabled={decide.isPending}
+                  onClick={() => decide.mutate("accept")}>Accept this order</button>
+          <input aria-label="Reason for declining (the client reads this)" value={reason}
+                 style={{ flex: "1 1 240px", width: "auto" }}
+                 placeholder="If declining: why, in one line — the client reads this"
+                 onChange={(e) => setReason(e.target.value)} />
+          <button disabled={decide.isPending} onClick={() => decide.mutate("decline")}>
+            Decline</button>
+        </div>
+      ) : (
+        <p className="small muted">The practice owner or the assigned associate decides.</p>
+      )}
+    </Card>
   );
 }
 

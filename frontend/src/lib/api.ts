@@ -476,6 +476,10 @@ export interface WorkParent {
   id: string;
   kind: "goal" | "project";
   title: string;
+  /** Goals, in a list: the place a current goal holds in its company's order
+   *  of priority. Null for a historical or an internal goal. */
+  priority?: number | null;
+  is_historical?: boolean;
   description: string;
   status: WorkStatus;
   status_override: WorkStatus | null;
@@ -630,6 +634,26 @@ export interface GoalNarrativeRow {
   accepted_at?: string | null;
   accepted_by?: string;
   version_count?: number;
+}
+
+/** A client's proposed order for their company's goals, and what became of it. */
+export interface GoalOrderProposal {
+  id: string; company: string; company_name: string;
+  state: "pending" | "accepted" | "declined" | "superseded"; state_label: string;
+  order: { id: string; title: string }[];
+  note: string; proposed_by: string; proposed_at: string;
+  decided_by: string; decided_at: string | null; decision_note: string;
+}
+
+/** The order of a company's current goals. The practice sets it
+ *  (`may_reorder`); a client proposes one (`may_propose`). */
+export interface GoalOrder {
+  company: string;
+  order: { id: string; title: string }[];
+  may_reorder: boolean;
+  may_propose: boolean;
+  proposal: GoalOrderProposal | null;
+  last_decided: GoalOrderProposal | null;
 }
 
 /** The work under one goal: its projects with their tasks, and the tasks

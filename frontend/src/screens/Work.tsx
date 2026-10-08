@@ -10,8 +10,8 @@ import { PortalCreate } from "../components/PortalCreate";
 import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Avatar, PageHead, useRowLink } from "../components/shell";
-import { Card, Empty, when } from "../components/ui";
-import { Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
+import { Banner, Card, Empty, when } from "../components/ui";
+import { GoalOrderProposal, Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
 import { useRemembered } from "../lib/remembered";
 
 const TENANT = ["FF", "CF", "VA"];
@@ -40,6 +40,12 @@ export function Work({ me }: { me: Me }) {
   // per goal. One request either way, and the rows are already cached.
   const tasks = useQuery<Task[]>({
     queryKey: ["tasks", "all"], queryFn: () => api.get<Task[]>("/api/tasks/"),
+  });
+  // A client's proposed order waits here for the practice, where the goals are.
+  const proposals = useQuery<GoalOrderProposal[]>({
+    queryKey: ["goal-order", "pending"],
+    queryFn: () => api.get<GoalOrderProposal[]>("/api/goal-order/pending/"),
+    enabled: isTenant,
   });
   const orphanProjects = (projects.data ?? []).filter((p) => !p.goal);
   const [collapsed, toggle] = useCollapsed(me);
@@ -74,6 +80,15 @@ export function Work({ me }: { me: Me }) {
         </Card>
       )}
 
+      {(proposals.data ?? []).filter((p) => !company || p.company === company).map((p) => (
+        <Banner key={p.id} kind="info">
+          {p.proposed_by || "A client"} proposed a new order for {p.company_name}'s goals.{" "}
+          <Link to={`/report?company=${p.company}`}>Review it on the Value report</Link>
+        </Banner>
+      ))}
+
+      {/* In each company's order of priority (the server's): current goals
+          numbered, the ones behind us after them. */}
       <Card title="Goals">
         <Grouped rows={mine(goals.data ?? [])} headings={isTenant}
           empty={company ? "No goals for this client yet." : "No goals yet."}
@@ -186,8 +201,15 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
           <div className="grow">
             {/* The head expands and collapses, so the title is what opens
                 the goal; no underline, like every other name. */}
-            <h3><Link className="rowname" to={`/work/goals/${goal.id}`}
-              onClick={(e) => e.stopPropagation()}>{goal.title}</Link></h3>
+            <h3>
+              {goal.priority != null && (
+                <span className="mark-n" title="Its place in this client's order of priority">
+                  {goal.priority}</span>
+              )}
+              <Link className="rowname" to={`/work/goals/${goal.id}`}
+                onClick={(e) => e.stopPropagation()}>{goal.title}</Link>
+              {goal.is_historical && <> <span className="pill">behind us</span></>}
+            </h3>
             {/* The measure leads when there is one — the report's rule, on the
                 screen the practice reads (FR-4B.18). */}
             {goal.measurable_kind === "numeric" && goal.baseline_value !== null && (

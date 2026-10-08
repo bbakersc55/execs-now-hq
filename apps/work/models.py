@@ -170,6 +170,80 @@ class Goal(WorkItem):
         return not self.measurable_kind
 
 
+class CompanyGoalOrder(TenantScopedModel):
+    """The order of one client company's goals, as the practice set it
+    (owner, 2026-10-07). One row per company, made the first time anyone
+    orders them; a company with no row reads in the order its goals were made.
+
+    `order` is goal ids, first is first. A goal that is not in it (made since)
+    comes after the ones that are, by creation; a historical goal comes after
+    every current one whatever this says. Reading it is `apps.work.goal_order`,
+    and nothing else should.
+
+    Its own table, not a column on `goal`: the order is a fact about the
+    company's goals together, and `goal`'s columns are pinned by the strategy
+    conversion's golden files.
+    """
+
+    client_company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
+                                       related_name="+")
+    order = models.JSONField(default=list)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "company_goal_order"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "client_company"],
+                                    name="company_goal_order_one_per_company"),
+        ]
+
+
+class GoalOrderProposal(TenantScopedModel):
+    """A client's proposed order for their company's goals (owner, 2026-10-07).
+
+    **A client's reorder is a proposal; the practice's is the order.** The
+    priority of the goals is the practice's judgement, so a client moving them
+    changes nothing until someone at the practice accepts it. One is pending
+    per company at a time: proposing again supersedes the earlier one, which
+    is kept, not deleted.
+
+    `order` is the goal ids as proposed, first is first. It is a snapshot of an
+    opinion, not a foreign key: a goal resolved or added between proposing and
+    accepting is dealt with at acceptance (`goal_order.accept`).
+    """
+
+    class State(models.TextChoices):
+        PENDING = "pending", "Waiting for the practice"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+        SUPERSEDED = "superseded", "Replaced by a newer proposal"
+
+    client_company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
+                                       related_name="+")
+    proposed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    order = models.JSONField(default=list)
+    # Why, in the client's words. Optional: prompting is not blocking.
+    note = models.TextField(blank=True, default="")
+    state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    # The practice's answer, which the client reads.
+    decision_note = models.TextField(blank=True, default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_order_proposal"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["tenant", "client_company", "state"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "client_company"], condition=models.Q(state="pending"),
+                name="goal_order_proposal_one_pending_per_company"),
+        ]
+
+
 class GoalMeasurement(TenantScopedModel):
     """One dated reading (FR-4B.14). The series the chart is drawn from, and the
     only place a current value lives.

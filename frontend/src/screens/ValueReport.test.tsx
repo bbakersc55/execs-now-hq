@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GoalBlock, ValueReport } from "../lib/api";
+import { GoalBlock, GoalOrder, GoalOrderProposal, ValueReport } from "../lib/api";
 import { useLocation } from "react-router-dom";
 
 import { aMe, aTask, aWorkParent } from "../test/fixtures";
@@ -76,6 +76,11 @@ const TREE = {
   tasks: [aTask({ id: "t3", title: "Count this week's escalations", status: "not_started" })],
 };
 
+function anOrder(overrides: Partial<GoalOrder> = {}): GoalOrder {
+  return { company: COMPANY, order: [], may_reorder: false, may_propose: false,
+           proposal: null, last_decided: null, ...overrides };
+}
+
 /** Where the app is, read from inside it: the report moves between `/report`
  *  and `/report/<goal>` without leaving the page. */
 function Address() {
@@ -95,6 +100,8 @@ function show(report = aReport(), me = aMe(), extra: Record<string, unknown> = {
                               is_client_company: true }],
     "GET /api/goals/": TREE,
     "GET /api/comments/": [],
+    "GET /api/goal-order/": anOrder(),
+    "GET /api/branding": { display_name: "Executives Now" },
     // Again, so that a route named in both keeps the test's answer.
     ...extra,
   });
@@ -628,5 +635,238 @@ describe("a goal opens in place on the report (2026-10-07)", () => {
     // Ridgeline's, which the goal named, and never Acme's, the first in the list.
     expect(asked).toEqual([`/api/value-report/?client_company=${RIDGE}`]);
     expect(screen.getByLabelText("Client company")).toHaveValue(RIDGE);
+  });
+});
+
+describe("the goals are in order of priority (2026-10-07)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const A = "Decisions stall waiting on the founder";
+  const B = "Close the books in five days";
+  const C = "Last year's reorganisation";
+  const B_ID = "33333333-3333-4333-8333-333333333333";
+  const C_ID = "66666666-6666-4666-8666-666666666666";
+  const report = () => aReport({
+    current: [aBlock(), aBlock({ id: B_ID, title: B })],
+    historical: [aBlock({ id: C_ID, title: C, is_historical: true,
+                          resolution: { id: "r9", resolution: "achieved", label: "Achieved",
+                                        reason: "Done.", at: "2026-01-10T12:00:00Z", by: "" } })],
+  });
+  const proposal = (over: Partial<GoalOrderProposal> = {}): GoalOrderProposal => ({
+    id: "op1", company: COMPANY, company_name: "Acme Facilities", state: "pending",
+    state_label: "Waiting for the practice",
+    order: [{ id: B_ID, title: B }, { id: GOAL, title: A }],
+    note: "Month-end is what hurts.", proposed_by: "Dana Okafor",
+    proposed_at: "2026-10-07T15:00:00Z", decided_by: "", decided_at: null,
+    decision_note: "", ...over,
+  });
+  /** The goal titles on screen, top to bottom, with the place each one shows. */
+  const shown = () => [...document.querySelectorAll(".goal-toggle")]
+    .map((el) => el.textContent);
+  const posts = (fetchMock: ReturnType<typeof show>) =>
+    fetchMock.calls.filter((c) => c.method === "POST").map((c) => [c.url, c.body]);
+
+  it("numbers the current goals in the order the server gave, and not the ones behind us",
+    async () => {
+      show(report(), aMe({ role: "FCC" }), {}, "/report");
+      await screen.findByRole("button", { name: A });
+      expect(shown()).toEqual([`1${A}`, `2${B}`, C]);
+    });
+
+  it("gives nobody arrows who may neither reorder nor propose", async () => {
+    show(report(), aMe({ role: "VA" }), {}, "/report");
+    await screen.findByRole("button", { name: A });
+    expect(screen.queryByRole("button", { name: /^Move / })).not.toBeInTheDocument();
+  });
+
+  describe("the practice", () => {
+    const mine = { "GET /api/goal-order/": anOrder({ may_reorder: true }) };
+
+    it("moves a goal and that is the order: one request, no proposal", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(report(), aMe(), {
+        "POST /api/goal-order/": () => ({ body: anOrder({ may_reorder: true }) }),
+        ...mine,
+      }, "/report");
+
+      await user.click(await screen.findByRole("button", { name: `Move ${A} down` }));
+
+      await waitFor(() => expect(posts(fetchMock)).toEqual([
+        ["/api/goal-order/", { client_company: COMPANY, order: [B_ID, GOAL] }]]));
+      expect(screen.queryByText("A new order for the goals")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Propose this order" })).not.toBeInTheDocument();
+    });
+
+    it("cannot move the first goal up, the last down, or a historical one at all", async () => {
+      show(report(), aMe(), mine, "/report");
+      expect(await screen.findByRole("button", { name: `Move ${A} up` })).toBeDisabled();
+      expect(screen.getByRole("button", { name: `Move ${A} down` })).toBeEnabled();
+      expect(screen.getByRole("button", { name: `Move ${B} down` })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: `Move ${C} up` })).not.toBeInTheDocument();
+    });
+
+    it("says so when the server refuses the order", async () => {
+      const user = userEvent.setup();
+      show(report(), aMe(), {
+        "POST /api/goal-order/": () => ({ status: 400, body: {
+          detail: "The goals have changed since this page was opened. Reload it and order "
+                  + "them again." } }),
+        ...mine,
+      }, "/report");
+      await user.click(await screen.findByRole("button", { name: `Move ${A} down` }));
+      expect(await screen.findByText(/The goals have changed since this page was opened/))
+        .toBeInTheDocument();
+    });
+
+    it("is shown a client's proposal and accepts it", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(report(), aMe(), {
+        "POST /api/goal-order/op1/accept/": () => ({ body: anOrder({ may_reorder: true }) }),
+        "GET /api/goal-order/": anOrder({ may_reorder: true, proposal: proposal() }),
+      }, "/report");
+
+      const card = (await screen.findByText("Dana Okafor proposed a new order"))
+        .closest("section")!;
+      expect([...card.querySelectorAll("ol li")].map((li) => li.textContent)).toEqual([B, A]);
+      expect(within(card).getByText(/Month-end is what hurts\./)).toBeInTheDocument();
+      // Until it is accepted, the goals are where they were.
+      expect(shown().slice(0, 2)).toEqual([`1${A}`, `2${B}`]);
+
+      await user.click(within(card).getByRole("button", { name: "Accept this order" }));
+      await waitFor(() => expect(posts(fetchMock)).toEqual(
+        [["/api/goal-order/op1/accept/", {}]]));
+      expect(await screen.findByText(/Accepted\. The goals are in the proposed order\./))
+        .toBeInTheDocument();
+    });
+
+    it("declines with a reason the client will read", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(report(), aMe(), {
+        "POST /api/goal-order/op1/decline/": () => ({ body: anOrder({ may_reorder: true }) }),
+        "GET /api/goal-order/": anOrder({ may_reorder: true, proposal: proposal() }),
+      }, "/report");
+
+      await user.type(
+        await screen.findByLabelText("Reason for declining (the client reads this)"),
+        "Cash has to land first.");
+      await user.click(screen.getByRole("button", { name: "Decline" }));
+      await waitFor(() => expect(posts(fetchMock)).toEqual(
+        [["/api/goal-order/op1/decline/", { note: "Cash has to land first." }]]));
+    });
+
+    it("shows an assistant the proposal and no way to answer it", async () => {
+      show(report(), aMe({ role: "VA" }), {
+        "GET /api/goal-order/": anOrder({ proposal: proposal() }),
+      }, "/report");
+      const card = (await screen.findByText("Dana Okafor proposed a new order"))
+        .closest("section")!;
+      expect(within(card).getByText(/practice owner or the assigned associate decides/))
+        .toBeInTheDocument();
+      expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    it("opens the company a link from Work names", async () => {
+      const RIDGE = "55555555-5555-4555-8555-555555555555";
+      const fetchMock = show(report(), aMe(), {
+        "GET /api/companies/": [
+          { id: COMPANY, name: "Acme Facilities", is_client_company: true },
+          { id: RIDGE, name: "Ridgeline Freight", is_client_company: true },
+        ],
+      }, `/report?company=${RIDGE}`);
+      await screen.findByRole("button", { name: A });
+      const asked = fetchMock.calls.map((c) => c.url);
+      expect(asked).toContain(`/api/value-report/?client_company=${RIDGE}`);
+      expect(asked).toContain(`/api/goal-order/?client_company=${RIDGE}`);
+      expect(asked).not.toContain(`/api/value-report/?client_company=${COMPANY}`);
+    });
+  });
+
+  describe("a client", () => {
+    const theirs = { "GET /api/goal-order/": anOrder({ may_propose: true }) };
+    const me = () => aMe({ role: "FCC" });
+
+    it("moves a goal on screen and nothing is sent until they propose it", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(report(), me(), {
+        "POST /api/goal-order/": () => ({ status: 201, body: anOrder({ may_propose: true }) }),
+        ...theirs,
+      }, "/report");
+      expect(await screen.findByText(/Use the arrows on a goal to propose a different order/))
+        .toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: `Move ${A} down` }));
+
+      expect(shown()).toEqual([`1${B}`, `2${A}`, C]);
+      const card = screen.getByText("A new order for the goals").closest("section")!;
+      expect(within(card).getByText(/this is a proposal:\s+nothing changes until they accept it/))
+        .toBeInTheDocument();
+      expect(within(card).getByText(/Executives Now sets their order/)).toBeInTheDocument();
+      expect(posts(fetchMock)).toEqual([]);
+
+      await user.type(within(card).getByLabelText("Why this order (optional)"),
+                      "Month-end is what hurts.");
+      await user.click(within(card).getByRole("button", { name: "Propose this order" }));
+      // Their company is implied: only the order and the reason travel.
+      await waitFor(() => expect(posts(fetchMock)).toEqual([
+        ["/api/goal-order/", { order: [B_ID, GOAL], note: "Month-end is what hurts." }]]));
+      // Sent, so the goals go back to the order that is actually in force.
+      await waitFor(() => expect(shown()).toEqual([`1${A}`, `2${B}`, C]));
+    });
+
+    it("can put them back, and moving one back by hand is the same thing", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(report(), me(), theirs, "/report");
+      await user.click(await screen.findByRole("button", { name: `Move ${A} down` }));
+      await user.click(screen.getByRole("button", { name: "Put them back" }));
+      expect(shown()).toEqual([`1${A}`, `2${B}`, C]);
+      expect(screen.queryByText("A new order for the goals")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: `Move ${A} down` }));
+      await user.click(screen.getByRole("button", { name: `Move ${A} up` }));
+      expect(screen.queryByText("A new order for the goals")).not.toBeInTheDocument();
+      expect(posts(fetchMock)).toEqual([]);
+    });
+
+    it("sees their proposal waiting, with the goals still in the current order", async () => {
+      show(report(), me(), {
+        "GET /api/goal-order/": anOrder({ may_propose: true, proposal: proposal() }),
+      }, "/report");
+      const card = (await screen.findByText("Your proposed order")).closest("section")!;
+      expect(await within(card).findByText(/Executives Now has not answered yet/))
+        .toBeInTheDocument();
+      expect([...card.querySelectorAll("ol li")].map((li) => li.textContent)).toEqual([B, A]);
+      expect(shown()).toEqual([`1${A}`, `2${B}`, C]);
+      expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    it("reads the practice's answer when it was declined", async () => {
+      show(report(), me(), {
+        "GET /api/goal-order/": anOrder({ may_propose: true, last_decided: proposal({
+          state: "declined", decided_at: new Date().toISOString(),
+          decided_by: "Bryan Baker", decision_note: "Cash has to land first." }) }),
+      }, "/report");
+      expect(await screen.findByText(
+        /Executives Now kept the current order .* “Cash has to land first\.”/))
+        .toBeInTheDocument();
+    });
+
+    const accepted = (decided_at: string) => ({
+      "GET /api/goal-order/": anOrder({ may_propose: true, last_decided: proposal({
+        state: "accepted", decided_at, decided_by: "Bryan Baker" }) }),
+    });
+
+    it("is told when it was accepted", async () => {
+      show(report(), me(), accepted(new Date().toISOString()), "/report");
+      expect(await screen.findByText(/Executives Now accepted the order proposed on/))
+        .toBeInTheDocument();
+    });
+
+    it("is not reminded of an old answer forever", async () => {
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      show(report(), me(), accepted(monthAgo), "/report");
+      expect(await screen.findByText(/Use the arrows on a goal to propose a different order/))
+        .toBeInTheDocument();
+      expect(screen.queryByText(/accepted the order proposed/)).not.toBeInTheDocument();
+    });
   });
 });

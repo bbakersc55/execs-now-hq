@@ -21,7 +21,8 @@ from apps.crm.models import (
 from apps.notes.models import Note, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
-    Comment, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
+    Comment, CompanyGoalOrder, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
+    GoalOrderProposal,
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
@@ -109,6 +110,11 @@ register(GoalMilestone, factories.GoalMilestoneFactory,
          endpoints=("/api/goal-milestones/",))
 register(GoalResolution, factories.GoalResolutionFactory,
          endpoints=("/api/goal-resolutions/",))
+# Read through its company (`/api/goal-order/?client_company=`), and decided
+# by id: `/api/goal-order/<id>/accept/`. tests/test_goal_order.py covers both.
+register(GoalOrderProposal, factories.GoalOrderProposalFactory, api_exposed=False)
+# Never addressed by id at all: read and written through `/api/goal-order/`.
+register(CompanyGoalOrder, factories.CompanyGoalOrderFactory, api_exposed=False)
 register(GoalReportExport, factories.GoalReportExportFactory,
          endpoints=("/api/value-report-exports/",))
 # Reached only through their goal — there is no endpoint that takes one by id.
