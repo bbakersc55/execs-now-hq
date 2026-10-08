@@ -8,6 +8,13 @@
 answers to N1–N9 the same day in §8. **Next is Phase 0 (§6): prove NMI in its
 sandbox, with no product code.** Nothing here is built.
 
+**Client invoicing is being built first without a processor**
+(`docs/p4a_client_invoicing.md`, 2026-10-08), while NMI's sandbox is not
+available. Phase 2 here then adds NMI to those invoices (connecting a
+practice's account, the pay link, paid by NMI) and makes no second invoice
+model: where §3 and §5.2 differ from that document, that document is the
+newer one.
+
 **Words used here.** *The platform* is Noble Rose LLC, doing business as
 Executives Now and Execs NOW HQ. *The platform account* is Noble Rose LLC's
 NMI merchant account. *A practice's account* is that practice's own NMI
