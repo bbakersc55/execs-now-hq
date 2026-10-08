@@ -4,9 +4,9 @@
 
 **This replaces the Stripe version of 2026-10-03** (in git history at
 `fa79a2a`). The owner decided D1–D10 on 2026-10-08 and changed the processor:
-**NMI everywhere, no Stripe.** His decisions are recorded in §7. What this
-re-spec needs from him before building is **N1–N9 in §8**. Nothing here is
-built.
+**NMI everywhere, no Stripe.** His decisions are recorded in §7, and his
+answers to N1–N9 the same day in §8. **Next is Phase 0 (§6): prove NMI in its
+sandbox, with no product code.** Nothing here is built.
 
 **Words used here.** *The platform* is Noble Rose LLC, doing business as
 Executives Now and Execs NOW HQ. *The platform account* is Noble Rose LLC's
@@ -100,9 +100,10 @@ paying its subscription, or the reverse. This has its own tests (§5).
 
 Card numbers, security codes and bank account numbers never reach this app's
 server, its logs or its database (A1). It stores a vault id, a brand, the last
-four digits and an expiry month. Which PCI self-assessment that puts Noble
-Rose LLC under is a question for NMI or the acquiring bank (N9), not something
-this spec can state.
+four digits and an expiry month. **The design assumes SAQ A** (N9): the owner
+is asking NMI which self-assessment applies with their card fields on this
+app's pages. If the answer is not SAQ A, §2.2's card screen and §3.4 are
+looked at again before they are built.
 
 ---
 
@@ -124,14 +125,19 @@ this spec can state.
 
 ### 2.2 What it does
 
-- **No trial (D1).** The first charge is made when the card is put on file,
-  and covers the first month.
+- **No trial (D1), and no part-month.** The fee is charged **on the first day
+  of each month** (agreement v2, clause 3). A card put on file mid-month is
+  not charged until the next 1st, so the days before a practice's first 1st
+  are not charged for.
 - **Card on file.** Settings → Billing has NMI's own card fields (A1). The
   practice owner enters a card; the app stores the vault id on the platform
   account. Associates, assistants and clients never see this screen.
-- **Each month** NMI charges the stored card (§2.3). For every charge the app
+- **On the 1st** NMI charges the stored card (§2.3). For every charge the app
   has **its own invoice**: number, period, lines (base and each add-on),
   total, status and a PDF, which the practice owner sees and downloads (D8).
+- **A receipt is emailed for every successful charge**, to the practice's
+  billing email, with that invoice's PDF attached (the agreement promises it).
+  It is sent by the app, as a transactional message, not by NMI.
 - **A failed charge** leaves that invoice open. The practice owner is emailed
   through the Outbox with a link to Settings → Billing, where they update the
   card and press **Pay now** (one `sale` against the vault).
@@ -162,7 +168,7 @@ this spec can state.
 | App | NMI, on the platform account |
 |---|---|
 | A practice | A Customer Vault record |
-| A practice's subscription | **One recurring subscription with its own amount** (A3), monthly, on the day of the month it started (the 29th to 31st become the 28th) |
+| A practice's subscription | **One recurring subscription with its own amount** (A3), monthly, **on day 1**, starting on the first 1st after the card is put on file |
 | A change of amount | The subscription's amount is updated before the next charge. **If A3 fails in the sandbox:** cancel it and add a new one starting on the next period's date. |
 | A monthly charge | A transaction carrying the subscription's id; the app makes its invoice for the period and marks it from §4 |
 | Pay now | One `sale` against the vault, carrying the open invoice's reference |
@@ -296,7 +302,7 @@ go through one module (`apps/platform/billing.py`), as `stats.py` does.
 |---|---|
 | `billing_plan` *(platform)* | `id`, `code` (`beta_at_cost`, …), `name`, `interval` (`month`), `price_cents`, `is_placeholder`, `is_active` |
 | `billing_addon` *(platform)* | `id`, `code` (a module), `name`, `price_cents`, `is_placeholder`, `is_active` |
-| `practice_subscription` | `id`, `tenant_id` (unique), `plan_id`, `amount_override_cents` (null = the plan's price), `currency`, `billing_email`, `nmi_vault_id`, `card_brand`, `card_last4`, `card_expires`, `nmi_subscription_id`, `status` (`not_billed / needs_card / active / past_due / canceled`), `anchor_day`, `current_period_end`, timestamps |
+| `practice_subscription` | `id`, `tenant_id` (unique), `plan_id`, `amount_override_cents` (null = the plan's price), `currency`, `billing_email`, `nmi_vault_id`, `card_brand`, `card_last4`, `card_expires`, `nmi_subscription_id`, `status` (`not_billed / needs_card / active / past_due / canceled`), `first_charge_on`, `current_period_end`, timestamps |
 | `practice_subscription_addon` | `id`, `tenant_id`, `subscription_id`, `addon_id`, `added_at`, `charged_from` (the next period's start, D4), `removed_at` |
 | `practice_invoice` | `id`, `tenant_id`, `number`, `period_start`, `period_end`, `subtotal_cents`, `tax_cents`, `total_cents`, `amount_paid_cents`, `status` (`open / paid / void / refunded`), `issued_at`, `due_at`, `paid_at`, `nmi_transaction_id`, `pdf_id` → `stored_file` |
 | `practice_invoice_line` | `id`, `tenant_id`, `invoice_id`, `position`, `description`, `amount_cents`, `addon_id` (null for the base) |
@@ -323,18 +329,24 @@ Every migration is shown as SQL first, as the rule requires.
 
 | Phase | What | Stops for |
 |---|---|---|
-| **0. Prove NMI** | A1–A8 run in NMI's sandbox with test keys the owner provides: a script and a short written result per point. **No product code.** | The owner reads the results; N2 and N3 are settled on what was found |
+| **0. Prove NMI** | A1–A8 run in NMI's sandbox with test keys the owner provides: `scripts/nmi_sandbox_check.py` and a short written result per point. **No product code.** It reads `NMI_SANDBOX_SECURITY_KEY`, `NMI_SANDBOX_TOKENIZATION_KEY` and `NMI_SANDBOX_WEBHOOK_KEY` from the laptop's `.env`, and never the live names. A5 and A8 need an address NMI can reach, which the laptop is not: see the note under this table. | The owner reads the results; N2 and N3 are settled on what was found |
 | **1. Subscriptions** | The adapter and its fake; plans and add-ons; card on file; the monthly charge and its invoice; Pay now; the 30-day flag, Suspend and the automatic lift; Settings → Billing; the Practices columns | The owner |
 | **2. Client invoicing** | Connecting a practice's account; one-off, recurring and to-a-contact invoices; the PDF and the approved send; the pay link (N3); paid by NMI and by hand; the portal view | The owner |
 
 No release until the owner says so.
+
+**Webhooks in Phase 0.** NMI can only post to a public address. Two ways to
+see a real delivery, neither of them product code: a request-capture service
+the owner opens for an hour (it shows the headers and the raw body, which is
+all A5 needs), or a tunnel to the laptop. Which one is the owner's choice when
+the keys arrive; the other six points do not wait on it.
 
 | Family | Tests |
 |---|---|
 | **Practice isolation** | Every new practice-scoped table joins the registry. Practice A never sees B's invoices, payments, schedules, keys or subscription. A webhook on A's address signed with B's key is refused. A webhook for a reference that is not A's changes nothing. **A payment to Executives Now as a practice never marks a subscription invoice paid, and the reverse, on the shared account.** The platform never reads a `tenant_secret`. |
 | **Role boundaries** | The matrix of §3.5, row by row: an associate only for assigned client companies and never a send; an assistant 403 on every billing and invoicing route; a client team member sees their own company's invoices and nothing of another company's; a contact invoice appears in no portal. The platform owner reads subscription status and never a client invoice. |
 | NMI | A bad signature is refused. An event is processed once. Polling finds a payment the webhook missed, and marks it once when both arrive. No key, card number or full webhook body is ever written to a log or a row. |
-| Subscriptions | No charge before a card. $20.00 by default; an override applies from the next period; an add-on added mid-month is not charged until the next period. Flagged at 30 days and not suspended by itself. A suspended practice's staff see only the billing screen, its jobs stop, no row changes. Paying lifts it. |
+| Subscriptions | No charge before a card, and none before the next 1st. A receipt with the PDF for every successful charge, and none for a failed one. $20.00 by default; an override applies from the next period; an add-on added mid-month is not charged until the next period. Flagged at 30 days and not suspended by itself. A suspended practice's staff see only the billing screen, its jobs stop, no row changes. Paying lifts it. |
 | Invoices | Numbers never skip or repeat under concurrency. Totals are integer cents. A sent invoice is unchanged except by void. A schedule makes a draft and sends nothing. Sending is an approved Outbox message with the PDF. |
 
 ---
@@ -357,19 +369,19 @@ No release until the owner says so.
 
 ---
 
-## 8. Decisions this re-spec needs
+## 8. Decisions this re-spec needed, answered by the owner 2026-10-08
 
-| # | Question | Recommendation |
-|---|---|---|
-| **N1** | **The agreement.** Clause 3 says direct cost "invoiced monthly", paid "within 15 days". A card charged automatically at a default of $20 is not that. The clause needs new wording (a card on file charged monthly; the default figure or how it is set; the 30 days counted from a failed charge; D4's sentence about a newly added module), and each practice accepts the new version. | **You write or approve the clause before phase 1 is released.** I can draft it for your review; I cannot say it is sufficient. |
-| **N2** | **Who runs the monthly charge:** NMI's recurring subscription, as you asked, or this app's own daily job charging the stored card. | **NMI's recurring, as you asked, if Phase 0 shows its amount can be changed and its failures can be seen within the hour.** Otherwise the app's own job, which makes the invoice first and knows each result at once. |
-| **N3** | **The pay link for a client invoice:** (a) NMI's hosted invoice, or (b) a pay page in this app with NMI's card fields (§3.4). | **(a) if Phase 0 shows NMI's own email can be turned off; otherwise (b).** With (a) as it stands, the client gets NMI's email as well as the practice's, and the "approved before it sends" rule does not cover NMI's. |
-| **N4** | **Recurring client invoices:** a draft each period that a person approves, or also charging the client's stored card with no approval. | **Drafts only in the first build.** A stored card charged unattended is a different agreement between a practice and its client. |
-| N5 | D8 lets a client team member see their company's invoices. Can a client owner switch that off for their own company? | No switch in the first build; it is as you decided. Say if you want one. |
-| N6 | Does an add-on also switch its module on and off, or only price it? | Price and record only, for now. Nothing is gated in Beta, where everything is included. Gating is designed with released pricing. |
-| N7 | Where sales tax rates come from at release, since NMI does not calculate tax. | Decide at release. The tax line exists on every invoice now, at zero. |
-| N8 | Sandbox keys for Phase 0: a test security key, tokenization key and webhook signing key for the platform account, and whether Customer Vault, Recurring and Invoicing are switched on. | You provide them in `.env`. Phase 0 cannot start without them. |
-| N9 | Which PCI self-assessment Noble Rose LLC falls under with card fields hosted by NMI on this app's pages. | Ask NMI or the acquiring bank. It bears on N3: option (b) puts NMI's fields on one more page of ours. |
+| # | Question | Recommendation | Owner |
+|---|---|---|---|
+| **N1** | **The agreement.** Clause 3 said direct cost "invoiced monthly", paid "within 15 days", which a card charged automatically is not. | The owner writes or approves the clause. | **His wording, as `docs/legal/beta_agreement_v2.md`; every practice re-accepts.** The clause governs this spec: charged on the 1st, no part-month, a receipt for every charge. **The app still shows v1.** It moves to v2 in the same release as subscriptions, because v2 describes a card on file that the app cannot take until then. |
+| **N2** | Who runs the monthly charge: NMI's recurring subscription, or this app's own daily job. | NMI's recurring, if Phase 0 shows its amount can be changed and its failures seen within the hour; otherwise the app's own job. | **As recommended.** |
+| **N3** | The pay link for a client invoice: (a) NMI's hosted invoice, or (b) a pay page in this app with NMI's card fields. | (a) if Phase 0 shows NMI's own email can be turned off; otherwise (b). | **As recommended.** |
+| **N4** | Recurring client invoices: a draft each period that a person approves, or also charging a stored card unattended. | Drafts only in the first build. | **As recommended.** |
+| N5 | Can a client owner switch off a client team member's view of the company's invoices? | No switch in the first build. | **As recommended.** |
+| N6 | Does an add-on also switch its module on and off, or only price it? | Price and record only, for now. | **As recommended.** |
+| N7 | Where sales tax rates come from at release. | Decide at release; the tax line exists now, at zero. | **As recommended.** |
+| N8 | Sandbox keys for Phase 0. | The owner provides them. | **He is getting them.** `NMI_SANDBOX_SECURITY_KEY`, `NMI_SANDBOX_TOKENIZATION_KEY`, `NMI_SANDBOX_WEBHOOK_KEY`, in the laptop's `.env`. |
+| N9 | Which PCI self-assessment applies. | Ask NMI or the acquiring bank. | **He is asking NMI. Assume SAQ A for the design.** |
 
-**Order once these are answered:** Phase 0, then subscriptions, then client
-invoicing, stopping after each.
+**Order:** Phase 0, then stop and report what the sandbox showed; then
+subscriptions; then client invoicing; stopping after each.
