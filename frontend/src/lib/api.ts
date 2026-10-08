@@ -1001,6 +1001,8 @@ export interface Dashboard {
              open_goals: number }[];
   /** AI credit and budget — the FF's only (FR-0.9); null for everyone else. */
   ai?: AiBudget | null;
+  /** P5: absent or null for everyone but the practice owner. */
+  finance?: FinanceMonth | null;
   /** Set only while automatic AI work is paused or stopped (owner,
    *  2026-09-29). Amounts for the FF only. */
   ai_paused?: AiGuard | null;
@@ -1463,4 +1465,65 @@ export interface PortalInvoice {
   id: string; number: string; issue_date: string; due_date: string;
   total_cents: number; balance_cents: number; status: InvoiceStatus; status_label: string;
   overdue: boolean; pay_url: string;
+}
+
+// ------------------------------------------------------------- the books (P5)
+
+export type EntryKind = "income" | "expense" | "transfer" | "owner" | "held";
+
+export interface FinanceAccount {
+  id: string; name: string; kind: "bank" | "card" | "cash"; kind_label: string;
+  last4: string; opening_balance_cents: number; opening_on: string; closed: boolean;
+}
+
+export interface FinanceCategory {
+  id: string; name: string; type: "income" | "expense" | "owner" | "held";
+  type_label: string; cpa_code: string; position: number; archived: boolean;
+  system: boolean; used?: boolean;
+}
+
+export interface FinanceEntry {
+  id: string; kind: EntryKind; kind_label: string; direction: "in" | "out";
+  on_date: string; amount_cents: number;
+  category: { id: string; name: string } | null;
+  account: { id: string; name: string } | null;
+  to_account: { id: string; name: string } | null;
+  description: string; counterparty: string;
+  client_company: { id: string; name: string } | null;
+  reference: string; source: "manual" | "invoice" | "import"; source_label: string;
+  invoice: { id: string; number: string } | null;
+  removed: boolean; remove_reason: string;
+}
+
+export interface FinanceEntryList {
+  entries: FinanceEntry[]; count: number;
+  totals: { income_cents: number; expenses_cents: number; net_cents: number };
+}
+
+export interface PnlSection {
+  rows: { id: string; name: string; cpa_code: string; amounts: number[]; total: number }[];
+  totals: number[]; total: number;
+}
+
+export interface Pnl {
+  year: number; by: "month" | "quarter"; periods: string[];
+  income: PnlSection; expenses: PnlSection; net: number[]; net_total: number;
+  uncategorized: { count: number; amount_cents: number }; years: number[];
+}
+
+export interface BalanceView {
+  as_of: string;
+  cash: { id: string; name: string; kind: string; last4: string; amount_cents: number;
+          closed: boolean }[];
+  unplaced_cents: number; unplaced_count: number; cash_total_cents: number;
+  cards: { id: string; name: string; kind: string; last4: string; amount_cents: number;
+           closed: boolean }[];
+  tax_held_cents: number; owed_total_cents: number; net_cents: number;
+  owed_to_you_cents: number;
+}
+
+/** The dashboard's finance figures: the practice owner's only. */
+export interface FinanceMonth {
+  revenue_cents: number; expenses_cents: number; net_cents: number;
+  margin_percent: number | null; month: string; year: number;
 }

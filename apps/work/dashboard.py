@@ -69,6 +69,9 @@ def for_request(request) -> dict:
         "clients": _clients(request, tasks, goals),
         # AI spend is the FF's (FR-0.9): the finances slot shows it to them only.
         "ai": _ai_state(request),
+        # P5: revenue, expenses and margin this month. The practice owner's
+        # only (matrix 13.10); absent from everyone else's payload.
+        "finance": _finance(request, today),
         # Every staff role sees that automatic AI work is paused; only the FF
         # sees the amounts (owner, 2026-09-29; FR-0.9).
         "ai_paused": _ai_paused(request),
@@ -93,6 +96,14 @@ def _waiting(request):
     qs = commitments.scoped(request, Commitment.objects.filter(
         state=Commitment.State.OPEN))
     return {"open": qs.count(), "overdue": qs.filter(commitments.overdue_filter()).count()}
+
+
+def _finance(request, today):
+    if getattr(getattr(request, "membership", None), "role", None) != "FF":
+        return None
+    from apps.finance import reports
+
+    return reports.this_month(request.tenant, today)
 
 
 def _ai_state(request):

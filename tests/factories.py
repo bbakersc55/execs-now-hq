@@ -1017,3 +1017,46 @@ class ClientPaymentFactory(TenantScopedFactory):
                                  total_cents=500000)
     amount_cents = 100000
     paid_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 5))
+
+
+# --- P5: the books ---
+
+class FinanceAccountFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceAccount"
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Checking {n}")
+    opening_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 1, 1))
+
+
+class FinanceCategoryFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceCategory"
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Category {n}")
+    type = "expense"
+
+
+class FinanceSettingsFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceSettings"
+
+    tenant = factory.SubFactory(TenantFactory)
+
+
+class FinanceEntryFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceEntry"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kind = "expense"
+    direction = "out"
+    amount_cents = 12500
+    on_date = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 1))
+    account = factory.SubFactory(FinanceAccountFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    category = factory.SubFactory(FinanceCategoryFactory,
+                                  tenant=factory.SelfAttribute("..tenant"))
+    description = "Software subscription"

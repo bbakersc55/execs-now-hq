@@ -41,6 +41,9 @@ from apps.tenancy.models import (
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
 )
+from apps.finance.models import (
+    FinanceAccount, FinanceCategory, FinanceEntry, FinanceSettings,
+)
 from apps.tenancy.registry import register
 
 from . import factories
@@ -186,3 +189,11 @@ register(ClientInvoiceSchedule, factories.ClientInvoiceScheduleFactory,
 register(ClientInvoiceLine, factories.ClientInvoiceLineFactory, api_exposed=False)
 register(ClientPayment, factories.ClientPaymentFactory, api_exposed=False)
 register(InvoiceSettings, factories.InvoiceSettingsFactory, api_exposed=False)
+
+# --- P5: the books (the practice owner's only) ---
+register(FinanceEntry, factories.FinanceEntryFactory, endpoints=("/api/finance-entries/",))
+register(FinanceAccount, factories.FinanceAccountFactory,
+         endpoints=("/api/finance-accounts/",))
+register(FinanceCategory, factories.FinanceCategoryFactory,
+         endpoints=("/api/finance-categories/",))
+register(FinanceSettings, factories.FinanceSettingsFactory, api_exposed=False)

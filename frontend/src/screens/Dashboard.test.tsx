@@ -138,13 +138,30 @@ describe("the dashboard", () => {
     expect(screen.queryByText(/Lead →/)).not.toBeInTheDocument();
   });
 
-  it("keeps a place for practice finances, with no figures in it", async () => {
-    show();
+  it("shows the practice owner this month's revenue, expenses and margin", async () => {
+    show(aBoard({ finance: { revenue_cents: 800000, expenses_cents: 200000,
+                             net_cents: 600000, margin_percent: 75, month: "October",
+                             year: 2026 } }));
+    const figures = await screen.findByLabelText("This month in the books");
+    expect(figures).toHaveTextContent("October: revenue $8,000.00");
+    expect(figures).toHaveTextContent("expenses $2,000.00");
+    expect(figures).toHaveTextContent("margin 75%");
+    expect(screen.getByRole("link", { name: "Finance" })).toHaveAttribute("href", "/finance");
+  });
 
+  it("shows a dash for margin in a month with no revenue, not a number", async () => {
+    show(aBoard({ finance: { revenue_cents: 0, expenses_cents: 4500, net_cents: -4500,
+                             margin_percent: null, month: "October", year: 2026 } }));
+    expect(await screen.findByLabelText("This month in the books"))
+      .toHaveTextContent("margin —");
+  });
+
+  it("gives an associate the panel and none of the practice's figures", async () => {
+    show(aBoard(), aMe({ role: "CF" }));
     expect(await screen.findByRole("heading", { name: "Practice finances" }))
       .toBeInTheDocument();
-    expect(screen.getByText(/appear here once the finance module lands/))
-      .toBeInTheDocument();
+    expect(screen.getByText(/are shown to the practice\s+owner/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("This month in the books")).not.toBeInTheDocument();
   });
 
   it("does not show a VA even the empty finances slot", async () => {

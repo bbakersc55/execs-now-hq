@@ -1244,3 +1244,8 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
 .totals .total .figure { font-size: var(--t-20, 20px); font-weight: 600;
                          font-variant-numeric: tabular-nums; }
 .totals .total.bad .figure { color: var(--bad); }
+
+/* The P&L: twelve months across, so its figures stay narrow and aligned. */
+.pnl th, .pnl td { padding: var(--s2); white-space: nowrap; }
+.pnl td:first-child { white-space: normal; min-width: 14rem; }
+.pnl tbody th { background: transparent; color: var(--navy); border-bottom-color: var(--line-strong); }

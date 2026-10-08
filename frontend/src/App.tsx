@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-  Receipt } from "lucide-react";
+  Receipt, Landmark } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
@@ -46,6 +46,8 @@ import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
 import { ClientInvoices } from "./screens/ClientInvoices";
+import { Finance } from "./screens/Finance";
+import { FinanceSettings } from "./screens/FinanceSettings";
 import { InvoiceDetail } from "./screens/InvoiceDetail";
 import { Invoices } from "./screens/Invoices";
 import { InvoiceSettings } from "./screens/InvoiceSettings";
@@ -137,6 +139,8 @@ const NAV: NavItem[] = [
   { to: "/report", label: "Value report", roles: TENANT , icon: BarChart3 },
   // P4A. Not an assistant's: no financials (matrix 13.4a).
   { to: "/invoices", label: "Invoices", roles: ["FF", "CF"], icon: Receipt },
+  // P5. The practice owner's only (matrix 13.1, 13.6–13.10).
+  { to: "/finance", label: "Finance", roles: ["FF"], icon: Landmark },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
   { to: "/tasks", label: "Tasks", roles: CLIENT , icon: CheckSquare },
@@ -371,6 +375,17 @@ export function App() {
             <Route path="/invoices/:id" element={<InvoiceDetail me={me} />} />
             {me.role === "FF" && <Route path="/settings/invoices"
               element={<Settings me={me}><InvoiceSettings /></Settings>} />}
+            {/* P5: the books. No route at all for anyone but the practice owner. */}
+            {me.role === "FF" && (
+              <>
+                <Route path="/finance" element={<Finance tab="entries" />} />
+                <Route path="/finance/pnl" element={<Finance tab="pnl" />} />
+                <Route path="/finance/balance" element={<Finance tab="balance" />} />
+                <Route path="/finance/export" element={<Finance tab="export" />} />
+                <Route path="/settings/finance"
+                  element={<Settings me={me}><FinanceSettings /></Settings>} />
+              </>
+            )}
           </Routes>
           )}
         </ErrorBoundary>

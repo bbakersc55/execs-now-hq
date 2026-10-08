@@ -1,3 +1,4 @@
+import { dollars } from "../lib/money";
 import { useState, type DragEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -200,10 +201,24 @@ export function Dashboard({ me }: { me: Me }) {
             </p>
           </>
         )}
-        {/* A reserved slot, so the layout has its home before the finance
-            module does. No figures until then — not even zeros, which would
-            read as a practice that earned nothing. */}
-        <Empty>Income, expenses and margin appear here once the finance module lands.</Empty>
+        {/* The books (P5), the practice owner's only: the server sends these
+            figures to nobody else. Cash basis, this month so far. */}
+        {board.data.finance ? (
+          <p className="small" aria-label="This month in the books">
+            {board.data.finance.month}: revenue{" "}
+            <Link to="/finance/pnl"><strong>{dollars(board.data.finance.revenue_cents)}</strong></Link>
+            {" · "}expenses{" "}
+            <Link to="/finance/pnl"><strong>{dollars(board.data.finance.expenses_cents)}</strong></Link>
+            {" · "}margin{" "}
+            <strong>{board.data.finance.margin_percent === null ? "—"
+              : `${board.data.finance.margin_percent}%`}</strong>
+            {" · "}<Link to="/finance">Finance</Link>
+          </p>
+        ) : !board.data.ai && (
+          // An associate has the panel and none of its figures (13.10).
+          <Empty>The practice's income, expenses and margin are shown to the practice
+            owner.</Empty>
+        )}
       </Card>
     ),
     clients: (

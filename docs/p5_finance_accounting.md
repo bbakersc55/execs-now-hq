@@ -12,7 +12,13 @@ a simple balance view, the dashboard's finance figures and a CPA export.
 has nothing here; an assistant has nothing here, not entry and not import.
 `CLAUDE.md` and the matrix are unchanged by this.
 
-**What this needs from the owner is F1–F14 in §9.**
+**Decided 2026-10-08: F1–F14 as recommended, with one change to F12.** 1099
+tracking is in, in the second stop: a 1099 payee flag on vendors and
+contacts, expense entries to that payee totaled by calendar year, and a
+year-end report of payees over the threshold, exportable. W-2 stays out until
+the HRIS module. The starting chart is as written; the year starts in January.
+**The build is two stops (F14):** the books first, then the import, rules,
+matching and 1099 tracking.
 
 ---
 
@@ -324,6 +330,53 @@ in the same transaction.
 file; the P&L's layout with twelve months across; the entries list at volume.
 
 ---
+
+## As built
+
+**First stop (2026-10-08): the books.** `apps/finance` (`models.py`,
+`services.py`, `reports.py`, `views.py`), the screens `Finance` (entries,
+profit and loss, balance view, for your CPA) and `FinanceSettings`, the
+dashboard's three figures, `tests/test_finance_books.py` and
+`frontend/src/screens/Finance.test.tsx`. Matrix rows 13.6–13.10.
+
+**Migration `finance 0001`, applied on `execsnowhq_local` only:** four tables
+(`finance_account`, `finance_category`, `finance_entry`, `finance_settings`).
+Nothing existing is altered. The other four tables of §7 are the second
+stop's.
+
+Differences from the text above:
+
+- **A fifth kind of entry, `held`**, for sales tax collected and, later, paid
+  over. §1.1 named four kinds; tax held is not the owner's money and needed
+  its own. With it an entry has a **direction** (in or out), fixed by the
+  kind for income and expense and chosen for owner money and tax held.
+- **The chart is made the first time a practice's books are opened**, not by
+  the migration, so a practice provisioned later gets it too. It is made once:
+  archiving every category does not bring it back.
+- **Payments recorded before the books (F13)** are entered by a command with a
+  dry run, `manage.py backfill_invoice_income`, not by the migration. On the
+  laptop it found none.
+- **The lock reaches invoicing.** A payment dated in a locked period is
+  refused on the invoice, in the same words, and is not recorded: the payment
+  and its entry are one transaction.
+- **An invoice payment's entry** can have its category, account and
+  description changed in the books; its amount, date and client are changed
+  on the invoice. Placing it in an account by hand is how it leaves "not yet
+  placed" until the import can match it.
+- **An entry may have no category** when typed in, as an imported one may. It
+  is named beside the P&L and in the export, and left out of the figures.
+- **The balance view** counts an account from its opening date: an entry dated
+  before that is taken to be inside the opening balance. The comparison with
+  the bank's own balance (§5.2) comes with the import.
+- **The dashboard panel** for an associate now reads "The practice's income,
+  expenses and margin are shown to the practice owner", in place of the old
+  line about the finance module arriving.
+- The entries list shows the newest 500 of what is filtered, and says so.
+
+**Second stop, not built:** the import with its own tables, rules, matching a
+deposit to an invoice payment, and 1099 tracking (a payee flag on vendors and
+contacts, expense entries to that payee totaled by calendar year, and a
+year-end report of payees over the threshold, exportable).
 
 ## 9. Decisions for the owner
 

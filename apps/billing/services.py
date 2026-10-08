@@ -528,6 +528,18 @@ def back_to_draft(invoice, *, actor) -> ClientInvoice:
 
 # ------------------------------------------------------- payments and void
 
+def _to_the_books(change) -> None:
+    """A payment is income in the practice's books, written in the same
+    transaction (P5 §3). What the books refuse (a locked period) is refused
+    here in the same words, and the payment is not recorded either."""
+    from apps.finance import services as finance
+
+    try:
+        change(finance)
+    except finance.FinanceError as exc:
+        raise BillingError(str(exc), status=exc.status) from exc
+
+
 def _recount(invoice) -> None:
     paid = (ClientPayment.all_objects.filter(invoice=invoice, removed_at__isnull=True)
             .aggregate(total=Sum("amount_cents"))["total"] or 0)
@@ -569,6 +581,7 @@ def record_payment(invoice, *, actor, amount_cents, paid_on, method=None, refere
         method=method, reference=str(reference or "").strip()[:120],
         note=str(note or "").strip(), recorded_by=actor)
     _recount(invoice)
+    _to_the_books(lambda finance: finance.payment_recorded(payment, actor=actor))
     audit(invoice, "payment_recorded", actor, payment=str(payment.pk), amount_cents=amount,
           paid_on=paid_on.isoformat(), method=method, before=before, after=invoice.status)
     return payment
@@ -591,6 +604,8 @@ def remove_payment(payment, *, actor, reason) -> ClientInvoice:
     payment.remove_reason = reason
     payment.save(update_fields=["removed_at", "removed_by", "remove_reason", "updated_at"])
     _recount(invoice)
+    _to_the_books(lambda finance: finance.payment_removed(payment, actor=actor,
+                                                          reason=reason))
     audit(invoice, "payment_removed", actor, payment=str(payment.pk),
           amount_cents=payment.amount_cents, reason=reason, before=before,
           after=invoice.status)
