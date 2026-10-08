@@ -299,6 +299,25 @@ previous one as REMOVED, so do not count on redeploying it from the
 dashboard; a no-migration release is rolled back by reverting on `main` and
 pushing, which is another deploy of about a minute.
 
+**Observed at Release 7 (2026-10-08 UTC, 7 migrations: the digest schedule,
+portal invitations, the value report's open goal, goal order and goal
+proposals, and the width and button pass):** backup confirmed (dump of
+2026-10-07 08:00 UTC, 3.0 MB, 19 hours old). Dry run of `tenancy 0011`'s data
+step read from production and accepted by the owner before the push:
+Executives Now draft Sunday 8:00 for send Monday 8:00, Blue Sky draft Thursday
+8:00 for send Friday 8:00. `main` fast-forwarded from `e4222f6` to `6627b03`
+and pushed 03:03:26; worker `WAITING` 03:04:50 listing exactly
+`accounts.0004`, `crm.0032`, `tenancy.0011`, `work.0006`, `work.0007`,
+`work.0008`, `work.0009`; applied 03:05:04–08, all OK; `migrations current`
+03:05:23, worker running 03:05:25; web redeployed 03:05:36; new code serving
+by 03:06:01. **Push to new code: 2 min 35 s.** Old web served throughout: 34
+samples at 5 s, every one 200. **Worker paused about 35 s.** Checked after:
+no migration unapplied, the two practices hold the values the dry run
+printed, `project_client_created_has_no_goal` is gone, the three new tables
+exist, and the served bundle contains the new screens' text. **The owner had
+not run the digest schedule's laptop checklist before this release**; nothing
+in it has been seen in a browser in production yet.
+
 ---
 
 ## Part A — the owner's steps, in order

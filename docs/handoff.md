@@ -11,7 +11,18 @@ truth; this covers what they don't, and what changed since 9/30.
 
 In this order.
 
-**1. The digest schedule: check it on the laptop, then release it.**
+**0. Release 7 went out 2026-10-08 03:03 UTC (`main` = `dev` = `6627b03`,
+then documents).** It carried everything that was on `dev`: the digest
+schedule below, the "team" wording, and two rounds of portal, Tasks and Value
+report work (invitations, the open goal, goal order, goal proposals, width,
+buttons, the logo fallback). Seven migrations, record in the runbook. **Item 1
+below was released without its laptop checklist**, on the owner's yes to the
+dry run: the checklist is now a production smoke check, and Bryan still sets
+Draft on to Friday 3:00 PM himself. Reminder emails are live;
+`DIGEST_REMINDERS_ENABLED=false` stops them without a release.
+
+**1. The digest schedule: ~~check it on the laptop, then release it~~ released
+in Release 7; check it in production.**
 (`docs/digest_schedule.md`; §12 is the as-built record. Built on `dev` 10/5 in
 three phases, not released.)
 
