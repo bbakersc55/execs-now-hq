@@ -27,6 +27,7 @@ from apps.work import permissions as work_perms
 from apps.work import serializers as work_serializers
 from apps.work import digests as digest_service
 from apps.work import goal_order
+from apps.work import goal_proposals
 from apps.work import portal
 from apps.work import services
 from apps.work import stakeholders as stakeholder_service
@@ -1358,6 +1359,28 @@ class ValueReportBase(viewsets.GenericViewSet):
             return None
         return Response({"detail": message}, status=403)
 
+    def in_scope_or_404(self, request, model, pk):
+        """A row that hangs off a client company (a proposal), by id. In scope
+        means its company is one this person can see: any for the practice
+        owner and an assistant, assigned ones for an associate, their own for a
+        client. Anything else is 404, never a 403 that confirms it exists."""
+        from apps.crm.models import Company
+
+        if not _is_uuid(pk or ""):
+            raise Http404
+        row = model.objects.filter(pk=pk).select_related(
+            "client_company", "proposed_by").first()
+        if row is None:
+            raise Http404
+        if self.for_client():
+            if row.client_company_id != request.membership.client_company_id:
+                raise Http404
+        elif not crm_perms.company_queryset_for(
+                request, Company.objects.filter(pk=row.client_company_id,
+                                                deleted_at__isnull=True)).exists():
+            raise Http404
+        return row
+
 
 class ValueReportViewSet(ValueReportBase):
     """FR-4B.1, FR-4B.2 — the whole report, and any single goal on its own."""
@@ -1510,26 +1533,9 @@ class GoalOrderViewSet(ValueReportBase):
                        "assigned associate's call."}, status=403)
 
     def _proposal_or_404(self, request, pk):
-        """In scope means the proposal's company is one this person can see:
-        any for the practice owner and an assistant, assigned ones for an
-        associate, their own for a client. Anything else is 404."""
-        from apps.crm.models import Company
         from apps.work.models import GoalOrderProposal
 
-        if not _is_uuid(pk or ""):
-            raise Http404
-        proposal = GoalOrderProposal.objects.filter(pk=pk).select_related(
-            "client_company", "proposed_by").first()
-        if proposal is None:
-            raise Http404
-        if self.for_client():
-            if proposal.client_company_id != request.membership.client_company_id:
-                raise Http404
-        elif not crm_perms.company_queryset_for(
-                request, Company.objects.filter(pk=proposal.client_company_id,
-                                                deleted_at__isnull=True)).exists():
-            raise Http404
-        return proposal
+        return self.in_scope_or_404(request, GoalOrderProposal, pk)
 
     def _decide(self, request, pk, decide):
         proposal = self._proposal_or_404(request, pk)
@@ -1569,6 +1575,87 @@ class GoalOrderViewSet(ValueReportBase):
             state=GoalOrderProposal.State.PENDING, client_company__in=companies,
         ).select_related("client_company", "proposed_by")
         return Response([goal_order.represent(p) for p in rows])
+
+
+class GoalProposalViewSet(ValueReportBase):
+    """Goals a client owner proposes, and the practice's answer (2026-10-07).
+
+    - `GET ?client_company=` — this company's proposals, newest first.
+    - `POST` — a **client owner** proposes one. Nobody else: a client team
+      member is told whose it is to do, and the practice simply creates a goal.
+    - `POST <id>/accept/`, `POST <id>/decline/` — the practice owner's or an
+      assigned associate's. Accepting is what makes a goal.
+    - `GET pending/` — every proposal waiting, for the practice.
+    """
+
+    def list(self, request):
+        company = self.company_or_404(request)
+        return Response({
+            "company": str(company.pk),
+            "may_propose": crm_perms.role_of(request) == Role.FCC,
+            "may_decide": work_perms.may_judge(request, company.pk),
+            "proposals": [goal_proposals.represent(p)
+                          for p in goal_proposals.for_company(company)],
+        })
+
+    def create(self, request):
+        role = crm_perms.role_of(request)
+        if role == Role.ECC:
+            return Response({"detail": "Proposing a goal is your company owner's to do."},
+                            status=403)
+        if role != Role.FCC:
+            return Response({"detail": "A proposal is the client's. The practice "
+                                       "creates a goal directly, on Work."}, status=403)
+        company = self.company_or_404(request)
+        try:
+            proposal = goal_proposals.propose(
+                company, title=request.data.get("title"), why=request.data.get("why") or "",
+                actor=request.user)
+        except goal_proposals.ProposalRefused as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(goal_proposals.represent(proposal), status=201)
+
+    def _decide(self, request, pk, decide):
+        from apps.work.models import GoalProposal
+
+        proposal = self.in_scope_or_404(request, GoalProposal, pk)
+        if not work_perms.may_judge(request, proposal.client_company_id):
+            return Response(
+                {"detail": "Accepting or declining a proposed goal is the practice "
+                           "owner's or the assigned associate's call."}, status=403)
+        try:
+            decide(proposal)
+        except goal_proposals.ProposalRefused as exc:
+            answered = proposal.state != GoalProposal.State.PENDING
+            return Response({"detail": str(exc)}, status=409 if answered else 400)
+        proposal.refresh_from_db()
+        return Response(goal_proposals.represent(proposal))
+
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        return self._decide(request, pk, lambda p: goal_proposals.accept(
+            p, actor=request.user, title=request.data.get("title"),
+            note=request.data.get("note") or ""))
+
+    @action(detail=True, methods=["post"])
+    def decline(self, request, pk=None):
+        return self._decide(request, pk, lambda p: goal_proposals.decline(
+            p, actor=request.user, note=request.data.get("note") or ""))
+
+    @action(detail=False, methods=["get"])
+    def pending(self, request):
+        from apps.crm.models import Company
+        from apps.work.models import GoalProposal
+
+        if (refused := self.staff_or_403(
+                request, "This list is the practice's.")) is not None:
+            return refused
+        companies = crm_perms.company_queryset_for(
+            request, Company.objects.filter(deleted_at__isnull=True))
+        rows = GoalProposal.objects.filter(
+            state=GoalProposal.State.PENDING, client_company__in=companies,
+        ).select_related("client_company", "proposed_by", "decided_by", "goal")
+        return Response([goal_proposals.represent(p) for p in rows])
 
 
 class GoalReportExportViewSet(ValueReportBase):

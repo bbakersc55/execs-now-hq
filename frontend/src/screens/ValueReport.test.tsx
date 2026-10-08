@@ -2,7 +2,9 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GoalBlock, GoalOrder, GoalOrderProposal, ValueReport } from "../lib/api";
+import {
+  GoalBlock, GoalOrder, GoalOrderProposal, GoalProposal, GoalProposals, ValueReport,
+} from "../lib/api";
 import { useLocation } from "react-router-dom";
 
 import { aMe, aTask, aWorkParent } from "../test/fixtures";
@@ -101,6 +103,8 @@ function show(report = aReport(), me = aMe(), extra: Record<string, unknown> = {
     "GET /api/goals/": TREE,
     "GET /api/comments/": [],
     "GET /api/goal-order/": anOrder(),
+    "GET /api/goal-proposals/": { company: COMPANY, may_propose: false, may_decide: false,
+                                  proposals: [] },
     "GET /api/branding": { display_name: "Executives Now" },
     // Again, so that a route named in both keeps the test's answer.
     ...extra,
@@ -867,6 +871,187 @@ describe("the goals are in order of priority (2026-10-07)", () => {
       expect(await screen.findByText(/Use the arrows on a goal to propose a different order/))
         .toBeInTheDocument();
       expect(screen.queryByText(/accepted the order proposed/)).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("a client owner proposes a goal; the practice reviews it (2026-10-07)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const WANTED = "Stop losing drivers in their first month";
+  const aProposal = (over: Partial<GoalProposal> = {}): GoalProposal => ({
+    id: "gp1", company: COMPANY, company_name: "Acme Facilities", title: WANTED,
+    why: "We hired nine and kept four.", state: "pending",
+    state_label: "Waiting for the practice", proposed_by: "Dana Okafor",
+    proposed_at: "2026-10-07T15:00:00Z", decided_by: "", decided_at: null,
+    decision_note: "", goal: null, goal_title: "", ...over,
+  });
+  const page = (over: Partial<GoalProposals> = {}) => ({
+    "GET /api/goal-proposals/": { company: COMPANY, may_propose: false, may_decide: false,
+                                  proposals: [], ...over },
+  });
+  const posts = (fetchMock: ReturnType<typeof show>) =>
+    fetchMock.calls.filter((c) => c.method === "POST").map((c) => [c.url, c.body]);
+  const goalsCard = async () =>
+    (await screen.findByText(/Goals are set together with Executives Now\./))
+      .closest("section")!;
+
+  describe("in the portal", () => {
+    it("offers a client owner a box to propose one, where Add goal would be", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(aReport(), aMe({ role: "FCC" }), {
+        "POST /api/goal-proposals/": () => ({ status: 201, body: aProposal() }),
+        ...page({ may_propose: true }),
+      }, "/report");
+      const card = await goalsCard();
+      expect(within(card).getByText(/Propose one here and they will take it up with you/))
+        .toBeInTheDocument();
+      const send = within(card).getByRole("button", { name: "Propose this goal" });
+      expect(send).toBeDisabled();
+
+      await user.type(within(card).getByLabelText("The goal you propose"), WANTED);
+      await user.type(within(card).getByLabelText("Why it matters (optional)"),
+                      "We hired nine and kept four.");
+      await user.click(send);
+
+      // Their company is implied; no goal endpoint is touched.
+      await waitFor(() => expect(posts(fetchMock)).toEqual([
+        ["/api/goal-proposals/", { title: WANTED, why: "We hired nine and kept four." }]]));
+      await waitFor(() => expect(within(card).getByLabelText("The goal you propose"))
+        .toHaveValue(""));
+    });
+
+    it("shows what became of each proposal, in words", async () => {
+      const now = new Date().toISOString();
+      show(aReport(), aMe({ role: "FCC" }), page({ may_propose: true, proposals: [
+        aProposal(),
+        aProposal({ id: "gp2", title: "Fewer late loads", state: "accepted", decided_at: now,
+                    goal: "g9", goal_title: "Late loads under 2%" }),
+        aProposal({ id: "gp3", title: "A new depot", state: "declined", decided_at: now,
+                    decision_note: "It belongs under the growth goal." }),
+      ] }), "/report");
+      const card = await goalsCard();
+      const row = (title: string) => within(card).getByText(title).closest("li")!;
+
+      expect(within(row(WANTED)).getByText("Waiting for Executives Now")).toBeInTheDocument();
+      expect(within(row("Fewer late loads")).getByText("Now a goal")).toBeInTheDocument();
+      expect(within(row("Fewer late loads")).getByText("As: Late loads under 2%"))
+        .toBeInTheDocument();
+      expect(within(row("A new depot")).getByText("Not taken up")).toBeInTheDocument();
+      expect(within(row("A new depot")).getByText(/It belongs under the growth goal\./))
+        .toBeInTheDocument();
+      // A proposal is not a goal: it has no card of its own below.
+      expect(screen.queryByRole("button", { name: WANTED })).not.toBeInTheDocument();
+    });
+
+    it("drops an old answer from the list, and keeps what is still waiting", async () => {
+      const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
+      show(aReport(), aMe({ role: "FCC" }), page({ may_propose: true, proposals: [
+        aProposal(),
+        aProposal({ id: "gp3", title: "A new depot", state: "declined", decided_at: longAgo }),
+      ] }), "/report");
+      const card = await goalsCard();
+      expect(within(card).getByText(WANTED)).toBeInTheDocument();
+      expect(within(card).queryByText("A new depot")).not.toBeInTheDocument();
+    });
+
+    it("tells a client team member whose it is to propose, and gives them no box", async () => {
+      show(aReport(), aMe({ role: "ECC" }), page({ proposals: [aProposal()] }), "/report");
+      const card = await goalsCard();
+      expect(within(card).getByText(/Your company's owner can propose one/)).toBeInTheDocument();
+      expect(within(card).queryByLabelText("The goal you propose")).not.toBeInTheDocument();
+      expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+      // They still read what was proposed.
+      expect(within(card).getByText(WANTED)).toBeInTheDocument();
+    });
+
+    it("shows the server's refusal in its own words", async () => {
+      const user = userEvent.setup();
+      show(aReport(), aMe({ role: "FCC" }), {
+        "POST /api/goal-proposals/": () => ({ status: 400, body: {
+          detail: "10 proposed goals are already waiting for an answer." } }),
+        ...page({ may_propose: true }),
+      }, "/report");
+      const card = await goalsCard();
+      await user.type(within(card).getByLabelText("The goal you propose"), "One more");
+      await user.click(within(card).getByRole("button", { name: "Propose this goal" }));
+      expect(await within(card).findByText(/already waiting for an answer/)).toBeInTheDocument();
+    });
+  });
+
+  describe("for the practice", () => {
+    const review = async () =>
+      (await screen.findByRole("group", { name: `Proposed goal: ${WANTED}` }));
+
+    it("shows nothing when nothing is waiting", async () => {
+      show(aReport(), aMe(), page({ may_decide: true, proposals: [
+        aProposal({ state: "declined", decided_at: new Date().toISOString() })] }), "/report");
+      await screen.findByRole("button", { name: "Decisions stall waiting on the founder" });
+      expect(screen.queryByText(/the client proposed/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Goals are set together with/)).not.toBeInTheDocument();
+    });
+
+    it("shows the proposal in the client's words and accepts it as written", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(aReport(), aMe(), {
+        "POST /api/goal-proposals/gp1/accept/": () => ({ body: aProposal({ state: "accepted" }) }),
+        ...page({ may_decide: true, proposals: [aProposal()] }),
+      }, "/report");
+      const box = await review();
+      expect(screen.getByText("A goal the client proposed")).toBeInTheDocument();
+      expect(within(box).getByText(/We hired nine and kept four\./)).toBeInTheDocument();
+      expect(within(box).getByText(/Dana Okafor/)).toBeInTheDocument();
+
+      await user.click(within(box).getByRole("button", { name: "Accept as a goal" }));
+      await waitFor(() => expect(posts(fetchMock)).toEqual(
+        [["/api/goal-proposals/gp1/accept/", {}]]));
+      expect(await screen.findByText(/Accepted\. It is a goal now/)).toBeInTheDocument();
+    });
+
+    it("accepts it reworded", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(aReport(), aMe(), {
+        "POST /api/goal-proposals/gp1/accept/": () => ({ body: aProposal({ state: "accepted" }) }),
+        ...page({ may_decide: true, proposals: [aProposal()] }),
+      }, "/report");
+      const box = await review();
+      const title = within(box).getByLabelText(`Goal title for ${WANTED}`);
+      expect(title).toHaveValue(WANTED);
+      await user.clear(title);
+      await user.type(title, "Keep new drivers past 30 days");
+      await user.click(within(box).getByRole("button", { name: "Accept as a goal" }));
+      await waitFor(() => expect(posts(fetchMock)).toEqual(
+        [["/api/goal-proposals/gp1/accept/", { title: "Keep new drivers past 30 days" }]]));
+    });
+
+    it("declines with a reason the client will read", async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(aReport(), aMe(), {
+        "POST /api/goal-proposals/gp1/decline/": () => ({ body: aProposal({ state: "declined" }) }),
+        ...page({ may_decide: true, proposals: [aProposal()] }),
+      }, "/report");
+      const box = await review();
+      await user.type(within(box).getByLabelText(`Reason for declining ${WANTED}`),
+                      "It belongs under the hiring goal.");
+      await user.click(within(box).getByRole("button", { name: "Decline" }));
+      await waitFor(() => expect(posts(fetchMock)).toEqual(
+        [["/api/goal-proposals/gp1/decline/", { note: "It belongs under the hiring goal." }]]));
+      expect(await screen.findByText(/Declined\. No goal was created\./)).toBeInTheDocument();
+    });
+
+    it("shows an assistant the proposal and no way to answer it", async () => {
+      show(aReport(), aMe({ role: "VA" }), page({ proposals: [aProposal()] }), "/report");
+      const box = await review();
+      expect(within(box).getByText(/practice owner or the assigned associate decides/))
+        .toBeInTheDocument();
+      expect(within(box).queryByRole("button")).not.toBeInTheDocument();
+      expect(within(box).queryByRole("textbox")).not.toBeInTheDocument();
+    });
+
+    it("counts them when several are waiting", async () => {
+      show(aReport(), aMe(), page({ may_decide: true, proposals: [
+        aProposal(), aProposal({ id: "gp2", title: "Fewer late loads" })] }), "/report");
+      expect(await screen.findByText("2 goals the client proposed")).toBeInTheDocument();
     });
   });
 });

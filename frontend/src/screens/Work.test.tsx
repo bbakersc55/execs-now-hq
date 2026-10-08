@@ -317,3 +317,57 @@ describe("Work shows each client's goals in their order of priority (2026-10-07)
     expect(screen.queryByText(/proposed a new order/)).not.toBeInTheDocument();
   });
 });
+
+describe("Work and proposed goals (2026-10-07)", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  const PROPOSED = {
+    id: "gp1", company: CO, company_name: "Acme Facilities",
+    title: "Stop losing drivers in their first month", why: "", state: "pending",
+    state_label: "Waiting for the practice", proposed_by: "Dana Okafor",
+    proposed_at: "2026-10-07T15:00:00Z", decided_by: "", decided_at: null,
+    decision_note: "", goal: null, goal_title: "",
+  };
+
+  function openWith(routes: Record<string, unknown>, me = aMe({ role: "FF" })) {
+    const fetchMock = mockApi({
+      ...routes, ...LISTS, "/api/branding": { display_name: "Executives Now" }, ...routes });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Work me={me} />);
+    return fetchMock;
+  }
+
+  it("tells the practice a proposed goal is waiting, and links to its review", async () => {
+    openWith({ "/api/goal-proposals/pending/": [PROPOSED], "/api/goal-order/pending/": [] });
+    const notice = (await screen.findByText(
+      /Dana Okafor proposed a goal for Acme Facilities: “Stop losing drivers/)).closest("div")!;
+    expect(within(notice).getByRole("link", { name: "Review it on the Value report" }))
+      .toHaveAttribute("href", `/report?company=${CO}`);
+    // Not a goal: it is not in the Goals card.
+    expect(within(card("Goals")).queryByText(/Stop losing drivers/)).not.toBeInTheDocument();
+  });
+
+  it("tells a client owner whose goals are, and where to propose one", async () => {
+    const fetchMock = openWith({}, aMe({ role: "FCC", client_company: CO }));
+    const line = await screen.findByText(/Goals are set together with Executives Now\./);
+    expect(within(line).getByRole("link", { name: "Propose a goal" }))
+      .toHaveAttribute("href", "/report");
+    expect(screen.queryByRole("button", { name: "New goal" })).not.toBeInTheDocument();
+    expect(fetchMock.calls.some((c) => c.url.startsWith("/api/goal-proposals/"))).toBe(false);
+  });
+
+  it("tells a client team member the same, without the link", async () => {
+    openWith({}, aMe({ role: "ECC", client_company: CO }));
+    const line = await screen.findByText(/Goals are set together with Executives Now\./);
+    expect(within(line).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("says neither to the practice, which creates goals itself", async () => {
+    openWith({ "/api/goal-proposals/pending/": [], "/api/goal-order/pending/": [] });
+    await screen.findByText("Cut supervisor overload");
+    expect(screen.queryByText(/Goals are set together with/)).not.toBeInTheDocument();
+  });
+});

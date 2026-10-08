@@ -636,6 +636,24 @@ export interface GoalNarrativeRow {
   version_count?: number;
 }
 
+/** A goal a client owner proposed, and the practice's answer. */
+export interface GoalProposal {
+  id: string; company: string; company_name: string;
+  title: string; why: string;
+  state: "pending" | "accepted" | "declined"; state_label: string;
+  proposed_by: string; proposed_at: string;
+  decided_by: string; decided_at: string | null; decision_note: string;
+  /** The goal it became, and what the practice called it. */
+  goal: string | null; goal_title: string;
+}
+
+/** One company's proposed goals. A client owner proposes (`may_propose`); the
+ *  practice owner or an assigned associate answers (`may_decide`). */
+export interface GoalProposals {
+  company: string; may_propose: boolean; may_decide: boolean;
+  proposals: GoalProposal[];
+}
+
 /** A client's proposed order for their company's goals, and what became of it. */
 export interface GoalOrderProposal {
   id: string; company: string; company_name: string;

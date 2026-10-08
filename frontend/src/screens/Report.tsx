@@ -8,7 +8,7 @@ import { Avatar, PageHead } from "../components/shell";
 import { StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import {
-  EngagementTimeline, GoalBlock, GoalOrder, GoalTree, Me, Task,
+  EngagementTimeline, GoalBlock, GoalOrder, GoalProposal, GoalProposals, GoalTree, Me, Task,
   ValueReport, ValueReportExport, WorkParent, api,
 } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
@@ -46,6 +46,10 @@ function isStaff(me: Me) {
  * order Work shows. The practice owner or an assigned associate moves them and
  * that is the order. A client moves them and that is a *proposal*: nothing
  * changes until the practice accepts it.
+ *
+ * **Goals are the practice's, and a client owner may propose one**
+ * (2026-10-07). It waits here for the practice, and accepting it is what makes
+ * it a goal.
  */
 export function Report({ me }: { me: Me }) {
   const { id } = useParams();
@@ -89,7 +93,14 @@ export function Report({ me }: { me: Me }) {
     enabled: !staff || !!chosen,
   });
 
+  const proposed = useQuery<GoalProposals>({
+    queryKey: ["goal-proposals", staff ? chosen : "mine"],
+    queryFn: () => api.get<GoalProposals>(`/api/goal-proposals/${query}`),
+    enabled: !staff || !!chosen,
+  });
+
   const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["goal-proposals"] });
     qc.invalidateQueries({ queryKey: ["goal-order"] });
     qc.invalidateQueries({ queryKey: ["goals"] });
     qc.invalidateQueries({ queryKey: ["value-report"] });
@@ -164,6 +175,10 @@ export function Report({ me }: { me: Me }) {
 
       {data.current.length === 0 && data.historical.length === 0 && (
         <Empty>No goals are being tracked for this company yet.</Empty>
+      )}
+      {proposed.data && (
+        <ProposedGoals data={proposed.data} staff={staff} onChanged={refresh}
+                       setNote={setNote} />
       )}
       {order.data && (
         <OrderCard order={order.data} draft={draft} blocks={current}
@@ -686,6 +701,157 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle, position, onM
       </div>
       )}
     </Card>
+    </div>
+  );
+}
+
+/**
+ * Goals a client owner has proposed, above the goals themselves.
+ *
+ * - A client owner: a box to propose one, and what became of the ones they
+ *   proposed. A client team member reads the same list and is told whose it is.
+ * - The practice: each one waiting, with accept (reworded if they like) and
+ *   decline (with a reason the client reads) for whoever may decide.
+ *
+ * A proposal is not a goal. Nothing below this card changes until the practice
+ * accepts one.
+ */
+function ProposedGoals({ data, staff, onChanged, setNote }: {
+  data: GoalProposals; staff: boolean; onChanged: () => void; setNote: (s: string) => void;
+}) {
+  const practice = usePracticeName();
+  const [title, setTitle] = useState("");
+  const [why, setWhy] = useState("");
+  const [error, setError] = useState("");
+  const waiting = data.proposals.filter((p) => p.state === "pending");
+  // An answer is news for a fortnight; after that the goal, or its absence, says it.
+  const answered = data.proposals.filter((p) => p.state !== "pending" && p.decided_at
+    && Date.now() - Date.parse(p.decided_at) < RECENT_MS);
+
+  const propose = useMutation({
+    mutationFn: () => api.post<GoalProposal>("/api/goal-proposals/", {
+      title: title.trim(), ...(why.trim() ? { why: why.trim() } : {}),
+    }),
+    onSuccess: () => { setTitle(""); setWhy(""); setError(""); onChanged(); },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  if (staff) {
+    if (waiting.length === 0) return null;
+    return (
+      <Card title={waiting.length === 1 ? "A goal the client proposed"
+                                        : `${waiting.length} goals the client proposed`}
+            tone="current">
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Not goals yet. Accepting one makes it a goal you own, word and measure;
+          declining tells them why.
+        </p>
+        {waiting.map((p) => (
+          <ProposalReview key={p.id} proposal={p} mayDecide={data.may_decide}
+                          onChanged={onChanged} setNote={setNote} />
+        ))}
+      </Card>
+    );
+  }
+
+  return (
+    <Card title="Goals">
+      {error && <Banner kind="bad">{error}</Banner>}
+      <p className="small" style={{ marginTop: 0 }}>
+        Goals are set together with {practice}.
+        {data.may_propose
+          ? " Propose one here and they will take it up with you."
+          : " Your company's owner can propose one."}
+      </p>
+      {data.may_propose && (
+        <form onSubmit={(e) => { e.preventDefault(); if (title.trim()) propose.mutate(); }}>
+          <input aria-label="The goal you propose" placeholder="What should we set out to change?"
+                 value={title} maxLength={255} onChange={(e) => setTitle(e.target.value)} />
+          <textarea aria-label="Why it matters (optional)" rows={2} value={why}
+                    placeholder="Why it matters (optional)" style={{ marginTop: "var(--s2)" }}
+                    onChange={(e) => setWhy(e.target.value)} />
+          <button className="primary" type="submit" style={{ marginTop: "var(--s2)" }}
+                  disabled={!title.trim() || propose.isPending}>
+            {propose.isPending ? "Sending…" : "Propose this goal"}
+          </button>
+        </form>
+      )}
+      {(waiting.length > 0 || answered.length > 0) && (
+        <ul className="timeline" style={{ marginTop: "var(--s3)" }}>
+          {[...waiting, ...answered].map((p) => (
+            <li key={p.id}>
+              <strong>{p.title}</strong>{" "}
+              <Pill kind={p.state === "accepted" ? "ok" : ""}>
+                {p.state === "pending" ? `Waiting for ${practice}`
+                  : p.state === "accepted" ? "Now a goal" : "Not taken up"}
+              </Pill>
+              {p.state === "accepted" && p.goal_title && p.goal_title !== p.title && (
+                <div className="small">As: {p.goal_title}</div>
+              )}
+              {p.decision_note && <div className="small">“{p.decision_note}”</div>}
+              <div className="when">
+                Proposed {when(p.proposed_at)}{p.proposed_by && ` · ${p.proposed_by}`}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+/** One proposed goal, for the practice: the client's words, and the answer. */
+function ProposalReview({ proposal, mayDecide, onChanged, setNote }: {
+  proposal: GoalProposal; mayDecide: boolean; onChanged: () => void;
+  setNote: (s: string) => void;
+}) {
+  const [title, setTitle] = useState(proposal.title);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const decide = useMutation({
+    mutationFn: (verb: "accept" | "decline") => api.post<GoalProposal>(
+      `/api/goal-proposals/${proposal.id}/${verb}/`,
+      verb === "accept"
+        ? (title.trim() !== proposal.title ? { title: title.trim() } : {})
+        : (reason.trim() ? { note: reason.trim() } : {})),
+    onSuccess: (_r, verb) => {
+      setNote(verb === "accept"
+        ? "Accepted. It is a goal now: say how you will know it worked."
+        : "Declined. No goal was created.");
+      onChanged();
+    },
+    onError: (e: Error) => { setError(e.message); onChanged(); },
+  });
+
+  return (
+    <div className="goal-project" aria-label={`Proposed goal: ${proposal.title}`} role="group">
+      {error && <Banner kind="bad">{error}</Banner>}
+      <p style={{ margin: 0 }}><strong>{proposal.title}</strong></p>
+      {proposal.why && <p className="small" style={{ margin: 0 }}>“{proposal.why}”</p>}
+      <p className="when" style={{ margin: 0 }}>
+        {proposal.proposed_by || "The client"} · {when(proposal.proposed_at)}
+      </p>
+      {mayDecide ? (
+        <>
+          <div className="row tight" style={{ marginTop: "var(--s2)", flexWrap: "wrap" }}>
+            <input aria-label={`Goal title for ${proposal.title}`} value={title}
+                   style={{ flex: "1 1 280px", width: "auto" }} maxLength={255}
+                   onChange={(e) => setTitle(e.target.value)} />
+            <button className="primary" disabled={!title.trim() || decide.isPending}
+                    onClick={() => decide.mutate("accept")}>Accept as a goal</button>
+          </div>
+          <div className="row tight" style={{ marginTop: "var(--s2)", flexWrap: "wrap" }}>
+            <input aria-label={`Reason for declining ${proposal.title}`} value={reason}
+                   style={{ flex: "1 1 280px", width: "auto" }}
+                   placeholder="If declining: why, in one line — the client reads this"
+                   onChange={(e) => setReason(e.target.value)} />
+            <button disabled={decide.isPending} onClick={() => decide.mutate("decline")}>
+              Decline</button>
+          </div>
+        </>
+      ) : (
+        <p className="small muted">The practice owner or the assigned associate decides.</p>
+      )}
     </div>
   );
 }

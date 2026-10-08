@@ -22,7 +22,7 @@ from apps.notes.models import Note, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
     Comment, CompanyGoalOrder, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
-    GoalOrderProposal,
+    GoalOrderProposal, GoalProposal,
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
     Project, Stakeholder, StakeholderToken, TaskChecklistItem, TaskUpdate,
 )
@@ -113,6 +113,9 @@ register(GoalResolution, factories.GoalResolutionFactory,
 # Read through its company (`/api/goal-order/?client_company=`), and decided
 # by id: `/api/goal-order/<id>/accept/`. tests/test_goal_order.py covers both.
 register(GoalOrderProposal, factories.GoalOrderProposalFactory, api_exposed=False)
+# Read through its company (`/api/goal-proposals/?client_company=`), and
+# decided by id; tests/test_goal_proposals.py covers both.
+register(GoalProposal, factories.GoalProposalFactory, api_exposed=False)
 # Never addressed by id at all: read and written through `/api/goal-order/`.
 register(CompanyGoalOrder, factories.CompanyGoalOrderFactory, api_exposed=False)
 register(GoalReportExport, factories.GoalReportExportFactory,

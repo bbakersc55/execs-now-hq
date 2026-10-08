@@ -11,7 +11,10 @@ import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Avatar, PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, when } from "../components/ui";
-import { GoalOrderProposal, Me, Task, TaskUpdateRow, WorkParent, api } from "../lib/api";
+import {
+  GoalOrderProposal, GoalProposal, Me, Task, TaskUpdateRow, WorkParent, api,
+} from "../lib/api";
+import { usePracticeName } from "../lib/branding";
 import { useRemembered } from "../lib/remembered";
 
 const TENANT = ["FF", "CF", "VA"];
@@ -47,6 +50,12 @@ export function Work({ me }: { me: Me }) {
     queryFn: () => api.get<GoalOrderProposal[]>("/api/goal-order/pending/"),
     enabled: isTenant,
   });
+  const proposedGoals = useQuery<GoalProposal[]>({
+    queryKey: ["goal-proposals", "pending"],
+    queryFn: () => api.get<GoalProposal[]>("/api/goal-proposals/pending/"),
+    enabled: isTenant,
+  });
+  const practice = usePracticeName();
   const orphanProjects = (projects.data ?? []).filter((p) => !p.goal);
   const [collapsed, toggle] = useCollapsed(me);
 
@@ -87,9 +96,24 @@ export function Work({ me }: { me: Me }) {
         </Banner>
       ))}
 
+      {(proposedGoals.data ?? []).filter((p) => !company || p.company === company).map((p) => (
+        <Banner key={p.id} kind="info">
+          {p.proposed_by || "A client"} proposed a goal for {p.company_name}: “{p.title}”.{" "}
+          <Link to={`/report?company=${p.company}`}>Review it on the Value report</Link>
+        </Banner>
+      ))}
+
       {/* In each company's order of priority (the server's): current goals
           numbered, the ones behind us after them. */}
       <Card title="Goals">
+        {/* Where a client would look for "New goal": whose goals are, and
+            where a client owner proposes one. */}
+        {!isTenant && (
+          <p className="small muted" style={{ marginTop: 0 }}>
+            Goals are set together with {practice}.
+            {me.role === "FCC" && <> <Link to="/report">Propose a goal</Link></>}
+          </p>
+        )}
         <Grouped rows={mine(goals.data ?? [])} headings={isTenant}
           empty={company ? "No goals for this client yet." : "No goals yet."}
           render={(g) => (

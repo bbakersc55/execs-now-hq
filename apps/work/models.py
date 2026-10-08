@@ -170,6 +170,49 @@ class Goal(WorkItem):
         return not self.measurable_kind
 
 
+class GoalProposal(TenantScopedModel):
+    """A goal a client owner would like the engagement to take on
+    (owner, 2026-10-07).
+
+    **Goals are still the practice's** (FR-3.35a): a client never creates one.
+    What a client owner can do is propose one, and it sits in the practice's
+    review until the practice owner or an assigned associate accepts it — which
+    is what makes it a `Goal`, in the practice's wording if they change it — or
+    declines it with a reason the client reads. Review queues over automation.
+    """
+
+    class State(models.TextChoices):
+        PENDING = "pending", "Waiting for the practice"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+
+    client_company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
+                                       related_name="+")
+    proposed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    # The client's words, kept as they wrote them whatever the goal is called.
+    title = models.CharField(max_length=255)
+    why = models.TextField(blank=True, default="")
+    state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    # The practice's answer, which the client reads.
+    decision_note = models.TextField(blank=True, default="")
+    # The goal it became. Null until accepted, and again if that goal is deleted.
+    goal = models.ForeignKey(Goal, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "goal_proposal"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["tenant", "client_company", "state"])]
+        constraints = [
+            models.CheckConstraint(condition=~models.Q(title=""),
+                                   name="goal_proposal_title_not_blank"),
+        ]
+
+
 class CompanyGoalOrder(TenantScopedModel):
     """The order of one client company's goals, as the practice set it
     (owner, 2026-10-07). One row per company, made the first time anyone
