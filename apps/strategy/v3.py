@@ -413,6 +413,36 @@ def chips(session, answered: list) -> list:
     return out[:CHIPS_MOST]
 
 
+#: What a section of the practice's own may print (part two §6.1): written
+#: answers and agreed-with-a-note items. Said / cause / tried never prints, as
+#: the diagnostic's answers never do.
+PRINTABLE = ("free_text", "agreed_note")
+
+
+def printing_sections(session, sections: dict) -> list:
+    """The practice's own sections marked to print, in the template's order,
+    each with the answers it has. `sections` is already filtered, so a private
+    note is here only with its flag; an unanswered question is left out, and a
+    section with nothing to show is left out whole."""
+    from apps.strategy import builder
+
+    out = []
+    for section in session.template_snapshot.get("sections", []):
+        if section.get("kind") != builder.CUSTOM or not section.get("show_in_pdf"):
+            continue
+        items = []
+        for item in sections.get(section["code"], []):
+            if item["schema"] not in PRINTABLE:
+                continue
+            agreed = bool((item["value"] or {}).get("agreed"))
+            if item["text"] or agreed:
+                items.append({**item, "agreed": agreed,
+                              "is_agreed_note": item["schema"] == "agreed_note"})
+        if items:
+            out.append({"title": section["title"], "answers": items})
+    return out
+
+
 def chart(ratings: list) -> dict | None:
     """The ratings chart, with the label column sized to the longest label."""
     if not ratings:
@@ -462,4 +492,5 @@ def pdf_context(session, context: dict, sections: dict, merge: dict) -> dict:
         "ratings_title": rated.get("title", ""),
         "destination": sections.get(mirror.get("code"), []),
         "path_pair": paths,
+        "custom_sections": printing_sections(session, sections),
     }

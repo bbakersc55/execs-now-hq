@@ -57,7 +57,20 @@ const PARTS: Record<SectionKind, { hint: string; item: string; add: string }> = 
     hint: "What you agree before the call ends. Mark an item as money to keep it from "
       + "assistants and off the document unless you choose to include it.",
     item: "item", add: "Add an item" },
+  custom: {
+    hint: "A section of your own. Its answers are kept with the session and shown on "
+      + "the call. Claude does not read it, and it is not on the document unless you "
+      + "say so below.",
+    item: "question", add: "Add a question" },
 };
+
+/** The kinds of answer a question in a section of your own can take. */
+const ANSWER_KINDS: Record<string, string> = {
+  free_text: "A written answer",
+  diagnostic_triple: "Said / cause / tried",
+  agreed_note: "Agreed, with a note",
+};
+const CUSTOM_MOST = 8;
 
 type Problem = { where: string; text: string } | null;
 
@@ -143,6 +156,10 @@ export function TemplateBuilder({ me }: { me: Me }) {
   const setting = (changes: Partial<BuilderSettings>, where: string) =>
     change("settings/", { settings: changes }, where);
   const chips = t.sections.flatMap((s) => s.questions).filter((q) => q.pdf_chip).length;
+  // The sections asked on the call, in order: these are the ones that move.
+  const onCall = t.sections.filter((s) => s.included && s.kind !== "precall")
+    .map((s) => s.code);
+  const own = t.sections.filter((s) => s.included && s.kind === "custom").length;
   // Made from an example (P3 §9): the role it gave Claude, while unchanged.
   const exampleRole = !!t.example?.unchanged_settings.includes("advisor_role");
 
@@ -209,6 +226,7 @@ export function TemplateBuilder({ me }: { me: Me }) {
 
       {t.sections.map((section) => (
         <Part key={section.code} section={section} template={t} mayEdit={mayEdit} busy={busy}
+          place={onCall.indexOf(section.code)} last={onCall.length - 1}
           chips={chips} suggested={suggested} problem={said(section.code)}
           pasteUrl={`${path}paste/`}
           onPasted={() => {
@@ -217,6 +235,16 @@ export function TemplateBuilder({ me }: { me: Me }) {
           }}
           change={(suffix, body, then) => change(suffix, body, section.code, then)}
           setting={(changes) => setting(changes, section.code)} />
+      ))}
+
+      {mayEdit && (own < CUSTOM_MOST ? (
+        <AddSection sections={t.sections.filter((s) => s.included)} busy={busy}
+          problem={said("sections")}
+          onAdd={(body, added) => change("sections/", body, "sections", added)} />
+      ) : (
+        <p className="small muted">
+          A template holds {CUSTOM_MOST} sections of your own at most.
+        </p>
       ))}
 
       <Card title="Wording for Claude">
@@ -238,7 +266,9 @@ export function TemplateBuilder({ me }: { me: Me }) {
 /** One part of the session: its title and time, what it holds, and what the
  *  practice can change about it. */
 function Part({ section, template, mayEdit, busy, chips, suggested, problem, change, setting,
-                pasteUrl, onPasted }: {
+                pasteUrl, onPasted, place, last }: {
+  /** Where it is among the sections on the call, and the last such place. */
+  place: number; last: number;
   section: BuilderSection; template: BuilderTemplate; mayEdit: boolean; busy: boolean;
   chips: number; suggested: Record<string, string>; problem: React.ReactNode;
   pasteUrl: string; onPasted: () => void;
@@ -265,7 +295,9 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
         {problem}
         {mayEdit && (
           <button disabled={busy}
-            onClick={() => change("include/", { kind: section.kind, included: true })}>
+            onClick={() => change("include/", section.custom
+              ? { code: section.code, included: true }
+              : { kind: section.kind, included: true })}>
             Put “{section.title}” back in
           </button>
         )}
@@ -284,10 +316,34 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
       )}>
       <p className="small muted" style={{ marginTop: 0 }}>{part.hint}</p>
       {problem}
+      {mayEdit && section.kind !== "precall" && (
+        <p className="small" style={{ marginTop: 0 }}>
+          <button className="ghost small" disabled={busy || place <= 0}
+            aria-label={`Move section up: ${section.title}`}
+            onClick={() => change("move-section/", { code: section.code, by: -1 })}>
+            ↑ Earlier in the call</button>{" "}
+          <button className="ghost small" disabled={busy || place >= last}
+            aria-label={`Move section down: ${section.title}`}
+            onClick={() => change("move-section/", { code: section.code, by: 1 })}>
+            ↓ Later in the call</button>
+        </p>
+      )}
       <Saved label="Section title" ariaLabel={`Title of ${section.title}`} value={section.title}
         disabled={off} maxLength={255}
         onSave={(title) => change("section/", { code: section.code, title })} />
 
+      {section.custom && (
+        <label className="small" style={{ display: "flex", gap: ".4rem", margin: ".5rem 0" }}
+          title={section.questions.length > 4
+            ? "The document has room for four questions from a section." : ""}>
+          <input type="checkbox" style={{ width: "auto" }} checked={!!section.show_in_pdf}
+            disabled={off} aria-label={`Print this section on the document: ${section.title}`}
+            onChange={(e) => change("section/", { code: section.code,
+                                                  show_in_pdf: e.target.checked })} />
+          Print this section on the document (written answers and agreed items only;
+          two sections of up to four questions fit)
+        </label>
+      )}
       {section.kind === "ratings" && (
         <Saved label="Scale line (shown above the ratings and under the chart)"
           ariaLabel="Rating scale line" value={s.rating_scale} disabled={off} maxLength={160}
@@ -352,7 +408,9 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
             onClick={() => {
               if (!confirm(`Take “${section.title}” out of this template? Sessions started `
                 + "from it will skip this part. Sessions already created keep it.")) return;
-              change("include/", { kind: section.kind, included: false });
+              change("include/", section.custom
+                ? { code: section.code, included: false }
+                : { kind: section.kind, included: false });
             }}>
             Take “{section.title}” out of this template
           </button>
@@ -395,6 +453,11 @@ function QuestionEditor({ question, section, suggested, off, mayEdit, chips, isF
           <Pill kind="ai">from your prep</Pill> Not saved yet.
         </p>
       )}
+      {section.custom && (
+        <p className="tiny muted" style={{ margin: "0 0 4px" }}>
+          {ANSWER_KINDS[question.response_schema] ?? question.response_schema}
+        </p>
+      )}
       {(question.is_fractional_observation || (question.from_example && !dirty)) && (
         <p style={{ margin: "0 0 4px" }}>
           {/* Yours to notice on the call, never put to the prospect (FR-4.17). */}
@@ -431,8 +494,8 @@ function QuestionEditor({ question, section, suggested, off, mayEdit, chips, isF
           !question.label ? "Give it a label first."
             : chips >= 3 && !question.pdf_chip ? "The header shows three at most." : "")}
         {kind === "scope" && check("is_financial", "Money", question.is_financial)}
-        {(kind === "diagnostic" || kind === "mirror" || kind === "values" || kind === "scope")
-          && check("must_ask", "Must ask", question.must_ask)}
+        {(kind === "diagnostic" || kind === "mirror" || kind === "values" || kind === "scope"
+          || kind === "custom") && check("must_ask", "Must ask", question.must_ask)}
         {mayEdit && !section.fixed_count && (
           <>
             <button className="ghost small" disabled={off || isFirst}
@@ -457,6 +520,7 @@ function AddQuestion({ section, label, busy, onAdd }: {
 }) {
   const [prompt, setPrompt] = useState("");
   const [name, setName] = useState("");
+  const [answer, setAnswer] = useState("free_text");
   const rated = section.kind === "ratings";
   const hasLabel = rated || section.kind === "precall";
   return (
@@ -473,12 +537,69 @@ function AddQuestion({ section, label, busy, onAdd }: {
             : "The wording, as you would say it"}
           onChange={(e) => setPrompt(e.target.value)} />
       </div>
+      {section.schemas && (
+        <select aria-label={`Kind of answer for the new one in ${section.title}`}
+          value={answer} onChange={(e) => setAnswer(e.target.value)}>
+          {section.schemas.map((schema) => (
+            <option key={schema} value={schema}>{ANSWER_KINDS[schema] ?? schema}</option>
+          ))}
+        </select>
+      )}{" "}
       <button disabled={busy || !prompt.trim() || (rated && !name.trim())}
-        onClick={() => onAdd({ prompt: prompt.trim(), ...(hasLabel ? { label: name.trim() } : {}) },
+        onClick={() => onAdd({ prompt: prompt.trim(),
+                               ...(hasLabel ? { label: name.trim() } : {}),
+                               ...(section.schemas ? { response_schema: answer } : {}) },
                              () => { setPrompt(""); setName(""); })}>
         {label}
       </button>
     </div>
+  );
+}
+
+/** A section of the practice's own (P3 part two §3): a title, its minutes,
+ *  and where on the call it goes. It starts empty and off the document. */
+function AddSection({ sections, busy, problem, onAdd }: {
+  sections: BuilderSection[]; busy: boolean; problem: React.ReactNode;
+  onAdd: (body: Record<string, unknown>, added: () => void) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [minutes, setMinutes] = useState("");
+  const [after, setAfter] = useState("");
+  return (
+    <Card title="Add a section">
+      <p className="small muted" style={{ marginTop: 0 }}>
+        A section of your own, asked on the call. You write its questions, and each
+        takes a written answer, said / cause / tried, or agreed with a note.
+      </p>
+      {problem}
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <Field label="Title">
+          <input aria-label="Title of the new section" value={title} maxLength={255}
+            onChange={(e) => setTitle(e.target.value)} />
+        </Field>
+        <Field label="Minutes">
+          <input aria-label="Minutes for the new section" type="number" min={0}
+            style={{ width: "4.5rem" }} value={minutes}
+            onChange={(e) => setMinutes(e.target.value)} />
+        </Field>
+        <Field label="Where">
+          <select aria-label="Where the new section goes" value={after}
+            onChange={(e) => setAfter(e.target.value)}>
+            <option value="">Last on the call</option>
+            {sections.map((section) => (
+              <option key={section.code} value={section.code}>After “{section.title}”</option>
+            ))}
+          </select>
+        </Field>
+        <button disabled={busy || !title.trim()}
+          onClick={() => onAdd({ title: title.trim(),
+                                 ...(minutes === "" ? {} : { time_budget_minutes: Number(minutes) }),
+                                 ...(after ? { after } : {}) },
+                               () => { setTitle(""); setMinutes(""); setAfter(""); })}>
+          Add a section
+        </button>
+      </div>
+    </Card>
   );
 }
 

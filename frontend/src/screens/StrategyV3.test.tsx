@@ -256,6 +256,126 @@ describe("the template builder", () => {
   });
 });
 
+describe("sections of your own in the builder", () => {
+  const custom = (more: Partial<BuilderSection> = {}) => part(
+    "custom", "custom_ab12cd34", "Leadership bench", [
+      q("c1", "Who runs the day to day?"),
+      q("c2", "Where does hiring stall?", { response_schema: "diagnostic_triple" }),
+    ], { most: 12, optional: true, custom: true, show_in_pdf: false,
+         schemas: ["free_text", "diagnostic_triple", "agreed_note"], ...more });
+  const withCustom = (more: Partial<BuilderSection> = {}) => {
+    const base = aBuilder();
+    return aBuilder({ sections: [...base.sections.slice(0, 3), custom(more),
+                                 ...base.sections.slice(3)] });
+  };
+
+  it("adds a section with its title, minutes and place on the call", async () => {
+    const fetchMock = showBuilder(aBuilder(), aMe(), {
+      [`POST ${ROOT}sections/`]: () => ({ status: 201, body: aBuilder() }) });
+    const add = await screen.findByRole("button", { name: "Add a section" });
+    expect(add).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Title of the new section"), "Leadership bench");
+    await userEvent.type(screen.getByLabelText("Minutes for the new section"), "10");
+    // Anywhere among the parts on the call, the first place included.
+    const where = screen.getByLabelText("Where the new section goes");
+    expect(within(where).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Last on the call", "After “Before the call”", "After “Ratings”", "After “Diagnostic”",
+      "After “The mirror and where they want to go”", "After “Strategy Map”",
+      "After “What they value”", "After “Two paths”", "After “Scope”"]);
+    await userEvent.selectOptions(where, "diagnostic");
+    await userEvent.click(add);
+    await waitFor(() => expect(sent(fetchMock, "sections/")).toEqual([
+      { title: "Leadership bench", time_budget_minutes: 10, after: "diagnostic" }]));
+  });
+
+  it("moves any section on the call, and never the part before it", async () => {
+    const fetchMock = showBuilder(withCustom(), aMe(), {
+      [`POST ${ROOT}move-section/`]: () => ({ status: 200, body: withCustom() }) });
+    await screen.findByText("Our session");
+    expect(screen.queryByLabelText("Move section up: Before the call")).not.toBeInTheDocument();
+    // First and last on the call have nowhere further to go.
+    expect(screen.getByLabelText("Move section up: Ratings")).toBeDisabled();
+    expect(screen.getByLabelText("Move section down: Scope")).toBeDisabled();
+    for (const title of ["Strategy Map", "Two paths", "Scope", "Leadership bench"]) {
+      expect(screen.getByLabelText(`Move section up: ${title}`)).toBeEnabled();
+    }
+    await userEvent.click(screen.getByLabelText("Move section up: Leadership bench"));
+    await userEvent.click(screen.getByLabelText("Move section down: Strategy Map"));
+    await waitFor(() => expect(sent(fetchMock, "move-section/")).toEqual([
+      { code: "custom_ab12cd34", by: -1 }, { code: "strategy_map", by: 1 }]));
+  });
+
+  it("says what a section of your own is, and gives each new question a kind of answer",
+    async () => {
+      const fetchMock = showBuilder(withCustom(), aMe(), {
+        [`POST ${ROOT}questions/`]: () => ({ status: 201, body: withCustom() }) });
+      expect(await screen.findByText(/Claude does not read it/)).toBeInTheDocument();
+      expect(screen.getAllByText("Said / cause / tried").length).toBeGreaterThan(1);
+      const kind = screen.getByLabelText("Kind of answer for the new one in Leadership bench");
+      expect(within(kind).getAllByRole("option").map((o) => o.textContent)).toEqual([
+        "A written answer", "Said / cause / tried", "Agreed, with a note"]);
+      await userEvent.type(
+        screen.getByLabelText("Wording of the new one in Leadership bench"), "Org chart shared");
+      await userEvent.selectOptions(kind, "agreed_note");
+      const card = kind.closest(".card") as HTMLElement;
+      await userEvent.click(within(card).getByRole("button", { name: "Add a question" }));
+      await waitFor(() => expect(sent(fetchMock, "questions/")).toEqual([
+        { section: "custom_ab12cd34", prompt: "Org chart shared",
+          response_schema: "agreed_note" }]));
+      // One of the eight parts offers no such choice.
+      expect(screen.queryByLabelText("Kind of answer for the new one in Diagnostic"))
+        .not.toBeInTheDocument();
+    });
+
+  it("prints a section of your own only when ticked, and offers that on no other part",
+    async () => {
+      const fetchMock = showBuilder(withCustom(), aMe(), {
+        [`POST ${ROOT}section/`]: () => ({ status: 200, body: withCustom() }) });
+      const print = await screen.findByLabelText(
+        "Print this section on the document: Leadership bench");
+      expect(print).not.toBeChecked();
+      expect(screen.getAllByLabelText(/^Print this section on the document/)).toHaveLength(1);
+      await userEvent.click(print);
+      await waitFor(() => expect(sent(fetchMock, "section/")).toEqual([
+        { code: "custom_ab12cd34", show_in_pdf: true }]));
+    });
+
+  it("takes a section of your own out by its code, and puts it back", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const fetchMock = showBuilder(withCustom(), aMe(), {
+      [`POST ${ROOT}include/`]: () => ({ status: 200, body: withCustom() }) });
+    await userEvent.click(await screen.findByRole("button", {
+      name: "Take “Leadership bench” out of this template" }));
+    await waitFor(() => expect(sent(fetchMock, "include/")).toEqual([
+      { code: "custom_ab12cd34", included: false }]));
+    vi.unstubAllGlobals();
+    const out = showBuilder(withCustom({ included: false, questions: [] }), aMe(), {
+      [`POST ${ROOT}include/`]: () => ({ status: 200, body: withCustom() }) });
+    await userEvent.click((await screen.findAllByRole("button", {
+      name: "Put “Leadership bench” back in" })).at(-1)!);
+    await waitFor(() => expect(sent(out, "include/")).toEqual([
+      { code: "custom_ab12cd34", included: true }]));
+    // What they value still goes by its kind, as before.
+  });
+
+  it("stops offering a new section at eight of your own", async () => {
+    const base = aBuilder();
+    showBuilder(aBuilder({ sections: [...base.sections, ...Array.from({ length: 8 }, (_, n) =>
+      custom({ code: `custom_0000000${n}`, title: `Section ${n}` }))] }));
+    expect(await screen.findByText(/8 sections of your own at most/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add a section" })).not.toBeInTheDocument();
+  });
+
+  it("gives an associate or an assistant none of the section controls", async () => {
+    showBuilder(withCustom(), aMe({ role: "CF" }));
+    await screen.findByText("Our session");
+    expect(screen.queryByRole("button", { name: "Add a section" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Move section/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Print this section on the document: Leadership bench"))
+      .toBeDisabled();
+  });
+});
+
 describe("paste several", () => {
   const PASTE = `${ROOT}paste/`;
   const line = (prompt: string, ok = true, why = "", label = "") => ({ prompt, label, ok, why });
@@ -694,6 +814,33 @@ function showSession(session = aV3Session(), me = aMe(), extra: Record<string, u
 }
 
 describe("a v3 session in the live view", () => {
+  it("asks a section of the practice's own where the template put it, with a note field",
+    async () => {
+      const session = aV3Session();
+      session.sections!.splice(2, 0, {
+        code: "custom_ab12cd34", kind: "custom", title: "Leadership bench", position: 3,
+        time_budget_minutes: 5, questions: [
+          q("c1", "Who runs the day to day?", { has_fractional_note: true }),
+          q("c2", "Where does hiring stall?", { response_schema: "diagnostic_triple",
+                                                has_fractional_note: true }),
+          q("c3", "Org chart shared", { response_schema: "agreed_note",
+                                        has_fractional_note: true })] });
+      showSession(session);
+      const heading = await screen.findByText("Leadership bench", { selector: "span[id]" });
+      expect(heading).toHaveAttribute("id", "section-custom_ab12cd34");
+      // Between the diagnostic and the mirror, as the template has it.
+      const titles = Array.from(document.querySelectorAll("span[id^='section-']"))
+        .map((el) => el.id);
+      expect(titles.indexOf("section-custom_ab12cd34"))
+        .toBe(titles.indexOf("section-diagnostic") + 1);
+      expect(screen.getByLabelText("Private note — Who runs the day to day?"))
+        .toBeInTheDocument();
+      expect(screen.getByLabelText("What they said — Where does hiring stall?"))
+        .toBeInTheDocument();
+      expect(screen.getByLabelText("Agreed — Org chart shared")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Start Leadership bench" })).toBeInTheDocument();
+    });
+
   it("says the template's scale above the ratings, once", async () => {
     showSession();
     expect(await screen.findByText("Rate each one from 1 to 10 — 1 is not yet, 10 is every "

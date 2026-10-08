@@ -555,6 +555,41 @@ feature.
 
 ---
 
+### As built
+
+**Custom sections, a first cut of phase 2 (2026-10-08).** Built on the owner's
+instruction of that day ("sections in the builder: add, put back, move"),
+with this spec governing where the two differed. `builder.add_section`,
+`move_section`, `set_included` by code, the print switch on `update_section`;
+`v3.printing_sections` and one block in `templates/strategy/pdf.html`;
+`tests/test_strategy_sections.py`. **No migration**: `kind`, `show_in_pdf`
+and `deleted_at` are migration 0016's.
+
+Built, as this spec has it: a custom section added anywhere on the call (§3.1);
+its three kinds of answer, chosen per question, with must-ask (§3.2); 8 in a
+template and 12 questions in each (D5); any section on the call moves up or
+down and the part before the call stays first (§1.6); a custom section is
+removed and put back with its questions and keys (§3.1); it is captured and
+nothing else, off the form, the email, the ratings and Claude's input (§3.3);
+it prints only when switched on, written answers and agreed items only, two
+sections of four questions on the two-page document (§6).
+
+**In phase 2 of this spec and not built yet:**
+
+- Removing a built-in part other than "What they value", and the session
+  running without it (§3.4), with the ready-to-run rule that goes with it.
+- Talk tracks (§7.3).
+- Migration 0017. Nothing built here needs its columns; it goes with phase 3
+  (`feeds_map`, `ai_drafts`) and phase 5 (`cover_line`).
+- A separate "Removed sections" list: a removed section shows in its place,
+  marked "not in this template", with its way back, as "What they value" does.
+
+**Brought forward from phase 5:** printing a custom section, on the two-page
+layout only. The flowing layout is not built.
+
+**D14 is not recorded as done** (one v3 and one v2 session in production with
+a test contact before phase 2 starts). The owner asked for this work directly.
+
 ## 10. Decisions for the owner
 
 | # | Question | Recommendation | Owner, 2026-10-03 |

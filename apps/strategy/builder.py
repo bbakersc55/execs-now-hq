@@ -23,6 +23,7 @@ Three rules this module keeps:
 from __future__ import annotations
 
 import re
+import uuid
 
 from django.db import transaction
 from django.utils import timezone
@@ -38,6 +39,9 @@ SNAPSHOT_VERSION = 2
 
 PRECALL, RATINGS, DIAGNOSTIC, MIRROR = "precall", "ratings", "diagnostic", "mirror"
 MAP, VALUES, PATHS, SCOPE = "map", "values", "paths", "scope"
+#: A section the practice adds (P3 part two §3): captured and nothing else,
+#: unless the practice owner says it prints.
+CUSTOM = "custom"
 
 #: The eight parts, in session order: (kind, code, title, live minutes).
 #: 5 / 15 / 10 / 10 / 5 / 5 / 5 = 55 minutes on the call.
@@ -74,7 +78,19 @@ RULES = {
             "exactly": 2, "fixed": {}},
     SCOPE: {"schema": ResponseSchema.AGREED_NOTE, "ask_when": AskWhen.LIVE, "most": 12,
             "fixed": {}},
+    # The one kind where the practice chooses the shape, per question, from
+    # three (part two D4). No rating, value, path or money item: those belong
+    # to the parts that know what to do with them.
+    CUSTOM: {"schema": ResponseSchema.FREE_TEXT, "ask_when": AskWhen.LIVE, "most": 12,
+             "schemas": (ResponseSchema.FREE_TEXT, ResponseSchema.DIAGNOSTIC_TRIPLE,
+                         ResponseSchema.AGREED_NOTE),
+             "fixed": {"has_fractional_note": True}},
 }
+
+#: Part two D5, and §6.2: what the two-page document has room for.
+CUSTOM_MOST = 8
+PRINTING_MOST = 2
+PRINTING_QUESTIONS_MOST = 4
 
 #: A new template is not blank inside the fixed-shape parts: the session and
 #: the PDF need two paths and something to agree. Neutral words, no trade.
@@ -215,9 +231,102 @@ def duplicate(source: StrategyTemplate, *, name) -> StrategyTemplate:
 
 # ------------------------------------------------------------------ sections
 
-def update_section(template, *, code, title=None, time_budget_minutes=...) -> StrategySection:
+def _renumber(sections) -> None:
+    for position, section in enumerate(sections):
+        if section.position != position:
+            section.position = position
+            section.save(update_fields=["position", "updated_at"])
+
+
+@transaction.atomic
+def add_section(template, *, title, time_budget_minutes=None, after=None) -> StrategySection:
+    """A custom section among the parts asked on the call: after the one
+    named, or last. It starts empty, and it does not print (part two D6)."""
+    require_v3(template)
+    title = " ".join(str(title or "").split())
+    if not title:
+        raise SessionError("A section needs a title.")
+    if len(title) > 255:
+        raise SessionError("A section's title is 255 characters at most.")
+    if _sections(template).filter(kind=CUSTOM).count() >= CUSTOM_MOST:
+        raise SessionError(f"A template holds {CUSTOM_MOST} sections of your own at "
+                           "most. Remove one before adding another.")
+    every = list(_sections(template, removed=True))
+    at = len(every)
+    if after not in (None, ""):
+        # The part before the call is first by being named here, never moved.
+        index = next((i for i, section in enumerate(every)
+                      if section.code == after and section.deleted_at is None), None)
+        if index is None:
+            raise SessionError("That section is not in this template.", status=404)
+        at = index + 1
+    while True:
+        code = f"{CUSTOM}_{uuid.uuid4().hex[:8]}"
+        if not StrategySection.objects.filter(template=template, code=code).exists():
+            break
+    section = StrategySection.objects.create(
+        tenant=template.tenant, template=template, code=code, kind=CUSTOM, title=title,
+        position=len(every) + 1, time_budget_minutes=None)
+    every.insert(at, section)
+    _renumber(every)
+    if time_budget_minutes not in (None, ""):
+        section = template_admin.set_budget(template, section=code,
+                                            minutes=time_budget_minutes)
+    return section
+
+
+@transaction.atomic
+def move_section(template, *, code, by) -> StrategySection:
+    """One place up or down among the sections asked on the call. The part
+    before the call is not on the call, and stays first (part two §1.6)."""
     require_v3(template)
     section = _section(template, code)
+    if by not in (-1, 1):
+        raise SessionError("by is -1 (up) or 1 (down).")
+    if section.kind == PRECALL:
+        raise SessionError("The part before the call stays first: it is not on the call.")
+    every = list(_sections(template, removed=True))
+    movable = [i for i, other in enumerate(every)
+               if other.deleted_at is None and other.kind != PRECALL]
+    here = next(i for i in movable if every[i].pk == section.pk)
+    place = movable.index(here) + by
+    if not 0 <= place < len(movable):
+        raise SessionError(f"“{section.title}” is already "
+                           f"{'first' if by < 0 else 'last'} on the call.")
+    there = movable[place]
+    every[here], every[there] = every[there], every[here]
+    _renumber(every)
+    return section
+
+
+def _check_printing(template, section, *, questions) -> None:
+    if section.kind != CUSTOM:
+        raise SessionError("Only a section of your own is switched on or off the "
+                           "document. The eight parts print as they always have.")
+    printing = _sections(template).filter(show_in_pdf=True).exclude(pk=section.pk).count()
+    if printing >= PRINTING_MOST:
+        raise SessionError(f"The document has room for {PRINTING_MOST} sections of your "
+                           "own. Take one off before printing another.")
+    if questions > PRINTING_QUESTIONS_MOST:
+        raise SessionError(
+            f"The document has room for {PRINTING_QUESTIONS_MOST} questions from a "
+            f"section; “{section.title}” has {questions}.")
+
+
+def update_section(template, *, code, title=None, time_budget_minutes=...,
+                   show_in_pdf=None) -> StrategySection:
+    require_v3(template)
+    section = _section(template, code)
+    if show_in_pdf is not None:
+        if not isinstance(show_in_pdf, bool):
+            raise SessionError("show_in_pdf is true or false.")
+        if show_in_pdf:
+            _check_printing(template, section,
+                            questions=_live_questions(section).count())
+        elif section.kind != CUSTOM:
+            _check_printing(template, section, questions=0)
+        section.show_in_pdf = show_in_pdf
+        section.save(update_fields=["show_in_pdf", "updated_at"])
     if title is not None:
         title = " ".join(str(title).split())
         if not title:
@@ -234,14 +343,30 @@ def update_section(template, *, code, title=None, time_budget_minutes=...) -> St
     return section
 
 
-def set_included(template, *, kind, included: bool) -> StrategySection:
+def set_included(template, *, kind=None, included: bool, code=None) -> StrategySection:
     """Switch an optional part off or back on. Off is a removal that keeps the
     row: its code and its questions' keys stay spent, and switching it back on
-    brings its questions back as they were."""
+    brings its questions back as they were. "What they value" is named by its
+    kind, as before; a section of the practice's own by its code."""
     require_v3(template)
-    if kind not in OPTIONAL_KINDS:
-        raise SessionError("Only “What they value” can be switched off in a template.")
-    section = _sections(template, removed=True).filter(kind=kind).first()
+    if code:
+        section = _sections(template, removed=True).filter(code=code).first()
+        if section is None:
+            raise SessionError("That section is not in this template.", status=404)
+        if section.kind != CUSTOM and section.kind not in OPTIONAL_KINDS:
+            raise SessionError(f"“{section.title}” cannot be taken out of a template.")
+        if included and section.deleted_at is not None and section.kind == CUSTOM:
+            if _sections(template).filter(kind=CUSTOM).count() >= CUSTOM_MOST:
+                raise SessionError(f"A template holds {CUSTOM_MOST} sections of your "
+                                   "own at most. Remove one before putting this back.")
+            if section.show_in_pdf:
+                _check_printing(template, section,
+                                questions=_live_questions(section).count())
+    elif kind not in OPTIONAL_KINDS:
+        raise SessionError("Only “What they value” and sections of your own can be "
+                           "taken out of a template.")
+    else:
+        section = _sections(template, removed=True).filter(kind=kind).first()
     if section is None:
         raise SessionError("That section is not in this template.", status=404)
     section.deleted_at = None if included else (section.deleted_at or timezone.now())
@@ -284,8 +409,8 @@ def _check_chips(template, *, adding: StrategyQuestion | None = None) -> None:
 
 @transaction.atomic
 def add_question(template, *, section, prompt, label="", pdf_chip=False,
-                 is_financial=False, must_ask=False,
-                 observation=False) -> StrategyQuestion:
+                 is_financial=False, must_ask=False, observation=False,
+                 response_schema=None) -> StrategyQuestion:
     require_v3(template)
     section = _section(template, section)
     rule = RULES.get(section.kind)
@@ -298,8 +423,21 @@ def add_question(template, *, section, prompt, label="", pdf_chip=False,
     if live.count() >= rule["most"]:
         raise SessionError(f"“{section.title}” holds {rule['most']} at most. Remove one "
                            "before adding another.")
+    if section.show_in_pdf and live.count() >= PRINTING_QUESTIONS_MOST:
+        raise SessionError(
+            f"“{section.title}” prints on the document, which has room for "
+            f"{PRINTING_QUESTIONS_MOST} of its questions. Take it off the document "
+            "before adding another.")
+    schema = rule["schema"]
+    # Only a section of the practice's own has a choice; one of the eight
+    # parts gives its questions its own shape whatever is asked for.
+    if "schemas" in rule and response_schema not in (None, "", schema):
+        if response_schema not in rule["schemas"]:
+            raise SessionError("A section of your own takes a written answer, said / "
+                               "cause / tried, or agreed with a note.")
+        schema = response_schema
     key = template_admin._new_key(template, section)
-    prompt = _clean_prompt(key, rule["schema"], prompt)
+    prompt = _clean_prompt(key, schema, prompt)
     label = _clean_label(label)
     if rule.get("needs_label") and not label:
         raise SessionError("A rated item needs a short label: it is what the chart "
@@ -332,7 +470,7 @@ def add_question(template, *, section, prompt, label="", pdf_chip=False,
     last = live.order_by("-position").values_list("position", flat=True).first()
     return StrategyQuestion.objects.create(
         tenant=template.tenant, template=template, section=section, key=key,
-        prompt=prompt, label=label, response_schema=rule["schema"],
+        prompt=prompt, label=label, response_schema=schema,
         ask_when=rule["ask_when"], position=(last + 1) if last is not None else 0,
         **flags)
 
@@ -641,6 +779,13 @@ def represent(template) -> dict:
             "fixed_count": bool(rule.get("exactly")),
             "questions": frozen.get(section.code, {}).get("questions", []),
         })
+        # A section of the practice's own says what else it can do. The eight
+        # parts' entries are as they were.
+        if section.kind == CUSTOM:
+            sections[-1].update({
+                "optional": True, "custom": True, "show_in_pdf": section.show_in_pdf,
+                "schemas": list(rule["schemas"]),
+            })
     missing = readiness(template)
     return {
         "id": str(template.pk), "name": template.name, "format": template.format,

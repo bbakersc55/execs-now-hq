@@ -764,7 +764,8 @@ export interface StrategyQuestion {
 
 /** What a section of a builder template does (P3). */
 export type SectionKind = "precall" | "ratings" | "diagnostic" | "mirror" | "map"
-  | "values" | "paths" | "scope";
+  | "values" | "paths" | "scope"
+  | "custom";
 
 export interface StrategySection {
   code: string; title: string; position: number;
@@ -800,6 +801,9 @@ export interface BuilderSection {
   code: string; kind: SectionKind; title: string; time_budget_minutes: number | null;
   included: boolean; optional: boolean; response_schema: string | null;
   most: number; fixed_count: boolean; questions: StrategyQuestion[];
+  /** Only on a section the practice added (P3 part two): whether it prints
+   *  on the document, and the kinds of answer its questions may take. */
+  custom?: boolean; show_in_pdf?: boolean; schemas?: string[];
 }
 
 /** GET /api/strategy-template-builder/<id>/ — one builder template (P3). */

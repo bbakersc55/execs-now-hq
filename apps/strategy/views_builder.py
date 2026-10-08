@@ -102,6 +102,8 @@ class TemplateBuilderViewSet(StrategyViewSet):
             fields["title"] = data["title"]
         if "time_budget_minutes" in data:
             fields["time_budget_minutes"] = data["time_budget_minutes"]
+        if "show_in_pdf" in data:
+            fields["show_in_pdf"] = data["show_in_pdf"]
         return self._write(
             pk, lambda t: builder.update_section(t, code=data.get("code"), **fields),
             "strategy.template_section_edited",
@@ -113,11 +115,33 @@ class TemplateBuilderViewSet(StrategyViewSet):
         included = data.get("included")
         if not isinstance(included, bool):
             return Response({"detail": "included is true or false."}, status=400)
+        # "What they value" by its kind, as before; a section of the
+        # practice's own by its code.
+        named = {"code": data["code"]} if data.get("code") else {"kind": data.get("kind")}
         return self._write(
-            pk, lambda t: builder.set_included(t, kind=data.get("kind"),
-                                               included=included),
+            pk, lambda t: builder.set_included(t, included=included, **named),
             "strategy.template_section_included" if included
-            else "strategy.template_section_removed", {"kind": data.get("kind")})
+            else "strategy.template_section_removed", named)
+
+    @action(detail=True, methods=["post"])
+    def sections(self, request, pk=None):
+        """Add a section of the practice's own (part two §3.1)."""
+        data = request.data
+        return self._write(
+            pk, lambda t: builder.add_section(
+                t, title=data.get("title"),
+                time_budget_minutes=data.get("time_budget_minutes"),
+                after=data.get("after")),
+            "strategy.template_section_added",
+            lambda section: {"code": section.code, "title": section.title}, status=201)
+
+    @action(detail=True, methods=["post"], url_path="move-section")
+    def move_section(self, request, pk=None):
+        data = request.data
+        return self._write(
+            pk, lambda t: builder.move_section(t, code=data.get("code"), by=data.get("by")),
+            "strategy.template_section_moved",
+            {"code": data.get("code"), "by": data.get("by")})
 
     @action(detail=True, methods=["post"])
     def questions(self, request, pk=None):
@@ -127,7 +151,8 @@ class TemplateBuilderViewSet(StrategyViewSet):
                 t, section=data.get("section"), prompt=data.get("prompt"),
                 label=data.get("label") or "", pdf_chip=data.get("pdf_chip") is True,
                 is_financial=data.get("is_financial") is True,
-                must_ask=data.get("must_ask") is True),
+                must_ask=data.get("must_ask") is True,
+                response_schema=data.get("response_schema")),
             "strategy.template_question_added",
             lambda question: {"key": question.key, "section": data.get("section")},
             status=201)

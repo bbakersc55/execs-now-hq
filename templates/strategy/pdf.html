@@ -286,7 +286,8 @@
   </div>
 {% endif %}
 
-{% if next_steps %}
+{% if custom_sections %}{% for part in custom_sections %}<div class="block"><h2>{{ part.title }}</h2><table class="values" style="width:100%;border-collapse:collapse">{% for item in part.answers %}<tr><td class="v">{{ item.prompt }}</td><td>{% if item.is_agreed_note and item.agreed %}&#10003; {% endif %}{{ item.text }}{% if item.note %}<br><i>{{ item.note }}</i>{% endif %}</td></tr>{% endfor %}</table></div>
+{% endfor %}{% endif %}{% if next_steps %}
   <div class="block">
     <h2 class="big">What happens next</h2>
     <table class="steps">
