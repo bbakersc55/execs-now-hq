@@ -299,6 +299,24 @@ previous one as REMOVED, so do not count on redeploying it from the
 dashboard; a no-migration release is rolled back by reverting on `main` and
 pushing, which is another deploy of about a minute.
 
+**Observed at Release 8 (2026-10-08, 5 migrations: P3's example and sections,
+the alignment pass, client invoicing, the books, and the import with 1099
+payees):** backup confirmed (08:00 UTC dump, 3.1 MB), and a fresh one taken by
+hand first so the day's work was in it (20:10:07 UTC, 3,084,117 bytes, by the
+"run now" command R1 now gives). The commit released, `fc814df`, had passed
+`scripts/gate.sh`, and the pre-push hook let it through. `main` fast-forwarded
+from `6627b03` and pushed 20:10:24; worker `WAITING` 20:13:30 listing exactly
+`crm.0033`, `billing.0001`, `crm.0034`, `finance.0001`, `finance.0002`;
+applied 20:13:39–48, all OK; `migrations current` 20:14:03, worker running
+20:14:05; web redeployed 20:14:16; new code serving by 20:14:56 (a route that
+exists only in this release went from 404 to 403). **Push to new code: 4 min
+32 s**, three minutes of it the build. Old web served throughout: 59 samples
+at 5 s, every one 200. **Worker paused about 35 s.** After: `ensure_schedules`
+created `billing.run_invoice_schedules` for both practices (first run
+2026-10-09 05:00 Mountain); `backfill_invoice_income` (dry run) found 0
+payments; no migration unapplied. **No screen in this release had been seen in
+a signed-in browser when it went out**, and the owner released knowing that.
+
 **Observed at Release 7 (2026-10-08 UTC, 7 migrations: the digest schedule,
 portal invitations, the value report's open goal, goal order and goal
 proposals, and the width and button pass):** backup confirmed (dump of
