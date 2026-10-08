@@ -22,6 +22,8 @@ Three rules this module keeps:
 
 from __future__ import annotations
 
+import re
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -333,6 +335,98 @@ def add_question(template, *, section, prompt, label="", pdf_chip=False,
         prompt=prompt, label=label, response_schema=rule["schema"],
         ask_when=rule["ask_when"], position=(last + 1) if last is not None else 0,
         **flags)
+
+
+# ------------------------------------------------------------ paste several
+
+#: "Paste several" (P3 §9.5): one question per line, from the document a
+#: practice arrives with.
+PASTE_MOST = 50
+PASTE_LINE_MOST = 500
+#: A list marker at the start of a line — "1.", "2)", "-", "•" — is the
+#: document's, not the question's.
+_LIST_MARKER = re.compile(r"^\s*(?:[-*•·▪◦–—]+|\(?\d{1,3}[.)])\s+")
+#: "Plan — Our plan is written down.": a rated item's label is what comes
+#: before the dash or colon.
+_LABEL_BREAK = re.compile(r"\s+[—–-]\s+|:\s+")
+
+
+def _same(text: str) -> str:
+    return " ".join(str(text).split()).casefold()
+
+
+def paste_lines(text) -> list[str]:
+    """What was pasted, as lines: blank ones dropped, list markers taken off."""
+    if isinstance(text, (list, tuple)):
+        text = "\n".join(str(line) for line in text)
+    if not isinstance(text, str):
+        raise SessionError("Paste the questions as text, one to a line.")
+    lines = [" ".join(_LIST_MARKER.sub("", line).split()) for line in text.splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        raise SessionError("There is nothing to add: paste one question to a line.")
+    if len(lines) > PASTE_MOST:
+        raise SessionError(f"That is {len(lines)} lines. Paste {PASTE_MOST} at most at "
+                           "a time.")
+    return lines
+
+
+def paste(template, *, section, text, confirmed=None) -> dict:
+    """Several questions into one part, in the order pasted, each through
+    `add_question` so that nothing gets in this way that could not get in one
+    at a time.
+
+    **Nothing is added unless `confirmed` is the list that was shown back**:
+    without it this is the list, with each refused line and why; with it, the
+    lines are added only if what would be added is still exactly that list
+    (the template may have changed since it was shown). A refused line never
+    stops the others.
+    """
+    require_v3(template)
+    part = _section(template, section)
+    rule = RULES.get(part.kind)
+    if rule is None or rule.get("exactly"):
+        raise SessionError(f"“{part.title}” does not take a pasted list.")
+    lines = paste_lines(text)
+    held = {_same(prompt) for prompt in
+            _live_questions(part).values_list("prompt", flat=True)}
+    shown, added = [], []
+    with transaction.atomic():
+        for line in lines:
+            label = ""
+            if rule.get("needs_label"):
+                pieces = _LABEL_BREAK.split(line, 1)
+                label = pieces[0] if len(pieces) == 2 else ""
+            entry = {"prompt": line, "label": label, "ok": False, "why": ""}
+            shown.append(entry)
+            if len(line) > PASTE_LINE_MOST:
+                entry["why"] = (f"This line is {len(line)} characters; {PASTE_LINE_MOST} "
+                                "is the most. Is it more than one question?")
+                continue
+            if _same(line) in held:
+                entry["why"] = "This is already in this part, word for word."
+                continue
+            if rule.get("needs_label") and not label:
+                entry["why"] = ("A rated item needs a short label. Start the line with "
+                                "it, as in “Plan — Our plan is written down.”")
+                continue
+            try:
+                with transaction.atomic():
+                    question = add_question(template, section=part.code, prompt=line,
+                                            label=label)
+            except SessionError as exc:
+                entry["why"] = str(exc)
+                continue
+            entry["ok"] = True
+            held.add(_same(line))
+            added.append(question)
+        wanted = [entry["prompt"] for entry in shown if entry["ok"]]
+        if confirmed is None or list(confirmed) != wanted or not added:
+            transaction.set_rollback(True)
+            added = []
+    return {"section": part.code, "lines": shown, "adding": len(wanted),
+            "added": [question.key for question in added],
+            "stale": confirmed is not None and list(confirmed) != wanted}
 
 
 EDITABLE = ("prompt", "label", "pdf_chip", "is_financial", "must_ask")

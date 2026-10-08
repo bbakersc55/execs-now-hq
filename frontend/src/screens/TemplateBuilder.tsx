@@ -5,8 +5,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill } from "../components/ui";
 import {
-  BuilderSection, BuilderSettings, BuilderTemplate, Me, SectionKind, StrategyQuestion,
-  StrategySessionRow, api,
+  BuilderSection, BuilderSettings, BuilderTemplate, Me, PasteResult, SectionKind,
+  StrategyQuestion, StrategySessionRow, api,
 } from "../lib/api";
 
 /**
@@ -210,6 +210,11 @@ export function TemplateBuilder({ me }: { me: Me }) {
       {t.sections.map((section) => (
         <Part key={section.code} section={section} template={t} mayEdit={mayEdit} busy={busy}
           chips={chips} suggested={suggested} problem={said(section.code)}
+          pasteUrl={`${path}paste/`}
+          onPasted={() => {
+            qc.invalidateQueries({ queryKey: ["template-builder", id] });
+            qc.invalidateQueries({ queryKey: ["strategy-templates"] });
+          }}
           change={(suffix, body, then) => change(suffix, body, section.code, then)}
           setting={(changes) => setting(changes, section.code)} />
       ))}
@@ -232,9 +237,11 @@ export function TemplateBuilder({ me }: { me: Me }) {
 
 /** One part of the session: its title and time, what it holds, and what the
  *  practice can change about it. */
-function Part({ section, template, mayEdit, busy, chips, suggested, problem, change, setting }: {
+function Part({ section, template, mayEdit, busy, chips, suggested, problem, change, setting,
+                pasteUrl, onPasted }: {
   section: BuilderSection; template: BuilderTemplate; mayEdit: boolean; busy: boolean;
   chips: number; suggested: Record<string, string>; problem: React.ReactNode;
+  pasteUrl: string; onPasted: () => void;
   change: (suffix: string, body: object, then?: () => void) => void;
   setting: (changes: Partial<BuilderSettings>) => void;
 }) {
@@ -330,6 +337,10 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
         <AddQuestion section={section} label={part.add} busy={busy}
           onAdd={(body, added) =>
             change("questions/", { section: section.code, ...body }, added)} />
+      )}
+      {mayEdit && part.add && section.questions.length < section.most && (
+        <PasteSeveral section={section} item={part.item} url={pasteUrl} busy={busy}
+          onPasted={onPasted} />
       )}
       {part.add && section.questions.length >= section.most && (
         <p className="tiny muted">This part holds {section.most} at most.</p>
@@ -467,6 +478,104 @@ function AddQuestion({ section, label, busy, onAdd }: {
                              () => { setPrompt(""); setName(""); })}>
         {label}
       </button>
+    </div>
+  );
+}
+
+/** Several at once, from the document a practice arrives with (P3 §9.5): one
+ *  to a line. The list is shown back first, with every line that would be
+ *  refused marked and explained, and **nothing is added until it is
+ *  confirmed**. */
+function PasteSeveral({ section, item, url, busy, onPasted }: {
+  section: BuilderSection; item: string; url: string; busy: boolean; onPasted: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [shown, setShown] = useState<PasteResult | null>(null);
+  const [said, setSaid] = useState("");
+  const rated = section.kind === "ratings";
+  const close = () => { setOpen(false); setText(""); setShown(null); setSaid(""); };
+  const send = useMutation({
+    mutationFn: (confirmed?: string[]) => api.post<PasteResult>(
+      url, { section: section.code, text, ...(confirmed ? { confirmed } : {}) }),
+    onSuccess: (result, confirmed) => {
+      setSaid("");
+      if (confirmed) { close(); onPasted(); } else setShown(result);
+    },
+    onError: (e: Error & { status?: number; data?: PasteResult }) => {
+      // Shown, and the template has changed since: here is the list as it
+      // stands now. Nothing was added.
+      if (e.status === 409 && e.data?.lines) {
+        setShown(e.data);
+        setSaid("The template changed after this list was shown, so nothing was "
+          + "added. Here is the list as it stands now.");
+      } else setSaid(e.message);
+    },
+  });
+  if (!open) {
+    return (
+      <p style={{ marginBottom: 0 }}>
+        <button className="ghost small" disabled={busy}
+          aria-label={`Paste several into ${section.title}`}
+          onClick={() => setOpen(true)}>Paste several</button>
+      </p>
+    );
+  }
+  const fine = shown ? shown.lines.filter((line) => line.ok) : [];
+  const count = (n: number) => `${n} ${item}${n === 1 ? "" : "s"}`;
+  return (
+    <div className="card">
+      <p className="small" style={{ marginTop: 0 }}><strong>Paste several</strong></p>
+      {said && <Banner kind="bad">{said}</Banner>}
+      {!shown ? (
+        <>
+          <p className="small muted">
+            One {item} to a line, in the order you want them. Numbers and bullets at
+            the start of a line are taken off.
+            {rated && " Start each line with its label, as in “Plan — Our plan is "
+              + "written down.”"}
+            {" "}You see the list before anything is added.
+          </p>
+          <textarea rows={6} aria-label={`Lines to paste into ${section.title}`}
+            value={text} onChange={(e) => setText(e.target.value)} />
+          <div className="row">
+            <button className="primary" disabled={!text.trim() || send.isPending}
+              onClick={() => send.mutate(undefined)}>
+              {send.isPending ? "Reading…" : "Show the list"}
+            </button>
+            <button className="ghost" onClick={close}>Cancel</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="small muted">
+            {fine.length === shown.lines.length
+              ? `All ${count(fine.length)} can be added.`
+              : `${count(fine.length)} of ${shown.lines.length} can be added. The `
+                + "others are left out, each for the reason beside it."}
+            {" "}Nothing has been added yet.
+          </p>
+          <ol aria-label={`What would be added to ${section.title}`} className="small">
+            {shown.lines.map((line, index) => (
+              <li key={index} style={{ marginBottom: ".35rem" }}>
+                {line.ok ? <Pill kind="ok">will be added</Pill>
+                  : <Pill kind="warn">left out</Pill>}{" "}
+                {rated && line.label && <><strong>{line.label}</strong> · </>}
+                {line.prompt}
+                {!line.ok && <div className="tiny muted">{line.why}</div>}
+              </li>
+            ))}
+          </ol>
+          <div className="row">
+            <button className="primary" disabled={fine.length === 0 || send.isPending}
+              onClick={() => send.mutate(fine.map((line) => line.prompt))}>
+              {send.isPending ? "Adding…" : `Add ${count(fine.length)}`}
+            </button>
+            <button onClick={() => { setShown(null); setSaid(""); }}>Change the list</button>
+            <button className="ghost" onClick={close}>Cancel</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

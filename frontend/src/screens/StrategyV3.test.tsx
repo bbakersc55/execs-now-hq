@@ -256,6 +256,147 @@ describe("the template builder", () => {
   });
 });
 
+describe("paste several", () => {
+  const PASTE = `${ROOT}paste/`;
+  const line = (prompt: string, ok = true, why = "", label = "") => ({ prompt, label, ok, why });
+  const result = (lines: ReturnType<typeof line>[], more: Record<string, unknown> = {}) => ({
+    section: "snapshot", lines, adding: lines.filter((l) => l.ok).length, added: [],
+    stale: false, template: aBuilder(), ...more });
+
+  it("is on the six cards that hold questions, and not on the paths or the map", async () => {
+    showBuilder();
+    await screen.findByText("Our session");
+    expect(screen.getAllByRole("button", { name: /^Paste several into / })
+      .map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Paste several into Before the call", "Paste several into Ratings",
+      "Paste several into Diagnostic",
+      "Paste several into The mirror and where they want to go",
+      "Paste several into What they value", "Paste several into Scope"]);
+  });
+
+  it("shows the list back, and adds nothing until it is confirmed", async () => {
+    const fetchMock = showBuilder(aBuilder(), aMe(), {
+      [`POST ${PASTE}`]: (body: { confirmed?: string[] }) => body.confirmed
+        ? { status: 201, body: result([line("What do you sell?"), line("How many sites?")],
+                                      { added: ["k1", "k2"] }) }
+        : { status: 200, body: result([line("What do you sell?"), line("How many sites?")]) } });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Paste several into Before the call" }));
+    const show = screen.getByRole("button", { name: "Show the list" });
+    expect(show).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Lines to paste into Before the call"),
+      "1. What do you sell?{Enter}2. How many sites?");
+    await userEvent.click(show);
+    const list = await screen.findByLabelText("What would be added to Before the call");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText(/All 2 questions can be added/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing has been added yet/)).toBeInTheDocument();
+    // Shown, not sent for adding.
+    expect(sent(fetchMock, "paste/")).toEqual([
+      { section: "snapshot", text: "1. What do you sell?\n2. How many sites?" }]);
+    await userEvent.click(screen.getByRole("button", { name: "Add 2 questions" }));
+    await waitFor(() => expect(sent(fetchMock, "paste/")).toHaveLength(2));
+    expect(sent(fetchMock, "paste/")[1]).toEqual({
+      section: "snapshot", text: "1. What do you sell?\n2. How many sites?",
+      confirmed: ["What do you sell?", "How many sites?"] });
+    // Done: the box is closed again.
+    await waitFor(() => expect(
+      screen.queryByLabelText("What would be added to Before the call")).not.toBeInTheDocument());
+  });
+
+  it("marks a refused line with why, and offers to add only the others", async () => {
+    const fetchMock = showBuilder(aBuilder(), aMe(), {
+      [`POST ${PASTE}`]: () => ({ status: 200, body: result([
+        line("Plan — Our plan is written down.", true, "", "Plan"),
+        line("People — Who runs each division?", false,
+             "This one is rated 1–10. “Who” asks for an explanation.", "People"),
+        line("We review the numbers weekly.", false, "A rated item needs a short label."),
+      ], { section: "six_key_components" }) }) });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Paste several into Ratings" }));
+    expect(screen.getByText(/Start each line with its label/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Lines to paste into Ratings"), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Show the list" }));
+    const items = within(await screen.findByLabelText("What would be added to Ratings"))
+      .getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("will be added");
+    expect(items[0]).toHaveTextContent("Plan · Plan — Our plan is written down.");
+    expect(items[1]).toHaveTextContent("left out");
+    expect(items[1]).toHaveTextContent("asks for an explanation");
+    expect(items[2]).toHaveTextContent("A rated item needs a short label.");
+    expect(screen.getByText(/1 rated item of 3 can be added/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Add 1 rated item" }));
+    await waitFor(() => expect(sent(fetchMock, "paste/")[1]).toMatchObject({
+      confirmed: ["Plan — Our plan is written down."] }));
+  });
+
+  it("offers nothing to add when every line is refused, and lets the list be changed",
+    async () => {
+      showBuilder(aBuilder(), aMe(), {
+        [`POST ${PASTE}`]: () => ({ status: 200, body: result([
+          line("Start date", false, "This is already in this part, word for word.")]) }) });
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Paste several into Scope" }));
+      await userEvent.type(screen.getByLabelText("Lines to paste into Scope"), "Start date");
+      await userEvent.click(screen.getByRole("button", { name: "Show the list" }));
+      expect(await screen.findByRole("button", { name: "Add 0 items" })).toBeDisabled();
+      await userEvent.click(screen.getByRole("button", { name: "Change the list" }));
+      // What was typed is still there to fix.
+      expect(screen.getByLabelText("Lines to paste into Scope")).toHaveValue("Start date");
+    });
+
+  it("says so when the list cannot be read at all", async () => {
+    showBuilder(aBuilder(), aMe(), {
+      [`POST ${PASTE}`]: () => ({ status: 400,
+                                  body: { detail: "That is 61 lines. Paste 50 at most at a time." } }) });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Paste several into Diagnostic" }));
+    await userEvent.type(screen.getByLabelText("Lines to paste into Diagnostic"), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Show the list" }));
+    expect(await screen.findByText(/Paste 50 at most/)).toBeInTheDocument();
+  });
+
+  it("shows the list again, with nothing added, when the template changed meanwhile",
+    async () => {
+      showBuilder(aBuilder(), aMe(), {
+        [`POST ${PASTE}`]: (body: { confirmed?: string[] }) => body.confirmed
+          ? { status: 409, body: result([line("One"), line("Two", false, "holds 5 at most")],
+                                        { stale: true }) }
+          : { status: 200, body: result([line("One"), line("Two")]) } });
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Paste several into What they value" }));
+      await userEvent.type(screen.getByLabelText("Lines to paste into What they value"), "x");
+      await userEvent.click(screen.getByRole("button", { name: "Show the list" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Add 2 values" }));
+      expect(await screen.findByText(/nothing was added/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add 1 value" })).toBeInTheDocument();
+      expect(screen.getByText("holds 5 at most")).toBeInTheDocument();
+    });
+
+  it("cancels without sending anything", async () => {
+    const fetchMock = showBuilder();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Paste several into Scope" }));
+    await userEvent.type(screen.getByLabelText("Lines to paste into Scope"), "Who signs");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByLabelText("Lines to paste into Scope")).not.toBeInTheDocument();
+    expect(sent(fetchMock, "paste/")).toEqual([]);
+  });
+
+  it("is not offered to an associate or an assistant, or on a full part", async () => {
+    showBuilder(aBuilder(), aMe({ role: "VA" }));
+    await screen.findByText("Our session");
+    expect(screen.queryByRole("button", { name: /^Paste several/ })).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+    const full = aBuilder();
+    full.sections[0].most = 2;
+    showBuilder(full);
+    await screen.findAllByText("Our session");
+    expect(screen.queryAllByRole("button", { name: "Paste several into Before the call" }))
+      .toHaveLength(0);
+  });
+});
+
 describe("a template made from the Operations example", () => {
   const fromExample = (overrides: Partial<BuilderTemplate> = {}) => {
     const base = aBuilder({ ready: true, missing: [] });

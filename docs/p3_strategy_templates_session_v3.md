@@ -843,6 +843,30 @@ template; the builder's note, tags and advisory line. No schema change.
   the practice owner's to edit" on the templates screen, rather than the
   sentence and "Your practice owner builds the first template".
 
+**Phase 3 (2026-10-08).** "Paste several" on the six cards that hold
+questions: `builder.paste`, `POST /api/strategy-template-builder/<id>/paste/`,
+`tests/test_strategy_paste.py`. No schema change.
+
+- **One request shows the list and writes nothing; the same request with the
+  list that was shown adds it.** If what would be added is no longer exactly
+  that list (the template changed meanwhile), nothing is added and the list is
+  shown again. Each line goes through `add_question`, so every builder rule
+  applies, and a refused line never stops the others.
+- **A rated item's label is taken from the start of its line**, before a dash
+  or a colon ("Plan — Our plan is written down."). A line with no such start
+  is left out with that explanation.
+- **Tidying:** blank lines are dropped, and a number or bullet at the start of
+  a line is taken off. The owner sees the result before confirming.
+- **Limits that are new and apply to pasting only:** 50 lines at a time, 500
+  characters a line (a question typed one at a time still has no limit, other
+  than a rated item's 120), and a line already in the part word for word is
+  left out.
+- **A fourth PDF header question cannot arrive by pasting**, so that refusal
+  in §9.5 never shows: a pasted line is never marked for the header. Marking
+  one afterwards meets the usual limit of three.
+- One audit event per confirmed list, `strategy.template_questions_pasted`,
+  with the part and the keys added.
+
 ### 9.9 Decisions for the owner
 
 | # | Question | Recommendation | Owner, 2026-10-08 |

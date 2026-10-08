@@ -133,6 +133,32 @@ class TemplateBuilderViewSet(StrategyViewSet):
             status=201)
 
     @action(detail=True, methods=["post"])
+    def paste(self, request, pk=None):
+        """"Paste several" (P3 §9.5). Without `confirmed` this shows the list
+        back and writes nothing; with it, the lines shown as fine are added.
+        Either way it is the practice owner's, like every builder verb."""
+        template, refused = self._template(pk, write=True)
+        if refused:
+            return refused
+        data = request.data
+        confirmed = data.get("confirmed")
+        if confirmed is not None and not isinstance(confirmed, list):
+            return Response({"detail": "confirmed is the list that was shown back."},
+                            status=400)
+        try:
+            result = builder.paste(template, section=data.get("section"),
+                                   text=data.get("text"), confirmed=confirmed)
+        except services.SessionError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        if result["added"]:
+            self._audit("strategy.template_questions_pasted", template,
+                        {"section": result["section"], "keys": result["added"]})
+        template.refresh_from_db()
+        # Shown and since changed: nothing was added, and the list is new.
+        return Response({**result, "template": examples.represent(template)},
+                        status=409 if result["stale"] else 201 if result["added"] else 200)
+
+    @action(detail=True, methods=["post"])
     def question(self, request, pk=None):
         data = request.data
         changes = {field: data[field] for field in builder.EDITABLE if field in data}

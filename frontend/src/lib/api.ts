@@ -814,6 +814,14 @@ export interface BuilderTemplate {
   example?: { start_from: string; version: number; unchanged_settings: string[] };
 }
 
+/** POST …/paste/ — "Paste several" (P3 §9.5): the list shown back, each
+ *  line fine or refused with why. `added` is empty until it is confirmed. */
+export interface PastedLine { prompt: string; label: string; ok: boolean; why: string }
+export interface PasteResult {
+  section: string; lines: PastedLine[]; adding: number; added: string[]; stale: boolean;
+  template: BuilderTemplate;
+}
+
 /** The live ones, default first — what the start form and Apply offer. */
 export function activeTemplates(all: StrategyTemplateRow[] | undefined) {
   return (all ?? []).filter((t) => !t.archived_at)
