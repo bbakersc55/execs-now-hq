@@ -22,6 +22,10 @@ session v2"), `01_prd.md` (FR-4.x, AC-4.x), `02_data_model.md` §6,
 `03_access_matrix.md` §10, and the code under `apps/strategy/`,
 `templates/strategy/` and `frontend/src/screens/Session*.tsx`.
 
+**Added 2026-10-08, for owner review, not built: §9, a practice with no
+template and "Start from the Operations example".** It reverses D3 and part
+two's D13 in one narrow way, and says exactly how narrow (§9.2, E1).
+
 **Words used here.** *Classic* is the original nine-section format. *v2* is
 "Operations — focused" (`format = focused`). *v3* is the new format this spec
 adds. *Builder* is the new screen where a practice owner makes a v3 template.
@@ -570,3 +574,216 @@ and review-before-it-lands on every AI output.
 | D11 | Add "Operations — focused" to the demo's fictional practice (`add_focused_template`, dry run then `--apply`, in the demo's Railway shell) so you can rehearse a v2 session there on the P3 code | Yes. It is the only browser proof that v2 is unchanged. | **Yes.** Done in the demo's Railway shell when P3 reaches `dev`. |
 | D12 | Go/no-go rule for Tuesday: goldens byte-identical, real-session hashes identical, existing strategy tests unedited and green, full suite green, one v3 and one v2 session completed on the demo | Yes, all five | **Yes, all five, plus the owner's own judgment after the dry run.** *Dry run waived by the owner at release, 2026-10-03.* |
 | D13 | The builder makes no AI calls in P3 (no "draft my template") | Yes; revisit after Blue Sky has used it | **Yes for the builder.** AI in the session is required: Claude proposes the map without duplicates (§3e) and drafts the pros and cons for each path (§3g). |
+
+---
+
+## 9. A practice with no template: a guided start, and "Start from the Operations example"
+
+**Spec for owner review · 2026-10-08 · no code, no schema change proposed.**
+Asked for by the owner so that Shawn (Blue Sky) is not facing a blank page.
+Sections 1 to 8 are built and released and are not respecified here.
+
+### 9.0 What a new practice meets today
+
+| As built | What it means for Shawn |
+|---|---|
+| Provisioning gives a practice no template (P2 §3). Getting started lists "Build your first strategy template" and links to Strategy → Manage the templates. | Correct, and it stays. |
+| That screen shows **"Your first template"**: one paragraph, a name box, and New template. | The only way in. |
+| New template makes the **eight blank parts** (`builder.create_blank`): Two paths and Scope hold neutral wording; **every other part has no questions**. | A page of empty cards. |
+| A template is **ready to run** only with two rated items, each labeled, and two path items. A blank one is not, and Start refuses it. | He has to write rated items before he can run anything. This is the "needs two rated items" he was told about on 10/5. |
+| "Restore from seed" is hidden from, and refused for, a practice with no classic or v2 template (D3). Part two's "start from a copy" (its §7.2) covers only a practice's own templates, and **is not in the code** (`apps/strategy/builder.py` has `create_blank` and `duplicate` and nothing else that creates a template). | Nothing of yours reaches him, by decision. Nothing else reaches him either. |
+| Nothing imports a template or a list of questions. | Questions he already has in a document are retyped one at a time. |
+
+### 9.1 What changes, in one paragraph
+
+The first-template card, and New template for every practice, offer **two
+starts**: "Start from the Operations example" and "Start blank". The example
+is a complete, ready-to-run v3 template that becomes **the practice's own
+copy**: every question, label and line of it is theirs to reword, reorder or
+remove in the builder, exactly as if they had typed it. A builder card can
+also take **several questions pasted at once**, which is the import (§9.5).
+
+### 9.2 What "the Operations example" is, and is not
+
+**It is a fixed example written into the code**, like the seed is
+(`apps/strategy/seed.py`, from `docs/strategy_session_seed.md`). It is not a
+row in Executives Now's practice, and creating from it reads nothing of
+yours at the time: no template of yours, no session, no setting.
+
+**Its wording is the industry-neutral Operations wording you approved on
+2026-09-26** ("Operations — generic": plain language first, the EOS term in
+brackets, "your second-in-command" for the Integrator), laid onto v3's eight
+parts by the mapping part two §7.2 already describes:
+
+| v3 part | From the Operations seed | In the example |
+|---|---|---|
+| Before the call | Snapshot (7 questions) | All 7, neutral wording. Three marked for the PDF header (revenue, team, sites), which a practice re-marks or relabels. |
+| Ratings | Six Key Components (6 statements) | All 6 as rated items taken on the call, each with its component as the label. The scale line is the default. |
+| Diagnostic | 14 questions | **3 fixed questions**, the fallback when nothing Claude proposes is accepted. Diagnostic questions per session stays at the default, 3. E3 asks which three. |
+| The mirror and where they want to go | Where they want to go (4) | All 4. |
+| The map | none | Time budget only, as in every v3 template. |
+| What they value | 5 items | All 5, switched on. |
+| Two paths | 2 | The neutral Path A and Path B, with the PDF title and two lines for each. |
+| Scope | 9 items | All 9; the money items keep their money flag (hidden from assistants and from the PDF by default). |
+| Wording for Claude | | "fractional operations executive". The practice changes it if that is not what they are. |
+
+Time budgets are the builder's own (5 / 15 / 10 / 10 / 5 / 5 / 5, 55 minutes
+on the call).
+
+**What is not in it, and stays yours:**
+
+| Stays with Executives Now | Why it is safe |
+|---|---|
+| Your classic template, "Operations — focused", and any v3 template you build | The example is not made from them. Your edits to them never flow anywhere. |
+| **"Restore from seed"** and "Restore seed wording" on a session | Still hidden from and refused for a practice with no classic or v2 template. D3 holds for these. |
+| The three questions written for a multi-site service business (`s4_done_right`, `s4_location_parity`, `s4_gross_margin`) and the verbatim EOS wording | Left out, as they are from "Operations — generic". |
+| Your style examples ("learn from my edits"), talk tracks, prep briefs, sessions, maps, PDFs | Rows of your practice. Nothing here reads them. |
+| Your name, logo and colors | The example carries no practice's name. The copy wears the practice that made it. |
+| Fees | The scope items name "Investment discussed"; no amount is in the example. |
+
+**So D3 and D13 are reversed in this and nothing else:** another practice can
+now start from *your Operations questions in their neutral wording*. That is
+the thing D3 said they could not have. E1 is that decision, and E2 is the
+alternative that keeps D3 whole.
+
+### 9.3 The screens
+
+**"Your first template"** (a practice with no template; practice owner):
+
+- One line: "A strategy session runs from a template: what you ask before
+  the call, what you rate on it, and the words on the document your prospect
+  keeps."
+- **Start from the Operations example** (first, the primary button). Under
+  it: "A complete template you can run today and change as you go. It is
+  written for an operations practice; every question and label is yours to
+  reword."
+- **Start blank** (secondary). Under it: "The eight parts with nothing in
+  them. You write every question."
+- A name box shared by both, filled in with "Strategy session" so that
+  neither button waits on typing. Any role but the practice owner reads the
+  sentence and "Your practice owner builds the first template", as today.
+
+**New template** on the templates list, for every practice: the same two
+starts under **Start from**, plus the practice's own v3 templates (which is
+Duplicate). Whether Executives Now is offered the example too is E4.
+
+**In the builder, on a template made from the example:**
+
+- A note at the top, until dismissed: "Made from the Operations example.
+  Read it through once as if you were the prospect: change what does not
+  sound like you."
+- Each question, label and line **still exactly as the example has it**
+  carries a quiet "from the example" tag. Reword it and the tag goes. This is
+  computed by comparing with the example, so nothing is stored and nothing
+  can drift (E6).
+- **Ready to run** is true from the first second, because the example has six
+  labeled rated items and two paths. The checklist adds one advisory line,
+  never a block: "Wording for Claude still says *fractional operations
+  executive*" while that is unchanged.
+
+**Getting started** keeps its item and its link. It is done when a template
+exists, as now.
+
+### 9.4 What creating from the example does
+
+- One request, practice owner only: `POST /api/strategy-templates/` with
+  `start_from: "operations_example"` (today's create with one more field;
+  absent means blank, so nothing that exists changes).
+- It builds the template through the builder's own functions
+  (`create_blank`, then `add_question`, `update_settings`), so **every rule
+  the builder enforces is enforced on the example**: a rated item that reads
+  as an open question, more than three PDF header questions, an unknown merge
+  field. A test fails if the example itself would be refused.
+- The template is v3, owned by the practice, not the default unless it is
+  their first (today's rule), and editable at once.
+- An audit event `strategy.template_created` records who, and
+  `{"start_from": "operations_example", "example_version": 1}`.
+- **The example is versioned and copies are not linked to it.** Improving the
+  example later changes what the next practice starts from and nothing that
+  already exists. "From the example" tags compare against the version the
+  copy was made from.
+
+**Schema: no change.** The example is code; the copy is ordinary template,
+section and question rows; where it came from is in the audit event. If you
+would rather see "made from the example" on the templates list for good, that
+is one nullable column on `strategy_template` (E7), shown as SQL first.
+
+### 9.5 Importing questions a practice already has
+
+Most practices arrive with their questions in a document. In the builder,
+each card that holds questions (Before the call, Ratings, Diagnostic, the
+mirror, What they value, Scope) gains **"Paste several"**: a box that takes
+one question per line and adds them in order, after showing the list back
+with anything that would be refused marked and explained (a rated item
+worded as an open question; a fourth PDF header question; a line over the
+length limit). Nothing is added until the owner confirms the list. No file
+upload, no AI, no schema change.
+
+Not in this round: importing a whole template from a file, and exporting one
+(E8). Claude drafting a template from a pasted document is the "draft my
+template" D13 put off until Blue Sky has used the builder; it stays put off.
+
+### 9.6 Access and isolation
+
+| # | Action | Practice owner | Associate | Assistant | Client |
+|---|---|---|---|---|---|
+| 10.x | Create a template from the Operations example | ✅ | ❌ | ❌ | ❌ |
+| 10.y | Paste several questions into a card | ✅ | ❌ | ❌ | ❌ |
+
+Both are the existing "build a template" row; they add no new permission.
+
+Tests this round must add, beside the two families that are not optional:
+
+- **Isolation.** A template made from the example in practice A is invisible
+  to practice B, by list and by id. Making one in B after Executives Now has
+  edited every template it owns gives the same content as before: the example
+  does not read Executives Now.
+- **Roles.** An associate, an assistant and a client are each refused
+  `start_from` and "Paste several", with the rows unchanged.
+- **Restore from seed is still refused** for a practice whose only template
+  came from the example (it is v3, so D3's rule does not see it as a seeded
+  template).
+- **The pins hold.** `tests/test_strategy_v2_golden.py` and
+  `tests/test_strategy_v3_golden.py` stay byte-identical: a blank template is
+  still what `start_from` absent makes. The example gets its own small pin
+  (its questions, labels and settings), so a change to it is a decision, not
+  an accident.
+- **Ready to run.** A template made from the example starts a session with no
+  edits; a session created from it freezes its snapshot like any v3 session.
+
+### 9.7 What this is not
+
+- Not V1's discipline presets (Marketing, Finance, HR). It is where they
+  would go: a second example is one more entry beside this one. None is
+  written in this round.
+- Not a conversion of anything. No classic, v2 or v3 template or session is
+  touched.
+- Not a change for Shawn's template if he has already built one. He can make
+  a second from the example and set either as the default.
+
+### 9.8 Build phases, once approved
+
+| Phase | What | Done when |
+|---|---|---|
+| 1 | The example's content as data, built through the builder's functions; `start_from` on create; the audit event; the example's pin; isolation, role and readiness tests. No screen. | Suites green; both goldens byte-identical. |
+| 2 | "Your first template" and New template with the two starts; the builder's note and "from the example" tags; the advisory line. | A practice with no template reaches a runnable session in two clicks. |
+| 3 | "Paste several" on the six cards. | A pasted list is shown back, refused lines explained, nothing added before confirming. |
+
+No migration in any phase unless E7 is yes. Release is an ordinary one.
+
+### 9.9 Decisions for the owner
+
+| # | Question | Recommendation | Owner |
+|---|---|---|---|
+| **E1** | **Reverse D3 and part two's D13 this far: any practice may start from the Operations example, which is your Operations questions in their neutral wording.** "Restore from seed", your own templates and everything in §9.2's second table stay yours. | **Yes, if you are content for another fractional to run a session on these questions.** It is the only version of this that is not a blank page on day one. | |
+| E2 | The alternative that keeps D3 whole: a **generic example written for the purpose**, none of it from your seed (invented pre-call questions, four or five plain rated items, neutral paths and scope). | No, unless E1 is no. It takes writing you would have to approve line by line, and it will be a weaker session than yours. | |
+| E3 | Which three of the 14 diagnostic questions are the example's fixed fallback. | The three marked must-ask in the seed, in seed order; if more than three are marked, the first three. I will list them by wording in the phase 1 report before anything is built on them. | |
+| E4 | Is the example offered to Executives Now as well, on New template? | Yes. It is the quickest way for you to get a v3 Operations template to work on, and it shows you exactly what Shawn sees. | |
+| E5 | Name on the button and the default template name. | "Start from the Operations example"; the template is named "Strategy session" until renamed. The word "Operations" is on the button, not forced into their template's name. | |
+| E6 | "From the example" tags on unchanged wording, computed, never stored. | Yes. It is how a practice sees what it has not yet made its own, and it costs no schema. | |
+| E7 | Record where a template came from on the template itself (one nullable column), or only in the audit event. | Audit event only. No migration. | |
+| E8 | Import in this round is "Paste several" per card. Whole-template file import and export wait. | Yes. Paste covers the document a practice arrives with; file import has no second practice to exchange with yet. | |
+| E9 | The example is versioned and copies never follow it. | Yes. A practice's template must not change under it because the example improved. | |
+| E10 | Order of work against part two (custom sections, AI per section), which is approved and, past its phase 1, not built. | This first. It is three small phases, it is what Blue Sky is waiting on, and it touches none of part two's ground. Say if part two should go first. | |
+| E11 | Who tells Shawn, and what happens to a template he has already started. | You tell him. Nothing of his changes; the new start is offered beside it. | |
+
