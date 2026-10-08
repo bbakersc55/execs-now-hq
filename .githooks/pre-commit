@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Refuses a commit whose tree the full suite has not passed on (scripts/gate.sh).
+tree="$(git write-tree)"
+green="$(git rev-parse --git-dir)/green-trees"
+if ! grep -q "^$tree " "$green" 2>/dev/null; then
+  echo "pre-commit: REFUSED. The full suite has not been green on what is staged." >&2
+  echo "            Run: git add -A && scripts/gate.sh" >&2
+  exit 1
+fi

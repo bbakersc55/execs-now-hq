@@ -51,6 +51,26 @@ mailpit --version
 
 ---
 
+### The commit gate (2026-10-08)
+
+Once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+From then on a commit or a push is refused unless the full suite was green on
+exactly that tree:
+
+```bash
+git add -A && scripts/gate.sh && git commit -m "…" && git push origin dev
+```
+
+`scripts/gate.sh` takes about six minutes. It refuses to start with unstaged
+or untracked files, because it tests the working tree and what is tested has
+to be what is committed. A change after it has run, however small, needs it
+run again.
+
 ## 2. Ports
 
 | Service | Port | Notes |

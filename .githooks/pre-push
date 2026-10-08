@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Refuses a push of any commit whose tree the full suite has not passed on.
+green="$(git rev-parse --git-dir)/green-trees"
+zero="0000000000000000000000000000000000000000"
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue          # deleting a branch
+  tree="$(git rev-parse "$local_sha^{tree}")"
+  if ! grep -q "^$tree " "$green" 2>/dev/null; then
+    echo "pre-push: REFUSED. The full suite has not been green on $local_sha." >&2
+    echo "          Run: scripts/gate.sh  (with that commit checked out and nothing changed)" >&2
+    exit 1
+  fi
+done
+exit 0

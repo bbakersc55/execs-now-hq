@@ -377,7 +377,11 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
         <p className="small muted">No {part.item}s yet.</p>
       )}
       {section.questions.map((question, index) => (
-        <QuestionEditor key={question.key} question={question} section={section}
+        // Keyed on the suggested wording too: it arrives from a second request,
+        // and an editor that copied it in afterwards showed the stored wording
+        // for one render under a banner already saying it was filled in.
+        <QuestionEditor key={`${question.key}:${suggested[question.key] ?? ""}`}
+          question={question} section={section}
           suggested={suggested[question.key]} off={off} mayEdit={mayEdit} chips={chips}
           isFirst={index === 0} isLast={index === keys.length - 1}
           onSave={(changes) => change("question/", { key: question.key, ...changes })}

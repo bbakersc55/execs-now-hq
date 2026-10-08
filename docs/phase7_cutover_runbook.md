@@ -228,7 +228,7 @@ Anything destructive or data-rewriting has your explicit yes on the dry run
 
 | # | Step | Command | Gate |
 |---|---|---|---|
-| R1 | Confirm the backup | `gcloud storage ls -l "gs://execs-now-hq-db-backups/execsnowhq_prod_*" \| sort -k2 \| tail -1` | The newest dump is from the most recent 08:00 UTC run (02:00 Mountain), under 24 hours old, and over the 1 KB floor. If not, stop: run the backup by hand first (`railway redeploy --service backup -y`) and check again. |
+| R1 | Confirm the backup | `gcloud storage ls -l "gs://execs-now-hq-db-backups/execsnowhq_prod_*" \| sort -k2 \| tail -1` | The newest dump is from the most recent 08:00 UTC run (02:00 Mountain), under 24 hours old, and over the 1 KB floor. If not, stop: run the backup by hand first and check again. **Not `railway redeploy --service backup`**, which rebuilds the service and runs nothing (observed 2026-10-08). The cron's "run now" is `railway api 'mutation($id:String!){deploymentInstanceExecutionCreate(input:{serviceInstanceId:$id})}' --raw-var id=8653b0cf-2067-45ab-b09c-8303172165f2`; the dump landed three seconds after it. |
 | R2 | Release | merge `dev` → `main`, push | Railway builds web and qcluster |
 | R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else |
 | R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report |
@@ -257,7 +257,7 @@ when R4 follows R3 immediately. The first migration release records which.
 - **R2 to R6: 4 min 22 s**, most of it the build (push to `WAITING` was 2 min 15 s).
 - **The old web kept serving the whole time.** Production was polled every 5 s from before the push: 53 samples from the old code, then 4 from the new, **every one a 200**, with the switch between 04:02:55 and 04:03:00. The refused new web deployment showed as FAILED, and the old one stayed live. **No web downtime** was observed at 5-second resolution.
 - **The worker was paused about 68 s** (new worker waiting at 04:00:52, running at 04:02:00), as intended.
-- `railway redeploy` on the backup cron is still unobserved.
+- `railway redeploy` on the backup cron: **observed 2026-10-08, and it does not run a backup.** It rebuilt and redeployed the service (SUCCESS) and no dump appeared in three minutes. R1 now gives the command that does.
 
 **Observed at Release 3 (2026-10-03, 1 migration, `crm 0031`, the three
 backlog items):** pushed 04:58:17; worker `WAITING` 04:58:52 listing exactly
