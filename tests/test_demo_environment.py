@@ -1,5 +1,6 @@
 """The demo environment (owner, 2026-09-29): a seeded fictional practice that
-sends nothing, reads nothing, and runs no worker."""
+reads nothing and runs no worker, and sends nothing unless it has its redirect
+(tests/test_demo_mail_redirect.py)."""
 
 from __future__ import annotations
 
@@ -48,41 +49,7 @@ def test_the_seed_refuses_a_mistyped_database(settings, tenant_a):
     assert Tenant.objects.filter(pk=tenant_a.pk).exists(), "nothing was emptied"
 
 
-@pytest.mark.django_db
-def test_the_seed_builds_a_plausible_practice_and_resets_on_a_rerun(settings, tenant_a):
-    from apps.crm.models import Company, Contact, ContactEmail
-    from apps.meetings.models import MeetingProposal, ProposalItem
-    from apps.strategy.models import StrategySession
-    from apps.tenancy.models import Membership, StoredFile, Tenant
-    from apps.work.models import Digest, Goal, Project
-    from apps.crm.models import Task
-
-    settings.APP_ENVIRONMENT = "demo"
-    for _ in range(2):          # the second run is the reset
-        call_command("seed_demo", database=_name(), ff_email="Founder@Example.invalid")
-
-        assert list(Tenant.objects.values_list("slug", flat=True)) == ["summit-demo"], \
-            "the reset emptied everything first, including what was there before"
-        tenant = Tenant.objects.get()
-        assert Membership.all_objects.filter(role="FF", user__email="founder@example.invalid"
-                                             ).exists()
-        assert Company.all_objects.filter(is_client_company=True).count() == 3
-        assert Goal.all_objects.count() == 3 and Project.all_objects.count() == 5
-        statuses = set(Task.all_objects.values_list("status", flat=True))
-        assert {"done", "in_progress", "not_started", "blocked",
-                "waiting_on_client"} <= statuses
-        assert Digest.all_objects.filter(state="pending").count() >= 3, \
-            "digests wait for approval (hold_all_digests is on)"
-        session = StrategySession.all_objects.get()
-        assert session.state == "complete"
-        assert StoredFile.all_objects.filter(purpose="strategy_pdf").exists()
-        assert MeetingProposal.all_objects.filter(state="pending").count() == 2
-        assert ProposalItem.all_objects.filter(kind="action_item").count() == 4
-        assert all(a.endswith((".example", ".invalid"))
-                   for a in ContactEmail.all_objects.values_list("address", flat=True)), \
-            "every address is at a domain that cannot receive mail"
-        assert tenant.hold_all_digests is True
-        assert Contact.all_objects.count() >= 10
+# What the seed makes, and that a re-run resets it: tests/test_demo_seed.py.
 
 
 # ============================================================ the guards

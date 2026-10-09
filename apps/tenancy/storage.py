@@ -138,6 +138,11 @@ def delete(stored_file) -> None:
     stored_file.delete()
 
 
+def delete_object(bucket: str, object_key: str) -> None:
+    """Remove an object whose row is already gone (the demo's reset)."""
+    _backend().delete(bucket, object_key)
+
+
 def present_or_unknown(stored_file) -> bool | None:
     """For display: `None` when storage cannot be asked right now.
 

@@ -290,6 +290,48 @@ def _unsubscribe_headers(message) -> dict:
     return unsubscribe.headers_for(message)
 
 
+def _demo_recipient(tenant) -> str:
+    """Where a demo message really goes: the redirect, when the demo has one
+    and its own send-only connection to send it through; otherwise "", and
+    the message is discarded."""
+    from apps.crm.services.transport import TransportUnavailable, sending_connection_for
+    from config import environment
+
+    redirect = environment.demo_redirect()
+    if not redirect:
+        return ""
+    try:
+        connection = sending_connection_for(tenant)
+    except TransportUnavailable:
+        return ""
+    if (connection.send_as_address or "").lower() != environment.demo_sender():
+        return ""
+    return redirect
+
+
+def _with_demo_banner(message, html: str, text: str) -> tuple[str, str]:
+    """Who it was for, at the top of both parts."""
+    import re
+
+    from django.utils.html import escape
+
+    from config import environment
+
+    contact = message.to_contact
+    name = f"{contact.first_name} {contact.last_name}".strip() if contact else ""
+    line = environment.demo_banner(name, message.to_address)
+    text = f"{line}\n\n{text}"
+    if html:
+        block = ('<div style="background:#FFF4CE;color:#3B2F00;font:14px/1.4 Arial,'
+                 'Helvetica,sans-serif;padding:10px 16px;border-bottom:1px solid #E0C36A">'
+                 f"{escape(line)}</div>")
+        html, placed = re.subn(r"(<body\b[^>]*>)", lambda m: m.group(1) + block, html,
+                               count=1, flags=re.IGNORECASE)
+        if not placed:
+            html = block + html
+    return html, text
+
+
 def _deliver(message, *, actor=None, body_text=None, body_html=None):
     """The one path out of the app.
 
@@ -311,9 +353,17 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     dev_real = settings.IS_LOCAL and is_real_send_allowed(
         message.to_address, message.tenant
     )
-    # The demo never sends (owner, 2026-09-29): its mail goes to the dev
-    # transport, whose backend there discards it.
-    use_real_transport = ((not settings.IS_LOCAL) or dev_real) and not settings.IS_DEMO
+    # The demo sends only through its redirect (owner, 2026-10-08). Where it
+    # can, the one address below replaces the recipient before anything is
+    # built; where it cannot (no redirect set, no connection of its own, or
+    # the seed is running), the message goes to the dev transport, whose
+    # backend there discards it. No branch here sends to `message.to_address`.
+    from config import environment
+
+    demo = environment.is_demo()
+    demo_to = _demo_recipient(message.tenant) if demo else ""
+    use_real_transport = (bool(demo_to) if demo
+                          else (not settings.IS_LOCAL) or dev_real)
     transport = get_transport() if use_real_transport else DevOutboxTransport()
 
     thread = message.thread
@@ -356,9 +406,13 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     html_part, text_part = email_layout.for_delivery(message, body_text=body_text,
                                                      body_html=body_html)
     html_part, inline_images = email_layout.with_logo(html_part, message.tenant)
+    from_address = message.from_address
+    if demo_to:
+        html_part, text_part = _with_demo_banner(message, html_part, text_part)
+        from_address = environment.demo_sender()
     result = transport.send(
         tenant=message.tenant,
-        to_address=message.to_address,
+        to_address=demo_to or message.to_address,
         subject=message.subject,
         body_text=text_part,
         body_html=html_part,
@@ -366,7 +420,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         in_reply_to=in_reply_to,
         attachments=attachments,
         inline_images=inline_images,
-        from_address=message.from_address,
+        from_address=from_address,
         # Gmail's own unsubscribe button, for marketing and updates only.
         headers=_unsubscribe_headers(message),
     )
@@ -412,6 +466,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         payload={
             "producer": message.producer, "to": message.to_address,
             "dev_real_send": dev_real, "via": result["provider"],
+            **({"demo_redirect": demo_to} if demo_to else {}),
         },
     )
     return message

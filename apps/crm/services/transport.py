@@ -275,7 +275,24 @@ class GmailTransport:
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
              inline_images=(), from_address="", headers=None):
+        from config import environment
+
+        demo = environment.is_demo()
+        if demo:
+            # The second lock on the demo's promise, below the Outbox's own:
+            # whatever asked for this send, nothing leaves the demo for any
+            # address but its redirect, or from any address but its own.
+            redirect = environment.demo_redirect()
+            if not redirect or (to_address or "").strip().lower() != redirect:
+                raise TransportUnavailable(
+                    "The demo sends only to its redirect address. This message was "
+                    "addressed to someone else and was not sent.")
+            from_address = environment.demo_sender()
         connection = sending_connection_for(tenant, from_address)
+        if demo and (connection.send_as_address or "").lower() != environment.demo_sender():
+            raise TransportUnavailable(
+                f"The demo sends only from {environment.demo_sender()}. Connect Gmail "
+                "on the demo with that address as the practice's.")
         token = access_token_for(connection)
 
         # The row's address when it is this connection's own; otherwise the
@@ -285,7 +302,7 @@ class GmailTransport:
         message_id = message_id_for(tenant, thread)
         mime = build_mime(
             to_address=to_address,
-            from_address=(connection.email_address if own
+            from_address=(connection.email_address if own and not demo
                           else connection.send_as_address or tenant.from_address),
             subject=subject, body_text=body_text, message_id=message_id,
             thread_token=thread.thread_token, in_reply_to=in_reply_to,

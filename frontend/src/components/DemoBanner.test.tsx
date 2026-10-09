@@ -8,6 +8,9 @@ describe("the demo banner (owner, 2026-09-29)", () => {
   it.each(["FF", "CF", "VA"] as const)("tells a %s it is the demo", (role) => {
     render(<DemoBanner me={aMe({ role, environment: "demo" })} />);
     expect(screen.getByText("Demo")).toBeInTheDocument();
+    // It sends, but only to its own inbox (2026-10-08): it must not say otherwise.
+    expect(screen.getByText(/goes only to the demo's own inbox/)).toBeInTheDocument();
+    expect(screen.queryByText(/No email is sent/)).not.toBeInTheDocument();
   });
 
   it("is not shown to a client user, or anywhere but the demo", () => {

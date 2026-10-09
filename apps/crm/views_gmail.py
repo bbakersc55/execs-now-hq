@@ -121,6 +121,25 @@ def _status_payload(request, *, send_as=None, send_as_error=""):
     }
 
 
+def _demo_connect_refusal(request) -> str:
+    """Why the demo will not start a Gmail consent, or "" when it will: one
+    address, the practice owner, sending only."""
+    from config import environment
+
+    if not environment.demo_redirect():
+        return environment.DEMO_REFUSAL
+    if request.tenant.from_address.lower() != environment.demo_sender():
+        return (f"This is the demo. It sends only from {environment.demo_sender()}, and "
+                f"this practice's address is {request.tenant.from_address}.")
+    if request.membership.role != "FF":
+        return ("This is the demo. Only its practice owner connects Gmail, for "
+                f"{environment.demo_sender()}.")
+    if request.data.get("inbound"):
+        return ("This is the demo. It never reads a mailbox, so replies are not "
+                "collected here. Connect without that box ticked.")
+    return ""
+
+
 class GmailConnectionViewSet(viewsets.ViewSet):
     """FR-6.3b. FF and CF, each for their own account only (H7)."""
 
@@ -134,8 +153,9 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         """Hand back the consent URL. The browser navigates; we never proxy it."""
         from config import environment
 
-        if environment.is_demo():
-            return Response({"detail": environment.DEMO_REFUSAL}, status=409)
+        demo = environment.is_demo()
+        if demo and (refusal := _demo_connect_refusal(request)):
+            return Response({"detail": refusal}, status=409)
         if not gmail_oauth.is_configured(request.tenant):
             return Response({"detail": (
                 "Google sign-in isn't configured on this server, so there is "
@@ -157,7 +177,7 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         return Response({
             "authorization_url": gmail_oauth.authorization_url(
                 state, login_hint=email, hd=gmail_oauth.workspace_domain(email),
-                inbound=inbound, tenant=request.tenant,
+                inbound=inbound, tenant=request.tenant, send_only=demo,
             ),
             "redirect_uri": gmail_oauth.redirect_uri(),
         })
@@ -195,6 +215,12 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         from django.core.exceptions import ValidationError
         from django.core.validators import validate_email
 
+        from config import environment
+
+        if environment.is_demo():
+            return Response({"detail": (
+                f"This is the demo. It sends only from {environment.demo_sender()}, "
+                "so the practice's address cannot be changed here.")}, status=409)
         tenant = request.tenant
         address = str(request.data.get("address") or "").strip().lower()
         try:
@@ -295,6 +321,19 @@ def gmail_callback(request):
         email_address = gmail_oauth.account_email(tokens["access_token"])
     except gmail_oauth.GmailOAuthError as exc:
         return HttpResponseRedirect(_spa_url(where, gmail_error=str(exc)))
+
+    from config import environment
+
+    if environment.is_demo():
+        reads = gmail_oauth.beyond_sending(tokens)
+        if reads or membership.tenant.from_address.lower() != environment.demo_sender():
+            # Send-only, and for the demo's one address: a grant that could
+            # read a mailbox or a Drive is not kept, whatever was ticked.
+            return HttpResponseRedirect(_spa_url(where, gmail_error=(
+                "This is the demo. It keeps a connection that can send and nothing "
+                "else, and this consent also allowed "
+                f"{', '.join(s.rsplit('/', 1)[-1] for s in reads) or 'another address'}. "
+                "Nothing was stored.")))
 
     tenant = membership.tenant
     secret = secrets.write_secret(

@@ -75,6 +75,12 @@ INBOUND_SESSION_KEY = "gmail_oauth_inbound"
 RETURN_PATHS = {"email": "/settings/email", "meetings": "/meetings"}
 
 
+def beyond_sending(payload: dict) -> list[str]:
+    """The scopes in this grant that read something: mail or Drive. The demo
+    stores no token that carries one."""
+    return sorted(set(granted_scopes(payload)) & set(TIER2_SCOPES + DRIVE_SCOPES))
+
+
 def drive_granted(payload: dict) -> bool:
     """Google lets a person untick a scope. Asking is not being granted."""
     return set(DRIVE_SCOPES) <= set(granted_scopes(payload))
@@ -127,7 +133,8 @@ def workspace_domain(email: str) -> str:
 
 
 def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
-                      drive: bool = False, inbound: bool = False, tenant=None) -> str:
+                      drive: bool = False, inbound: bool = False, tenant=None,
+                      send_only: bool = False) -> str:
     """The consent URL.
 
     `login_hint` + `hd` exist because the browser, not the app, chooses which
@@ -150,6 +157,10 @@ def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
         "include_granted_scopes": "true",
         "state": state,
     }
+    if send_only:
+        # The demo: nothing granted to this client before rides along, so the
+        # token can send and can do nothing else (`beyond_sending`).
+        del params["include_granted_scopes"]
     if login_hint:
         params["login_hint"] = login_hint
     if hd:

@@ -9,7 +9,7 @@ been deleted and the app has not moved.*
 > | | Where | Deploys from | Database | Worker | Email out | Drive / mailbox |
 > |---|---|---|---|---|---|---|
 > | **Local** | the laptop, debug | the working tree | `execsnowhq_dev` now, `execsnowhq_local` after cutover | the owner's tab | Mailpit (+ the allow-list) | yes |
-> | **Demo** | `demo.getexecutivesnow.com` | `dev` | its own, seeded (`manage.py seed_demo`) | **none** | **none** | **none** |
+> | **Demo** | `demo.getexecutivesnow.com` | `dev` | its own, seeded (`manage.py seed_demo`) | **none** | **only to its redirect** (2026-10-08, below) | **none** |
 > | **Production** | `app.getexecutivesnow.com` | `main`, on "release" | its own | yes | yes | yes |
 >
 > The demo's "none"s are enforced in code by `APP_ENVIRONMENT=demo`
@@ -638,7 +638,7 @@ variable, **`APP_ENVIRONMENT=demo`**, and enforced in code:
 
 | Promise | Where it is kept | Tested |
 |---|---|---|
-| Sends no email | `outbox` always uses the dev transport; the email backend discards | `tests/test_demo_environment.py` |
+| Sends only to its redirect (2026-10-08) | `outbox._deliver` replaces every recipient with `DEMO_MAIL_REDIRECT` before the message is built and adds the banner; `GmailTransport.send` refuses any other recipient or sender; with no redirect or no connection of its own it discards, as before | `tests/test_demo_mail_redirect.py` |
 | Reads no Drive, no mailbox | `ingest.poll` and `inbound_poll.poll` refuse, so the timer, "Sync now" and "Collect replies" all stop there | same |
 | Connects no Google account | the Gmail and Drive consent starts refuse (409) | same |
 | Runs no worker | a system check makes `qcluster` refuse to start | same |
@@ -653,7 +653,67 @@ variable, **`APP_ENVIRONMENT=demo`**, and enforced in code:
 `GCS_BUCKET_MEDIA=execs-now-hq-demo-media`, `GOOGLE_OAUTH_CLIENT_ID`,
 `GOOGLE_CLOUD_PROJECT`, `ANTHROPIC_MODEL`. Secrets are yours (A4, A4b).
 
-**Seeding and resetting** (`manage.py seed_demo`; **[built, tested]**):
+**The demo, reseeded and sending through its redirect (owner, 2026-10-08).**
+This replaces the seed and the "sends no email" promise described just below,
+which are kept as they were written.
+
+*What the seed makes.* **Summit Operations Partners**, owner John Carter (the
+`--ff-email` account, shown under that name because the demo has its own
+database), two associates and two assistants; eleven client companies with
+portal users, goals, readings, milestones, projects and tasks; thirty-one
+prospects across every sales stage; thirty-eight referral partners; four
+strategy sessions (draft with prep, in the call, complete with its PDF and
+call notes, converted); eight sets of meeting notes in the queue and twelve
+commitments; digests sent and waiting; a campaign sent and one drafted; and
+invoices and books from January 2025 to the day it runs. Everyone in it is a
+character from film or television, at a `.example` address
+(`apps/tenancy/demo/cast.py`). The history is made by the app's own code with
+its clock moved (`apps/tenancy/demo/clock.py`), so it takes a few minutes, and
+nothing leaves while it runs.
+
+    railway ssh --project <demo project id> --environment production \
+        --service execs-now-hq -- python manage.py seed_demo \
+        --database railway --ff-email bryan.baker@getexecutivesnow.com
+
+**Every run empties the whole demo database first**, as before, with the same
+three refusals. It then takes the old run's files out of the demo bucket, and
+carries the demo's Gmail connection across so it does not have to be connected
+again. It prints what it made, in counts.
+
+*Email.* Set `DEMO_MAIL_REDIRECT` on the demo's web service to the one address
+that should receive everything. From then on a message the demo sends goes to
+that address only, with "Demo: originally addressed to <name> <address>" at
+the top, from `DEMO_MAIL_FROM` (`demo@getexecutivesnow.com`). The Sending
+queue and each contact's history still show who it was written for. Until
+Gmail is connected on the demo, or with the variable unset, the demo sends
+nothing.
+
+*Connecting Gmail on the demo* (the practice owner, once):
+
+1. In Gmail, signed in as the account that will send (the one that holds the
+   `demo@` alias): Settings → Accounts → "Send mail as" must list
+   `demo@getexecutivesnow.com`. An alias added in the Workspace admin console
+   appears there by itself after a few minutes; if it does not, "Add another
+   email address", untick nothing, and confirm.
+2. Google Cloud console → the OAuth client the demo signs in with → Authorized
+   redirect URIs → add `https://demo.getexecutivesnow.com/accounts/gmail/callback`.
+   (A2 said not to add it. That was for the demo that sent nothing.)
+3. The demo's web service needs `GOOGLE_OAUTH_CLIENT_SECRET` (it has it, for
+   sign-in) and `FIELD_ENCRYPTION_KEY`: **its own, never production's**. The
+   token is stored encrypted under it.
+4. On the demo: Settings → Email → Connect Gmail, leaving "collect replies"
+   unticked. The demo asks for sending only, keeps no grant that could read a
+   mailbox or a Drive, and refuses any practice address but `demo@`.
+5. Approve one touch in the Sending queue and look for it at the redirect
+   address.
+
+The demo's token is the demo's own: it is issued to the demo's callback and
+stored in the demo's database. Production's is not read, copied or affected.
+`--oauth-client external` seeds the practice on the External client instead,
+for sign-in and Gmail both; that client then needs the demo's two callback
+URIs and its id and secret on the demo.
+
+**Seeding and resetting, as first built** (2026-09-29; superseded above):
 
     railway ssh --service web          # in the demo environment
     python manage.py seed_demo --database <the demo database's name> \

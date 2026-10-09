@@ -251,9 +251,22 @@ POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default="")
 POSTMARK_INBOUND_WEBHOOK_SECRET = env("POSTMARK_INBOUND_WEBHOOK_SECRET", default="")
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 if IS_DEMO:
-    # The demo sends nothing: every message goes to the dev transport
-    # (apps/crm/services/outbox.py), and this backend discards it.
+    # Whatever the demo does not send through its redirect goes to the dev
+    # transport (apps/crm/services/outbox.py), and this backend discards it.
     EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
+# The demo sends only through its redirect (owner, 2026-10-08): every message
+# has its recipient replaced by this one address before it is built, and goes
+# out from DEMO_MAIL_FROM. Empty, the demo sends nothing at all.
+DEMO_MAIL_REDIRECT = env("DEMO_MAIL_REDIRECT", default="").strip().lower()
+DEMO_MAIL_FROM = env("DEMO_MAIL_FROM", default="demo@getexecutivesnow.com").strip().lower()
+if DEMO_MAIL_REDIRECT and not IS_DEMO:
+    raise RuntimeError("DEMO_MAIL_REDIRECT sends every message to one address. It is a "
+                       "demo-only mechanism and must not exist anywhere else. Remove it "
+                       "from the environment.")
+if DEMO_MAIL_REDIRECT and ("@" not in DEMO_MAIL_REDIRECT or "," in DEMO_MAIL_REDIRECT
+                           or " " in DEMO_MAIL_REDIRECT):
+    raise RuntimeError(f"DEMO_MAIL_REDIRECT must be one exact address, not "
+                       f"{DEMO_MAIL_REDIRECT!r}.")
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
 EMAIL_PORT = env.int("EMAIL_PORT", default=1025)
 
