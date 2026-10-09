@@ -1,6 +1,6 @@
 # P6 M1 — Reconciliation and month close
 
-**Spec for owner review · 2026-10-08 · no code yet**
+**Spec · 2026-10-08 · decided 2026-10-08 · no code yet; stop 1 waits for the owner's word**
 
 The first of four finance modules asked for by the owner on 2026-10-08:
 M1 reconciliation and month close (this file), M2 cash forecast, M3 balance
@@ -17,9 +17,27 @@ gets demo data, and is released only on "release".
 - **The starting chart is a common small-practice list written here** (§5.4).
   The owner will change his own to his CPA's list in the live app, with the
   add, remove and combine tools this module builds.
-- **One line on every finance screen:** "Bookkeeping and projections, not tax
-  or financial advice. Confirm with your CPA."
+- **One line on every finance screen** (§6).
 - AI calls costed and capped; migrations additive and shown first.
+
+**Decided 2026-10-08: M1-1 to M1-16, all as recommended (§13), with these
+specifics.**
+
+- **M1-9:** production's lock date was read (read-only, 2026-10-09 UTC).
+  **No practice in production has one.** Executives Now's finance settings
+  have no date; Blue Sky has no finance settings yet. So "locked before month
+  close began" will apply to nothing in production. The demo's typed lock
+  (2025-12-31) is replaced by its seeded closes (§10).
+- **M1-14:** the chart of §5.4 is a placeholder. **The owner's CPA's list is
+  coming and replaces §5.4 before stop 1 is finished.** Stop 1 also builds a
+  Categories action, **"Add the starting chart"**, for an existing practice
+  (§5.4).
+- **M1-15:** the disclaimer's exact words are the owner's (§6).
+- **M1-16:** two stops.
+- **Guided mode, one addition:** when a later statement shows a closed month
+  was wrong, the fix is a correcting entry in the open month, not reopening,
+  and the step says so (§1.5, §3.4, §4.2).
+- **The "locked through" field leaves the finance settings** (§3.5).
 
 ---
 
@@ -105,6 +123,11 @@ reconciliation of that account, under "From earlier statements".
   stay true.
 - **A statement that does not end on the last day of a month** (most cards)
   belongs to the month its ending date falls in (M1-5).
+- **When a later statement shows that a closed month was wrong** (a charge
+  that posted for a different amount, a deposit the bank reversed), **the fix
+  is a correcting entry dated in the open month,** saying what it corrects.
+  The closed month, and anything already sent to the CPA from it, stays as it
+  was. Reopening (§3.4) is for a month closed by mistake, not for this.
 
 ### 1.6 Cash accounts
 
@@ -161,11 +184,14 @@ Each unticked line links to the list that would tick it.
   with their names before it does it. Their reconciliations stay finished.
 - A month that has been closed, reopened and closed again shows all three,
   with who and why.
+- **The reopen screen says first what it is not for:** "If a later statement
+  showed a mistake in this month, add a correcting entry in the open month
+  instead. Reopen only if the month should not have been closed."
 
 ### 3.5 The lock date that exists today
 
-- **It stops being typed.** The finance settings show it and say which close
-  set it.
+- **It stops being typed, and the field leaves the finance settings**
+  (decided). The reconcile screen shows the date and which close set it.
 - **A practice that has already typed one keeps it.** The months through
   that date are shown as "Locked before month close began": locked, not
   reconciled, and not counted as closed for M2's "two closed months". The
@@ -194,7 +220,9 @@ written here in the app, free, and always shown:
 5. Get the difference to zero. *(The four usual causes of §1.4.)*
 6. Finish, and do the next account.
 7. Check the list. *(The checklist of §3.2.)*
-8. Close the month. *(What locking means, and that it can be reopened.)*
+8. Close the month. *(What locking means. And: "If a later statement shows
+   this month was wrong, do not reopen it. Add a correcting entry in the open
+   month that says what it corrects. Your CPA will thank you.")*
 
 ### 4.3 "Explain this step"
 
@@ -259,9 +287,21 @@ written here in the app, free, and always shown:
 
 ### 5.4 The starting chart
 
-For a new practice. **An existing practice's chart is not touched;** it gets
-a button, "Add the common sub-categories", which adds only what is missing
-by name (M1-14).
+**A placeholder (owner, 2026-10-08):** the owner's CPA's list replaces this
+section before stop 1 is finished, and the build takes the chart from here.
+
+For a new practice it is the chart it starts with. **An existing practice's
+chart is not touched.** It gets a Categories action, **"Add the starting
+chart"** (stop 1), so Executives Now and Blue Sky can pick it up:
+
+- it adds every category and sub-category of the chart that the practice does
+  not already have, matched by name and type without regard to case;
+- **it never renames, moves, re-types, archives or removes anything already
+  there,** and never moves an entry;
+- a sub-category whose parent the practice already has is added under that
+  parent; one the practice already has somewhere else is left where it is;
+- it shows what it would add before it adds it, can be pressed again later
+  (it then adds only what is new in the chart), and is audited.
 
 **Income**
 
@@ -314,7 +354,7 @@ One constant, shown as the last line of every Finance screen and under every
 "Explain this step" answer, and printed at the foot of the reconciliation
 report:
 
-> Bookkeeping and projections, not tax or financial advice. Confirm with your CPA.
+> Bookkeeping and projections only, not tax, legal or financial advice. Confirm with your CPA.
 
 A test walks every finance route and fails if a screen is without it.
 
@@ -384,8 +424,10 @@ John Carter's practice, in `seed_demo`:
 
 - **Bank and card reconciled for every month from January 2025 to September
   2026** (42 reconciliations), each made by the reconcile code with the
-  clock moved, and **21 months closed** in order. The lock moves from
-  2025-12-31 to 2026-09-30.
+  clock moved, and **21 months closed** in order. The seed stops typing a
+  lock date; the closes put it at 2026-09-30.
+- **One correcting entry** in an open month for a mistake found in a closed
+  one, so the rule of §1.5 has an example.
 - **A few entries carried forward** each month: the owner's check to the
   Chamber clears the month after it is written.
 - **October open:** the bank reconciliation in progress with a difference
@@ -428,23 +470,23 @@ loans and the balance sheet (M3); budgets (M4).
 
 ---
 
-## 13. Decisions for the owner
+## 13. Decisions (all decided 2026-10-08, as recommended; specifics at the top)
 
-| # | Question | Recommendation |
+| # | Question | Decided |
 |---|---|---|
 | **M1-1** | **What "Bookkeeping" covers.** | Reconciliation, close, guided mode, sub-categories, merge, split, and M3's balance sheet. Everything P5 built stays with every practice. |
 | **M1-2** | **Existing practices** (Executives Now, Blue Sky, the demo). | Switched on by the migration. New practices are off until switched on. |
 | M1-3 | Reconciling may begin at any month, not only an account's first. | Yes. It asks once for that statement's starting balance. Otherwise two years of statements stand between you and the first close. |
 | M1-4 | Lines from the bank import arrive ticked. | Yes. They came from the bank. You still have to reach zero. |
-| **M1-5** | **A statement ending mid-month counts for the month its ending date is in,** and that month can close with the days after it not yet reconciled. | Yes. Most cards end mid-month. If a later statement shows a mistake in a closed month, that is what reopening is for. |
+| **M1-5** | **A statement ending mid-month counts for the month its ending date is in,** and that month can close with the days after it not yet reconciled. | Yes. Most cards end mid-month. If a later statement shows a mistake in a closed month, the fix is a correcting entry in the open month (§1.5). |
 | M1-6 | Cash accounts are left out of the close unless switched in. | Yes. |
 | **M1-7** | **Reopening a month reopens every later closed month.** | Yes. A changed March makes April's starting point untrue. It names them first. |
 | **M1-8** | **The 1099 line warns and does not block.** | Yes. A payee can be named in January for the whole year; blocking every month's close on it would teach you to ignore the checklist. |
-| **M1-9** | **A lock date you typed before this existed is kept,** shown as "locked before month close began", and those months do not count as closed for the forecast. | Yes. Production's lock date has not been checked from here; say if you want it read first. |
+| **M1-9** | **A lock date you typed before this existed is kept,** shown as "locked before month close began", and those months do not count as closed for the forecast. | Yes. Read 2026-10-09 UTC: no practice in production has a lock date. |
 | **M1-10** | **What "Explain this step" sends to Claude:** the step, the balances, the totals, the difference, and on two steps the unticked lines of that one account (date, amount, description). | Yes. Without the lines it can only repeat the written step. It is your key and your data; nothing about clients beyond what a bank line says. |
 | M1-11 | The cap: 20 explanations a day per practice, and never past the monthly AI budget. | Yes. A press is a fraction of a cent to about two cents; 20 is far more than one close needs. |
 | M1-12 | An entry may sit on a parent category or on a sub-category. | Yes. Forcing every entry down a level would make adding a sub-category break the books until hundreds of entries were moved. |
 | **M1-13** | **Merge and split include closed months,** recorded against each one. | Yes. You will combine categories into your CPA's list once, across two years. No total changes. |
-| M1-14 | The starting chart of §5.4, for new practices; existing ones get a button that only adds. | Yours to edit before the build. |
-| M1-15 | The disclaimer's exact words, §6. | As written, from your message. |
-| **M1-16** | **One stop or two.** | **Two:** first the module switch, categories and the disclaimer; then reconciliation, close, guided mode and the demo data. |
+| M1-14 | The starting chart of §5.4, for new practices; existing ones get "Add the starting chart", which only adds. | §5.4 as the placeholder; the CPA's list replaces it before stop 1 is finished. The action is in stop 1. |
+| M1-15 | The disclaimer's exact words, §6. | "Bookkeeping and projections only, not tax, legal or financial advice. Confirm with your CPA." |
+| **M1-16** | **One stop or two.** | **Two:** first the module switch, categories (with "Add the starting chart") and the disclaimer; then reconciliation, close, guided mode and the demo data. |
