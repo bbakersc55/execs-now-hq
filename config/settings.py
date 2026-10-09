@@ -112,6 +112,11 @@ AUTHENTICATION_BACKENDS = [
 ]
 SITE_ID = 1
 
+# A server error's traceback goes to the service's log in every environment:
+# the frames and the exception's first line, never local variables or anything
+# of the request (config/error_log.py).
+from config.error_log import LOGGING  # noqa: E402,F401
+
 # C1: invite-only. AUTO_SIGNUP=False alone only redirects to a signup FORM —
 # the adapters below are what actually refuse an uninvited account.
 SOCIALACCOUNT_AUTO_SIGNUP = False

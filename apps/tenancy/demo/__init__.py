@@ -54,11 +54,17 @@ def stored_objects():
     return list(StoredFile.all_objects.all())
 
 
+#: Django's own, filled by `migrate` and not by anything the app does: the
+#: migration record, the site Google sign-in looks up, and the content types
+#: and permissions made after each migrate. Emptying them broke the demo's
+#: sign-in on 2026-10-08 (`Site.DoesNotExist`), so the reset leaves them.
+DJANGOS_OWN = ("django_migrations", "django_site", "django_content_type", "auth_permission")
+
+
 def reset_database() -> int:
     """Empty every table the app has, so a re-run starts clean. Demo only —
     the command that calls this refuses anywhere else."""
-    tables = [t for t in connection.introspection.table_names()
-              if t != "django_migrations"]
+    tables = [t for t in connection.introspection.table_names() if t not in DJANGOS_OWN]
     with connection.cursor() as cursor:
         # Django's foreign keys are deferred; Postgres will not truncate a
         # table with checks still pending in this transaction.
@@ -66,6 +72,19 @@ def reset_database() -> int:
         cursor.execute("TRUNCATE " + ", ".join(f'"{t}"' for t in tables)
                        + " RESTART IDENTITY CASCADE")
     return len(tables)
+
+
+def ensure_site() -> None:
+    """The site row sign-in needs, whatever an earlier reset did to it."""
+    from urllib.parse import urlparse
+
+    from django.conf import settings
+    from django.contrib.sites.models import Site
+
+    host = urlparse(settings.PUBLIC_BASE_URL).netloc or "localhost"
+    Site.objects.update_or_create(id=settings.SITE_ID,
+                                  defaults={"domain": host, "name": PRACTICE + " demo"})
+    Site.objects.clear_cache()
 
 
 def build(*, ff_email: str, ff_name: str = "", oauth_client: str = "internal",
@@ -79,6 +98,7 @@ def build(*, ff_email: str, ff_name: str = "", oauth_client: str = "internal",
     from . import comms, foundation, money, sessions, work
 
     today = today or timezone.localdate()
+    ensure_site()
     with environment.quiet_mail():
         world = foundation.practice(ff_email=ff_email, ff_name=ff_name,
                                     oauth_client=oauth_client, today=today)

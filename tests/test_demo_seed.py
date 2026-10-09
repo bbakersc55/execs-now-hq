@@ -81,9 +81,31 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
     monkeypatch.setattr(transport.GmailTransport, "send",
                         lambda *a, **k: pytest.fail("the seed reached Gmail"))
 
+    from django.contrib.auth.models import Permission
+    from django.contrib.contenttypes.models import ContentType
+    from django.contrib.sites.models import Site
+    from django.test import Client
+
+    # As an earlier reset left the demo on 2026-10-08: no site row at all.
+    Site.objects.all().delete()
+    Site.objects.clear_cache()
+    types_before, permissions_before = ContentType.objects.count(), Permission.objects.count()
+    assert types_before and permissions_before
+
     call_command("seed_demo", database=_name(), ff_email=OWNER)
     said = capsys.readouterr().out
     assert "Summit Operations Partners" in said and '"client companies": 11' in said
+
+    def sign_in_still_works():
+        """The reset leaves Django's own tables alone, and Google sign-in,
+        which looks up the site, answers."""
+        assert Site.objects.filter(pk=settings.SITE_ID).exists()
+        assert ContentType.objects.count() == types_before
+        assert Permission.objects.count() == permissions_before
+        assert Client().get("/accounts/google/login/").status_code < 500
+        assert Client().get("/accounts/google/start", {"email": OWNER}).status_code < 500
+
+    sign_in_still_works()
 
     tenant = Tenant.objects.get()
     today = timezone.localdate()
@@ -285,6 +307,7 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
     said = capsys.readouterr().out
     assert f"removed {files_first} of {files_first} old files" in said
 
+    sign_in_still_works()
     assert list(Tenant.objects.values_list("slug", flat=True)) == ["summit-demo"], \
         "the reset emptied everything first, including what was there before"
     again = Tenant.objects.get()
