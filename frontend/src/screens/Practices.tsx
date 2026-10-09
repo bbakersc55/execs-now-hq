@@ -19,6 +19,8 @@ export interface PracticeRow {
   client_count: number;
   ai_spend_this_month_usd: string;
   last_activity_at: string | null;
+  /** P6 M1: the modules it has. The platform's record of the practice. */
+  modules?: { code: string; name: string; enabled: boolean }[];
 }
 
 const EMPTY = { legal_name: "", display_name: "", domain: "", owner_email: "" };
@@ -63,6 +65,16 @@ export function Practices() {
     onSuccess: (row, { action }) => done(action === "archive"
       ? `${row.display_name} is archived: nobody can sign in, nothing runs, all data is kept.`
       : `${row.display_name} is back.`),
+    onError: failed,
+  });
+  // P6 M1: a module a practice has or does not have. The price is P4's.
+  const module = useMutation({
+    mutationFn: ({ id, code, enabled }: { id: string; code: string; enabled: boolean }) =>
+      api.post<PracticeRow>(`/api/platform/practices/${id}/modules`,
+                            { module: code, enabled }),
+    onSuccess: (row, { code, enabled }) => done(
+      `${row.display_name} ${enabled ? "now has" : "no longer has"} ${
+        row.modules?.find((m) => m.code === code)?.name ?? code}.`),
     onError: failed,
   });
   // The answer to Invite shows in that practice's own row, where the button
@@ -129,6 +141,15 @@ export function Practices() {
                     <dt>AI spend this month</dt><dd>${p.ai_spend_this_month_usd}</dd>
                     <dt>Last activity</dt>
                     <dd>{p.last_activity_at ? when(p.last_activity_at) : "Never"}</dd>
+                    <dt>Modules</dt>
+                    <dd>{(p.modules ?? []).map((m) => (
+                      <label key={m.code} className="check small">
+                        <input type="checkbox" checked={m.enabled}
+                          disabled={module.isPending || p.status === "archived"}
+                          aria-label={`${m.name} for ${p.display_name}`}
+                          onChange={(e) => module.mutate(
+                            { id: p.id, code: m.code, enabled: e.target.checked })} />
+                        {" "}{m.name}</label>))}</dd>
                   </dl>
                   <div className="row tight">
                     {editing !== p.id && (

@@ -56,7 +56,7 @@ def practice(*, ff_email, ff_name, oauth_client, today) -> World:
     from apps.crm.seed import seed_tenant as seed_crm
     from apps.platform import agreement
     from apps.platform.models import AgreementAcceptance
-    from apps.tenancy import branding
+    from apps.tenancy import branding, modules
     from apps.tenancy.context import tenant_context
     from apps.tenancy.models import Membership, Role, Tenant
 
@@ -82,6 +82,9 @@ def practice(*, ff_email, ff_name, oauth_client, today) -> World:
             AgreementAcceptance.all_objects.create(
                 tenant=tenant, user=owner, version=terms["version"],
                 text_sha256=terms["sha256"])
+            # It has the Bookkeeping module, as every practice that existed
+            # when the module arrived does.
+            modules.set_enabled(tenant, modules.BOOKKEEPING, True, actor=owner)
             branding.save(tenant, actor=owner, display_name=cast.PRACTICE,
                           primary_color=cast.PRIMARY, accent_color=cast.ACCENT,
                           footer_text=cast.FOOTER)

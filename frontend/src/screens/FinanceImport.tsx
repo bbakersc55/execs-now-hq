@@ -6,6 +6,7 @@ import {
   FinanceAccount, FinanceCategory, BankImportBatch, ImportDetected, ImportMapping, BankImportRow,
   PayeeReport, api,
 } from "../lib/api";
+import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 
 /**
@@ -314,8 +315,9 @@ function RowDecision({ row, others, categories, payees, busy, onDecide }: {
   };
   const group = (type: string, label: string) => (
     <optgroup label={label}>
-      {categories.filter((cat) => cat.type === type && !cat.archived).map(
-        (cat) => <option key={cat.id} value={`category:${cat.id}`}>{cat.name}</option>)}
+      {categoryOptions(categories.filter((cat) => cat.type === type && !cat.archived),
+                       categories).map(
+        ([id, name]) => <option key={id} value={`category:${id}`}>{name}</option>)}
     </optgroup>
   );
   return (

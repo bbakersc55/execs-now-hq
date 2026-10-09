@@ -15,9 +15,9 @@ from rest_framework.response import Response
 
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Company, Contact
-from apps.finance import reports, services
+from apps.finance import chart, reports, services
 from apps.finance.models import (
-    FinanceAccount, FinanceCategory, FinanceEntry,
+    FinanceAccount, FinanceCategory, FinanceCategoryChange, FinanceEntry,
 )
 from apps.tenancy.models import CLIENT_ROLES, AuditEvent, Role
 
@@ -38,6 +38,11 @@ def represent_category(row, used=None) -> dict:
             "type_label": row.get_type_display(), "cpa_code": row.cpa_code,
             "position": row.position, "archived": row.archived_at is not None,
             "system": bool(row.system_code),
+            # P6 M1: the level above, where it has one; and where a combined
+            # category went.
+            "parent": str(row.parent_id) if row.parent_id else None,
+            "merged_into": str(row.merged_into_id) if row.merged_into_id else None,
+            "is_contractor": row.is_contractor,
             **({"used": row.pk in used} if used is not None else {})}
 
 
@@ -93,6 +98,14 @@ class FinanceViewSet(viewsets.ViewSet):
         value = self.request.query_params.get(name)
         return services._a_date(value, name) if value else default
 
+    def needs_bookkeeping(self, request) -> None:
+        """What only a practice with the Bookkeeping module has (P6 M1 §7):
+        to one without it, the route is not there."""
+        from apps.tenancy import modules
+
+        if not modules.has(request.tenant, modules.BOOKKEEPING):
+            raise Http404
+
 
 class EntryViewSet(FinanceViewSet):
 
@@ -113,6 +126,11 @@ class EntryViewSet(FinanceViewSet):
             qs = qs.filter(kind=params["kind"])
         if params.get("category") == "none":
             qs = qs.filter(category__isnull=True, kind__in=FinanceEntry.EARNED)
+        elif params.get("category") and params.get("subs") == "1":
+            # A category with its sub-categories: what a parent's figure on
+            # the P&L is made of (P6 M1).
+            qs = qs.filter(Q(category_id=params["category"])
+                           | Q(category__parent_id=params["category"]))
         elif params.get("category"):
             qs = qs.filter(category_id=params["category"])
         if params.get("account") == "none":
@@ -269,10 +287,21 @@ class CategoryViewSet(FinanceViewSet):
                          for row in FinanceCategory.objects.order_by("type", "position",
                                                                      "name")])
 
+    def _category(self, pk):
+        category = FinanceCategory.objects.filter(pk=pk).first() if pk else None
+        if category is None:
+            raise Http404
+        return category
+
     def _save(self, request, category=None):
         data = request.data
         fields = {name: data[name] for name in ("name", "type", "cpa_code") if name in data}
         try:
+            if "parent" in data:
+                # Sub-categories are Bookkeeping's (P6 M1).
+                self.needs_bookkeeping(request)
+                fields["parent"] = self._one(FinanceCategory, data["parent"], "category") \
+                    if data["parent"] else None
             row = services.save_category(request.tenant, actor=request.user,
                                          category=category, **fields)
             if "archived" in data and category is not None:
@@ -286,20 +315,83 @@ class CategoryViewSet(FinanceViewSet):
         return self._save(request)
 
     def partial_update(self, request, pk=None):
-        category = FinanceCategory.objects.filter(pk=pk).first()
-        if category is None:
-            raise Http404
-        return self._save(request, category)
+        return self._save(request, self._category(pk))
+
+    def destroy(self, request, pk=None):
+        """Remove a category nothing has used. One with entries is archived."""
+        try:
+            chart.delete_category(self._category(pk), actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(status=204)
 
     @action(detail=False, methods=["post"])
     def reorder(self, request):
         try:
+            parent = self._one(FinanceCategory, request.data["parent"], "category") \
+                if request.data.get("parent") else None
             services.reorder_categories(request.tenant, actor=request.user,
                                         type=request.data.get("type"),
-                                        ids=request.data.get("ids"))
+                                        ids=request.data.get("ids"), parent=parent)
         except services.FinanceError as exc:
             return self._refusal(exc)
         return self.list(request)
+
+    # ------------------------------------ combine, split, the starting chart
+
+    @action(detail=True, methods=["post"])
+    def merge(self, request, pk=None):
+        """Combine this category into another. `preview: true` only counts."""
+        self.needs_bookkeeping(request)
+        source = self._category(pk)
+        try:
+            target = self._one(FinanceCategory, request.data.get("into"), "category")
+            if request.data.get("preview"):
+                return Response(chart.merge_preview(source, target))
+            chart.merge(source, target, actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self.list(request)
+
+    @action(detail=True, methods=["post"])
+    def split(self, request, pk=None):
+        """Move some of this category's entries to a new category (`name`,
+        `as`: "sub" or "beside") or to one that exists (`to`), chosen by
+        `contains` or by `entries`. `preview: true` only counts."""
+        self.needs_bookkeeping(request)
+        source = self._category(pk)
+        data = request.data
+        try:
+            choice = dict(
+                name=data.get("name"), as_sub=data.get("as", "sub") != "beside",
+                to=self._one(FinanceCategory, data["to"], "category") if data.get("to")
+                else None,
+                contains=data.get("contains") or "", entry_ids=data.get("entries") or None)
+            if data.get("preview"):
+                return Response(chart.split_preview(source, **choice))
+            chart.split(source, actor=request.user, **choice)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self.list(request)
+
+    @action(detail=False, methods=["get", "post"], url_path="starting-chart")
+    def starting_chart(self, request):
+        """GET: what "Add the starting chart" would add. POST: add it. It
+        never changes or removes what the practice already has."""
+        self.needs_bookkeeping(request)
+        services.ensure_chart(request.tenant)
+        if request.method == "GET":
+            return Response(chart.starting_chart_plan(request.tenant))
+        plan = chart.add_starting_chart(request.tenant, actor=request.user)
+        return Response({**plan, "added": len(plan["add"])})
+
+    @action(detail=False, methods=["get"])
+    def changes(self, request):
+        """Every combine and split, newest first."""
+        self.needs_bookkeeping(request)
+        rows = FinanceCategoryChange.objects.select_related(
+            "from_category", "to_category", "by")[:100]
+        return Response([chart.represent_change(row) for row in rows])
 
 
 class FinanceSettingsView(FinanceViewSet):

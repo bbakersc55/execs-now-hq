@@ -42,7 +42,7 @@ from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
 )
 from apps.finance.models import (
-    FinanceAccount, FinanceCategory, FinanceEntry, FinanceImportBatch,
+    FinanceAccount, FinanceCategory, FinanceCategoryChange, FinanceEntry, FinanceImportBatch,
     FinanceImportProfile, FinanceImportRow, FinanceRule, FinanceSettings,
 )
 from apps.tenancy.registry import register
@@ -203,6 +203,8 @@ register(FinanceImportBatch, factories.FinanceImportBatchFactory,
 register(FinanceRule, factories.FinanceRuleFactory, endpoints=("/api/finance-rules/",))
 register(FinanceImportRow, factories.FinanceImportRowFactory, api_exposed=False)
 register(FinanceImportProfile, factories.FinanceImportProfileFactory, api_exposed=False)
+register(FinanceCategoryChange, factories.FinanceCategoryChangeFactory,
+         endpoints=("/api/finance-categories/changes/",))
 
 # The notes of a call, attached to its session: read through the session, by
 # the practice owner and an associate on their own prospect, and nobody else.

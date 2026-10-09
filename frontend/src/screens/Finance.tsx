@@ -3,12 +3,15 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, useSearchParams } from "react-router-dom";
 
 import { PriceBox } from "../components/InvoiceLines";
+import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
   BalanceView, EntryKind, FinanceAccount, FinanceCategory, FinanceEntry, FinanceEntryList,
   PayeeReport, Pnl, api,
+  PnlRow,
 } from "../lib/api";
+import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import { FinanceImport } from "./FinanceImport";
 import { FinancePayees } from "./FinancePayees";
@@ -68,6 +71,7 @@ export function Finance({ tab }: { tab: Tab }) {
       {tab === "pnl" && <ProfitAndLoss />}
       {tab === "balance" && <Balance />}
       {tab === "export" && <ForTheCpa />}
+      <FinanceDisclaimer />
     </>
   );
 }
@@ -169,7 +173,8 @@ function EntryForm({ start, entry, onDone, onCancel }: {
               onChange={(e) => set({ category: e.target.value })}>
               <option value="">{form.kind === "income" || form.kind === "expense"
                 ? "No category yet" : "Choose a category"}</option>
-              {fitting.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categoryOptions(fitting, categories).map(
+                ([id, name]) => <option key={id} value={id}>{name}</option>)}
             </select>
           </Field>
         )}
@@ -225,7 +230,7 @@ function Entries() {
   const qc = useQueryClient();
   const { accounts, categories, ready } = useBooks();
   const [params, setParams] = useSearchParams();
-  const filters = Object.fromEntries(["from", "to", "kind", "category", "account", "q"]
+  const filters = Object.fromEntries(["from", "to", "kind", "category", "subs", "account", "q"]
     .map((name) => [name, params.get(name) ?? ""]));
   const set = (name: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -285,7 +290,8 @@ function Entries() {
             onChange={(e) => set("category", e.target.value)}>
             <option value="">Every category</option>
             <option value="none">No category yet</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {categoryOptions(categories).map(
+              ([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
           <select aria-label="Account" value={filters.account} style={{ width: "auto" }}
             onChange={(e) => set("account", e.target.value)}>
@@ -312,8 +318,8 @@ function Entries() {
             <select aria-label="Category for the chosen entries" value={target}
               style={{ width: "auto" }} onChange={(e) => setTarget(e.target.value)}>
               <option value="">Move them to…</option>
-              {categories.filter((c) => !c.archived).map(
-                (c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categoryOptions(categories.filter((c) => !c.archived), categories).map(
+                ([id, name]) => <option key={id} value={id}>{name}</option>)}
             </select>
             <button disabled={!target || act.isPending}
               onClick={() => act.mutate({ url: "/api/finance-entries/recategorize/",
@@ -395,6 +401,8 @@ function ProfitAndLoss() {
   const report = useQuery<Pnl>({
     queryKey: ["finance-pnl", year, by],
     queryFn: () => api.get<Pnl>(`/api/finance-reports/pnl/?year=${year}&by=${by}`) });
+  // Which categories' sub-categories are folded away.
+  const [closed, setClosed] = useState<string[]>([]);
   if (report.isError) return <Banner kind="bad">{(report.error as Error).message}</Banner>;
   if (!report.data) return <p>Adding up the year…</p>;
   const r = report.data;
@@ -403,29 +411,47 @@ function ProfitAndLoss() {
     setParams(next, { replace: true });
   };
   // The entries behind one figure: that category, in that month or quarter.
-  const behind = (category: string, period: number) => {
+  // A category with sub-categories is its own entries and theirs.
+  const behind = (category: string, period: number, subs = false) => {
     const first = by === "month" ? period + 1 : period * 3 + 1;
     const last = by === "month" ? period + 1 : period * 3 + 3;
     const pad = (n: number) => String(n).padStart(2, "0");
     const end = new Date(Date.UTC(r.year, last, 0)).getUTCDate();
-    return `/finance?category=${category}&from=${r.year}-${pad(first)}-01`
-      + `&to=${r.year}-${pad(last)}-${pad(end)}`;
+    return `/finance?category=${category}${subs ? "&subs=1" : ""}`
+      + `&from=${r.year}-${pad(first)}-01&to=${r.year}-${pad(last)}-${pad(end)}`;
+  };
+  const line = (row: PnlRow, parent?: PnlRow) => {
+    const subs = (row.children ?? []).length > 0;
+    const shut = subs && closed.includes(row.id);
+    return (
+      <tr key={`${parent?.id ?? ""}/${row.id}/${row.direct ? "direct" : ""}`}>
+        <td style={parent ? { paddingLeft: "var(--s5)" } : undefined}>
+          {subs ? (
+            <button className="ghost small" aria-expanded={!shut}
+              aria-label={`${shut ? "Show" : "Hide"} the sub-categories of ${row.name}`}
+              onClick={() => setClosed(shut ? closed.filter((id) => id !== row.id)
+                : [...closed, row.id])}>
+              {shut ? "▸" : "▾"} {row.name}</button>
+          ) : parent ? <span className="muted">{row.name}</span> : row.name}
+        </td>
+        {row.amounts.map((cents, i) => (
+          <td key={i} className="money">{cents === 0 ? <span className="muted">—</span>
+            : <Link to={behind(row.id, i, subs)}
+              aria-label={`${row.name}, ${r.periods[i]}: ${dollars(cents)}`}>
+              {dollars(cents)}</Link>}</td>
+        ))}
+        <td className="money">{parent ? dollars(row.total)
+          : <strong>{dollars(row.total)}</strong>}</td>
+      </tr>
+    );
   };
   const section = (title: string, data: Pnl["income"]) => (
     <>
       <tr><th colSpan={r.periods.length + 2}>{title}</th></tr>
-      {data.rows.map((row) => (
-        <tr key={row.id}>
-          <td>{row.name}</td>
-          {row.amounts.map((cents, i) => (
-            <td key={i} className="money">{cents === 0 ? <span className="muted">—</span>
-              : <Link to={behind(row.id, i)}
-                aria-label={`${row.name}, ${r.periods[i]}: ${dollars(cents)}`}>
-                {dollars(cents)}</Link>}</td>
-          ))}
-          <td className="money"><strong>{dollars(row.total)}</strong></td>
-        </tr>
-      ))}
+      {data.rows.flatMap((row) => [
+        line(row),
+        ...(closed.includes(row.id) ? [] : (row.children ?? []).map((child) => line(child, row))),
+      ])}
       <tr>
         <td><strong>Total {title.toLowerCase()}</strong></td>
         {data.totals.map((cents, i) => <td key={i} className="money"><strong>{dollars(cents)}</strong></td>)}

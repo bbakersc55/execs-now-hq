@@ -1112,3 +1112,18 @@ class StrategyCallNotesFactory(TenantScopedFactory):
                                  tenant=factory.SelfAttribute("..tenant"))
     text = "Call notes."
     source = "pasted"
+
+
+# --- P6 M1, first stop: the category tree ---
+
+class FinanceCategoryChangeFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceCategoryChange"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kind = "merge"
+    from_category = factory.SubFactory(FinanceCategoryFactory,
+                                       tenant=factory.SelfAttribute("..tenant"))
+    to_category = factory.SubFactory(FinanceCategoryFactory,
+                                     tenant=factory.SelfAttribute("..tenant"))
+    entries_moved = 3

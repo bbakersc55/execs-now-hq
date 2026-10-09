@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { FinanceCategories } from "../components/FinanceCategories";
+import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
 import { PriceBox } from "../components/InvoiceLines";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill } from "../components/ui";
-import { FinanceAccount, FinanceCategory, FinanceRule, api } from "../lib/api";
+import { FinanceAccount, FinanceCategory, FinanceRule, Me, api } from "../lib/api";
+import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 
 /**
@@ -12,13 +15,6 @@ import { dollars, longDate } from "../lib/money";
  * money moves through, the categories entries sit in, where a paid invoice is
  * entered, and the lock that keeps a period as the CPA was given it.
  */
-
-const TYPES: [FinanceCategory["type"], string, string][] = [
-  ["income", "Income", "What the practice earns."],
-  ["expense", "Expenses", "What it costs to run."],
-  ["owner", "Owner", "Your own money, in or out. Not income and not a cost."],
-  ["held", "Held", "Collected for someone else, such as sales tax, until it is paid over."],
-];
 
 export function FinanceSettings() {
   const qc = useQueryClient();
@@ -31,13 +27,18 @@ export function FinanceSettings() {
     queryFn: () => api.get<FinanceCategory[]>("/api/finance-categories/") });
   const settings = useQuery<{ locked_through: string | null; invoice_income_category: string }>({
     queryKey: ["finance-settings"], queryFn: () => api.get("/api/finance-settings/") });
+  // P6 M1: the tools that reshape the chart are the Bookkeeping module's.
+  const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
+  const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
   const send = useMutation({
-    mutationFn: ({ url, body, method }: { url: string; body: object; method?: "patch" }) =>
-      method === "patch" ? api.patch<unknown>(url, body) : api.post<unknown>(url, body),
+    mutationFn: ({ url, body, method }: { url: string; body: object;
+                                          method?: "patch" | "delete" }) =>
+      method === "patch" ? api.patch<unknown>(url, body)
+        : method === "delete" ? api.del<unknown>(url) : api.post<unknown>(url, body),
     onSuccess: () => {
       setSaid("");
       for (const key of ["finance-accounts", "finance-categories", "finance-settings",
-                         "finance-pnl", "finance-balance"]) {
+                         "finance-pnl", "finance-balance", "finance-starting-chart"]) {
         qc.invalidateQueries({ queryKey: [key] });
       }
     },
@@ -88,28 +89,9 @@ export function FinanceSettings() {
           { url: "/api/finance-accounts/", body }, { onSuccess: added })} />
       </Card>
 
-      <Card title="Categories">
-        <p className="small muted" style={{ marginTop: 0 }}>
-          The chart you start with is a consulting practice's; change it freely. A category
-          with entries is archived, not deleted, and keeps its type. The CPA code is yours
-          to fill in if your CPA asks for one; it goes into the export.
-        </p>
-        {TYPES.map(([type, title, hint]) => (
-          <div key={type} style={{ marginBottom: "var(--s4)" }}>
-            <h4 style={{ margin: "0 0 2px" }}>{title}</h4>
-            <p className="tiny muted" style={{ margin: "0 0 var(--s2)" }}>{hint}</p>
-            {cats.filter((c) => c.type === type).map((category) => (
-              <CategoryRow key={category.id} category={category} busy={busy}
-                paidInvoices={settings.data?.invoice_income_category === category.id}
-                onSave={(body) => send.mutate({
-                  url: `/api/finance-categories/${category.id}/`, body, method: "patch" })} />
-            ))}
-            <NewCategory type={type} busy={busy} onAdd={(name, added) => send.mutate(
-              { url: "/api/finance-categories/", body: { name, type } },
-              { onSuccess: added })} />
-          </div>
-        ))}
-      </Card>
+      <FinanceCategories categories={cats} bookkeeping={bookkeeping} busy={busy}
+        paidInvoicesId={settings.data?.invoice_income_category ?? ""}
+        send={(call, after) => send.mutate(call, after ? { onSuccess: after } : undefined)} />
 
       <Card title="Paid invoices">
         <p className="small muted" style={{ marginTop: 0 }}>
@@ -121,8 +103,8 @@ export function FinanceSettings() {
             value={settings.data?.invoice_income_category ?? ""}
             onChange={(e) => send.mutate({ url: "/api/finance-settings/",
                                            body: { invoice_income_category: e.target.value } })}>
-            {cats.filter((c) => c.type === "income" && !c.archived).map(
-              (c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {categoryOptions(cats.filter((c) => c.type === "income" && !c.archived), cats)
+              .map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </Field>
       </Card>
@@ -132,6 +114,7 @@ export function FinanceSettings() {
       <Lock lockedThrough={settings.data?.locked_through ?? null} busy={busy}
         onSet={(locked_through) => send.mutate({ url: "/api/finance-settings/",
                                                  body: { locked_through } })} />
+      <FinanceDisclaimer />
     </>
   );
 }
@@ -186,58 +169,6 @@ function Rules() {
         </table>
       )}
     </Card>
-  );
-}
-
-function CategoryRow({ category, busy, paidInvoices, onSave }: {
-  category: FinanceCategory; busy: boolean; paidInvoices: boolean;
-  onSave: (body: object) => void;
-}) {
-  const [name, setName] = useState(category.name);
-  const [code, setCode] = useState(category.cpa_code);
-  useEffect(() => { setName(category.name); setCode(category.cpa_code); },
-            [category.name, category.cpa_code]);
-  const dirty = name !== category.name || code !== category.cpa_code;
-  return (
-    <div className="row-actions" style={{ marginBottom: "var(--s1)" }}>
-      <div className="row-actions-flags">
-        <input aria-label={`Name of ${category.name}`} value={name} maxLength={120}
-          disabled={busy || category.archived} style={{ minWidth: "16rem" }}
-          onChange={(e) => setName(e.target.value)} />
-        <input aria-label={`CPA code of ${category.name}`} value={code} maxLength={40}
-          placeholder="CPA code" disabled={busy || category.archived} style={{ width: "8rem" }}
-          onChange={(e) => setCode(e.target.value)} />
-        {dirty && <button className="primary small" disabled={busy || !name.trim()}
-          aria-label={`Save ${category.name}`}
-          onClick={() => onSave({ name: name.trim(), cpa_code: code.trim() })}>Save</button>}
-        {category.archived && <Pill>archived</Pill>}
-        {paidInvoices && <Pill kind="ok">paid invoices go here</Pill>}
-      </div>
-      <div className="row-actions-cell" /><div className="row-actions-cell" />
-      <div className="row-actions-cell">
-        {!(category.system && category.type === "held") && !paidInvoices && (
-          <button className="ghost small" disabled={busy}
-            aria-label={`${category.archived ? "Restore" : "Archive"} ${category.name}`}
-            onClick={() => onSave({ archived: !category.archived })}>
-            {category.archived ? "Restore" : "Archive"}</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NewCategory({ type, busy, onAdd }: {
-  type: string; busy: boolean; onAdd: (name: string, added: () => void) => void;
-}) {
-  const [name, setName] = useState("");
-  return (
-    <div className="row tight" style={{ marginTop: "var(--s2)" }}>
-      <input aria-label={`New ${type} category`} value={name} maxLength={120}
-        placeholder="Another category" style={{ width: "16rem" }}
-        onChange={(e) => setName(e.target.value)} />
-      <button className="small" disabled={busy || !name.trim()}
-        onClick={() => onAdd(name.trim(), () => setName(""))}>Add</button>
-    </div>
   );
 }
 

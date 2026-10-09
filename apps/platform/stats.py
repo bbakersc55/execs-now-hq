@@ -23,11 +23,12 @@ STAFF_ROLES = ("FF", "CF", "VA")
 #: The keys a practice row carries. Tested: nothing else ever appears.
 ROW_KEYS = ("id", "display_name", "legal_name", "domain", "status", "created_at",
             "archived_at", "oauth_client", "staff_count", "client_count",
-            "ai_spend_this_month_usd", "last_activity_at")
+            "ai_spend_this_month_usd", "last_activity_at", "modules")
 
 
 def practice_rows() -> list[dict]:
     from apps.crm.models import Company
+    from apps.tenancy import modules
     from apps.tenancy.models import AiCall, Membership, Tenant
 
     tenants = list(Tenant.objects.order_by("name"))
@@ -44,6 +45,7 @@ def practice_rows() -> list[dict]:
         .values("tenant_id").annotate(a=Max("user__last_login"),
                                       b=Max("user__last_login_at"))
     }
+    on = modules.enabled_by_practice(ids)
     rows = []
     for tenant in tenants:
         rows.append({
@@ -59,6 +61,10 @@ def practice_rows() -> list[dict]:
             "client_count": clients.get(tenant.pk, 0),
             "ai_spend_this_month_usd": str(_spend_this_month(AiCall, tenant)),
             "last_activity_at": seen[tenant.pk].isoformat() if seen.get(tenant.pk) else None,
+            # P6 M1: which modules it has. The platform's own record of the
+            # practice (apps/tenancy/modules.py), not anything inside it.
+            "modules": [{"code": code, "name": name, "enabled": code in on.get(tenant.pk, ())}
+                        for code, name in modules.MODULES.items()],
         })
     return rows
 

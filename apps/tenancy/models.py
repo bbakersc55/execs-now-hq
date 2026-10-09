@@ -201,6 +201,26 @@ class Tenant(UUIDModel):
         return self.name
 
 
+class PracticeModule(UUIDModel):
+    """A module a practice has (P6 M1): "Bookkeeping" to begin with. **The
+    platform's record of the practice, like its name and status, not the
+    practice's own data:** the platform owner switches it, and it says
+    nothing about what is inside. A row per practice and module, kept when
+    switched off."""
+
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="modules")
+    module = models.CharField(max_length=24)
+    enabled_at = models.DateTimeField(null=True, blank=True)
+    enabled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    disabled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "practice_module"
+        constraints = [models.UniqueConstraint(fields=["tenant", "module"],
+                                               name="practice_module_one_per_module")]
+
+
 class Role(models.TextChoices):
     # Labels: apps/tenancy/roles.py, the one place a role's name is set.
     FF = "FF", ROLE_LABEL["FF"]

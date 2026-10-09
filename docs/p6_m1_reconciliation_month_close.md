@@ -470,6 +470,63 @@ loans and the balance sheet (M3); budgets (M4).
 
 ---
 
+## As built: stop 1 (2026-10-08) — the switch, categories, the disclaimer
+
+Built on `dev`; not released. Stop 2 (reconciliation, close, guided mode, the
+demo's closes) is not started.
+
+**The module switch.** `practice_module` (in `apps/tenancy`, the platform's
+record) and `apps/tenancy/modules.py`. The Practices area has a "Bookkeeping"
+tick per practice (`POST /api/platform/practices/<id>/modules`), audited in
+the practice's own trail. `/api/me` names a practice's modules to its staff.
+The migration switches it on for every practice that exists.
+
+**Categories.** `apps/finance/chart.py`. Sub-categories (`parent`), moving one
+under another or back to the top, the order within a parent, remove (unused
+only), combine (`…/merge/`), split (`…/split/`), the list of what was combined
+and split (`…/changes/`), and "Add the starting chart" (`…/starting-chart/`).
+Combine and split take `preview: true` and then only count. The P&L, its CSV
+and both CPA files show two levels; the entries file and the summary have a
+"Parent category" column.
+
+**Where the build differs from the text above, or adds to it:**
+
+- **A split moves entries by the text they contain.** Moving the ones ticked
+  in a list (§5.3) is in the API (`entries: [ids]`) and tested there; the
+  screen offers text only. The entries list's own "Change the category" still
+  moves ticked entries in open months, unrecorded as a split.
+- **A split makes one new category at a time.** "One or more" is the same
+  thing done again.
+- **Names stay unique across the whole chart, not within a parent,** as they
+  were before. "Other" under two parents is refused; the starting chart has no
+  repeated name.
+- **A category the practice archived counts as one it has** for "Add the
+  starting chart": it is not brought back, and neither are sub-categories the
+  chart would put under it. They are listed as left out, with why.
+- **Combining a category that paid invoices go to** points paid invoices at
+  the category it was combined into.
+- **A parent is archived only once its sub-categories are; a sub-category is
+  restored only once its parent is.**
+- **A practice without the module still sees a two-level chart** if it has
+  one (a new practice starts with §5.4). What it does not have are the tools
+  that reshape it.
+- **`finance_category_change` has one `to_category`,** not a list, since a
+  split makes one at a time; and `contains`, the text a split chose by.
+- **The "locked through" field is still in the finance settings.** It leaves
+  with stop 2, when closing a month is what sets it.
+- **The P&L opens the entries behind a figure:** a category's figure opens
+  its own entries and its sub-categories' (`subs=1`); a sub-category's, or
+  "not broken down", its own.
+
+**Tests that were pinned to the old chart and changed with it:** the count
+and names of the starting chart, the order call (now per level), the
+archive-what-is-relied-on case (its sub-categories go first), and the CPA
+summary's columns (`tests/test_finance_books.py`).
+
+**Not seen in a browser:** every screen of this stop.
+
+---
+
 ## 13. Decisions (all decided 2026-10-08, as recommended; specifics at the top)
 
 | # | Question | Decided |

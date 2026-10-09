@@ -86,6 +86,8 @@ export interface Me {
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */
   dev_tools?: boolean;
+  /** P6 M1: the modules this practice has ("bookkeeping"). Staff only. */
+  modules?: string[];
   /** Which of the three environments (owner, 2026-09-29). */
   environment?: "local" | "demo" | "production";
   /** FR-3.42 — set while the real person acts as another user. Everything
@@ -1489,6 +1491,31 @@ export interface FinanceCategory {
   id: string; name: string; type: "income" | "expense" | "owner" | "held";
   type_label: string; cpa_code: string; position: number; archived: boolean;
   system: boolean; used?: boolean;
+  /** P6 M1: the category above it, where it is a sub-category. */
+  parent?: string | null;
+  /** Where a combined category went. */
+  merged_into?: string | null;
+  is_contractor?: boolean;
+}
+
+/** What a combine or a split would move, counted before anything moves. */
+export interface CategoryMoveCount {
+  entries: number; first_on: string | null; last_on: string | null;
+  from: string; to: string;
+  rules?: number; sub_categories?: number;
+  new?: boolean; under?: string | null; contains?: string; left?: number;
+}
+
+export interface StartingChartPlan {
+  add: { name: string; type: FinanceCategory["type"]; parent: string | null }[];
+  skipped: { name: string; why: string }[];
+  note: string; added?: number;
+}
+
+export interface CategoryChange {
+  id: string; kind: "merge" | "split"; kind_label: string; from: string; to: string;
+  entries_moved: number; first_on: string | null; last_on: string | null;
+  contains: string; at: string; by: string;
 }
 
 export interface FinanceEntry {
@@ -1511,10 +1538,15 @@ export interface FinanceEntryList {
   totals: { income_cents: number; expenses_cents: number; net_cents: number };
 }
 
-export interface PnlSection {
-  rows: { id: string; name: string; cpa_code: string; amounts: number[]; total: number }[];
-  totals: number[]; total: number;
+export interface PnlRow {
+  id: string; name: string; cpa_code: string; amounts: number[]; total: number;
+  /** What sits on a parent itself, beside its sub-categories. */
+  direct?: boolean;
+  /** P6 M1: its sub-categories, where it has any. */
+  children?: PnlRow[];
 }
+
+export interface PnlSection { rows: PnlRow[]; totals: number[]; total: number }
 
 export interface Pnl {
   year: number; by: "month" | "quarter"; periods: string[];

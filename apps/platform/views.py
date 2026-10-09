@@ -93,6 +93,29 @@ class PracticeView(APIView):
         return Response(next(r for r in stats.practice_rows() if r["id"] == str(tenant.pk)))
 
 
+class PracticeModuleView(APIView):
+    """POST {"module": "bookkeeping", "enabled": true | false}: switch one of
+    a practice's modules (P6 M1 §7). The platform's record of the practice;
+    nothing inside it is read."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def post(self, request, pk):
+        from apps.tenancy import modules
+        from apps.tenancy.models import Tenant
+
+        tenant = Tenant.objects.filter(pk=pk).first()
+        if tenant is None:
+            return Response({"detail": "No such practice."}, status=404)
+        module, enabled = request.data.get("module"), request.data.get("enabled")
+        if module not in modules.MODULES:
+            return Response({"detail": "There is no such module."}, status=400)
+        if not isinstance(enabled, bool):
+            return Response({"detail": "enabled is true or false."}, status=400)
+        modules.set_enabled(tenant, module, enabled, actor=request.user)
+        return Response(next(r for r in stats.practice_rows() if r["id"] == str(tenant.pk)))
+
+
 def _is_own(tenant, user) -> bool:
     from apps.tenancy.models import Membership
 

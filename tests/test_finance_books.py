@@ -108,7 +108,7 @@ def test_tenant_isolation_another_practice_reaches_nothing_in_the_books(books, f
     # Their own books are their own: the chart, and nothing else.
     assert get(api, other, E).json()["entries"] == []
     assert get(api, other, A).json() == []
-    assert len(get(api, other, C).json()) == 29
+    assert len(get(api, other, C).json()) == 58      # its own starting chart, whole
     for method, url, body in finance_calls(books, mine["id"]):
         response = call(api.as_(other), method, url, body)
         assert b"SECRET-TRIP" not in response.content and b"Checking" not in response.content
@@ -194,9 +194,13 @@ def test_a_practice_starts_with_the_chart_and_edits_it_freely(seeded_tenant, ff,
     by_type = {}
     for row in rows:
         by_type.setdefault(row["type"], []).append(row["name"])
-    assert [len(by_type[t]) for t in ("income", "expense", "owner", "held")] == [6, 20, 2, 1]
-    assert by_type["income"][0] == "Client fees" and by_type["expense"][4] == "AI and API usage"
-    assert by_type["owner"] == ["Owner contribution", "Owner draw"]
+    # The starting chart of P6 M1 §5.4: categories, and sub-categories under some.
+    top = {t: [row["name"] for row in rows if row["type"] == t and not row["parent"]]
+           for t in by_type}
+    assert [len(top[t]) for t in ("income", "expense", "owner", "held")] == [5, 20, 2, 1]
+    assert [len(by_type[t]) for t in ("income", "expense", "owner", "held")] == [8, 45, 4, 1]
+    assert top["income"][0] == "Client fees" and top["expense"][4] == "Travel"
+    assert top["owner"] == ["Owner contribution", "Owner draw"]
     travel = next(row for row in rows if row["name"] == "Travel")
     # Rename, a CPA code, a new one, and the order.
     assert patch(api, ff, f"{C}{travel['id']}/", {"name": "Travel and lodging",
@@ -206,28 +210,30 @@ def test_a_practice_starts_with_the_chart_and_edits_it_freely(seeded_tenant, ff,
     assert post(api, ff, C, {"name": "conferences", "type": "expense"}).status_code == 409
     assert post(api, ff, C, {"name": " ", "type": "expense"}).status_code == 400
     assert post(api, ff, C, {"name": "Odd", "type": "asset"}).status_code == 400
-    owner = [row["id"] for row in rows if row["type"] == "owner"]
+    owner = [row["id"] for row in rows if row["type"] == "owner" and not row["parent"]]
     reordered = post(api, ff, C + "reorder/", {"type": "owner", "ids": owner[::-1]}).json()
-    assert [row["name"] for row in reordered if row["type"] == "owner"] == [
+    assert [row["name"] for row in reordered
+            if row["type"] == "owner" and not row["parent"]] == [
         "Owner draw", "Owner contribution"]
     assert post(api, ff, C + "reorder/", {"type": "owner", "ids": owner[:1]}).status_code == 400
     # The chart is put there once: archiving every category does not bring it back.
     with tenant_context(seeded_tenant.pk):
         FinanceCategory.objects.update(archived_at=timezone.now())
     assert all(row["archived"] for row in get(api, ff, C).json())
-    assert len(get(api, ff, C).json()) == 30
+    assert len(get(api, ff, C).json()) == 59
 
 
 @pytest.mark.django_db
 def test_a_used_category_keeps_its_type_and_is_archived_not_deleted(books, ff, api):
-    travel = books["cat"]["Travel"]
-    entry = add(api, ff, books, "expense", 12500, "2026-10-01", "Travel").json()
-    assert patch(api, ff, f"{C}{travel['id']}/", {"type": "income"}).status_code == 409
-    gone = patch(api, ff, f"{C}{travel['id']}/", {"archived": True})
+    # "Meals": a category with no sub-categories, as every one was before P6 M1.
+    meals = books["cat"]["Meals"]
+    entry = add(api, ff, books, "expense", 12500, "2026-10-01", "Meals").json()
+    assert patch(api, ff, f"{C}{meals['id']}/", {"type": "income"}).status_code == 409
+    gone = patch(api, ff, f"{C}{meals['id']}/", {"archived": True})
     assert gone.status_code == 200 and gone.json()["archived"] is True
     # Its entries keep it; new ones cannot take it.
-    assert get(api, ff, E).json()["entries"][0]["category"]["name"] == "Travel"
-    assert add(api, ff, books, "expense", 100, "2026-10-02", "Travel").status_code == 400
+    assert get(api, ff, E).json()["entries"][0]["category"]["name"] == "Meals"
+    assert add(api, ff, books, "expense", 100, "2026-10-02", "Meals").status_code == 400
     assert patch(api, ff, f"{E}{entry['id']}/", {"description": "Still fine"}
                  ).status_code == 200
     # The two this module relies on stay.
@@ -237,7 +243,13 @@ def test_a_used_category_keeps_its_type_and_is_archived_not_deleted(books, ff, a
                  {"archived": True}).status_code == 409
     # Unless paid invoices are pointed somewhere else first.
     assert post(api, ff, "/api/finance-settings/", {
-        "invoice_income_category": books["cat"]["Project fees"]["id"]}).status_code == 200
+        "invoice_income_category": books["cat"]["Other income"]["id"]}).status_code == 200
+    # ... and (P6 M1) its sub-categories are archived first.
+    assert patch(api, ff, f"{C}{books['cat']['Client fees']['id']}/",
+                 {"archived": True}).status_code == 409
+    for sub in ("Retainers", "Project fees", "Workshops and speaking"):
+        assert patch(api, ff, f"{C}{books['cat'][sub]['id']}/",
+                     {"archived": True}).status_code == 200
     assert patch(api, ff, f"{C}{books['cat']['Client fees']['id']}/",
                  {"archived": True}).status_code == 200
     assert post(api, ff, "/api/finance-settings/", {
@@ -687,7 +699,7 @@ def test_the_cpa_export_is_two_files_that_agree_and_each_download_is_audited(a_y
 
     summary = get(api, ff, R + "export-summary/" + span).content.decode()
     lines = list(csv.reader(io.StringIO(summary)))
-    total = {line[1]: line[3] for line in lines[2:]}
+    total = {line[1]: line[4] for line in lines[2:]}      # after "Parent category"
     cents = lambda text: round(float(text) * 100)  # noqa: E731
     money_in = sum(cents(row["Money in"]) for row in rows if row["Kind"] == "Income")
     money_out = sum(cents(row["Money out"]) for row in rows if row["Kind"] == "Expense")
@@ -695,7 +707,7 @@ def test_the_cpa_export_is_two_files_that_agree_and_each_download_is_audited(a_y
     assert cents(total["Total expenses"]) == money_out == 12500 + 4599 + 30000 + 1234
     assert cents(total["Net"]) == money_in - money_out
     assert total["Travel"] == "125.00" and total["(no category yet)"] == "12.34"
-    assert ["Expense", "Travel", "24a", "125.00"] in lines
+    assert ["Expense", "Travel", "", "24a", "125.00"] in lines
     # The dates are inclusive, and the wrong way round is refused.
     one_day = get(api, ff, R + "export-entries/?from=2026-01-31&to=2026-01-31")
     assert len(list(csv.DictReader(io.StringIO(one_day.content.decode())))) == 1

@@ -211,6 +211,8 @@ def _home_practice(user) -> str | None:
 
 
 def me(request):
+    from apps.tenancy import modules as practice_modules
+
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
     membership = getattr(request, "membership", None)
@@ -229,6 +231,10 @@ def me(request):
         # P2: a practice owner sees the beta agreement before anything else.
         "agreement_required": _agreement_required(request),
         "tenant": str(membership.tenant_id) if membership else None,
+        # P6 M1: the modules this practice has, for the screens only they show.
+        # Staff only: a client user is told nothing about what the practice has.
+        "modules": (practice_modules.enabled(membership.tenant)
+                    if membership and membership.role in ("FF", "CF", "VA") else []),
         "client_company": (
             str(membership.client_company_id)
             if membership and membership.client_company_id else None

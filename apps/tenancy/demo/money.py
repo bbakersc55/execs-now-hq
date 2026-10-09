@@ -220,11 +220,11 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
 
     # --- the card
     for n, who, what, printed, amount in SOFTWARE:
-        facts.append(_fact(day(n), "card", amount * 100, "Software and subscriptions",
+        facts.append(_fact(day(n), "card", amount * 100, "Software",
                            what, who=who, bank_text=printed))
     facts.append(_fact(day(23), "card", 2800 + index * 430 + dollars(0, 18),
                        "AI and API usage", "Anthropic API usage", who="Anthropic"))
-    facts.append(_fact(day(14), "card", dollars(620, 1280), "Marketing and advertising",
+    facts.append(_fact(day(14), "card", dollars(620, 1280), "Advertising",
                        "LinkedIn campaign: operations for owner-led companies",
                        who="LinkedIn Ads"))
     facts.append(_fact(day(19), "card", 14218, "Phone and internet",
@@ -232,11 +232,11 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
     for trip in range(1 + (roll.random() < 0.55)):
         city = roll.choice(CITIES)
         start = day(roll.randrange(6, 24))
-        facts.append(_fact(start - timedelta(days=4), "card", dollars(340, 610), "Travel",
+        facts.append(_fact(start - timedelta(days=4), "card", dollars(340, 610), "Airfare",
                            f"Flight to {city}, client on-site", who="United Airlines"))
-        facts.append(_fact(start + timedelta(days=1), "card", dollars(270, 520), "Travel",
+        facts.append(_fact(start + timedelta(days=1), "card", dollars(270, 520), "Lodging",
                            f"Hotel, {city}, two nights", who="Hilton Garden Inn"))
-        facts.append(_fact(start, "card", dollars(38, 92), "Travel",
+        facts.append(_fact(start, "card", dollars(38, 92), "Ground transport",
                            f"Rides to and from the plant, {city}", who="Lyft"))
         facts.append(_fact(start, "card", dollars(62, 148), "Meals",
                            f"Dinner with the leadership team, {city}", who="Restaurant"))
@@ -250,7 +250,7 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
                                             "Rioja"])))
     if roll.random() < 0.6:
         facts.append(_fact(day(roll.randrange(3, 26)), "card", dollars(32, 128),
-                           "Office and supplies", "Whiteboard markers, binders and printing",
+                           "Supplies", "Whiteboard markers, binders and printing",
                            who="Office Depot"))
     if month.month % 3 == 2:
         facts.append(_fact(day(17), "card", dollars(149, 399), "Education and training",
@@ -262,13 +262,13 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
         _fact(day(1), "bank", 69500, "Rent and coworking",
               "Coworking membership, dedicated desk", who="Larimer Square Cowork",
               bank_text="ACH DEBIT LARIMER SQ COWORK MEMBERSHIP"),
-        _fact(day(3), "bank", 31200, "Insurance",
+        _fact(day(3), "bank", 31200, "Business liability",
               "Professional liability and general liability premium",
               who="Front Range Mutual", bank_text="ACH DEBIT FRONT RANGE MUTUAL INS PREM"),
-        _fact(day(5), "bank", 45000, "Professional services (legal, accounting)",
+        _fact(day(5), "bank", 45000, "Accounting",
               "Monthly bookkeeping and close", who="Ledger & Quill Bookkeeping",
               bank_text="ACH DEBIT LEDGER AND QUILL BKKPG"),
-        _fact(day(8), "bank", 85000, "Marketing and advertising",
+        _fact(day(8), "bank", 85000, "Website",
               "Website care and search work", who="Aviato Web Studio",
               payee=world.vendors["Erlich Bachman"],
               bank_text="ACH DEBIT AVIATO WEB STUDIO"),
@@ -279,13 +279,12 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
               who="Front Range Bank", bank_text="FRONT RANGE BANK MONTHLY SERVICE FEE"),
     ]
     if month.month == 3:
-        facts.append(_fact(day(18), "bank", 185000,
-                           "Professional services (legal, accounting)",
+        facts.append(_fact(day(18), "bank", 185000, "Accounting",
                            f"{month.year - 1} tax return preparation",
                            who="Ledger & Quill Bookkeeping",
                            bank_text="ACH DEBIT LEDGER AND QUILL TAX PREP"))
     if month.month % 3 == 1:
-        facts.append(_fact(day(12), "bank", 75000, "Marketing and advertising",
+        facts.append(_fact(day(12), "bank", 75000, "Events and sponsorships",
                            "Quarterly sponsorship, owners' breakfast series",
                            who="Denver Metro Chamber", bank_text="CHECK 10" + str(40 + index)))
     # The card is paid from the bank: not a cost, a transfer.
@@ -300,8 +299,7 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
         base = sum(invoiced.get(c, 0) for c in theirs)
         if base:
             contractors += 1
-            facts.append(_fact(day(25), "bank", base * share // 100,
-                               "Contractors and associates",
+            facts.append(_fact(day(25), "bank", base * share // 100, "Associates",
                                f"{name}, {share}% of {month:%B} fees: " + ", ".join(theirs),
                                who=name, payee=world.staff_contacts[key],
                                bank_text=f"GUSTO CONTRACTOR PAY {name.upper()}"))
@@ -310,18 +308,18 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
             continue
         hours = roll.randrange(60, 81)
         contractors += 1
-        facts.append(_fact(day(27), "bank", hours * rate * 100, "Contractors and associates",
+        facts.append(_fact(day(27), "bank", hours * rate * 100, "Assistants",
                            f"{name}, {hours} hours at ${rate}", who=name,
                            payee=world.staff_contacts[key],
                            bank_text=f"GUSTO CONTRACTOR PAY {name.upper()}"))
     facts.append(_fact(day(15), "bank", 3500 + 600 * contractors,
-                       "Software and subscriptions", "Payroll platform fee",
+                       "Payroll service fees", "Payroll platform fee",
                        who="Gusto", bank_text="GUSTO FEE 6772" + str(10 + index)))
 
     spent = sum(f["cents"] for f in facts if f["kind"] == "expense")
     net = sum(invoiced.values()) - spent
     draw = max(200_000, int(net * 0.94) // 50_000 * 50_000)
-    facts.append(_fact(day(28), "bank", draw, "Owner draw", f"Owner draw, {month:%B}",
+    facts.append(_fact(day(28), "bank", draw, "Draws", f"Owner draw, {month:%B}",
                        kind="owner", direction="out", who=world.owner.full_name,
                        bank_text="ONLINE TRANSFER TO PERSONAL CHK 8801"))
     return sorted(facts, key=lambda f: f["on"])
@@ -410,7 +408,7 @@ def _oddities(world, books, month: date) -> None:
             finance.create_entry(
                 tenant, actor=owner, kind="expense", direction="in",
                 on_date=month.replace(day=12), amount_cents=11_988,
-                category=books["category"]["Software and subscriptions"],
+                category=books["category"]["Software"],
                 account=books["card"], counterparty="Adobe",
                 description="Refund: second Acrobat seat cancelled after the annual renewal")
 

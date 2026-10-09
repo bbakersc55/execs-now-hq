@@ -65,6 +65,15 @@ class FinanceCategory(TenantScopedModel):
     #: Set on the categories this module itself relies on.
     system_code = models.CharField(max_length=24, blank=True, default="", db_default="")
     archived_at = models.DateTimeField(null=True, blank=True)
+    #: A sub-category's parent (P6 M1). One level only: a parent has none.
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT,
+                               related_name="children")
+    #: Where a combined category went: it is archived, and remembers.
+    merged_into = models.ForeignKey("self", null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    #: Money in it is paid to contractors, so each entry wants a person named
+    #: for the 1099 report (the month close's fourth line).
+    is_contractor = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "finance_category"
@@ -74,6 +83,34 @@ class FinanceCategory(TenantScopedModel):
                                     condition=Q(archived_at__isnull=True),
                                     name="finance_category_name_unique_live"),
         ]
+
+
+class FinanceCategoryChange(TenantScopedModel):
+    """A combine or a split: which entries moved between categories, when and
+    by whom (P6 M1). It includes entries in closed months, on purpose, so
+    "this export differs from the one I sent" has an answer."""
+
+    class Kind(models.TextChoices):
+        MERGE = "merge", "Combined"
+        SPLIT = "split", "Split"
+
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    from_category = models.ForeignKey(FinanceCategory, on_delete=models.PROTECT,
+                                      related_name="+")
+    to_category = models.ForeignKey(FinanceCategory, on_delete=models.PROTECT,
+                                    related_name="+")
+    entries_moved = models.PositiveIntegerField(default=0)
+    #: The dates of the first and last entry it moved.
+    first_on = models.DateField(null=True, blank=True)
+    last_on = models.DateField(null=True, blank=True)
+    #: For a split: the text it chose entries by, when it chose by text.
+    contains = models.CharField(max_length=120, blank=True, default="", db_default="")
+    by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                           on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_category_change"
+        ordering = ["-created_at"]
 
 
 class FinanceSettings(TenantScopedModel):

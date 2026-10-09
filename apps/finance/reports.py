@@ -58,17 +58,39 @@ def pnl(tenant, *, year: int, by: str = "month") -> dict:
 
     sections = {}
     for kind in (T.INCOME, T.EXPENSE):
+        every = list(FinanceCategory.all_objects.filter(tenant=tenant, type=kind).order_by(
+            "position", "name"))
+        by_parent: dict = {}
+        for category in every:
+            by_parent.setdefault(category.parent_id, []).append(category)
+
+        def line(category, name=None, direct=False):
+            amounts = cells.get(category.pk) or [0] * periods
+            return {"id": str(category.pk), "name": name or category.name,
+                    "cpa_code": category.cpa_code, "amounts": list(amounts),
+                    "total": sum(amounts), **({"direct": True} if direct else {})}
+
         rows = []
-        for category in FinanceCategory.all_objects.filter(tenant=tenant, type=kind).order_by(
-                "position", "name"):
-            amounts = cells.get(category.pk)
+        for category in by_parent.get(None, []):
+            # A sub-category under it shows where it is in use or has figures.
+            children = [line(child) for child in by_parent.get(category.pk, [])
+                        if child.archived_at is None or child.pk in cells]
+            own = line(category)
             # An archived category shows only where it has figures.
-            if amounts is None and category.archived_at is not None:
+            if category.archived_at is not None and category.pk not in cells \
+                    and not any(child["total"] or any(child["amounts"])
+                                for child in children):
                 continue
-            amounts = amounts or [0] * periods
-            rows.append({"id": str(category.pk), "name": category.name,
-                         "cpa_code": category.cpa_code, "amounts": amounts,
-                         "total": sum(amounts)})
+            if children:
+                # What sits on the parent itself, beside its sub-categories
+                # (M1-12): shown as a line of its own so the parts add up.
+                if category.pk in cells:
+                    children.append(line(category, f"{category.name}, not broken down",
+                                         direct=True))
+                amounts = [sum(child["amounts"][i] for child in children)
+                           for i in range(periods)]
+                own = {**own, "amounts": amounts, "total": sum(amounts)}
+            rows.append({**own, "children": children})
         totals = [sum(row["amounts"][i] for row in rows) for i in range(periods)]
         sections[kind] = {"rows": rows, "totals": totals, "total": sum(totals)}
 
@@ -102,6 +124,10 @@ def pnl_csv(report: dict) -> str:
         for row in section["rows"]:
             writer.writerow([row["name"], row["cpa_code"],
                              *[plain(a) for a in row["amounts"]], plain(row["total"])])
+            for child in row.get("children", []):
+                writer.writerow([f"    {child['name']}", child["cpa_code"],
+                                 *[plain(a) for a in child["amounts"]],
+                                 plain(child["total"])])
         writer.writerow([f"Total {title.lower()}", "",
                          *[plain(a) for a in section["totals"]], plain(section["total"])])
     writer.writerow(["Net", "", *[plain(a) for a in report["net"]],
@@ -217,7 +243,8 @@ def this_month(tenant, today: date) -> dict:
 
 def _in_range(tenant, start: date, end: date):
     return (live(tenant).filter(on_date__gte=start, on_date__lte=end)
-            .select_related("category", "account", "to_account", "client_company",
+            .select_related("category", "category__parent", "account", "to_account",
+                            "client_company",
                             "client_payment__invoice")
             .order_by("on_date", "created_at"))
 
@@ -225,7 +252,8 @@ def _in_range(tenant, start: date, end: date):
 def export_entries(tenant, *, start: date, end: date) -> str:
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["Date", "Kind", "Category", "CPA code", "Description", "Payee or payer",
+    writer.writerow(["Date", "Kind", "Category", "Parent category", "CPA code",
+                     "Description", "Payee or payer",
                      "Account", "To account", "Money in", "Money out", "Client company",
                      "Invoice", "Reference", "Source"])
     plain = lambda cents: f"{cents / 100:.2f}"  # noqa: E731
@@ -236,6 +264,7 @@ def export_entries(tenant, *, start: date, end: date) -> str:
             entry.on_date.isoformat(), entry.get_kind_display(),
             category.name if category else ("" if entry.kind == K.TRANSFER
                                             else "(no category yet)"),
+            category.parent.name if category and category.parent_id else "",
             category.cpa_code if category else "", entry.description, entry.counterparty,
             entry.account.name if entry.account_id else "",
             entry.to_account.name if entry.to_account_id else "",
@@ -254,7 +283,7 @@ def export_summary(tenant, *, start: date, end: date) -> str:
     plain = lambda cents: f"{cents / 100:.2f}"  # noqa: E731
     writer.writerow([f"Summary by category, {start.isoformat()} to {end.isoformat()}, "
                      "cash basis"])
-    writer.writerow(["Type", "Category", "CPA code", "Total"])
+    writer.writerow(["Type", "Category", "Parent category", "CPA code", "Total"])
     earned = _in_range(tenant, start, end).filter(kind__in=FinanceEntry.EARNED)
     by_category = {row["category_id"]: row["total"] for row in
                    earned.order_by().values("category_id").annotate(
@@ -262,18 +291,26 @@ def export_summary(tenant, *, start: date, end: date) -> str:
     totals = {}
     for kind, title in ((T.INCOME, "Income"), (T.EXPENSE, "Expense")):
         totals[kind] = 0
-        for category in FinanceCategory.all_objects.filter(tenant=tenant, type=kind).order_by(
-                "position", "name"):
+        every = list(FinanceCategory.all_objects.filter(tenant=tenant, type=kind)
+                     .select_related("parent").order_by("position", "name"))
+        # A category, then its sub-categories, as the P&L lists them.
+        ordered = []
+        for top in (c for c in every if c.parent_id is None):
+            ordered.append(top)
+            ordered += [c for c in every if c.parent_id == top.pk]
+        for category in ordered:
             amount = by_category.get(category.pk)
             if amount:
-                writer.writerow([title, category.name, category.cpa_code, plain(amount)])
+                writer.writerow([title, category.name,
+                                 category.parent.name if category.parent_id else "",
+                                 category.cpa_code, plain(amount)])
                 totals[kind] += amount
         loose = earned.filter(category__isnull=True, kind=kind).aggregate(
             total=Sum(SIGNED))["total"] or 0
         if loose:
-            writer.writerow([title, "(no category yet)", "", plain(loose)])
+            writer.writerow([title, "(no category yet)", "", "", plain(loose)])
             totals[kind] += loose
-    writer.writerow(["", "Total income", "", plain(totals[T.INCOME])])
-    writer.writerow(["", "Total expenses", "", plain(totals[T.EXPENSE])])
-    writer.writerow(["", "Net", "", plain(totals[T.INCOME] - totals[T.EXPENSE])])
+    writer.writerow(["", "Total income", "", "", plain(totals[T.INCOME])])
+    writer.writerow(["", "Total expenses", "", "", plain(totals[T.EXPENSE])])
+    writer.writerow(["", "Net", "", "", plain(totals[T.INCOME] - totals[T.EXPENSE])])
     return out.getvalue()

@@ -305,6 +305,7 @@ Beta ships no financial module. These rows exist so the role-boundary suite has 
 | 13.11 | 1099 payees: flag a contact, the year's totals, the export | ✅ | ❌ | ❌ | — | — | The flag is on no contact payload or screen |
 | 13.9 | The CPA export | ✅ | ❌ | ❌ | — | — | Each download is an audit event |
 | 13.10 | The dashboard's revenue, expenses and margin | ✅ | ❌ | ❌ | — | — | Absent from everyone else's payload |
+| 13.13 | Sub-categories; combine, split and remove a category; "Add the starting chart" *(P6 M1; a practice with the Bookkeeping module)* | ✅ | ❌ | ❌ | — | — | 404 for a practice without the module. Combine and split are counted first, recorded, and include closed months |
 | 13.5 | Any financial endpoint | ✅ | 🔸 | **❌** | ❌ | ❌ | **The non-negotiable assistant test family** (`CLAUDE.md`) |
 
 ---

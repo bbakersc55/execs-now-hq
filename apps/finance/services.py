@@ -32,24 +32,6 @@ T = FinanceCategory.Type
 CLIENT_FEES = "client_fees"
 SALES_TAX = "sales_tax"
 
-#: The chart a practice starts with (owner, 2026-10-08, F7). Edited freely
-#: afterwards: this is only ever the beginning.
-DEFAULT_CHART = (
-    (T.INCOME, ("Client fees", "Project fees", "Workshops and speaking",
-                "Referral fees received", "Reimbursed expenses", "Other income")),
-    (T.EXPENSE, ("Contractors and associates", "Payroll and wages",
-                 "Payroll taxes and benefits", "Software and subscriptions",
-                 "AI and API usage", "Marketing and advertising", "Travel", "Meals",
-                 "Professional services (legal, accounting)", "Insurance",
-                 "Office and supplies", "Rent and coworking", "Phone and internet",
-                 "Education and training", "Dues and memberships",
-                 "Bank and merchant fees", "Referral fees paid", "Taxes and licenses",
-                 "Interest", "Other expenses")),
-    (T.OWNER, ("Owner contribution", "Owner draw")),
-    (T.HELD, ("Sales tax collected",)),
-)
-SYSTEM_CODES = {"Client fees": CLIENT_FEES, "Sales tax collected": SALES_TAX}
-
 #: Which category types an entry of each kind may sit in.
 TYPE_FOR_KIND = {K.INCOME: T.INCOME, K.EXPENSE: T.EXPENSE, K.OWNER: T.OWNER, K.HELD: T.HELD}
 
@@ -94,11 +76,9 @@ def ensure_chart(tenant) -> None:
     so this never puts the defaults back."""
     if FinanceCategory.all_objects.filter(tenant=tenant).exists():
         return
-    for kind, names in DEFAULT_CHART:
-        for position, name in enumerate(names):
-            FinanceCategory.all_objects.create(
-                tenant=tenant, name=name, type=kind, position=position,
-                system_code=SYSTEM_CODES.get(name, ""))
+    from apps.finance import chart
+
+    chart.create_starting_chart(tenant)
 
 
 def settings_for(tenant) -> FinanceSettings:
@@ -215,18 +195,26 @@ def _used(category) -> bool:
 
 
 @transaction.atomic
-def save_category(tenant, *, actor, category=None, name=None, type=None, cpa_code=None):
+def save_category(tenant, *, actor, category=None, name=None, type=None, cpa_code=None,
+                  parent=...):
+    """`parent` (P6 M1): a category to make this a sub-category of, None for
+    the top level, or left out to leave it where it is."""
+    from apps.finance import chart
+
     ensure_chart(tenant)
     made = category is None
     if made:
+        if parent not in (..., None):
+            type = parent.type              # a sub-category has its parent's type
         if type not in T.values:
             raise FinanceError("type is income, expense, owner or held.")
-        last = FinanceCategory.all_objects.filter(tenant=tenant, type=type).aggregate(
-            last=Max("position"))["last"]
-        category = FinanceCategory(tenant=tenant, type=type,
-                                   position=(last + 1) if last is not None else 0)
+        category = FinanceCategory(tenant=tenant, type=type)
         if name is None:
             raise FinanceError("A category needs a name.")
+    elif type is not None and type != category.type and (
+            category.parent_id is not None or chart.live_children(category).exists()):
+        raise FinanceError("A sub-category has its parent's type. Move it to the top "
+                           "level first.", status=409)
     elif type is not None and type != category.type:
         # Fixed once used: an expense that became income would rewrite every
         # report that has already been read.
@@ -248,9 +236,20 @@ def save_category(tenant, *, actor, category=None, name=None, type=None, cpa_cod
         if len(cpa_code) > 40:
             raise FinanceError("A CPA code is 40 characters at most.")
         category.cpa_code = cpa_code
+    moved = parent is not ... and (made or (parent.pk if parent else None)
+                                   != category.parent_id)
+    if parent is not ...:
+        chart.set_parent(category, parent)
+    if made or moved:
+        # Last among those it now sits with.
+        last = FinanceCategory.all_objects.filter(
+            tenant=tenant, type=category.type, parent=category.parent).exclude(
+            pk=category.pk).aggregate(last=Max("position"))["last"]
+        category.position = (last + 1) if last is not None else 0
     category.save()
     audit(tenant, "category_created" if made else "category_changed", actor, category,
-          name=category.name, type=category.type, cpa_code=category.cpa_code)
+          name=category.name, type=category.type, cpa_code=category.cpa_code,
+          parent=str(category.parent_id or ""))
     return category
 
 
@@ -264,8 +263,15 @@ def set_category_archived(category, *, actor, archived: bool) -> FinanceCategory
             raise FinanceError(f"Paid invoices go to “{category.name}”. Choose another "
                                "category for them in the finance settings first.",
                                status=409)
+        if FinanceCategory.all_objects.filter(parent=category,
+                                              archived_at__isnull=True).exists():
+            raise FinanceError(f"“{category.name}” has sub-categories in use. Archive, "
+                               "move or combine them first.", status=409)
         category.archived_at = category.archived_at or timezone.now()
     else:
+        if category.parent_id is not None and category.parent.archived_at is not None:
+            raise FinanceError(f"It is a sub-category of “{category.parent.name}”, which "
+                               "is archived. Restore that first.", status=409)
         if FinanceCategory.all_objects.filter(
                 tenant=category.tenant, name__iexact=category.name,
                 archived_at__isnull=True).exclude(pk=category.pk).exists():
@@ -279,11 +285,13 @@ def set_category_archived(category, *, actor, archived: bool) -> FinanceCategory
 
 
 @transaction.atomic
-def reorder_categories(tenant, *, actor, type, ids) -> None:
+def reorder_categories(tenant, *, actor, type, ids, parent=None) -> None:
+    """The order of the top-level categories of a type, or of one category's
+    sub-categories."""
     rows = {str(row.pk): row for row in FinanceCategory.all_objects.filter(
-        tenant=tenant, type=type, archived_at__isnull=True)}
+        tenant=tenant, type=type, parent=parent, archived_at__isnull=True)}
     if not isinstance(ids, list) or sorted(str(i) for i in ids) != sorted(rows):
-        raise FinanceError("The order has to name every category of that type, once.")
+        raise FinanceError("The order has to name every category at that level, once.")
     for position, pk in enumerate(ids):
         row = rows[str(pk)]
         if row.position != position:
