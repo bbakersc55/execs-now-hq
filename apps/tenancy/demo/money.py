@@ -350,7 +350,7 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
         for which, share, to in (("federal", 0.18, "IRS USATAXPYMT"),
                                  ("state", 0.04, "COLO DEPT REVENUE")):
             tax = int(draw * share) // 10_000 * 10_000
-            facts.append(_fact(day(15), "bank", tax, "Estimated tax payments",
+            facts.append(_fact(day(15), "bank", tax, "Owner draw",
                                f"Estimated tax, {which}, paid {month:%B} {month.year}",
                                kind="owner", direction="out", who=to.title(),
                                bank_text=f"{to} {month:%m%y}", estimated_tax=which))

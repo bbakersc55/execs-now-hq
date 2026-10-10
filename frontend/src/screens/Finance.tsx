@@ -254,7 +254,8 @@ function Entries() {
   const qc = useQueryClient();
   const { accounts, categories, ready } = useBooks();
   const [params, setParams] = useSearchParams();
-  const filters = Object.fromEntries(["from", "to", "kind", "category", "subs", "account", "q"]
+  const filters = Object.fromEntries(["from", "to", "kind", "category", "subs", "account",
+                                      "estimated_tax", "q"]
     .map((name) => [name, params.get(name) ?? ""]));
   const set = (name: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -338,6 +339,16 @@ function Entries() {
             <option value="none">Not placed in an account</option>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
+          {/* Owner draws: every one, or only the estimated tax payments. */}
+          {(filters.kind === "owner" || filters.estimated_tax) && (
+            <select aria-label="Estimated tax payments" value={filters.estimated_tax}
+              style={{ width: "auto" }} onChange={(e) => set("estimated_tax", e.target.value)}>
+              <option value="">Every owner entry</option>
+              <option value="any">Estimated tax payments</option>
+              <option value="federal">Estimated tax, federal</option>
+              <option value="state">Estimated tax, state</option>
+            </select>
+          )}
           <input aria-label="Search entries" placeholder="Description or payee"
             value={filters.q} style={{ width: "14rem" }}
             onChange={(e) => set("q", e.target.value)} />
@@ -455,8 +466,8 @@ function Entries() {
                       : entry.category?.name ?? <Pill kind="warn">no category yet</Pill>}
                       {(entry.kind === "owner" || entry.kind === "held")
                         && <> <Pill>not in the P&amp;L</Pill></>}
-                      {entry.estimated_tax && <> <Pill>estimated tax,{" "}
-                        {entry.estimated_tax}</Pill></>}</td>
+                      {entry.estimated_tax && <> <Pill kind="ai">Estimated tax:{" "}
+                        {entry.estimated_tax === "federal" ? "Federal" : "State"}</Pill></>}</td>
                     <td>{entry.account?.name ?? <Pill kind="warn">not placed yet</Pill>}
                       {entry.to_account && <> → {entry.to_account.name}</>}</td>
                     <td className="money">{signed(entry)}</td>

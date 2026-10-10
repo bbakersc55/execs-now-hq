@@ -329,7 +329,9 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         # Estimated tax: owner draws, marked federal or state, each quarter.
         taxes = entries.exclude(estimated_tax="")
         assert set(taxes.values_list("kind", "direction", "category__name")) == {
-            ("owner", "out", "Estimated tax payments")}
+            ("owner", "out", "Owner draw")}
+        assert not FinanceCategory.objects.filter(
+            name__iexact="Estimated tax payments").exists()
         assert set(taxes.values_list("estimated_tax", flat=True)) == {"federal", "state"}
         assert taxes.count() >= 12 and taxes.count() % 2 == 0
         assert {t.on_date.month for t in taxes} <= {1, 4, 6, 9}

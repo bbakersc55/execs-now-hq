@@ -409,13 +409,35 @@ describe("the CPA's worksheet and an estimated tax payment", () => {
       .not.toBeInTheDocument();
   });
 
-  it("shows the mark on the entry in the list", async () => {
-    show("entries", { "GET /api/finance-entries/": { ...LIST, entries: [
-      entry({ id: "e9", kind: "owner", kind_label: "Owner", amount_cents: 450000,
-              category: { id: "c4", name: "Owner draw" }, description: "Q2 estimate",
-              estimated_tax: "federal" })], count: 1 } });
-    const row = (await screen.findByText(/Q2 estimate/)).closest("tr") as HTMLElement;
-    expect(row).toHaveTextContent("estimated tax, federal");
+  it("shows the mark as a chip on the entry, and filters the owner draws on it",
+    async () => {
+      const fetchMock = show("entries", { "GET /api/finance-entries/": { ...LIST, entries: [
+        entry({ id: "e9", kind: "owner", kind_label: "Owner", amount_cents: 450000,
+                category: { id: "c4", name: "Owner draw" }, description: "Q2 estimate",
+                estimated_tax: "federal" }),
+        entry({ id: "e10", kind: "owner", kind_label: "Owner", amount_cents: 80000,
+                category: { id: "c4", name: "Owner draw" }, description: "Q2 state",
+                estimated_tax: "state" })], count: 2 } }, "/?kind=owner");
+      const row = (await screen.findByText(/Q2 estimate/)).closest("tr") as HTMLElement;
+      expect(within(row).getByText("Estimated tax: Federal")).toHaveClass("pill");
+      expect(within(screen.getByText(/Q2 state/).closest("tr") as HTMLElement)
+        .getByText("Estimated tax: State")).toHaveClass("pill");
+      // Among the owner's entries, the filter is offered; it asks the server.
+      const filter = screen.getByLabelText("Estimated tax payments");
+      expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual([
+        "Every owner entry", "Estimated tax payments", "Estimated tax, federal",
+        "Estimated tax, state"]);
+      await userEvent.selectOptions(filter, "federal");
+      await waitFor(() => expect(fetchMock.calls.some((c) => c.url
+        === "/api/finance-entries/?kind=owner&estimated_tax=federal")).toBe(true));
+    });
+
+  it("does not offer the estimated tax filter among other kinds of entry", async () => {
+    show("entries");
+    await screen.findByLabelText("Totals for what is listed");
+    expect(screen.queryByLabelText("Estimated tax payments")).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Kind"), "owner");
+    expect(await screen.findByLabelText("Estimated tax payments")).toBeInTheDocument();
   });
 });
 

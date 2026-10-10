@@ -146,6 +146,14 @@ class EntryViewSet(FinanceViewSet):
             qs = qs.filter(client_company_id=params["company"])
         if params.get("source"):
             qs = qs.filter(source=params["source"])
+        # Estimated tax payments: `any` for every marked draw, or one kind.
+        mark = params.get("estimated_tax")
+        if mark == "any":
+            qs = qs.exclude(estimated_tax="")
+        elif mark in services.ESTIMATED_TAX:
+            qs = qs.filter(estimated_tax=mark)
+        elif mark:
+            raise services.FinanceError("estimated_tax is any, federal or state.")
         q = (params.get("q") or "").strip()
         if q:
             qs = qs.filter(Q(description__icontains=q) | Q(counterparty__icontains=q)

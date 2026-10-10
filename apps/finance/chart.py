@@ -87,7 +87,9 @@ STARTING_CHART = (
     )),
     (T.OWNER, (
         ("Owner contribution", ()),
-        ("Owner draw", ("Draws", "Estimated tax payments")),
+        # No "Estimated tax payments" here (owner, 2026-10-10): an estimated
+        # tax payment is a draw with the Federal or State mark, and nothing else.
+        ("Owner draw", ("Draws",)),
     )),
     (T.HELD, (
         ("Sales tax collected", ()),

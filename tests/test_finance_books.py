@@ -149,7 +149,7 @@ def test_tenant_isolation_another_practice_reaches_nothing_in_the_books(books, f
     # Their own books are their own: the chart, and nothing else.
     assert get(api, other, E).json()["entries"] == []
     assert get(api, other, A).json() == []
-    assert len(get(api, other, C).json()) == 94      # its own starting chart, whole
+    assert len(get(api, other, C).json()) == 93      # its own starting chart, whole
     for method, url, body in finance_calls(books, mine["id"]):
         response = call(api.as_(other), method, url, body)
         assert b"SECRET-TRIP" not in response.content and b"Checking" not in response.content
@@ -239,7 +239,7 @@ def test_a_practice_starts_with_the_chart_and_edits_it_freely(seeded_tenant, ff,
     top = {t: [row["name"] for row in rows if row["type"] == t and not row["parent"]]
            for t in by_type}
     assert [len(top[t]) for t in ("income", "expense", "owner", "held")] == [5, 30, 2, 1]
-    assert [len(by_type[t]) for t in ("income", "expense", "owner", "held")] == [8, 81, 4, 1]
+    assert [len(by_type[t]) for t in ("income", "expense", "owner", "held")] == [8, 81, 3, 1]
     assert top["income"][0] == "Client fees" and top["expense"][4] == "Contract labor"
     assert top["owner"] == ["Owner contribution", "Owner draw"]
     travel = next(row for row in rows if row["name"] == "Repairs")
@@ -261,7 +261,7 @@ def test_a_practice_starts_with_the_chart_and_edits_it_freely(seeded_tenant, ff,
     with tenant_context(seeded_tenant.pk):
         FinanceCategory.objects.update(archived_at=timezone.now())
     assert all(row["archived"] for row in get(api, ff, C).json())
-    assert len(get(api, ff, C).json()) == 95
+    assert len(get(api, ff, C).json()) == 94
 
 
 @pytest.mark.django_db
@@ -878,15 +878,15 @@ DISCLAIMER_TEXT = ("Bookkeeping and projections only, not tax, legal or financia
 def test_an_owner_draw_is_marked_an_estimated_tax_payment_and_listed_by_date(
         cpa_books, ff, api):
     b = cpa_books
-    state = add(api, ff, b, "owner", 80000, "2026-06-15", "Estimated tax payments",
+    state = add(api, ff, b, "owner", 80000, "2026-06-15", "Owner draw",
                 direction="out", estimated_tax="state")
     assert state.status_code == 201 and state.json()["estimated_tax"] == "state"
-    fed = add(api, ff, b, "owner", 450000, "2026-04-15", "Estimated tax payments",
+    fed = add(api, ff, b, "owner", 450000, "2026-04-15", "Owner draw",
               direction="out", estimated_tax="Federal").json()
     assert fed["estimated_tax"] == "federal"
     plain = add(api, ff, b, "owner", 300000, "2026-04-28", "Draws", direction="out").json()
     assert plain["estimated_tax"] == ""
-    add(api, ff, b, "owner", 100000, "2025-09-15", "Estimated tax payments",
+    add(api, ff, b, "owner", 100000, "2025-09-15", "Owner draw",
         direction="out", estimated_tax="federal")                     # another year
     # It is the owner's own money going out, and nothing else.
     for body in (dict(kind="expense", category="Supplies"),
@@ -958,7 +958,7 @@ def test_tenant_isolation_and_role_boundaries_on_the_worksheet_and_year_facts(
         cpa_books, ff, cf, va, fcc, ecc, tenant_b, api):
     Y = "/api/finance-settings/year-facts/"
     add(api, ff, cpa_books, "expense", 4242400, "2026-03-04", "Supplies")
-    add(api, ff, cpa_books, "owner", 5151500, "2026-04-15", "Estimated tax payments",
+    add(api, ff, cpa_books, "owner", 5151500, "2026-04-15", "Owner draw",
         direction="out", estimated_tax="federal")
     post(api, ff, Y, {"year": 2026, "total_miles": 31313})
     calls = [("get", R + "export-worksheet/?year=2026", None), ("get", Y + "?year=2026", None),
@@ -1000,3 +1000,126 @@ def test_the_note_above_the_chart_is_the_same_words_in_both_places():
     found = re.search(r'CHART_NOTE\s*=\s*\n?\s*"([^"]+)"', source)
     assert found and found.group(1) == chart.NOTE
     assert "“Wages and payroll taxes” is the one that is not on the worksheet" in chart.NOTE
+
+
+# ============ an estimated tax payment is a mark, not a category (2026-10-10)
+
+@pytest.mark.django_db
+def test_the_migration_moves_entries_off_the_sub_category_marks_them_and_lists_the_rest(
+        books, ff, tenant_b, api, capsys):
+    """`books` has the chart as it was, with "Estimated tax payments" under
+    Owner draw; `tenant_b` starts with the chart as it is now."""
+    from importlib import import_module
+
+    from django.apps import apps as django_apps
+
+    from apps.finance.models import FinanceCategoryChange, FinanceRule
+
+    step = import_module("apps.finance.migrations.0006_estimated_tax_is_a_mark")
+    sub, parent = books["cat"]["Estimated tax payments"], books["cat"]["Owner draw"]
+
+    def draw(cents, on, description, **more):
+        made = add(api, ff, books, "owner", cents, on, "Estimated tax payments",
+                   description=description, **{"direction": "out", **more})
+        assert made.status_code == 201, made.content
+        return made.json()["id"]
+
+    federal = draw(450000, "2026-04-15", "Q1 estimate, Federal (IRS)")
+    state = draw(80000, "2026-04-15", "Colorado state estimated tax")
+    unsaid = draw(120000, "2026-06-15", "Q2 estimate")
+    both = draw(90000, "2026-09-15", "Federal and state together")
+    statement = draw(1000, "2026-09-16", "Bank statement fee on the estimate")
+    back = draw(5000, "2026-09-20", "Federal refund of an overpayment", direction="in")
+    already = draw(70000, "2026-01-15", "January payment", estimated_tax="state")
+    gone = draw(300, "2026-02-01", "Entered twice")
+    post(api, ff, f"{E}{gone}/remove/", {"reason": "Entered twice"})
+    elsewhere = add(api, ff, books, "owner", 250000, "2026-04-28", "Draws",
+                    direction="out", description="Federal holiday draw").json()["id"]
+    with tenant_context(books["tenant"].pk):
+        rule = FinanceRule.objects.create(tenant=books["tenant"], contains="USATAXPYMT",
+                                          category_id=sub["id"])
+        totals = reports.balance(books["tenant"], as_of=date(2026, 12, 31))
+        chart_before = FinanceCategory.objects.count()
+    capsys.readouterr()
+
+    step.remove_the_sub_category(django_apps, None)
+
+    printed = capsys.readouterr().out
+    with tenant_context(books["tenant"].pk):
+        assert not FinanceCategory.objects.filter(pk=sub["id"]).exists(), "it is deleted"
+        assert FinanceCategory.objects.count() == chart_before - 1
+        rows = {str(e.pk): e for e in FinanceEntry.objects.all()}
+        on_it = [federal, state, unsaid, both, statement, back, already, gone]
+        # Every one moved to the parent; nothing else about any entry changed.
+        assert {str(rows[pk].category_id) for pk in on_it} == {parent["id"]}
+        assert {pk: rows[pk].estimated_tax for pk in on_it} == {
+            federal: "federal", state: "state", already: "state",
+            unsaid: "", both: "", back: "", gone: "",
+            # "statement" is not the word "state".
+            statement: ""}
+        assert rows[elsewhere].estimated_tax == "" and \
+            rows[elsewhere].category.name == "Draws", "only what sat on the sub-category"
+        assert rows[federal].amount_cents == 450000 and rows[gone].removed_at is not None
+        assert FinanceRule.objects.get(pk=rule.pk).category_id == rows[federal].category_id
+        assert reports.balance(books["tenant"], as_of=date(2026, 12, 31)) == totals
+        # Listed: printed as it ran, and kept in the practice's own trail.
+        event = AuditEvent.objects.get(verb="finance.estimated_tax_category_removed")
+        assert event.payload["marked"] == {"federal": 1, "state": 2}
+        assert event.payload["moved_to"] == "Owner draw"
+        assert event.payload["category"] == "deleted"
+        assert [(row["id"], row["description"]) for row in event.payload["unmarked"]] == [
+            (unsaid, "Q2 estimate"), (both, "Federal and state together"),
+            (statement, "Bank statement fee on the estimate"),
+            (back, "Federal refund of an overpayment")], "not the removed one"
+    assert "1 marked federal, 2 marked state, 4 left unmarked:" in printed
+    assert "2026-06-15  1200.00 out  Q2 estimate" in printed
+    # A practice on the chart as it is now has nothing to move, and nothing is said.
+    with tenant_context(tenant_b.pk):
+        assert not AuditEvent.objects.filter(
+            verb="finance.estimated_tax_category_removed").exists()
+    assert str(tenant_b.pk) not in printed
+    # Run again, there is nothing left to do.
+    step.remove_the_sub_category(django_apps, None)
+    with tenant_context(books["tenant"].pk):
+        assert AuditEvent.objects.filter(
+            verb="finance.estimated_tax_category_removed").count() == 1
+    # Where a combine or split on record still names it, it is archived instead.
+    with tenant_context(books["tenant"].pk):
+        again = FinanceCategory.objects.create(
+            tenant=books["tenant"], name="Estimated tax payments", type="owner",
+            parent_id=parent["id"])
+        FinanceCategoryChange.objects.create(
+            tenant=books["tenant"], kind="split", from_category_id=parent["id"],
+            to_category=again, entries_moved=0)
+    step.remove_the_sub_category(django_apps, None)
+    with tenant_context(books["tenant"].pk):
+        again.refresh_from_db()
+        assert again.archived_at is not None
+
+
+@pytest.mark.django_db
+def test_the_owner_draws_list_filters_on_the_estimated_tax_mark(cpa_books, ff, api):
+    b = cpa_books
+    assert "Estimated tax payments" not in b["cat"], "the mark is the only way to record one"
+    add(api, ff, b, "owner", 450000, "2026-04-15", "Owner draw", direction="out",
+        estimated_tax="federal", description="Q1 federal")
+    add(api, ff, b, "owner", 80000, "2026-04-15", "Draws", direction="out",
+        estimated_tax="state", description="Q1 state")
+    add(api, ff, b, "owner", 300000, "2026-04-28", "Draws", direction="out",
+        description="April draw")
+    add(api, ff, b, "expense", 100, "2026-04-02", "Supplies", description="Pens")
+
+    def listed(query):
+        response = get(api, ff, E + query)
+        assert response.status_code == 200
+        return sorted(row["description"] for row in response.json()["entries"])
+
+    assert listed("?kind=owner") == ["April draw", "Q1 federal", "Q1 state"]
+    assert listed("?estimated_tax=any") == ["Q1 federal", "Q1 state"]
+    assert listed("?kind=owner&estimated_tax=federal") == ["Q1 federal"]
+    assert listed("?estimated_tax=state") == ["Q1 state"]
+    assert get(api, ff, E + "?estimated_tax=city").status_code == 400
+    marks = {row["description"]: row["estimated_tax"]
+             for row in get(api, ff, E).json()["entries"]}
+    assert marks == {"Q1 federal": "federal", "Q1 state": "state", "April draw": "",
+                     "Pens": ""}

@@ -598,7 +598,9 @@ def test_a_new_practice_starts_with_the_cpas_chart(seeded_tenant, ff, api):
             tree.setdefault(by_id[row["parent"]]["name"], []).append(row["name"])
     # Income, owner and held are as they were built.
     assert tree["Client fees"] == ["Retainers", "Project fees", "Workshops and speaking"]
-    assert tree["Owner draw"] == ["Draws", "Estimated tax payments"]
+    # An estimated tax payment is a mark on a draw, not a category of its own.
+    assert tree["Owner draw"] == ["Draws"]
+    assert "estimated tax payments" not in [row["name"].casefold() for row in rows]
     # Every expense category is a line of the CPA's Business Income & Expense
     # Worksheet, word for word and in its order; the last is the one that is not.
     expenses = [row["name"] for row in sorted(rows, key=lambda r: r["position"])
@@ -649,8 +651,8 @@ def test_a_new_practice_starts_with_the_cpas_chart(seeded_tenant, ff, api):
         "Miscellaneous (itemized)": ["Education and training", "Business gifts",
                                      "Taxes and licenses", "Other (itemize)"],
         "Wages and payroll taxes": ["Wages", "Payroll taxes"]}
-    assert len(tree) == 21 and sum(len(subs) for subs in tree.values()) == 56
-    assert len(rows) == 94
+    assert len(tree) == 21 and sum(len(subs) for subs in tree.values()) == 55
+    assert len(rows) == 93
     assert all(by_id[row["parent"]]["type"] == row["type"] for row in rows if row["parent"])
     names = [row["name"].casefold() for row in rows]
     assert len(names) == len(set(names)), "every name in the chart is its own"

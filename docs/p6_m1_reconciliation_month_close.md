@@ -352,8 +352,10 @@ ours. Sentence case throughout.
 | Miscellaneous (itemized) | Education and training · Business gifts · Taxes and licenses · Other (itemize) |
 | Wages and payroll taxes *(the one category not on the worksheet)* | Wages · Payroll taxes |
 
-**Owner:** Owner contribution · Owner draw (Draws · Estimated tax payments).
-**Held:** Sales tax collected. Both as built in stop 1.
+**Owner:** Owner contribution · Owner draw (Draws). **Held:** Sales tax
+collected. As built in stop 1, less the "Estimated tax payments" sub-category
+of Owner draw, removed 2026-10-10: an estimated tax payment is a draw with
+the Federal or State mark (§5.5), and that is the only way to record one.
 
 Above the list, on the categories screen:
 
@@ -392,9 +394,18 @@ its check, and `finance_year_facts`.
 **What an existing practice sees:** nothing changes in its chart until it
 presses "Add the starting chart". Its worksheet lists its own top-level
 categories in its own order, so it maps to the CPA's worksheet as far as its
-chart does. The "Estimated tax payments" sub-category of Owner draw is still
-there; the mark is what the worksheet reads, whichever category the draw is
-in.
+chart does.
+
+**The mark is the only way to record an estimated tax payment (owner,
+2026-10-10).** The "Estimated tax payments" sub-category of Owner draw is
+gone from the chart. `finance` 0006 moves any entry that sat on it to its
+parent and, where the entry is the owner's money going out and its
+description says federal or state (one, not both), sets that mark. The rest
+are left unmarked and listed: printed as the migration runs and kept in the
+practice's audit trail (`finance.estimated_tax_category_removed`). Rules and
+import lines that named it name its parent. No amount, date or total
+changes. Among the owner's entries, the Entries list shows the mark as a
+chip and filters on it (`?estimated_tax=any|federal|state`).
 
 ---
 
