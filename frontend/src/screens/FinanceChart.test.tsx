@@ -195,50 +195,115 @@ describe("categories in two levels", () => {
       .not.toBeInTheDocument();
   });
 
-  it("splits a category by the text its entries contain, counted first", async () => {
-    const count = { entries: 2, first_on: "2026-03-04", last_on: "2026-03-04",
-                    from: "Travel", to: "Rideshare", new: true, under: "Travel",
-                    contains: "uber", left: 9 };
-    const fetchMock = showSettings({
-      "POST /api/finance-categories/travel/split/": (body: { preview?: boolean }) =>
-        ({ body: body.preview ? count : CATEGORIES }) });
+  it("splits a category by the text its entries contain, counted as it is typed",
+    async () => {
+      const whole = { entries: 2, first_on: "2026-03-04", last_on: "2026-03-04",
+                      from: "Travel", to: "Rideshare", new: true, under: "Travel",
+                      contains: "uber", left: 9 };
+      const fetchMock = showSettings({
+        "POST /api/finance-categories/travel/split/": (
+          body: { preview?: boolean; name?: string; contains: string }) => ({
+          body: !body.preview ? CATEGORIES
+            : body.contains === "zeppelin" ? { ...whole, entries: 0, first_on: null,
+                                               last_on: null, to: body.name ?? "",
+                                               contains: "zeppelin", left: 11 }
+              : body.name ? whole : { ...whole, to: "", new: undefined } }) });
+      await userEvent.click(await screen.findByRole("button", { name: "Split Travel" }));
+      const panel = screen.getByRole("group", { name: "Split Travel" });
+      const move = within(panel).getByRole("button", { name: "Move them" });
+      const matches = within(panel).getByRole("status", { name: "Entries that match" });
+      const waiting = () => within(panel).queryByRole("note",
+                                                     { name: "What Move is waiting on" });
+      // Disabled, and it says what it is waiting on.
+      expect(move).toBeDisabled();
+      expect(matches).toHaveTextContent("Type two letters or more.");
+      expect(waiting()).toHaveTextContent(
+        "Type the text the entries contain, two letters or more.");
+
+      // The count shows beside the box as the text is typed, before there is a name.
+      await userEvent.type(within(panel).getByLabelText("Entries containing"), "uber");
+      await waitFor(() => expect(matches).toHaveTextContent("2 entries match"));
+      expect(sent(fetchMock, "POST", "/split/")).toEqual([{ contains: "uber", preview: true }]);
+      expect(move).toBeDisabled();
+      expect(waiting()).toHaveTextContent("Name the new category.");
+
+      // Named: enabled as soon as the count is above zero, with nothing else to press.
+      await userEvent.type(within(panel).getByLabelText("Name of the new category"),
+                           "Rideshare");
+      const ready = await within(panel).findByRole("button",
+                                                   { name: "Move them to Rideshare" });
+      await waitFor(() => expect(ready).toBeEnabled());
+      expect(waiting()).not.toBeInTheDocument();
+      expect(within(panel).getByRole("status", { name: "What would move" })).toHaveTextContent(
+        "2 entries dated March 4, 2026 move from Travel to Rideshare (new, under Travel); "
+        + "9 stay. No total, balance or net changes. Closed months are included.");
+      expect(within(panel).queryByRole("button", { name: "Count them" }))
+        .not.toBeInTheDocument();
+      await userEvent.click(ready);
+      const body = { name: "Rideshare", as: "sub", contains: "uber" };
+      await waitFor(() => expect(sent(fetchMock, "POST", "/split/").at(-1)).toEqual(body));
+      expect(sent(fetchMock, "POST", "/split/").at(-2)).toEqual({ ...body, preview: true });
+      // A category nothing has used has nothing to split.
+      expect(screen.queryByRole("button", { name: "Split Vehicle" })).not.toBeInTheDocument();
+    });
+
+  it("says plainly when the text matches nothing, and keeps Move disabled", async () => {
+    showSettings({
+      "POST /api/finance-categories/travel/split/": (body: { name?: string }) => ({
+        body: { entries: 0, first_on: null, last_on: null, from: "Travel",
+                to: body.name ?? "", contains: "zeppelin", left: 11 } }) });
     await userEvent.click(await screen.findByRole("button", { name: "Split Travel" }));
     const panel = screen.getByRole("group", { name: "Split Travel" });
-    const countThem = within(panel).getByRole("button", { name: "Count them" });
-    expect(countThem).toBeDisabled();
-    await userEvent.type(within(panel).getByLabelText("Name of the new category"), "Rideshare");
+    await userEvent.type(within(panel).getByLabelText("Name of the new category"), "Airships");
+    await userEvent.type(within(panel).getByLabelText("Entries containing"), "zeppelin");
+    await waitFor(() => expect(within(panel).getByRole("status", { name: "Entries that match" }))
+      .toHaveTextContent("No entries match."));
+    expect(within(panel).getByRole("note", { name: "What Move is waiting on" }))
+      .toHaveTextContent("No entry in Travel contains “zeppelin”, so there is nothing to move.");
+    expect(within(panel).getByRole("button", { name: "Move them to Airships" })).toBeDisabled();
+  });
+
+  it("shows what the server refuses, such as a name already taken", async () => {
+    showSettings({
+      "POST /api/finance-categories/travel/split/": (body: { name?: string }) => (body.name
+        ? { status: 409, body: { detail: "There is already a category called “Meals”. "
+            + "Choose it to move the entries there." } }
+        : { body: { entries: 2, first_on: null, last_on: null, from: "Travel", to: "",
+                    contains: "uber", left: 9 } }) });
+    await userEvent.click(await screen.findByRole("button", { name: "Split Travel" }));
+    const panel = screen.getByRole("group", { name: "Split Travel" });
     await userEvent.type(within(panel).getByLabelText("Entries containing"), "uber");
-    await userEvent.click(countThem);
-    expect(await within(panel).findByRole("status")).toHaveTextContent(
-      "2 entries dated March 4, 2026 move from Travel to Rideshare (new, under Travel); "
-      + "9 stay. No total, balance or net changes. Closed months are included.");
-    await userEvent.click(within(panel).getByRole("button", { name: "Move them to Rideshare" }));
-    const body = { name: "Rideshare", as: "sub", contains: "uber" };
-    await waitFor(() => expect(sent(fetchMock, "POST", "/split/")).toEqual([
-      { ...body, preview: true }, body]));
-    // A category nothing has used has nothing to split.
-    expect(screen.queryByRole("button", { name: "Split Vehicle" })).not.toBeInTheDocument();
+    await userEvent.type(within(panel).getByLabelText("Name of the new category"), "Meals");
+    expect(await within(panel).findByText(/There is already a category called “Meals”/))
+      .toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Move them to Meals" })).toBeDisabled();
   });
 
   it("a split from a sub-category makes the new one beside it, or uses one you have",
     async () => {
       const fetchMock = showSettings({
-        "POST /api/finance-categories/air/split/": () => ({
+        "POST /api/finance-categories/air/split/": (body: { to?: string }) => ({
           body: { entries: 1, first_on: "2026-03-04", last_on: "2026-03-04", from: "Airfare",
-                  to: "Lodging", new: false, under: "Travel", contains: "hotel", left: 3 } }) });
+                  to: body.to ? "Lodging" : "", new: false, under: "Travel",
+                  contains: "hotel", left: 3 } }) });
       await userEvent.click(await screen.findByRole("button", { name: "Split Airfare" }));
       const panel = screen.getByRole("group", { name: "Split Airfare" });
       const where = within(panel).getByLabelText("Where the entries go");
       expect(within(where).queryByText(/new sub-category/)).not.toBeInTheDocument();
       await userEvent.selectOptions(where, "existing");
+      await userEvent.type(within(panel).getByLabelText("Entries containing"), "hotel");
+      await waitFor(() => expect(within(panel).getByRole("status",
+                                                         { name: "Entries that match" }))
+        .toHaveTextContent("1 entry matches"));
+      expect(within(panel).getByRole("note", { name: "What Move is waiting on" }))
+        .toHaveTextContent("Choose the category they go to.");
       await userEvent.selectOptions(within(panel).getByLabelText("The category they go to"),
                                     "lodging");
-      await userEvent.type(within(panel).getByLabelText("Entries containing"), "hotel");
-      await userEvent.click(within(panel).getByRole("button", { name: "Count them" }));
-      expect(await within(panel).findByRole("status")).toHaveTextContent(
-        "1 entry dated March 4, 2026 moves from Airfare to Lodging; 3 stay.");
-      expect(sent(fetchMock, "POST", "/split/")).toEqual([
-        { to: "lodging", contains: "hotel", preview: true }]);
+      expect(await within(panel).findByRole("status", { name: "What would move" }))
+        .toHaveTextContent("1 entry dated March 4, 2026 moves from Airfare to Lodging; 3 stay.");
+      expect(within(panel).getByRole("button", { name: "Move it to Lodging" })).toBeEnabled();
+      expect(sent(fetchMock, "POST", "/split/").at(-1)).toEqual(
+        { to: "lodging", contains: "hotel", preview: true });
     });
 
   it("adds the starting chart only after showing what it would add", async () => {

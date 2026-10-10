@@ -363,11 +363,17 @@ class CategoryViewSet(FinanceViewSet):
     def split(self, request, pk=None):
         """Move some of this category's entries to a new category (`name`,
         `as`: "sub" or "beside") or to one that exists (`to`), chosen by
-        `contains` or by `entries`. `preview: true` only counts."""
+        `contains` or by `entries`. `preview: true` only counts, and with
+        neither `name` nor `to` counts what the text chooses and no more."""
         self.needs_bookkeeping(request)
         source = self._category(pk)
         data = request.data
         try:
+            if data.get("preview") and not data.get("to") and not data.get("name"):
+                # Nowhere to go yet: only how many the text chooses.
+                return Response(chart.split_matches(
+                    source, contains=data.get("contains") or "",
+                    entry_ids=data.get("entries") or None))
             choice = dict(
                 name=data.get("name"), as_sub=data.get("as", "sub") != "beside",
                 to=self._one(FinanceCategory, data["to"], "category") if data.get("to")

@@ -253,7 +253,9 @@ function Combine({ category, all, onDone }: {
   );
 }
 
-/** Some of a category's entries to a new category, or to another. */
+/** Some of a category's entries to a new category, or to another. The count
+ *  of entries the text chooses is shown beside the box as it is typed, and
+ *  whatever the Move button is waiting on is said under it. */
 function Split({ category, all, onDone }: {
   category: FinanceCategory; all: FinanceCategory[]; onDone: () => void;
 }) {
@@ -264,12 +266,45 @@ function Split({ category, all, onDone }: {
   const [contains, setContains] = useState("");
   const tool = useChartTool(onDone);
   const url = `/api/finance-categories/${category.id}/split/`;
-  const body = where === "existing" ? { to, contains: contains.trim() }
-    : { name: name.trim(), as: where, contains: contains.trim() };
-  const ready = contains.trim().length >= 2 && (where === "existing" ? !!to : !!name.trim());
+  const text = contains.trim();
+  const named = where === "existing" ? !!to : !!name.trim();
+  const body = where === "existing" ? { to, contains: text }
+    : { name: name.trim(), as: where, contains: text };
   const targets = all.filter((c) => c.type === category.type && !c.archived
     && c.id !== category.id);
-  const changed = () => tool.clear();
+  // Counted a moment after the typing stops: with a place to go, the whole
+  // of what would move; without one yet, only how many the text chooses.
+  const asked = JSON.stringify(text.length >= 2 ? (named ? body : { contains: text }) : null);
+  useEffect(() => {
+    tool.clear();
+    const what = JSON.parse(asked) as object | null;
+    if (what === null) return;
+    const timer = setTimeout(() => tool.preview.mutate({ url, body: what }), 250);
+    return () => clearTimeout(timer);
+  }, [asked]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const tidy = (value: string) => value.trim().split(/\s+/).join(" ");
+  const target = where === "existing" ? (all.find((c) => c.id === to)?.name ?? "")
+    : tidy(name);
+  // Only the answer to what is in the boxes now: an earlier one that arrives
+  // late is not shown.
+  const count = tool.count && tool.count.contains === tidy(contains)
+    && (!tool.count.to || tool.count.to === target) ? tool.count : null;
+  const counting = text.length >= 2 && !count && !tool.problem;
+  const matches = text.length < 2 ? "Type two letters or more."
+    : counting ? "Counting…"
+      : !count ? ""
+        : count.entries === 0 ? "No entries match."
+          : `${count.entries} ${count.entries === 1 ? "entry matches" : "entries match"}`;
+  // What the Move button is waiting on, in the order it would be fixed.
+  const waiting = text.length < 2 ? "Type the text the entries contain, two letters or more."
+    : tool.problem ? ""
+      : counting ? ""
+        : count && count.entries === 0
+          ? `No entry in ${category.name} contains “${text}”, so there is nothing to move.`
+          : !named ? (where === "existing" ? "Choose the category they go to."
+            : "Name the new category.")
+            : "";
+  const ready = !!count && count.entries > 0 && named && !!count.to && !tool.problem;
   return (
     <div className="panel" role="group" aria-label={`Split ${category.name}`}
       style={{ margin: "0 0 var(--s3) var(--s4)" }}>
@@ -279,14 +314,14 @@ function Split({ category, all, onDone }: {
       </p>
       <div className="row tight">
         <select aria-label="Where the entries go" value={where} style={{ width: "auto" }}
-          onChange={(e) => { setWhere(e.target.value as typeof where); changed(); }}>
+          onChange={(e) => setWhere(e.target.value as typeof where)}>
           {!isSub && <option value="sub">To a new sub-category of {category.name}</option>}
           <option value="beside">To a new category beside {category.name}</option>
           <option value="existing">To a category you already have</option>
         </select>
         {where === "existing" ? (
           <select aria-label="The category they go to" value={to} style={{ width: "auto" }}
-            onChange={(e) => { setTo(e.target.value); changed(); }}>
+            onChange={(e) => setTo(e.target.value)}>
             <option value="">Choose a category</option>
             {categoryOptions(targets, all).map(([id, label]) => (
               <option key={id} value={id}>{label}</option>))}
@@ -294,30 +329,31 @@ function Split({ category, all, onDone }: {
         ) : (
           <input aria-label="Name of the new category" value={name} maxLength={120}
             placeholder="Its name" style={{ width: "14rem" }}
-            onChange={(e) => { setName(e.target.value); changed(); }} />
+            onChange={(e) => setName(e.target.value)} />
         )}
         <input aria-label="Entries containing" value={contains} maxLength={120}
           placeholder="Entries containing…" style={{ width: "14rem" }}
-          onChange={(e) => { setContains(e.target.value); changed(); }} />
-        <button className="small" disabled={!ready || tool.preview.isPending}
-          onClick={() => tool.preview.mutate({ url, body })}>Count them</button>
-        <button className="ghost small" onClick={onDone}>Cancel</button>
+          onChange={(e) => setContains(e.target.value)} />
+        <span className="small" role="status" aria-label="Entries that match">{matches}</span>
       </div>
       {tool.problem && <Banner kind="bad">{tool.problem}</Banner>}
-      {tool.count && (
-        <>
-          <p className="small" role="status">
-            {span(tool.count)} {tool.count.entries === 1 ? "moves" : "move"} from{" "}
-            {tool.count.from} to {tool.count.to}
-            {tool.count.new && <> (new{tool.count.under ? `, under ${tool.count.under}` : ""})</>}
-            ; {tool.count.left} {tool.count.left === 1 ? "stays" : "stay"}. {NO_TOTAL}
-          </p>
-          <button className="primary small"
-            disabled={tool.apply.isPending || tool.count.entries === 0}
-            onClick={() => tool.apply.mutate({ url, body })}>
-            Move {tool.count.entries === 1 ? "it" : "them"} to {tool.count.to}</button>
-        </>
+      {ready && count && (
+        <p className="small" role="status" aria-label="What would move">
+          {span(count)} {count.entries === 1 ? "moves" : "move"} from{" "}
+          {count.from} to {count.to}
+          {count.new && <> (new{count.under ? `, under ${count.under}` : ""})</>}
+          ; {count.left} {count.left === 1 ? "stays" : "stay"}. {NO_TOTAL}
+        </p>
       )}
+      <div className="row tight" style={{ marginTop: "var(--s2)" }}>
+        <button className="primary small" disabled={!ready || tool.apply.isPending}
+          onClick={() => tool.apply.mutate({ url, body })}>
+          {ready && count ? `Move ${count.entries === 1 ? "it" : "them"} to ${count.to}`
+            : target ? `Move them to ${target}` : "Move them"}</button>
+        <button className="ghost small" onClick={onDone}>Cancel</button>
+        {waiting && <span className="small muted" role="note"
+          aria-label="What Move is waiting on">{waiting}</span>}
+      </div>
     </div>
   );
 }

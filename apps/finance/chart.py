@@ -277,6 +277,17 @@ def _split_target(source, *, name, to, as_sub):
     return None, name, (source if as_sub else source.parent)
 
 
+def split_matches(source, *, contains="", entry_ids=None) -> dict:
+    """How many of a category's entries some text chooses, before anyone has
+    said where they would go: the count shown beside the box as it is typed."""
+    if source.archived_at is not None:
+        raise FinanceError(f"“{source.name}” is archived.", status=409)
+    entries, contains = _chosen(source, contains=contains, entry_ids=entry_ids)
+    return {**_span(entries), "from": source.name, "to": "", "contains": contains,
+            "left": FinanceEntry.all_objects.filter(
+                category=source, removed_at__isnull=True).count() - entries.count()}
+
+
 def split_preview(source, *, name=None, to=None, as_sub=True, contains="",
                   entry_ids=None) -> dict:
     if source.archived_at is not None:

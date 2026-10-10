@@ -525,6 +525,31 @@ def test_splitting_moves_exactly_the_entries_chosen(kept, ff, api):
 
 
 @pytest.mark.django_db
+def test_a_split_counts_what_the_text_chooses_before_it_has_anywhere_to_go(kept, ff, api):
+    """The count beside the box as it is typed: no name and no target yet."""
+    add(api, ff, kept, "expense", 2500, "2026-03-04", "Travel", description="Uber to the plant")
+    add(api, ff, kept, "expense", 1800, "2026-03-09", "Travel", counterparty="UBER TRIP")
+    add(api, ff, kept, "expense", 30000, "2026-03-05", "Travel", description="Flight")
+    travel = kept["cat"]["Travel"]["id"]
+    with tenant_context(kept["tenant"].pk):
+        before = (FinanceCategory.objects.count(), AuditEvent.objects.count())
+    counted = post(api, ff, f"{C}{travel}/split/", {"contains": " uber ", "preview": True})
+    assert counted.status_code == 200
+    assert counted.json() == {"entries": 2, "first_on": "2026-03-04", "last_on": "2026-03-09",
+                              "from": "Travel", "to": "", "contains": "uber", "left": 1}
+    nothing = post(api, ff, f"{C}{travel}/split/", {"contains": "zeppelin", "preview": True})
+    assert nothing.json()["entries"] == 0 and nothing.json()["left"] == 3
+    assert post(api, ff, f"{C}{travel}/split/",
+                {"contains": "u", "preview": True}).status_code == 400
+    # It only counts: nothing is made, moved or recorded; and without
+    # `preview` a split with nowhere to go is still refused.
+    assert post(api, ff, f"{C}{travel}/split/", {"contains": "uber"}).status_code == 400
+    with tenant_context(kept["tenant"].pk):
+        assert (FinanceCategory.objects.count(), AuditEvent.objects.count()) == before
+        assert not FinanceCategoryChange.objects.exists()
+
+
+@pytest.mark.django_db
 def test_a_split_is_refused_when_it_would_move_nothing_or_break_the_chart(kept, ff, api):
     cat = kept["cat"]
     entry = add(api, ff, kept, "expense", 1800, "2026-03-02", "Airfare",
