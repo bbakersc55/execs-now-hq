@@ -1712,3 +1712,15 @@ export interface ExplainStatus {
 export interface ExplainAnswer {
   text: string; cost_usd: string; disclaimer: string; used_today: number; cap: number;
 }
+
+/** What a bulk change to entries would do, counted before it does it. */
+export interface BulkPlan {
+  action: "recategorize" | "remove"; chosen: number; count: number;
+  first_on: string | null; last_on: string | null; to: string;
+  left_out: { why: string; label: string; count: number }[];
+}
+
+export interface BulkChange {
+  id: string; at: string; action: "recategorize" | "remove"; count: number; to: string;
+  first_on: string | null; last_on: string | null; reason: string; by: string;
+}

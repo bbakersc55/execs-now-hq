@@ -56,6 +56,8 @@ const sent = (fetchMock: ReturnType<typeof mockApi>, suffix: string) =>
 function show(tab: "entries" | "pnl" | "balance" | "export",
               extra: Record<string, unknown> = {}, route = "/") {
   const fetchMock = mockApi({
+    // Before the list's own address, which it begins with.
+    "GET /api/finance-entries/bulk/": [],
     ...extra, "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-categories/": CATEGORIES,
     "GET /api/finance-payees/": { year: 2026, threshold_cents: 200000,
                                   default_threshold_cents: 200000, over: 0, payees: [] },
@@ -82,7 +84,8 @@ describe("the entries", () => {
     expect(screen.getByText("no category yet")).toBeInTheDocument();
     const move = screen.getByText("Card payment").closest("tr") as HTMLElement;
     expect(move).toHaveTextContent("Checking → Business card");
-    expect(within(move).queryByRole("checkbox")).not.toBeInTheDocument();
+    // A transfer can be chosen: it cannot change category, and can be removed.
+    expect(within(move).getByRole("checkbox")).toBeInTheDocument();
   });
 
   it("adds an expense in cents, to an account, with only fitting categories offered",
@@ -162,17 +165,117 @@ describe("the entries", () => {
       { reason: "Entered twice" }]));
   });
 
-  it("changes the category of several at once", async () => {
+  const PLAN = { action: "recategorize", chosen: 4, count: 2, to: "Meals",
+                 first_on: "2026-10-01", last_on: "2026-10-01",
+                 left_out: [{ why: "transfer", label: "a transfer, which has no category",
+                              count: 1 },
+                            { why: "type", label: "of a kind that category cannot take",
+                              count: 1 }] };
+  const bulkBodies = (fetchMock: ReturnType<typeof mockApi>) =>
+    fetchMock.calls.filter((c) => c.method === "POST" && c.url.endsWith("/bulk/"))
+      .map((c) => c.body);
+
+  it("selects all that the filter shows, and clears the selection", async () => {
+    show("entries");
+    const all = await screen.findByRole("button", { name: "Select all 4 shown" });
+    expect(screen.queryByRole("button", { name: "Clear selection" })).not.toBeInTheDocument();
+    await userEvent.click(all);
+    const bar = screen.getByRole("group", { name: "The selection" });
+    expect(bar).toHaveTextContent("4 chosen");
+    expect(all).toBeDisabled();
+    // Every row is chosen, the transfer too: it can be removed, if not moved.
+    for (const box of screen.getAllByRole("checkbox", { name: /^Choose the entry of/ })) {
+      expect(box).toBeChecked();
+    }
+    expect(screen.getAllByRole("checkbox", { name: /^Choose the entry of/ })).toHaveLength(4);
+    await userEvent.click(within(bar).getByRole("button", { name: "Clear selection" }));
+    expect(within(bar).queryByText("4 chosen")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select all 4 shown" })).toBeEnabled();
+  });
+
+  it("changes the category of the selection, showing the count before it acts",
+    async () => {
+      const fetchMock = show("entries", {
+        "POST /api/finance-entries/bulk/": () => ({ body: PLAN }) });
+      await userEvent.click(await screen.findByRole("button", { name: "Select all 4 shown" }));
+      const change = screen.getByRole("button", { name: "Change category" });
+      expect(change).toBeDisabled();
+      await userEvent.selectOptions(
+        screen.getByLabelText("Category for the chosen entries"), "c3");
+      await userEvent.click(change);
+      const body = { action: "recategorize", entries: ["e1", "e2", "e3", "e4"],
+                     category: "c3" };
+      // Counted, and nothing moved yet.
+      const before = await screen.findByRole("group", { name: "Before it acts" });
+      expect(within(before).getByRole("status")).toHaveTextContent(
+        "2 of 4 entries will move to Meals, dated October 1, 2026. Left as they are: 1 a "
+        + "transfer, which has no category; 1 of a kind that category cannot take.");
+      expect(bulkBodies(fetchMock)).toEqual([{ ...body, preview: true }]);
+      await userEvent.click(within(before).getByRole("button", { name: "Move 2 to Meals" }));
+      await waitFor(() => expect(bulkBodies(fetchMock)).toEqual([
+        { ...body, preview: true }, body]));
+      await waitFor(() => expect(screen.queryByRole("group", { name: "Before it acts" }))
+        .not.toBeInTheDocument());
+    });
+
+  it("deletes the selection only after the count, and only with a reason", async () => {
+    const plan = { ...PLAN, action: "remove", count: 1, to: "", chosen: 2,
+                   left_out: [{ why: "locked", label: "in a closed or locked month",
+                                count: 1 }] };
     const fetchMock = show("entries", {
-      "POST /api/finance-entries/recategorize/": () => ({ body: { changed: 2 } }) });
+      "POST /api/finance-entries/bulk/": () => ({ body: plan }) });
     await userEvent.click(await screen.findByLabelText(
       "Choose the entry of October 1, 2026, $125.00"));
     await userEvent.click(screen.getByLabelText("Choose the entry of October 1, 2026, $9.99"));
-    await userEvent.selectOptions(
-      screen.getByLabelText("Category for the chosen entries"), "c3");
-    await userEvent.click(screen.getByRole("button", { name: "Change the category" }));
-    await waitFor(() => expect(sent(fetchMock, "recategorize/")).toEqual([
-      { entries: ["e1", "e4"], category: "c3" }]));
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const before = await screen.findByRole("group", { name: "Before it acts" });
+    expect(within(before).getByRole("status")).toHaveTextContent(
+      "1 of 2 entries will be removed, dated October 1, 2026. Left as they are: 1 in a "
+      + "closed or locked month. A removed entry is kept in the history and leaves every "
+      + "figure.");
+    const remove = within(before).getByRole("button", { name: "Remove 1" });
+    expect(remove).toBeDisabled();
+    await userEvent.type(within(before).getByLabelText("Why the entries are being removed"),
+                         "Entered twice");
+    await userEvent.click(remove);
+    const body = { action: "remove", entries: ["e1", "e4"] };
+    await waitFor(() => expect(bulkBodies(fetchMock)).toEqual([
+      { ...body, preview: true }, { ...body, reason: "Entered twice" }]));
+  });
+
+  it("acts on nothing when the count is zero, and forgets the count if the choice changes",
+    async () => {
+      show("entries", { "POST /api/finance-entries/bulk/": () => ({
+        body: { ...PLAN, action: "remove", count: 0, chosen: 1, to: "", first_on: null,
+                last_on: null, left_out: [{ why: "invoice", count: 1,
+                                            label: "an invoice payment, removed on its invoice" }] } }) });
+      await userEvent.click(await screen.findByLabelText(
+        "Choose the entry of October 1, 2026, $6,800.00"));
+      await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+      const before = await screen.findByRole("group", { name: "Before it acts" });
+      expect(within(before).getByRole("status")).toHaveTextContent(
+        "0 of 1 entry will be removed. Left as they are: 1 an invoice payment, removed on "
+        + "its invoice.");
+      expect(within(before).getByRole("button", { name: "Remove 0" })).toBeDisabled();
+      await userEvent.click(screen.getByLabelText(
+        "Choose the entry of October 1, 2026, $125.00"));
+      expect(screen.queryByRole("group", { name: "Before it acts" })).not.toBeInTheDocument();
+    });
+
+  it("lists the bulk changes made, as combines are listed", async () => {
+    show("entries", { "GET /api/finance-entries/bulk/": [
+      { id: "b1", at: "2026-10-10T15:00:00Z", action: "recategorize", count: 14,
+        to: "Meals", first_on: "2026-01-04", last_on: "2026-09-28", reason: "",
+        by: "John Carter" },
+      { id: "b2", at: "2026-10-09T15:00:00Z", action: "remove", count: 2, to: "",
+        first_on: "2026-10-01", last_on: "2026-10-02", reason: "Entered twice",
+        by: "John Carter" }] });
+    await userEvent.click(await screen.findByText("Changed several at once: 2"));
+    const rows = within(screen.getByRole("table", { name: "Changed several at once" }))
+      .getAllByRole("row").slice(1).map((row) => row.textContent);
+    expect(rows).toEqual([
+      "October 10, 2026Moved to Meals14, January 4, 2026 to September 28, 2026John Carter",
+      "October 9, 2026Removed: Entered twice2, October 1, 2026 to October 2, 2026John Carter"]);
   });
 
   it("filters from the address, as a figure on the P&L links to it", async () => {

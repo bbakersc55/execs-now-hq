@@ -259,13 +259,37 @@ describe("reconciling an account", () => {
     await userEvent.click(await screen.findByRole(
       "button", { name: "Checking, September 2026: In progress" }));
     await userEvent.click(await screen.findByLabelText("Tick Quarterly sponsorship, $750.00"));
+    // Each says how many before it acts.
     await userEvent.click(screen.getByRole("button",
-                                           { name: "Tick all through the statement date" }));
-    await userEvent.click(screen.getByRole("button", { name: "Untick all" }));
+                                           { name: "Tick all 2 through the statement date" }));
+    await userEvent.click(screen.getByRole("button", { name: "Untick all 1" }));
     await waitFor(() => expect(posts(fetchMock, "r-sep/tick/")).toEqual([
       { entries: ["check"], cleared: true }, { all: true, cleared: true },
       { all: true, cleared: false }]));
   });
+
+  it("ticks all that one list shows, or unticks them, with the count on the button",
+    async () => {
+      const more: Reconciliation = { ...REC, lines: [
+        ...REC.lines, line("hotel", { description: "Hotel, Tucson", amount_cents: 41000 }),
+        line("fee2", { way: "in", amount_cents: 90000, description: "Invoice SOP-0143",
+                       kind: "income", kind_label: "Income", cleared: true })] };
+      const fetchMock = show({
+        "GET /api/finance-reconcile/r-sep/": more,
+        "POST /api/finance-reconcile/r-sep/tick/": () => ({ body: more }) });
+      await userEvent.click(await screen.findByRole(
+        "button", { name: "Checking, September 2026: In progress" }));
+      // Money out shows two unticked lines; the list of one has no such button.
+      await userEvent.click(await screen.findByRole(
+        "button", { name: "Tick all 2 shown in Money out" }));
+      expect(screen.queryByRole("button", { name: /shown in From earlier statements/ }))
+        .not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button",
+                                             { name: "Untick all 2 shown in Cleared" }));
+      await waitFor(() => expect(posts(fetchMock, "r-sep/tick/")).toEqual([
+        { entries: ["flight", "hotel"], cleared: true },
+        { entries: ["fee", "fee2"], cleared: false }]));
+    });
 
   it("lists a payment received and not yet placed, and places it from here", async () => {
     let now: Reconciliation = REC;

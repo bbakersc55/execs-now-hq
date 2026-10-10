@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -369,16 +370,23 @@ def tick(rec, *, actor, entry_ids=None, everything=False, cleared=True) -> int:
             raise FinanceError("entries is a list of entries.")
         try:
             entries = list(_candidates(rec).filter(pk__in=entry_ids))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, ValidationError):
             raise FinanceError("entries is a list of entries.") from None
         if len(entries) != len({str(pk) for pk in entry_ids}):
             raise FinanceError("One of those entries is not in this account on or before "
                                "the statement date, or an earlier statement cleared it.",
                                status=404)
     if cleared:
-        return _tick(rec, entries)
-    count, _ = FinanceCleared.all_objects.filter(
-        reconciliation=rec, entry__in=entries).delete()
+        count = _tick(rec, entries)
+    else:
+        count, _ = FinanceCleared.all_objects.filter(
+            reconciliation=rec, entry__in=entries).delete()
+    if len(entries) > 1 and count:
+        # Several at once is recorded, as any bulk change to the books is.
+        audit(rec.tenant, "reconciliation_ticked" if cleared
+              else "reconciliation_unticked", actor, rec, account=rec.account.name,
+              month=rec.month.isoformat()[:7], count=count, asked=len(entries),
+              everything=bool(everything))
     return count
 
 

@@ -274,7 +274,11 @@ def test_the_difference_is_the_arithmetic_for_a_bank_account(kept, ff, api):    
     with tenant_context(kept["tenant"].pk):
         verbs = list(AuditEvent.objects.filter(verb__startswith="finance.reconciliation")
                      .order_by("created_at").values_list("verb", flat=True))
-    assert verbs == ["finance.reconciliation_started", "finance.reconciliation_finished"]
+    # Started and finished; and each time several were ticked or unticked at once.
+    assert verbs[0] == "finance.reconciliation_started"
+    assert verbs[-1] == "finance.reconciliation_finished"
+    assert set(verbs[1:-1]) == {"finance.reconciliation_ticked",
+                                "finance.reconciliation_unticked"}
 
     # The report a CPA asks for.
     report = get(api, ff, url + "report/").json()
@@ -295,6 +299,9 @@ def test_the_difference_is_the_arithmetic_for_a_bank_account(kept, ff, api):    
     assert late["id"] in [line["id"] for line in nxt["lines"]]
     after = post(api, ff, f"{RC}{nxt['id']}/tick/", {"all": True}).json()
     assert after["difference_cents"] == 0
+    # Something that is not an entry at all is refused in words, not with an error.
+    assert post(api, ff, f"{RC}{nxt['id']}/tick/",
+                {"entries": ["not-an-id"]}).status_code == 400
     # An entry an earlier statement cleared cannot be ticked again.
     assert post(api, ff, f"{RC}{nxt['id']}/tick/",
                 {"entries": [fee["id"]]}).status_code == 404

@@ -267,9 +267,20 @@ function Lines({ title, rows, busy, onTick }: {
   title: string; rows: ReconcileLine[]; busy: boolean;
   onTick: (ids: string[], cleared: boolean) => void;
 }) {
+  // A list holds ticked lines or unticked ones, never both.
+  const ticked = rows.length > 0 && rows.every((line) => line.cleared);
   return (
     <div style={{ flex: "1 1 22rem", minWidth: 0 }}>
-      <h4 style={{ margin: "0 0 var(--s2)" }}>{title}</h4>
+      <div className="row tight" style={{ marginBottom: "var(--s2)" }}>
+        <h4 style={{ margin: 0 }}>{title}</h4>
+        {/* All of what this list shows, with the count before it acts. */}
+        {rows.length > 1 && (
+          <button className="ghost small" disabled={busy}
+            aria-label={`${ticked ? "Untick" : "Tick"} all ${rows.length} shown in ${title}`}
+            onClick={() => onTick(rows.map((line) => line.id), !ticked)}>
+            {ticked ? "Untick" : "Tick"} all {rows.length} shown</button>
+        )}
+      </div>
       {rows.length === 0 ? <p className="small muted">Nothing here.</p> : (
         <table aria-label={title}>
           <tbody>
@@ -409,10 +420,10 @@ function Working({ id, refresh, onClose, onStep }: {
       <div className="row tight" style={{ marginBottom: "var(--s3)" }}>
         <button className="ghost small" disabled={busy || left.length === 0}
           onClick={() => act.mutate({ path: "tick/", body: { all: true, cleared: true } })}>
-          Tick all through the statement date</button>
+          Tick all {left.length} through the statement date</button>
         <button className="ghost small" disabled={busy || cleared.length === 0}
           onClick={() => act.mutate({ path: "tick/", body: { all: true, cleared: false } })}>
-          Untick all</button>
+          Untick all {cleared.length}</button>
         <button className="ghost small" onClick={() => setAdding(!adding)}>
           {adding ? "Cancel the new entry" : "Add an entry"}</button>
       </div>

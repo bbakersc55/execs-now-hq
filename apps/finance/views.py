@@ -233,6 +233,29 @@ class EntryViewSet(FinanceViewSet):
             return self._refusal(exc)
         return Response({"changed": count})
 
+    @action(detail=False, methods=["get", "post"])
+    def bulk(self, request):
+        """Several entries at once: `action` is `recategorize` (with
+        `category`) or `remove` (with `reason`), on `entries`. `preview: true`
+        only counts: how many it would act on, how many it would leave out,
+        and why. GET lists the bulk changes made, newest first."""
+        from apps.finance import bulk
+
+        if request.method == "GET":
+            return Response(bulk.history(request.tenant))
+        data = request.data
+        try:
+            chosen = dict(
+                action=data.get("action"), entry_ids=data.get("entries"),
+                category=self._one(FinanceCategory, data["category"], "category")
+                if data.get("category") else None)
+            if data.get("preview"):
+                return Response(bulk.plan(request.tenant, **chosen))
+            return Response(bulk.apply(request.tenant, actor=request.user,
+                                       reason=data.get("reason"), **chosen))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
     @action(detail=True, methods=["get"])
     def history(self, request, pk=None):
         entry = self.entries().filter(pk=pk).first()

@@ -7,8 +7,8 @@ import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
-  BalanceView, EntryKind, FinanceAccount, FinanceCategory, FinanceEntry, FinanceEntryList,
-  Me, PayeeReport, Pnl, api,
+  BalanceView, BulkChange, BulkPlan, EntryKind, FinanceAccount, FinanceCategory,
+  FinanceEntry, FinanceEntryList, Me, PayeeReport, Pnl, api,
   PnlRow,
 } from "../lib/api";
 import { categoryOptions } from "../lib/finance";
@@ -256,12 +256,27 @@ function Entries() {
   const [picked, setPicked] = useState<string[]>([]);
   const [target, setTarget] = useState("");
   const [said, setSaid] = useState("");
+  // A bulk action, counted and waiting for its yes.
+  const [asking, setAsking] = useState<{ plan: BulkPlan; body: object } | null>(null);
+  const [reason, setReason] = useState("");
   const refresh = () => {
-    setEditing(""); setPicked([]);
-    for (const key of ["finance-entries", "finance-pnl", "finance-balance", "dashboard"]) {
+    setEditing(""); setPicked([]); setAsking(null); setReason(""); setTarget("");
+    for (const key of ["finance-entries", "finance-pnl", "finance-balance", "dashboard",
+                       "finance-bulk", "finance-reconcile"]) {
       qc.invalidateQueries({ queryKey: [key] });
     }
   };
+  // Choosing differently puts the question away: it was about another selection.
+  const choose = (ids: string[]) => { setPicked(ids); setAsking(null); };
+  const count = useMutation({
+    mutationFn: (body: object) => api.post<BulkPlan>(
+      "/api/finance-entries/bulk/", { ...body, preview: true }),
+    onSuccess: (plan, body) => { setSaid(""); setAsking({ plan, body }); },
+    onError: (e: Error) => setSaid(e.message) });
+  const bulk = useMutation({
+    mutationFn: (body: object) => api.post<BulkPlan>("/api/finance-entries/bulk/", body),
+    onSuccess: () => { setSaid(""); refresh(); },
+    onError: (e: Error) => setSaid(e.message) });
   const act = useMutation({
     mutationFn: ({ url, body }: { url: string; body: object }) => api.post<unknown>(url, body),
     onSuccess: () => { setSaid(""); refresh(); },
@@ -321,19 +336,71 @@ function Entries() {
               && <> · showing the newest {data.entries.length} of {data.count}</>}
           </p>
         )}
-        {picked.length > 0 && (
-          <div className="row tight" style={{ marginBottom: "var(--s3)" }}>
-            <span className="small">{picked.length} chosen:</span>
-            <select aria-label="Category for the chosen entries" value={target}
-              style={{ width: "auto" }} onChange={(e) => setTarget(e.target.value)}>
-              <option value="">Move them to…</option>
-              {categoryOptions(categories.filter((c) => !c.archived), categories).map(
-                ([id, name]) => <option key={id} value={id}>{name}</option>)}
-            </select>
-            <button disabled={!target || act.isPending}
-              onClick={() => act.mutate({ url: "/api/finance-entries/recategorize/",
-                                          body: { entries: picked, category: target } })}>
-              Change the category</button>
+        {data && data.entries.length > 0 && (
+          <div className="row tight" role="group" aria-label="The selection"
+            style={{ marginBottom: "var(--s3)" }}>
+            <button className="ghost small"
+              disabled={picked.length === data.entries.length}
+              onClick={() => choose(data.entries.map((entry) => entry.id))}>
+              Select all {data.entries.length} shown</button>
+            {picked.length > 0 && (
+              <>
+                <button className="ghost small" onClick={() => choose([])}>
+                  Clear selection</button>
+                <span className="small"><strong>{picked.length} chosen</strong></span>
+                <select aria-label="Category for the chosen entries" value={target}
+                  style={{ width: "auto" }}
+                  onChange={(e) => { setTarget(e.target.value); setAsking(null); }}>
+                  <option value="">Move them to…</option>
+                  {categoryOptions(categories.filter((c) => !c.archived), categories).map(
+                    ([id, name]) => <option key={id} value={id}>{name}</option>)}
+                </select>
+                <button className="small" disabled={!target || count.isPending}
+                  onClick={() => count.mutate({ action: "recategorize", entries: picked,
+                                                category: target })}>
+                  Change category</button>
+                <button className="ghost small" disabled={count.isPending}
+                  onClick={() => count.mutate({ action: "remove", entries: picked })}>
+                  Delete</button>
+              </>
+            )}
+          </div>
+        )}
+        {asking && (
+          <div className="panel" role="group" aria-label="Before it acts"
+            style={{ marginBottom: "var(--s3)" }}>
+            <p className="small" role="status" style={{ marginTop: 0 }}>
+              <strong>{asking.plan.count} of {asking.plan.chosen}</strong>{" "}
+              {asking.plan.chosen === 1 ? "entry" : "entries"}{" "}
+              {asking.plan.action === "remove" ? "will be removed"
+                : `will move to ${asking.plan.to}`}
+              {asking.plan.first_on && asking.plan.last_on && (
+                asking.plan.first_on === asking.plan.last_on
+                  ? `, dated ${longDate(asking.plan.first_on)}`
+                  : `, from ${longDate(asking.plan.first_on)} to ${
+                    longDate(asking.plan.last_on)}`)}.
+              {asking.plan.left_out.length > 0 && <>{" "}Left as they are:{" "}
+                {asking.plan.left_out.map((row) => `${row.count} ${row.label}`).join("; ")}.</>}
+              {asking.plan.action === "remove" && asking.plan.count > 0 && <>{" "}A removed
+                entry is kept in the history and leaves every figure.</>}
+            </p>
+            {asking.plan.action === "remove" && asking.plan.count > 0 && (
+              <Field label="Why they are being removed">
+                <input aria-label="Why the entries are being removed" value={reason}
+                  onChange={(e) => setReason(e.target.value)} />
+              </Field>
+            )}
+            <div className="row tight">
+              <button className="primary small"
+                disabled={bulk.isPending || asking.plan.count === 0
+                  || (asking.plan.action === "remove" && !reason.trim())}
+                onClick={() => bulk.mutate({ ...asking.body,
+                  ...(asking.plan.action === "remove" ? { reason: reason.trim() } : {}) })}>
+                {asking.plan.action === "remove"
+                  ? `Remove ${asking.plan.count}` : `Move ${asking.plan.count} to ${asking.plan.to}`}
+              </button>
+              <button className="ghost small" onClick={() => setAsking(null)}>Cancel</button>
+            </div>
           </div>
         )}
         {!data ? <p>Loading the entries…</p> : data.entries.length === 0
@@ -356,12 +423,12 @@ function Entries() {
                   </td></tr>
                 ) : (
                   <tr key={entry.id}>
-                    <td>{entry.kind !== "transfer" && (
+                    <td>
                       <input type="checkbox" checked={picked.includes(entry.id)}
                         aria-label={`Choose the entry of ${longDate(entry.on_date)}, ${dollars(entry.amount_cents)}`}
-                        onChange={(e) => setPicked(e.target.checked
+                        onChange={(e) => choose(e.target.checked
                           ? [...picked, entry.id] : picked.filter((id) => id !== entry.id))} />
-                    )}</td>
+                    </td>
                     <td>{longDate(entry.on_date)}</td>
                     <td>{entry.description || entry.counterparty || <span className="muted">—</span>}
                       {entry.description && entry.counterparty
@@ -396,8 +463,40 @@ function Entries() {
               </tbody>
             </table>
           )}
+        <BulkChanges />
       </Card>
     </>
+  );
+}
+
+/** Every bulk change made to the entries, newest first: recorded as a
+ *  combine is. */
+function BulkChanges() {
+  const changes = useQuery<BulkChange[]>({
+    queryKey: ["finance-bulk"],
+    queryFn: () => api.get<BulkChange[]>("/api/finance-entries/bulk/") });
+  const rows = Array.isArray(changes.data) ? changes.data : [];
+  if (rows.length === 0) return null;
+  return (
+    <details style={{ marginTop: "var(--s3)" }}>
+      <summary className="small">Changed several at once: {rows.length}</summary>
+      <table aria-label="Changed several at once">
+        <thead><tr><th>When</th><th>What</th><th>Entries</th><th>By</th></tr></thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>{longDate(row.at.slice(0, 10))}</td>
+              <td>{row.action === "remove" ? `Removed: ${row.reason}`
+                : `Moved to ${row.to}`}</td>
+              <td>{row.count}{row.first_on && row.last_on
+                && <span className="muted">, {longDate(row.first_on)} to{" "}
+                  {longDate(row.last_on)}</span>}</td>
+              <td>{row.by}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   );
 }
 
