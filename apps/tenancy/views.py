@@ -319,3 +319,25 @@ class GettingStartedView(APIView):
         from apps.tenancy import getting_started
 
         return Response(getting_started.items(request.tenant))
+
+
+class GettingStartedCardView(APIView):
+    """This person's own choice about the dashboard's card: `how` is `later`
+    (back tomorrow), `never`, or `show`. It never changes what is listed at
+    the top of Settings."""
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def get(self, request):
+        from apps.tenancy import getting_started
+
+        return Response(getting_started.card(request.tenant, request.user))
+
+    def post(self, request):
+        from apps.tenancy import getting_started
+
+        try:
+            return Response(getting_started.dismiss(request.tenant, request.user,
+                                                    request.data.get("how")))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)

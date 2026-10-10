@@ -1173,3 +1173,12 @@ class FinanceGuideFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     user = factory.SubFactory(UserFactory)
     guided = True
+
+
+class GettingStartedDismissalFactory(TenantScopedFactory):
+    class Meta:
+        model = "tenancy.GettingStartedDismissal"
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+    never = True

@@ -217,3 +217,10 @@ register(FinanceGuide, factories.FinanceGuideFactory, api_exposed=False)
 # The notes of a call, attached to its session: read through the session, by
 # the practice owner and an associate on their own prospect, and nobody else.
 register(StrategyCallNotes, factories.StrategyCallNotesFactory, api_exposed=False)
+
+# A person's own choice about the dashboard's Getting started card: read and
+# written only as oneself, through the one route.
+from apps.tenancy.models import GettingStartedDismissal  # noqa: E402
+
+register(GettingStartedDismissal, factories.GettingStartedDismissalFactory,
+         api_exposed=False)

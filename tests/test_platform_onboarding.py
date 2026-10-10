@@ -230,3 +230,93 @@ def test_a_broken_sender_mailbox_is_said_plainly(api, platform_owner, blue_sky, 
         f"/api/platform/practices/{blue_sky.pk}/invite")
     assert response.status_code == 409
     assert "No Gmail account is connected" in response.json()["detail"]
+
+
+# ------------------------------------------------- putting the card away
+
+def _accepted(owner):
+    AgreementAcceptance.all_objects.create(tenant=owner.tenant, user=owner.user,
+                                           version="v1",
+                                           text_sha256=agreement.current()["sha256"])
+
+
+def _card(api, who, how=None):
+    client = api.as_(who)
+    if how is None:
+        return client.get("/api/getting-started/card")
+    import json
+
+    return client.post("/api/getting-started/card", json.dumps({"how": how}),
+                       content_type="application/json")
+
+
+@pytest.mark.django_db
+def test_the_card_is_hidden_for_today_or_for_good_by_the_person_for_the_person(
+        api, blue_sky_owner, monkeypatch):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.tenancy import getting_started
+    from apps.tenancy.models import GettingStartedDismissal
+
+    _accepted(blue_sky_owner)
+    second = _member(blue_sky_owner.tenant, "FF")
+    _accepted(second)
+    assert _card(api, blue_sky_owner).json() == {"hidden": False, "never": False,
+                                                 "hidden_until": None}
+    # "Hide for now": hidden for the rest of today, back tomorrow.
+    today = getting_started._today(blue_sky_owner.tenant)
+    later = _card(api, blue_sky_owner, "later").json()
+    assert later == {"hidden": True, "never": False, "hidden_until": today.isoformat()}
+    monkeypatch.setattr(getting_started, "_today", lambda tenant: today + timedelta(days=1))
+    assert _card(api, blue_sky_owner).json()["hidden"] is False
+    monkeypatch.undo()
+    # "Don't show again" outlasts tomorrow, and "show" brings it back.
+    assert _card(api, blue_sky_owner, "never").json()["never"] is True
+    monkeypatch.setattr(getting_started, "_today", lambda tenant: today + timedelta(days=30))
+    assert _card(api, blue_sky_owner).json()["hidden"] is True
+    # Per person: another practice owner of the same practice still has theirs.
+    assert _card(api, second).json()["hidden"] is False
+    assert GettingStartedDismissal.all_objects.filter(
+        tenant=blue_sky_owner.tenant).count() == 1
+    assert _card(api, blue_sky_owner, "show").json()["hidden"] is False
+    assert _card(api, blue_sky_owner, "tomorrow").status_code == 400
+    assert timezone.now()
+
+
+@pytest.mark.django_db
+def test_what_is_undone_is_listed_whatever_was_dismissed(api, blue_sky_owner):
+    """The top of Settings reads the checklist itself, which no dismissal
+    touches: Gmail not connected stays an open item."""
+    _accepted(blue_sky_owner)
+    before = api.as_(blue_sky_owner).get("/api/getting-started").json()
+    for how in ("later", "never"):
+        _card(api, blue_sky_owner, how)
+        after = api.as_(blue_sky_owner).get("/api/getting-started").json()
+        assert after == before
+        assert next(i for i in after if i["key"] == "gmail")["done"] is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["CF", "VA", "FCC"])
+def test_only_the_practice_owner_has_a_card_to_put_away(api, blue_sky, role):
+    from apps.tenancy.models import GettingStartedDismissal
+
+    company = ClientCompanyFactory(tenant=blue_sky) if role == "FCC" else None
+    member = _member(blue_sky, role, company)
+    assert _card(api, member).status_code == 403
+    assert _card(api, member, "never").status_code == 403
+    assert not GettingStartedDismissal.all_objects.exists()
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_a_dismissal_in_one_practice_hides_nothing_in_another(
+        api, blue_sky_owner, seeded_tenant):
+    _accepted(blue_sky_owner)
+    other = _member(seeded_tenant, "FF")
+    AgreementAcceptance.all_objects.create(
+        tenant=seeded_tenant, user=other.user, version="v1",
+        text_sha256=agreement.current()["sha256"])
+    assert _card(api, blue_sky_owner, "never").json()["hidden"] is True
+    assert _card(api, other).json()["hidden"] is False

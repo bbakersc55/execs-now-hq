@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { NavLink, Navigate, useLocation } from "react-router-dom";
 
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { SetupStillToDo } from "../components/GettingStarted";
 import { PageHead } from "../components/shell";
 import { Empty } from "../components/ui";
 import { Me } from "../lib/api";
@@ -74,6 +75,9 @@ export function Settings({ me, children }: { me: Me; children?: ReactNode }) {
       {/* Its own boundary, keyed by section: a section that fails leaves the
           list standing, and choosing another one clears the failure. */}
       <div className="settings-body">
+        {/* The practice owner's checklist, as long as any of it is undone,
+            whatever they did with the dashboard's card. */}
+        {me.role === "FF" && <ErrorBoundary><SetupStillToDo /></ErrorBoundary>}
         <ErrorBoundary key={pathname}>{children}</ErrorBoundary>
       </div>
     </div>

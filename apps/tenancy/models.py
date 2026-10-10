@@ -438,3 +438,25 @@ class AiCall(TenantScopedModel):
         # The daily-cap sum runs before every unattended call.
         indexes = [models.Index(fields=["tenant", "unattended", "created_at"],
                                 name="ai_call_unattended_day")]
+
+
+class GettingStartedDismissal(TenantScopedModel):
+    """A person's own choice about the dashboard's Getting started card
+    (owner, 2026-10-10): hidden for now, or not shown again. It hides the
+    card and nothing else: what is still to do stays at the top of Settings
+    until it is done."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+")
+    #: "Hide for now": hidden through this day, in the practice's time; back
+    #: the day after.
+    hidden_until = models.DateField(null=True, blank=True)
+    #: "Don't show again".
+    never = models.BooleanField(default=False, db_default=False)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "getting_started_dismissal"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "user"],
+                                    name="getting_started_dismissal_one_per_person"),
+        ]
