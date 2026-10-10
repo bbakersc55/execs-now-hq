@@ -383,3 +383,26 @@ send. They sit beside the existing internal notices that also send without a
 review step: the client-activity notice, sign-in links and PIN resets. No
 reminder approves, sends or changes a digest.
 
+
+---
+
+## On the demo only (owner, 2026-10-10)
+
+The demo runs no worker (`config/checks.py` refuses one). So nothing there
+sends an approved digest at its send time, and nothing marks a missed one
+late. Two things are different on the demo, and nowhere else:
+
+- **Approving sends at once,** inside the request, down the same path as
+  Send now (`digests.approve` hands to `digests.send_now` when
+  `APP_ENVIRONMENT=demo`). "Approve selected" sends each. Every send on the
+  demo goes to its one redirect address, which is what makes that safe. With
+  no redirect or no Gmail connection of its own, the demo's send goes
+  nowhere, as Send now's does there, and the digest still reads as sent.
+- **A digest still waiting when its send time has passed is expired** when
+  the digest list or the dashboard is loaded (`digests.demo_expire_passed`),
+  so it does not sit "pending", refusing approval. It is expired as any
+  digest is: its updates are released. Nothing is sent late.
+
+Production and the laptop are unchanged: approval is a promise that the
+timer keeps, and the timer's tick is what marks a missed digest late.
+`tests/test_digest_demo.py` holds both halves.

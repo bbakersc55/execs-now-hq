@@ -46,6 +46,10 @@ def for_request(request) -> dict:
         request, Task.objects.filter(status__in=OPEN_STATUSES))
     due = tasks.filter(due_date__isnull=False, due_date__lte=until)
     goals = _open_goals(request)
+    # Demo only, and a no-op anywhere else (digests.demo_expire_passed).
+    from apps.work import digests as digest_service
+
+    digest_service.demo_expire_passed(request.tenant)
     digests = _digests_for(request).filter(state=Digest.State.PENDING)
     changes = _stage_changes_for(request)
     moves = changes.filter(created_at__gte=since)

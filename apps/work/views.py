@@ -752,6 +752,10 @@ class DigestViewSet(WorkViewSet):
         return Response(work_serializers.represent_digest(digest))
 
     def list(self, request):
+        # Demo only, and a no-op anywhere else: with no worker there, a
+        # digest past its send time is expired when the list is opened.
+        if crm_perms.role_of(request) not in CLIENT_ROLES:
+            digest_service.demo_expire_passed(request.tenant)
         qs = self.get_queryset()
         state = request.query_params.get("state", Digest.State.PENDING)
         if state and state != "all":

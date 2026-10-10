@@ -924,6 +924,20 @@ def approve(digest, *, actor, role):
             "yourself with Send now, until the next digest is drafted.", status=409)
     if digest.state != Digest.State.PENDING:
         raise DigestActionRefused(f"This digest is {digest.get_state_display().lower()}.", status=409)
+    from config import environment
+
+    if environment.is_demo() and not environment.mail_is_quiet():
+        # (Not while the seed is building the demo's history, with the clock
+        # moved and mail quiet: it approves and sends as a practice with a
+        # worker would have, each at its own time.)
+        # The demo runs no worker (config/checks.py), so nothing would ever
+        # send an approved digest at its window: it would sit approved for
+        # good. There, approving sends at once, inside the request, down the
+        # same path as Send now (owner, 2026-10-10). Every send on the demo
+        # goes to its one redirect address, which is what makes that safe.
+        # Production is untouched: approval there is a promise that the timer
+        # keeps.
+        return send_now(digest, actor=actor, role=role)
     digest.state = Digest.State.APPROVED
     digest.approved_by = actor
     digest.approved_at = timezone.now()
@@ -1179,6 +1193,41 @@ def expire_due(tenant, *, now=None):
                          "send_time": digest.send_window_at.isoformat()})
             late.append(digest)
     return late
+
+
+def demo_expire_passed(tenant, *, now=None) -> list:
+    """**Demo only.** A digest still waiting when its send time has passed is
+    marked expired, here, when a page that lists digests is loaded (owner,
+    2026-10-10).
+
+    Everywhere else the worker's tick marks such a digest late, and the next
+    draft folds it away. The demo has no worker, so it would sit "pending"
+    for good, refusing approval, looking as if it could still go. Expiring it
+    releases its updates, as any expiry does. It does nothing off the demo,
+    whoever calls it."""
+    from config import environment
+
+    if not environment.is_demo():
+        return []
+    now = now or timezone.now()
+    expired = []
+    for pk in list(Digest.all_objects.filter(
+            tenant=tenant, state__in=(Digest.State.PENDING, Digest.State.LATE),
+            send_window_at__lte=now).values_list("pk", flat=True)):
+        with transaction.atomic():
+            digest = Digest.all_objects.select_for_update().filter(pk=pk).first()
+            if digest is None or digest.state not in (Digest.State.PENDING,
+                                                      Digest.State.LATE):
+                continue           # a person sent it while we queued
+            was = digest.state
+            _enter_dead_state(digest, Digest.State.EXPIRED)
+            AuditEvent.all_objects.create(
+                tenant=digest.tenant, verb="digest.expired", target_type="digest",
+                target_id=digest.pk,
+                payload={"cadence": digest.cadence, "was": was, "by": "demo_page_load",
+                         "send_time": digest.send_window_at.isoformat()})
+            expired.append(digest)
+    return expired
 
 
 def expire_late_for(tenant, contact_id, cadence) -> list:
