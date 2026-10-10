@@ -317,6 +317,31 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
             assert shown["difference_cents"] == left[0]["amount_cents"]
             assert shown["hints"][0] == {"kind": "untick", "entry": left[0]["id"],
                                          "text": shown["hints"][0]["text"]}
+        # The CPA's chart (§5.4): every expense is under a line of the worksheet.
+        from apps.finance import chart as the_chart
+        from apps.finance.models import FinanceYearFacts
+
+        lines = {name for name, _subs in the_chart.STARTING_CHART[1][1]}
+        used = set(entries.filter(kind="expense").values_list(
+            "category__parent__name", "category__name"))
+        assert all((parent or name) in lines for parent, name in used), used
+        assert len({parent or name for parent, name in used}) >= 12
+        # Estimated tax: owner draws, marked federal or state, each quarter.
+        taxes = entries.exclude(estimated_tax="")
+        assert set(taxes.values_list("kind", "direction", "category__name")) == {
+            ("owner", "out", "Estimated tax payments")}
+        assert set(taxes.values_list("estimated_tax", flat=True)) == {"federal", "state"}
+        assert taxes.count() >= 12 and taxes.count() % 2 == 0
+        assert {t.on_date.month for t in taxes} <= {1, 4, 6, 9}
+        import csv
+        import io
+
+        sheet = list(csv.reader(io.StringIO(reports.export_worksheet(tenant, year=2025))))
+        assert sheet[0] == ["Business income and expense worksheet, 2025, cash basis"]
+        assert ["Estimated tax payments", "Federal", "State"] in sheet
+        assert ["Total miles driven", "14820", ""] in sheet
+        assert ["Office square footage", "180", ""] in sheet
+        assert FinanceYearFacts.objects.count() == 2
         # The chart with sub-categories, and one combine and one split on record.
         assert FinanceCategory.objects.filter(parent__isnull=False).count() >= 30
         assert sorted(FinanceCategoryChange.objects.values_list("kind", flat=True)) == \

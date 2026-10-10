@@ -24,7 +24,9 @@ from .conftest import _member
 from .test_client_invoicing import (  # noqa: F401  (fixtures and helpers)
     TOTAL, a_client, acme, call, ecc, get, patch, post, ready_to_bill, sent,
 )
-from .test_finance_books import A, C, E, R, add, books, snapshot  # noqa: F401
+from .test_finance_books import (  # noqa: F401
+    A, C, E, R, add, books, snapshot, working_chart,
+)
 from .test_finance_reconcile import LAST, OPENING, OWED, PRIOR, RC, begin, end, on
 from .test_platform_practices import platform_owner, practices  # noqa: F401
 
@@ -56,7 +58,7 @@ def three(books, ff, api):          # noqa: F811
 def test_tenant_isolation_another_practice_cannot_count_or_change_our_entries(
         three, ff, tenant_b, api):
     other = _member(tenant_b, "FF")
-    their_meals = {row["name"]: row for row in get(api, other, C).json()}["Meals"]["id"]
+    their_meals = {row["name"]: row for row in get(api, other, C).json()}["Supplies"]["id"]
     before = snapshot(three["tenant"])
     assert get(api, other, B).json() == []
     for body in ({"action": "recategorize", "category": their_meals},
@@ -150,6 +152,7 @@ def test_changing_category_counts_first_then_moves_exactly_those(books, ff, api)
 def test_deleting_counts_first_needs_a_reason_and_leaves_locked_months_alone(
         ready_to_bill, ff, api):
     tenant = ready_to_bill
+    working_chart(tenant)
     modules.set_enabled(tenant, modules.BOOKKEEPING, True, actor=ff.user)
     bank = post(api, ff, A, {"name": "Checking", "kind": "bank", "opening_on": on(PRIOR, 1),
                              "opening_balance_cents": OPENING}).json()

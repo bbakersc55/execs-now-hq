@@ -38,9 +38,50 @@ C = "/api/finance-categories/"
 R = "/api/finance-reports/"
 
 
+#: The chart these tests of how the books work are written against: their
+#: own, so the starting chart a new practice gets (the CPA's list, P6 M1 §5.4)
+#: can change without rewriting them. The starting chart itself is tested in
+#: `test_a_practice_starts_with_the_chart…` and in `test_finance_chart.py`.
+WORKING_CHART = (
+    ("income", (
+        ("Client fees", ("Retainers", "Project fees", "Workshops and speaking")),
+        ("Referral fees received", ()), ("Reimbursed expenses", ()),
+        ("Interest income", ()), ("Other income", ()),
+    )),
+    ("expense", (
+        ("Contractors and associates", ("Associates", "Assistants", "Other contractors")),
+        ("Payroll", ("Wages", "Payroll taxes", "Benefits", "Payroll service fees")),
+        ("Software and subscriptions", ("Software", "AI and API usage")),
+        ("Marketing and advertising", ("Advertising", "Website", "Events and sponsorships")),
+        ("Travel", ("Airfare", "Lodging", "Ground transport")),
+        ("Meals", ()),
+        ("Vehicle", ("Mileage and fuel", "Parking and tolls")),
+        ("Professional services", ("Accounting", "Legal", "Coaching and consulting")),
+        ("Insurance", ("Business liability", "Health")),
+        ("Office", ("Supplies", "Equipment", "Postage and printing")),
+        ("Rent and coworking", ()), ("Phone and internet", ()),
+        ("Education and training", ()), ("Dues and memberships", ()),
+        ("Bank and merchant fees", ()), ("Referral fees paid", ()),
+        ("Taxes and licenses", ()), ("Interest paid", ()), ("Charitable giving", ()),
+        ("Other expenses", ()),
+    )),
+    ("owner", (("Owner contribution", ()),
+               ("Owner draw", ("Draws", "Estimated tax payments")))),
+    ("held", (("Sales tax collected", ()),)),
+)
+
+
+def working_chart(tenant) -> None:
+    from apps.finance import chart
+
+    chart.create_starting_chart(tenant, WORKING_CHART,
+                                contractor=("Contractors and associates",))
+
+
 @pytest.fixture
 def books(seeded_tenant, ff, api):
-    """A practice with its chart, a bank account and a card."""
+    """A practice with the working chart, a bank account and a card."""
+    working_chart(seeded_tenant)
     bank = post(api, ff, A, {"name": "Checking", "kind": "bank", "last4": "4421",
                              "opening_balance_cents": 1000000,
                              "opening_on": "2026-01-01"}).json()
@@ -108,7 +149,7 @@ def test_tenant_isolation_another_practice_reaches_nothing_in_the_books(books, f
     # Their own books are their own: the chart, and nothing else.
     assert get(api, other, E).json()["entries"] == []
     assert get(api, other, A).json() == []
-    assert len(get(api, other, C).json()) == 58      # its own starting chart, whole
+    assert len(get(api, other, C).json()) == 94      # its own starting chart, whole
     for method, url, body in finance_calls(books, mine["id"]):
         response = call(api.as_(other), method, url, body)
         assert b"SECRET-TRIP" not in response.content and b"Checking" not in response.content
@@ -117,7 +158,7 @@ def test_tenant_isolation_another_practice_reaches_nothing_in_the_books(books, f
             assert response.status_code == 404, (method, url)
     # An entry of theirs cannot name an account, a category or a company of ours.
     theirs = post(api, other, A, {"name": "Their bank"}).json()
-    their_cat = {row["name"]: row for row in get(api, other, C).json()}["Travel"]
+    their_cat = {row["name"]: row for row in get(api, other, C).json()}["Supplies"]
     for body in ({"account": books["bank"]["id"], "category": their_cat["id"]},
                  {"account": theirs["id"], "category": books["cat"]["Travel"]["id"]}):
         refused = post(api, other, E, {"kind": "expense", "amount_cents": 100,
@@ -197,16 +238,16 @@ def test_a_practice_starts_with_the_chart_and_edits_it_freely(seeded_tenant, ff,
     # The starting chart of P6 M1 §5.4: categories, and sub-categories under some.
     top = {t: [row["name"] for row in rows if row["type"] == t and not row["parent"]]
            for t in by_type}
-    assert [len(top[t]) for t in ("income", "expense", "owner", "held")] == [5, 20, 2, 1]
-    assert [len(by_type[t]) for t in ("income", "expense", "owner", "held")] == [8, 45, 4, 1]
-    assert top["income"][0] == "Client fees" and top["expense"][4] == "Travel"
+    assert [len(top[t]) for t in ("income", "expense", "owner", "held")] == [5, 30, 2, 1]
+    assert [len(by_type[t]) for t in ("income", "expense", "owner", "held")] == [8, 81, 4, 1]
+    assert top["income"][0] == "Client fees" and top["expense"][4] == "Contract labor"
     assert top["owner"] == ["Owner contribution", "Owner draw"]
-    travel = next(row for row in rows if row["name"] == "Travel")
+    travel = next(row for row in rows if row["name"] == "Repairs")
     # Rename, a CPA code, a new one, and the order.
-    assert patch(api, ff, f"{C}{travel['id']}/", {"name": "Travel and lodging",
+    assert patch(api, ff, f"{C}{travel['id']}/", {"name": "Repairs and upkeep",
                                                   "cpa_code": "24a"}).json()["cpa_code"] == "24a"
     made = post(api, ff, C, {"name": "Conferences", "type": "expense"})
-    assert made.status_code == 201 and made.json()["position"] == 20
+    assert made.status_code == 201 and made.json()["position"] == 30
     assert post(api, ff, C, {"name": "conferences", "type": "expense"}).status_code == 409
     assert post(api, ff, C, {"name": " ", "type": "expense"}).status_code == 400
     assert post(api, ff, C, {"name": "Odd", "type": "asset"}).status_code == 400
@@ -220,7 +261,7 @@ def test_a_practice_starts_with_the_chart_and_edits_it_freely(seeded_tenant, ff,
     with tenant_context(seeded_tenant.pk):
         FinanceCategory.objects.update(archived_at=timezone.now())
     assert all(row["archived"] for row in get(api, ff, C).json())
-    assert len(get(api, ff, C).json()) == 59
+    assert len(get(api, ff, C).json()) == 95
 
 
 @pytest.mark.django_db
@@ -745,3 +786,217 @@ def test_removing_a_payment_follows_billing_into_a_voidable_invoice(acme, ff, ap
     with tenant_context(acme[0].tenant_id):
         assert billing.totals(__import__("apps.billing.models", fromlist=["x"])
                               .ClientInvoice.objects.all())["invoiced_cents"] == 0
+
+
+# ======================== the CPA's worksheet (owner, 2026-10-10)
+
+def _sheet(api, ff, year=2026):
+    response = get(api, ff, R + f"export-worksheet/?year={year}")
+    assert response.status_code == 200
+    assert f'filename="cpa-worksheet-{year}.csv"' in response["Content-Disposition"]
+    return list(csv.reader(io.StringIO(response.content.decode())))
+
+
+@pytest.fixture
+def cpa_books(seeded_tenant, ff, api):
+    """A new practice, with the CPA's chart as it starts, and a bank account."""
+    bank = post(api, ff, A, {"name": "Checking", "kind": "bank",
+                             "opening_balance_cents": 1000000,
+                             "opening_on": "2026-01-01"}).json()
+    card = post(api, ff, A, {"name": "Card", "kind": "card",
+                             "opening_on": "2026-01-01"}).json()
+    return {"tenant": seeded_tenant, "bank": bank, "card": card,
+            "cat": {row["name"]: row for row in get(api, ff, C).json()}}
+
+
+@pytest.mark.django_db
+def test_the_worksheet_lists_a_line_a_category_in_the_worksheets_order(cpa_books, ff, api):
+    from apps.finance import chart
+
+    b = cpa_books
+    add(api, ff, b, "income", 500000, "2026-02-01", "Retainers")
+    add(api, ff, b, "income", 20000, "2026-02-03", "Client fees")
+    add(api, ff, b, "expense", 45000, "2026-02-05", "Bookkeeping")
+    add(api, ff, b, "expense", 185000, "2026-03-18", "Tax preparation")
+    add(api, ff, b, "expense", 30000, "2026-03-04", "Airfare")
+    add(api, ff, b, "expense", 9000, "2026-03-04", "Travel: airfare, rental car, hotel")
+    add(api, ff, b, "expense", 2000, "2026-03-04", "Airfare", direction="in")     # a refund
+    add(api, ff, b, "expense", 12000, "2026-04-02", "Education and training")
+    add(api, ff, b, "expense", 3500, "2026-04-09", "Business gifts")
+    add(api, ff, b, "expense", 700, "2026-04-10", "Miscellaneous (itemized)")
+    add(api, ff, b, "expense", 99900, "2026-05-01", "Wages")
+    add(api, ff, b, "expense", 1234, "2026-05-02")                    # no category yet
+    add(api, ff, b, "expense", 77700, "2025-12-31", "Supplies")       # another year
+    add(api, ff, b, "transfer", 5000, "2026-05-03", to_account=b["card"]["id"])
+    add(api, ff, b, "owner", 250000, "2026-05-28", "Draws", direction="out")
+
+    rows = _sheet(api, ff)
+    assert rows[0] == ["Business income and expense worksheet, 2026, cash basis"]
+    start, stop = rows.index(["Expenses", "Amount", "Note"]), rows.index(
+        ["Total expenses", "3843.34", ""])
+    expenses = rows[start + 1:stop]
+    # Every category of the chart, in the worksheet's order, whether or not
+    # anything was spent; a category's figure is its own and its sub-categories'.
+    tops = [row for row in expenses if not row[0].startswith("  ")
+            and row[0] != "(no category yet)"]
+    assert [row[0] for row in tops] == [name for name, _ in chart.STARTING_CHART[1][1]]
+    by_name = {row[0]: row for row in expenses}
+    assert by_name["Accounting"] == ["Accounting", "2300.00", ""]
+    assert by_name["Travel: airfare, rental car, hotel"][1] == "370.00"
+    assert by_name["Supplies"][1] == "0.00" and by_name["Uniforms"][1] == "0.00"
+    assert "  Bookkeeping" not in by_name, "sub-categories are ours, not the worksheet's"
+    # Miscellaneous is itemized: each sub-category on its own line, under it.
+    at = expenses.index(["Miscellaneous (itemized)", "162.00", "Itemized below"])
+    assert expenses[at + 1:at + 6] == [
+        ["  Education and training", "120.00", ""], ["  Business gifts", "35.00", ""],
+        ["  Taxes and licenses", "0.00", ""], ["  Other (itemize)", "0.00", ""],
+        ["  Miscellaneous (itemized), not itemized", "7.00", ""]]
+    # The one category that is not a line of the worksheet says so, and is last.
+    assert tops[-1] == ["Wages and payroll taxes", "999.00", "Not a line of the worksheet"]
+    assert by_name["(no category yet)"][1] == "12.34"
+    income = rows[rows.index(["Income", "Amount", "Note"]) + 1:start - 1]
+    assert income[0] == ["Client fees", "5200.00", ""]
+    assert income[-1] == ["Total income", "5200.00", ""]
+    assert ["Net", "1356.66", ""] in rows
+    # It agrees with the P&L: the same entries, grouped the worksheet's way.
+    report = get(api, ff, R + "pnl/?year=2026").json()
+    assert (report["income"]["total"], report["expenses"]["total"]
+            + report["uncategorized"]["amount_cents"]) == (520000, 384334)
+    assert rows[-1] == [DISCLAIMER_TEXT]
+    with tenant_context(b["tenant"].pk):
+        event = AuditEvent.objects.filter(verb="finance.cpa_export_downloaded").last()
+        assert event.payload == {"file": "worksheet", "year": 2026}
+    for bad in ("x", "1999", "2999"):
+        assert get(api, ff, R + f"export-worksheet/?year={bad}").status_code == 400
+
+
+DISCLAIMER_TEXT = ("Bookkeeping and projections only, not tax, legal or financial advice. "
+                   "Confirm with your CPA.")
+
+
+@pytest.mark.django_db
+def test_an_owner_draw_is_marked_an_estimated_tax_payment_and_listed_by_date(
+        cpa_books, ff, api):
+    b = cpa_books
+    state = add(api, ff, b, "owner", 80000, "2026-06-15", "Estimated tax payments",
+                direction="out", estimated_tax="state")
+    assert state.status_code == 201 and state.json()["estimated_tax"] == "state"
+    fed = add(api, ff, b, "owner", 450000, "2026-04-15", "Estimated tax payments",
+              direction="out", estimated_tax="Federal").json()
+    assert fed["estimated_tax"] == "federal"
+    plain = add(api, ff, b, "owner", 300000, "2026-04-28", "Draws", direction="out").json()
+    assert plain["estimated_tax"] == ""
+    add(api, ff, b, "owner", 100000, "2025-09-15", "Estimated tax payments",
+        direction="out", estimated_tax="federal")                     # another year
+    # It is the owner's own money going out, and nothing else.
+    for body in (dict(kind="expense", category="Supplies"),
+                 dict(kind="owner", category="Owner contribution", direction="in"),
+                 dict(kind="income", category="Client fees")):
+        kind, category = body.pop("kind"), body.pop("category")
+        refused = add(api, ff, b, kind, 100, "2026-06-01", category,
+                      estimated_tax="federal", **body)
+        assert refused.status_code == 400 and "owner took out" in refused.json()["detail"]
+    assert add(api, ff, b, "owner", 100, "2026-06-01", "Draws", direction="out",
+               estimated_tax="city").status_code == 400
+    # Marked and unmarked afterwards; a marked draw cannot turn into money in.
+    marked = patch(api, ff, f"{E}{plain['id']}/", {"estimated_tax": "state"})
+    assert marked.status_code == 200 and marked.json()["estimated_tax"] == "state"
+    assert patch(api, ff, f"{E}{plain['id']}/", {"direction": "in"}).status_code == 400
+    assert patch(api, ff, f"{E}{plain['id']}/", {"estimated_tax": ""}).json()[
+        "estimated_tax"] == ""
+    with tenant_context(b["tenant"].pk):
+        changes = AuditEvent.objects.filter(verb="finance.entry_changed",
+                                            target_id=plain["id"]).order_by("created_at")
+        assert [e.payload["after"].get("estimated_tax", "") for e in changes] == ["state", ""]
+
+    rows = _sheet(api, ff)
+    at = rows.index(["Estimated tax payments", "Federal", "State"])
+    assert rows[at + 1:at + 4] == [["2026-04-15", "4500.00", ""], ["2026-06-15", "", "800.00"],
+                                   ["Total", "4500.00", "800.00"]]
+    # Not an expense: it is in no expense line and not in the P&L.
+    assert ["Total expenses", "0.00", ""] in rows
+    assert get(api, ff, R + "pnl/?year=2026").json()["expenses"]["total"] == 0
+
+
+@pytest.mark.django_db
+def test_year_end_facts_are_kept_per_year_and_carried_onto_the_worksheet(cpa_books, ff, api):
+    Y = "/api/finance-settings/year-facts/"
+    blank = {"total_miles": None, "business_miles": None, "home_square_feet": None,
+             "office_square_feet": None}
+    assert get(api, ff, Y + "?year=2026").json() == {"year": 2026, **blank}
+    saved = post(api, ff, Y, {"year": 2026, "total_miles": 14820, "business_miles": 6310,
+                              "home_square_feet": 2400, "office_square_feet": 180})
+    assert saved.status_code == 200
+    assert saved.json() == {"year": 2026, "total_miles": 14820, "business_miles": 6310,
+                            "home_square_feet": 2400, "office_square_feet": 180}
+    # Per year, and one fact at a time; a null is "not said".
+    assert get(api, ff, Y + "?year=2025").json() == {"year": 2025, **blank}
+    post(api, ff, Y, {"year": 2025, "total_miles": 9000})
+    assert post(api, ff, Y, {"year": 2026, "business_miles": None}).json()[
+        "business_miles"] is None
+    assert get(api, ff, Y + "?year=2026").json()["total_miles"] == 14820
+    for body in ({"year": 2026, "business_miles": 20000},        # more than the total
+                 {"year": 2026, "office_square_feet": 5000},     # larger than the home
+                 {"year": 2026, "total_miles": -1}, {"year": 2026, "total_miles": "many"},
+                 {"year": 2026, "total_miles": 1.5}, {"year": 1999, "total_miles": 1},
+                 {"year": "2026", "total_miles": 1}, {"total_miles": 1}):
+        assert post(api, ff, Y, body).status_code == 400, body
+    assert get(api, ff, Y + "?year=nope").status_code == 400
+    with tenant_context(cpa_books["tenant"].pk):
+        assert AuditEvent.objects.filter(verb="finance.year_facts_changed").count() == 3
+
+    rows = _sheet(api, ff)
+    at = rows.index(["Year-end facts", "", ""])
+    assert rows[at + 1:at + 5] == [
+        ["Total miles driven", "14820", ""], ["Business miles", "", ""],
+        ["Home square footage", "2400", ""], ["Office square footage", "180", ""]]
+    assert _sheet(api, ff, 2025)[-6][:2] == ["Total miles driven", "9000"]
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_and_role_boundaries_on_the_worksheet_and_year_facts(
+        cpa_books, ff, cf, va, fcc, ecc, tenant_b, api):
+    Y = "/api/finance-settings/year-facts/"
+    add(api, ff, cpa_books, "expense", 4242400, "2026-03-04", "Supplies")
+    add(api, ff, cpa_books, "owner", 5151500, "2026-04-15", "Estimated tax payments",
+        direction="out", estimated_tax="federal")
+    post(api, ff, Y, {"year": 2026, "total_miles": 31313})
+    calls = [("get", R + "export-worksheet/?year=2026", None), ("get", Y + "?year=2026", None),
+             ("post", Y, {"year": 2026, "total_miles": 7})]
+    before = snapshot(cpa_books["tenant"])
+    for who, status in ((va, 403), (cf, 403), (fcc, 404), (ecc, 404)):
+        for method, url, body in calls:
+            response = call(api.as_(who), method, url, body)
+            assert response.status_code == status, (who.role, url)
+            for secret in (b"42424", b"51515", b"31313"):
+                assert secret not in response.content
+    # Another practice's worksheet and facts are its own: none of ours in them.
+    other = _member(tenant_b, "FF")
+    theirs = get(api, other, R + "export-worksheet/?year=2026").content.decode()
+    assert "42424.00" not in theirs and "51515.00" not in theirs and "31313" not in theirs
+    assert get(api, other, Y + "?year=2026").json()["total_miles"] is None
+    post(api, other, Y, {"year": 2026, "total_miles": 5})
+    assert get(api, ff, Y + "?year=2026").json()["total_miles"] == 31313
+    owner = _member(cpa_books["tenant"], "FF")
+    owner.user.is_platform_owner = True
+    owner.user.save()
+    client = in_practices_area(api.as_(owner))
+    for method, url, body in calls:
+        assert call(client, method, url, body).status_code in (403, 404)
+    with tenant_context(tenant_b.pk):
+        AuditEvent.objects.all().delete()
+    assert json.loads(snapshot(cpa_books["tenant"]))["entries"] == \
+        json.loads(before)["entries"]
+
+
+def test_the_note_above_the_chart_is_the_same_words_in_both_places():
+    import re
+    from pathlib import Path
+
+    from apps.finance import chart
+
+    source = (Path(__file__).resolve().parent.parent
+              / "frontend/src/lib/finance.ts").read_text()
+    found = re.search(r'CHART_NOTE\s*=\s*\n?\s*"([^"]+)"', source)
+    assert found and found.group(1) == chart.NOTE
+    assert "“Wages and payroll taxes” is the one that is not on the worksheet" in chart.NOTE

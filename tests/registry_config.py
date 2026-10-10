@@ -224,3 +224,9 @@ from apps.tenancy.models import GettingStartedDismissal  # noqa: E402
 
 register(GettingStartedDismissal, factories.GettingStartedDismissalFactory,
          api_exposed=False)
+
+# The year's miles and square feet for the CPA's worksheet: the one settings
+# route, by year, never by id.
+from apps.finance.models import FinanceYearFacts  # noqa: E402
+
+register(FinanceYearFacts, factories.FinanceYearFactsFactory, api_exposed=False)

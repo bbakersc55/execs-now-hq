@@ -1182,3 +1182,12 @@ class GettingStartedDismissalFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     user = factory.SubFactory(UserFactory)
     never = True
+
+
+class FinanceYearFactsFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceYearFacts"
+
+    tenant = factory.SubFactory(TenantFactory)
+    year = 2026
+    total_miles = 12000

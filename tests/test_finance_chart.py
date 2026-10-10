@@ -190,12 +190,12 @@ def test_tenant_isolation_another_practice_reaches_none_of_the_chart(
     refused = [
         # Our category as their parent, their target, or the thing they act on.
         ("post", C, {"name": "Tolls", "parent": mine["Travel"]["id"]}),
-        ("patch", f"{C}{theirs['Meals']['id']}/", {"parent": mine["Travel"]["id"]}),
-        ("patch", f"{C}{mine['Meals']['id']}/", {"parent": theirs["Travel"]["id"]}),
-        ("post", f"{C}{theirs['Meals']['id']}/merge/", {"into": mine["Travel"]["id"]}),
-        ("post", f"{C}{mine['Meals']['id']}/merge/", {"into": theirs["Travel"]["id"]}),
+        ("patch", f"{C}{theirs['Supplies']['id']}/", {"parent": mine["Travel"]["id"]}),
+        ("patch", f"{C}{mine['Meals']['id']}/", {"parent": theirs["Vehicle"]["id"]}),
+        ("post", f"{C}{theirs['Supplies']['id']}/merge/", {"into": mine["Travel"]["id"]}),
+        ("post", f"{C}{mine['Meals']['id']}/merge/", {"into": theirs["Vehicle"]["id"]}),
         ("post", f"{C}{mine['Travel']['id']}/split/", {"name": "X", "contains": "SECRET"}),
-        ("post", f"{C}{theirs['Travel']['id']}/split/",
+        ("post", f"{C}{theirs['Vehicle']['id']}/split/",
          {"to": mine["Meals"]["id"], "contains": "SECRET"}),
         ("delete", f"{C}{mine['Vehicle']['id']}/", None),
         ("post", C + "reorder/", {"type": "expense", "parent": mine["Travel"]["id"],
@@ -587,27 +587,89 @@ def test_a_split_is_refused_when_it_would_move_nothing_or_break_the_chart(kept, 
 # ============================================================ the starting chart
 
 @pytest.mark.django_db
-def test_a_new_practice_starts_with_the_two_level_chart(kept, ff, api):
+def test_a_new_practice_starts_with_the_cpas_chart(seeded_tenant, ff, api):
+    """§5.4, the owner's CPA's list (2026-10-10)."""
+    modules.set_enabled(seeded_tenant, modules.BOOKKEEPING, True, actor=ff.user)
     rows = get(api, ff, C).json()
     by_id = {row["id"]: row for row in rows}
     tree = {}
     for row in sorted(rows, key=lambda r: r["position"]):
         if row["parent"]:
             tree.setdefault(by_id[row["parent"]]["name"], []).append(row["name"])
+    # Income, owner and held are as they were built.
     assert tree["Client fees"] == ["Retainers", "Project fees", "Workshops and speaking"]
-    assert tree["Travel"] == ["Airfare", "Lodging", "Ground transport"]
     assert tree["Owner draw"] == ["Draws", "Estimated tax payments"]
-    assert len(tree) == 11 and sum(len(subs) for subs in tree.values()) == 30
+    # Every expense category is a line of the CPA's Business Income & Expense
+    # Worksheet, word for word and in its order; the last is the one that is not.
+    expenses = [row["name"] for row in sorted(rows, key=lambda r: r["position"])
+                if row["type"] == "expense" and not row["parent"]]
+    assert expenses == [
+        "Accounting", "Advertising", "Bank charges", "Commissions", "Contract labor",
+        "Dues and subscriptions", "Insurance (business only)", "Interest",
+        "Laundry and cleaning", "Legal and professional fees", "Office expense",
+        "Outside services", "Parking and tolls", "Postage", "Printing",
+        "Rent/lease of equipment", "Repairs", "Security", "Supplies", "Telephone", "Tools",
+        "Travel: airfare, rental car, hotel", "Travel: meals", "Uniforms", "Utilities",
+        "Computer/internet", "Home office", "Vehicle", "Miscellaneous (itemized)",
+        "Wages and payroll taxes"]
+    assert expenses[-1] == chart.NOT_ON_WORKSHEET and chart.ITEMIZED in expenses
+    # The sub-categories are ours.
+    assert {name: tree.get(name, []) for name in expenses} == {
+        "Accounting": ["Bookkeeping", "Tax preparation"],
+        "Advertising": ["Online ads", "Website and hosting", "Sponsorships and events",
+                        "Promotional items"],
+        "Bank charges": ["Bank fees", "Payment processing fees"],
+        "Commissions": ["Referral commissions"],
+        "Contract labor": ["Associates", "Assistants", "Other contractors"],
+        "Dues and subscriptions": ["Software and apps", "Professional memberships",
+                                   "Publications"],
+        "Insurance (business only)": ["General liability", "Professional liability (E&O)",
+                                      "Other business insurance"],
+        "Interest": ["Loan interest", "Credit card interest"],
+        "Laundry and cleaning": [],
+        "Legal and professional fees": ["Legal", "Coaching and consulting",
+                                        "Other professional fees"],
+        "Office expense": ["Coworking and meeting rooms", "Furniture and small equipment",
+                           "Other office"],
+        "Outside services": ["Marketing and design services", "IT and technical services",
+                             "Other outside services"],
+        "Parking and tolls": [], "Postage": [], "Printing": [],
+        "Rent/lease of equipment": [], "Repairs": [], "Security": [], "Supplies": [],
+        "Telephone": ["Mobile phone", "Business line"],
+        "Tools": [],
+        "Travel: airfare, rental car, hotel": ["Airfare", "Lodging",
+                                               "Rental car and ground transport",
+                                               "Other travel"],
+        "Travel: meals": ["Meals with clients and partners", "Meals while traveling"],
+        "Uniforms": [], "Utilities": [],
+        "Computer/internet": ["Internet service", "Computers and devices",
+                              "Accessories and peripherals"],
+        "Home office": ["Rent (home office share)", "Utilities (home office share)"],
+        "Vehicle": ["Fuel", "Maintenance and repairs", "Mileage reimbursement"],
+        "Miscellaneous (itemized)": ["Education and training", "Business gifts",
+                                     "Taxes and licenses", "Other (itemize)"],
+        "Wages and payroll taxes": ["Wages", "Payroll taxes"]}
+    assert len(tree) == 21 and sum(len(subs) for subs in tree.values()) == 56
+    assert len(rows) == 94
     assert all(by_id[row["parent"]]["type"] == row["type"] for row in rows if row["parent"])
     names = [row["name"].casefold() for row in rows]
     assert len(names) == len(set(names)), "every name in the chart is its own"
-    assert [row["name"] for row in rows if row["is_contractor"]] == [
-        "Contractors and associates"]
+    # Sentence case throughout: a capital to begin, and none after it but a
+    # name's own (E&O, IT).
+    for row in rows:
+        words = re.split(r"[ /(:]+", row["name"])
+        assert row["name"][0].isupper(), row["name"]
+        assert all(w.islower() or w in ("E&O)", "IT") or not w[:1].isalpha()
+                   for w in words[1:]), row["name"]
+    # 1099 tracking hangs on contract labor.
+    assert [row["name"] for row in rows if row["is_contractor"]] == ["Contract labor"]
     assert {row["name"] for row in rows if row["system"]} == {"Client fees",
                                                               "Sales tax collected"}
-    # A practice that starts with it has nothing to add.
+    # A practice that starts with it has nothing to add, and the note says
+    # which category is not on the worksheet.
     plan = get(api, ff, C + "starting-chart/").json()
     assert plan["add"] == [] and plan["skipped"] == [] and "Ask your CPA" in plan["note"]
+    assert "“Wages and payroll taxes” is the one that is not on the worksheet" in plan["note"]
 
 
 @pytest.fixture
@@ -619,22 +681,22 @@ def an_older_practice(seeded_tenant, ff):
         rows = {}
         for position, (name, kind) in enumerate((
                 ("Client fees", "income"), ("Consulting income", "income"),
-                ("TRAVEL", "expense"), ("Meals", "expense"), ("Airfare", "expense"),
-                ("Insurance", "expense"), ("Vehicle", "expense"),
+                ("TRAVEL: MEALS", "expense"), ("Supplies", "expense"), ("Airfare", "expense"),
+                ("Home office", "expense"), ("Vehicle", "expense"),
                 ("Contractors and associates", "expense"), ("Owner draw", "owner"),
                 ("Sales tax collected", "held"))):
             rows[name] = FinanceCategory.objects.create(
                 tenant=seeded_tenant, name=name, type=kind, position=position,
-                cpa_code="X1" if name == "Meals" else "",
+                cpa_code="X1" if name == "Supplies" else "",
                 system_code=chart.SYSTEM_CODES.get(name, ""))
-        # "Airfare" is theirs, and under Meals: odd, and their business.
-        rows["Airfare"].parent = rows["Meals"]
+        # "Airfare" is theirs, and under Supplies: odd, and their business.
+        rows["Airfare"].parent = rows["Supplies"]
         rows["Airfare"].save()
-        # They removed Vehicle on purpose; and Insurance sits under Meals too.
+        # They removed Vehicle on purpose; and Home office sits under Supplies too.
         rows["Vehicle"].archived_at = rows["Vehicle"].created_at
         rows["Vehicle"].save()
-        rows["Insurance"].parent = rows["Meals"]
-        rows["Insurance"].save()
+        rows["Home office"].parent = rows["Supplies"]
+        rows["Home office"].save()
     return seeded_tenant
 
 
@@ -654,27 +716,29 @@ def test_add_the_starting_chart_adds_what_is_missing_and_touches_nothing_else(
         bank = services.save_account(tenant, actor=ff.user, name="Checking")
         entry = services.create_entry(
             tenant, actor=ff.user, kind="expense", on_date="2026-03-01", amount_cents=5000,
-            account=bank, category=FinanceCategory.objects.get(name="TRAVEL"))
+            account=bank, category=FinanceCategory.objects.get(name="TRAVEL: MEALS"))
     before = _chart_rows(tenant)
 
     plan = get(api, ff, C + "starting-chart/").json()
     assert _chart_rows(tenant) == before, "looking adds nothing"
     adding = {(item["name"], item["parent"]) for item in plan["add"]}
     # Missing categories, and missing sub-categories under what they have.
-    assert ("Payroll", None) in adding and ("Wages", "Payroll") in adding
+    assert ("Accounting", None) in adding and ("Bookkeeping", "Accounting") in adding
     assert ("Retainers", "Client fees") in adding
-    assert ("Lodging", "Travel") in adding, "matched to their TRAVEL, whatever the case"
     assert ("Draws", "Owner draw") in adding
-    # What they have, by name and type, is not added again, wherever it sits.
+    assert ("Contract labor", None) in adding and ("Associates", "Contract labor") in adding
+    # What they have, by name and type, is not added again, wherever it sits
+    # and whatever its case: their TRAVEL: MEALS is the chart's "Travel: meals".
     have = {name for name, _ in adding}
-    assert not have & {"Client fees", "Travel", "TRAVEL", "Meals", "Airfare",
-                       "Contractors and associates", "Owner draw", "Sales tax collected"}
+    assert ("Meals while traveling", "Travel: meals") in adding
+    assert not have & {"Client fees", "Travel: meals", "TRAVEL: MEALS", "Supplies", "Airfare",
+                       "Owner draw", "Sales tax collected"}
     # Archived on purpose counts as theirs: not brought back, nor its sub-categories.
     assert "Vehicle" not in have
     assert {item["name"] for item in plan["skipped"]} == {
-        "Mileage and fuel", "Parking and tolls",          # Vehicle is archived
-        "Business liability", "Health"}                   # Insurance is a sub-category here
-    assert "Consulting income" not in have
+        "Fuel", "Maintenance and repairs", "Mileage reimbursement",     # Vehicle is archived
+        "Rent (home office share)", "Utilities (home office share)"}    # Home office is a sub
+    assert "Consulting income" not in have and "Contractors and associates" not in have
 
     done = post(api, ff, C + "starting-chart/", {})
     assert done.status_code == 200 and done.json()["added"] == len(plan["add"])
@@ -683,16 +747,18 @@ def test_add_the_starting_chart_adds_what_is_missing_and_touches_nothing_else(
         "nothing that was there is renamed, moved, re-typed, archived or removed"
     assert len(after) == len(before) + len(plan["add"])
     now = cats(api, ff)
-    assert now["Lodging"]["parent"] == now["TRAVEL"]["id"]
-    assert now["Airfare"]["parent"] == now["Meals"]["id"], "theirs stays where they put it"
-    assert now["Wages"]["parent"] == now["Payroll"]["id"]
-    assert now["Payroll"]["position"] > now["Contractors and associates"]["position"]
+    assert now["Meals while traveling"]["parent"] == now["TRAVEL: MEALS"]["id"]
+    assert now["Airfare"]["parent"] == now["Supplies"]["id"], "theirs stays where they put it"
+    assert now["Bookkeeping"]["parent"] == now["Accounting"]["id"]
+    assert now["Accounting"]["position"] > now["Contractors and associates"]["position"]
+    assert now["Contract labor"]["is_contractor"] is True
     with tenant_context(tenant.pk):
-        assert FinanceEntry.objects.get(pk=entry.pk).category.name == "TRAVEL"
+        assert FinanceEntry.objects.get(pk=entry.pk).category.name == "TRAVEL: MEALS"
         audit = AuditEvent.objects.get(verb="finance.starting_chart_added")
-        assert "Payroll" in audit.payload["added"]
-        assert sorted(audit.payload["skipped"]) == ["Business liability", "Health",
-                                                    "Mileage and fuel", "Parking and tolls"]
+        assert "Accounting" in audit.payload["added"]
+        assert sorted(audit.payload["skipped"]) == [
+            "Fuel", "Maintenance and repairs", "Mileage reimbursement",
+            "Rent (home office share)", "Utilities (home office share)"]
     # Pressed again: nothing new in the chart, so nothing added, nothing audited.
     again = post(api, ff, C + "starting-chart/", {}).json()
     assert again["added"] == 0 and _chart_rows(tenant) == after

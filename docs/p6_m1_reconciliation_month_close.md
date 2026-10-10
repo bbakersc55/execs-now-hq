@@ -1,6 +1,6 @@
 # P6 M1 — Reconciliation and month close
 
-**Spec · 2026-10-08 · decided 2026-10-08 · stop 1 built 2026-10-08 · stop 2 built 2026-10-10 · not released**
+**Spec · 2026-10-08 · decided 2026-10-08 · stop 1 built 2026-10-08 · stop 2 built 2026-10-10 · the CPA's chart and the worksheet export 2026-10-10 · not released**
 
 The first of four finance modules asked for by the owner on 2026-10-08:
 M1 reconciliation and month close (this file), M2 cash forecast, M3 balance
@@ -28,8 +28,9 @@ specifics.**
   have no date; Blue Sky has no finance settings yet. So "locked before month
   close began" will apply to nothing in production. The demo's typed lock
   (2025-12-31) is replaced by its seeded closes (§10).
-- **M1-14:** the chart of §5.4 is a placeholder. **The owner's CPA's list is
-  coming and replaces §5.4 before stop 1 is finished.** Stop 1 also builds a
+- **M1-14:** the chart of §5.4 was a placeholder. **The owner's CPA's list
+  arrived 2026-10-10 and is §5.4 now** (after stop 2, not before stop 1 was
+  finished, as first planned). Stop 1 also builds a
   Categories action, **"Add the starting chart"**, for an existing practice
   (§5.4).
 - **M1-15:** the disclaimer's exact words are the owner's (§6).
@@ -287,8 +288,8 @@ written here in the app, free, and always shown:
 
 ### 5.4 The starting chart
 
-**A placeholder (owner, 2026-10-08):** the owner's CPA's list replaces this
-section before stop 1 is finished, and the build takes the chart from here.
+**The owner's CPA's list (2026-10-10).** It replaces the placeholder that
+stood here, and the build takes the chart from here (`apps/finance/chart.py`).
 
 For a new practice it is the chart it starts with. **An existing practice's
 chart is not touched.** It gets a Categories action, **"Add the starting
@@ -303,7 +304,7 @@ chart"** (stop 1), so Executives Now and Blue Sky can pick it up:
 - it shows what it would add before it adds it, can be pressed again later
   (it then adds only what is new in the chart), and is audited.
 
-**Income**
+**Income** (as built in stop 1)
 
 | Category | Sub-categories |
 |---|---|
@@ -313,38 +314,87 @@ chart"** (stop 1), so Executives Now and Blue Sky can pick it up:
 | Interest income | |
 | Other income | |
 
-**Expenses**
+**Expenses.** Every category but the last is **one line of the CPA's
+Business Income & Expense Worksheet, word for word and in the worksheet's
+order,** so the export for the CPA maps one to one. The sub-categories are
+ours. Sentence case throughout.
 
-| Category | Sub-categories |
+| Category (the worksheet's line) | Sub-categories (ours) |
 |---|---|
-| Contractors and associates *(paid to contractors)* | Associates · Assistants · Other contractors |
-| Payroll | Wages · Payroll taxes · Benefits · Payroll service fees |
-| Software and subscriptions | Software · AI and API usage |
-| Marketing and advertising | Advertising · Website · Events and sponsorships |
-| Travel | Airfare · Lodging · Ground transport |
-| Meals | |
-| Vehicle | Mileage and fuel · Parking and tolls |
-| Professional services | Accounting · Legal · Coaching and consulting |
-| Insurance | Business liability · Health |
-| Office | Supplies · Equipment · Postage and printing |
-| Rent and coworking | |
-| Phone and internet | |
-| Education and training | |
-| Dues and memberships | |
-| Bank and merchant fees | |
-| Referral fees paid | |
-| Taxes and licenses | |
-| Interest paid | |
-| Charitable giving | |
-| Other expenses | |
+| Accounting | Bookkeeping · Tax preparation |
+| Advertising | Online ads · Website and hosting · Sponsorships and events · Promotional items |
+| Bank charges | Bank fees · Payment processing fees |
+| Commissions | Referral commissions |
+| Contract labor *(paid to contractors: 1099 tracking hangs here)* | Associates · Assistants · Other contractors |
+| Dues and subscriptions | Software and apps · Professional memberships · Publications |
+| Insurance (business only) | General liability · Professional liability (E&O) · Other business insurance |
+| Interest | Loan interest · Credit card interest |
+| Laundry and cleaning | |
+| Legal and professional fees | Legal · Coaching and consulting · Other professional fees |
+| Office expense | Coworking and meeting rooms · Furniture and small equipment · Other office |
+| Outside services | Marketing and design services · IT and technical services · Other outside services |
+| Parking and tolls | |
+| Postage | |
+| Printing | |
+| Rent/lease of equipment | |
+| Repairs | |
+| Security | |
+| Supplies | |
+| Telephone | Mobile phone · Business line |
+| Tools | |
+| Travel: airfare, rental car, hotel | Airfare · Lodging · Rental car and ground transport · Other travel |
+| Travel: meals | Meals with clients and partners · Meals while traveling |
+| Uniforms | |
+| Utilities | |
+| Computer/internet | Internet service · Computers and devices · Accessories and peripherals |
+| Home office | Rent (home office share) · Utilities (home office share) |
+| Vehicle | Fuel · Maintenance and repairs · Mileage reimbursement |
+| Miscellaneous (itemized) | Education and training · Business gifts · Taxes and licenses · Other (itemize) |
+| Wages and payroll taxes *(the one category not on the worksheet)* | Wages · Payroll taxes |
 
 **Owner:** Owner contribution · Owner draw (Draws · Estimated tax payments).
-**Held:** Sales tax collected.
+**Held:** Sales tax collected. Both as built in stop 1.
 
 Above the list, on the categories screen:
 
-> Ask your CPA what they want to see, then add, remove or combine. These are
-> common names, not a recommendation.
+> Each expense category is a line of your CPA's Business Income & Expense
+> Worksheet, so the export for your CPA maps to it one for one; the
+> sub-categories are ours. “Wages and payroll taxes” is the one that is not
+> on the worksheet. Ask your CPA what they want to see, then add, remove or
+> combine.
+
+### 5.5 The worksheet export, and what it needs beside the books
+
+Built 2026-10-10 with the chart. Finance → For your CPA → **"Download the
+worksheet"**, for a calendar year (`/api/finance-reports/export-worksheet/`):
+
+- **A line for each top-level category, in the chart's own order,** which for
+  the starting chart is the worksheet's. A category's figure is its own
+  entries and its sub-categories'. Every category is listed, with 0.00 where
+  nothing was spent, so the lines match the worksheet's.
+- **"Miscellaneous (itemized)" lists each sub-category on its own line,**
+  since the worksheet asks for miscellaneous items one by one. It is known by
+  that name: a practice that renames it gets one line, like any other.
+- **Estimated tax payments are not an expense.** An owner entry going out has
+  an optional mark, **"Estimated tax payment": Federal or State**
+  (`finance_entry.estimated_tax`). The worksheet lists them by date in two
+  columns, with totals. They stay out of every expense line and of the P&L.
+- **Year-end facts the books cannot know:** total miles, business miles, home
+  square footage, office square footage. A panel in the finance settings,
+  per year (`finance_year_facts`), carried onto the worksheet. A blank is
+  "not said", not zero.
+- The two files that were there (every entry; the summary by category) are
+  unchanged.
+
+**Migration:** `finance` 0005. Additive: `finance_entry.estimated_tax` with
+its check, and `finance_year_facts`.
+
+**What an existing practice sees:** nothing changes in its chart until it
+presses "Add the starting chart". Its worksheet lists its own top-level
+categories in its own order, so it maps to the CPA's worksheet as far as its
+chart does. The "Estimated tax payments" sub-category of Owner draw is still
+there; the mark is what the worksheet reads, whichever category the draw is
+in.
 
 ---
 

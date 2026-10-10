@@ -1533,6 +1533,14 @@ export interface FinanceEntry {
   removed: boolean; remove_reason: string;
   /** Who it was paid to, where that is a 1099 payee. */
   payee_contact?: string;
+  /** An owner draw that was an estimated tax payment. */
+  estimated_tax?: "" | "federal" | "state";
+}
+
+/** What the CPA's worksheet asks for at year end and the books cannot know. */
+export interface YearFacts {
+  year: number; total_miles: number | null; business_miles: number | null;
+  home_square_feet: number | null; office_square_feet: number | null;
 }
 
 export interface FinanceEntryList {

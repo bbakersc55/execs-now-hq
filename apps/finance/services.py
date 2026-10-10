@@ -342,7 +342,8 @@ def _state(entry) -> dict:
             "category": str(entry.category_id or ""), "account": str(entry.account_id or ""),
             "to_account": str(entry.to_account_id or ""), "description": entry.description,
             "counterparty": entry.counterparty,
-            "payee_contact": str(entry.payee_contact_id or "")}
+            "payee_contact": str(entry.payee_contact_id or ""),
+            **({"estimated_tax": entry.estimated_tax} if entry.estimated_tax else {})}
 
 
 def _own(tenant, row, what):
@@ -356,6 +357,12 @@ def _shape(entry) -> None:
     refuses it in constraint names."""
     if entry.kind not in K.values:
         raise FinanceError("kind is income, expense, transfer, owner or held.")
+    if entry.estimated_tax and not (entry.kind == K.OWNER and entry.direction == D.OUT):
+        if entry.kind == K.OWNER and entry.direction not in D.values:
+            pass                 # the direction is refused below, in its own words
+        else:
+            raise FinanceError("An estimated tax payment is money the owner took out: an "
+                               "owner entry, going out. It is not an expense.")
     if entry.amount_cents <= 0:
         raise FinanceError("An entry is for more than nothing.")
     if entry.kind == K.TRANSFER:
@@ -394,7 +401,8 @@ def _an(kind) -> str:
 
 EDITABLE = ("kind", "direction", "on_date", "amount_cents", "category", "account",
             "to_account", "description", "counterparty", "client_company", "reference",
-            "payee_contact")
+            "payee_contact", "estimated_tax")
+ESTIMATED_TAX = ("federal", "state")
 #: What stays the invoice's own on an entry made from a payment (§3).
 FROM_THE_INVOICE = ("kind", "direction", "on_date", "amount_cents", "to_account",
                     "client_company", "reference")
@@ -418,6 +426,11 @@ def _apply(tenant, entry, changes: dict) -> None:
                         ("payee_contact", "person")):
         if field in changes:
             setattr(entry, field, _own(tenant, changes[field], what))
+    if "estimated_tax" in changes:
+        mark = str(changes["estimated_tax"] or "").strip().lower()
+        if mark and mark not in ESTIMATED_TAX:
+            raise FinanceError("An estimated tax payment is federal or state.")
+        entry.estimated_tax = mark
     for field, most in (("description", 255), ("counterparty", 160), ("reference", 120)):
         if field in changes:
             setattr(entry, field, " ".join(str(changes[field] or "").split())[:most])
@@ -605,3 +618,48 @@ def backfill_payments(tenant, *, apply: bool) -> int:
         if apply:
             payment_recorded(payment)
     return count
+
+
+# ------------------------------------------------------- year-end facts
+
+YEAR_FACTS = ("total_miles", "business_miles", "home_square_feet", "office_square_feet")
+
+
+def year_facts(tenant, year: int) -> dict:
+    from apps.finance.models import FinanceYearFacts
+
+    row = FinanceYearFacts.all_objects.filter(tenant=tenant, year=year).first()
+    return {"year": year, **{name: getattr(row, name) if row else None
+                             for name in YEAR_FACTS}}
+
+
+@transaction.atomic
+def save_year_facts(tenant, *, actor, year, **facts) -> dict:
+    """The miles and square feet the CPA's worksheet asks for, for one year.
+    A blank is "not said", not zero."""
+    from apps.finance.models import FinanceYearFacts
+
+    if isinstance(year, bool) or not isinstance(year, int) \
+            or not 2000 <= year <= timezone.localdate().year + 1:
+        raise FinanceError("year is a year.")
+    unknown = set(facts) - set(YEAR_FACTS)
+    if unknown:
+        raise FinanceError(f"Not a year-end fact: {', '.join(sorted(unknown))}.")
+    for name, value in facts.items():
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)
+                                  or value < 0 or value > 2_000_000_000):
+            raise FinanceError("Miles and square feet are whole numbers, or left blank.")
+    before = year_facts(tenant, year)
+    row, _ = FinanceYearFacts.all_objects.get_or_create(tenant=tenant, year=year)
+    for name, value in facts.items():
+        setattr(row, name, value)
+    if row.total_miles is not None and row.business_miles is not None \
+            and row.business_miles > row.total_miles:
+        raise FinanceError("Business miles cannot be more than total miles.")
+    if row.home_square_feet is not None and row.office_square_feet is not None \
+            and row.office_square_feet > row.home_square_feet:
+        raise FinanceError("The office cannot be larger than the home it is in.")
+    row.save()
+    after = year_facts(tenant, year)
+    audit(tenant, "year_facts_changed", actor, row, before=before, after=after)
+    return after

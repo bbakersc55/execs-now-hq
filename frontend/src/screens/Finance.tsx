@@ -95,7 +95,8 @@ function Importing() {
 
 type Draft = { kind: EntryKind; direction: "in" | "out"; on_date: string; amount_cents: number;
                category: string; account: string; to_account: string; description: string;
-               counterparty: string; payee_contact: string };
+               counterparty: string; payee_contact: string;
+               estimated_tax?: "" | "federal" | "state" };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const blank = (): Draft => ({ kind: "expense", direction: "out", on_date: today(),
@@ -131,7 +132,10 @@ function EntryForm({ start, entry, onDone, onCancel }: {
             ...(form.kind === "owner" || form.kind === "held"
               ? { direction: form.direction } : {}),
             description: form.description, counterparty: form.counterparty,
-            payee_contact: form.kind === "expense" ? form.payee_contact || null : null };
+            payee_contact: form.kind === "expense" ? form.payee_contact || null : null,
+            // Only the owner's own money going out can be one.
+            estimated_tax: form.kind === "owner" && form.direction === "out"
+              ? form.estimated_tax ?? "" : "" };
       return entry ? api.patch<FinanceEntry>(`/api/finance-entries/${entry.id}/`, body)
         : api.post<FinanceEntry>("/api/finance-entries/", body);
     },
@@ -173,6 +177,17 @@ function EntryForm({ start, entry, onDone, onCancel }: {
               onChange={(e) => set({ direction: e.target.value as "in" | "out" })}>
               <option value="out">Money out</option>
               <option value="in">Money in</option>
+            </select>
+          </Field>
+        )}
+        {form.kind === "owner" && form.direction === "out" && !fromInvoice && (
+          <Field label="Estimated tax payment">
+            <select aria-label={`Estimated tax payment, for ${label}`}
+              value={form.estimated_tax ?? ""}
+              onChange={(e) => set({ estimated_tax: e.target.value as Draft["estimated_tax"] })}>
+              <option value="">No</option>
+              <option value="federal">Federal</option>
+              <option value="state">State</option>
             </select>
           </Field>
         )}
@@ -419,7 +434,8 @@ function Entries() {
                                to_account: entry.to_account?.id ?? "",
                                description: entry.description,
                                counterparty: entry.counterparty,
-                               payee_contact: entry.payee_contact ?? "" }} />
+                               payee_contact: entry.payee_contact ?? "",
+                               estimated_tax: entry.estimated_tax ?? "" }} />
                   </td></tr>
                 ) : (
                   <tr key={entry.id}>
@@ -438,7 +454,9 @@ function Entries() {
                     <td>{entry.kind === "transfer" ? <Pill>transfer</Pill>
                       : entry.category?.name ?? <Pill kind="warn">no category yet</Pill>}
                       {(entry.kind === "owner" || entry.kind === "held")
-                        && <> <Pill>not in the P&amp;L</Pill></>}</td>
+                        && <> <Pill>not in the P&amp;L</Pill></>}
+                      {entry.estimated_tax && <> <Pill>estimated tax,{" "}
+                        {entry.estimated_tax}</Pill></>}</td>
                     <td>{entry.account?.name ?? <Pill kind="warn">not placed yet</Pill>}
                       {entry.to_account && <> → {entry.to_account.name}</>}</td>
                     <td className="money">{signed(entry)}</td>
@@ -677,35 +695,63 @@ function ForTheCpa() {
   const [from, setFrom] = useState(`${year}-01-01`);
   const [to, setTo] = useState(today());
   const [bad, setBad] = useState(false);
+  const [sheetYear, setSheetYear] = useState(String(year));
   useEffect(() => { setBad(!!from && !!to && to < from); }, [from, to]);
   const span = `?from=${from}&to=${to}`;
+  const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
+  const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
   return (
-    <Card title="For your CPA">
-      <p className="small muted" style={{ marginTop: 0 }}>
-        Two files for a range of dates: every entry, and a summary by category with the
-        CPA codes you set. Removed entries are left out. Each download is recorded.
-      </p>
-      <div className="row">
-        <Field label="From">
-          <input type="date" aria-label="Export from" value={from}
-            onChange={(e) => setFrom(e.target.value)} />
-        </Field>
-        <Field label="To">
-          <input type="date" aria-label="Export to" value={to}
-            onChange={(e) => setTo(e.target.value)} />
-        </Field>
-      </div>
-      {bad ? <Banner kind="bad">The last date cannot be before the first.</Banner> : (
+    <>
+      <Card title="Your CPA's worksheet">
+        <p className="small muted" style={{ marginTop: 0 }}>
+          One file for a calendar year, laid out as the Business Income &amp; Expense
+          Worksheet: a line for each category in the worksheet's order, miscellaneous
+          items one by one, your estimated tax payments by date, federal and state, and
+          the year's miles and square feet from{" "}
+          <Link to="/settings/finance">Accounts and categories</Link>.
+        </p>
         <div className="row tight">
-          <a className="btn primary" href={`/api/finance-reports/export-entries/${span}`}>
-            Download the entries</a>
-          <a className="btn" href={`/api/finance-reports/export-summary/${span}`}>
-            Download the summary by category</a>
+          <label className="small inline">Year
+            <select aria-label="Worksheet year" value={sheetYear} style={{ width: "auto" }}
+              onChange={(e) => setSheetYear(e.target.value)}>
+              {[year, year - 1, year - 2].map((y) => <option key={y} value={y}>{y}</option>)}
+            </select></label>
+          <a className="btn primary"
+            href={`/api/finance-reports/export-worksheet/?year=${sheetYear}`}>
+            Download the worksheet</a>
         </div>
-      )}
-      <p className="tiny muted">Lock the books through the last date once you have sent
-        them, in <Link to="/settings/finance">Accounts and categories</Link>, so what your
-        CPA has stays what the books say.</p>
-    </Card>
+      </Card>
+      <Card title="For your CPA">
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Two files for a range of dates: every entry, and a summary by category with the
+          CPA codes you set. Removed entries are left out. Each download is recorded.
+        </p>
+        <div className="row">
+          <Field label="From">
+            <input type="date" aria-label="Export from" value={from}
+              onChange={(e) => setFrom(e.target.value)} />
+          </Field>
+          <Field label="To">
+            <input type="date" aria-label="Export to" value={to}
+              onChange={(e) => setTo(e.target.value)} />
+          </Field>
+        </div>
+        {bad ? <Banner kind="bad">The last date cannot be before the first.</Banner> : (
+          <div className="row tight">
+            <a className="btn" href={`/api/finance-reports/export-entries/${span}`}>
+              Download the entries</a>
+            <a className="btn" href={`/api/finance-reports/export-summary/${span}`}>
+              Download the summary by category</a>
+          </div>
+        )}
+        <p className="tiny muted">{bookkeeping
+          ? <>Close the months you have sent, under{" "}
+            <Link to="/finance/reconcile">Reconcile</Link>, so what your CPA has stays what
+            the books say.</>
+          : <>Lock the books through the last date once you have sent them, in{" "}
+            <Link to="/settings/finance">Accounts and categories</Link>, so what your CPA
+            has stays what the books say.</>}</p>
+      </Card>
+    </>
   );
 }

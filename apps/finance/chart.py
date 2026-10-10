@@ -26,9 +26,15 @@ from apps.finance.services import (
     CLIENT_FEES, SALES_TAX, FinanceError, T, _clean_name, audit, settings_for,
 )
 
-#: The chart a practice starts with (§5.4): **a placeholder** until the
-#: owner's CPA's list replaces it. Each row is a category and its
-#: sub-categories. Names are unique across the whole chart.
+#: The chart a practice starts with (§5.4; the owner's CPA's list, 2026-10-10).
+#: Each row is a category and its sub-categories. Names are unique across the
+#: whole chart.
+#:
+#: **Every expense category but the last is one line of the CPA's Business
+#: Income & Expense Worksheet, word for word and in the worksheet's order**, so
+#: the worksheet export (`reports.export_worksheet`) maps one to one. The
+#: sub-categories are ours. "Wages and payroll taxes" is the one category that
+#: is not on the worksheet.
 STARTING_CHART = (
     (T.INCOME, (
         ("Client fees", ("Retainers", "Project fees", "Workshops and speaking")),
@@ -38,26 +44,46 @@ STARTING_CHART = (
         ("Other income", ()),
     )),
     (T.EXPENSE, (
-        ("Contractors and associates", ("Associates", "Assistants", "Other contractors")),
-        ("Payroll", ("Wages", "Payroll taxes", "Benefits", "Payroll service fees")),
-        ("Software and subscriptions", ("Software", "AI and API usage")),
-        ("Marketing and advertising", ("Advertising", "Website", "Events and sponsorships")),
-        ("Travel", ("Airfare", "Lodging", "Ground transport")),
-        ("Meals", ()),
-        ("Vehicle", ("Mileage and fuel", "Parking and tolls")),
-        ("Professional services", ("Accounting", "Legal", "Coaching and consulting")),
-        ("Insurance", ("Business liability", "Health")),
-        ("Office", ("Supplies", "Equipment", "Postage and printing")),
-        ("Rent and coworking", ()),
-        ("Phone and internet", ()),
-        ("Education and training", ()),
-        ("Dues and memberships", ()),
-        ("Bank and merchant fees", ()),
-        ("Referral fees paid", ()),
-        ("Taxes and licenses", ()),
-        ("Interest paid", ()),
-        ("Charitable giving", ()),
-        ("Other expenses", ()),
+        ("Accounting", ("Bookkeeping", "Tax preparation")),
+        ("Advertising", ("Online ads", "Website and hosting", "Sponsorships and events",
+                         "Promotional items")),
+        ("Bank charges", ("Bank fees", "Payment processing fees")),
+        ("Commissions", ("Referral commissions",)),
+        ("Contract labor", ("Associates", "Assistants", "Other contractors")),
+        ("Dues and subscriptions", ("Software and apps", "Professional memberships",
+                                    "Publications")),
+        ("Insurance (business only)", ("General liability", "Professional liability (E&O)",
+                                       "Other business insurance")),
+        ("Interest", ("Loan interest", "Credit card interest")),
+        ("Laundry and cleaning", ()),
+        ("Legal and professional fees", ("Legal", "Coaching and consulting",
+                                         "Other professional fees")),
+        ("Office expense", ("Coworking and meeting rooms", "Furniture and small equipment",
+                            "Other office")),
+        ("Outside services", ("Marketing and design services", "IT and technical services",
+                              "Other outside services")),
+        ("Parking and tolls", ()),
+        ("Postage", ()),
+        ("Printing", ()),
+        ("Rent/lease of equipment", ()),
+        ("Repairs", ()),
+        ("Security", ()),
+        ("Supplies", ()),
+        ("Telephone", ("Mobile phone", "Business line")),
+        ("Tools", ()),
+        ("Travel: airfare, rental car, hotel", ("Airfare", "Lodging",
+                                                "Rental car and ground transport",
+                                                "Other travel")),
+        ("Travel: meals", ("Meals with clients and partners", "Meals while traveling")),
+        ("Uniforms", ()),
+        ("Utilities", ()),
+        ("Computer/internet", ("Internet service", "Computers and devices",
+                               "Accessories and peripherals")),
+        ("Home office", ("Rent (home office share)", "Utilities (home office share)")),
+        ("Vehicle", ("Fuel", "Maintenance and repairs", "Mileage reimbursement")),
+        ("Miscellaneous (itemized)", ("Education and training", "Business gifts",
+                                      "Taxes and licenses", "Other (itemize)")),
+        ("Wages and payroll taxes", ("Wages", "Payroll taxes")),
     )),
     (T.OWNER, (
         ("Owner contribution", ()),
@@ -69,19 +95,28 @@ STARTING_CHART = (
 )
 SYSTEM_CODES = {"Client fees": CLIENT_FEES, "Sales tax collected": SALES_TAX}
 #: Paid to contractors: each entry wants a person named for the 1099 report.
-CONTRACTOR = ("Contractors and associates",)
+CONTRACTOR = ("Contract labor",)
+#: The worksheet asks for miscellaneous items one by one, so the worksheet
+#: export lists this category's sub-categories each on its own line.
+ITEMIZED = "Miscellaneous (itemized)"
+#: The one expense category that is not a line of the worksheet.
+NOT_ON_WORKSHEET = "Wages and payroll taxes"
 
-NOTE = ("Ask your CPA what they want to see, then add, remove or combine. These are "
-        "common names, not a recommendation.")
+NOTE = ("Each expense category is a line of your CPA's Business Income & Expense "
+        "Worksheet, so the export for your CPA maps to it one for one; the "
+        "sub-categories are ours. “Wages and payroll taxes” is the one that is not on the "
+        "worksheet. Ask your CPA what they want to see, then add, remove or combine.")
 
 
-def create_starting_chart(tenant) -> None:
-    """The whole chart, for a practice that has no categories at all."""
-    for kind, rows in STARTING_CHART:
+def create_starting_chart(tenant, rows=None, contractor=CONTRACTOR) -> None:
+    """The whole chart, for a practice that has no categories at all. `rows`
+    is another chart in the same shape: the tests of how the books work bring
+    their own, so this one can change without rewriting them."""
+    for kind, rows in (rows or STARTING_CHART):
         for position, (name, subs) in enumerate(rows):
             parent = FinanceCategory.all_objects.create(
                 tenant=tenant, name=name, type=kind, position=position,
-                system_code=SYSTEM_CODES.get(name, ""), is_contractor=name in CONTRACTOR)
+                system_code=SYSTEM_CODES.get(name, ""), is_contractor=name in contractor)
             for sub_position, sub in enumerate(subs):
                 FinanceCategory.all_objects.create(
                     tenant=tenant, name=sub, type=kind, position=sub_position,

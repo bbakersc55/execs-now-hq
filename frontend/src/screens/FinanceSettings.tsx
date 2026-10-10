@@ -7,7 +7,9 @@ import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
 import { PriceBox } from "../components/InvoiceLines";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill } from "../components/ui";
-import { FinanceAccount, FinanceCategory, FinanceRule, Me, api } from "../lib/api";
+import {
+  FinanceAccount, FinanceCategory, FinanceRule, Me, YearFacts, api,
+} from "../lib/api";
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 
@@ -128,6 +130,8 @@ export function FinanceSettings() {
 
       <Rules />
 
+      <YearEndFacts />
+
       {bookkeeping ? (
         <Card title="Closing a month">
           <p className="small" style={{ margin: 0 }}>
@@ -198,6 +202,70 @@ function Rules() {
           </tbody>
         </table>
       )}
+    </Card>
+  );
+}
+
+/** What the CPA's worksheet asks for at year end and the books cannot know
+ *  (owner, 2026-10-10): miles and square feet, per year, carried onto the
+ *  worksheet export. A blank is "not said", not zero. */
+const FACTS: [keyof Omit<YearFacts, "year">, string][] = [
+  ["total_miles", "Total miles driven"], ["business_miles", "Business miles"],
+  ["home_square_feet", "Home square footage"],
+  ["office_square_feet", "Office square footage"]];
+
+function YearEndFacts() {
+  const qc = useQueryClient();
+  const thisYear = new Date().getFullYear();
+  const [year, setYear] = useState(thisYear);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [said, setSaid] = useState<{ kind: string; text: string } | null>(null);
+  const facts = useQuery<YearFacts>({
+    queryKey: ["finance-year-facts", year],
+    queryFn: () => api.get<YearFacts>(`/api/finance-settings/year-facts/?year=${year}`) });
+  useEffect(() => {
+    if (facts.data) {
+      setForm(Object.fromEntries(FACTS.map(([name]) => [
+        name, facts.data[name] == null ? "" : String(facts.data[name])])));
+    }
+  }, [facts.data]);
+  const save = useMutation({
+    mutationFn: () => api.post<YearFacts>("/api/finance-settings/year-facts/", {
+      year, ...Object.fromEntries(FACTS.map(([name]) => [
+        name, (form[name] ?? "").trim() === "" ? null : Number(form[name])])) }),
+    onSuccess: (now) => {
+      qc.setQueryData(["finance-year-facts", year], now);
+      setSaid({ kind: "ok", text: `Saved for ${year}.` });
+    },
+    onError: (e: Error) => setSaid({ kind: "bad", text: e.message }) });
+  const whole = FACTS.every(([name]) => /^\d*$/.test((form[name] ?? "").trim()));
+  return (
+    <Card title="Year-end facts for your CPA">
+      <p className="small muted" style={{ marginTop: 0 }}>
+        The worksheet asks for these and the books cannot know them. They are carried onto
+        the worksheet you download under Finance, For your CPA. Leave blank what you do
+        not have yet.
+      </p>
+      {said && <Banner kind={said.kind}>{said.text}</Banner>}
+      <div className="row">
+        <Field label="Year">
+          <select aria-label="Year of the year-end facts" value={year}
+            onChange={(e) => { setYear(Number(e.target.value)); setSaid(null); }}>
+            {[thisYear, thisYear - 1, thisYear - 2].map(
+              (y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </Field>
+        {FACTS.map(([name, label]) => (
+          <Field key={name} label={label}>
+            <input aria-label={label} inputMode="numeric" value={form[name] ?? ""}
+              style={{ width: "8rem" }}
+              onChange={(e) => setForm({ ...form, [name]: e.target.value })} />
+          </Field>
+        ))}
+        <button disabled={save.isPending || !facts.data || !whole}
+          onClick={() => save.mutate()}>Save</button>
+      </div>
+      {!whole && <p className="small muted">Whole numbers only.</p>}
     </Card>
   );
 }

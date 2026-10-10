@@ -71,6 +71,8 @@ def represent_entry(entry) -> dict:
         "removed": entry.removed_at is not None, "remove_reason": entry.remove_reason,
         # Who it was paid to, where that is a 1099 payee.
         "payee_contact": str(entry.payee_contact_id or ""),
+        # An owner draw that was an estimated tax payment: "federal", "state" or "".
+        "estimated_tax": entry.estimated_tax,
     }
 
 
@@ -171,7 +173,7 @@ class EntryViewSet(FinanceViewSet):
     def _changes(self, data) -> dict:
         changes = {}
         for field in ("kind", "direction", "on_date", "amount_cents", "description",
-                      "counterparty", "reference"):
+                      "counterparty", "reference", "estimated_tax"):
             if field in data:
                 changes[field] = data[field]
         for field, model, what in (("category", FinanceCategory, "category"),
@@ -462,6 +464,27 @@ class FinanceSettingsView(FinanceViewSet):
             return self._refusal(exc)
         return Response(self._represent(row))
 
+    @action(detail=False, methods=["get", "post"], url_path="year-facts")
+    def year_facts(self, request):
+        """The miles and square feet the CPA's worksheet asks for, per year.
+        GET `?year=`; POST `{year, total_miles, …}`, a null being "not said"."""
+        try:
+            if request.method == "GET":
+                year = request.query_params.get("year") or timezone.localdate().year
+                try:
+                    year = int(year)
+                except (TypeError, ValueError):
+                    raise services.FinanceError("year is a year.") from None
+                if not 2000 <= year <= timezone.localdate().year + 1:
+                    raise services.FinanceError("year is a year.")
+                return Response(services.year_facts(request.tenant, year))
+            data = request.data
+            facts = {name: data[name] for name in services.YEAR_FACTS if name in data}
+            return Response(services.save_year_facts(
+                request.tenant, actor=request.user, year=data.get("year"), **facts))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
 
 class ReportView(FinanceViewSet):
 
@@ -515,6 +538,21 @@ class ReportView(FinanceViewSet):
         return self._csv(request, reports.export_entries(request.tenant, start=start, end=end),
                          f"entries-{start}-to-{end}.csv", "cpa_export_downloaded",
                          file="entries", start=start.isoformat(), end=end.isoformat())
+
+    @action(detail=False, methods=["get"], url_path="export-worksheet")
+    def export_worksheet(self, request):
+        """The CPA's worksheet for a calendar year: a line a category, in the
+        worksheet's order, with estimated tax payments and the year-end facts."""
+        today = timezone.localdate()
+        try:
+            year = int(request.query_params.get("year") or today.year)
+        except ValueError:
+            return Response({"detail": "year is a year."}, status=400)
+        if not 2000 <= year <= today.year + 1:
+            return Response({"detail": "year is a year."}, status=400)
+        return self._csv(request, reports.export_worksheet(request.tenant, year=year),
+                         f"cpa-worksheet-{year}.csv", "cpa_export_downloaded",
+                         file="worksheet", year=year)
 
     @action(detail=False, methods=["get"], url_path="export-summary")
     def export_summary(self, request):

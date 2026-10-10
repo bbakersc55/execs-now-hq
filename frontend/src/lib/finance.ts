@@ -6,9 +6,11 @@ import { FinanceCategory } from "./api";
 export const FINANCE_DISCLAIMER =
   "Bookkeeping and projections only, not tax, legal or financial advice. Confirm with your CPA.";
 
-/** The note above the categories (P6 M1 §5.4). */
+/** The note above the categories (P6 M1 §5.4; the CPA's list, 2026-10-10).
+ *  `apps/finance/chart.py` holds the same words, and a test holds the two
+ *  together. */
 export const CHART_NOTE =
-  "Ask your CPA what they want to see, then add, remove or combine. These are common names, not a recommendation.";
+  "Each expense category is a line of your CPA's Business Income & Expense Worksheet, so the export for your CPA maps to it one for one; the sub-categories are ours. “Wages and payroll taxes” is the one that is not on the worksheet. Ask your CPA what they want to see, then add, remove or combine.";
 
 const byPosition = (a: FinanceCategory, b: FinanceCategory) =>
   a.position - b.position || a.name.localeCompare(b.name);

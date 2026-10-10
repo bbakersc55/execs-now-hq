@@ -61,7 +61,9 @@ function show(tab: "entries" | "pnl" | "balance" | "export",
     ...extra, "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-categories/": CATEGORIES,
     "GET /api/finance-payees/": { year: 2026, threshold_cents: 200000,
                                   default_threshold_cents: 200000, over: 0, payees: [] },
-    "GET /api/finance-entries/": LIST });
+    "GET /api/finance-entries/": LIST,
+    // Again, so a test's own answer replaces the one above and keeps its place.
+    ...extra });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<Finance tab={tab} />, { route });
   return fetchMock;
@@ -365,6 +367,55 @@ describe("the balance view", () => {
     expect(table).toHaveTextContent("Net$13,196.67");
     expect(screen.getByText(/It is not a balance\s+sheet/)).toBeInTheDocument();
     expect(screen.getByText(/Beside it, not in it/)).toHaveTextContent("$4,800.00");
+  });
+});
+
+describe("the CPA's worksheet and an estimated tax payment", () => {
+  it("downloads the worksheet for a year", async () => {
+    show("export");
+    const year = new Date().getFullYear();
+    const link = await screen.findByRole("link", { name: "Download the worksheet" });
+    expect(link).toHaveAttribute("href", `/api/finance-reports/export-worksheet/?year=${year}`);
+    await userEvent.selectOptions(screen.getByLabelText("Worksheet year"), String(year - 1));
+    expect(link).toHaveAttribute(
+      "href", `/api/finance-reports/export-worksheet/?year=${year - 1}`);
+    expect(screen.getByText(/laid out as the Business Income & Expense\s+Worksheet/))
+      .toHaveTextContent("your estimated tax payments by date, federal and state");
+  });
+
+  it("marks an owner draw as an estimated tax payment, federal or state", async () => {
+    const fetchMock = show("entries", {
+      "POST /api/finance-entries/": () => ({ status: 201, body: entry() }) });
+    await screen.findByLabelText("Totals for what is listed");
+    // Not offered on an expense: it is the owner's own money going out.
+    expect(screen.queryByLabelText("Estimated tax payment, for the new entry"))
+      .not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Kind of the new entry"), "owner");
+    const mark = screen.getByLabelText("Estimated tax payment, for the new entry");
+    expect(within(mark).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["No", "Federal", "State"]);
+    await userEvent.selectOptions(mark, "federal");
+    await userEvent.type(screen.getByLabelText("Amount of the new entry"), "4500");
+    await userEvent.selectOptions(screen.getByLabelText("Category of the new entry"), "c4");
+    await userEvent.selectOptions(screen.getByLabelText("Account of the new entry"), "a1");
+    await userEvent.click(screen.getByRole("button", { name: "Add the entry" }));
+    await waitFor(() => expect(sent(fetchMock, "/api/finance-entries/")).toHaveLength(1));
+    expect(sent(fetchMock, "/api/finance-entries/")[0]).toMatchObject({
+      kind: "owner", direction: "out", amount_cents: 450000, estimated_tax: "federal" });
+    // Money coming in from the owner is not one, so the mark goes with the choice.
+    await userEvent.selectOptions(screen.getByLabelText("Kind of the new entry"), "owner");
+    await userEvent.selectOptions(screen.getByLabelText("Direction of the new entry"), "in");
+    expect(screen.queryByLabelText("Estimated tax payment, for the new entry"))
+      .not.toBeInTheDocument();
+  });
+
+  it("shows the mark on the entry in the list", async () => {
+    show("entries", { "GET /api/finance-entries/": { ...LIST, entries: [
+      entry({ id: "e9", kind: "owner", kind_label: "Owner", amount_cents: 450000,
+              category: { id: "c4", name: "Owner draw" }, description: "Q2 estimate",
+              estimated_tax: "federal" })], count: 1 } });
+    const row = (await screen.findByText(/Q2 estimate/)).closest("tr") as HTMLElement;
+    expect(row).toHaveTextContent("estimated tax, federal");
   });
 });
 

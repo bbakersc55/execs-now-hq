@@ -184,6 +184,10 @@ class FinanceEntry(TenantScopedModel):
     #: Who an expense was paid to, where that is a 1099 payee (§1099).
     payee_contact = models.ForeignKey("crm.Contact", null=True, blank=True,
                                       on_delete=models.SET_NULL, related_name="+")
+    #: An owner draw that was an estimated tax payment: `federal` or `state`
+    #: (owner, 2026-10-10). Not an expense; the CPA's worksheet lists them by
+    #: date in those two columns, and so does the worksheet export.
+    estimated_tax = models.CharField(max_length=8, blank=True, default="", db_default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     removed_at = models.DateTimeField(null=True, blank=True)
@@ -196,6 +200,11 @@ class FinanceEntry(TenantScopedModel):
         constraints = [
             models.CheckConstraint(condition=Q(amount_cents__gt=0),
                                    name="finance_entry_amount_positive"),
+            # Only the owner's own money going out is an estimated tax payment.
+            models.CheckConstraint(
+                condition=Q(estimated_tax="") | Q(estimated_tax__in=("federal", "state"),
+                                                  kind="owner", direction="out"),
+                name="finance_entry_estimated_tax_is_an_owner_draw"),
             # A transfer moves between two different accounts and has no
             # category; nothing else names a second account.
             models.CheckConstraint(
@@ -436,4 +445,23 @@ class FinanceGuide(TenantScopedModel):
         constraints = [
             models.UniqueConstraint(fields=["tenant", "user"],
                                     name="finance_guide_one_per_person"),
+        ]
+
+
+class FinanceYearFacts(TenantScopedModel):
+    """What the CPA's worksheet asks for at year end and the books cannot
+    know (owner, 2026-10-10): miles and square feet. Typed by the owner, one
+    row a year, and carried onto the worksheet export."""
+
+    year = models.PositiveSmallIntegerField()
+    total_miles = models.PositiveIntegerField(null=True, blank=True)
+    business_miles = models.PositiveIntegerField(null=True, blank=True)
+    home_square_feet = models.PositiveIntegerField(null=True, blank=True)
+    office_square_feet = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_year_facts"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "year"],
+                                    name="finance_year_facts_one_per_year"),
         ]

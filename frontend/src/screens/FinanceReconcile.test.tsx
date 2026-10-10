@@ -601,6 +601,30 @@ describe("the lock leaves the finance settings", () => {
         .not.toBeInTheDocument();
     });
 
+  it("keeps the year-end facts the worksheet asks for, per year", async () => {
+    const year = new Date().getFullYear();
+    const saved = { year, total_miles: 14820, business_miles: null,
+                    home_square_feet: 2400, office_square_feet: 180 };
+    const fetchMock = settings(["bookkeeping"], {
+      "GET /api/finance-settings/year-facts/": { ...saved, total_miles: null },
+      "POST /api/finance-settings/year-facts/": () => ({ body: saved }) });
+    const home = await screen.findByLabelText("Home square footage");
+    await waitFor(() => expect(home).toHaveValue("2400"));
+    expect(screen.getByLabelText("Business miles")).toHaveValue("");
+    await userEvent.type(screen.getByLabelText("Total miles driven"), "14820");
+    const card = home.closest("section") as HTMLElement;
+    await userEvent.click(within(card).getByRole("button", { name: "Save" }));
+    // A blank is "not said", sent as null and not as zero.
+    await waitFor(() => expect(posts(fetchMock, "/year-facts/")).toEqual([
+      { year, total_miles: 14820, business_miles: null, home_square_feet: 2400,
+        office_square_feet: 180 }]));
+    expect(await within(card).findByText(`Saved for ${year}.`)).toBeInTheDocument();
+    // Whole numbers only.
+    await userEvent.type(screen.getByLabelText("Business miles"), "6,310");
+    expect(within(card).getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(within(card).getByText("Whole numbers only.")).toBeInTheDocument();
+  });
+
   it("switches whether an account is reconciled each month", async () => {
     const fetchMock = settings(["bookkeeping"], {
       "PATCH /api/finance-accounts/cash/": () => ({ body: ACCOUNTS[1] }) });

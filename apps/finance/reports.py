@@ -314,3 +314,84 @@ def export_summary(tenant, *, start: date, end: date) -> str:
     writer.writerow(["", "Total expenses", "", "", plain(totals[T.EXPENSE])])
     writer.writerow(["", "Net", "", "", plain(totals[T.INCOME] - totals[T.EXPENSE])])
     return out.getvalue()
+
+
+def export_worksheet(tenant, *, year: int) -> str:
+    """The CPA's Business Income & Expense Worksheet, for a calendar year
+    (owner, 2026-10-10): one line for each top-level category, in the chart's
+    own order, which for the starting chart is the worksheet's. A category's
+    figure is its own entries and its sub-categories'. The one the worksheet
+    wants item by item ("Miscellaneous (itemized)") lists each sub-category
+    on its own line. Then what the worksheet asks for beside the expenses:
+    estimated tax payments by date, federal and state, and the year's miles
+    and square feet. Every category is listed, with 0.00 where nothing was
+    spent, so the lines match the worksheet's one for one."""
+    from apps.finance import chart, services
+    from apps.finance.disclaimer import DISCLAIMER
+
+    start, end = date(year, 1, 1), date(year, 12, 31)
+    out = io.StringIO()
+    writer = csv.writer(out)
+    plain = lambda cents: f"{cents / 100:.2f}"  # noqa: E731
+    everything = _in_range(tenant, start, end)
+    earned = everything.filter(kind__in=FinanceEntry.EARNED)
+    by_category = {row["category_id"]: row["total"] for row in
+                   earned.order_by().values("category_id").annotate(total=Sum(SIGNED))}
+    writer.writerow([f"Business income and expense worksheet, {year}, cash basis"])
+    totals = {}
+    for kind, title in ((T.INCOME, "Income"), (T.EXPENSE, "Expenses")):
+        totals[kind] = 0
+        writer.writerow([])
+        writer.writerow([title, "Amount", "Note"])
+        every = list(FinanceCategory.all_objects.filter(tenant=tenant, type=kind)
+                     .order_by("position", "name"))
+        for top in (c for c in every if c.parent_id is None):
+            subs = [c for c in every if c.parent_id == top.pk]
+            own = by_category.get(top.pk, 0)
+            whole = own + sum(by_category.get(c.pk, 0) for c in subs)
+            if top.archived_at is not None and not whole:
+                continue
+            totals[kind] += whole
+            note = "Not a line of the worksheet" if top.name == chart.NOT_ON_WORKSHEET else ""
+            if kind == T.EXPENSE and top.name == chart.ITEMIZED:
+                # Item by item, as the worksheet asks.
+                writer.writerow([top.name, plain(whole), "Itemized below"])
+                for sub in subs:
+                    amount = by_category.get(sub.pk, 0)
+                    if sub.archived_at is None or amount:
+                        writer.writerow([f"  {sub.name}", plain(amount), ""])
+                if own:
+                    writer.writerow([f"  {top.name}, not itemized", plain(own), ""])
+            else:
+                writer.writerow([top.name, plain(whole), note])
+        loose = earned.filter(category__isnull=True, kind=kind).aggregate(
+            total=Sum(SIGNED))["total"] or 0
+        if loose:
+            writer.writerow(["(no category yet)", plain(loose), ""])
+            totals[kind] += loose
+        writer.writerow([f"Total {title.lower()}", plain(totals[kind]), ""])
+    writer.writerow(["Net", plain(totals[T.INCOME] - totals[T.EXPENSE]), ""])
+
+    # Not an expense: the owner's own money, paid to the government on account.
+    writer.writerow([])
+    writer.writerow(["Estimated tax payments", "Federal", "State"])
+    paid = {"federal": 0, "state": 0}
+    for entry in everything.filter(kind=K.OWNER, direction=D.OUT).exclude(
+            estimated_tax="").order_by("on_date", "created_at"):
+        paid[entry.estimated_tax] += entry.amount_cents
+        writer.writerow([entry.on_date.isoformat(),
+                         plain(entry.amount_cents) if entry.estimated_tax == "federal" else "",
+                         plain(entry.amount_cents) if entry.estimated_tax == "state" else ""])
+    writer.writerow(["Total", plain(paid["federal"]), plain(paid["state"])])
+
+    facts = services.year_facts(tenant, year)
+    said = lambda value: "" if value is None else str(value)  # noqa: E731
+    writer.writerow([])
+    writer.writerow(["Year-end facts", "", ""])
+    writer.writerow(["Total miles driven", said(facts["total_miles"]), ""])
+    writer.writerow(["Business miles", said(facts["business_miles"]), ""])
+    writer.writerow(["Home square footage", said(facts["home_square_feet"]), ""])
+    writer.writerow(["Office square footage", said(facts["office_square_feet"]), ""])
+    writer.writerow([])
+    writer.writerow([DISCLAIMER])
+    return out.getvalue()

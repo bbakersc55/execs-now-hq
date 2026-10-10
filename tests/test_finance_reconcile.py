@@ -34,7 +34,7 @@ from .factories import ContactFactory
 from .test_client_invoicing import (  # noqa: F401  (fixtures and helpers)
     TOTAL, a_client, acme, call, ecc, get, patch, post, ready_to_bill, sent,
 )
-from .test_finance_books import A, C, E, R, add, books  # noqa: F401
+from .test_finance_books import A, C, E, R, add, books, working_chart  # noqa: F401
 from .test_finance_chart import kept  # noqa: F401
 from .test_finance_import import SIGNED, decide, dry, rows_of  # noqa: F401
 from .test_platform_practices import platform_owner, practices  # noqa: F401
@@ -526,6 +526,7 @@ def test_a_cleared_entry_keeps_its_date_amount_account_and_direction(kept, ff, a
 def test_a_cleared_line_is_not_removed_by_an_import_rollback_or_from_its_invoice(
         ready_to_bill, ff, api):
     tenant = ready_to_bill
+    working_chart(tenant)
     modules.set_enabled(tenant, modules.BOOKKEEPING, True, actor=ff.user)
     bank = post(api, ff, A, {"name": "Checking", "kind": "bank", "opening_on": on(PRIOR, 1),
                              "opening_balance_cents": OPENING}).json()
@@ -624,6 +625,7 @@ def line(detail, code):
 @pytest.mark.django_db
 def test_each_checklist_line_ticks_itself_from_the_books(ready_to_bill, ff, api):
     tenant = ready_to_bill
+    working_chart(tenant)
     modules.set_enabled(tenant, modules.BOOKKEEPING, True, actor=ff.user)
     bank = post(api, ff, A, {"name": "Checking", "kind": "bank", "opening_on": on(PRIOR, 1),
                              "opening_balance_cents": OPENING}).json()
