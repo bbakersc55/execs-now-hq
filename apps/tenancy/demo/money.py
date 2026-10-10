@@ -8,6 +8,11 @@ and the payment becomes income in the books, all through `apps.billing` and
 way. The last days of the bank account come in through the bank import
 instead, so the demo has a committed import with remembered rules and matched
 deposits to show.
+
+Each month is then reconciled, bank and card, and closed (P6 M1 §10), by the
+reconcile code with the clock moved to the week after the month ended. So the
+books are locked through the end of last month by their closes, not by a date
+anyone typed, and this month is open with the bank reconciliation in progress.
 """
 
 from __future__ import annotations
@@ -18,9 +23,12 @@ from . import cast
 from .clock import at, dice, moment, month_end, months, next_month
 
 RETAINER = "Fractional operations leadership, monthly retainer"
-#: Where the books begin, and the day they are locked through.
+#: Where the books begin.
 FIRST = date(2025, 1, 1)
-LOCK = date(2025, 12, 31)
+#: The card's statement ends on this day of the month; the bank's on the last.
+CARD_STATEMENT_DAY = 25
+#: A category the owner used for a while and then combined into the chart's own.
+OLD_COURSES = "Courses and conferences"
 #: Last month's invoice is still unpaid for these two, and half paid for the third.
 OVERDUE = ("Globex Logistics", "Dunder Mifflin Paper")
 PART_PAID = "Initech Software"
@@ -48,11 +56,16 @@ def history(world) -> None:
     window_start = _import_window(world)
     held_back: list[dict] = []          # bank lines that arrive by import instead
     card_owed = books["card"].opening_balance_cents
+    previous = None
     for index, month in enumerate(months(first, world.today)):
-        if month == date(2026, 2, 1) and world.today >= date(2026, 2, 10):
-            with at(date(2026, 2, 10)):
-                _finance().update_settings(world.tenant, actor=world.owner,
-                                           locked_through=LOCK)
+        # Last month waits for the bank import, which still has lines to bring
+        # into it; every month before that is reconciled and closed here, in
+        # the week after it ended.
+        if previous is not None and month != _this_month(world):
+            _reconcile_and_close(world, books, previous)
+            if previous == _months_back(world, 4):
+                _late_refund(world, books, previous)
+        previous = month
         invoiced = _invoice_the_month(world, books, month, window_start)
         facts = _expenses(world, books, month, index, invoiced, card_owed)
         card_owed = sum(f["cents"] for f in facts
@@ -66,6 +79,11 @@ def history(world) -> None:
                 _enter(world, books, fact)
         _oddities(world, books, month)
     _bank_import(world, books, held_back, window_start)
+    if _last_month(world) >= first:
+        _reconcile_and_close(world, books, _last_month(world))
+        _correcting_entry(world, books)
+    _this_month_in_progress(world, books)
+    _reshape_the_chart(world, books)
     world.extra["books"] = books
 
 
@@ -96,7 +114,7 @@ def _import_window(world) -> date:
     start = world.today - timedelta(days=10)
     if cleared:
         start = min(start, max(cleared) - timedelta(days=1))
-    return max(start, LOCK + timedelta(days=1))
+    return max(start, FIRST)
 
 
 def _finance():
@@ -125,6 +143,8 @@ def _open_the_books(world) -> dict:
         card = finance.save_account(
             world.tenant, actor=world.owner, name="Business Visa", kind="card",
             last4="0932", opening_balance_cents=124_000, opening_on=FIRST)
+        finance.save_category(world.tenant, actor=world.owner, name=OLD_COURSES,
+                              type="expense")
     categories = {c.name: c for c in FinanceCategory.objects.all()}
     return {"bank": bank, "card": card, "category": categories, "unplaced": [],
             "scheduled": set()}
@@ -253,7 +273,7 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
                            "Supplies", "Whiteboard markers, binders and printing",
                            who="Office Depot"))
     if month.month % 3 == 2:
-        facts.append(_fact(day(17), "card", dollars(149, 399), "Education and training",
+        facts.append(_fact(day(17), "card", dollars(149, 399), OLD_COURSES,
                            "Operations leadership course, quarterly module",
                            who="Front Range Leadership Institute"))
 
@@ -356,7 +376,7 @@ def _months_back(world, n: int) -> date:
 def _oddities(world, books, month: date) -> None:
     """The handful of things that are not the monthly rhythm: an invoice
     issued twice and voided, a workshop billed to someone who is not a client,
-    and two refunds."""
+    and a refund. (The other refund is entered late: `_late_refund`.)"""
     from apps.billing import services as billing
     from apps.billing.models import ClientInvoice
 
@@ -403,14 +423,6 @@ def _oddities(world, books, month: date) -> None:
                 counterparty="Dunder Mifflin Paper",
                 client_company=world.companies["Dunder Mifflin Paper"],
                 reference="Check 2117")
-    if month == _months_back(world, 4):
-        with at(moment(month.replace(day=12), 15)):
-            finance.create_entry(
-                tenant, actor=owner, kind="expense", direction="in",
-                on_date=month.replace(day=12), amount_cents=11_988,
-                category=books["category"]["Software"],
-                account=books["card"], counterparty="Adobe",
-                description="Refund: second Acrobat seat cancelled after the annual renewal")
 
 
 # ----------------------------------------------------------- the bank import
@@ -478,3 +490,127 @@ def _bank_import(world, books, held_back: list[dict], window_start: date) -> Non
                 remembered[phrase] = True
         importer.commit(batch, actor=owner)
     world.extra["bank_import"] = batch
+
+
+# ------------------------------------------- reconciling and closing (P6 M1)
+
+def _reconcile():
+    from apps.finance import reconcile
+
+    return reconcile
+
+
+def _written_by_check(line) -> bool:
+    """The owner's own checks, which the bank shows the month after they are
+    written: the Chamber's sponsorship and the one refund."""
+    return line["description"].startswith("Quarterly sponsorship") \
+        or "refunded by check" in line["description"]
+
+
+def _statement(world, books, key: str, month: date, when, *, statement_on=None):
+    """One statement, ticked as the owner would: everything it shows, and not
+    the checks written this month and not yet cashed. Its balance is what
+    that comes to, so it finishes at zero, as a real one does once it is
+    right."""
+    reconcile, owner = _reconcile(), world.owner
+    account = books[key]
+    statement_on = statement_on or (
+        month.replace(day=CARD_STATEMENT_DAY) if key == "card" else month_end(month))
+    with at(when):
+        rec = reconcile.start(world.tenant, actor=owner, account=account,
+                              statement_on=statement_on, statement_balance_cents=0)
+        reconcile.tick(rec, actor=owner, everything=True)
+        waiting = [line["id"] for line in reconcile.lines(rec)
+                   if not line["carried"] and _written_by_check(line)]
+        if waiting:
+            reconcile.tick(rec, actor=owner, entry_ids=waiting, cleared=False)
+        reconcile.update(rec, actor=owner,
+                         statement_balance_cents=reconcile.totals(rec)["expected_cents"])
+    return rec
+
+
+def _reconcile_and_close(world, books, month: date) -> None:
+    reconcile, owner = _reconcile(), world.owner
+    after = next_month(month)
+    day = min(after + timedelta(days=5), world.today)
+    for key, minute in (("bank", 5), ("card", 40)):
+        when = moment(day, 16, minute)
+        rec = _statement(world, books, key, month, when)
+        with at(when + timedelta(minutes=25)):
+            reconcile.finish(rec, actor=owner)
+    with at(moment(min(after + timedelta(days=6), world.today), 17, 30)):
+        reconcile.close(world.tenant, actor=owner, month=month)
+
+
+def _late_refund(world, books, month: date) -> None:
+    """A month closed, reopened and closed again (§10): Adobe's refund was on
+    that month's card statement and had never been entered. It was the newest
+    closed month when it was found, so reopening it was the right fix."""
+    from apps.finance.models import FinanceReconciliation
+
+    reconcile, finance, owner, tenant = _reconcile(), _finance(), world.owner, world.tenant
+    why = (f"Adobe's refund for the cancelled second seat is on the {month:%B} card "
+           "statement and was never entered.")
+    with at(moment(next_month(month) + timedelta(days=8), 10, 15)):
+        reconcile.reopen_month(tenant, actor=owner, month=month, reason=why)
+        rec = FinanceReconciliation.objects.get(account=books["card"], month=month)
+        reconcile.reopen(rec, actor=owner, reason=why)
+        refund = finance.create_entry(
+            tenant, actor=owner, kind="expense", direction="in",
+            on_date=month.replace(day=12), amount_cents=11_988,
+            category=books["category"]["Software"],
+            account=books["card"], counterparty="Adobe",
+            description="Refund: second Acrobat seat cancelled after the annual renewal")
+        reconcile.tick(rec, actor=owner, entry_ids=[str(refund.pk)])
+        reconcile.update(rec, actor=owner,
+                         statement_balance_cents=reconcile.totals(rec)["expected_cents"])
+        reconcile.finish(rec, actor=owner)
+        reconcile.close(tenant, actor=owner, month=month)
+    world.extra["reopened_month"] = month
+
+
+def _correcting_entry(world, books) -> None:
+    """A mistake found in a closed month is corrected in the open one (§1.5),
+    and the entry says what it corrects. The closed month stays as it was."""
+    last = _last_month(world)
+    on = min(world.today, _this_month(world) + timedelta(days=2))
+    with at(moment(on, 11, 5)):
+        entry = _finance().create_entry(
+            world.tenant, actor=world.owner, kind="expense", direction="in", on_date=on,
+            amount_cents=1_500, category=books["category"]["Bank and merchant fees"],
+            account=books["bank"], counterparty="Front Range Bank",
+            description=(f"Correcting entry: the bank gave back half of {last:%B}'s "
+                         f"monthly service fee after {last:%B} was closed. Entered here; "
+                         f"{last:%B} stays as it was sent."))
+    world.extra["correcting_entry"] = entry
+
+
+def _this_month_in_progress(world, books) -> None:
+    """This month's bank reconciliation, begun and not finished: everything
+    through yesterday is ticked but one deposit, so the difference is that
+    deposit. The card is not started."""
+    reconcile, owner = _reconcile(), world.owner
+    month = _this_month(world)
+    through = max(month, world.today - timedelta(days=1))
+    when = moment(world.today, 8, 20)
+    rec = _statement(world, books, "bank", month, when, statement_on=through)
+    deposits = [line for line in reconcile.lines(rec)
+                if line["cleared"] and line["way"] == "in" and not line["carried"]
+                and line["kind"] == "income"]
+    if deposits:
+        with at(when + timedelta(minutes=10)):
+            reconcile.tick(rec, actor=owner, entry_ids=[deposits[-1]["id"]], cleared=False)
+    world.extra["open_reconciliation"] = rec
+
+
+def _reshape_the_chart(world, books) -> None:
+    """One combine and one split on record (§10), as the owner would do them
+    bringing the chart to what the CPA asked for. Both include closed months
+    and change no total."""
+    from apps.finance import chart
+
+    owner, cats = world.owner, books["category"]
+    with at(moment(max(FIRST, world.today - timedelta(days=3)), 15, 30)):
+        chart.merge(cats[OLD_COURSES], cats["Education and training"], actor=owner)
+        chart.split(cats["Software"], actor=owner, name="Sales tools", as_sub=False,
+                    contains="Sales Navigator")

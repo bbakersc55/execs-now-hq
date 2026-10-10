@@ -58,6 +58,11 @@ describe("the line every Finance screen carries", () => {
     "GET /api/finance-categories/changes/": [],
     "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-categories/": CATEGORIES,
     "GET /api/finance-rules/": [], "GET /api/finance-imports/": [],
+    "GET /api/finance-reconcile/explain/": { estimate_usd: "0.0100", used_today: 0, cap: 20,
+                                             resets_at: "", refused: "", disclaimer: "" },
+    "GET /api/finance-reconcile/": { months: [], accounts: [], locked_through: null,
+                                     locked_by: null, next_to_close: null, guided: false,
+                                     today: "2026-10-10" },
     "GET /api/finance-settings/": { locked_through: null, invoice_income_category: "fees" },
     "GET /api/finance-payees/": { year: 2026, threshold_cents: 200000,
                                   default_threshold_cents: 200000, over: 0, payees: [] },
@@ -78,8 +83,8 @@ describe("the line every Finance screen carries", () => {
       + "financial advice. Confirm with your CPA.");
   });
 
-  // Every Finance route in App.tsx: the six tabs, and Settings → Finance.
-  it.each(["entries", "import", "payees", "pnl", "balance", "export"] as const)(
+  // Every Finance route in App.tsx: the seven tabs, and Settings → Finance.
+  it.each(["entries", "reconcile", "import", "payees", "pnl", "balance", "export"] as const)(
     "is on the %s tab", async (tab) => {
       vi.stubGlobal("fetch", mockApi(stubs));
       renderRoute(<Finance tab={tab} />);
@@ -101,7 +106,7 @@ describe("the line every Finance screen carries", () => {
       /path="(\/(?:settings\/)?finance[^"]*)"\s+element=\{(?:<Settings me=\{me\}>)?<(\w+)/g)];
     expect(routes.map((r) => r[1]).sort()).toEqual([
       "/finance", "/finance/1099", "/finance/balance", "/finance/export", "/finance/import",
-      "/finance/pnl", "/settings/finance"]);
+      "/finance/pnl", "/finance/reconcile", "/settings/finance"]);
     // Each is one of the two screens tested above; a new one has to be added there.
     expect(new Set(routes.map((r) => r[2]))).toEqual(new Set(["Finance", "FinanceSettings"]));
   });

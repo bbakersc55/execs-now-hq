@@ -1,6 +1,6 @@
 # P6 M1 — Reconciliation and month close
 
-**Spec · 2026-10-08 · decided 2026-10-08 · no code yet; stop 1 waits for the owner's word**
+**Spec · 2026-10-08 · decided 2026-10-08 · stop 1 built 2026-10-08 · stop 2 built 2026-10-10 · not released**
 
 The first of four finance modules asked for by the owner on 2026-10-08:
 M1 reconciliation and month close (this file), M2 cash forecast, M3 balance
@@ -524,6 +524,94 @@ archive-what-is-relied-on case (its sub-categories go first), and the CPA
 summary's columns (`tests/test_finance_books.py`).
 
 **Not seen in a browser:** every screen of this stop.
+
+---
+
+## As built: stop 2 (2026-10-10) — reconciliation, month close, guided mode, the demo
+
+Built on `dev`; not released. Stop 1's line "Stop 2 … is not started" is
+history now.
+
+**Reconciling.** `apps/finance/reconcile.py`; routes under
+`/api/finance-reconcile/` (the grid, start, read, change the statement, tick,
+place, finish, reopen, discard, the report). The screen is Finance →
+Reconcile (`frontend/src/screens/FinanceReconcile.tsx`), a tab beside Entries
+for a practice with Bookkeeping.
+
+**Closing.** The same module; routes under `/api/finance-months/<YYYY-MM>/`
+(the checklist, `close/`, `reopen/` with `preview: true`). Closing writes
+`finance_settings.locked_through`; reopening moves it back.
+
+**Guided mode.** "Walk me through it" is remembered per person in
+`finance_guide`. The eight steps are written in `frontend/src/lib/finance.ts`.
+"Explain this step" is `apps/finance/explain.py`: `what_is_sent` is the whole
+of what goes to Claude, and the test reads it line by line.
+
+**The demo.** `apps/tenancy/demo/money.py` reconciles the bank and the card
+and closes every whole month, in the week after each ended; reopens and
+re-closes one (Adobe's refund, four months back); enters one correcting
+entry this month; leaves this month's bank reconciliation in progress, one
+deposit unticked; and combines one category and splits one. It types no lock.
+
+**Migration:** `finance` 0004. Additive: two columns on `finance_account`,
+and `finance_reconciliation`, `finance_cleared`, `finance_month_close`,
+`finance_guide`. Its data step switches "reconciled each month" off for cash
+accounts. (§9 said one for `platform` too; that was stop 1's
+`practice_module`, and this stop needs none.)
+
+**Where the build differs from the text above, or adds to it:**
+
+- **One reconciliation per account and month,** not per statement date (§9).
+  The grid is accounts by months, and the close asks for "a finished one in
+  the month"; a second statement in the same month has nowhere to show.
+- **An account's reconciliations go month by month.** After its first, the
+  next one is the next month's, and one is worked on at a time. Its first may
+  be any month (M1-3).
+- **Beginning later than the account did (M1-3)** takes the statement's
+  starting balance and makes the first of that month where reconciling began
+  (`finance_account.reconciling_from`). Without it, the first reconciliation
+  starts from the opening balance and asks about every entry since.
+- **The first month ever closed may be any month that has ended** and passes
+  the checklist, for the same reason: otherwise two years of statements stand
+  before the first close. It locks everything before it, and those earlier
+  months show as "Locked before month close began", as a typed lock's do.
+  After that, months close in order.
+- **A practice without Bookkeeping still types its lock in the finance
+  settings.** §3.5 takes the field away; M1-1 says nobody loses what P5 gave
+  them, and without the module there is no close to set it. So the field
+  leaves the settings of a practice that has the module (the route refuses
+  it too, 409) and stays for one that does not. **The owner may want it gone
+  for both; that is one line each in the screen and the route.**
+- **A fifth table, `finance_guide`,** for "remembered per person" (§4.1).
+- **"Explain this step" numbers:** matrix 13.14, as written. Reconciling is
+  13.15 in the matrix, because 13.11 was already 1099 payees.
+- **The cap counts every press that reached the point of asking,** answered
+  or not. A press refused for no key, the cap or the budget is not counted
+  and asks nothing.
+- **On steps 1 to 3 and 6 to 8, with a statement open,** the same numbers
+  are sent as on 4 and 5, without the lines. With no statement open (the
+  month's checklist), the step's name alone is sent.
+- **Reopening a reconciliation** is refused while its month is closed
+  ("Reopen the month first"), and allowed for the newest finished one even
+  when the next month's is already in progress: that one's starting balance
+  follows.
+- **One started and never finished can be discarded.** One finished once is
+  kept.
+- **An account that has been reconciled keeps its opening balance and date.**
+- **A change that takes a ticked entry out of a statement still open**
+  (its account, or a date past the statement's) unticks it.
+- **A rollback of an import** is refused where it would remove or unplace an
+  entry cleared in a finished reconciliation.
+- **Statement files, and reading a statement,** are still §12's: not here.
+- **The reconciliation report prints with the browser's own print.** It has
+  no PDF of its own.
+
+**Tests that were pinned to the old lock and changed with it:** the demo
+seed's lock date (now its closes), and the settings screen's two lock tests
+(now a practice without the module).
+
+**Not seen in a browser:** every screen of this stop. **Not exercised with a
+key:** what Claude actually says.
 
 ---
 

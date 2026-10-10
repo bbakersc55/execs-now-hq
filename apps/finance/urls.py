@@ -11,5 +11,7 @@ router.register("finance-reports", views.ReportView, basename="finance-report")
 router.register("finance-imports", views.ImportViewSet, basename="finance-import")
 router.register("finance-rules", views.RuleViewSet, basename="finance-rule")
 router.register("finance-payees", views.PayeeView, basename="finance-payee")
+router.register("finance-reconcile", views.ReconcileViewSet, basename="finance-reconcile")
+router.register("finance-months", views.MonthViewSet, basename="finance-month")
 
 urlpatterns = router.urls

@@ -98,10 +98,16 @@ def _unlocked(tenant, *dates) -> None:
         return
     for day in dates:
         if day is not None and day <= locked:
+            from apps.tenancy import modules
+
+            # A practice that closes months moves the lock by reopening one
+            # (P6 M1 §3.5); one without Bookkeeping still types it.
+            how = ("Reopen the month under Finance, Reconcile" if modules.has(
+                tenant, modules.BOOKKEEPING) else "Move the lock back in the finance "
+                "settings")
             raise FinanceError(
                 f"The books are locked through {locked:%B} {locked.day}, {locked.year}. "
-                "Move the lock back in the finance settings to change anything dated "
-                "on or before it.", status=409)
+                f"{how} to change anything dated on or before it.", status=409)
 
 
 @transaction.atomic
@@ -110,6 +116,14 @@ def update_settings(tenant, *, actor, locked_through=..., invoice_income_categor
     before = {"locked_through": row.locked_through.isoformat() if row.locked_through else None,
               "invoice_income_category": str(row.invoice_income_category_id or "")}
     if locked_through is not ...:
+        from apps.finance.models import FinanceMonthClose
+
+        # Once a month has been closed, closing and reopening are what move
+        # the lock (P6 M1 §3.5): a typed date would contradict the closes.
+        if FinanceMonthClose.all_objects.filter(tenant=tenant,
+                                                reopened_at__isnull=True).exists():
+            raise FinanceError("The lock is set by closing a month, and moved back by "
+                               "reopening one, under Finance, Reconcile.", status=409)
         row.locked_through = _a_date(locked_through, "The lock date") if locked_through \
             else None
         if row.locked_through and row.locked_through > timezone.localdate():
@@ -139,8 +153,21 @@ def _clean_name(name, what) -> str:
 
 @transaction.atomic
 def save_account(tenant, *, actor, account=None, name=None, kind=None, last4=None,
-                 opening_balance_cents=None, opening_on=None) -> FinanceAccount:
+                 opening_balance_cents=None, opening_on=None,
+                 reconciled_monthly=None) -> FinanceAccount:
+    from apps.finance.models import FinanceReconciliation
+
     made = account is None
+    reconciled = account is not None and FinanceReconciliation.all_objects.filter(
+        tenant=tenant, account=account).exists()
+    if reconciled and (
+            (opening_balance_cents is not None
+             and opening_balance_cents != account.opening_balance_cents)
+            or (opening_on is not None
+                and _a_date(opening_on, "The opening date") != account.opening_on)):
+        raise FinanceError(f"“{account.name}” has been reconciled, and its first "
+                           "reconciliation starts from its opening balance and date. "
+                           "They stay as they are.", status=409)
     if made:
         account = FinanceAccount(tenant=tenant, opening_on=timezone.localdate())
         if name is None:
@@ -171,9 +198,17 @@ def save_account(tenant, *, actor, account=None, name=None, kind=None, last4=Non
                                                signed=True)
     if opening_on is not None:
         account.opening_on = _a_date(opening_on, "The opening date")
+    if reconciled_monthly is not None:
+        if not isinstance(reconciled_monthly, bool):
+            raise FinanceError("reconciled_monthly is true or false.")
+        account.reconciled_monthly = reconciled_monthly
+    elif made:
+        # A cash account has no statement (P6 M1 §1.6).
+        account.reconciled_monthly = account.kind != FinanceAccount.Kind.CASH
     account.save()
     audit(tenant, "account_created" if made else "account_changed", actor, account,
           name=account.name, kind=account.kind,
+          reconciled_monthly=account.reconciled_monthly,
           opening_balance_cents=account.opening_balance_cents,
           opening_on=account.opening_on.isoformat())
     return account
@@ -426,10 +461,13 @@ def update_entry(entry, *, actor, **changes) -> FinanceEntry:
                 "This entry is an invoice payment. Its amount, date and client are the "
                 "payment's: change them on the invoice. Here you can change its "
                 "category, the account it landed in and its description.", status=409)
-    before, was = _state(entry), entry.on_date
+    from apps.finance import reconcile
+
+    before, was, held = _state(entry), entry.on_date, reconcile.snapshot(entry)
     _apply(entry.tenant, entry, changes)
     _shape(entry)
     _unlocked(entry.tenant, was, entry.on_date)
+    reconcile.hold(entry, held)
     entry.save()
     audit(entry.tenant, "entry_changed", actor, entry, before=before, after=_state(entry))
     return entry
@@ -447,6 +485,9 @@ def remove_entry(entry, *, actor, reason, from_invoice=False) -> FinanceEntry:
         raise FinanceError("This entry is an invoice payment. Remove the payment on the "
                            "invoice, and this goes with it.", status=409)
     _unlocked(entry.tenant, entry.on_date)
+    from apps.finance import reconcile
+
+    reconcile.hold(entry, removing=True)
     entry.removed_at = timezone.now()
     entry.removed_by = actor
     entry.remove_reason = reason

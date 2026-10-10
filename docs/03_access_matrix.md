@@ -306,6 +306,9 @@ Beta ships no financial module. These rows exist so the role-boundary suite has 
 | 13.9 | The CPA export | ✅ | ❌ | ❌ | — | — | Each download is an audit event |
 | 13.10 | The dashboard's revenue, expenses and margin | ✅ | ❌ | ❌ | — | — | Absent from everyone else's payload |
 | 13.13 | Sub-categories; combine, split and remove a category; "Add the starting chart" *(P6 M1; a practice with the Bookkeeping module)* | ✅ | ❌ | ❌ | — | — | 404 for a practice without the module. Combine and split are counted first, recorded, and include closed months |
+| 13.15 | Reconcile an account; reopen a reconciliation; its report *(P6 M1; Bookkeeping. The spec calls it 13.11, which 1099 payees already had)* | ✅ | ❌ | ❌ | — | — | 404 for a practice without the module. Finished only at a difference of exactly zero; a cleared entry keeps its date, amount, account and direction |
+| 13.12 | Close a month; reopen one *(P6 M1; Bookkeeping)* | ✅ | ❌ | ❌ | — | — | Closing sets the lock; reopening needs a reason, reopens every later closed month, and is audited. A practice without the module still types its lock (13.7) |
+| 13.14 | "Explain this step" *(P6 M1; Bookkeeping)* | ✅ | ❌ | ❌ | — | — | Asks Claude only when pressed; sends one account's numbers and, on two steps, its unticked lines; 20 a day and never past the monthly AI budget; writes nothing but its `ai_call` |
 | 13.5 | Any financial endpoint | ✅ | 🔸 | **❌** | ❌ | ❌ | **The non-negotiable assistant test family** (`CLAUDE.md`) |
 
 ---

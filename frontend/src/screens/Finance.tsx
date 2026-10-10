@@ -8,13 +8,14 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
   BalanceView, EntryKind, FinanceAccount, FinanceCategory, FinanceEntry, FinanceEntryList,
-  PayeeReport, Pnl, api,
+  Me, PayeeReport, Pnl, api,
   PnlRow,
 } from "../lib/api";
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import { FinanceImport } from "./FinanceImport";
 import { FinancePayees } from "./FinancePayees";
+import { FinanceReconcile } from "./FinanceReconcile";
 
 /**
  * The practice's books (P5; matrix 13.1, 13.6–13.10). The practice owner's
@@ -26,9 +27,12 @@ import { FinancePayees } from "./FinancePayees";
  * (and, in the next round, imported from a bank or card export).
  */
 
-type Tab = "entries" | "import" | "pnl" | "balance" | "payees" | "export";
+type Tab = "entries" | "reconcile" | "import" | "pnl" | "balance" | "payees" | "export";
 const TABS: [Tab, string, string][] = [
-  ["entries", "/finance", "Entries"], ["import", "/finance/import", "Import"],
+  ["entries", "/finance", "Entries"],
+  // P6 M1: beside Entries, for a practice with the Bookkeeping module.
+  ["reconcile", "/finance/reconcile", "Reconcile"],
+  ["import", "/finance/import", "Import"],
   ["pnl", "/finance/pnl", "Profit and loss"],
   ["balance", "/finance/balance", "Balance view"],
   ["payees", "/finance/1099", "1099 payees"], ["export", "/finance/export", "For your CPA"],
@@ -52,6 +56,8 @@ function useBooks() {
 }
 
 export function Finance({ tab }: { tab: Tab }) {
+  const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
+  const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
   return (
     <>
       <PageHead title="Finance"
@@ -59,13 +65,16 @@ export function Finance({ tab }: { tab: Tab }) {
           when it leaves. Only you see this.{" "}
           <Link to="/settings/finance">Accounts and categories</Link></>} />
       <nav className="row tight" aria-label="Finance" style={{ marginBottom: "var(--s4)" }}>
-        {TABS.map(([key, to, label]) => (
+        {TABS.filter(([key]) => key !== "reconcile" || bookkeeping).map(([key, to, label]) => (
           <NavLink key={key} to={to} end
             className={({ isActive }) => (isActive ? "btn primary small" : "btn small")}>
             {label}</NavLink>
         ))}
       </nav>
       {tab === "entries" && <Entries />}
+      {tab === "reconcile" && (bookkeeping ? <FinanceReconcile />
+        : me.data && <Banner kind="info">Reconciling and closing a month are part of
+          Bookkeeping, which this practice does not have.</Banner>)}
       {tab === "import" && <Importing />}
       {tab === "payees" && <FinancePayees />}
       {tab === "pnl" && <ProfitAndLoss />}

@@ -30,7 +30,9 @@ def represent_account(row) -> dict:
     return {"id": str(row.pk), "name": row.name, "kind": row.kind,
             "kind_label": row.get_kind_display(), "last4": row.last4,
             "opening_balance_cents": row.opening_balance_cents,
-            "opening_on": row.opening_on.isoformat(), "closed": row.closed_at is not None}
+            "opening_on": row.opening_on.isoformat(), "closed": row.closed_at is not None,
+            # P6 M1: whether the month close asks for a reconciliation of it.
+            "reconciled_monthly": row.reconciled_monthly}
 
 
 def represent_category(row, used=None) -> dict:
@@ -257,6 +259,10 @@ class AccountViewSet(FinanceViewSet):
         fields = {name: data[name] for name in ("name", "kind", "last4",
                                                 "opening_balance_cents", "opening_on")
                   if name in data}
+        if "reconciled_monthly" in data:
+            # "Reconciled each month" is Bookkeeping's (P6 M1 §1.6).
+            self.needs_bookkeeping(request)
+            fields["reconciled_monthly"] = data["reconciled_monthly"]
         try:
             row = services.save_account(request.tenant, actor=request.user, account=account,
                                         **fields)
@@ -410,6 +416,14 @@ class FinanceSettingsView(FinanceViewSet):
         fields = {}
         try:
             if "locked_through" in data:
+                from apps.tenancy import modules
+
+                # P6 M1 §3.5: a practice that closes months does not type the
+                # lock. One without Bookkeeping keeps what P5 gave it.
+                if modules.has(request.tenant, modules.BOOKKEEPING):
+                    raise services.FinanceError(
+                        "The lock is set by closing a month, and moved back by "
+                        "reopening one, under Finance, Reconcile.", status=409)
                 fields["locked_through"] = data["locked_through"] or None
             if "invoice_income_category" in data:
                 fields["invoice_income_category"] = self._one(
@@ -774,3 +788,242 @@ class PayeeView(FinanceViewSet):
         response["Content-Disposition"] = (
             f'attachment; filename="1099-payees-{data["year"]}.csv"')
         return response
+
+
+# ---------------------------------- reconciliation and month close (P6 M1)
+
+class ReconcileViewSet(FinanceViewSet):
+    """Matrix 13.15 and 13.14. Bookkeeping's: a practice without the module
+    gets 404 from every route here."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.needs_bookkeeping(request)
+
+    def _rec(self, pk):
+        from apps.finance.models import FinanceReconciliation
+
+        try:
+            rec = FinanceReconciliation.objects.select_related(
+                "account", "finished_by", "reopened_by").filter(pk=pk).first()
+        except (ValueError, TypeError):
+            rec = None
+        if rec is None:
+            raise Http404
+        return rec
+
+    def _detail(self, pk, status=200):
+        from apps.finance import reconcile
+
+        return Response(reconcile.represent(self._rec(pk), detail=True), status=status)
+
+    def list(self, request):
+        """The grid: accounts down, months across, and each month's state."""
+        from apps.finance import importer, reconcile
+
+        services.settings_for(request.tenant)
+        out = reconcile.grid(request.tenant, request.user)
+        # The bank's own balance on the last line of its newest file: offered
+        # as the statement balance, never assumed.
+        said = importer.bank_said(request.tenant)
+        for account in out["accounts"]:
+            found = next((value for pk, value in said.items()
+                          if str(pk) == account["id"]), None)
+            account["bank_said"] = ({"on": found["on"].isoformat(), "cents": found["cents"]}
+                                    if found else None)
+        return Response(out)
+
+    def create(self, request):
+        from apps.finance import reconcile
+
+        data = request.data
+        try:
+            rec = reconcile.start(
+                request.tenant, actor=request.user,
+                account=self._one(FinanceAccount, data.get("account"), "account"),
+                statement_on=data.get("statement_on"),
+                statement_balance_cents=data.get("statement_balance_cents"),
+                starting_balance_cents=data.get("starting_balance_cents"),
+                starting_on=data.get("starting_on") or None)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self._detail(rec.pk, status=201)
+
+    def retrieve(self, request, pk=None):
+        return self._detail(pk)
+
+    def partial_update(self, request, pk=None):
+        from apps.finance import reconcile
+
+        rec = self._rec(pk)
+        try:
+            reconcile.update(rec, actor=request.user,
+                             statement_on=request.data.get("statement_on"),
+                             statement_balance_cents=request.data.get(
+                                 "statement_balance_cents"))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self._detail(pk)
+
+    def destroy(self, request, pk=None):
+        from apps.finance import reconcile
+
+        try:
+            reconcile.discard(self._rec(pk), actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(status=204)
+
+    @action(detail=True, methods=["post"])
+    def tick(self, request, pk=None):
+        """`entries: [ids]` or `all: true`, with `cleared: true | false`."""
+        from apps.finance import reconcile
+
+        cleared = request.data.get("cleared", True)
+        if not isinstance(cleared, bool):
+            return Response({"detail": "cleared is true or false."}, status=400)
+        try:
+            reconcile.tick(self._rec(pk), actor=request.user,
+                           entry_ids=request.data.get("entries"),
+                           everything=request.data.get("all") is True, cleared=cleared)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self._detail(pk)
+
+    @action(detail=True, methods=["post"])
+    def place(self, request, pk=None):
+        """"Place it here": an invoice payment received and not yet placed
+        lands in this statement's account, its fee and its tax together."""
+        rec = self._rec(pk)
+        try:
+            entry = self._one(FinanceEntry, request.data.get("entry"), "entry")
+            if entry.account_id is not None or entry.removed_at is not None:
+                raise services.FinanceError("That payment is already in an account.",
+                                            status=409)
+            loose = FinanceEntry.objects.filter(
+                removed_at__isnull=True, account__isnull=True).filter(
+                    Q(pk=entry.pk) | Q(client_payment_id=entry.client_payment_id,
+                                       client_payment__isnull=False))
+            for row in loose:
+                services.update_entry(row, actor=request.user, account=rec.account)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self._detail(pk)
+
+    @action(detail=True, methods=["post"])
+    def finish(self, request, pk=None):
+        from apps.finance import reconcile
+
+        try:
+            reconcile.finish(self._rec(pk), actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self._detail(pk)
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        from apps.finance import reconcile
+
+        try:
+            reconcile.reopen(self._rec(pk), actor=request.user,
+                             reason=request.data.get("reason"))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return self._detail(pk)
+
+    @action(detail=True, methods=["get"])
+    def report(self, request, pk=None):
+        """What a CPA asks for (§2): the statement balance, what cleared, what
+        is still outstanding, who finished it and when."""
+        from apps.finance import reconcile
+        from apps.finance.disclaimer import DISCLAIMER
+
+        rec = self._rec(pk)
+        if rec.state != "finished":
+            return Response({"detail": "The report is for a finished reconciliation."},
+                            status=409)
+        out = reconcile.represent(rec, detail=True)
+        cleared = [row for row in out["lines"] if row["cleared"]]
+        left = [row for row in out["lines"] if not row["cleared"]]
+        return Response({
+            **{key: out[key] for key in (
+                "id", "account", "month", "month_label", "statement_on",
+                "statement_balance_cents", "starting_balance_cents", "cleared_in_cents",
+                "cleared_out_cents", "expected_cents", "difference_cents", "finished_at",
+                "finished_by")},
+            "practice": request.tenant.name, "cleared": cleared, "outstanding": left,
+            "outstanding_in_cents": sum(r["amount_cents"] for r in left if r["way"] == "in"),
+            "outstanding_out_cents": sum(r["amount_cents"] for r in left
+                                         if r["way"] == "out"),
+            "disclaimer": DISCLAIMER})
+
+    @action(detail=False, methods=["post"])
+    def guided(self, request):
+        """"Walk me through it", on or off, remembered for this person."""
+        from apps.finance import reconcile
+
+        on = request.data.get("on")
+        if not isinstance(on, bool):
+            return Response({"detail": "on is true or false."}, status=400)
+        return Response({"guided": reconcile.set_guided(request.tenant, request.user, on)})
+
+    @action(detail=False, methods=["get", "post"])
+    def explain(self, request):
+        """GET: what a press costs and how many are left today; nothing is
+        sent to Claude. POST `{step, reconciliation?}`: ask."""
+        from apps.finance import explain
+
+        if request.method == "GET":
+            return Response(explain.status(request.tenant))
+        try:
+            rec = self._rec(request.data["reconciliation"]) \
+                if request.data.get("reconciliation") else None
+            return Response(explain.explain(request.tenant, step=request.data.get("step"),
+                                            rec=rec))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
+
+class MonthViewSet(FinanceViewSet):
+    """Matrix 13.12: a month's checklist, closing it, and reopening it."""
+
+    lookup_value_regex = r"\d{4}-\d{2}"
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.needs_bookkeeping(request)
+
+    def retrieve(self, request, pk=None):
+        from apps.finance import reconcile
+
+        try:
+            return Response(reconcile.month_detail(request.tenant, reconcile.a_month(pk)))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
+    @action(detail=True, methods=["post"])
+    def close(self, request, pk=None):
+        from apps.finance import reconcile
+
+        try:
+            month = reconcile.a_month(pk)
+            reconcile.close(request.tenant, actor=request.user, month=month)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(reconcile.month_detail(request.tenant, month))
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        """`preview: true` names the later months that would reopen with it."""
+        from apps.finance import reconcile
+
+        try:
+            month = reconcile.a_month(pk)
+            if request.data.get("preview"):
+                return Response(reconcile.reopen_plan(request.tenant, month))
+            done = reconcile.reopen_month(request.tenant, actor=request.user, month=month,
+                                          reason=request.data.get("reason"))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response({**reconcile.month_detail(request.tenant, month),
+                         "reopened": done["reopened"]})

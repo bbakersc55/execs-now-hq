@@ -550,6 +550,10 @@ def commit(batch, *, actor=None) -> FinanceImportBatch:
     batch.save()
     services.audit(tenant, "import_committed", actor, batch, account=account.name,
                    filename=batch.filename, counts=batch.counts)
+    # They came from the bank, so the statement shows them (P6 M1-4).
+    from apps.finance import reconcile
+
+    reconcile.imported(batch)
     return batch
 
 
@@ -566,6 +570,7 @@ def rollback(batch, *, actor=None) -> dict:
         "entry", "matched_entry"))
     services._unlocked(tenant, *[row.on_date for row in rows
                                  if row.entry_id or row.matched_entry_id])
+    from apps.finance import reconcile
     from apps.tenancy.models import AuditEvent
 
     edited = set(AuditEvent.all_objects.filter(
@@ -588,10 +593,15 @@ def rollback(batch, *, actor=None) -> dict:
             removed += 1
         elif row.outcome == O.INVOICE_PAYMENT and row.matched_entry is not None:
             matched = row.matched_entry
-            if FinanceEntry.all_objects.filter(
-                    tenant=tenant, client_payment_id=matched.client_payment_id,
-                    removed_at__isnull=True, account=batch.account).update(
-                        account=None, updated_at=timezone.now()):
+            placed = FinanceEntry.all_objects.filter(
+                tenant=tenant, client_payment_id=matched.client_payment_id,
+                removed_at__isnull=True, account=batch.account)
+            for entry in placed:
+                # One ticked off on a finished statement stays in its account.
+                held = reconcile.snapshot(entry)
+                entry.account = None
+                reconcile.hold(entry, held)
+            if placed.update(account=None, updated_at=timezone.now()):
                 unmatched += 1
     batch.status = S.ROLLED_BACK
     batch.rolled_back_at = timezone.now()

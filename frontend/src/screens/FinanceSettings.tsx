@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { FinanceCategories } from "../components/FinanceCategories";
 import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
@@ -12,8 +13,12 @@ import { dollars, longDate } from "../lib/money";
 
 /**
  * Settings → Finance (P5; matrix 13.7): the practice owner's. The accounts
- * money moves through, the categories entries sit in, where a paid invoice is
- * entered, and the lock that keeps a period as the CPA was given it.
+ * money moves through, the categories entries sit in, and where a paid
+ * invoice is entered.
+ *
+ * The lock that keeps a period as the CPA was given it is typed here only by
+ * a practice without the Bookkeeping module. One with it closes months
+ * instead (P6 M1 §3.5), under Finance → Reconcile.
  */
 
 export function FinanceSettings() {
@@ -50,8 +55,10 @@ export function FinanceSettings() {
   return (
     <>
       <PageHead title="Finance"
-        sub="The accounts your money moves through, the categories your entries sit in, and
-             the lock that keeps a period as your CPA was given it." />
+        sub={bookkeeping
+          ? "The accounts your money moves through and the categories your entries sit in."
+          : "The accounts your money moves through, the categories your entries sit in, "
+            + "and the lock that keeps a period as your CPA was given it."} />
       {said && <Banner kind="bad">{said}</Banner>}
 
       <Card title="Accounts">
@@ -63,7 +70,8 @@ export function FinanceSettings() {
         {(accounts.data ?? []).length > 0 && (
           <table>
             <thead><tr><th>Account</th><th>Kind</th><th>Started</th>
-              <th className="money">Opening</th><th /></tr></thead>
+              <th className="money">Opening</th>
+              {bookkeeping && <th>Reconciled each month</th>}<th /></tr></thead>
             <tbody>
               {(accounts.data ?? []).map((row) => (
                 <tr key={row.id}>
@@ -72,6 +80,15 @@ export function FinanceSettings() {
                   <td>{row.kind_label}</td>
                   <td>{longDate(row.opening_on)}</td>
                   <td className="money">{dollars(row.opening_balance_cents)}</td>
+                  {bookkeeping && (
+                    <td>
+                      <input type="checkbox" checked={row.reconciled_monthly ?? true}
+                        disabled={busy} aria-label={`Reconcile ${row.name} each month`}
+                        onChange={(e) => send.mutate({
+                          url: `/api/finance-accounts/${row.id}/`, method: "patch",
+                          body: { reconciled_monthly: e.target.checked } })} />
+                    </td>
+                  )}
                   <td className="money">
                     <button className="ghost small" disabled={busy}
                       aria-label={`${row.closed ? "Reopen" : "Close"} ${row.name}`}
@@ -111,9 +128,22 @@ export function FinanceSettings() {
 
       <Rules />
 
-      <Lock lockedThrough={settings.data?.locked_through ?? null} busy={busy}
-        onSet={(locked_through) => send.mutate({ url: "/api/finance-settings/",
-                                                 body: { locked_through } })} />
+      {bookkeeping ? (
+        <Card title="Closing a month">
+          <p className="small" style={{ margin: 0 }}>
+            {settings.data?.locked_through
+              ? <>The books are locked through{" "}
+                <strong>{longDate(settings.data.locked_through)}</strong>. </>
+              : "No month is closed yet. "}
+            The lock is set by closing a month and moved back by reopening one,
+            under <Link to="/finance/reconcile">Finance, Reconcile</Link>.
+          </p>
+        </Card>
+      ) : me.data && (
+        <Lock lockedThrough={settings.data?.locked_through ?? null} busy={busy}
+          onSet={(locked_through) => send.mutate({ url: "/api/finance-settings/",
+                                                   body: { locked_through } })} />
+      )}
       <FinanceDisclaimer />
     </>
   );

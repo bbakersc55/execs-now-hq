@@ -42,8 +42,9 @@ from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
 )
 from apps.finance.models import (
-    FinanceAccount, FinanceCategory, FinanceCategoryChange, FinanceEntry, FinanceImportBatch,
-    FinanceImportProfile, FinanceImportRow, FinanceRule, FinanceSettings,
+    FinanceAccount, FinanceCategory, FinanceCategoryChange, FinanceCleared, FinanceEntry,
+    FinanceGuide, FinanceImportBatch, FinanceImportProfile, FinanceImportRow,
+    FinanceMonthClose, FinanceReconciliation, FinanceRule, FinanceSettings,
 )
 from apps.tenancy.registry import register
 
@@ -205,6 +206,13 @@ register(FinanceImportRow, factories.FinanceImportRowFactory, api_exposed=False)
 register(FinanceImportProfile, factories.FinanceImportProfileFactory, api_exposed=False)
 register(FinanceCategoryChange, factories.FinanceCategoryChangeFactory,
          endpoints=("/api/finance-categories/changes/",))
+# P6 M1, second stop. A reconciliation is read on the grid and by id; what it
+# cleared, a month's closes and a person's "walk me through it" only through it.
+register(FinanceReconciliation, factories.FinanceReconciliationFactory,
+         endpoints=("/api/finance-reconcile/",))
+register(FinanceCleared, factories.FinanceClearedFactory, api_exposed=False)
+register(FinanceMonthClose, factories.FinanceMonthCloseFactory, api_exposed=False)
+register(FinanceGuide, factories.FinanceGuideFactory, api_exposed=False)
 
 # The notes of a call, attached to its session: read through the session, by
 # the practice owner and an associate on their own prospect, and nobody else.

@@ -69,7 +69,9 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
     from apps.tenancy import contrast
     from apps.tenancy.context import tenant_context
     from apps.tenancy.demo import cast, money
-    from apps.tenancy.models import ClientAssignment, Membership, StoredFile, Tenant
+    from apps.tenancy.models import (
+        AuditEvent, ClientAssignment, Membership, StoredFile, Tenant,
+    )
     from apps.work import milestones
     from apps.work.models import (
         Comment, Digest, Goal, GoalMeasurement, GoalMilestone, GoalOrderProposal,
@@ -255,13 +257,71 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert entries.filter(kind="owner").count() >= 20
         assert entries.filter(kind="transfer").count() >= 20
         assert entries.filter(kind="income", direction="out").count() == 1    # a refund
-        assert entries.filter(kind="expense", direction="in").count() == 1    # another
+        # Another, entered late, and the correcting entry in the open month.
+        assert entries.filter(kind="expense", direction="in").count() == 2
         batch = FinanceImportBatch.objects.get()
         assert batch.status == "committed"
         assert 1 <= FinanceRule.objects.count() <= 6
         assert FinanceImportRow.objects.filter(batch=batch,
                                                outcome="invoice_payment").count() >= 1
-        assert FinanceSettings.objects.get().locked_through == date(2025, 12, 31)
+        # P6 M1 §10: every month before this one reconciled, bank and card,
+        # and closed in order by the reconcile code; nobody typed the lock.
+        from apps.finance import reconcile
+        from apps.finance.models import (
+            FinanceCategory, FinanceCategoryChange, FinanceMonthClose,
+            FinanceReconciliation,
+        )
+        from apps.tenancy.demo.clock import months as months_from
+
+        this_month = today.replace(day=1)
+        whole = [m for m in months_from(date(2025, 1, 1), today) if m < this_month]
+        assert len(whole) >= 21
+        standing = FinanceMonthClose.objects.filter(reopened_at__isnull=True)
+        assert [row.month for row in standing.order_by("month")] == whole
+        assert all(row.closed_by == owner and row.closed_at.date() > row.month
+                   for row in standing)
+        assert FinanceSettings.objects.get().locked_through == \
+            this_month - timedelta(days=1)
+        assert not AuditEvent.objects.filter(verb="finance.settings_changed").exists()
+        finished = FinanceReconciliation.objects.filter(state="finished")
+        assert finished.count() == 2 * len(whole)
+        for kind in ("bank", "card"):
+            mine = finished.filter(account__kind=kind).order_by("month")
+            assert [rec.month for rec in mine] == whole
+            assert all(reconcile.totals(rec)["difference_cents"] == 0 for rec in mine)
+        assert all(rec.statement_on.day == 25
+                   for rec in finished.filter(account__kind="card"))
+        # A few entries carry forward: the Chamber's check clears the month after.
+        check = entries.filter(description__startswith="Quarterly sponsorship",
+                               on_date__lt=this_month - timedelta(days=40)).first()
+        cleared_in = check.cleared.get().reconciliation
+        assert cleared_in.month == reconcile.next_month(check.on_date.replace(day=1))
+        # One month closed, reopened and closed again, with its reason.
+        reopened = FinanceMonthClose.objects.get(reopened_at__isnull=False)
+        assert "Adobe" in reopened.reopen_reason and reopened.month in whole
+        assert FinanceMonthClose.objects.filter(month=reopened.month).count() == 2
+        assert entries.filter(description__startswith="Refund: second Acrobat",
+                              on_date__year=reopened.month.year,
+                              on_date__month=reopened.month.month).count() == 1
+        # One correcting entry in the open month for a mistake found in a closed one.
+        fix = entries.get(description__startswith="Correcting entry")
+        assert fix.on_date >= this_month and fix.direction == "in"
+        # This month: the bank in progress, its difference one unticked deposit;
+        # the card not started.
+        going = FinanceReconciliation.objects.get(state="open")
+        assert (going.account.kind, going.month) == ("bank", this_month)
+        shown = reconcile.represent(going, detail=True)
+        left = [row for row in shown["lines"] if not row["cleared"] and not row["carried"]]
+        if any(row["kind"] == "income" for row in shown["lines"]):
+            assert [row["way"] for row in left] == ["in"]
+            assert shown["difference_cents"] == left[0]["amount_cents"]
+            assert shown["hints"][0] == {"kind": "untick", "entry": left[0]["id"],
+                                         "text": shown["hints"][0]["text"]}
+        # The chart with sub-categories, and one combine and one split on record.
+        assert FinanceCategory.objects.filter(parent__isnull=False).count() >= 30
+        assert sorted(FinanceCategoryChange.objects.values_list("kind", flat=True)) == \
+            ["merge", "split"]
+        assert all(change.entries_moved > 0 for change in FinanceCategoryChange.objects.all())
         over = [row for row in payees.report(tenant, year=2025)["payees"]
                 if row["over_threshold"]]
         assert len(over) >= 2

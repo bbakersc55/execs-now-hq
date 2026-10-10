@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BalanceView, FinanceAccount, FinanceCategory, FinanceEntry, FinanceEntryList, Pnl,
 } from "../lib/api";
+import { aMe } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { Finance } from "./Finance";
 import { FinanceSettings } from "./FinanceSettings";
@@ -291,7 +292,10 @@ describe("the CPA export", () => {
 describe("accounts, categories and the lock", () => {
   function showSettings(extra: Record<string, unknown> = {}, locked: string | null = null) {
     const fetchMock = mockApi({
-      ...extra, "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-rules/": [],
+      // A practice without the Bookkeeping module: it still types its lock
+      // here. One with it closes months instead (FinanceReconcile.test.tsx).
+      ...extra, "GET /api/me": aMe({ modules: [] }),
+      "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-rules/": [],
       "GET /api/finance-categories/": CATEGORIES,
       "GET /api/finance-settings/": { locked_through: locked, invoice_income_category: "c1" } });
     vi.stubGlobal("fetch", fetchMock);

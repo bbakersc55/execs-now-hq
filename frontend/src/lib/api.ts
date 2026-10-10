@@ -1485,6 +1485,8 @@ export type EntryKind = "income" | "expense" | "transfer" | "owner" | "held";
 export interface FinanceAccount {
   id: string; name: string; kind: "bank" | "card" | "cash"; kind_label: string;
   last4: string; opening_balance_cents: number; opening_on: string; closed: boolean;
+  /** P6 M1: whether the month close asks for a reconciliation of it. */
+  reconciled_monthly?: boolean;
 }
 
 export interface FinanceCategory {
@@ -1625,4 +1627,88 @@ export interface PayeeReport {
   payees: { contact: string; name: string; company: string; is_payee: boolean;
             total_cents: number; by_card_cents: number; reportable_cents: number;
             over_threshold: boolean }[];
+}
+
+// ------------------------- reconciliation and month close (P6 M1, stop 2)
+
+export type ReconcileCellState = "not_started" | "open" | "finished" | "not_needed" | "before";
+
+export interface ReconcileCell {
+  state: ReconcileCellState; id?: string; statement_on?: string;
+  finished_at?: string | null; difference_cents?: number;
+}
+
+export interface ReconcileGrid {
+  months: { month: string; label: string; state: "open" | "closed" | "locked_before";
+            closed_at: string | null; closed_by: string }[];
+  accounts: { id: string; name: string; kind: "bank" | "card" | "cash"; kind_label: string;
+              last4: string; reconciled_monthly: boolean; opening_on: string;
+              opening_balance_cents: number; next_month: string | null;
+              cells: Record<string, ReconcileCell>;
+              bank_said?: { on: string; cents: number } | null }[];
+  locked_through: string | null;
+  /** The close that set the lock; null when it was typed before closing existed. */
+  locked_by: { month: string; by: string; at: string } | null;
+  next_to_close: string | null; guided: boolean; today: string;
+}
+
+export interface ReconcileLine {
+  id: string; on_date: string; amount_cents: number; way: "in" | "out";
+  description: string; counterparty: string; kind: EntryKind; kind_label: string;
+  cleared: boolean; carried: boolean; from_bank: boolean;
+}
+
+export interface ReconcileHint {
+  kind: "untick" | "wrong_way" | "swapped" | "missing"; entry: string | null; text: string;
+}
+
+export interface Reconciliation {
+  id: string;
+  account: { id: string; name: string; kind: "bank" | "card" | "cash"; kind_label: string };
+  month: string; month_label: string; statement_on: string;
+  statement_balance_cents: number; state: "open" | "finished"; state_label: string;
+  finished_at: string | null; finished_by: string;
+  reopened_at: string | null; reopened_by: string; reopen_reason: string;
+  starting_balance_cents: number; cleared_in_cents: number; cleared_out_cents: number;
+  expected_cents: number; difference_cents: number;
+  lines: ReconcileLine[]; first: boolean; period_start: string; hints: ReconcileHint[];
+  unplaced: { id: string; on_date: string; amount_cents: number; description: string;
+              counterparty: string }[];
+  cannot_reopen: string; can_discard: boolean;
+}
+
+export interface ReconcileReport {
+  id: string; account: Reconciliation["account"]; month: string; month_label: string;
+  statement_on: string; statement_balance_cents: number; starting_balance_cents: number;
+  cleared_in_cents: number; cleared_out_cents: number; expected_cents: number;
+  difference_cents: number; finished_at: string | null; finished_by: string;
+  practice: string; cleared: ReconcileLine[]; outstanding: ReconcileLine[];
+  outstanding_in_cents: number; outstanding_out_cents: number; disclaimer: string;
+}
+
+export interface MonthChecklistLine {
+  code: "reconciled" | "categorized" | "placed" | "payees"; label: string;
+  blocks: boolean; ok: boolean; count: number; detail: string; link: string;
+}
+
+export interface MonthDetail {
+  month: string; label: string; state: "open" | "closed" | "locked_before";
+  checklist: MonthChecklistLine[]; cannot_close: string;
+  history: { closed_at: string; closed_by: string;
+             warnings: { code: string; label: string; count: number }[];
+             reopened_at: string | null; reopened_by: string; reopen_reason: string }[];
+  reopen_note: string; reopened?: string[];
+}
+
+export interface ReopenPlan {
+  month: string; label: string; also: string[]; locked_through_after: string; note: string;
+}
+
+export interface ExplainStatus {
+  estimate_usd: string; used_today: number; cap: number; resets_at: string;
+  refused: string; disclaimer: string;
+}
+
+export interface ExplainAnswer {
+  text: string; cost_usd: string; disclaimer: string; used_today: number; cap: number;
 }

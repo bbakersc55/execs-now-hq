@@ -42,6 +42,12 @@ class FinanceAccount(TenantScopedModel):
     opening_balance_cents = models.BigIntegerField(default=0, db_default=0)
     opening_on = models.DateField()
     closed_at = models.DateTimeField(null=True, blank=True)
+    #: The month close asks for a finished reconciliation of it (P6 M1 §1.6).
+    #: On for a bank account and a card; off for cash unless switched in.
+    reconciled_monthly = models.BooleanField(default=True, db_default=True)
+    #: Where reconciling began, when that was later than the opening date:
+    #: entries before it are "before reconciling began" and never asked about.
+    reconciling_from = models.DateField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "finance_account"
@@ -331,3 +337,103 @@ class FinanceImportRow(TenantScopedModel):
         db_table = "finance_import_row"
         ordering = ["row_number"]
         indexes = [models.Index(fields=["tenant", "batch", "outcome"])]
+
+
+# ------------------------------------------- reconciliation and month close
+
+class FinanceReconciliation(TenantScopedModel):
+    """One statement of one account, ticked off against the books (P6 M1 §1).
+    It belongs to the month its statement date falls in, and an account has
+    one a month."""
+
+    class State(models.TextChoices):
+        OPEN = "open", "In progress"
+        FINISHED = "finished", "Reconciled"
+
+    account = models.ForeignKey(FinanceAccount, on_delete=models.PROTECT,
+                                related_name="reconciliations")
+    #: The first day of the month the statement date falls in.
+    month = models.DateField()
+    statement_on = models.DateField()
+    #: What the statement says the account held; for a card, what was owed.
+    statement_balance_cents = models.BigIntegerField()
+    #: The previous statement's ending balance, or where reconciling began.
+    starting_balance_cents = models.BigIntegerField()
+    state = models.CharField(max_length=8, choices=State.choices, default=State.OPEN)
+    finished_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    finished_at = models.DateTimeField(null=True, blank=True)
+    reopened_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    reopened_at = models.DateTimeField(null=True, blank=True)
+    reopen_reason = models.TextField(blank=True, default="", db_default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_reconciliation"
+        ordering = ["statement_on"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "account", "month"],
+                                    name="finance_reconciliation_one_per_account_month"),
+            models.CheckConstraint(condition=Q(state__in=("open", "finished")),
+                                   name="finance_reconciliation_state"),
+        ]
+
+
+class FinanceCleared(TenantScopedModel):
+    """An entry ticked as shown on a statement. One per entry and account, so
+    a transfer is cleared once on each side."""
+
+    reconciliation = models.ForeignKey(FinanceReconciliation, on_delete=models.CASCADE,
+                                       related_name="cleared")
+    entry = models.ForeignKey(FinanceEntry, on_delete=models.PROTECT,
+                              related_name="cleared")
+    account = models.ForeignKey(FinanceAccount, on_delete=models.PROTECT, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_cleared"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "entry", "account"],
+                                    name="finance_cleared_once_per_entry_and_account"),
+        ]
+
+
+class FinanceMonthClose(TenantScopedModel):
+    """A month closed: the books locked through its last day (§3). A row per
+    closing, kept when the month is reopened."""
+
+    #: The first day of the month.
+    month = models.DateField()
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
+    closed_at = models.DateTimeField()
+    #: What was still showing on the checklist when it was closed.
+    warnings = models.JSONField(default=list)
+    reopened_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    reopened_at = models.DateTimeField(null=True, blank=True)
+    reopen_reason = models.TextField(blank=True, default="", db_default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_month_close"
+        ordering = ["month", "closed_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "month"],
+                                    condition=Q(reopened_at__isnull=True),
+                                    name="finance_month_close_one_standing"),
+        ]
+
+
+class FinanceGuide(TenantScopedModel):
+    """Whether a person has "Walk me through it" on (§4.1), once they have
+    chosen. With no row it is on until they have closed a month."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+")
+    guided = models.BooleanField()
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_guide"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "user"],
+                                    name="finance_guide_one_per_person"),
+        ]

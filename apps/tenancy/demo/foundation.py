@@ -382,7 +382,9 @@ def counts(world: World) -> dict:
         Task, UnmatchedInbound,
     )
     from apps.finance.models import (
-        FinanceAccount, FinanceEntry, FinanceImportBatch, FinanceRule,
+        FinanceAccount, FinanceCategory, FinanceCategoryChange, FinanceEntry,
+        FinanceImportBatch, FinanceMonthClose, FinanceReconciliation, FinanceRule,
+        FinanceSettings,
     )
     from apps.meetings.models import Commitment, Meeting, MeetingProposal
     from apps.notes.models import Note
@@ -456,6 +458,20 @@ def counts(world: World) -> dict:
         "invoice schedules": ClientInvoiceSchedule.objects.filter(is_active=True).count(),
         "payments": ClientPayment.objects.filter(removed_at__isnull=True).count(),
         "accounts": FinanceAccount.objects.count(),
+        "categories": {
+            "top level": FinanceCategory.objects.filter(
+                parent__isnull=True, archived_at__isnull=True).count(),
+            "sub-categories": FinanceCategory.objects.filter(
+                parent__isnull=False, archived_at__isnull=True).count(),
+            "archived": FinanceCategory.objects.filter(archived_at__isnull=False).count()},
+        "categories combined or split": FinanceCategoryChange.objects.count(),
+        "reconciliations": {s: FinanceReconciliation.objects.filter(state=s).count()
+                            for s in ("finished", "open")},
+        "months closed": FinanceMonthClose.objects.filter(reopened_at__isnull=True).count(),
+        "months reopened": FinanceMonthClose.objects.filter(
+            reopened_at__isnull=False).count(),
+        "books locked through": FinanceSettings.objects.values_list(
+            "locked_through", flat=True).first(),
         "book entries": {k: entries.filter(kind=k).count()
                          for k in FinanceEntry.Kind.values},
         "bank imports committed": FinanceImportBatch.objects.filter(

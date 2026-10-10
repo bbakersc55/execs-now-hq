@@ -1127,3 +1127,49 @@ class FinanceCategoryChangeFactory(TenantScopedFactory):
     to_category = factory.SubFactory(FinanceCategoryFactory,
                                      tenant=factory.SelfAttribute("..tenant"))
     entries_moved = 3
+
+
+# --- P6 M1, second stop: reconciliation and month close ---
+
+class FinanceReconciliationFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceReconciliation"
+
+    tenant = factory.SubFactory(TenantFactory)
+    account = factory.SubFactory(FinanceAccountFactory,
+                                 tenant=factory.SelfAttribute("..tenant"))
+    month = factory.LazyFunction(lambda: __import__("datetime").date(2026, 9, 1))
+    statement_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 9, 30))
+    statement_balance_cents = 0
+    starting_balance_cents = 0
+
+
+class FinanceClearedFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceCleared"
+
+    tenant = factory.SubFactory(TenantFactory)
+    reconciliation = factory.SubFactory(FinanceReconciliationFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    entry = factory.SubFactory(FinanceEntryFactory,
+                               tenant=factory.SelfAttribute("..tenant"))
+    account = factory.SelfAttribute("entry.account")
+
+
+class FinanceMonthCloseFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceMonthClose"
+
+    tenant = factory.SubFactory(TenantFactory)
+    month = factory.LazyFunction(lambda: __import__("datetime").date(2026, 9, 1))
+    closed_at = factory.LazyFunction(lambda: __import__("django.utils.timezone",
+                                                        fromlist=["now"]).now())
+
+
+class FinanceGuideFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceGuide"
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+    guided = True
