@@ -456,6 +456,14 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
   display: grid; align-items: center; gap: var(--s2);
   grid-template-columns: minmax(0, 1fr) var(--action-w) var(--action-w) var(--remove-w);
 }
+/* A row whose three actions are words (the categories: Combine, Split, and
+   Archive or Remove): three columns of one width, the one the longest of
+   those labels needs, so no label spills out of its button and the columns
+   still line up down the page. */
+.row-actions.words {
+  grid-template-columns: minmax(0, 1fr) repeat(3, var(--remove-w));
+}
+.row-actions.words .row-actions-cell > button { white-space: nowrap; overflow: hidden; }
 .row-actions-flags {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
   min-width: 0; min-height: var(--control-h);

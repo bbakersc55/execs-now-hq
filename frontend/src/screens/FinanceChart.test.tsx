@@ -306,6 +306,21 @@ describe("categories in two levels", () => {
         { to: "lodging", contains: "hotel", preview: true });
     });
 
+  it("gives Combine, Split, Archive and Remove columns of one width", async () => {
+    showSettings();
+    const combine = await screen.findByRole("button", { name: "Combine Travel into another" });
+    const row = combine.closest(".row-actions") as HTMLElement;
+    // The word-width grid, not the one made for the up and down arrows, which
+    // "Combine" spilled out of.
+    expect(row).toHaveClass("words");
+    const cells = [...row.querySelectorAll(".row-actions-cell")];
+    expect(cells.map((cell) => cell.textContent)).toEqual(["Combine", "Split", "Archive"]);
+    expect(screen.getByRole("button", { name: "Remove Vehicle" })
+      .closest(".row-actions")).toHaveClass("words");
+    // That each label fits its button is measured in a real browser:
+    // src/test/layout/categoriesLayout.test.js.
+  });
+
   it("adds the starting chart only after showing what it would add", async () => {
     const plan = { note: "", skipped: [{ name: "Health", why: "“Insurance” is archived" }],
                    add: [{ name: "Payroll", type: "expense", parent: null },

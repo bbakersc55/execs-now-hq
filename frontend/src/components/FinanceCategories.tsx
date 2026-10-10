@@ -115,7 +115,7 @@ function CategoryRow({ category, all, busy, bookkeeping, paidInvoices, hasSubs, 
     && c.id !== category.id);
   const tools = bookkeeping && !category.archived;
   return (
-    <div className="row-actions" style={{ marginBottom: "var(--s1)" }}>
+    <div className="row-actions words" style={{ marginBottom: "var(--s1)" }}>
       <div className="row-actions-flags">
         <input aria-label={`Name of ${category.name}`} value={name} maxLength={120}
           disabled={busy || category.archived} style={{ minWidth: "16rem" }}
