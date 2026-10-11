@@ -1,4 +1,4 @@
-import { dollars } from "../lib/money";
+import { dollars, longDate } from "../lib/money";
 import { useState, type DragEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -213,6 +213,17 @@ export function Dashboard({ me }: { me: Me }) {
             <strong>{board.data.finance.margin_percent === null ? "—"
               : `${board.data.finance.margin_percent}%`}</strong>
             {" · "}<Link to="/finance">Finance</Link>
+            {/* P6 M2-11: with the Cash forecast module and two closed months. */}
+            {board.data.finance.forecast && (
+              <><br /><span aria-label="The cash forecast's low point">
+                Lowest cash in the next 13 weeks:{" "}
+                <Link to="/finance/forecast"><strong>
+                  {dollars(board.data.finance.forecast.low_cents)}</strong></Link>, the
+                week of {longDate(board.data.finance.forecast.week_of)}
+                {board.data.finance.forecast.below_zero ? " (below zero)"
+                  : board.data.finance.forecast.below_floor ? " (under your floor)" : ""}
+              </span></>
+            )}
           </p>
         ) : !board.data.ai && (
           // An associate has the panel and none of its figures (13.10).

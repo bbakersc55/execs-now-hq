@@ -404,3 +404,32 @@ describe("when automatic AI is paused (owner, 2026-09-29)", () => {
     expect(screen.queryByText(/Automatic AI work is paused/)).toBeNull();
   });
 });
+
+describe("the dashboard's cash forecast line (P6 M2-11)", () => {
+  beforeEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+  const finance = { revenue_cents: 100, expenses_cents: 50, net_cents: 50,
+                    margin_percent: 50, month: "October", year: 2026 };
+
+  it("shows the low point of the next 13 weeks to the practice owner", async () => {
+    show(aBoard({ finance: { ...finance, forecast: {
+      low_cents: 898200, week_of: "2026-11-22", below_zero: false, below_floor: true } } }));
+    const shown = await screen.findByLabelText("The cash forecast's low point");
+    expect(shown).toHaveTextContent(
+      "Lowest cash in the next 13 weeks: $8,982.00, the week of November 22, 2026 "
+      + "(under your floor)");
+    expect(within(shown).getByRole("link")).toHaveAttribute("href", "/finance/forecast");
+  });
+
+  it("says below zero when it is", async () => {
+    show(aBoard({ finance: { ...finance, forecast: {
+      low_cents: -401800, week_of: "2026-11-22", below_zero: true, below_floor: true } } }));
+    expect(await screen.findByLabelText("The cash forecast's low point"))
+      .toHaveTextContent("-$4,018.00, the week of November 22, 2026 (below zero)");
+  });
+
+  it("shows nothing of it without the module or two closed months", async () => {
+    show(aBoard({ finance: { ...finance, forecast: null } }));
+    await screen.findByLabelText("This month in the books");
+    expect(screen.queryByLabelText("The cash forecast's low point")).not.toBeInTheDocument();
+  });
+});

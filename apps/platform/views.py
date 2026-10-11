@@ -112,7 +112,10 @@ class PracticeModuleView(APIView):
             return Response({"detail": "There is no such module."}, status=400)
         if not isinstance(enabled, bool):
             return Response({"detail": "enabled is true or false."}, status=400)
-        modules.set_enabled(tenant, module, enabled, actor=request.user)
+        try:
+            modules.set_enabled(tenant, module, enabled, actor=request.user)
+        except modules.ModuleRefused as exc:
+            return Response({"detail": str(exc)}, status=409)
         return Response(next(r for r in stats.practice_rows() if r["id"] == str(tenant.pk)))
 
 

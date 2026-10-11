@@ -1191,3 +1191,11 @@ class FinanceYearFactsFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     year = 2026
     total_miles = 12000
+
+
+class FinanceForecastSettingsFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceForecastSettings"
+
+    tenant = factory.SubFactory(TenantFactory)
+    floor_cents = 1500000

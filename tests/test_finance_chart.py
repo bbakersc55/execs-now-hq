@@ -117,7 +117,8 @@ def test_the_platform_owner_switches_a_module_and_sees_nothing_inside(
     client = practices(api, platform_owner)
     rows = {row["display_name"]: row for row in client.get("/api/platform/practices").json()}
     assert rows["Tenant B"]["modules"] == [
-        {"code": "bookkeeping", "name": "Bookkeeping", "enabled": False}]
+        {"code": "bookkeeping", "name": "Bookkeeping", "enabled": False},
+        {"code": "forecast", "name": "Cash forecast", "enabled": False}]
 
     url = f"/api/platform/practices/{tenant_b.pk}/modules"
     on = platform_post(client, url, {"module": "bookkeeping", "enabled": True})

@@ -14,6 +14,7 @@ import {
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import { FinanceImport } from "./FinanceImport";
+import { FinanceForecast } from "./FinanceForecast";
 import { FinancePayees } from "./FinancePayees";
 import { FinanceReconcile } from "./FinanceReconcile";
 
@@ -27,11 +28,14 @@ import { FinanceReconcile } from "./FinanceReconcile";
  * (and, in the next round, imported from a bank or card export).
  */
 
-type Tab = "entries" | "reconcile" | "import" | "pnl" | "balance" | "payees" | "export";
+type Tab = "entries" | "reconcile" | "forecast" | "import" | "pnl" | "balance" | "payees"
+  | "export";
 const TABS: [Tab, string, string][] = [
   ["entries", "/finance", "Entries"],
   // P6 M1: beside Entries, for a practice with the Bookkeeping module.
   ["reconcile", "/finance/reconcile", "Reconcile"],
+  // P6 M2: after Reconcile, for a practice with the Cash forecast module.
+  ["forecast", "/finance/forecast", "Forecast"],
   ["import", "/finance/import", "Import"],
   ["pnl", "/finance/pnl", "Profit and loss"],
   ["balance", "/finance/balance", "Balance view"],
@@ -58,6 +62,7 @@ function useBooks() {
 export function Finance({ tab }: { tab: Tab }) {
   const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
   const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
+  const forecasting = (me.data?.modules ?? []).includes("forecast");
   return (
     <>
       <PageHead title="Finance"
@@ -65,7 +70,8 @@ export function Finance({ tab }: { tab: Tab }) {
           when it leaves. Only you see this.{" "}
           <Link to="/settings/finance">Accounts and categories</Link></>} />
       <nav className="row tight" aria-label="Finance" style={{ marginBottom: "var(--s4)" }}>
-        {TABS.filter(([key]) => key !== "reconcile" || bookkeeping).map(([key, to, label]) => (
+        {TABS.filter(([key]) => (key !== "reconcile" || bookkeeping)
+          && (key !== "forecast" || forecasting)).map(([key, to, label]) => (
           <NavLink key={key} to={to} end
             className={({ isActive }) => (isActive ? "btn primary small" : "btn small")}>
             {label}</NavLink>
@@ -75,6 +81,9 @@ export function Finance({ tab }: { tab: Tab }) {
       {tab === "reconcile" && (bookkeeping ? <FinanceReconcile />
         : me.data && <Banner kind="info">Reconciling and closing a month are part of
           Bookkeeping, which this practice does not have.</Banner>)}
+      {tab === "forecast" && (forecasting ? <FinanceForecast />
+        : me.data && <Banner kind="info">The cash forecast is its own module, which this
+          practice does not have.</Banner>)}
       {tab === "import" && <Importing />}
       {tab === "payees" && <FinancePayees />}
       {tab === "pnl" && <ProfitAndLoss />}

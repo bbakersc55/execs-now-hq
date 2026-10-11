@@ -9,6 +9,11 @@ own spec, is built after approval, gets demo data, and is released only on
 "release". This file holds what has been said about it so far, so the spec
 starts from it.
 
+**The owner's brief for all four modules is `docs/p6_finance_expansion_brief.md`**
+(saved verbatim 2026-10-11). M4's spec is written from its "M4 — PERSONAL
+FINANCE" section and its "ALL FOUR" paragraph; where the brief and the spec
+disagree, the brief wins unless a recorded decision says otherwise.
+
 ## Recorded for the spec (owner, 2026-10-10): the tax-deductible group
 
 The owner's CPA's **Itemized Deduction Worksheet** groups personal

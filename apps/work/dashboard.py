@@ -105,9 +105,12 @@ def _waiting(request):
 def _finance(request, today):
     if getattr(getattr(request, "membership", None), "role", None) != "FF":
         return None
-    from apps.finance import reports
+    from apps.finance import forecast, reports
 
-    return reports.this_month(request.tenant, today)
+    # P6 M2-11: the lowest cash in the next 13 weeks, for a practice with the
+    # Cash forecast module and two closed months; otherwise absent.
+    return {**reports.this_month(request.tenant, today),
+            "forecast": forecast.dashboard_line(request.tenant, today)}
 
 
 def _ai_state(request):

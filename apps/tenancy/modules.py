@@ -5,10 +5,11 @@ is the platform's record of the practice, switched by the platform owner in
 the Practices area; the price is P4's. A practice without a module gets 404
 from its routes and does not see its screens.
 
-Today there is one, **Bookkeeping**: sub-categories, combine, split and the
-starting chart now; reconciliation, month close and the balance sheet as they
-are built. Everything the books already did (entries, the import, the P&L,
-1099, the export) is every practice's, module or not.
+**Bookkeeping**: sub-categories, combine, split, the starting chart,
+reconciliation and month close; the balance sheet when it is built.
+Everything the books already did (entries, the import, the P&L, 1099, the
+export) is every practice's, module or not. **Cash forecast** (P6 M2): its
+own module, which a practice has only with Bookkeeping.
 """
 
 from __future__ import annotations
@@ -16,8 +17,17 @@ from __future__ import annotations
 from django.utils import timezone
 
 BOOKKEEPING = "bookkeeping"
+#: The cash forecast (P6 M2). It reads closed months, which only Bookkeeping
+#: makes, so a practice has it only with Bookkeeping (M2-13).
+FORECAST = "forecast"
 #: Code -> the name a person reads.
-MODULES = {BOOKKEEPING: "Bookkeeping"}
+MODULES = {BOOKKEEPING: "Bookkeeping", FORECAST: "Cash forecast"}
+#: A module, and the one it cannot be had without.
+NEEDS = {FORECAST: BOOKKEEPING}
+
+
+class ModuleRefused(ValueError):
+    """A switch that cannot be made, with a sentence for whoever asked."""
 
 
 def enabled(tenant) -> list[str]:
@@ -58,6 +68,15 @@ def set_enabled(tenant, module: str, on: bool, *, actor):
     was = row.enabled_at is not None and row.disabled_at is None
     if was == bool(on):
         return row
+    have = enabled(tenant)
+    if on and module in NEEDS and NEEDS[module] not in have:
+        raise ModuleRefused(f"{MODULES[module]} needs {MODULES[NEEDS[module]]}: it reads "
+                            "the months that are closed there. Switch that on first.")
+    resting = [MODULES[code] for code, needed in NEEDS.items()
+               if needed == module and code in have]
+    if not on and resting:
+        raise ModuleRefused(f"{' and '.join(resting)} needs {MODULES[module]}. Switch "
+                            "that off first.")
     now = timezone.now()
     if on:
         row.enabled_at, row.enabled_by, row.disabled_at = now, actor, None

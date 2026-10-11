@@ -473,3 +473,27 @@ class FinanceYearFacts(TenantScopedModel):
             models.UniqueConstraint(fields=["tenant", "year"],
                                     name="finance_year_facts_one_per_year"),
         ]
+
+
+# ------------------------------------------------- the cash forecast (P6 M2)
+
+class FinanceForecastSettings(TenantScopedModel):
+    """What the practice owner has said about the cash forecast
+    (`docs/p6_m2_cash_forecast.md`). The forecast itself is not stored: it is
+    worked out from the books each time, so it cannot disagree with them."""
+
+    #: "I want at least this much in the bank." Empty until the owner sets it:
+    #: the app does not invent how much cash a practice wants (M2-6).
+    floor_cents = models.BigIntegerField(null=True, blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_forecast_settings"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"],
+                                    name="finance_forecast_settings_one_per_practice"),
+            models.CheckConstraint(
+                condition=Q(floor_cents__isnull=True) | Q(floor_cents__gte=0),
+                name="finance_forecast_floor_not_negative"),
+        ]

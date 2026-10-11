@@ -52,9 +52,21 @@ function showSettings(extra: Record<string, unknown> = {}, modules = ["bookkeepi
 
 beforeEach(() => { vi.unstubAllGlobals(); });
 
+const WEEK = { start: "2026-10-11", end: "2026-10-17", label: "Week of Oct 11",
+                 start_cents: 100, in_cents: 0, out_cents: 0, end_cents: 100, lines: [],
+                 below_floor: false, below_zero: false };
+const SUMMARY = { low_cents: 100, low_start: "2026-10-11", low_label: "", end_cents: 100,
+                    first_below_floor: null, first_below_zero: null };
+
 describe("the line every Finance screen carries", () => {
   const stubs = {
-    "GET /api/me": aMe({ modules: ["bookkeeping"] }),
+    "GET /api/me": aMe({ modules: ["bookkeeping", "forecast"] }),
+    "GET /api/finance-forecast/": {
+      as_of: "2026-10-11", ready: true, closed_months: 2, closed_through: "2026-09-30",
+      note: "", cash_today_cents: 100, unplaced_cents: 0, accounts: [], floor_cents: null,
+      weeks: Array.from({ length: 26 }, () => (WEEK)), months: [WEEK],
+      views: { "30": SUMMARY, "90": SUMMARY, "180": SUMMARY, months: SUMMARY },
+      lines: [], left_out: [], likely_annual: [], disclaimer: "" },
     "GET /api/finance-categories/changes/": [],
     "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-categories/": CATEGORIES,
     "GET /api/finance-rules/": [], "GET /api/finance-imports/": [],
@@ -83,8 +95,9 @@ describe("the line every Finance screen carries", () => {
       + "financial advice. Confirm with your CPA.");
   });
 
-  // Every Finance route in App.tsx: the seven tabs, and Settings → Finance.
-  it.each(["entries", "reconcile", "import", "payees", "pnl", "balance", "export"] as const)(
+  // Every Finance route in App.tsx: the eight tabs, and Settings → Finance.
+  it.each(["entries", "reconcile", "forecast", "import", "payees", "pnl", "balance",
+           "export"] as const)(
     "is on the %s tab", async (tab) => {
       vi.stubGlobal("fetch", mockApi(stubs));
       renderRoute(<Finance tab={tab} />);
@@ -105,8 +118,9 @@ describe("the line every Finance screen carries", () => {
     const routes = [...source.matchAll(
       /path="(\/(?:settings\/)?finance[^"]*)"\s+element=\{(?:<Settings me=\{me\}>)?<(\w+)/g)];
     expect(routes.map((r) => r[1]).sort()).toEqual([
-      "/finance", "/finance/1099", "/finance/balance", "/finance/export", "/finance/import",
-      "/finance/pnl", "/finance/reconcile", "/settings/finance"]);
+      "/finance", "/finance/1099", "/finance/balance", "/finance/export",
+      "/finance/forecast", "/finance/import", "/finance/pnl", "/finance/reconcile",
+      "/settings/finance"]);
     // Each is one of the two screens tested above; a new one has to be added there.
     expect(new Set(routes.map((r) => r[2]))).toEqual(new Set(["Finance", "FinanceSettings"]));
   });

@@ -1117,3 +1117,50 @@ class MonthViewSet(FinanceViewSet):
             return self._refusal(exc)
         return Response({**reconcile.month_detail(request.tenant, month),
                          "reopened": done["reopened"]})
+
+
+# ------------------------------------------------ the cash forecast (P6 M2)
+
+class ForecastViewSet(FinanceViewSet):
+    """Matrix 13.18 and 13.19. The Cash forecast module's: a practice without
+    it gets 404 from every route here."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        from apps.tenancy import modules
+
+        if not modules.has(request.tenant, modules.FORECAST):
+            raise Http404
+
+    def list(self, request):
+        """The whole forecast, worked out from the books as they are now."""
+        from apps.finance import forecast
+
+        return Response(forecast.build(request.tenant))
+
+    @action(detail=False, methods=["post"])
+    def floor(self, request):
+        """`{floor_cents}`: "I want at least this much in the bank"; null for
+        no floor."""
+        from apps.finance import forecast
+
+        try:
+            forecast.set_floor(request.tenant, actor=request.user,
+                               floor_cents=request.data.get("floor_cents"))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(forecast.build(request.tenant))
+
+    @action(detail=False, methods=["get"])
+    def export(self, request):
+        from apps.finance import forecast
+
+        today = timezone.localdate()
+        AuditEvent.all_objects.create(
+            tenant=request.tenant, actor=request.user, verb="finance.forecast_downloaded",
+            target_type="finance_export", payload={"as_of": today.isoformat()})
+        response = HttpResponse(forecast.export(request.tenant, today),
+                                content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = (
+            f'attachment; filename="cash-forecast-{today.isoformat()}.csv"')
+        return response

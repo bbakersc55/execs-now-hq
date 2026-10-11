@@ -1,6 +1,6 @@
 # P6 M2 — Cash forecast
 
-**Spec for owner review · 2026-10-10 · no code; nothing is built until the decisions in §12 are made**
+**Spec · 2026-10-10 · decided 2026-10-11 · stop 1 in build; stop 2 waits for the owner's word**
 
 The second of the four finance modules asked for by the owner on 2026-10-08
 (`docs/p6_m1_reconciliation_month_close.md`: M1 reconciliation and month
@@ -8,25 +8,26 @@ close, accepted on the demo 2026-10-10; M2 cash forecast, this file; M3
 balance sheet; M4 personal finance). It gets its own spec, is built after
 approval, gets demo data, and is released only on "release".
 
-**What this spec is written from.** The owner's brief for the four modules
-is not in the repository, and its text was not in front of me when this was
-written. What the repository records of it for M2 is short, and is all taken
-as decided:
+**Decided 2026-10-11: M2-1 to M2-18, all as recommended, with these changes
+and additions** (each is written into its section below, and §12 says which):
 
-- It is a **cash forecast**.
-- It is **the practice owner's only**, like everything in finance.
-- It is **a module of its own** (`forecast`), switched on the platform's
-  record of the practice; the price is P4's (M1 §7).
-- It needs **two closed months** to forecast from, and months "locked before
-  month close began" do not count (M1 §3.5, M1-9).
-- It carries **the disclaimer** on every screen: "Bookkeeping and projections
-  only, not tax, legal or financial advice. Confirm with your CPA." (M1 §6).
-- AI calls are **costed and capped**; migrations are **additive and shown
-  first**.
+- **M2-6, added:** a balance below zero is always marked, floor or no floor.
+- **M2-12, changed:** "Explain" and "Review" may send **payee and category
+  names for expenses, never client names**; clients appear as "Client A",
+  "Client B". A finance setting, "Include client names in AI explanations",
+  off by default, lifts that (§6).
+- **M2-15, changed:** quarterly and annual cadences are added to monthly
+  (§2.2). An annual item is shown as "likely annual, confirm" and enters the
+  forecast only when the owner confirms it, as a planned line.
+- **M2-17:** two stops as proposed, with **"Review with Claude" in stop 2**.
+- **Added, from the brief: "Review with Claude"** (§6a), stop 2.
 
-**Everything else below is a recommendation, and each one that matters is a
-question in §12.** Where the brief said something this spec does not, the
-brief wins: say so and the section changes.
+**The brief.** This spec was first written without the owner's brief in
+front of me; it is saved now, verbatim, as
+`docs/p6_finance_expansion_brief.md`. **Where the brief and a spec disagree,
+the brief wins unless a recorded decision says otherwise** (owner,
+2026-10-11). §12a sets the brief's M2 beside this spec, line by line, and
+says which holds.
 
 ---
 
@@ -60,14 +61,18 @@ can see every line it is made of, and change any of them."
 
 ### 1.2 What it shows
 
-- **Cash, week by week, for the next 13 weeks,** and month by month for 12
-  months (M2-1). One row a week: cash at the start, money in, money out, cash
-  at the end.
+- **Cash, week by week,** over 30, 90 or 180 days (the brief's three views;
+  90 days is the 13 weeks of M2-1 and is what opens), and month by month for
+  12 months (M2-1). One row a week: cash at the start, money in, money out,
+  cash at the end.
 - **The low point:** the week the cash is lowest, how low, and how long from
   today.
 - **The floor:** an amount the owner sets ("I want at least this much in the
   bank"). The first week the forecast goes under it is marked, with what is
   due that week (M2-6).
+- **Below zero is always marked,** floor or no floor (M2-6, added
+  2026-10-11): the first week the forecast ends under nothing, in words at
+  the top and on the row.
 - **Every figure opens the lines it is made of** (§2): which invoices, which
   costs, each with where it came from.
 
@@ -119,18 +124,20 @@ owner can put one back with a date (M2-5).
 
 ### 2.2 Regular: found in the practice's own closed months
 
-A cost (or any money in that is not an invoice) is **regular** when, in the
-closed months, it shows up in the same category **and** from the same payee
-(or with the same description when there is no payee), in at least two of
-the last three closed months.
+A cost (or any money in that is not an invoice) is **regular** when the
+closed months show it in the same category **and** from the same payee (or
+with the same description when there is no payee), at one of three cadences
+(M2-15, as changed 2026-10-11):
 
-| What is found | What is forecast |
-|---|---|
-| The same amount each month (rent, software, insurance) | That amount, on the day of the month it usually falls |
-| A different amount each month (contractors, travel, advertising) | The median of the last three closed months, on its usual day |
-| Quarterly or yearly (a sponsorship, tax preparation, an annual renewal) | The last amount, a quarter or a year after the last one. Needs four closed months, or thirteen, to be found at all |
-| Owner draws | The median of the last three closed months, on the usual day (M2-7) |
-| Estimated tax payments (the Federal and State marks) | The last amount of each, on the next of January 15, April 15, June 15 and September 15 |
+| Cadence | Found when | What is forecast |
+|---|---|---|
+| **Monthly** | It is in at least two of the last three closed months | The same amount each month where it has been the same (rent, software, insurance); where it varies (contractors, travel, advertising), the median of the months it appeared in. On the day of the month it usually falls |
+| **Quarterly** | It is at roughly three-month spacing (two to four months apart) at least twice in the last 12 closed months, and is not monthly | The last amount, three months after the last one, and each three months after |
+| **Quarterly, by definition** | An owner draw carrying the "Estimated tax payment" mark, Federal or State, in the last 12 closed months | The last amount of each mark, on the next of the IRS dates: January 15, April 15, June 15, September 15 |
+| **Annual** | It is seen once, 11 to 13 months ago, and not since | **Nothing, until the owner confirms it.** It is listed as "likely annual, confirm"; confirming makes it a planned line (§2.4), with last year's amount and date to start from |
+
+Owner draws are regular lines like any other (M2-7): the median of the months
+they appeared in, on the usual day.
 
 - **This is why it needs two closed months.** With fewer, the forecast shows
   only the known lines of §2.1 and says so at the top: "Close two months and
@@ -138,8 +145,11 @@ the last three closed months.
   your invoices." Months "locked before month close began" do not count.
 - **Only closed months are read.** An open month is still being entered and
   would understate every cost.
-- **Each regular line says what it was found from:** "Larimer Square Cowork,
-  $695.00 on the 1st, in each of the last 3 closed months."
+- **Each regular line says what it was found from, and its cadence:**
+  "Larimer Square Cowork, $695.00 on the 1st, monthly: in each of the last 3
+  closed months."
+- **Stop 1 lists the "likely annual" items and does not yet confirm them:**
+  confirming makes a planned line, and planned lines are stop 2's.
 - **Nothing found is hidden and nothing is assumed silently.** The list of
   regular lines is on the screen, and each can be changed, paused or removed
   (§3).
@@ -237,10 +247,17 @@ the Forecast module.
 As M1's "Explain this step": written help is free and always there; Claude
 is asked only when a button is pressed.
 
-- **What is sent (M2-12):** the weekly table (cash, in, out); the floor; the
-  low point; the regular and planned lines by **category and amount**, and
-  the known lines by **amount and date**. **No client's name, no payee's
-  name, no invoice number, no one's contact details.**
+- **What is sent (M2-12, as changed 2026-10-11):** the weekly table (cash,
+  in, out); the floor; the low point; the regular and planned lines with
+  their **category and payee names, for expenses**; and the known lines by
+  amount and date. **Never a client's name:** a client appears as "Client A",
+  "Client B", the same letter for the same client throughout one call. No
+  invoice number and no one's contact details.
+- **"Include client names in AI explanations"** is a finance setting, off by
+  default. On, clients are sent by name. It is the practice owner's, audited
+  when changed, and the button says which way it is set before it is pressed.
+- An income line that is not an invoice (a referral fee received) is treated
+  as a client's: its payer is lettered too.
 - **What comes back:** a short reading in plain words: where the low point
   comes from, which few lines move it most, and what would change it.
 - **It changes nothing,** gives no tax, legal or financial advice, and says
@@ -250,6 +267,43 @@ is asked only when a button is pressed.
   `ai_call` like any other, 20 a day per practice across both buttons, and
   never past the monthly AI budget where one is set.
 - **Not kept.** With no key the button says so.
+
+---
+
+## 6a. "Review with Claude" (from the brief; stop 2)
+
+The brief: "The AI's role is to propose and ask." The numbers are arithmetic
+on the books; Claude never supplies one.
+
+- **One costed call, pressed only,** priced before and costed after, an
+  `ai_call` like any other, under the same cap as "Explain" (20 a day per
+  practice across the two) and never past the monthly AI budget where one is
+  set. With no key the button says so.
+- **What it reads:** the regular lines as found (category, payee, cadence,
+  amount, day), and the last 12 closed months by category and payee, month by
+  month. Under the names rule of §6: expense payees and categories by name,
+  clients by letter unless the setting is on.
+- **What comes back, three lists:**
+  1. **Regular lines that look like one-offs** ("the $1,850 to Ledger & Quill
+     in March looks like a once-a-year tax return, not a monthly cost").
+  2. **Items that look recurring and were not picked up** ("LinkedIn appears
+     in 9 of 12 months under two descriptions").
+  3. **Questions about what the books cannot know:** a client ending, a hire,
+     equipment, a tax payment, a trip.
+- **The owner answers in a form.** Each item has its own answer: for list 1,
+  "it is a one-off" or "it is regular"; for list 2, "add it" with an amount
+  and cadence, or "no"; for list 3, a date and an amount, or "nothing
+  planned".
+- **Each answer becomes an adjustment or a planned line only when the owner
+  confirms it.** Nothing Claude returns enters the forecast unconfirmed, and
+  an amount in the forecast is always one the owner typed or the books
+  produced, never one Claude wrote. Closing the form without confirming
+  changes nothing.
+- **The answers are kept; the review is not.** What was confirmed is an
+  adjustment or a planned line like any other, marked "from a review". The
+  lists themselves are not stored: pressed again, it is a new call.
+- It gives no tax, legal or financial advice and says "ask your CPA" where
+  the question is one.
 
 ---
 
@@ -337,30 +391,126 @@ not money); bank feeds; any change to what the books or invoices hold.
 
 ---
 
-## 12. Decisions for the owner
+## 12. Decisions (decided 2026-10-11: all as recommended, with the changes marked)
 
-Nothing is built until these are answered. Each has what I would do and why.
-
-| # | Question | Recommendation |
+| # | Question | Decided |
 |---|---|---|
 | **M2-1** | **How far ahead, and in what steps.** | 13 weeks by week, and 12 months by month. Thirteen weeks is a quarter, the span where the known lines are most of the answer; past that it is mostly "regular" and the months view says so. |
 | M2-2 | The forecast starts from the books' cash today, and warns when an account has no entry in 14 days. | Yes. It does not require the current month to be reconciled: that would make it useless for the first three weeks of every month. |
 | M2-3 | A draft or ready invoice not yet sent counts as if sent today. | Yes, labelled "not sent yet". Otherwise the first of the month's retainers vanish from the forecast between being written and being sent. |
 | **M2-4** | **A client is forecast to pay as they have paid:** the median days after the due date over their last 12 months, never earlier than the due date, and only with three paid invoices to go on. | Yes. It is the single thing that makes this better than adding up due dates, and it is that client's own record, shown on the line. |
 | **M2-5** | **An invoice more than 60 days overdue is left out,** listed beside the forecast, and can be put back with a date. | Yes. The alternative is a forecast propped up by money that may never come. |
-| **M2-6** | **The floor** is one amount the owner sets; the forecast marks the first week under it. | Yes, and empty until set: the app should not invent how much cash you want. |
+| **M2-6** | **The floor** is one amount the owner sets; the forecast marks the first week under it. | Yes, and empty until set: the app should not invent how much cash you want. **Added 2026-10-11: a balance below zero is always marked, floor or no floor.** |
 | M2-7 | Owner draws are forecast from the last three closed months, like any regular line. | Yes, and it is the line you will most often change. Leaving draws out would show cash piling up that you know you will take. |
 | M2-8 | The card: what is owed today leaves the bank on the usual payment day; after that, card spending is paid the month after it is charged. | Yes. It matches a card paid in full. A practice carrying a balance is forecast from the payments it has actually made. |
 | **M2-9** | **What-ifs are a look, not a saved scenario.** One forecast as it stands, one what-if beside it. | Yes. Named, saved scenarios are a second product; one what-if answers "can I afford this" and "what if they leave". |
 | M2-10 | "How good it has been" shows differences, with no accuracy score. | Yes. A score invites trusting the number; the three biggest differences tell you what to fix. |
 | M2-11 | One line on the practice owner's dashboard: the lowest cash in the next 13 weeks and when. | Yes, and only when the module is on and two months are closed. |
-| **M2-12** | **What "Explain this forecast" sends to Claude:** the weekly table, the floor, the low point, lines by category and amount or by amount and date. **No names of clients or payees.** | Yes. It is enough to say where the low point comes from. With names it could say "when Acme pays", which is more useful and is your clients' names leaving the app; I would start without. |
+| **M2-12** | **What "Explain this forecast" sends to Claude.** | **Changed 2026-10-11:** "Explain" and "Review" may send payee and category names for expenses, never client names; clients appear as "Client A", "Client B". A finance setting, "Include client names in AI explanations", off by default, lifts that. (Recommended was no names at all.) |
 | M2-13 | Forecast needs Bookkeeping, and switching it on without is refused. | Yes. It reads closed months, which only Bookkeeping makes. |
 | **M2-14** | **Existing practices start with Forecast off.** | Off, unlike Bookkeeping, which was switched on for them. It is new and separately priced; you switch it on for Executives Now when you want it. The demo's seed switches it on. |
-| M2-15 | "Regular" means the same category and the same payee (or description) in at least two of the last three closed months. | Yes. Looser and one-off costs become forecasts; stricter and a new subscription takes a quarter to appear. |
+| **M2-15** | **What "regular" means.** | **Changed 2026-10-11:** two of the last three closed months stays, for monthly. Added: **quarterly** (the same category and payee at roughly three-month spacing at least twice in the last 12 closed months; marked estimated-tax payments are quarterly by definition, on the IRS dates) and **annual** (seen once 11 to 13 months ago and not since: shown as "likely annual, confirm", entering the forecast only when confirmed, as a planned line). |
 | M2-16 | A regular line is worked out each time and never stored; only your adjustments are. | Yes. A stored forecast drifts from the books; this cannot. |
-| **M2-17** | **One stop or two.** | **Two:** first the forecast from known and regular lines, the floor, the screen and the module switch; then planned lines, what-ifs, adjustments, "how good it has been", "Explain this forecast" and the demo data. |
+| **M2-17** | **One stop or two.** | **Two:** first the forecast from known and regular lines, the floor, the screen and the module switch; then planned lines, what-ifs, adjustments, "how good it has been", "Explain this forecast", **"Review with Claude" (added 2026-10-11, §6a)** and the demo data. |
 | M2-18 | The disclaimer, on every screen and under every explanation, and at the foot of the download. | As M1 §6, the same sentence. |
+
+### 12a. The brief's M2, beside this spec
+
+The brief was saved after this spec was written and decided. Where they
+differ, a recorded decision holds; where no decision speaks, the brief does.
+
+| The brief says | This spec | Which holds |
+|---|---|---|
+| "needs ≥2 closed months" | The same; with fewer, it shows invoices only and says so (§2.2) | Agree |
+| "Arithmetic on the books, never AI-invented numbers" | The same (§1.1, §6a) | Agree |
+| Inflows "timed by each client's **average** days-to-pay" | The **median** days after the due date, never earlier than due, with three paid invoices to go on (M2-4) | The decision, M2-4. A median is not moved by the one invoice paid four months late |
+| "opening position from **reconciled** balances" | The books' cash **today**, saying how far each account is reconciled and warning when one is stale (M2-2) | The decision, M2-2. The screen shows the reconciled-through date beside the figure, so the brief's point is on the screen |
+| "planned owner draws" | Draws found as a regular line (M2-7), and changed by an adjustment (stop 2) | Agree: found in stop 1, planned in stop 2 |
+| "one-off items the owner enters" | Planned lines (§2.4), stop 2 | Agree |
+| "The AI's role is to propose and ask … Owner answers in a form; nothing enters the forecast unconfirmed. One costed call per refresh." | Was missing. **Added 2026-10-11 as "Review with Claude" (§6a), stop 2.** It is one call each time it is pressed; the forecast itself refreshes without any call | The brief, as the owner restated it |
+| "Views: 30 / 90 / 180 days, weekly buckets" | M2-1 decided 13 weeks by week and 12 months by month | **Both:** the weekly view has 30, 90 and 180 days (90 is the 13 weeks, and is what opens), and the monthly view is M2-1's 12 months. If the brief's three were meant to be the only views, say so and the months view goes |
+| "low-point and negative-balance warnings" | The low point (§1.2); below zero always marked (M2-6, added) | Agree |
+| "a scenario toggle (remove a client, add a recurring cost, change a draw) that recomputes without saving" | The what-if (§2.4, M2-9), stop 2 | Agree |
+| "Assumptions listed beside the chart; refreshable any time" | The three lists under the chart, each line saying what it was found from; worked out from the books every time the screen is opened (M2-16) | Agree |
+| "AI calls costed and under the daily cap" | 20 a day per practice across "Explain" and "Review", and never past the monthly budget (§6, §6a). **The practice's daily cap (`ai_unattended_daily_cap_usd`) counts only what the worker does with nobody asking, and both of these are pressed by a person**, so that cap does not count them; the 20 a day is theirs | The spec, unless the owner wants pressed calls under the worker's cap too, which is the "monthly AI budget can be set to stop" item recorded for later (M1 §12) |
+| "Each is a priced add-on module … Cash forecast" | The `forecast` module (§7), off for existing practices (M2-14), needing Bookkeeping (M2-13) | Agree |
+| The disclaimer on every screen | M2-18 | Agree |
+| Demo: "John Carter's practice … with a forecast" | §10, in stop 2 (M2-17) | Agree |
+
+---
+
+## As built: stop 1 (2026-10-11) — the forecast, the floor, the screen, the switch
+
+Built on `dev`; not released. Stop 2 (planned lines, what-ifs, adjustments,
+"how good it has been", "Explain this forecast", "Review with Claude", the
+finance setting for client names, and the demo data) is not started.
+
+**The forecast.** `apps/finance/forecast.py`. `build(tenant)` works the whole
+thing out from the books each time: cash today; known lines (invoices sent,
+unsent, and each schedule's to come, each on the day that client usually
+pays); regular lines at each cadence; the card's payments; 26 weeks and 12
+months of rows; and the low point, the first row under the floor and the
+first under zero for each of the four views. It asks Claude nothing.
+
+**Routes.** `GET /api/finance-forecast/`, `POST …/floor/`, `GET …/export/`
+(a CSV, each download an audit event). 404 for a practice without the module.
+
+**The screen.** Finance → Forecast (`frontend/src/screens/FinanceForecast.tsx`),
+after Reconcile: three figures; where cash today comes from, with how far
+each account is reconciled and a warning when one is stale; a chart of the
+cash line with zero and the floor drawn on it, and the same figures as a
+table; 30, 90 and 180 days and 12 months; each row opening its lines; Known
+and Regular lists, each line saying where it comes from; "Overdue, not
+counted"; "Likely annual, to confirm". One line on the practice owner's
+dashboard.
+
+**The module.** `forecast`, named "Cash forecast" (the brief's name for it).
+The Practices area shows its tick beside Bookkeeping. Switching it on without
+Bookkeeping is refused, and so is switching Bookkeeping off while it is on.
+No practice is switched on by the migration.
+
+**Migration:** `finance` 0009, one new table, `finance_forecast_settings`
+(the floor). No data step. The other three tables of §9 are stop 2's.
+
+**Where the build differs from the text above, or adds to it:**
+
+- **Cash today includes invoice payments received and not yet placed in an
+  account,** as the balance view's cash does, and lists them as their own row.
+- **A row is seven days from today,** not a calendar week: "the week of
+  October 11" starts on the day the forecast is opened.
+- **"30 days" is five weeks** (35 days), so that it is whole rows.
+- **The months view's first row is the rest of this month,** from today.
+- **A monthly cost not yet entered this month, whose usual day has passed,**
+  is forecast for today: it is still expected. One already entered for the
+  month is not forecast again for it (§2.2).
+- **A varying monthly cost is the median of the months it appeared in** among
+  the last three closed months (two or three figures).
+- **"The same payee"** is the person named on the entry; else the payee as
+  typed; else its description, with the numbers a bank adds taken out, so
+  "GUSTO FEE 677210" and "GUSTO FEE 677211" are one line.
+- **"Roughly three-month spacing"** is two to four months between every pair
+  of occurrences in the last 12 closed months, with at least two occurrences.
+- **A marked estimated tax payment already made within a fortnight of a due
+  date** is not forecast again for that date.
+- **A card with no payment to it in the closed months** is forecast to be
+  paid in 30 days, and says so.
+- **Card charges are regular lines marked "on a card" and are not in the
+  cash line;** the card's payment is. The second payment covers the charges
+  forecast up to the first, and so on.
+- **A transfer between the practice's own accounts is never a regular line.**
+- **Money in that is not an invoice** (a referral fee received) is found as a
+  regular line like a cost. Money the owner puts in is not: it is not regular.
+- **"Likely annual" is listed and cannot yet be confirmed** (decided; §2.2).
+- **The download is 180 days by week** with every line behind it; it has no
+  months table.
+- **The dashboard line works the whole forecast out** each time the practice
+  owner's dashboard loads. It has not been timed on a real practice's books.
+
+**Not seen in a browser:** the screen, the chart and the dashboard line.
+**Not run on real books:** whether these rules find a real practice's regular
+costs without finding its one-offs. The demo cannot be looked at yet either:
+its seed switches the module on in stop 2, so until then the platform owner
+switches it on there by hand.
 
 ---
 

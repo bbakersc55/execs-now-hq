@@ -380,6 +380,7 @@ export function App() {
               <>
                 <Route path="/finance" element={<Finance tab="entries" />} />
                 <Route path="/finance/reconcile" element={<Finance tab="reconcile" />} />
+                <Route path="/finance/forecast" element={<Finance tab="forecast" />} />
                 <Route path="/finance/pnl" element={<Finance tab="pnl" />} />
                 <Route path="/finance/import" element={<Finance tab="import" />} />
                 <Route path="/finance/1099" element={<Finance tab="payees" />} />

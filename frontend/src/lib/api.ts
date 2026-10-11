@@ -1594,6 +1594,10 @@ export interface BalanceView {
 export interface FinanceMonth {
   revenue_cents: number; expenses_cents: number; net_cents: number;
   margin_percent: number | null; month: string; year: number;
+  /** P6 M2: the lowest cash in the next 13 weeks. Null without the Cash
+   *  forecast module or two closed months. */
+  forecast?: { low_cents: number; week_of: string; below_zero: boolean;
+               below_floor: boolean } | null;
 }
 
 // ----------------------------------------- the import, rules and 1099 (P5, 2)
@@ -1743,4 +1747,43 @@ export interface BulkPlan {
 export interface BulkChange {
   id: string; at: string; action: "recategorize" | "remove"; count: number; to: string;
   first_on: string | null; last_on: string | null; reason: string; by: string;
+}
+
+// ------------------------------------------- the cash forecast (P6 M2, stop 1)
+
+export interface ForecastRow {
+  start: string; end: string; label: string; start_cents: number; in_cents: number;
+  out_cents: number; end_cents: number; lines: string[];
+  below_floor: boolean; below_zero: boolean;
+}
+
+export interface ForecastLine {
+  id: string; kind: "known" | "regular" | "card"; direction: "in" | "out";
+  amount_cents: number; on_date: string; label: string; detail: string;
+  cadence: "" | "monthly" | "quarterly"; category: string; link: string;
+  /** False for a charge on a card: it is cash when the card is paid. */
+  counted: boolean; on_card: string;
+}
+
+export interface ForecastSummary {
+  low_cents: number; low_start: string; low_label: string; end_cents: number;
+  first_below_floor: string | null; first_below_zero: string | null;
+}
+
+export type ForecastView = "30" | "90" | "180" | "months";
+
+export interface Forecast {
+  as_of: string; ready: boolean; closed_months: number; closed_through: string | null;
+  note: string; cash_today_cents: number; unplaced_cents: number;
+  accounts: { id: string; name: string; kind: string; amount_cents: number;
+              last_entry_on: string | null; reconciled_through: string | null;
+              stale: boolean }[];
+  floor_cents: number | null; weeks: ForecastRow[]; months: ForecastRow[];
+  views: Record<ForecastView, ForecastSummary>; lines: ForecastLine[];
+  left_out: { id: string; label: string; amount_cents: number; due_date: string;
+              days_overdue: number; link: string }[];
+  likely_annual: { id: string; label: string; category: string; direction: "in" | "out";
+                   amount_cents: number; last_on: string; likely_on: string;
+                   detail: string }[];
+  disclaimer: string;
 }

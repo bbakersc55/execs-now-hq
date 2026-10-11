@@ -230,3 +230,10 @@ register(GettingStartedDismissal, factories.GettingStartedDismissalFactory,
 from apps.finance.models import FinanceYearFacts  # noqa: E402
 
 register(FinanceYearFacts, factories.FinanceYearFactsFactory, api_exposed=False)
+
+# P6 M2: the cash forecast's one stored thing, the floor. Read and set
+# through the forecast's own route, never by id.
+from apps.finance.models import FinanceForecastSettings  # noqa: E402
+
+register(FinanceForecastSettings, factories.FinanceForecastSettingsFactory,
+         api_exposed=False)
