@@ -313,6 +313,28 @@ throughout: 73 samples at 5 s, every one 200. **Worker paused about 35 s.**
 **Neither addition had been seen in a signed-in browser, and no real Claude
 draft or Drive pick had been made with call notes, when it went out.**
 
+**Observed at Release 10 (2026-10-11 UTC, 9 migrations: P6 M1, both stops,
+the CPA's chart, the worksheet export, the estimated-tax mark, invoice income
+by kind, and the Getting started dismissals):** backup confirmed (the
+2026-10-10 08:03 UTC dump, 3,125,892 bytes, 17 hours old; no fresh one was
+taken first). The commit released, `a4037fb`, had passed `scripts/gate.sh`.
+`main` fast-forwarded from `31c00d9` and pushed 01:28:54, by
+`git push origin dev:main`; worker `WAITING` 01:31:07 listing exactly
+`tenancy.0012`, `tenancy.0013`, `finance.0003` to `finance.0008` and
+`billing.0002`; applied 01:31:19–28, all OK. `finance.0006` (the
+estimated-tax move) found nothing, as it could not: production had no
+sub-categories before this release. `finance.0008` printed its one line:
+practice `a0625688…`, recurring invoices now go to "Retainers", under "Client
+fees" (added). Worker running 01:31:44; web redeployed 01:31:59; the new code
+answering by 01:32:29 (the reconcile route, which exists only in this
+release, answers 403 where the old code answered 404). **Push to new code:
+3 min 35 s.** `/healthz` was 200 at every sample taken, but it was sampled
+only from R3 on and not every 5 s as before. **Worker paused about 37 s.**
+**Nothing in the release had been seen in a signed-in browser on production
+when it went out, and production's database was not read afterwards: what
+the data steps did is known from the migration's own output and from the
+code.**
+
 **Observed at Release 8 (2026-10-08, 5 migrations: P3's example and sections,
 the alignment pass, client invoicing, the books, and the import with 1099
 payees):** backup confirmed (08:00 UTC dump, 3.1 MB), and a fresh one taken by
