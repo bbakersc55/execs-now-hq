@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from . import cast
+from . import ahead, cast
 from .clock import at, dice, moment, month_end, months, next_month
 
 RETAINER = "Fractional operations leadership, monthly retainer"
@@ -68,6 +68,10 @@ def history(world) -> None:
             if previous == _months_back(world, 4):
                 _late_refund(world, books, previous)
         previous = month
+        # How good the forecast has been: he looks at it on the first of each
+        # of the last months, and what he saw is kept (P6 M2 §4).
+        if month >= _months_back(world, 6):
+            ahead.look_on_the_first(world, month)
         invoiced = _invoice_the_month(world, books, month, window_start)
         facts = _expenses(world, books, month, index, invoiced, card_owed)
         card_owed = sum(f["cents"] for f in facts
@@ -87,6 +91,7 @@ def history(world) -> None:
     _this_month_in_progress(world, books)
     _reshape_the_chart(world, books)
     _year_end_facts(world)
+    ahead.looking_ahead(world)
     world.extra["books"] = books
 
 

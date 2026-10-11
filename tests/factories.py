@@ -1199,3 +1199,34 @@ class FinanceForecastSettingsFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     floor_cents = 1500000
+
+
+class FinanceForecastPlannedFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceForecastPlanned"
+
+    tenant = factory.SubFactory(TenantFactory)
+    description = "A new hire"
+    direction = "out"
+    amount_cents = 650000
+    on_date = factory.LazyFunction(lambda: __import__("datetime").date(2026, 12, 1))
+
+
+class FinanceForecastAdjustmentFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceForecastAdjustment"
+
+    tenant = factory.SubFactory(TenantFactory)
+    line_key = "pattern:expense|out|x|y|text|rent"
+    label = "Rent"
+    kind = "not_regular"
+
+
+class FinanceForecastSnapshotFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.FinanceForecastSnapshot"
+
+    tenant = factory.SubFactory(TenantFactory)
+    month = factory.LazyFunction(lambda: __import__("datetime").date(2026, 9, 1))
+    taken_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 9, 1))
+    forecast = {"start_cents": 0, "in_cents": 0, "out_cents": 0, "end_cents": 0, "by": {}}

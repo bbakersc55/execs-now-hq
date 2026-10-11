@@ -2,92 +2,23 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Forecast, ForecastLine, ForecastRow } from "../lib/api";
+import { Forecast } from "../lib/api";
 import { FINANCE_DISCLAIMER } from "../lib/finance";
 import { aMe } from "../test/fixtures";
+import { AI, aForecast } from "../test/forecast";
 import { mockApi, renderRoute } from "../test/render";
 import { Finance } from "./Finance";
 
 /** P6 M2, the first stop: the cash forecast from known and regular lines,
  *  the card, the floor, and the Cash forecast module's tab. */
 
-const day = (start: string, add: number) => {
-  const d = new Date(`${start}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + add);
-  return d.toISOString().slice(0, 10);
-};
-
-const line = (id: string, more: Partial<ForecastLine>): ForecastLine => ({
-  id, kind: "regular", direction: "out", amount_cents: 69500, on_date: "2026-10-12",
-  label: "Larimer Square Cowork",
-  detail: "$695.00 on the 1st, monthly: the same amount of 3 of the last 3 closed months.",
-  cadence: "monthly", category: "Office expense: Coworking and meeting rooms",
-  link: "/finance?category=c9&subs=0", counted: true, on_card: "", ...more });
-
-const LINES = [
-  line("rent", {}),
-  line("inv", { kind: "known", direction: "in", amount_cents: 680000, on_date: "2026-10-20",
-                label: "Acme Fasteners: Invoice SOP-0188", cadence: "", category: "",
-                detail: "Due October 16, 2026; forecast 4 days after its due date, as this "
-                  + "client usually pays.", link: "/invoices/i1" }),
-  line("visa", { kind: "card", amount_cents: 912300, on_date: "2026-10-20",
-                 label: "Business Visa payment", category: "",
-                 detail: "What is owed on Business Visa today, $9,123.00, leaves the bank "
-                   + "on the 20th, the day it is usually paid.", link: "/finance/balance" }),
-  line("zoom", { amount_cents: 2199, on_date: "2026-11-04", label: "Zoom", counted: false,
-                 on_card: "card1", category: "Dues and subscriptions: Software and apps" }),
-  line("far", { amount_cents: 500000, on_date: "2027-02-10", label: "Far away" })];
-
-/** 26 weeks from October 11: flat, but for two weeks made by hand. */
-function weeks(floor: number | null): ForecastRow[] {
-  let cash = 1200000;
-  return Array.from({ length: 26 }, (_, i) => {
-    const start = day("2026-10-11", 7 * i);
-    const ids = i === 0 ? ["rent"] : i === 1 ? ["inv", "visa"] : [];
-    const moneyIn = i === 1 ? 680000 : 0;
-    const out = i === 0 ? 69500 : i === 1 ? 912300 : i === 6 ? 1300000 : 0;
-    const row = { start, end: day(start, 6), label: "", start_cents: cash,
-                  in_cents: moneyIn, out_cents: out, end_cents: cash + moneyIn - out,
-                  lines: ids, below_floor: floor !== null && cash + moneyIn - out < floor,
-                  below_zero: cash + moneyIn - out < 0 };
-    cash = row.end_cents;
-    return row;
-  });
-}
-
-function aForecast(more: Partial<Forecast> = {}, floor: number | null = 1000000): Forecast {
-  const w = weeks(floor);
-  const low = (rows: ForecastRow[]) => {
-    const least = rows.reduce((a, b) => (b.end_cents < a.end_cents ? b : a));
-    return { low_cents: least.end_cents, low_start: least.start, low_label: least.label,
-             end_cents: rows[rows.length - 1].end_cents,
-             first_below_floor: rows.find((r) => r.below_floor)?.start ?? null,
-             first_below_zero: rows.find((r) => r.below_zero)?.start ?? null };
-  };
-  const months: ForecastRow[] = [
-    { ...w[0], end: "2026-10-31", label: "October 2026", in_cents: 680000,
-      out_cents: 981800, end_cents: 898200, lines: ["rent", "inv", "visa"],
-      below_floor: false, below_zero: false },
-    { ...w[0], start: "2026-11-01", end: "2026-11-30", label: "November 2026",
-      start_cents: 898200, in_cents: 0, out_cents: 1300000, end_cents: -401800, lines: [],
-      below_floor: floor !== null, below_zero: true }];
-  return {
-    as_of: "2026-10-11", ready: true, closed_months: 21, closed_through: "2026-09-30",
-    note: "", cash_today_cents: 1200000, unplaced_cents: 0,
-    accounts: [{ id: "a1", name: "Front Range Bank checking", kind: "bank",
-                 amount_cents: 1200000, last_entry_on: "2026-10-09",
-                 reconciled_through: "2026-09-30", stale: false }],
-    floor_cents: floor, weeks: w, months,
-    views: { "30": low(w.slice(0, 5)), "90": low(w.slice(0, 13)), "180": low(w),
-             months: low(months) },
-    lines: LINES, left_out: [], likely_annual: [], disclaimer: FINANCE_DISCLAIMER,
-    ...more };
-}
-
 function show(data: Forecast = aForecast(), extra: Record<string, unknown> = {},
               modules = ["bookkeeping", "forecast"]) {
-  const fetchMock = mockApi({ ...extra, "GET /api/me": aMe({ modules }),
-                              "GET /api/finance-forecast/": data, ...extra });
+  const fetchMock = mockApi({
+    // Before the forecast's own address, which it begins with.
+    "GET /api/finance-forecast/explain/": AI,
+    ...extra, "GET /api/me": aMe({ modules }),
+    "GET /api/finance-forecast/": data, ...extra });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<Finance tab="forecast" />);
   return fetchMock;
@@ -205,13 +136,15 @@ describe("the forecast", () => {
       expect(await screen.findByRole("heading", { name: "Known (1)" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Regular (3)" })).toBeInTheDocument();
       const regular = screen.getByRole("table", { name: "Regular lines", hidden: true });
-      const rent = within(regular).getByText("Larimer Square Cowork").closest("tr")!;
+      const rent = within(regular).getByRole("link", { name: "Larimer Square Cowork",
+                                                       hidden: true }).closest("tr")!;
       expect(rent).toHaveTextContent("Office expense: Coworking and meeting rooms");
       expect(rent).toHaveTextContent("monthly");
       expect(rent).toHaveTextContent(
         "$695.00 on the 1st, monthly: the same amount of 3 of the last 3 closed months.");
       // A charge on a card is listed and marked: it is cash when the card is paid.
-      expect(within(regular).getByText("Zoom").closest("tr")).toHaveTextContent("on a card");
+      expect(within(regular).getByRole("link", { name: "Zoom", hidden: true }).closest("tr"))
+        .toHaveTextContent("on a card");
       expect(within(regular).queryByText("Far away")).not.toBeInTheDocument();
     });
 
@@ -249,28 +182,31 @@ describe("the forecast", () => {
       .toHaveTextContent("not reconciled yet");
   });
 
-  it("lists what is overdue and not counted, and what is likely annual and not in it",
-    async () => {
-      show(aForecast({
-        left_out: [{ id: "i9", label: "Globex Logistics: Invoice SOP-0101",
-                     amount_cents: 850000, due_date: "2026-07-16", days_overdue: 87,
-                     link: "/invoices/i9" }],
-        likely_annual: [{ id: "x", label: "Adobe annual plan", direction: "out",
-                          category: "Dues and subscriptions: Software and apps",
-                          amount_cents: 119900, last_on: "2025-10-08",
-                          likely_on: "2026-10-08", detail: "" }] }));
-      const overdue = await screen.findByRole("table", { name: "Overdue, not counted" });
-      expect(overdue).toHaveTextContent(
-        "Globex Logistics: Invoice SOP-0101due July 16, 2026, 87 days ago$8,500.00");
-      expect(within(overdue).getByRole("link")).toHaveAttribute("href", "/invoices/i9");
-      expect(screen.getByText(/hoping is not\s+forecasting/)).toBeInTheDocument();
-      const annual = screen.getByRole("table", { name: "Likely annual, to confirm" });
-      expect(annual).toHaveTextContent("Adobe annual plan");
-      expect(annual).toHaveTextContent(
-        "last on October 8, 2025; likely again about October 8, 2026$1,199.00");
-      expect(screen.getByText(/Seen once, about a year ago, and not since/))
-        .toHaveTextContent("They are not in the forecast.");
-    });
+  it("lists what is not counted, and what is likely annual and not in it", async () => {
+    show(aForecast({
+      left_out: [{ id: "i9", group: "invoice:i9", adjustment: "",
+                   why: "more than 60 days overdue",
+                   label: "Globex Logistics: Invoice SOP-0101",
+                   amount_cents: 850000, due_date: "2026-07-16", days_overdue: 87,
+                   link: "/invoices/i9" }],
+      likely_annual: [{ id: "x", group: "pattern:adobe", label: "Adobe annual plan",
+                        direction: "out",
+                        category: "Dues and subscriptions: Software and apps",
+                        amount_cents: 119900, last_on: "2025-10-08",
+                        likely_on: "2026-10-08", detail: "" }] }));
+    const overdue = await screen.findByRole("table", { name: "Not counted" });
+    expect(overdue).toHaveTextContent("Globex Logistics: Invoice SOP-0101");
+    expect(overdue).toHaveTextContent(
+      "more than 60 days overdue; due July 16, 2026, 87 days ago$8,500.00");
+    expect(within(overdue).getByRole("link")).toHaveAttribute("href", "/invoices/i9");
+    expect(screen.getByText(/hoping is not forecasting/)).toBeInTheDocument();
+    const annual = screen.getByRole("table", { name: "Likely annual, to confirm" });
+    expect(annual).toHaveTextContent("Adobe annual plan");
+    expect(annual).toHaveTextContent(
+      "last on October 8, 2025; likely again about October 8, 2026$1,199.00");
+    expect(screen.getByText(/Seen once, about a year ago, and not since/))
+      .toHaveTextContent("They are not in the forecast until you confirm them");
+  });
 
   it("draws the cash line with the same figures as the table, read by pointer or keys",
     async () => {
@@ -279,8 +215,11 @@ describe("the forecast", () => {
       expect(chart).toHaveAccessibleName(
         "Cash at the end of each week, from $11,305.00 to -$4,018.00. The table below has "
         + "every figure.");
-      // One series: a single line, with zero and the floor as named reference lines.
+      // One series: a single line, with zero and the floor as named reference
+      // lines, and so no legend.
       expect(chart.querySelectorAll("path")).toHaveLength(1);
+      expect(screen.queryByRole("list", { name: "What the lines are" }))
+        .not.toBeInTheDocument();
       expect(chart).toHaveTextContent("zero");
       expect(chart).toHaveTextContent("your floor, $10k");
       const readout = screen.getByRole("status", { name: "The point on the chart" });

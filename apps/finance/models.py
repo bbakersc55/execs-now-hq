@@ -485,6 +485,9 @@ class FinanceForecastSettings(TenantScopedModel):
     #: "I want at least this much in the bank." Empty until the owner sets it:
     #: the app does not invent how much cash a practice wants (M2-6).
     floor_cents = models.BigIntegerField(null=True, blank=True)
+    #: "Include client names in AI explanations" (M2-12). Off: a client is
+    #: sent to Claude as "Client A", "Client B", never by name.
+    include_client_names = models.BooleanField(default=False, db_default=False)
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
 
@@ -496,4 +499,111 @@ class FinanceForecastSettings(TenantScopedModel):
             models.CheckConstraint(
                 condition=Q(floor_cents__isnull=True) | Q(floor_cents__gte=0),
                 name="finance_forecast_floor_not_negative"),
+        ]
+
+
+class FinanceForecastPlanned(TenantScopedModel):
+    """Something the books cannot know, typed by the owner (§2.4): a hire, a
+    client leaving, new equipment. It is in the forecast until it is removed,
+    it happens, or its date passes. **It never becomes an entry.**"""
+
+    class Repeat(models.TextChoices):
+        ONCE = "", "Once"
+        MONTHLY = "monthly", "Every month"
+        QUARTERLY = "quarterly", "Every three months"
+
+    class Source(models.TextChoices):
+        TYPED = "", "Typed"
+        #: Confirmed from "Review with Claude": the owner's answer, not Claude's.
+        REVIEW = "review", "From a review"
+        #: A "likely annual" item the owner confirmed.
+        ANNUAL = "annual", "Confirmed as annual"
+
+    description = models.CharField(max_length=200)
+    direction = models.CharField(max_length=3)
+    amount_cents = models.BigIntegerField()
+    on_date = models.DateField()
+    repeat = models.CharField(max_length=10, choices=Repeat.choices, blank=True,
+                              default="", db_default="")
+    #: The last day a repeating one is forecast; empty for "until further notice".
+    until = models.DateField(null=True, blank=True)
+    #: Drawn beside the forecast and not counted until switched on (M2-9).
+    is_what_if = models.BooleanField(default=False, db_default=False)
+    #: The "likely annual" line it was confirmed from, so that one is not
+    #: listed as still to confirm.
+    line_key = models.CharField(max_length=400, blank=True, default="", db_default="")
+    source = models.CharField(max_length=8, choices=Source.choices, blank=True,
+                              default="", db_default="")
+    happened_at = models.DateTimeField(null=True, blank=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_forecast_planned"
+        ordering = ["on_date", "created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount_cents__gt=0),
+                                   name="finance_forecast_planned_amount_positive"),
+            models.CheckConstraint(condition=Q(direction__in=("in", "out")),
+                                   name="finance_forecast_planned_direction"),
+        ]
+
+
+class FinanceForecastAdjustment(TenantScopedModel):
+    """The owner's own correction to a line the forecast found (§3). It is
+    kept, shown beside the line, can be undone, and outlives the next close:
+    the forecast finds the cost again and applies what the owner said."""
+
+    class Kind(models.TextChoices):
+        AMOUNT = "amount", "A different amount"
+        DAY = "day", "A different day"
+        PAUSE = "pause", "Paused"
+        END = "end", "Ended"
+        NOT_REGULAR = "not_regular", "Not regular"
+        #: An invoice: the day it is expected, as the client said.
+        EXPECTED = "expected", "Expected on another day"
+        LEAVE_OUT = "leave_out", "Left out"
+
+    #: Which line: `pattern:…`, `tax:…`, `card:…` or `invoice:<id>`.
+    line_key = models.CharField(max_length=400)
+    #: What it was called when it was adjusted, for when it is no longer found.
+    label = models.CharField(max_length=255, blank=True, default="", db_default="")
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    amount_cents = models.BigIntegerField(null=True, blank=True)
+    day_of_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    from_date = models.DateField(null=True, blank=True)
+    until_date = models.DateField(null=True, blank=True)
+    expected_on = models.DateField(null=True, blank=True)
+    source = models.CharField(max_length=8, blank=True, default="", db_default="")
+    undone_at = models.DateTimeField(null=True, blank=True)
+    by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                           on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_forecast_adjustment"
+        ordering = ["created_at"]
+        indexes = [models.Index(fields=["tenant", "line_key"])]
+
+
+class FinanceForecastSnapshot(TenantScopedModel):
+    """The forecast for one month as it stood when that month began, kept so
+    it can be set beside what happened once the month is closed (§4)."""
+
+    #: The first day of the month it forecast.
+    month = models.DateField()
+    #: The day it was taken: the first time the forecast was worked out in
+    #: that month. What happened is counted from this day.
+    taken_on = models.DateField()
+    #: {start_cents, in_cents, out_cents, end_cents, by: {name: {in, out}}}
+    forecast = models.JSONField(default=dict)
+    #: The same shape, from the books, once the month is closed.
+    actual = models.JSONField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "finance_forecast_snapshot"
+        ordering = ["month"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "month"],
+                                    name="finance_forecast_snapshot_one_per_month"),
         ]

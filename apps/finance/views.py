@@ -1151,6 +1151,148 @@ class ForecastViewSet(FinanceViewSet):
             return self._refusal(exc)
         return Response(forecast.build(request.tenant))
 
+    # ----------------------------- stop 2: what the owner says, and a look
+
+    @action(detail=False, methods=["post"], url_path="what-if")
+    def what_if(self, request):
+        """A look, saved nowhere: `{off: [lines or "client:<id>"], on: [what-if
+        planned ids], amounts: {line: cents}}`. Returns the whole forecast
+        with the what-if beside it."""
+        from apps.finance import forecast
+
+        data = request.data
+        try:
+            for name in ("off", "on"):
+                if not isinstance(data.get(name, []), list):
+                    raise services.FinanceError(f"{name} is a list.")
+            return Response(forecast.build(request.tenant, what_if={
+                "off": data.get("off") or [], "on": data.get("on") or [],
+                "amounts": data.get("amounts") or {}}))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
+    def _planned(self, pk):
+        from apps.finance.models import FinanceForecastPlanned
+
+        try:
+            row = FinanceForecastPlanned.objects.filter(pk=pk).first()
+        except (ValueError, ValidationError):
+            row = None
+        if row is None:
+            raise Http404
+        return row
+
+    @action(detail=False, methods=["post"])
+    def planned(self, request):
+        """Add a planned line: something the books cannot know."""
+        from apps.finance import forecast
+
+        data = request.data
+        fields = {name: data[name] for name in forecast.PLANNED_FIELDS if name in data}
+        source = data.get("source") if data.get("source") in ("review", "annual") else ""
+        try:
+            forecast.save_planned(request.tenant, actor=request.user, source=source,
+                                  line_key=str(data.get("line") or ""), **fields)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(forecast.build(request.tenant), status=201)
+
+    @action(detail=False, methods=["patch", "delete", "post"],
+            url_path=r"planned/(?P<planned_id>[0-9a-f-]+)(?:/(?P<how>happened))?")
+    def planned_one(self, request, planned_id=None, how=None):
+        """PATCH changes one; DELETE removes it ("not going to happen"); POST
+        `…/happened/` says the real thing is in the books now."""
+        from apps.finance import forecast
+
+        row = self._planned(planned_id)
+        try:
+            if request.method == "PATCH" and not how:
+                fields = {name: request.data[name] for name in forecast.PLANNED_FIELDS
+                          if name in request.data}
+                forecast.save_planned(request.tenant, actor=request.user, planned=row,
+                                      **fields)
+            elif request.method == "DELETE" and not how:
+                forecast.finish_planned(row, actor=request.user, how="removed")
+            elif request.method == "POST" and how:
+                forecast.finish_planned(row, actor=request.user, how="happened")
+            else:
+                return Response(status=405)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(forecast.build(request.tenant))
+
+    @action(detail=False, methods=["post"])
+    def adjust(self, request):
+        """One correction to a line the forecast found: `{line, kind, …}`."""
+        from apps.finance import forecast
+
+        data = request.data
+        try:
+            forecast.adjust(
+                request.tenant, actor=request.user, group=data.get("line"),
+                kind=data.get("kind"), amount_cents=data.get("amount_cents"),
+                day_of_month=data.get("day_of_month"), from_date=data.get("from_date"),
+                until_date=data.get("until_date"), expected_on=data.get("expected_on"),
+                source="review" if data.get("source") == "review" else "")
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(forecast.build(request.tenant), status=201)
+
+    @action(detail=False, methods=["post"],
+            url_path=r"adjust/(?P<adjustment_id>[0-9a-f-]+)/undo")
+    def undo(self, request, adjustment_id=None):
+        from apps.finance import forecast
+        from apps.finance.models import FinanceForecastAdjustment
+
+        try:
+            row = FinanceForecastAdjustment.objects.filter(pk=adjustment_id).first()
+        except (ValueError, ValidationError):
+            row = None
+        if row is None:
+            raise Http404
+        try:
+            forecast.undo(row, actor=request.user)
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(forecast.build(request.tenant))
+
+    @action(detail=False, methods=["post"], url_path="client-names")
+    def client_names(self, request):
+        """"Include client names in AI explanations": `{include: true|false}`."""
+        from apps.finance import forecast
+
+        try:
+            forecast.set_client_names(request.tenant, actor=request.user,
+                                      include=request.data.get("include"))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+        return Response(forecast.build(request.tenant))
+
+    @action(detail=False, methods=["get", "post"])
+    def explain(self, request):
+        """GET: what a press costs and how many are left today (nothing is
+        sent to Claude). POST `{view}`: "Explain this forecast"."""
+        from apps.finance import forecast_ai
+
+        if request.method == "GET":
+            return Response(forecast_ai.status(request.tenant))
+        try:
+            return Response(forecast_ai.explain_forecast(
+                request.tenant, view=str(request.data.get("view") or "90")))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
+    @action(detail=False, methods=["post"])
+    def review(self, request):
+        """"Review with Claude": one call, three lists to answer. It stores
+        nothing and changes nothing."""
+        from apps.finance import forecast_ai
+
+        try:
+            return Response(forecast_ai.review(request.tenant))
+        except services.FinanceError as exc:
+            return self._refusal(exc)
+
     @action(detail=False, methods=["get"])
     def export(self, request):
         from apps.finance import forecast

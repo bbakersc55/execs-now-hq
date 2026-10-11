@@ -1758,7 +1758,12 @@ export interface ForecastRow {
 }
 
 export interface ForecastLine {
-  id: string; kind: "known" | "regular" | "card"; direction: "in" | "out";
+  id: string; kind: "known" | "regular" | "card" | "planned"; direction: "in" | "out";
+  /** What every occurrence of one thing shares: what an adjustment or a
+   *  what-if names. */
+  group: string; client: string; who: string;
+  /** What the owner changed about it, in words, and that adjustment's id. */
+  adjusted: string; adjustment: string; what_if?: boolean;
   amount_cents: number; on_date: string; label: string; detail: string;
   cadence: "" | "monthly" | "quarterly"; category: string; link: string;
   /** False for a charge on a card: it is cash when the card is paid. */
@@ -1780,10 +1785,61 @@ export interface Forecast {
               stale: boolean }[];
   floor_cents: number | null; weeks: ForecastRow[]; months: ForecastRow[];
   views: Record<ForecastView, ForecastSummary>; lines: ForecastLine[];
-  left_out: { id: string; label: string; amount_cents: number; due_date: string;
-              days_overdue: number; link: string }[];
-  likely_annual: { id: string; label: string; category: string; direction: "in" | "out";
-                   amount_cents: number; last_on: string; likely_on: string;
-                   detail: string }[];
+  left_out: { id: string; group: string; label: string; amount_cents: number;
+              due_date: string; days_overdue: number; why: string; adjustment: string;
+              link: string }[];
+  likely_annual: { id: string; group: string; label: string; category: string;
+                   direction: "in" | "out"; amount_cents: number; last_on: string;
+                   likely_on: string; detail: string }[];
+  include_client_names: boolean;
+  planned: PlannedLine[]; adjustments: ForecastAdjustment[];
+  clients: { id: string; name: string }[]; history: ForecastHistory[];
+  /** A look, saved nowhere; null when nothing is being tried. */
+  what_if: ForecastWhatIf | null;
   disclaimer: string;
+}
+
+export interface PlannedLine {
+  id: string; description: string; direction: "in" | "out"; amount_cents: number;
+  on_date: string; repeat: "" | "monthly" | "quarterly"; until: string | null;
+  is_what_if: boolean; source: "" | "review" | "annual";
+  state: "planned" | "what_if" | "happened" | "lapsed"; next_on: string | null;
+}
+
+export interface ForecastAdjustment {
+  id: string; group: string; label: string; kind: string; text: string; source: string;
+  at: string; by: string;
+}
+
+export interface ForecastHistory {
+  month: string; label: string; taken_on: string;
+  forecast: { in_cents: number; out_cents: number; end_cents: number };
+  actual: { in_cents: number; out_cents: number; end_cents: number };
+  largest: { name: string; forecast_cents: number; actual_cents: number;
+             difference_cents: number }[];
+}
+
+export interface ForecastWhatIf {
+  weeks: ForecastRow[]; months: ForecastRow[];
+  views: Record<ForecastView, ForecastSummary>;
+  difference_at_low: Record<ForecastView, number>;
+  off: string[]; on: string[]; amounts: Record<string, number>;
+}
+
+export interface ForecastAiStatus {
+  estimate_usd: string; review_estimate_usd: string; used_today: number; cap: number;
+  resets_at: string; refused: string; disclaimer: string; include_client_names: boolean;
+}
+
+export interface ReviewItem {
+  group: string; who: string; category: string; direction: "in" | "out";
+  months: { month: string; amount_cents: number }[]; last_on: string;
+  last_amount_cents: number; why: string; cadence?: string; amount_cents?: number;
+  detail?: string;
+}
+
+export interface ForecastReview {
+  one_offs: ReviewItem[]; missed: ReviewItem[];
+  questions: { topic: string; question: string }[];
+  cost_usd: string; disclaimer: string; used_today: number; cap: number;
 }

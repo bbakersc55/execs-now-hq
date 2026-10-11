@@ -39,6 +39,12 @@
   --line: #e5e7eb;
   --line-strong: #d1d5db;
   --surface: #ffffff;
+  /* Chart series, in fixed order (the forecast, then the what-if beside it).
+     Not the brand navy and orange themselves: as data marks those fail the
+     lightness band and the 3:1 contrast with the surface. This pair passes
+     every check of the palette validator on a light surface (2026-10-11). */
+  --chart-1: #1f6fb5;
+  --chart-2: #c2620f;
   --bg: #f5f7fa;
   --hover: #f9fafb;
 

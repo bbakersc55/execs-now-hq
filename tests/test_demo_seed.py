@@ -240,8 +240,9 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         by_status = dict(invoices.values_list("status").annotate(n=Count("id")))
         assert by_status.get("paid", 0) > 150 and by_status["partially_paid"] == 1
         assert by_status["void"] == 1 and invoices.get(status="void").void_reason
-        assert invoices.filter(status="sent", due_date__lt=today).count() == 2
-        assert invoices.filter(kind="contact", client_company__isnull=True).count() == 1
+        # Two clients a month behind, and (P6 M2) one old enough not to be counted.
+        assert invoices.filter(status="sent", due_date__lt=today).count() == 3
+        assert invoices.filter(kind="contact", client_company__isnull=True).count() == 2
         assert invoices.order_by("issue_date").first().issue_date == date(2025, 1, 1)
         assert all(i.pdf_id for i in invoices.exclude(status="draft"))
         assert set(FinanceAccount.objects.values_list("kind", flat=True)) == {"bank", "card"}
@@ -328,6 +329,62 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
                     if row["name"] == "Client fees")
         assert {c["name"]: c["total"] > 0 for c in fees["children"]}["Retainers"] is True
         assert not any(c.get("direct") for c in fees["children"])
+        # P6 M2 §10: the cash forecast, switched on, with what the owner said.
+        from apps.finance import forecast
+        from apps.finance.models import (
+            FinanceForecastAdjustment, FinanceForecastPlanned, FinanceForecastSnapshot,
+        )
+        from apps.tenancy import modules as practice_modules
+
+        assert practice_modules.enabled(tenant) == ["bookkeeping", "forecast"]
+        ahead = forecast.build(tenant, today, snapshot=False)
+        assert ahead["ready"] and ahead["closed_months"] == len(whole)
+        view = ahead["views"]["90"]
+        # A floor a little under where the books alone would go; what he has
+        # planned takes the forecast under it, so the mark has something to show.
+        assert ahead["floor_cents"] and ahead["floor_cents"] % 100_000 == 0
+        assert view["first_below_floor"] is not None and view["first_below_zero"] is None
+        assert 0 < ahead["floor_cents"] - view["low_cents"] < 1_500_000
+        kinds = {row["kind"] for row in ahead["lines"]}
+        assert kinds == {"known", "regular", "card", "planned"}
+        cadences = {row["cadence"] for row in ahead["lines"] if row["kind"] == "regular"}
+        assert cadences == {"monthly", "quarterly"}, "estimated tax and the Chamber"
+        assert {row["label"] for row in ahead["lines"]
+                if row["label"].startswith("Estimated tax")} == {
+            "Estimated tax, federal", "Estimated tax, state"}
+        planned = {row["description"]: row for row in ahead["planned"]}
+        assert sorted(row["state"] for row in planned.values()) == [
+            "planned", "planned", "what_if"]
+        assert planned["Operations analyst, part time"]["repeat"] == "monthly"
+        assert "Globex does not renew: its retainer stops" in planned
+        assert FinanceForecastPlanned.objects.count() == 3
+        assert sorted(FinanceForecastAdjustment.objects.values_list("kind", flat=True)) == [
+            "amount", "not_regular"]
+        rent = [row for row in ahead["lines"] if row["label"] == "Larimer Square Cowork"]
+        assert {row["amount_cents"] for row in rent} == {69_500, 74_500}
+        assert any(row["adjusted"].startswith("You set it to $745.00") for row in rent)
+        # One invoice old enough not to be counted; the two a month behind are
+        # forecast late, by those clients' own habit or on their due date.
+        [left] = ahead["left_out"]
+        assert left["why"] == "more than 60 days overdue" and left["days_overdue"] > 60
+        # Six months of "how good it has been", each with what happened beside it.
+        assert len(ahead["history"]) == 6
+        assert [row["month"] for row in ahead["history"]] == [
+            month.isoformat()[:7] for month in whole[-1:-7:-1]]
+        assert all(row["taken_on"].endswith("-01") for row in ahead["history"])
+        assert all(row["actual"]["out_cents"] > 0 and row["forecast"]["out_cents"] > 0
+                   for row in ahead["history"])
+        assert any(row["largest"] for row in ahead["history"])
+        assert FinanceForecastSnapshot.objects.filter(actual__isnull=True).count() == 1, \
+            "this month's is kept and still open"
+        # The what-if is drawn and not counted until it is tried.
+        globex = [row for row in ahead["lines"] if row["label"].startswith("Globex does")]
+        assert globex and all(not row["counted"] for row in globex)
+        tried = forecast.build(tenant, today, snapshot=False, what_if={
+            "on": [planned["Globex does not renew: its retainer stops"]["id"]]})
+        assert tried["what_if"]["views"]["months"]["low_cents"] < \
+            ahead["views"]["months"]["low_cents"]
+        assert tried["weeks"] == ahead["weeks"], "a look changes nothing as it stands"
         # The CPA's chart (§5.4): every expense is under a line of the worksheet.
         from apps.finance import chart as the_chart
         from apps.finance.models import FinanceYearFacts

@@ -10,8 +10,9 @@ thing in the books that asks Claude, and only when its button is pressed.
   account, no client list, no one's contact details. `what_is_sent` is the
   whole of it, and the test reads it.
 - **It changes nothing.** It writes its `ai_call` and returns words.
-- **Capped:** `DAILY_CAP` a day per practice, and never past the practice's
-  monthly AI budget where one is set.
+- **Capped:** `DAILY_CAP` a day per practice, shared with the forecast's two
+  pressed buttons, and never past the practice's monthly AI budget where one
+  is set.
 - **Not kept.** The answer is not stored here; the browser keeps its own copy
   for the session.
 """
@@ -29,6 +30,11 @@ from apps.finance.disclaimer import DISCLAIMER
 from apps.finance.services import FinanceError
 
 PURPOSE = "finance_explain_step"
+#: The three things in Finance that ask Claude when a person presses them
+#: (owner, 2026-10-11): this, and the forecast's "Explain" and "Review"
+#: (`forecast_ai.py`). They share one limit a day per practice. The worker's
+#: own daily cap is for what nobody asked for, and does not count these.
+PRESSED = (PURPOSE, "finance_explain_forecast", "finance_review_forecast")
 DAILY_CAP = 20
 #: Only these steps send the unticked lines.
 WITH_LINES = (4, 5)
@@ -107,7 +113,7 @@ def _day_start(tenant) -> datetime:
 def _used_today(tenant) -> int:
     from apps.tenancy.models import AiCall
 
-    return AiCall.all_objects.filter(tenant=tenant, purpose=PURPOSE,
+    return AiCall.all_objects.filter(tenant=tenant, purpose__in=PRESSED,
                                      created_at__gte=_day_start(tenant)).count()
 
 
@@ -127,14 +133,14 @@ def _over_budget(tenant) -> bool:
     return spent >= budget
 
 
-def status(tenant) -> dict:
+def status(tenant, purpose=PURPOSE, tokens=TOKENS) -> dict:
     """What the button says before it is pressed: about what a press costs,
     how many are left today, and why it cannot be pressed when it cannot."""
     from apps.tenancy import ai_budget, claude
     from apps.tenancy.context import tenant_context
 
     with tenant_context(tenant.pk):
-        estimate = ai_budget.call_estimate(PURPOSE, TOKENS)
+        estimate = ai_budget.call_estimate(purpose, tokens)
     used = _used_today(tenant)
     resets = _day_start(tenant) + timedelta(days=1)
     refused = ""

@@ -237,3 +237,16 @@ from apps.finance.models import FinanceForecastSettings  # noqa: E402
 
 register(FinanceForecastSettings, factories.FinanceForecastSettingsFactory,
          api_exposed=False)
+
+# P6 M2, stop 2: what the owner has said about the forecast, and the monthly
+# snapshot. All read and written through the forecast's own routes.
+from apps.finance.models import (  # noqa: E402
+    FinanceForecastAdjustment, FinanceForecastPlanned, FinanceForecastSnapshot,
+)
+
+register(FinanceForecastPlanned, factories.FinanceForecastPlannedFactory,
+         endpoints=("/api/finance-forecast/",))
+register(FinanceForecastAdjustment, factories.FinanceForecastAdjustmentFactory,
+         endpoints=("/api/finance-forecast/",))
+register(FinanceForecastSnapshot, factories.FinanceForecastSnapshotFactory,
+         api_exposed=False)

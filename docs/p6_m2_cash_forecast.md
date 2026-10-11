@@ -428,11 +428,11 @@ differ, a recorded decision holds; where no decision speaks, the brief does.
 | "planned owner draws" | Draws found as a regular line (M2-7), and changed by an adjustment (stop 2) | Agree: found in stop 1, planned in stop 2 |
 | "one-off items the owner enters" | Planned lines (§2.4), stop 2 | Agree |
 | "The AI's role is to propose and ask … Owner answers in a form; nothing enters the forecast unconfirmed. One costed call per refresh." | Was missing. **Added 2026-10-11 as "Review with Claude" (§6a), stop 2.** It is one call each time it is pressed; the forecast itself refreshes without any call | The brief, as the owner restated it |
-| "Views: 30 / 90 / 180 days, weekly buckets" | M2-1 decided 13 weeks by week and 12 months by month | **Both:** the weekly view has 30, 90 and 180 days (90 is the 13 weeks, and is what opens), and the monthly view is M2-1's 12 months. If the brief's three were meant to be the only views, say so and the months view goes |
+| "Views: 30 / 90 / 180 days, weekly buckets" | M2-1 decided 13 weeks by week and 12 months by month | **Both, decided 2026-10-11:** the weekly view has 30, 90 and 180 days (90 is the 13 weeks, and is what opens), and the monthly view is M2-1's 12 months. Both stay |
 | "low-point and negative-balance warnings" | The low point (§1.2); below zero always marked (M2-6, added) | Agree |
 | "a scenario toggle (remove a client, add a recurring cost, change a draw) that recomputes without saving" | The what-if (§2.4, M2-9), stop 2 | Agree |
 | "Assumptions listed beside the chart; refreshable any time" | The three lists under the chart, each line saying what it was found from; worked out from the books every time the screen is opened (M2-16) | Agree |
-| "AI calls costed and under the daily cap" | 20 a day per practice across "Explain" and "Review", and never past the monthly budget (§6, §6a). **The practice's daily cap (`ai_unattended_daily_cap_usd`) counts only what the worker does with nobody asking, and both of these are pressed by a person**, so that cap does not count them; the 20 a day is theirs | The spec, unless the owner wants pressed calls under the worker's cap too, which is the "monthly AI budget can be set to stop" item recorded for later (M1 §12) |
+| "AI calls costed and under the daily cap" | 20 a day per practice across "Explain" and "Review", and never past the monthly budget (§6, §6a). **The practice's daily cap (`ai_unattended_daily_cap_usd`) counts only what the worker does with nobody asking, and both of these are pressed by a person**, so that cap does not count them; the 20 a day is theirs | **The spec, decided 2026-10-11:** pressed calls get the 20 a day; the worker's cap stays for unattended spend; the hard stop ("monthly AI budget can be set to stop, not warn", M1 §12) stays on the later list |
 | "Each is a priced add-on module … Cash forecast" | The `forecast` module (§7), off for existing practices (M2-14), needing Bookkeeping (M2-13) | Agree |
 | The disclaimer on every screen | M2-18 | Agree |
 | Demo: "John Carter's practice … with a forecast" | §10, in stop 2 (M2-17) | Agree |
@@ -504,13 +504,116 @@ No practice is switched on by the migration.
 - **The download is 180 days by week** with every line behind it; it has no
   months table.
 - **The dashboard line works the whole forecast out** each time the practice
-  owner's dashboard loads. It has not been timed on a real practice's books.
+  owner's dashboard loads. Timed on the demo's books on Railway, 2026-10-11
+  (924 entries, 21 closed months, 532 forecast lines): the Forecast tab's
+  build took a median of 110 ms in 24 queries, the dashboard line 88 ms.
+  Both are under the half second the owner set, so **no cache was added.**
+  It has not been timed on a real practice's books.
 
 **Not seen in a browser:** the screen, the chart and the dashboard line.
 **Not run on real books:** whether these rules find a real practice's regular
 costs without finding its one-offs. The demo cannot be looked at yet either:
 its seed switches the module on in stop 2, so until then the platform owner
 switches it on there by hand.
+
+---
+
+## As built: stop 2 (2026-10-11) — planned, what-if, changes, how good, the two buttons, the demo
+
+Built on `dev`; not committed, not released.
+
+**Planned lines and what-ifs (§2.4).** A description, in or out, an amount, a
+date, once or monthly or quarterly, and an end date or none. A planned line
+is counted from its date; a what-if is drawn and not counted. "Try it" works
+the forecast out a second time with what-ifs switched on and any lines
+switched off, and draws it beside the first as a dashed line with its own
+low point: it saves nothing, and the forecast as it stands is the same
+before and after. A planned line is ended by "It happened" (the real thing
+is in the books now) or "Remove". A one-off whose date has passed without
+either is shown as lapsed and is no longer counted.
+
+**Changing a line (§3).** On a regular line: a new amount from a date, a new
+day of the month, a pause between two dates, an end date, or "this is not
+regular". On an invoice: the date it is expected, or leave it out. On an
+estimated tax line: amount, pause, end, not regular. Each is one row that can
+be undone, and the line says what was changed and by whom. Every one of
+these, and each planned line, is an audit event.
+
+**How good it has been (§4).** The last six closed months: what the forecast
+said for the month, what happened, and the three largest differences by
+name. No score (M2-10).
+
+**"Explain this forecast" (§6) and "Review with Claude" (§6a).**
+`apps/finance/forecast_ai.py`. Each asks only when pressed and shows about
+what a press costs first. Explain returns words. Review returns up to a few
+proposals and questions, each naming a line by an id this app gave it; the
+amount shown beside each is the books' own, and nothing enters the forecast
+until the owner confirms it, through the same routes as doing it by hand.
+An id Claude returns that was not sent is dropped.
+
+**The setting.** "Include client names in AI explanations", on the Forecast
+tab, off by default, audited. Off, a client is "Client A", "Client B", the
+same letter throughout one call.
+
+**Routes,** all under `/api/finance-forecast/`: `what-if/`, `planned/`,
+`planned/<id>/`, `planned/<id>/happened/`, `adjust/`, `adjust/<id>/undo/`,
+`client-names/`, `explain/`, `review/`. Practice owner only; 404 without the
+module.
+
+**Migration:** `finance` 0010. One column on `finance_forecast_settings`
+(`include_client_names`, false) and three new tables:
+`finance_forecast_planned`, `finance_forecast_adjustment`,
+`finance_forecast_snapshot`. No data step.
+
+**The demo (§10).** Module on; a floor; planned: "Operations analyst, part
+time" monthly from two months out, and two laptops next month; one what-if,
+"Globex does not renew: its retainer stops"; two changes: the coworking rent
+to $745 from the month the hire starts, and one meals line marked not
+regular; one invoice 60-odd days overdue and not counted; six months of
+"how good it has been".
+
+**Where the build differs from the text above, or adds to it:**
+
+- **The snapshot is taken the first time the forecast is worked out in a
+  month,** by the screen or the dashboard line, not by a job on the first.
+  A practice whose owner does not open the app in a month has no row for
+  that month in "how good it has been". A scheduled job would close that
+  gap and was left out so that this stop added nothing to the worker.
+- **"What happened" is counted from the day the snapshot was taken** to the
+  end of the month, so a snapshot taken on the 9th is set beside the 9th
+  onward, not the whole month.
+- **One limit of 20 a day is shared** by "Explain this step", "Explain this
+  forecast" and "Review with Claude" together, not 20 each.
+- **The demo's floor is not $15,000.** It is set, to the whole thousand,
+  two to three thousand under the 90-day low point as the books alone give
+  it, so that the planned lines take the forecast under it whatever the
+  seed's books come to. §10's "$15,000" was written before the books were.
+- **The demo's two overdue invoices a month behind** are as M1 left them;
+  the old one is a new invoice to a referral partner's member company, sent
+  96 days before the seed's today.
+- **"Not regular" lasts until it is undone;** it is not asked again at the
+  next close.
+- **A card's payment cannot be changed,** only tried without in a what-if.
+- **"Likely annual" is confirmed into a planned line** a year after it was
+  last seen (today, if that day has passed), at last year's amount; the
+  owner can change both before saving, or mark it "not regular".
+- **Explain sends the 180-day view** when the screen is on 12 months: the
+  months are the same lines summed.
+- **Lines sent to Claude are capped at 120,** the earliest first, and the
+  prompt says so when there were more.
+- **A what-if can switch off a client** (all of that client's invoices and
+  schedules to come) or any single line, the card's payment included; switch
+  on a what-if line; and try a different amount for a line. To keep a
+  different amount is an adjustment, which is saved.
+
+**Proven by tests:** the arithmetic of each of the above; that a look saves
+nothing; isolation and role boundaries on every new route and table; what is
+sent to Claude, read as text, with and without client names; the cap and the
+budget refusing; the seed.
+**Not seen in a browser:** any of the stop 2 screen, the dashed what-if line
+on the chart, the forms. **Not run with a real key:** what Claude says, and
+whether its review proposals are useful or stay off advice; the tests answer
+for Claude. **Not run on real books.**
 
 ---
 

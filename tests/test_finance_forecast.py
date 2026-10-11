@@ -78,8 +78,21 @@ def build(kit):
         return forecast.build(kit["tenant"], TODAY)
 
 
+NOBODY = "00000000-0000-4000-8000-000000000000"
 CALLS = [("get", F, None), ("post", F + "floor/", {"floor_cents": 100}),
-         ("get", F + "export/", None)]
+         ("get", F + "export/", None),
+         # Stop 2.
+         ("post", F + "what-if/", {"off": [], "on": []}),
+         ("post", F + "planned/", {"description": "A hire", "amount_cents": 5,
+                                   "on_date": "2027-01-01"}),
+         ("patch", f"{F}planned/{NOBODY}/", {"amount_cents": 6}),
+         ("delete", f"{F}planned/{NOBODY}/", None),
+         ("post", f"{F}planned/{NOBODY}/happened/", {}),
+         ("post", F + "adjust/", {"line": "pattern:x", "kind": "not_regular"}),
+         ("post", f"{F}adjust/{NOBODY}/undo/", {}),
+         ("post", F + "client-names/", {"include": True}),
+         ("get", F + "explain/", None), ("post", F + "explain/", {"view": "90"}),
+         ("post", F + "review/", {})]
 
 
 # ======================================= the module, isolation, role boundaries
@@ -387,9 +400,11 @@ def test_part_paid_overdue_unsent_and_long_overdue_invoices(billing_ready, ff, a
     assert found[f"invoice:{recent['id']}"]["on_date"] == TODAY.isoformat()
     assert f"invoice:{old['id']}" not in found
     assert result["left_out"] == [{
-        "id": old["id"], "label": f"Acme Facilities: Invoice {old['number']}",
+        "id": old["id"], "group": f"invoice:{old['id']}",
+        "label": f"Acme Facilities: Invoice {old['number']}",
         "amount_cents": TOTAL, "due_date": (TODAY - timedelta(days=75)).isoformat(),
-        "days_overdue": 75, "link": f"/invoices/{old['id']}"}]
+        "days_overdue": 75, "why": "more than 60 days overdue", "adjustment": "",
+        "link": f"/invoices/{old['id']}"}]
     waiting = found[f"invoice:{unsent['id']}"]
     assert waiting["on_date"] == TODAY.isoformat() and waiting["amount_cents"] == TOTAL
     assert waiting["detail"].startswith("Not sent yet. As if sent today")
@@ -675,7 +690,7 @@ def test_the_download_is_the_weekly_table_and_its_lines_and_is_recorded(
     rent = [row for row in rows if len(row) > 2 and row[2] == "Larimer Square Cowork"]
     assert rent and rent[0][1] == "Regular" and rent[0][6] == "695.00" and rent[0][4] == \
         "monthly" and rent[0][3] == "Rent and coworking"
-    at = rows.index(["Overdue, not counted"])
+    at = rows.index(["Not counted"])
     assert rows[at + 1][1] == f"Acme Facilities: Invoice {old['number']}"
     assert rows[-1] == [DISCLAIMER]
     with tenant_context(tenant.pk):

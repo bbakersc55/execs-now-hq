@@ -85,6 +85,8 @@ def practice(*, ff_email, ff_name, oauth_client, today) -> World:
             # It has the Bookkeeping module, as every practice that existed
             # when the module arrived does.
             modules.set_enabled(tenant, modules.BOOKKEEPING, True, actor=owner)
+            # And the Cash forecast (P6 M2), which rests on it.
+            modules.set_enabled(tenant, modules.FORECAST, True, actor=owner)
             branding.save(tenant, actor=owner, display_name=cast.PRACTICE,
                           primary_color=cast.PRIMARY, accent_color=cast.ACCENT,
                           footer_text=cast.FOOTER)
@@ -395,6 +397,31 @@ def restore_ai_key(world: World, kept) -> bool:
 
 # ------------------------------------------------------------------ counts
 
+def _forecast_counts(world) -> dict:
+    from apps.finance import forecast
+    from apps.finance.models import (
+        FinanceForecastAdjustment, FinanceForecastPlanned, FinanceForecastSnapshot,
+    )
+
+    result = forecast.build(world.tenant, world.today, snapshot=False)
+    return {
+        "cash today (USD)": result["cash_today_cents"] / 100,
+        "floor (USD)": (result["floor_cents"] or 0) / 100,
+        "lowest in 90 days (USD)": result["views"]["90"]["low_cents"] / 100,
+        "first week under the floor": result["views"]["90"]["first_below_floor"],
+        "lines": {kind: len({row["group"] for row in result["lines"]
+                             if row["kind"] == kind})
+                  for kind in ("known", "regular", "card", "planned")},
+        "planned": FinanceForecastPlanned.objects.filter(is_what_if=False).count(),
+        "what-ifs": FinanceForecastPlanned.objects.filter(is_what_if=True).count(),
+        "changes by the owner": FinanceForecastAdjustment.objects.count(),
+        "not counted": len(result["left_out"]),
+        "likely annual": len(result["likely_annual"]),
+        "months with a forecast kept": FinanceForecastSnapshot.objects.count(),
+        "months in how good it has been": len(result["history"]),
+    }
+
+
 def counts(world: World) -> dict:
     """What was seeded, counted from the database rather than remembered."""
     from apps.billing.models import ClientInvoice, ClientInvoiceSchedule, ClientPayment
@@ -493,6 +520,7 @@ def counts(world: World) -> dict:
             reopened_at__isnull=False).count(),
         "books locked through": FinanceSettings.objects.values_list(
             "locked_through", flat=True).first(),
+        "forecast": _forecast_counts(world),
         "book entries": {k: entries.filter(kind=k).count()
                          for k in FinanceEntry.Kind.values},
         "bank imports committed": FinanceImportBatch.objects.filter(

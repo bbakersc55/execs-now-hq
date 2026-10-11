@@ -683,6 +683,10 @@ def close(tenant, *, actor, month: date) -> FinanceMonthClose:
     audit(tenant, "month_closed", actor, row, month=month.isoformat()[:7],
           locked_through=config.locked_through.isoformat(),
           locked_before=was.isoformat() if was else None, warnings=warnings)
+    # P6 M2 §4: what happened is set beside what was forecast for the month.
+    from apps.finance import forecast
+
+    forecast.month_closed(tenant, month)
     return row
 
 

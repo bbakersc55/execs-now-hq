@@ -61,12 +61,17 @@ const SUMMARY = { low_cents: 100, low_start: "2026-10-11", low_label: "", end_ce
 describe("the line every Finance screen carries", () => {
   const stubs = {
     "GET /api/me": aMe({ modules: ["bookkeeping", "forecast"] }),
+    "GET /api/finance-forecast/explain/": {
+      estimate_usd: "0.02", review_estimate_usd: "0.06", used_today: 0, cap: 20,
+      resets_at: "", refused: "", disclaimer: "", include_client_names: false },
     "GET /api/finance-forecast/": {
       as_of: "2026-10-11", ready: true, closed_months: 2, closed_through: "2026-09-30",
       note: "", cash_today_cents: 100, unplaced_cents: 0, accounts: [], floor_cents: null,
       weeks: Array.from({ length: 26 }, () => (WEEK)), months: [WEEK],
       views: { "30": SUMMARY, "90": SUMMARY, "180": SUMMARY, months: SUMMARY },
-      lines: [], left_out: [], likely_annual: [], disclaimer: "" },
+      lines: [], left_out: [], likely_annual: [], include_client_names: false,
+      planned: [], adjustments: [], clients: [], history: [], what_if: null,
+      disclaimer: "" },
     "GET /api/finance-categories/changes/": [],
     "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-categories/": CATEGORIES,
     "GET /api/finance-rules/": [], "GET /api/finance-imports/": [],
