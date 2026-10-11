@@ -26,9 +26,9 @@ from apps.tenancy.models import AuditEvent
 
 from . import registry_config  # noqa: F401
 from .conftest import _member
-from .factories import ClientAssignmentFactory
+from .factories import ClientAssignmentFactory, ContactEmailFactory, ContactFactory
 from .test_client_invoicing import (  # noqa: F401  (fixtures and helpers)
-    LINES, TOTAL, a_client, acme, call, ecc, get, patch, post, ready_to_bill, sent,
+    LINES, TOTAL, a_client, acme, call, draft, ecc, get, patch, post, ready_to_bill, sent,
 )
 from .test_platform_isolation import in_practices_area
 
@@ -288,6 +288,13 @@ def test_a_used_category_keeps_its_type_and_is_archived_not_deleted(books, ff, a
     # ... and (P6 M1) its sub-categories are archived first.
     assert patch(api, ff, f"{C}{books['cat']['Client fees']['id']}/",
                  {"archived": True}).status_code == 409
+    # Recurring invoices go to Retainers and one-off ones to Project fees, so
+    # those stay too until the owner sends each kind somewhere else.
+    for sub, field in (("Retainers", "recurring_income_category"),
+                       ("Project fees", "one_off_income_category")):
+        held = patch(api, ff, f"{C}{books['cat'][sub]['id']}/", {"archived": True})
+        assert held.status_code == 409 and "Paid invoices go to" in held.json()["detail"]
+        assert post(api, ff, "/api/finance-settings/", {field: ""}).json()[field] == ""
     for sub in ("Retainers", "Project fees", "Workshops and speaking"):
         assert patch(api, ff, f"{C}{books['cat'][sub]['id']}/",
                      {"archived": True}).status_code == 200
@@ -471,7 +478,7 @@ def test_a_payment_on_an_invoice_is_income_and_a_removed_one_is_not(acme, ff, ap
     entry = listed["entries"][0]
     assert (entry["kind"], entry["on_date"], entry["amount_cents"], entry["source"]) == (
         "income", "2026-10-03", 200000, "invoice")
-    assert entry["category"]["name"] == "Client fees"
+    assert entry["category"]["name"] == "Project fees", "a one-off invoice"
     assert entry["client_company"]["name"] == "Acme Facilities"
     assert entry["description"] == "Invoice INV-0001" and entry["reference"] == "CHK 2231"
     assert entry["invoice"] == {"id": invoice["id"], "number": "INV-0001"}
@@ -1123,3 +1130,231 @@ def test_the_owner_draws_list_filters_on_the_estimated_tax_mark(cpa_books, ff, a
              for row in get(api, ff, E).json()["entries"]}
     assert marks == {"Q1 federal": "federal", "Q1 state": "state", "April draw": "",
                      "Pens": ""}
+
+
+# =========== invoice income goes to a sub-category, by the kind of invoice
+
+def _income(api, ff):
+    """{description of the entry: its category} for every invoice payment."""
+    return {row["description"]: row["category"]["name"]
+            for row in get(api, ff, E + "?source=invoice").json()["entries"]}
+
+
+def _pay(api, ff, invoice, on="2026-10-05"):
+    paid = post(api, ff, f"/api/invoices/{invoice['id']}/payments/",
+                {"amount_cents": invoice["total_cents"], "paid_on": on})
+    assert paid.status_code in (200, 201), paid.content
+    return invoice["number"]
+
+
+@pytest.mark.django_db
+def test_invoice_payments_post_by_kind_recurring_to_retainers_one_off_to_project_fees(
+        acme, ff, api):
+    """Owner, 2026-10-10: every payment posted to the "Client fees" parent,
+    so the P&L showed it all as "not broken down" and Retainers at nothing."""
+    tenant = acme[0].tenant
+    config = get(api, ff, "/api/finance-settings/").json()
+    cats = {row["name"]: row for row in get(api, ff, C).json()}
+    assert config["invoice_income_category"] == cats["Client fees"]["id"]
+    assert config["recurring_income_category"] == cats["Retainers"]["id"]
+    assert config["one_off_income_category"] == cats["Project fees"]["id"]
+
+    one_off = _pay(api, ff, sent(api, ff, *acme))
+    schedule = post(api, ff, "/api/invoice-schedules/", {
+        "client_company": str(acme[0].pk), "contact": str(acme[1].pk),
+        "day_of_month": 1, "starts_on": "2026-10-01", "lines": LINES})
+    assert schedule.status_code == 201 and schedule.json()["income_category"] == ""
+    with tenant_context(tenant.pk):
+        [written] = billing.run_schedules(tenant, today=date(2026, 10, 1))
+    assert written.kind == "recurring" and written.income_category_id is None
+    for step in ("make-ready", "send"):
+        assert post(api, ff, f"/api/invoices/{written.pk}/{step}/").status_code == 200
+    recurring = _pay(api, ff, get(api, ff, f"/api/invoices/{written.pk}/").json())
+    # To a contact who is not a client: any invoice that is not recurring.
+    person = ContactFactory(tenant=tenant, first_name="Wes", last_name="Welton")
+    ContactEmailFactory(tenant=tenant, contact=person, is_primary=True,
+                        address="wes@welton.invalid")
+    made = post(api, ff, "/api/invoices/", {"kind": "contact", "contact": str(person.pk),
+                                            "lines": LINES}).json()
+    for step in ("make-ready", "send"):
+        assert post(api, ff, f"/api/invoices/{made['id']}/{step}/").status_code == 200
+    to_contact = _pay(api, ff, get(api, ff, f"/api/invoices/{made['id']}/").json())
+
+    assert _income(api, ff) == {f"Invoice {one_off}": "Project fees",
+                                f"Invoice {recurring}": "Retainers",
+                                f"Invoice {to_contact}": "Project fees"}
+    # The P&L breaks it down: nothing is left on the parent.
+    row = next(r for r in get(api, ff, R + "pnl/?year=2026").json()["income"]["rows"]
+               if r["name"] == "Client fees")
+    assert row["total"] == 3 * TOTAL
+    assert {c["name"]: c["total"] for c in row["children"]} == {
+        "Retainers": TOTAL, "Project fees": 2 * TOTAL, "Workshops and speaking": 0}
+    assert not any(c.get("direct") for c in row["children"]), "none 'not broken down'"
+
+
+@pytest.mark.django_db
+def test_an_invoice_or_its_schedule_can_choose_another_income_category(acme, ff, api):
+    tenant = acme[0].tenant
+    cats = {row["name"]: row for row in get(api, ff, C).json()}
+    workshops, other = cats["Workshops and speaking"]["id"], cats["Other income"]["id"]
+    # A one-off invoice that names its own.
+    made = draft(api, ff, *acme, income_category=workshops)
+    assert made.status_code == 201 and made.json()["income_category"] == workshops
+    changed = patch(api, ff, f"/api/invoices/{made.json()['id']}/",
+                    {"income_category": other})
+    assert changed.status_code == 200 and changed.json()["income_category"] == other
+    for step in ("make-ready", "send"):
+        assert post(api, ff, f"/api/invoices/{made.json()['id']}/{step}/").status_code == 200
+    chosen = _pay(api, ff, get(api, ff, f"/api/invoices/{made.json()['id']}/").json())
+    # A schedule that names its own: every draft it writes carries it.
+    schedule = post(api, ff, "/api/invoice-schedules/", {
+        "client_company": str(acme[0].pk), "contact": str(acme[1].pk), "day_of_month": 1,
+        "starts_on": "2026-10-01", "lines": LINES, "income_category": workshops}).json()
+    assert schedule["income_category"] == workshops
+    with tenant_context(tenant.pk):
+        [written] = billing.run_schedules(tenant, today=date(2026, 10, 1))
+    assert str(written.income_category_id) == workshops
+    for step in ("make-ready", "send"):
+        assert post(api, ff, f"/api/invoices/{written.pk}/{step}/").status_code == 200
+    scheduled = _pay(api, ff, get(api, ff, f"/api/invoices/{written.pk}/").json())
+    assert _income(api, ff) == {f"Invoice {chosen}": "Other income",
+                                f"Invoice {scheduled}": "Workshops and speaking"}
+    # Back to the default for its kind; and what cannot be chosen.
+    cleared = patch(api, ff, f"/api/invoice-schedules/{schedule['id']}/",
+                    {"income_category": ""})
+    assert cleared.status_code == 200 and cleared.json()["income_category"] == ""
+    again = draft(api, ff, *acme).json()
+    for bad, status in ((cats["Travel"]["id"] if "Travel" in cats else cats["Supplies"]["id"],
+                         400),
+                        ("00000000-0000-4000-8000-000000000000", 404), ("nope", 404)):
+        refused = patch(api, ff, f"/api/invoices/{again['id']}/", {"income_category": bad})
+        assert refused.status_code == status, bad
+    patch(api, ff, f"{C}{cats['Workshops and speaking']['id']}/", {"archived": True})
+    assert patch(api, ff, f"/api/invoices/{again['id']}/",
+                 {"income_category": workshops}).status_code == 400, "archived"
+    # Chosen on a draft only, like the rest of it; after that the entry itself
+    # is what is changed, in the books.
+    assert patch(api, ff, f"/api/invoices/{made.json()['id']}/",
+                 {"income_category": ""}).status_code == 409
+
+
+@pytest.mark.django_db
+def test_where_each_kind_goes_is_the_owners_to_change_in_the_finance_settings(
+        acme, ff, api):
+    cats = {row["name"]: row for row in get(api, ff, C).json()}
+    S_ = "/api/finance-settings/"
+    moved = post(api, ff, S_, {"one_off_income_category": cats["Other income"]["id"]})
+    assert moved.status_code == 200
+    assert moved.json()["one_off_income_category"] == cats["Other income"]["id"]
+    assert moved.json()["recurring_income_category"] == cats["Retainers"]["id"]
+    first = _pay(api, ff, sent(api, ff, *acme))
+    # "" is "as anything else": the general category.
+    assert post(api, ff, S_, {"one_off_income_category": ""}).json()[
+        "one_off_income_category"] == ""
+    second = _pay(api, ff, sent(api, ff, *acme), on="2026-10-06")
+    assert _income(api, ff) == {f"Invoice {first}": "Other income",
+                                f"Invoice {second}": "Client fees"}
+    expense = next(row for row in cats.values() if row["type"] == "expense")
+    assert post(api, ff, S_, {"recurring_income_category": expense["id"]}).status_code == 400
+    with tenant_context(acme[0].tenant.pk):
+        event = AuditEvent.objects.filter(verb="finance.settings_changed").first()
+        assert event.payload["before"]["one_off_income_category"] == cats["Project fees"]["id"]
+        assert event.payload["after"]["one_off_income_category"] == cats["Other income"]["id"]
+
+
+@pytest.mark.django_db
+def test_role_boundaries_and_isolation_on_an_invoices_income_category(
+        acme, ff, cf, va, tenant_b, api):
+    """The chart is the practice owner's alone: an associate bills their
+    client and neither sees nor chooses where it goes in the books."""
+    company, contact = acme
+    ClientAssignmentFactory(tenant=company.tenant, user=cf.user, company=company)
+    cats = {row["name"]: row for row in get(api, ff, C).json()}
+    workshops = cats["Workshops and speaking"]["id"]
+    mine = draft(api, ff, company, contact, income_category=workshops).json()
+    # An associate reads and writes the invoice, without the category in it.
+    seen = get(api, cf, f"/api/invoices/{mine['id']}/")
+    assert seen.status_code == 200 and "income_category" not in seen.json()
+    assert workshops not in seen.content.decode()
+    assert patch(api, cf, f"/api/invoices/{mine['id']}/", {"notes": "Thanks"}).status_code == 200
+    for method, url, body in (
+            ("patch", f"/api/invoices/{mine['id']}/", {"income_category": ""}),
+            ("post", "/api/invoices/", {"client_company": str(company.pk),
+                                        "contact": str(contact.pk), "lines": LINES,
+                                        "income_category": workshops}),
+            ("post", "/api/invoice-schedules/", {
+                "client_company": str(company.pk), "contact": str(contact.pk),
+                "day_of_month": 1, "lines": LINES, "income_category": workshops})):
+        assert call(api.as_(cf), method, url, body).status_code == 403, url
+        assert call(api.as_(va), method, url, body).status_code == 403, url
+    theirs = post(api, cf, "/api/invoice-schedules/", {
+        "client_company": str(company.pk), "contact": str(contact.pk), "day_of_month": 1,
+        "lines": LINES})
+    assert theirs.status_code == 201 and "income_category" not in theirs.json()
+    assert all("income_category" not in row
+               for row in get(api, cf, "/api/invoice-schedules/").json())
+    with tenant_context(company.tenant.pk):
+        from apps.billing.models import ClientInvoice
+
+        assert str(ClientInvoice.objects.get(pk=mine["id"]).income_category_id) == workshops
+    # Another practice's category is not one of ours to name.
+    other = _member(tenant_b, "FF")
+    foreign = {row["name"]: row for row in get(api, other, C).json()}["Retainers"]["id"]
+    assert patch(api, ff, f"/api/invoices/{mine['id']}/",
+                 {"income_category": foreign}).status_code == 404
+    assert post(api, ff, "/api/finance-settings/",
+                {"recurring_income_category": foreign}).status_code == 404
+
+
+@pytest.mark.django_db
+def test_combining_a_category_takes_what_named_it_along(acme, ff, api):
+    from apps.tenancy import modules
+
+    modules.set_enabled(acme[0].tenant, modules.BOOKKEEPING, True, actor=ff.user)
+    cats = {row["name"]: row for row in get(api, ff, C).json()}
+    made = draft(api, ff, *acme, income_category=cats["Retainers"]["id"]).json()
+    merged = post(api, ff, f"{C}{cats['Retainers']['id']}/merge/",
+                  {"into": cats["Other income"]["id"]})
+    assert merged.status_code == 200, merged.content
+    assert get(api, ff, "/api/finance-settings/").json()["recurring_income_category"] == \
+        cats["Other income"]["id"]
+    assert get(api, ff, f"/api/invoices/{made['id']}/").json()["income_category"] == \
+        cats["Other income"]["id"]
+
+
+@pytest.mark.django_db
+def test_the_migration_gives_a_practice_that_exists_the_by_kind_start(
+        seeded_tenant, tenant_b, ff, api):
+    from importlib import import_module
+
+    from django.apps import apps as django_apps
+
+    from apps.finance.models import FinanceSettings
+
+    step = import_module("apps.finance.migrations.0007_invoice_income_by_kind")
+    get(api, ff, "/api/finance-settings/")           # the practice's books exist
+    with tenant_context(seeded_tenant.pk):
+        FinanceSettings.objects.update(recurring_income_category=None,
+                                       one_off_income_category=None)
+        general = FinanceSettings.objects.get().invoice_income_category_id
+    # One whose chart has no such names keeps posting where it does today.
+    other = _member(tenant_b, "FF")
+    get(api, other, "/api/finance-settings/")
+    with tenant_context(tenant_b.pk):
+        FinanceSettings.objects.update(recurring_income_category=None,
+                                       one_off_income_category=None)
+        FinanceCategory.objects.filter(name="Retainers").update(name="Monthly")
+        FinanceCategory.objects.filter(name="Project fees").update(
+            archived_at=timezone.now())
+
+    step.by_kind_for_practices_that_exist(django_apps, None)
+
+    with tenant_context(seeded_tenant.pk):
+        row = FinanceSettings.objects.get()
+        assert (row.recurring_income_category.name, row.one_off_income_category.name) == \
+            ("Retainers", "Project fees")
+        assert row.invoice_income_category_id == general
+    with tenant_context(tenant_b.pk):
+        row = FinanceSettings.objects.get()
+        assert row.recurring_income_category_id is None
+        assert row.one_off_income_category_id is None

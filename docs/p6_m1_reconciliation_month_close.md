@@ -407,6 +407,80 @@ import lines that named it name its parent. No amount, date or total
 changes. Among the owner's entries, the Entries list shows the mark as a
 chip and filters on it (`?estimated_tax=any|federal|state`).
 
+### 5.6 Invoice income goes to a sub-category, by the kind of invoice
+
+**Found on the demo (owner, 2026-10-10):** every invoice payment was entered
+on the "Client fees" parent, so the 2026 P&L showed $389,000 as "Client fees,
+not broken down" and Retainers at nothing.
+
+**Built 2026-10-10.** A payment recorded on an invoice is entered under, in
+this order:
+
+1. **the category the invoice itself names,** where its owner chose one
+   (`client_invoice.income_category`; a recurring invoice's schedule carries
+   one, `client_invoice_schedule.income_category`, copied onto each draft it
+   writes);
+2. **what its kind goes to:** a recurring invoice to **Retainers**, any other
+   (a one-off, or one to a contact) to **Project fees**
+   (`finance_settings.recurring_income_category`, `one_off_income_category`);
+3. **where paid invoices go in general** ("Client fees"), as before.
+
+- The two by-kind categories are set when a practice's books begin, to its
+  live income categories of those names, and are the practice owner's to
+  change in the finance settings ("Recurring invoices go to", "One-off
+  invoices go to", "Anything else goes to"). Empty is a choice: "as anything
+  else".
+- **The category is the practice owner's to choose and to see.** The chart is
+  theirs alone (matrix 13.7), so an associate who bills their own client is
+  not sent it and cannot set it (403). It is chosen on a draft; after that
+  the entry itself is what is changed, in the books.
+- A category a kind goes to cannot be archived or removed until that kind is
+  sent somewhere else; combining it takes the settings, and any invoice or
+  schedule that named it, along.
+- **Migrations:** `finance` 0007 (the two settings columns, and a data step
+  that gives a practice whose books already exist the same start: its
+  "Retainers" and "Project fees" where it has them, nothing where it does
+  not) and `billing` 0002 (the two `income_category` columns). Additive. **Only
+  payments recorded from then on are affected; no entry moves.**
+- The demo's seed uses it: retainers under Retainers, the workshop where its
+  invoice says.
+
+#### The move, for books that already have invoice income on the parent
+
+**Specified here; not built.** Production has it: every invoice payment
+Executives Now has recorded sits on the parent. It is built and run only on
+the owner's word, as part of a release, after a dry run.
+
+- **What moves.** Each live entry that was made from an invoice payment
+  (`source = invoice`, income) and sits on the category where paid invoices
+  go in general, **when that category has sub-categories.** By the kind of
+  its invoice: recurring to the practice's `recurring_income_category`, any
+  other to its `one_off_income_category`. An invoice that names a category of
+  its own goes there.
+- **What does not.** An entry the owner has already put somewhere else; a
+  typed or imported entry on the parent (not from an invoice); a removed
+  entry; anything in a practice where the kind's category is empty or is the
+  parent itself (there is nowhere to move it). Tax held is not income and is
+  not touched.
+- **Closed months are included,** as a combine's are (M1-13): only which of
+  two categories a figure is under changes.
+- **Totals unchanged, and checked.** The parent's total on the P&L, with its
+  sub-categories, is the same before and after for every year, and so are
+  income, expenses and net. The move asserts this and writes nothing if it
+  does not hold.
+- **Recorded like a combine.** One `finance_category_change` row for each
+  pair of categories it moved between (kind `split`, from the parent, to the
+  sub-category, the count and the first and last dates, by whoever ran it),
+  so it is in "Combined and split"; one audit event for the run; and each
+  entry's own line of history, as when it is changed by hand.
+- **Dry run first, always.** A management command, per practice: without
+  `--apply` it prints how many entries would go to each sub-category, their
+  totals and date range, and how many are left where they are and why. With
+  `--apply` it does exactly that. At release: the dry run's output goes to
+  the owner, and the move waits for his yes (`CLAUDE.md`, "Dry-run before
+  irreversible steps").
+- **Way back.** Combining the sub-category into the parent puts them back.
+
 ---
 
 ## 6. The disclaimer

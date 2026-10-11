@@ -247,9 +247,22 @@ def _apply(invoice, changes: dict, config: InvoiceSettings) -> None:
     _check_merge(invoice.email_body)
 
 
+def _income_category(tenant, category):
+    """The category an invoice's payments are entered under in the books,
+    when one is chosen: the practice's own, income, and in use. None means
+    "whatever that kind of invoice goes to" (apps/finance/services.py)."""
+    if category is None:
+        return None
+    if category.tenant_id != tenant.pk:
+        raise BillingError("That category is not in this practice.", status=404)
+    if category.type != "income" or category.archived_at is not None:
+        raise BillingError("An invoice's payments go to an income category that is in use.")
+    return category
+
+
 @transaction.atomic
 def create_draft(tenant, *, actor, kind=K.ONE_OFF, client_company=None, contact=None,
-                 lines=(), schedule=None, **changes) -> ClientInvoice:
+                 lines=(), schedule=None, income_category=None, **changes) -> ClientInvoice:
     if kind not in K.values:
         raise BillingError("kind is one_off, recurring or contact.")
     _recipient(tenant, kind=kind, company=client_company, contact=contact)
@@ -257,7 +270,8 @@ def create_draft(tenant, *, actor, kind=K.ONE_OFF, client_company=None, contact=
     today = timezone.localdate()
     invoice = ClientInvoice(
         tenant=tenant, kind=kind, client_company=client_company, contact=contact,
-        schedule=schedule, issue_date=today,
+        schedule=schedule, income_category=_income_category(tenant, income_category),
+        issue_date=today,
         due_date=today + timedelta(days=config.terms_days),
         notes=config.default_notes, terms=config.default_terms,
         pay_instructions=config.pay_instructions,
@@ -282,9 +296,12 @@ def _only_draft(invoice):
 
 
 @transaction.atomic
-def update_draft(invoice, *, actor, lines=None, contact=None, **changes) -> ClientInvoice:
+def update_draft(invoice, *, actor, lines=None, contact=None, income_category=...,
+                 **changes) -> ClientInvoice:
     invoice = ClientInvoice.all_objects.select_for_update().get(pk=invoice.pk)
     _only_draft(invoice)
+    if income_category is not ...:
+        invoice.income_category = _income_category(invoice.tenant, income_category)
     unknown = set(changes) - set(EDITABLE)
     if unknown:
         raise BillingError(f"Not editable: {', '.join(sorted(unknown))}.")
@@ -676,7 +693,7 @@ def _schedule_lines(tenant, lines) -> list[dict]:
 @transaction.atomic
 def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=None,
                   day_of_month=None, starts_on=None, ends_on=..., lines=None, notes=None,
-                  terms=None, is_active=None) -> ClientInvoiceSchedule:
+                  terms=None, is_active=None, income_category=...) -> ClientInvoiceSchedule:
     made = schedule is None
     if made:
         _recipient(tenant, kind=K.RECURRING, company=client_company, contact=contact)
@@ -710,6 +727,8 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
         schedule.terms = str(terms).strip()
     if is_active is not None:
         schedule.is_active = bool(is_active)
+    if income_category is not ...:
+        schedule.income_category = _income_category(tenant, income_category)
     schedule.save()
     AuditEvent.all_objects.create(
         tenant=tenant, actor=actor,
@@ -745,6 +764,10 @@ def run_schedules(tenant, today=None) -> list[ClientInvoice]:
             made.append(create_draft(
                 tenant, actor=None, kind=K.RECURRING, client_company=company,
                 contact=schedule.contact, schedule=schedule, lines=list(schedule.lines),
+                # One archived since the schedule was written is passed over.
+                income_category=(schedule.income_category
+                                 if schedule.income_category_id
+                                 and schedule.income_category.archived_at is None else None),
                 issue_date=today, **own))
             upcoming = schedule.next_on
             while upcoming <= today:

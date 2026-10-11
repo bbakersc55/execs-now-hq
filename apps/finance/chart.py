@@ -177,7 +177,10 @@ def delete_category(category, *, actor) -> None:
     if rules:
         raise FinanceError(f"{rules} import rule{'s' if rules != 1 else ''} put lines in "
                            f"“{category.name}”. Change or remove them first.", status=409)
-    if settings_for(category.tenant).invoice_income_category_id == category.pk:
+    config = settings_for(category.tenant)
+    if category.pk in (config.invoice_income_category_id,
+                       config.recurring_income_category_id,
+                       config.one_off_income_category_id):
         raise FinanceError(f"Paid invoices go to “{category.name}”. Choose another "
                            "category for them first.", status=409)
     audit(category.tenant, "category_removed", actor, category, name=category.name,
@@ -249,9 +252,19 @@ def merge(source, target, *, actor) -> FinanceCategory:
         child.save(update_fields=["parent", "position", "updated_at"])
     FinanceCategory.all_objects.filter(parent=source).update(parent=target, updated_at=now)
     config = settings_for(source.tenant)
-    if config.invoice_income_category_id == source.pk:
-        config.invoice_income_category = target
-        config.save(update_fields=["invoice_income_category", "updated_at"])
+    moved = [field for field in ("invoice_income_category", "recurring_income_category",
+                                 "one_off_income_category")
+             if getattr(config, f"{field}_id") == source.pk]
+    for field in moved:
+        setattr(config, field, target)
+    if moved:
+        config.save(update_fields=[*moved, "updated_at"])
+    # An invoice or a schedule that named it names what it became.
+    from apps.billing.models import ClientInvoice, ClientInvoiceSchedule
+
+    for model in (ClientInvoice, ClientInvoiceSchedule):
+        model.all_objects.filter(tenant=source.tenant, income_category=source).update(
+            income_category=target, updated_at=now)
     source.archived_at, source.merged_into = now, target
     source.save(update_fields=["archived_at", "merged_into", "updated_at"])
     FinanceCategoryChange.all_objects.create(

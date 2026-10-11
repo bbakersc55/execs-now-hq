@@ -322,6 +322,123 @@ describe("one invoice", () => {
   });
 });
 
+describe("where an invoice's payments go in the books", () => {
+  const cat = (id: string, name: string, parent: string | null = null, position = 0) => ({
+    id, name, type: "income", type_label: "Income", cpa_code: "", position,
+    archived: false, system: false, parent });
+  const BOOKS = {
+    "GET /api/finance-categories/": [
+      cat("fees", "Client fees"), cat("ret", "Retainers", "fees", 0),
+      cat("proj", "Project fees", "fees", 1), cat("work", "Workshops and speaking", "fees", 2),
+      cat("other", "Other income", null, 1),
+      { ...cat("travel", "Travel"), type: "expense", type_label: "Expense" }],
+    "GET /api/finance-settings/": { locked_through: null, invoice_income_category: "fees",
+                                    recurring_income_category: "ret",
+                                    one_off_income_category: "proj" } };
+  const draft = (more: Partial<Invoice> = {}) => invoice({
+    status: "draft", status_label: "Draft", number: "", has_pdf: false, sent_at: null,
+    ...more });
+
+  function one(data: Invoice, me = aMe(), extra: Record<string, unknown> = {}) {
+    const fetchMock = mockApi({ ...extra, ...BOOKS, [`GET ${ONE}history/`]: [],
+                                [`GET ${ONE}`]: data });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<InvoiceDetail me={me} />, { path: "/invoices/:id", route: `/invoices/${ID}` });
+    return fetchMock;
+  }
+
+  it("lets the practice owner name a category on a draft, defaulting by its kind",
+    async () => {
+      const fetchMock = one(draft({ income_category: "" }), aMe(),
+                            { [`PATCH ${ONE}`]: () => ({ body: draft({ income_category: "work" }) }) });
+      const pick = await screen.findByLabelText("Income category for this invoice");
+      // What a one-off usually goes to is named, and the choices are the
+      // income categories as a tree, with no expense among them.
+      await waitFor(() => expect(within(pick).getAllByRole("option").map((o) => o.textContent))
+        .toEqual(["As invoices usually are (Project fees)", "Client fees",
+                  "\u00a0\u00a0\u00a0\u00a0Retainers", "\u00a0\u00a0\u00a0\u00a0Project fees",
+                  "\u00a0\u00a0\u00a0\u00a0Workshops and speaking", "Other income"]));
+      await userEvent.selectOptions(pick, "work");
+      await userEvent.click(screen.getByRole("button", { name: "Save the draft" }));
+      await waitFor(() => expect(sent(fetchMock, ONE)).toHaveLength(1));
+      expect(sent(fetchMock, ONE)[0]).toMatchObject({ income_category: "work" });
+    });
+
+  it("names Retainers as what a recurring invoice usually goes to", async () => {
+    one(draft({ kind: "recurring", from_schedule: true, income_category: "" }));
+    const pick = await screen.findByLabelText("Income category for this invoice");
+    await waitFor(() => expect(within(pick).getAllByRole("option")[0])
+      .toHaveTextContent("As recurring invoices usually are (Retainers)"));
+  });
+
+  it("shows an associate no category, and sends none back", async () => {
+    // The server sends `income_category` to the practice owner only.
+    const fetchMock = one(draft(), aMe({ role: "CF" }),
+                          { [`PATCH ${ONE}`]: () => ({ body: draft() }) });
+    await screen.findByText("Draft invoice");
+    expect(screen.queryByLabelText("Income category for this invoice"))
+      .not.toBeInTheDocument();
+    const notes = screen.getByLabelText("Notes");
+    await userEvent.type(notes, " Thanks.");
+    await userEvent.click(screen.getByRole("button", { name: "Save the draft" }));
+    await waitFor(() => expect(sent(fetchMock, ONE)).toHaveLength(1));
+    expect(sent(fetchMock, ONE)[0]).not.toHaveProperty("income_category");
+    expect(fetchMock.calls.some((c) => c.url.startsWith("/api/finance-"))).toBe(false);
+  });
+
+  const schedule = { id: "s1", client_company: { id: "co1", name: "Acme Facilities" },
+                     contact: { id: "c1", name: "Dana Reyes" }, day_of_month: 5,
+                     next_on: "2026-11-05", ends_on: null, lines: [], total_cents: 680000,
+                     notes: "", terms: "", is_active: true };
+
+  it("lets the practice owner choose it for a recurring invoice, new or existing",
+    async () => {
+      const fetchMock = mockApi({
+        ...BOOKS,
+        "PATCH /api/invoice-schedules/s1/": () => ({
+          body: { ...schedule, income_category: "work" } }),
+        "POST /api/invoice-schedules/": () => ({ status: 201, body: schedule }),
+        "GET /api/invoice-schedules/": [{ ...schedule, income_category: "" }],
+        "GET /api/companies/": COMPANIES, "GET /api/contacts/": CONTACTS,
+        "GET /api/invoices/": LIST });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<Invoices me={aMe()} />);
+      const existing = await screen.findByLabelText(
+        "Income category for Acme Facilities's recurring invoice");
+      await waitFor(() => expect(within(existing).getAllByRole("option")[0])
+        .toHaveTextContent("As recurring invoices usually are (Retainers)"));
+      await userEvent.selectOptions(existing, "work");
+      await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/s1/"))
+        .toEqual([{ income_category: "work" }]));
+
+      await userEvent.click(screen.getByRole("button", { name: "New recurring invoice" }));
+      await userEvent.selectOptions(
+        screen.getByLabelText("Client company for the recurring invoice"), "co1");
+      await userEvent.selectOptions(
+        await screen.findByLabelText("Recurring invoice addressed to"), "c1");
+      await userEvent.type(screen.getByLabelText("Description of line 1"), "Retainer");
+      await userEvent.type(screen.getByLabelText("Price of line 1"), "5000");
+      await userEvent.selectOptions(
+        screen.getByLabelText("Income category for the new recurring invoice"), "other");
+      await userEvent.click(screen.getByRole("button", { name: "Save the recurring invoice" }));
+      await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/")).toHaveLength(1));
+      expect(sent(fetchMock, "/api/invoice-schedules/")[0]).toMatchObject({
+        client_company: "co1", income_category: "other" });
+    });
+
+  it("shows an associate's recurring invoices with no category to choose", async () => {
+    const fetchMock = mockApi({
+      "GET /api/invoice-schedules/": [schedule], "GET /api/companies/": COMPANIES,
+      "GET /api/contacts/": CONTACTS, "GET /api/invoices/": LIST });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Invoices me={aMe({ role: "CF" })} />);
+    expect(await screen.findByText("November 5, 2026")).toBeInTheDocument();
+    expect(screen.queryByText("In your books")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Income category/)).not.toBeInTheDocument();
+    expect(fetchMock.calls.some((c) => c.url.startsWith("/api/finance-"))).toBe(false);
+  });
+});
+
 describe("invoice settings", () => {
   it("says why how-to-pay matters, and saves numbers as numbers", async () => {
     const data = { prefix: "INV-", next_value: 12, next_number: "INV-0012", terms_days: 15,

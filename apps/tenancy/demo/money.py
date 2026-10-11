@@ -419,6 +419,8 @@ def _oddities(world, books, month: date) -> None:
         with at(moment(month.replace(day=9), 11)):
             workshop = billing.create_draft(
                 tenant, actor=owner, kind=ClientInvoice.Kind.CONTACT, contact=partner,
+                # Named on the invoice: not what a one-off usually goes to.
+                income_category=books["category"]["Workshops and speaking"],
                 lines=[{"description": "Half-day workshop for the owners' forum: running a "
                                        "weekly leadership meeting that ends on time",
                         "quantity": "1", "unit_price_cents": 150_000}])
@@ -426,17 +428,16 @@ def _oddities(world, books, month: date) -> None:
             workshop = billing.send(workshop, actor=owner, role="FF")
         paid_on = month.replace(day=22)
         if paid_on < world.today - timedelta(days=10):
-            _payment, entry = _pay(world, books, workshop, workshop.total_cents, paid_on,
-                                   world.today, "check", dice("workshop"))
-            finance.update_entry(entry, actor=owner,
-                                 category=books["category"]["Workshops and speaking"])
+            _pay(world, books, workshop, workshop.total_cents, paid_on, world.today,
+                 "check", dice("workshop"))
         world.extra["workshop_invoice"] = workshop
     if month == _months_back(world, 5):
         with at(moment(month.replace(day=16), 15)):
             finance.create_entry(
                 tenant, actor=owner, kind="income", direction="out",
                 on_date=month.replace(day=16), amount_cents=50_000,
-                category=books["category"]["Client fees"], account=books["bank"],
+                # A refund of a retainer, so it takes away from Retainers.
+                category=books["category"]["Retainers"], account=books["bank"],
                 description="Goodwill credit for the delayed route review, refunded by check",
                 counterparty="Dunder Mifflin Paper",
                 client_company=world.companies["Dunder Mifflin Paper"],

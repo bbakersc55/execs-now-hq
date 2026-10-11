@@ -8,7 +8,7 @@ import { PriceBox } from "../components/InvoiceLines";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill } from "../components/ui";
 import {
-  FinanceAccount, FinanceCategory, FinanceRule, Me, YearFacts, api,
+  FinanceAccount, FinanceCategory, FinanceRule, FinanceSettingsData, Me, YearFacts, api,
 } from "../lib/api";
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
@@ -32,7 +32,7 @@ export function FinanceSettings() {
   const categories = useQuery<FinanceCategory[]>({
     queryKey: ["finance-categories"],
     queryFn: () => api.get<FinanceCategory[]>("/api/finance-categories/") });
-  const settings = useQuery<{ locked_through: string | null; invoice_income_category: string }>({
+  const settings = useQuery<FinanceSettingsData>({
     queryKey: ["finance-settings"], queryFn: () => api.get("/api/finance-settings/") });
   // P6 M1: the tools that reshape the chart are the Bookkeeping module's.
   const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
@@ -114,18 +114,35 @@ export function FinanceSettings() {
 
       <Card title="Paid invoices">
         <p className="small muted" style={{ marginTop: 0 }}>
-          When you record a payment on an invoice, it is entered as income here. Nothing is
-          income before it is paid.
+          When you record a payment on an invoice, it is entered as income here, by the
+          kind of invoice it was. Nothing is income before it is paid. A recurring invoice
+          or a single invoice can name a different category of its own, on the invoice.
         </p>
-        <Field label="Enter them under">
-          <select aria-label="Category for paid invoices" disabled={busy}
-            value={settings.data?.invoice_income_category ?? ""}
-            onChange={(e) => send.mutate({ url: "/api/finance-settings/",
-                                           body: { invoice_income_category: e.target.value } })}>
-            {categoryOptions(cats.filter((c) => c.type === "income" && !c.archived), cats)
-              .map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-          </select>
-        </Field>
+        <div className="row">
+          {([["recurring_income_category", "Recurring invoices go to",
+              "Category for recurring invoices"],
+             ["one_off_income_category", "One-off invoices go to",
+              "Category for one-off invoices"]] as const).map(([field, label, aria]) => (
+            <Field key={field} label={label}>
+              <select aria-label={aria} disabled={busy} value={settings.data?.[field] ?? ""}
+                onChange={(e) => send.mutate({ url: "/api/finance-settings/",
+                                               body: { [field]: e.target.value } })}>
+                <option value="">As anything else</option>
+                {categoryOptions(cats.filter((c) => c.type === "income" && !c.archived), cats)
+                  .map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            </Field>
+          ))}
+          <Field label="Anything else goes to">
+            <select aria-label="Category for paid invoices" disabled={busy}
+              value={settings.data?.invoice_income_category ?? ""}
+              onChange={(e) => send.mutate({ url: "/api/finance-settings/",
+                                             body: { invoice_income_category: e.target.value } })}>
+              {categoryOptions(cats.filter((c) => c.type === "income" && !c.archived), cats)
+                .map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </select>
+          </Field>
+        </div>
       </Card>
 
       <Rules />

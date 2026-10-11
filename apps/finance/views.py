@@ -453,7 +453,10 @@ class FinanceSettingsView(FinanceViewSet):
     def _represent(row) -> dict:
         return {"locked_through": row.locked_through.isoformat() if row.locked_through
                 else None,
-                "invoice_income_category": str(row.invoice_income_category_id or "")}
+                "invoice_income_category": str(row.invoice_income_category_id or ""),
+                # By the kind of invoice; "" is "as anything else".
+                "recurring_income_category": str(row.recurring_income_category_id or ""),
+                "one_off_income_category": str(row.one_off_income_category_id or "")}
 
     def list(self, request):
         return Response(self._represent(services.settings_for(request.tenant)))
@@ -475,6 +478,10 @@ class FinanceSettingsView(FinanceViewSet):
             if "invoice_income_category" in data:
                 fields["invoice_income_category"] = self._one(
                     FinanceCategory, data["invoice_income_category"], "category")
+            for name in ("recurring_income_category", "one_off_income_category"):
+                if name in data:
+                    fields[name] = self._one(FinanceCategory, data[name], "category") \
+                        if data[name] else None
             row = services.update_settings(request.tenant, actor=request.user, **fields)
         except services.FinanceError as exc:
             return self._refusal(exc)

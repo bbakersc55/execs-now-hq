@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { InvoiceLines, PriceBox, cleanLines } from "../components/InvoiceLines";
+import { IncomeCategoryPicker } from "../components/IncomeCategoryPicker";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import { Invoice, InvoiceEvent, InvoiceLine, Me, api } from "../lib/api";
@@ -232,7 +233,9 @@ function Draft({ invoice: i, busy, onSaved, onError, onReady, onDelete }: {
     issue_date: i.issue_date, due_date: i.due_date, tax_cents: i.tax_cents,
     notes: i.notes, terms: i.terms, pay_instructions: i.pay_instructions,
     email_to: i.email_to, email_subject: i.email_subject, email_body: i.email_body,
-    bill_to_address: i.bill_to.address ?? "" });
+    bill_to_address: i.bill_to.address ?? "",
+    // Only the practice owner is sent it, and only they send it back.
+    ...(i.income_category !== undefined ? { income_category: i.income_category } : {}) });
   const [form, setForm] = useState(start);
   const [lines, setLines] = useState<InvoiceLine[]>(i.lines.length ? i.lines
     : [{ description: "", quantity: "1", unit_price_cents: 0 }]);
@@ -287,6 +290,14 @@ function Draft({ invoice: i, busy, onSaved, onError, onReady, onDelete }: {
               onChange={(tax_cents) => change({ tax_cents })} /></label>
           <strong>Total {dollars(subtotal + form.tax_cents)}</strong>
         </div>
+        {form.income_category !== undefined && (
+          <Field label="In your books, its payments go to">
+            <IncomeCategoryPicker label="Income category for this invoice" disabled={busy}
+              kind={i.kind === "recurring" ? "recurring" : "one_off"}
+              value={form.income_category}
+              onChange={(income_category) => change({ income_category })} />
+          </Field>
+        )}
       </Card>
       <Card title="What prints on it">
         {text("Billing address (optional)", "bill_to_address")}

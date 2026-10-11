@@ -59,6 +59,11 @@ class ClientInvoiceSchedule(TenantScopedModel):
     notes = models.TextField(blank=True, default="", db_default="")
     terms = models.TextField(blank=True, default="", db_default="")
     is_active = models.BooleanField(default=True, db_default=True)
+    #: Where its invoices' payments are entered in the books, when the
+    #: practice owner chose something other than what recurring invoices go
+    #: to by default (owner, 2026-10-10). Copied onto each draft it writes.
+    income_category = models.ForeignKey("finance.FinanceCategory", null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
 
@@ -99,6 +104,11 @@ class ClientInvoice(TenantScopedModel):
                                 related_name="invoices")
     schedule = models.ForeignKey(ClientInvoiceSchedule, null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="invoices")
+    #: Where its payments are entered in the books, when that is not the
+    #: default for its kind: Retainers for a recurring invoice, Project fees
+    #: for any other. The practice owner's to choose; it is not on the invoice.
+    income_category = models.ForeignKey("finance.FinanceCategory", null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
     number = models.CharField(max_length=40, null=True, blank=True)
     issue_date = models.DateField()
     due_date = models.DateField()

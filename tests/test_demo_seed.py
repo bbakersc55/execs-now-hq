@@ -317,6 +317,17 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
             assert shown["difference_cents"] == left[0]["amount_cents"]
             assert shown["hints"][0] == {"kind": "untick", "entry": left[0]["id"],
                                          "text": shown["hints"][0]["text"]}
+        # Invoice income is broken down by the kind of invoice: the retainers
+        # under Retainers, the workshop where its invoice said, none on the parent.
+        paid = entries.filter(source="invoice", kind="income")
+        by_category = dict(paid.values_list("category__name").annotate(n=Count("pk")))
+        assert set(by_category) == {"Retainers", "Workshops and speaking"}, by_category
+        assert by_category["Workshops and speaking"] == 1
+        assert not paid.filter(category__parent__isnull=True).exists()
+        fees = next(row for row in reports.pnl(tenant, year=today.year)["income"]["rows"]
+                    if row["name"] == "Client fees")
+        assert {c["name"]: c["total"] > 0 for c in fees["children"]}["Retainers"] is True
+        assert not any(c.get("direct") for c in fees["children"])
         # The CPA's chart (§5.4): every expense is under a line of the worksheet.
         from apps.finance import chart as the_chart
         from apps.finance.models import FinanceYearFacts

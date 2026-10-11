@@ -81,14 +81,47 @@ def ensure_chart(tenant) -> None:
     chart.create_starting_chart(tenant)
 
 
+#: Where each kind of invoice's payments go to begin with, by the name the
+#: starting chart gives the sub-category. A practice without one of that
+#: name keeps the general category until its owner chooses.
+INCOME_BY_KIND = {"recurring_income_category": "Retainers",
+                  "one_off_income_category": "Project fees"}
+
+
 def settings_for(tenant) -> FinanceSettings:
     ensure_chart(tenant)
     row, made = FinanceSettings.all_objects.get_or_create(tenant=tenant)
+    changed = []
     if made or row.invoice_income_category_id is None:
         row.invoice_income_category = FinanceCategory.all_objects.filter(
             tenant=tenant, system_code=CLIENT_FEES, archived_at__isnull=True).first()
-        row.save(update_fields=["invoice_income_category", "updated_at"])
+        changed.append("invoice_income_category")
+    if made:
+        # Once, when the practice's books begin. After that an empty one is
+        # the owner's own choice ("as anything else"), and is left empty.
+        for field, name in INCOME_BY_KIND.items():
+            setattr(row, field, FinanceCategory.all_objects.filter(
+                tenant=tenant, type=T.INCOME, name__iexact=name,
+                archived_at__isnull=True).first())
+            changed.append(field)
+    if changed:
+        row.save(update_fields=[*changed, "updated_at"])
     return row
+
+
+def income_category_for(invoice, config=None) -> FinanceCategory | None:
+    """Where a payment on this invoice is entered: what the invoice itself
+    names; otherwise what its kind goes to (recurring, or one-off for every
+    other kind); otherwise where paid invoices go in general. One that has
+    been archived since is passed over."""
+    config = config or settings_for(invoice.tenant)
+    by_kind = config.recurring_income_category if invoice.kind == "recurring" \
+        else config.one_off_income_category
+    for category in (invoice.income_category, by_kind, config.invoice_income_category):
+        if category is not None and category.archived_at is None \
+                and category.type == T.INCOME and category.tenant_id == invoice.tenant_id:
+            return category
+    return config.invoice_income_category
 
 
 def _unlocked(tenant, *dates) -> None:
@@ -111,10 +144,19 @@ def _unlocked(tenant, *dates) -> None:
 
 
 @transaction.atomic
-def update_settings(tenant, *, actor, locked_through=..., invoice_income_category=...):
+def update_settings(tenant, *, actor, locked_through=..., invoice_income_category=...,
+                    recurring_income_category=..., one_off_income_category=...):
     row = FinanceSettings.all_objects.select_for_update().get(pk=settings_for(tenant).pk)
-    before = {"locked_through": row.locked_through.isoformat() if row.locked_through else None,
-              "invoice_income_category": str(row.invoice_income_category_id or "")}
+    by_kind = {"recurring_income_category": recurring_income_category,
+               "one_off_income_category": one_off_income_category}
+
+    def said():
+        return {"locked_through": row.locked_through.isoformat() if row.locked_through
+                else None,
+                "invoice_income_category": str(row.invoice_income_category_id or ""),
+                **{field: str(getattr(row, f"{field}_id") or "") for field in by_kind}}
+
+    before = said()
     if locked_through is not ...:
         from apps.finance.models import FinanceMonthClose
 
@@ -133,10 +175,16 @@ def update_settings(tenant, *, actor, locked_through=..., invoice_income_categor
         if category is None or category.type != T.INCOME or category.archived_at:
             raise FinanceError("Paid invoices go to an income category that is in use.")
         row.invoice_income_category = category
+    for field, category in by_kind.items():
+        if category is ...:
+            continue
+        # None is a choice: that kind goes where paid invoices go in general.
+        if category is not None and (category.tenant_id != tenant.pk
+                                     or category.type != T.INCOME or category.archived_at):
+            raise FinanceError("Paid invoices go to an income category that is in use.")
+        setattr(row, field, category)
     row.save()
-    audit(tenant, "settings_changed", actor, row, before=before, after={
-        "locked_through": row.locked_through.isoformat() if row.locked_through else None,
-        "invoice_income_category": str(row.invoice_income_category_id or "")})
+    audit(tenant, "settings_changed", actor, row, before=before, after=said())
     return row
 
 
@@ -294,7 +342,10 @@ def set_category_archived(category, *, actor, archived: bool) -> FinanceCategory
         if category.system_code == SALES_TAX:
             raise FinanceError("“Sales tax collected” is where tax on a paid invoice is "
                                "held, and stays.", status=409)
-        if settings_for(category.tenant).invoice_income_category_id == category.pk:
+        config = settings_for(category.tenant)
+        if category.pk in (config.invoice_income_category_id,
+                           config.recurring_income_category_id,
+                           config.one_off_income_category_id):
             raise FinanceError(f"Paid invoices go to “{category.name}”. Choose another "
                                "category for them in the finance settings first.",
                                status=409)
@@ -566,6 +617,7 @@ def payment_recorded(payment, *, actor=None) -> list[FinanceEntry]:
         return []
     _unlocked(tenant, payment.paid_on)
     config = settings_for(tenant)
+    income = income_category_for(invoice, config)
     tax = _tax_share(payment, invoice)
     fee = payment.amount_cents - tax
     who = invoice.client_company.name if invoice.client_company_id else str(invoice.contact)
@@ -577,8 +629,7 @@ def payment_recorded(payment, *, actor=None) -> list[FinanceEntry]:
     made = []
     if fee > 0:
         made.append(FinanceEntry.all_objects.create(
-            kind=K.INCOME, direction=D.IN, amount_cents=fee,
-            category=config.invoice_income_category, **common))
+            kind=K.INCOME, direction=D.IN, amount_cents=fee, category=income, **common))
     if tax > 0:
         held = FinanceCategory.all_objects.filter(
             tenant=tenant, system_code=SALES_TAX).first()

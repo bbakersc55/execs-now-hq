@@ -473,7 +473,9 @@ describe("accounts, categories and the lock", () => {
       ...extra, "GET /api/me": aMe({ modules: [] }),
       "GET /api/finance-accounts/": ACCOUNTS, "GET /api/finance-rules/": [],
       "GET /api/finance-categories/": CATEGORIES,
-      "GET /api/finance-settings/": { locked_through: locked, invoice_income_category: "c1" } });
+      "GET /api/finance-settings/": { locked_through: locked, invoice_income_category: "c1" },
+      // Again, so a test's own answer replaces the one above.
+      ...extra });
     vi.stubGlobal("fetch", fetchMock);
     renderRoute(<FinanceSettings />);
     return fetchMock;
@@ -511,6 +513,26 @@ describe("accounts, categories and the lock", () => {
         .not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Restore Old one" })).toBeInTheDocument();
     });
+
+  it("sends each kind of paid invoice to its own income category", async () => {
+    const fetchMock = showSettings({
+      "POST /api/finance-settings/": () => ({ body: {} }),
+      "GET /api/finance-settings/": {
+        locked_through: null, invoice_income_category: "c1",
+        recurring_income_category: "c1", one_off_income_category: "" } });
+    const recurring = await screen.findByLabelText("Category for recurring invoices");
+    const oneOff = screen.getByLabelText("Category for one-off invoices");
+    await waitFor(() => expect(recurring).toHaveValue("c1"));
+    // "" is a choice: that kind goes where anything else does.
+    expect(oneOff).toHaveValue("");
+    expect(within(oneOff).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["As anything else", "Client fees"]);
+    expect(screen.getByLabelText("Category for paid invoices")).toHaveValue("c1");
+    await userEvent.selectOptions(oneOff, "c1");
+    await userEvent.selectOptions(recurring, "");
+    await waitFor(() => expect(sent(fetchMock, "/api/finance-settings/")).toEqual([
+      { one_off_income_category: "c1" }, { recurring_income_category: "" }]));
+  });
 
   it("locks the books through a date, and unlocks only after a confirmation", async () => {
     const fetchMock = showSettings({

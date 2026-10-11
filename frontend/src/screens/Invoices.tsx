@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { InvoiceLines, cleanLines } from "../components/InvoiceLines";
+import { IncomeCategoryPicker } from "../components/IncomeCategoryPicker";
 import { PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
@@ -154,7 +155,7 @@ export function Invoices({ me }: { me: Me }) {
         )}
       </Card>
 
-      <Recurring clients={clients} />
+      <Recurring clients={clients} owner={owner} />
     </>
   );
 }
@@ -243,7 +244,7 @@ function NewInvoice({ clients, owner, preset, onClose }: {
 }
 
 /** Recurring invoices: each writes a draft on its day and nothing else. */
-function Recurring({ clients }: { clients: Company[] }) {
+function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
   const qc = useQueryClient();
   const schedules = useQuery<InvoiceSchedule[]>({
     queryKey: ["invoice-schedules"],
@@ -254,19 +255,27 @@ function Recurring({ clients }: { clients: Company[] }) {
   const [day, setDay] = useState("1");
   const [lines, setLines] = useState<InvoiceLine[]>([
     { description: "", quantity: "1", unit_price_cents: 0 }]);
+  // The practice owner's: where its invoices' payments go in the books.
+  const [income, setIncome] = useState("");
   const people = useRecipients(company);
   const done = () => qc.invalidateQueries({ queryKey: ["invoice-schedules"] });
   const save = useMutation({
     mutationFn: () => api.post<InvoiceSchedule>("/api/invoice-schedules/", {
-      client_company: company, contact, day_of_month: Number(day), lines: cleanLines(lines) }),
+      client_company: company, contact, day_of_month: Number(day), lines: cleanLines(lines),
+      ...(owner && income ? { income_category: income } : {}) }),
     onSuccess: () => {
-      done(); setAdding(false); setCompany(""); setContact("");
+      done(); setAdding(false); setCompany(""); setContact(""); setIncome("");
       setLines([{ description: "", quantity: "1", unit_price_cents: 0 }]);
     },
   });
   const toggle = useMutation({
     mutationFn: (row: InvoiceSchedule) => api.patch<InvoiceSchedule>(
       `/api/invoice-schedules/${row.id}/`, { is_active: !row.is_active }),
+    onSuccess: done,
+  });
+  const recategorize = useMutation({
+    mutationFn: ({ row, id }: { row: InvoiceSchedule; id: string }) =>
+      api.patch<InvoiceSchedule>(`/api/invoice-schedules/${row.id}/`, { income_category: id }),
     onSuccess: done,
   });
   const rows = schedules.data ?? [];
@@ -282,7 +291,8 @@ function Recurring({ clients }: { clients: Company[] }) {
       {rows.length > 0 && (
         <table>
           <thead><tr><th>Client</th><th>Addressed to</th><th>Day</th><th>Next draft</th>
-            <th className="money">Each month</th><th /></tr></thead>
+            <th className="money">Each month</th>
+            {owner && <th>In your books</th>}<th /></tr></thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
@@ -291,6 +301,14 @@ function Recurring({ clients }: { clients: Company[] }) {
                 <td>{row.day_of_month}</td>
                 <td>{row.is_active ? longDate(row.next_on) : <Pill>paused</Pill>}</td>
                 <td className="money">{dollars(row.total_cents)}</td>
+                {owner && (
+                  <td>
+                    <IncomeCategoryPicker kind="recurring" value={row.income_category ?? ""}
+                      disabled={recategorize.isPending}
+                      label={`Income category for ${row.client_company.name}'s recurring invoice`}
+                      onChange={(id) => recategorize.mutate({ row, id })} />
+                  </td>
+                )}
                 <td className="money">
                   <button className="ghost small" disabled={toggle.isPending}
                     aria-label={`${row.is_active ? "Pause" : "Resume"} the recurring invoice for ${row.client_company.name}`}
@@ -326,6 +344,12 @@ function Recurring({ clients }: { clients: Company[] }) {
             </Field>
           </div>
           <InvoiceLines lines={lines} onChange={setLines} />
+          {owner && (
+            <Field label="In your books, its payments go to">
+              <IncomeCategoryPicker kind="recurring" value={income} onChange={setIncome}
+                label="Income category for the new recurring invoice" />
+            </Field>
+          )}
           <div className="row tight" style={{ marginTop: "var(--s3)" }}>
             <button className="primary"
               disabled={!company || !contact || cleanLines(lines).length === 0 || save.isPending}

@@ -1441,6 +1441,9 @@ export interface Invoice extends InvoiceRow {
   bill_to: { name?: string; company?: string; email?: string; address?: string };
   has_pdf: boolean; sent_at: string | null; voided_at: string | null; void_reason: string;
   lines: InvoiceLine[]; payments: InvoicePayment[]; merge_fields: string[];
+  /** Where its payments are entered in the books, "" for what its kind
+   *  usually goes to. Sent to the practice owner only. */
+  income_category?: string;
 }
 
 export interface InvoiceTotals {
@@ -1464,6 +1467,15 @@ export interface InvoiceSchedule {
   day_of_month: number; next_on: string; ends_on: string | null;
   lines: InvoiceLine[]; total_cents: number; notes: string; terms: string;
   is_active: boolean;
+  /** As on an invoice: the practice owner's only. */
+  income_category?: string;
+}
+
+/** The finance settings (the practice owner's). */
+export interface FinanceSettingsData {
+  locked_through: string | null; invoice_income_category: string;
+  /** By the kind of invoice; "" is "as anything else". */
+  recurring_income_category?: string; one_off_income_category?: string;
 }
 
 export interface InvoiceEvent {

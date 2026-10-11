@@ -120,8 +120,16 @@ class FinanceCategoryChange(TenantScopedModel):
 
 
 class FinanceSettings(TenantScopedModel):
-    #: Where a paid invoice's fee is entered ("Client fees" to begin with).
+    #: Where a paid invoice's fee is entered when nothing more particular
+    #: says ("Client fees" to begin with).
     invoice_income_category = models.ForeignKey(
+        FinanceCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    #: By the kind of invoice (owner, 2026-10-10): a recurring invoice's
+    #: payments ("Retainers" to begin with), and a one-off's ("Project fees").
+    #: An invoice or its schedule may name another.
+    recurring_income_category = models.ForeignKey(
+        FinanceCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    one_off_income_category = models.ForeignKey(
         FinanceCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     #: Nothing dated on or before this can be added, changed or removed.
     locked_through = models.DateField(null=True, blank=True)

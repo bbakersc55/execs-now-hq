@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
@@ -64,13 +65,22 @@ def represent_row(invoice, today=None) -> dict:
     }
 
 
-def represent(invoice) -> dict:
+def books_category(row, role) -> dict:
+    """Where the payments are entered in the books: the practice owner's to
+    see and choose, and in nobody else's payload (the chart is theirs alone,
+    matrix 13.7)."""
+    if role != Role.FF:
+        return {}
+    return {"income_category": str(row.income_category_id or "")}
+
+
+def represent(invoice, role=None) -> dict:
     lines = ClientInvoiceLine.all_objects.filter(invoice=invoice).order_by(
         "position", "created_at")
     payments = (ClientPayment.all_objects.filter(invoice=invoice)
                 .select_related("recorded_by", "removed_by").order_by("paid_on", "created_at"))
     return {
-        **represent_row(invoice),
+        **represent_row(invoice), **books_category(invoice, role),
         "subtotal_cents": invoice.subtotal_cents, "tax_cents": invoice.tax_cents,
         "currency": invoice.currency, "notes": invoice.notes, "terms": invoice.terms,
         "pay_instructions": invoice.pay_instructions, "pay_url": invoice.pay_url,
@@ -161,6 +171,26 @@ class BillingViewSet(viewsets.ViewSet):
     def _refusal(exc):
         return Response({"detail": str(exc)}, status=exc.status)
 
+    def _books(self, data) -> dict:
+        """`income_category`, where it was sent: the practice owner's alone
+        to set, since the chart is theirs alone. "" or null is "the default
+        for this kind of invoice"."""
+        if "income_category" not in data:
+            return {}
+        if self._role() != Role.FF:
+            raise services.BillingError(OWNER_ONLY, status=403)
+        if not data["income_category"]:
+            return {"income_category": None}
+        from apps.finance.models import FinanceCategory
+
+        try:
+            category = FinanceCategory.objects.filter(pk=data["income_category"]).first()
+        except (ValueError, TypeError, ValidationError):
+            category = None
+        if category is None:
+            raise services.BillingError("That category is not in this practice.", status=404)
+        return {"income_category": category}
+
 
 class InvoiceViewSet(BillingViewSet):
 
@@ -242,16 +272,17 @@ class InvoiceViewSet(BillingViewSet):
         try:
             invoice = services.create_draft(
                 request.tenant, actor=request.user, kind=kind, client_company=company,
-                contact=contact, lines=data.get("lines") or [], **changes)
+                contact=contact, lines=data.get("lines") or [], **changes,
+                **self._books(data))
         except services.BillingError as exc:
             return self._refusal(exc)
-        return Response(represent(invoice), status=201)
+        return Response(represent(invoice, self._role()), status=201)
 
     def retrieve(self, request, pk=None):
         refused = self._staff()
         if refused:
             return refused
-        return Response(represent(self.load(pk)))
+        return Response(represent(self.load(pk), self._role()))
 
     def partial_update(self, request, pk=None):
         refused = self._staff()
@@ -264,10 +295,10 @@ class InvoiceViewSet(BillingViewSet):
         try:
             invoice = services.update_draft(invoice, actor=request.user,
                                             lines=data.get("lines"), contact=contact,
-                                            **changes)
+                                            **changes, **self._books(data))
         except services.BillingError as exc:
             return self._refusal(exc)
-        return Response(represent(invoice))
+        return Response(represent(invoice, self._role()))
 
     def destroy(self, request, pk=None):
         refused = self._staff()
@@ -288,7 +319,7 @@ class InvoiceViewSet(BillingViewSet):
             fn(invoice)
         except services.BillingError as exc:
             return self._refusal(exc)
-        return Response(represent(self.load(pk)))
+        return Response(represent(self.load(pk), self._role()))
 
     @action(detail=True, methods=["post"], url_path="make-ready")
     def make_ready(self, request, pk=None):
@@ -447,8 +478,7 @@ class ScheduleViewSet(BillingViewSet):
                 client_company_id__in=crm_perms.assigned_company_ids(self.request))
         return qs.none()
 
-    @staticmethod
-    def _represent(row) -> dict:
+    def _represent(self, row) -> dict:
         lines = [{**line, "amount_cents": money.line_amount(
             services.Decimal(str(line["quantity"])), line["unit_price_cents"])}
             for line in row.lines]
@@ -461,6 +491,7 @@ class ScheduleViewSet(BillingViewSet):
             "ends_on": row.ends_on.isoformat() if row.ends_on else None,
             "lines": lines, "total_cents": sum(line["amount_cents"] for line in lines),
             "notes": row.notes, "terms": row.terms, "is_active": row.is_active,
+            **books_category(row, self._role()),
         }
 
     def list(self, request):
@@ -483,6 +514,7 @@ class ScheduleViewSet(BillingViewSet):
         if data.get("contact"):
             fields["contact"] = self._contact(data["contact"])
         try:
+            fields.update(self._books(data))
             if schedule is None:
                 fields["client_company"] = self._company(data.get("client_company"))
                 if "contact" not in fields:
