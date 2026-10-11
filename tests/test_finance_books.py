@@ -1360,3 +1360,83 @@ def test_the_migration_gives_a_practice_that_exists_the_by_kind_start(
         row = FinanceSettings.objects.get()
         assert row.recurring_income_category_id is None
         assert row.one_off_income_category_id is None
+
+
+@pytest.mark.django_db
+def test_the_migration_adds_retainers_to_a_practice_whose_chart_has_none(
+        seeded_tenant, tenant_b, ff, api, capsys):
+    """Production's chart was made with one level and no "Retainers" (owner,
+    2026-10-11): recurring invoices would have gone on posting to the parent."""
+    from importlib import import_module
+
+    from django.apps import apps as django_apps
+
+    from apps.finance.models import FinanceSettings
+
+    step = import_module("apps.finance.migrations.0008_retainers_for_practices_that_exist")
+    # A practice as production is: one level, "Client fees" and "Project fees"
+    # side by side, paid invoices to "Client fees", nothing by kind for recurring.
+    with tenant_context(seeded_tenant.pk):
+        rows = {name: FinanceCategory.objects.create(
+            tenant=seeded_tenant, name=name, type=kind, position=position,
+            system_code="client_fees" if name == "Client fees" else "")
+            for position, (name, kind) in enumerate((
+                ("Client fees", "income"), ("Project fees", "income"),
+                ("Other income", "income"), ("Travel", "expense"),
+                ("Owner draw", "owner"), ("Sales tax collected", "held")))}
+        bank = services.save_account(seeded_tenant, actor=ff.user, name="Checking")
+        old = services.create_entry(
+            seeded_tenant, actor=ff.user, kind="income", on_date="2026-03-01",
+            amount_cents=500000, account=bank, category=rows["Client fees"])
+        config = services.settings_for(seeded_tenant)
+        FinanceSettings.objects.filter(pk=config.pk).update(
+            recurring_income_category=None, one_off_income_category=rows["Project fees"])
+        before = FinanceCategory.objects.count()
+    # One that already has its own Retainers, chosen: left exactly as it is.
+    other = _member(tenant_b, "FF")
+    theirs = get(api, other, "/api/finance-settings/").json()
+    with tenant_context(tenant_b.pk):
+        theirs_before = FinanceCategory.objects.count()
+    capsys.readouterr()
+
+    step.add_retainers(django_apps, None)
+
+    printed = capsys.readouterr().out
+    with tenant_context(seeded_tenant.pk):
+        made = FinanceCategory.objects.get(name="Retainers")
+        assert (made.type, made.parent_id, made.archived_at) == \
+            ("income", rows["Client fees"].pk, None)
+        assert FinanceCategory.objects.count() == before + 1, "one category, and no more"
+        config = FinanceSettings.objects.get()
+        assert config.recurring_income_category_id == made.pk
+        assert config.one_off_income_category_id == rows["Project fees"].pk
+        assert config.invoice_income_category_id == rows["Client fees"].pk
+        # Nothing already there is renamed or moved, and no entry moves.
+        assert {c.name: c.parent_id for c in FinanceCategory.objects.exclude(pk=made.pk)} \
+            == {name: None for name in rows}
+        assert FinanceEntry.objects.get(pk=old.pk).category_id == rows["Client fees"].pk
+        event = AuditEvent.objects.get(verb="finance.retainers_category_added")
+        assert event.payload == {"created": True, "under": "Client fees",
+                                 "recurring_invoices_go_to": "Retainers"}
+    assert "recurring invoices now go to “Retainers”, under “Client fees” (added)." in printed
+    with tenant_context(tenant_b.pk):
+        assert FinanceCategory.objects.count() == theirs_before
+        assert not AuditEvent.objects.filter(
+            verb="finance.retainers_category_added").exists()
+    assert get(api, other, "/api/finance-settings/").json() == theirs
+    # Run again, there is nothing left to do.
+    step.add_retainers(django_apps, None)
+    with tenant_context(seeded_tenant.pk):
+        assert FinanceCategory.objects.filter(name="Retainers").count() == 1
+    # And from then on a recurring invoice's payment is entered under it.
+    company, contact = a_client(seeded_tenant)
+    with tenant_context(seeded_tenant.pk):
+        billing.update_settings(seeded_tenant, {"pay_instructions": "Bank transfer."})
+        billing.save_schedule(seeded_tenant, actor=ff.user, client_company=company,
+                              contact=contact, day_of_month=1, starts_on="2026-10-01",
+                              lines=LINES)
+        [written] = billing.run_schedules(seeded_tenant, today=date(2026, 10, 1))
+    for action in ("make-ready", "send"):
+        assert post(api, ff, f"/api/invoices/{written.pk}/{action}/").status_code == 200
+    number = _pay(api, ff, get(api, ff, f"/api/invoices/{written.pk}/").json())
+    assert _income(api, ff) == {f"Invoice {number}": "Retainers"}

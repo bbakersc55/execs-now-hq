@@ -442,6 +442,16 @@ this order:
   "Retainers" and "Project fees" where it has them, nothing where it does
   not) and `billing` 0002 (the two `income_category` columns). Additive. **Only
   payments recorded from then on are affected; no entry moves.**
+- **A practice whose chart has no "Retainers"** (production's was made with
+  one level: "Client fees" and "Project fees" side by side) would have gone
+  on posting recurring invoices to the general category. `finance` 0008
+  (owner, 2026-10-11, at the release) adds a "Retainers" sub-category under
+  the category its paid invoices go to and points recurring invoices at it,
+  for each practice whose books exist and whose recurring invoices go nowhere
+  of their own. **It is the one thing added to an existing practice's chart
+  without that practice asking in the app** (§5.4 says otherwise of
+  everything else), and the owner asked for it by name. Nothing is renamed or
+  moved and no entry moves; it is in the practice's audit trail.
 - The demo's seed uses it: retainers under Retainers, the workshop where its
   invoice says.
 
@@ -602,6 +612,17 @@ Statement files attached to a reconciliation; reading a statement PDF;
 automatic reconciliation from a bank feed; adjusting journal entries; accrual;
 more than two category levels; a fiscal year that does not start in January;
 loans and the balance sheet (M3); budgets (M4).
+
+**Recorded for later (owner, 2026-10-10): the monthly AI budget can be set
+to stop, not warn.** Today the practice's monthly AI budget is a warning
+(a banner from 80%), and only "Explain this step" refuses past it. The daily
+cap stops only what the worker does with nobody asking; anything a person
+presses (session prep, Consolidate, narrative drafts, the meeting tray) is
+never counted or stopped. A practice owner should be able to choose that the
+monthly budget **stops** person-triggered calls too, with the button saying
+so and when it resets. Not built. It came up because the demo now holds a
+real key: until this exists, **the key's own limit in the Anthropic console
+is the guard for the demo.**
 
 ---
 
