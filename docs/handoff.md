@@ -1,13 +1,206 @@
 # Execs NOW HQ — handoff to the next chat
 
-Written 2026-10-03, replacing the 2026-09-22 version; **last updated at the end
-of 2026-10-05**, after Release 5 (the UI work), Release 6 (Shawn's beta
-feedback) and the digest schedule build. **The next session starts at "Next"
-below.** Upload this at the start of the next chat with: "Read this handoff,
+Written 2026-10-03, replacing the 2026-09-22 version; **last updated the night
+of 2026-10-10 Mountain (2026-10-11 UTC, the date the specs and the runbook
+carry)**, after Release 10 (P6 M1, Bookkeeping) and P6 M2's two stops on
+`dev`. **The next session starts at "Tonight's state" and "Tomorrow's queue"
+below.** Everything from "Next" down was last brought up to date on 10/5 and
+after Release 7; where it and the section below disagree, the section below
+is the newer. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## Next
+## Tonight's state (end of 2026-10-10 Mountain)
+
+**Production is `main` at `a4037fb`: Release 10, 2026-10-11 01:28 UTC.** `dev`
+is three commits ahead, at `0abb177`. The runbook has the observed record of
+every release through 10 (`docs/phase7_cutover_runbook.md`, "Releasing a
+migration").
+
+**Release 10 put P6 M1, Bookkeeping, in production**
+(`docs/p6_m1_reconciliation_month_close.md`): sub-categories with combine,
+split, archive and remove; the CPA's chart as the starting chart (§5.4) and
+the CPA's worksheet export; reconciliation, month close and guided mode with
+"Explain this step"; the "Estimated tax payment" mark on an owner draw and
+the year-end facts; bulk actions on entries; the Getting started dismissals;
+and invoice income entered by the kind of invoice (§5.6). M1 was accepted by
+Bryan on the demo before it went.
+
+- **Nine migrations,** applied in the waiting worker, all OK: `tenancy` 0012
+  and 0013, `finance` 0003 to 0008, `billing` 0002.
+- `finance` 0008 was added at the release, on Bryan's choice: production's
+  chart had no "Retainers", so it adds one under "Client fees" for Executives
+  Now and points recurring invoices at it. From the release on, payments on
+  recurring invoices go to Retainers and on one-off invoices to Project fees
+  with no setting touched.
+- **§5.6's move is specified and not built.** Every invoice payment
+  Executives Now recorded before Release 10 still sits on the "Client fees"
+  parent. The move (each to Retainers or Project fees by its invoice's kind,
+  closed months included, totals asserted unchanged) is in the spec under
+  "The move, for books that already have invoice income on the parent". It is
+  built and run only on Bryan's word, as part of a release, after a dry run.
+- **Not done at Release 10:** nothing in it had been seen in a signed-in
+  browser on production when it went out; production's database was not read
+  afterwards; `/healthz` was sampled only from R3 on; the backup relied on
+  was the 08:03 UTC dump, 17 hours old, with no fresh one taken.
+- Recorded for later, not built: **"the monthly AI budget can be set to stop,
+  not warn"** (M1 §12). Until then a person pressing a button is held only by
+  the 20 a day below and, on the demo, by the key's own limit in the
+  Anthropic console.
+
+**P6 M2, the cash forecast, is built on `dev` in two stops and not released**
+(`docs/p6_m2_cash_forecast.md`; its decisions table §12, the brief beside it
+§12a, and an "As built" section for each stop).
+
+| Commit | What |
+|---|---|
+| `a94c74e` | The M2 spec, and the runbook's Release 10 record |
+| `849f854` | **Stop 1:** the forecast from known and regular lines, the card, the floor, the screen with 30, 90 and 180 days by week and 12 months, the dashboard line, the download, and the `forecast` module ("Cash forecast"; needs Bookkeeping; off for existing practices). Migration `finance` 0009 |
+| `0abb177` | **Stop 2:** planned lines and what-ifs, changes to a line with undo, "how good it has been", "Explain this forecast", "Review with Claude", the setting "Include client names in AI explanations", and the demo's forecast data. Migration `finance` 0010 |
+
+- Both migrations are additive with no data step, and are applied to the
+  laptop's `execsnowhq_local`. Neither is in production.
+- **Stop 1 was on the demo and timed there:** Forecast tab 110 ms median,
+  dashboard line 88 ms, so no cache was added.
+- **Stop 2 is pushed and not yet on the demo in any way that can be looked
+  at.** The push deploys the demo by itself and the demo applies 0010 at
+  start, but **that deploy was not checked**, and until the reseed the demo
+  has the module off and none of the seeded forecast data.
+- **Pressed AI calls:** "Explain this step", "Explain this forecast" and
+  "Review with Claude" share one limit of 20 a day per practice and never go
+  past the monthly AI budget. The worker's daily cap counts only what nobody
+  asked for (decided 10/10).
+- **Not proven:** nobody has seen any M2 screen in a browser; no real key has
+  answered Explain or Review (a fake answers in the tests); nothing in M2 has
+  run on real books.
+- Tests at `0abb177`, by `scripts/gate.sh`: **2975 backend passed (3 skipped,
+  2 xfailed), 971 frontend**, migration check and type check clean.
+
+**The brief for the rest of P6 is `docs/p6_finance_expansion_brief.md`,**
+saved verbatim from Bryan on 10/10. **It is the source for M3 and M4.** Where
+a recorded decision in a spec differs from it, the decision holds (M2 §12a
+shows how that was done for M2). The CPA's chart note for M4 is in M1 §5.4.
+
+### The demo as it is set up
+
+- **demo.getexecutivesnow.com**, Railway project `execs-now-hq-demo` (id
+  `792ddb0f-a2fb-45a0-9034-fafca1d4d81f`), environment `production`, web
+  service `execs-now-hq`, database `railway`. It deploys from `dev` on every
+  push, applies its own migrations at start, and has **no worker**.
+- **The practice is Summit Operations Partners,** fictional, owned by "John
+  Carter", who signs in as `bryan.baker@getexecutivesnow.com` with the
+  Internal Google client. Its books run January 2025 to today: 21 months
+  reconciled and closed through September 2026, October in progress.
+- **Mail goes only through the redirect.** `DEMO_MAIL_REDIRECT` on the demo
+  service replaces every recipient with one address before a message is
+  built, and it goes out from `DEMO_MAIL_FROM`. Empty, the demo sends
+  nothing. The setting refuses to exist anywhere but the demo. Because there
+  is no worker, **approving a digest on the demo sends it at once**, inside
+  the request, and a digest whose window has passed is marked expired at the
+  next page load. Production is unchanged by either.
+- **A reseed empties the demo's database and rebuilds it, and keeps three
+  things:** Django's own tables (sites, migrations and the rest of
+  `demo.DJANGOS_OWN`), the owner's **Gmail connection**, and the practice's
+  **Anthropic key**. The key's own limit in the Anthropic console is the
+  guard on the demo's AI spend.
+- **Changing a variable on the demo service** was refused to Claude Code by
+  the permission check; variable changes go to Bryan as a copy-paste block.
+
+**Reseeding, in three steps, each a paste-back:**
+
+1. **The pre-check, read-only, run by Bryan.** Claude Code's own run of it
+   was refused twice by the permission check ("production reads"), so it is
+   handed over. Save the script below to a file, then in the Claude Code
+   prompt:
+
+   ```
+   ! cd ~/projects/execs-now-hq && railway ssh -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production -s execs-now-hq -- "echo $(base64 -w0 <the file>) | base64 -d | python manage.py shell"
+   ```
+
+   ```python
+   import os
+   from django.conf import settings
+   from django.db import connection
+   from django.db.migrations.executor import MigrationExecutor
+   from apps.crm.models import GmailConnection
+   from apps.tenancy.models import Tenant, TenantSecret
+   from apps.tenancy import demo
+   print("ENV", settings.APP_ENVIRONMENT, "| DB", settings.DATABASES["default"]["NAME"])
+   print("COMMIT", os.environ.get("RAILWAY_GIT_COMMIT_SHA"))
+   ex = MigrationExecutor(connection)
+   print("UNAPPLIED", [str(m[0]) for m in ex.migration_plan(ex.loader.graph.leaf_nodes())])
+   for t in Tenant.objects.all():
+       print("PRACTICE", t.pk, t.slug, "| oauth_client", t.oauth_client, "| from", t.from_address)
+   k = demo.kept_mail_connection()
+   print("WOULD_KEEP", None if k is None else {a: k[a] for a in ("user_email", "email_address", "send_as_address", "oauth_client")})
+   print("SECRETS", TenantSecret.all_objects.count())
+   with connection.cursor() as c:
+       for t in demo.DJANGOS_OWN:
+           c.execute(f'SELECT count(*) FROM "{t}"')
+           print("OWN", t, c.fetchone()[0])
+   k = demo.kept_ai_key()
+   print("AI_KEY would keep", None if k is None else {"owner_emails": k["owner_emails"], "last4 set": bool(k["last4"]), "cipher bytes": len(k["ciphertext"]), "verified_at": k["verified_at"]})
+   ```
+
+   These lines are cut from the script used on 10/8 to 10/10, which lived in
+   a session's scratch folder and is **not in the repo**; the cut-down copy
+   here has not itself been run.
+2. **Read what comes back. Reseed only if all of these hold;** otherwise stop
+   and say which does not:
+   - `ENV` is `demo` and the database is `railway`;
+   - `COMMIT` is the commit meant to be looked at, and `UNAPPLIED` is empty;
+   - `WOULD_KEEP` is not `None` (the Gmail connection will be kept), and its
+     `oauth_client` is what the seed is given as `--oauth-client`;
+   - `AI_KEY would keep` is not `None`;
+   - Django's own tables are there, with their counts noted to compare after.
+3. **The reseed,** which Claude Code has been allowed to run, about three
+   minutes:
+
+   ```
+   railway ssh -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production -s execs-now-hq -- python manage.py seed_demo --database railway --ff-email bryan.baker@getexecutivesnow.com --oauth-client internal
+   ```
+
+   It prints its counts, which are reported back; for the forecast they are
+   under `forecast` (cash today, the floor, the 90-day low, the first week
+   under the floor, lines by kind, planned, what-ifs, changes, not counted,
+   likely annual, months kept).
+
+## Tomorrow's queue
+
+In this order.
+
+1. **Reseed the demo** onto `0abb177` by the three steps above. Before
+   reading anything else, confirm the deploy itself: `COMMIT` is `0abb177…`
+   and `UNAPPLIED` is empty, which is the first evidence that `finance` 0010
+   applied there.
+2. **Bryan's look at stop 2 on the demo.** First time any of it is in a
+   browser, and the first real answers from Explain and Review. What he
+   finds is fixed in M2, each fix its own commit, gate green.
+3. **Empty forecast lists say "None".** Bryan's ask, not built. Which lists
+   are meant (Known, Regular, Planned, Changes, Not counted, Likely annual)
+   and whether a list that hides itself when empty should show instead is to
+   be settled with him or from his look; today "Likely annual" and some
+   others are not drawn at all when empty.
+4. **A first-of-the-month snapshot job.** Today the month's forecast is kept
+   the first time the forecast is worked out in that month, so a month the
+   owner never opens the app has no row in "how good it has been". The job
+   takes it on the 1st for every practice with the module. It goes in the
+   worker's schedules (`ensure_schedules`); it calls no AI; the lazy snapshot
+   stays as the fallback. The demo has no worker, so its seed keeps taking
+   them itself.
+5. **Release M2,** on the word "release", by "Releasing a migration":
+   `finance` 0009 and 0010, both additive, nothing destructive, so no dry
+   run is owed, and any migration item 4 adds rides along. The module stays
+   off for Executives Now until Bryan switches it on in the Practices area.
+6. **M3's spec,** from `docs/p6_finance_expansion_brief.md`, in the shape of
+   M1's and M2's: what it proposes in plain terms and a decisions table with
+   a recommendation on each. No code until Bryan answers.
+
+Still open behind these, in no order: §5.6's move for production's old
+invoice income (above); a smoke check of Release 10 in a signed-in browser on
+production; "the monthly AI budget can be set to stop, not warn".
+
+## Next (as of 10/5, updated after Release 7; older than the two sections above)
 
 In this order.
 
@@ -170,6 +363,9 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | UI 3 phase 5 pictures wherever initials show | Not started |
 | **Digest schedule** Draft on / Send on, Update this draft, Send now, late, reminder emails | **Built on `dev` 10/5 (`21a3be2`, `c37f101`, `9eac353`), NOT released.** Spec and as-built: `docs/digest_schedule.md`. Release needs the dry run of `tenancy 0011`'s data step and Bryan's yes. Not seen in a browser by anyone yet |
 | "Staff" to "team" wording; flaky Strategy test fix | **On `dev` (`c075766`, `f9e8e04`), NOT released**; they go with the digest release |
+| **P6 M1** Bookkeeping: sub-categories, the CPA's chart, reconciliation, month close | **Released 10/10 Mountain (Release 10, `main` at `a4037fb`, nine migrations).** §5.6's move of old invoice income not built. See "Tonight's state" |
+| **P6 M2** cash forecast | **Both stops built on `dev` (`849f854`, `0abb177`), NOT released.** Stop 2 not yet looked at on the demo. See "Tonight's state" |
+| **P6 M3, M4** | Not specified. Source: `docs/p6_finance_expansion_brief.md` |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
