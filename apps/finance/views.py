@@ -6,6 +6,7 @@ client user gets 404; another practice gets 404 through the tenant manager.
 
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError
 from django.db.models import Q, Sum
 from django.http import Http404, HttpResponse
 from django.utils import timezone
@@ -130,13 +131,20 @@ class EntryViewSet(FinanceViewSet):
             qs = qs.filter(kind=params["kind"])
         if params.get("category") == "none":
             qs = qs.filter(category__isnull=True, kind__in=FinanceEntry.EARNED)
-        elif params.get("category") and params.get("subs") == "1":
-            # A category with its sub-categories: what a parent's figure on
-            # the P&L is made of (P6 M1).
-            qs = qs.filter(Q(category_id=params["category"])
-                           | Q(category__parent_id=params["category"]))
-        elif params.get("category"):
+        elif params.get("category") and params.get("subs") == "0":
+            # Only what sits on the category itself: the P&L's "not broken
+            # down" line of a parent.
             qs = qs.filter(category_id=params["category"])
+        elif params.get("category"):
+            # A category means itself and all its sub-categories (owner,
+            # 2026-10-10): choosing a parent whose entries all sit on its
+            # sub-categories used to list nothing.
+            try:
+                qs = qs.filter(Q(category_id=params["category"])
+                               | Q(category__parent_id=params["category"]))
+                qs.exists()
+            except (ValueError, ValidationError):
+                raise services.FinanceError("category is a category, or none.") from None
         if params.get("account") == "none":
             qs = qs.filter(account__isnull=True)
         elif params.get("account"):

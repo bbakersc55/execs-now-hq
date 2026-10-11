@@ -309,8 +309,15 @@ def test_an_entry_sits_on_a_parent_or_a_sub_category_and_the_pnl_adds_up(kept, f
     # The entries behind a category's figure are its own and its
     # sub-categories'; behind a line's, that line's only.
     travel_id = kept["cat"]["Travel"]["id"]
+    # A category means itself and all its sub-categories, wherever it is
+    # filtered on; `subs=0` is the "not broken down" line, the parent alone.
+    assert get(api, ff, f"{E}?category={travel_id}").json()["count"] == 3
     assert get(api, ff, f"{E}?category={travel_id}&subs=1").json()["count"] == 3
-    assert get(api, ff, f"{E}?category={travel_id}").json()["count"] == 1
+    assert get(api, ff, f"{E}?category={travel_id}&subs=0").json()["count"] == 1
+    air = get(api, ff, f"{E}?category={kept['cat']['Airfare']['id']}").json()
+    assert air["count"] >= 1 and {row["category"]["name"] for row in air["entries"]} == {
+        "Airfare"}, "a sub-category is itself"
+
 
     text = get(api, ff, R + "pnl/?year=2026&download=1").content.decode()
     lines = list(csv.reader(io.StringIO(text)))
@@ -466,6 +473,27 @@ def test_combining_takes_sub_categories_along_and_is_refused_where_it_makes_no_s
     assert merge("Interest income", "Referral fees received").status_code == 200
     assert get(api, ff, "/api/finance-settings/").json()["invoice_income_category"] == \
         cat["Referral fees received"]["id"]
+
+
+@pytest.mark.django_db
+def test_filtering_on_a_parent_lists_what_sits_on_its_sub_categories(kept, ff, api):
+    """Owner, 2026-10-10: choosing "Travel: meals" said "No entry matches",
+    because every entry sat on one of its sub-categories."""
+    meals = post(api, ff, C, {"name": "Client meals", "type": "expense"}).json()
+    lunches = post(api, ff, C, {"name": "Lunches", "parent": meals["id"]}).json()
+    dinners = post(api, ff, C, {"name": "Dinners", "parent": meals["id"]}).json()
+    for cents, category in ((4200, lunches), (9900, dinners), (700, kept["cat"]["Meals"])):
+        post(api, ff, E, {"kind": "expense", "amount_cents": cents, "on_date": "2026-10-02",
+                          "account": kept["bank"]["id"], "category": category["id"]})
+    under = get(api, ff, f"{E}?category={meals['id']}").json()
+    assert under["count"] == 2 and under["totals"]["expenses_cents"] == 14100
+    assert {row["category"]["name"] for row in under["entries"]} == {"Lunches", "Dinners"}
+    assert get(api, ff, f"{E}?category={meals['id']}&subs=0").json()["count"] == 0
+    assert get(api, ff, f"{E}?category={lunches['id']}").json()["count"] == 1
+    assert get(api, ff, f"{E}?category=not-an-id").status_code == 400
+    # The CPA's worksheet-style export of entries is by date, not category;
+    # the same filter with dates still holds.
+    assert get(api, ff, f"{E}?category={meals['id']}&from=2026-10-03").json()["count"] == 0
 
 
 # ==================================================================== split

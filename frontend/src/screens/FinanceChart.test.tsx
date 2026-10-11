@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FinanceAccount, FinanceCategory, Pnl } from "../lib/api";
-import { FINANCE_DISCLAIMER, categoryOptions, inTreeOrder } from "../lib/finance";
+import { FINANCE_DISCLAIMER, SUB_INDENT, categoryOptions, inTreeOrder } from "../lib/finance";
 import { aMe } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { Finance } from "./Finance";
@@ -173,7 +173,7 @@ describe("categories in two levels", () => {
     const panel = screen.getByRole("group", { name: "Combine Meals" });
     const into = within(panel).getByLabelText("Combine Meals into");
     // Its own type only, sub-categories named with what they are under.
-    expect(within(into).getByText("Travel: Airfare")).toBeInTheDocument();
+    expect(within(into).getByRole("option", { name: "Airfare" })).toBeInTheDocument();
     expect(within(into).queryByText("Client fees")).not.toBeInTheDocument();
     expect(within(into).queryByText("Entertainment")).not.toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: /^Combine into/ }))
@@ -377,13 +377,15 @@ describe("categories in two levels", () => {
 });
 
 describe("categories wherever one is picked", () => {
-  it("lists a category and then its sub-categories, each named with what it is under", () => {
+  it("lists a category and then its sub-categories, indented beneath it", () => {
     expect(inTreeOrder(CATEGORIES.filter((c) => c.type === "expense")).map((c) => c.name))
       .toEqual(["Travel", "Airfare", "Lodging", "Meals", "Vehicle", "Entertainment"]);
     expect(categoryOptions(CATEGORIES.filter((c) => c.type === "expense" && !c.archived))
       .map(([, label]) => label)).toEqual([
-      "Travel", "Travel: Airfare", "Travel: Lodging", "Meals", "Vehicle"]);
-    // A sub-category whose parent is filtered out still names it.
+      "Travel", `${SUB_INDENT}Airfare`, `${SUB_INDENT}Lodging`, "Meals", "Vehicle"]);
+    expect(SUB_INDENT).toMatch(/^\u00a0+$/);
+    // A sub-category whose parent is filtered out cannot sit under it, so it
+    // is named with it.
     expect(categoryOptions([CATEGORIES[3]], CATEGORIES)).toEqual([["air", "Travel: Airfare"]]);
   });
 });
@@ -435,11 +437,11 @@ describe("the profit and loss in two levels", () => {
     async () => {
       showPnl();
       expect(await screen.findByRole("link", { name: "Travel, Q1: $650.00" })).toHaveAttribute(
-        "href", "/finance?category=travel&subs=1&from=2026-01-01&to=2026-03-31");
+        "href", "/finance?category=travel&from=2026-01-01&to=2026-03-31");
       expect(screen.getByRole("link", { name: "Airfare, Q1: $400.00" })).toHaveAttribute(
         "href", "/finance?category=air&from=2026-01-01&to=2026-03-31");
       expect(screen.getByRole("link", { name: "Travel, not broken down, Q2: $50.00" }))
-        .toHaveAttribute("href", "/finance?category=travel&from=2026-04-01&to=2026-06-30");
+        .toHaveAttribute("href", "/finance?category=travel&subs=0&from=2026-04-01&to=2026-06-30");
       expect(screen.getByRole("link", { name: "Meals, Q2: $12.00" })).toHaveAttribute(
         "href", "/finance?category=meals&from=2026-04-01&to=2026-06-30");
     });

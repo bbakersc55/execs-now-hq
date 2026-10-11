@@ -330,6 +330,7 @@ function Entries() {
             onChange={(e) => set("category", e.target.value)}>
             <option value="">Every category</option>
             <option value="none">No category yet</option>
+            {/* A parent here is the parent and all its sub-categories. */}
             {categoryOptions(categories).map(
               ([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
@@ -548,13 +549,14 @@ function ProfitAndLoss() {
     setParams(next, { replace: true });
   };
   // The entries behind one figure: that category, in that month or quarter.
-  // A category with sub-categories is its own entries and theirs.
-  const behind = (category: string, period: number, subs = false) => {
+  // A category means itself and its sub-categories; `only` is for a parent's
+  // "not broken down" line, which is what sits on the parent itself.
+  const behind = (category: string, period: number, only = false) => {
     const first = by === "month" ? period + 1 : period * 3 + 1;
     const last = by === "month" ? period + 1 : period * 3 + 3;
     const pad = (n: number) => String(n).padStart(2, "0");
     const end = new Date(Date.UTC(r.year, last, 0)).getUTCDate();
-    return `/finance?category=${category}${subs ? "&subs=1" : ""}`
+    return `/finance?category=${category}${only ? "&subs=0" : ""}`
       + `&from=${r.year}-${pad(first)}-01&to=${r.year}-${pad(last)}-${pad(end)}`;
   };
   const line = (row: PnlRow, parent?: PnlRow) => {
@@ -573,7 +575,7 @@ function ProfitAndLoss() {
         </td>
         {row.amounts.map((cents, i) => (
           <td key={i} className="money">{cents === 0 ? <span className="muted">—</span>
-            : <Link to={behind(row.id, i, subs)}
+            : <Link to={behind(row.id, i, !!row.direct)}
               aria-label={`${row.name}, ${r.periods[i]}: ${dollars(cents)}`}>
               {dollars(cents)}</Link>}</td>
         ))}

@@ -31,10 +31,20 @@ export function categoryLabel(category: FinanceCategory, all: FinanceCategory[])
   return parent ? `${parent.name}: ${category.name}` : category.name;
 }
 
-/** What a category picker offers: `[id, label]` in tree order. */
+/** How far a sub-category is set in under its parent in a dropdown. An
+ *  `<option>` takes no styling a browser can be relied on to draw, so the
+ *  indent is in the text: no-break spaces, which are not collapsed. */
+export const SUB_INDENT = "\u00a0\u00a0\u00a0\u00a0";
+
+/** What a category picker offers: `[id, label]` as a tree (owner,
+ *  2026-10-10): each category, then its sub-categories indented beneath it.
+ *  A sub-category whose parent is not in the list (filtered out, say) cannot
+ *  sit under it, so it is named with it instead: "Travel: Airfare". */
 export function categoryOptions(categories: FinanceCategory[],
                                 all: FinanceCategory[] = categories): [string, string][] {
-  return inTreeOrder(categories).map((c) => [c.id, categoryLabel(c, all)]);
+  const ids = new Set(categories.map((c) => c.id));
+  return inTreeOrder(categories).map((c) => [
+    c.id, c.parent && ids.has(c.parent) ? `${SUB_INDENT}${c.name}` : categoryLabel(c, all)]);
 }
 
 /** Guided mode's steps (P6 M1 §4.2): written here, free, and always shown.
