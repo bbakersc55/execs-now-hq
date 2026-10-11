@@ -46,6 +46,26 @@ def kept_mail_connection():
             "oauth_client": row.tenant.oauth_client}
 
 
+def kept_ai_key():
+    """The demo practice's own Anthropic key, lifted out before the reset so
+    that re-seeding does not mean entering it again (owner, 2026-10-10). The
+    sealed bytes only, never the key: `foundation.restore_ai_key` puts them
+    back, for the same practice owner."""
+    from apps.tenancy.models import Membership, SecretKind, TenantSecret
+
+    row = (TenantSecret.all_objects.filter(kind=SecretKind.ANTHROPIC_API_KEY,
+                                           user__isnull=True)
+           .order_by("-verified_at", "-created_at").first())
+    if row is None:
+        return None
+    owners = Membership.all_objects.filter(
+        tenant_id=row.tenant_id, role="FF", revoked_at__isnull=True
+    ).values_list("user__email", flat=True)
+    return {"owner_emails": sorted(email.lower() for email in owners),
+            "ciphertext": bytes(row.ciphertext), "last4": row.last4,
+            "verified_at": row.verified_at, "rotated_at": row.rotated_at}
+
+
 def stored_objects():
     """Every file the demo holds, so the reset can take them out of its bucket
     as well as out of its database."""
@@ -88,7 +108,7 @@ def ensure_site() -> None:
 
 
 def build(*, ff_email: str, ff_name: str = "", oauth_client: str = "internal",
-          mail_connection=None, today=None) -> dict:
+          mail_connection=None, ai_key=None, today=None) -> dict:
     """The whole practice. Returns the practice and what was made, in counts."""
     from django.utils import timezone
 
@@ -109,5 +129,8 @@ def build(*, ff_email: str, ff_name: str = "", oauth_client: str = "internal",
             work.engagements(world)
             comms.everything(world)
             foundation.restore_mail_connection(world, mail_connection)
+            # Last, so nothing the seed itself does can spend on it: the
+            # demo's own content is written without Claude.
+            foundation.restore_ai_key(world, ai_key)
             counts = foundation.counts(world)
     return {"tenant": world.tenant, "counts": counts}

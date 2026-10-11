@@ -1257,7 +1257,9 @@ def test_where_each_kind_goes_is_the_owners_to_change_in_the_finance_settings(
     expense = next(row for row in cats.values() if row["type"] == "expense")
     assert post(api, ff, S_, {"recurring_income_category": expense["id"]}).status_code == 400
     with tenant_context(acme[0].tenant.pk):
-        event = AuditEvent.objects.filter(verb="finance.settings_changed").first()
+        # The first of the two changes, by when it was made, not by chance.
+        event = AuditEvent.objects.filter(verb="finance.settings_changed").order_by(
+            "created_at").first()
         assert event.payload["before"]["one_off_income_category"] == cats["Project fees"]["id"]
         assert event.payload["after"]["one_off_income_category"] == cats["Other income"]["id"]
 

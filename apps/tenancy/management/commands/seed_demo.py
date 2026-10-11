@@ -17,8 +17,9 @@ owner. Inside the demo that person is shown as John Carter (`--ff-name`): the
 demo has its own database, so the name there is the demo's alone.
 
 The demo's own send-only Gmail connection, if it has one, is carried across
-the reset, so re-seeding does not mean connecting Gmail again. The files the
-old demo stored are taken out of its bucket.
+the reset, so re-seeding does not mean connecting Gmail again. So is the demo
+practice's own Anthropic key, if it has one, for the same practice owner. The
+files the old demo stored are taken out of its bucket.
 """
 
 from __future__ import annotations
@@ -65,10 +66,12 @@ class Command(BaseCommand):
         began = time.monotonic()
         with transaction.atomic():
             kept = demo.kept_mail_connection()
+            ai_key = demo.kept_ai_key()
             old_files = demo.stored_objects()
             emptied = demo.reset_database()
             made = demo.build(ff_email=options["ff_email"], ff_name=options["ff_name"],
-                              oauth_client=options["oauth_client"], mail_connection=kept)
+                              oauth_client=options["oauth_client"], mail_connection=kept,
+                              ai_key=ai_key)
         # Only once the new demo is committed: a failed seed rolls back to the
         # old one, which still needs its files.
         removed = 0

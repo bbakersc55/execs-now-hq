@@ -393,6 +393,10 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         secret = TenantSecret.all_objects.create(
             tenant=tenant, kind=SecretKind.GMAIL_REFRESH, user=owner,
             ciphertext=b"sealed", last4="oken")
+        TenantSecret.all_objects.create(
+            tenant=tenant, kind=SecretKind.ANTHROPIC_API_KEY, user=None,
+            ciphertext=b"sealed-key", last4="9zzz", verified_at=timezone.now(),
+            verified_by=owner)
         GmailConnection.all_objects.create(
             tenant=tenant, user=owner, email_address=OWNER, scopes=["gmail.send"],
             send_as_address=settings.DEMO_MAIL_FROM, send_as_verified_at=timezone.now(),
@@ -414,6 +418,21 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert Contact.objects.count() == counts_first[0], "the same practice, not two"
         assert Company.objects.filter(is_client_company=True).count() == 11
         assert ClientInvoice.objects.count() < counts_first[2]
+        # The demo's own Anthropic key is carried across too, sealed as it was,
+        # and the practice still allows no automatic spend on it.
+        from apps.tenancy import ai_guard, claude
+        from apps.tenancy.models import SecretKind, TenantSecret
+
+        key = TenantSecret.objects.get(kind=SecretKind.ANTHROPIC_API_KEY)
+        assert bytes(key.ciphertext) == b"sealed-key" and key.last4 == "9zzz"
+        assert key.user_id is None and key.verified_at is not None
+        assert key.verified_by.email == OWNER
+        assert claude._tenant_secret(again) == key
+        assert again.ai_unattended_daily_cap_usd == 0
+        assert ai_guard.cap_reached(again), "every unattended call is skipped"
+        assert ai_guard.refusal(again, purpose="digest_narrative", target_type="",
+                                target_id=None, input_hash="x") == ai_guard.DAILY_CAP
+        assert '"AI key kept": true' in said
         kept = GmailConnection.objects.get()
         assert kept.send_as_address == settings.DEMO_MAIL_FROM and kept.secret_id
         assert bytes(kept.secret.ciphertext) == b"sealed", \

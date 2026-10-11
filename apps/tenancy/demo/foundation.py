@@ -372,6 +372,27 @@ def restore_mail_connection(world: World, kept) -> bool:
     return True
 
 
+def restore_ai_key(world: World, kept) -> bool:
+    """Put back the Anthropic key lifted out before the reset, when the same
+    person signs in as the practice owner. Its sealed bytes are copied as
+    they were; nothing here reads the key.
+
+    The practice keeps the limits it is seeded with: **$0 a day of automatic
+    spend** (and the demo runs no worker to make any), so the key is spent
+    only when a person presses something."""
+    from apps.tenancy.models import SecretKind, TenantSecret
+
+    if not kept or world.owner.email.lower() not in kept["owner_emails"]:
+        return False
+    TenantSecret.all_objects.create(
+        tenant=world.tenant, kind=SecretKind.ANTHROPIC_API_KEY, user=None,
+        ciphertext=kept["ciphertext"], last4=kept["last4"],
+        verified_at=kept["verified_at"], verified_by=world.owner,
+        rotated_at=kept["rotated_at"])
+    world.extra["ai_key_kept"] = True
+    return True
+
+
 # ------------------------------------------------------------------ counts
 
 def counts(world: World) -> dict:
@@ -479,4 +500,6 @@ def counts(world: World) -> dict:
         "import rules": FinanceRule.objects.count(),
         "stored files": StoredFile.objects.count(),
         "mail connection kept": bool(world.extra.get("mail_connection_kept")),
+        "AI key kept": bool(world.extra.get("ai_key_kept")),
+        "AI, automatic spend allowed a day (USD)": world.tenant.ai_unattended_daily_cap_usd,
     }
