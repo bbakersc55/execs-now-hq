@@ -319,13 +319,13 @@ export function NotCounted({ rows, busy, send }: {
   rows: Forecast["left_out"]; busy: boolean; send: Send;
 }) {
   const [when, setWhen] = useState<Record<string, string>>({});
-  if (rows.length === 0) return null;
   return (
     <Card title="Not counted">
       <p className="small muted" style={{ marginTop: 0 }}>
         Invoices more than 60 days past due, and any you left out. They are not in the
         forecast: hoping is not forecasting. Put one back with the day you expect it.</p>
-      <table aria-label="Not counted"><tbody>
+      {rows.length === 0 && <p className="small">None.</p>}
+      {rows.length > 0 && <table aria-label="Not counted"><tbody>
         {rows.map((row) => (
           <tr key={row.id}>
             <td><Link to={row.link}>{row.label}</Link>
@@ -353,7 +353,7 @@ export function NotCounted({ rows, busy, send }: {
             </td>
           </tr>
         ))}
-      </tbody></table>
+      </tbody></table>}
     </Card>
   );
 }
@@ -362,7 +362,6 @@ export function LikelyAnnual({ rows, busy, send }: {
   rows: Forecast["likely_annual"]; busy: boolean; send: Send;
 }) {
   const [open, setOpen] = useState("");
-  if (rows.length === 0) return null;
   return (
     <Card title="Likely annual, to confirm">
       <p className="small muted" style={{ marginTop: 0 }}>
@@ -370,7 +369,8 @@ export function LikelyAnnual({ rows, busy, send }: {
         forecast</strong> until you confirm them, with the amount and the day you expect
         this year.
       </p>
-      <table aria-label="Likely annual, to confirm"><tbody>
+      {rows.length === 0 && <p className="small">None.</p>}
+      {rows.length > 0 && <table aria-label="Likely annual, to confirm"><tbody>
         {rows.map((row) => (
           <tr key={row.id}>
             <td>{row.label}{row.category && <span className="muted"> · {row.category}</span>}
@@ -400,7 +400,7 @@ export function LikelyAnnual({ rows, busy, send }: {
             </td>
           </tr>
         ))}
-      </tbody></table>
+      </tbody></table>}
     </Card>
   );
 }

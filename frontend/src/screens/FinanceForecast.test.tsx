@@ -208,6 +208,21 @@ describe("the forecast", () => {
       .toHaveTextContent("They are not in the forecast until you confirm them");
   });
 
+  it("says None under each of those two when it has nothing, and keeps the card",
+    async () => {
+      show(aForecast({ left_out: [], likely_annual: [] }));
+      for (const title of ["Not counted", "Likely annual, to confirm"]) {
+        const card = (await screen.findByRole("heading", { name: title }))
+          .closest("section") as HTMLElement;
+        expect(within(card).getByText("None.")).toBeInTheDocument();
+        expect(within(card).queryByRole("table")).toBeNull();
+      }
+      // What each list is for is still said, so "None" is none of something.
+      expect(screen.getByText(/hoping is not forecasting/)).toBeInTheDocument();
+      expect(screen.getByText(/Seen once, about a year ago, and not since/))
+        .toBeInTheDocument();
+    });
+
   it("draws the cash line with the same figures as the table, read by pointer or keys",
     async () => {
       show();
