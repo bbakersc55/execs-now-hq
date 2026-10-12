@@ -579,6 +579,7 @@ regular; one invoice 60-odd days overdue and not counted; six months of
   A practice whose owner does not open the app in a month has no row for
   that month in "how good it has been". A scheduled job would close that
   gap and was left out so that this stop added nothing to the worker.
+  *(Added 2026-10-12: see "As built: after stop 2" at the end.)*
 - **"What happened" is counted from the day the snapshot was taken** to the
   end of the month, so a snapshot taken on the 9th is set beside the 9th
   onward, not the whole month.
@@ -641,3 +642,27 @@ Claude says about a forecast, and whether it stays off advice. **Not
 verifiable without real books:** whether "two of the last three closed
 months" finds a real practice's regular costs without finding its one-offs;
 the demo's history is tidier than anyone's.
+
+## As built: after stop 2 (2026-10-12) — two fixes before the release
+
+- **"Not counted" and "Likely annual, to confirm" say "None." when they are
+  empty,** and keep their card and the sentence saying what they are for.
+  Before, each was not drawn at all when empty. "What you have changed" and
+  "How good it has been" still are not drawn when empty; Known, Regular and
+  Planned already showed "(0)".
+- **The month's forecast is kept by a scheduled job,**
+  `finance.keep_month_forecast` (`apps/finance/tasks.py`, declared in
+  `ensure_schedules`). It runs **every day at the practice's own midnight**
+  and keeps this month's forecast if it is not kept yet, so on the 1st it is
+  kept as the month begins and "what happened" is the whole month. It is
+  daily and not monthly so that a 1st the worker missed is made up the next
+  day it runs (shown as "as it stood on" that day) and not a month later. It
+  uses the practice's date, not the server's. It does nothing for a practice
+  without the Cash forecast or with fewer than two closed months, and calls
+  no AI.
+- **The first look is still the fallback:** a practice the job has not
+  reached (the module switched on mid-month, a worker that was down, the
+  demo, which has no worker) has its month kept the first time the forecast
+  is worked out, as before.
+- No migration. **At a release, `ensure_schedules` must be run in production
+  for the schedule to exist there.**

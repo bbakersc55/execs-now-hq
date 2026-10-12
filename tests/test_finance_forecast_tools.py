@@ -44,6 +44,7 @@ from .test_finance_reconcile import RC, begin
 from .test_finance_reconcile import M as MONTHS_URL
 
 RENT = "Larimer Square Cowork"
+RENT_CATEGORY = "Rent and coworking"
 
 
 @pytest.fixture
@@ -514,6 +515,110 @@ def test_the_forecast_for_a_month_is_kept_once_and_set_beside_what_happened(
     with tenant_context(tenant.pk):
         assert FinanceForecastSnapshot.objects.get().forecast == first
         assert FinanceForecastSnapshot.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_the_job_keeps_the_months_forecast_and_the_first_look_is_the_fallback(
+        running, ff, api, monkeypatch):
+    from django.core.management import call_command
+    from zoneinfo import ZoneInfo
+
+    from django_q.models import Schedule
+
+    from apps.finance import tasks
+
+    tenant = running["tenant"]
+    # Registered for the practice, daily, at its own midnight.
+    call_command("ensure_schedules", stdout=open("/dev/null", "w"))
+    schedule = Schedule.objects.get(name=f"finance.keep_month_forecast:{tenant.slug}")
+    assert schedule.func == "apps.finance.tasks.keep_month_forecast"
+    assert schedule.schedule_type == Schedule.DAILY
+    assert schedule.next_run.astimezone(ZoneInfo(tenant.timezone)).hour == 0
+
+    # On the 1st, before anyone has looked: the month's forecast is kept, from
+    # the 1st, by the practice's own date.
+    monkeypatch.setattr(tasks, "_today", lambda practice: THIS)
+    assert tasks.keep_month_forecast(str(tenant.pk)) is True
+    with tenant_context(tenant.pk):
+        kept = FinanceForecastSnapshot.objects.get()
+        assert (kept.month, kept.taken_on, kept.actual) == (THIS, THIS, None)
+        first = dict(kept.forecast)
+        assert first == forecast_as_looked_at(tenant, THIS)
+    # The next day's run, and a look at the screen, leave it as it was.
+    monkeypatch.setattr(tasks, "_today", lambda practice: THIS + timedelta(days=1))
+    assert tasks.keep_month_forecast(str(tenant.pk)) is False
+    get(api, ff, F)
+    with tenant_context(tenant.pk):
+        assert FinanceForecastSnapshot.objects.get().forecast == first
+
+    # A 1st the worker missed is made up by its next run, with its real day.
+    with tenant_context(tenant.pk):
+        FinanceForecastSnapshot.objects.all().delete()
+    assert tasks.keep_month_forecast(str(tenant.pk)) is True
+    with tenant_context(tenant.pk):
+        assert FinanceForecastSnapshot.objects.get().taken_on == THIS + timedelta(days=1)
+
+    # And a practice the job has not reached: the first look still keeps it.
+    with tenant_context(tenant.pk):
+        FinanceForecastSnapshot.objects.all().delete()
+    get(api, ff, F)
+    with tenant_context(tenant.pk):
+        assert FinanceForecastSnapshot.objects.get().taken_on == TODAY
+
+
+def forecast_as_looked_at(tenant, day):
+    """What a look at the forecast on this day would have kept."""
+    result = forecast.build(tenant, day, snapshot=False)
+    last = reconcile.month_end(day.replace(day=1)).isoformat()
+    mine = [row for row in result["lines"] if row["counted"] and row["on_date"] <= last]
+    money_in = sum(r["amount_cents"] for r in mine if r["direction"] == "in")
+    money_out = sum(r["amount_cents"] for r in mine if r["direction"] == "out")
+    by: dict = {}
+    for row in mine:
+        name = ("Client invoices" if row["kind"] == "known"
+                else row["category"] or row["label"])
+        by.setdefault(name, {"in": 0, "out": 0})[row["direction"]] += row["amount_cents"]
+    start = result["cash_today_cents"]
+    return {"start_cents": start, "in_cents": money_in, "out_cents": money_out,
+            "end_cents": start + money_in - money_out, "by": by}
+
+
+@pytest.mark.django_db
+def test_the_job_leaves_alone_a_practice_without_the_module_or_the_months(
+        cash, ff, api):          # noqa: F811
+    from apps.finance import tasks
+
+    tenant = cash["tenant"]
+    # The module, and not yet the closed months a forecast needs.
+    assert tasks.keep_month_forecast(str(tenant.pk)) is False
+    closed(tenant, back(3), back(2), back(1))
+    modules.set_enabled(tenant, modules.FORECAST, False, actor=ff.user)
+    assert tasks.keep_month_forecast(str(tenant.pk)) is False
+    with tenant_context(tenant.pk):
+        assert not FinanceForecastSnapshot.objects.exists()
+    modules.set_enabled(tenant, modules.FORECAST, True, actor=ff.user)
+    assert tasks.keep_month_forecast(str(tenant.pk)) is True
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_the_job_keeps_only_its_own_practices_forecast(
+        running, tenant_b):
+    from apps.finance import tasks
+
+    mine = running["tenant"]
+    other = _member(tenant_b, "FF")
+    for module in (modules.BOOKKEEPING, modules.FORECAST):
+        modules.set_enabled(tenant_b, module, True, actor=other.user)
+    closed(tenant_b, back(2), back(1))
+    assert tasks.keep_month_forecast(str(mine.pk)) is True
+    assert list(FinanceForecastSnapshot.all_objects.values_list("tenant_id", flat=True)) \
+        == [mine.pk], "the other practice's is not kept by this one's run"
+    kept = FinanceForecastSnapshot.all_objects.get(tenant=mine).forecast
+    assert kept["start_cents"] > 0 and RENT_CATEGORY in kept["by"]
+    assert tasks.keep_month_forecast(str(tenant_b.pk)) is True
+    theirs = FinanceForecastSnapshot.all_objects.get(tenant=tenant_b).forecast
+    assert theirs["start_cents"] == 0 and theirs["by"] == {}, "none of this one's books"
+    assert FinanceForecastSnapshot.all_objects.get(tenant=mine).forecast == kept
 
 
 @pytest.mark.django_db

@@ -65,6 +65,12 @@ SCHEDULES = [
     # numbers nothing and sends nothing.
     ("billing.run_invoice_schedules", "apps.billing.tasks.run_invoice_schedules",
      Schedule.DAILY, None, 5),
+    # P6 M2: the month's forecast, kept for "how good it has been". Daily at
+    # the practice's midnight, so the 1st is caught as the month begins and a
+    # missed 1st the day after; a no-op once the month's is kept, and for a
+    # practice without the Cash forecast.
+    ("finance.keep_month_forecast", "apps.finance.tasks.keep_month_forecast",
+     Schedule.DAILY, None, 0),
 ]
 
 

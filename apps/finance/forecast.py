@@ -1000,9 +1000,29 @@ def _by_name(rows: list[dict]) -> dict:
     return found
 
 
+def keep_month(tenant, today: date) -> bool:
+    """The scheduled job's (`tasks.keep_month_forecast`): keep this month's
+    forecast if it is not kept yet and there are the closed months to make
+    one. True when it kept one. Nothing else of the forecast is worked out."""
+    if FinanceForecastSnapshot.all_objects.filter(
+            tenant=tenant, month=today.replace(day=1)).exists():
+        return False
+    parts = _gather(tenant, today)
+    if not parts["ready"]:
+        return False
+    _accounts_listed, cash = _accounts(tenant, today)
+    opening = cash + _unplaced(tenant, today)
+    table = _table(tenant, today, parts, opening, settings_for(tenant).floor_cents,
+                   known=parts["known"], regular=parts["regular"],
+                   planned=parts["planned"])
+    _take_snapshot(tenant, today, table, opening)
+    return True
+
+
 def _take_snapshot(tenant, today: date, table: dict, opening: int) -> None:
-    """The forecast for this month as it stood the first time it was worked
-    out in the month. Taken once and never changed."""
+    """The forecast for this month as it stood when it was first worked out
+    in the month: by the job on the 1st, or, for a practice the job has not
+    reached, the first time anyone looks. Taken once and never changed."""
     month = today.replace(day=1)
     if FinanceForecastSnapshot.all_objects.filter(tenant=tenant, month=month).exists():
         return

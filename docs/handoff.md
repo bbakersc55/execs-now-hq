@@ -176,12 +176,20 @@ In this order.
 2. **Bryan's look at stop 2 on the demo.** First time any of it is in a
    browser, and the first real answers from Explain and Review. What he
    finds is fixed in M2, each fix its own commit, gate green.
-3. **Empty forecast lists say "None".** Bryan's ask, not built. Which lists
+3. **Empty forecast lists say "None".** **Done 10/12 (`c06279e`)** for "Not
+   counted" and "Likely annual, to confirm", the two Bryan named; "What you
+   have changed" and "How good it has been" still hide when empty. As it
+   was written: Bryan's ask, not built. Which lists
    are meant (Known, Regular, Planned, Changes, Not counted, Likely annual)
    and whether a list that hides itself when empty should show instead is to
    be settled with him or from his look; today "Likely annual" and some
    others are not drawn at all when empty.
-4. **A first-of-the-month snapshot job.** Today the month's forecast is kept
+4. **A first-of-the-month snapshot job.** **Done 10/12:**
+   `finance.keep_month_forecast`, daily at the practice's midnight, a no-op
+   once the month's is kept (M2 spec, "As built: after stop 2"). No
+   migration; **production gets the schedule only when `ensure_schedules` is
+   run there after the release**, and the laptop's qcluster needs a restart
+   and `ensure_schedules` to have it. As it was written: today the month's forecast is kept
    the first time the forecast is worked out in that month, so a month the
    owner never opens the app has no row in "how good it has been". The job
    takes it on the 1st for every practice with the module. It goes in the
