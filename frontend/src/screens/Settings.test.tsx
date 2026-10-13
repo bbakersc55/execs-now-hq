@@ -36,7 +36,7 @@ describe("Settings", () => {
   it("lists every section for the practice owner", () => {
     expect(settingsFor(aMe({ role: "FF" })).map((s) => s.label)).toEqual([
       "Email", "Branding", "Team", "Stage automations", "Referral settings", "Digests",
-      "Notes", "Invoices", "Finance", "AI usage",
+      "Tags", "Notes", "Invoices", "Finance", "AI usage",
     ]);
   });
 
@@ -60,6 +60,8 @@ describe("Settings", () => {
       "/rules": ["FF"], "/staff": ["FF"], "/ai-usage": ["FF"],
       // New address; the card on Notes was the practice owner's only.
       "/settings/notes": ["FF"],
+      // New on 2026-10-12: changing a tag everywhere is the practice owner's.
+      "/settings/tags": ["FF"],
       // P4A: numbering and how to pay are the practice owner's (13.4f).
       "/settings/invoices": ["FF"],
       // P5: the books are the practice owner's alone (13.7).
@@ -87,7 +89,7 @@ describe("Settings", () => {
     await user.click(screen.getByRole("menuitem", { name: "Settings" }));
 
     // /settings opens the first section the person has.
-    await waitFor(() => expect(sections()).toHaveLength(10));
+    await waitFor(() => expect(sections()).toHaveLength(11));
     expect(screen.getByRole("link", { name: "Email" })).toHaveClass("on");
   });
 
@@ -110,7 +112,7 @@ describe("Settings", () => {
   it.each(["/settings/email", "/settings/branding", "/referrals", "/rules", "/staff",
            "/ai-usage"])("still opens %s at its old address, inside Settings", async (path) => {
     await showApp(aMe({ role: "FF" }), path);
-    await waitFor(() => expect(sections()).toHaveLength(10));
+    await waitFor(() => expect(sections()).toHaveLength(11));
     const here = SETTINGS.find((s) => s.to === path)!;
     expect(screen.getByRole("link", { name: here.label })).toHaveClass("on");
     expect(document.querySelector(".settings-body")).not.toBeEmptyDOMElement();

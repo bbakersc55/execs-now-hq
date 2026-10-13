@@ -21,6 +21,10 @@ class Company(TenantScopedModel):
     name = models.CharField(max_length=200, db_index=True)
     industry = models.CharField(max_length=120, blank=True, default="")
     address = models.JSONField(null=True, blank=True)
+    # Their own pages on the two networks the practice works from (owner,
+    # 2026-10-12). Shown as links; nothing is read from either.
+    linkedin_url = models.URLField(max_length=500, blank=True, default="")
+    alignable_url = models.URLField(max_length=500, blank=True, default="")
 
     # FR-1.3a — designated recipient of company-level communication, and the
     # default FCC when portal access is first granted (FR-3.33d).
@@ -250,6 +254,9 @@ class Contact(TenantScopedModel):
     # Postgres text[] with a GIN index, per the data model. Postgres is settled
     # for this project; nothing here is designed for backend neutrality.
     tags = ArrayField(models.CharField(max_length=64), default=list, blank=True)
+    # As on a company (2026-10-12): shown as links, never read.
+    linkedin_url = models.URLField(max_length=500, blank=True, default="")
+    alignable_url = models.URLField(max_length=500, blank=True, default="")
 
     types = models.ManyToManyField(
         ContactType, through="crm.ContactTypeLink", related_name="contacts"

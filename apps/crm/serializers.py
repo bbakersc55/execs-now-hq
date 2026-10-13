@@ -13,6 +13,39 @@ from apps.crm.models import (
 )
 
 
+class PageUrlField(serializers.CharField):
+    """A person's or a company's page on one network (owner, 2026-10-12).
+
+    Pasted as people paste them: with or without `https://`. Kept only when it
+    is an address on that network, because it is shown as a link under the
+    network's name."""
+
+    def __init__(self, *, network: str, host: str, **kwargs):
+        self.network, self.host = network, host
+        super().__init__(required=False, allow_blank=True, max_length=500, **kwargs)
+
+    def to_internal_value(self, data):
+        from urllib.parse import urlsplit
+
+        from django.core.exceptions import ValidationError
+        from django.core.validators import URLValidator
+
+        value = super().to_internal_value(data).strip()
+        if not value:
+            return ""
+        if "://" not in value:
+            value = f"https://{value}"
+        try:
+            URLValidator(schemes=["http", "https"])(value)
+        except ValidationError:
+            raise serializers.ValidationError(f"That is not a {self.network} address.")
+        host = (urlsplit(value).hostname or "").lower()
+        if host != self.host and not host.endswith(f".{self.host}"):
+            raise serializers.ValidationError(
+                f"That is not a {self.network} address: it should be on {self.host}.")
+        return value
+
+
 def _company_by_name(tenant, name):
     """Match an existing company case-insensitively before creating one.
 
@@ -120,6 +153,8 @@ class ContactSerializer(serializers.ModelSerializer):
     )
     #: Optional initial placement: {"pipeline": id-or-name, "stage": id-or-code}.
     placement = serializers.DictField(required=False, write_only=True)
+    linkedin_url = PageUrlField(network="LinkedIn", host="linkedin.com")
+    alignable_url = PageUrlField(network="Alignable", host="alignable.com")
 
     #: Whether a touch will ever be drafted for them (owner, 2026-09-28).
     #: Annotated on the list, looked up for a single contact.
@@ -136,7 +171,7 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = [
             "id", "first_name", "last_name", "title", "company", "owner",
-            "source", "background", "tags",
+            "source", "background", "tags", "linkedin_url", "alignable_url",
             "emails", "phones", "type_codes", "pipeline_positions",
             "types", "company_name", "placement",
             "referral_fee_terms", "referral_cadence", "referral_touch_mode",
@@ -229,6 +264,8 @@ class ContactSerializer(serializers.ModelSerializer):
 
 
 class CompanySerializer(serializers.ModelSerializer):
+    linkedin_url = PageUrlField(network="LinkedIn", host="linkedin.com")
+    alignable_url = PageUrlField(network="Alignable", host="alignable.com")
     seats_in_use = serializers.IntegerField(read_only=True)
     seats_available = serializers.IntegerField(read_only=True)
     # Write-only: `Company.domains` is the reverse manager, which a ListField
@@ -241,7 +278,8 @@ class CompanySerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
         fields = [
-            "id", "name", "industry", "address", "primary_contact",
+            "id", "name", "industry", "address", "linkedin_url", "alignable_url",
+            "primary_contact",
             "is_client_company", "seat_count", "digest_ai_prose", "domains",
             "seats_in_use", "seats_available", "created_at",
         ]

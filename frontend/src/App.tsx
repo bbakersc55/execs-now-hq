@@ -26,6 +26,7 @@ import { TopBar } from "./components/TopBar";
 import { Profile } from "./screens/Profile";
 import { DigestSettings } from "./screens/DigestSettings";
 import { Settings } from "./screens/Settings";
+import { ContactTags } from "./screens/ContactTags";
 import { NotesSettingsPage } from "./screens/NotesSettingsPage";
 import { ContactDetail } from "./screens/ContactDetail";
 import { EmailSettings } from "./screens/EmailSettings";
@@ -343,6 +344,8 @@ export function App() {
             {me.role === "FF" && <Route path="/settings/digests"
               element={<Settings me={me}><DigestSettings /></Settings>} />}
             {/* The practice owner's only, as the card was on Notes. */}
+            {me.role === "FF" && <Route path="/settings/tags"
+              element={<Settings me={me}><ContactTags /></Settings>} />}
             {me.role === "FF" && <Route path="/settings/notes"
               element={<Settings me={me}><NotesSettingsPage /></Settings>} />}
             <Route path="/notes" element={<Notes me={me} />} />

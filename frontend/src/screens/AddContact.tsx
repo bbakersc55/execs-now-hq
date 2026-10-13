@@ -33,6 +33,8 @@ export function AddContact({ me, onDone, existing }: {
     company: existing?.company ?? "",
     company_name: "",
     tags: (existing?.tags ?? []).join(", "),
+    linkedin_url: existing?.linkedin_url ?? "",
+    alignable_url: existing?.alignable_url ?? "",
     owner: existing?.owner ?? "",
   });
   const [emails, setEmails] = useState<Row[]>(
@@ -77,6 +79,8 @@ export function AddContact({ me, onDone, existing }: {
       company: form.company || null,
       company_name: form.company ? "" : form.company_name.trim(),
       tags: form.tags.split(/[,;]/).map((t) => t.trim()).filter(Boolean),
+      linkedin_url: form.linkedin_url.trim(),
+      alignable_url: form.alignable_url.trim(),
       emails: emails.filter((e) => e.value.trim())
         .map((e) => ({ address: e.value.trim(), is_primary: e.is_primary })),
       phones: phones.filter((p) => p.value.trim())
@@ -240,6 +244,19 @@ export function AddContact({ me, onDone, existing }: {
           <Field label="Tags">
             <input value={form.tags} aria-label="Tags" placeholder="comma or semicolon separated"
               onChange={(e) => setForm({ ...form, tags: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="row">
+          <Field label="LinkedIn">
+            <input value={form.linkedin_url} aria-label="LinkedIn"
+              placeholder="linkedin.com/in/…"
+              onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} />
+          </Field>
+          <Field label="Alignable">
+            <input value={form.alignable_url} aria-label="Alignable"
+              placeholder="alignable.com/…"
+              onChange={(e) => setForm({ ...form, alignable_url: e.target.value })} />
           </Field>
         </div>
 

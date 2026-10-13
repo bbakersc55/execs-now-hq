@@ -26,6 +26,8 @@ export function AddCompany({ me, onDone, existing, people = [] }: {
   const [form, setForm] = useState({
     name: existing?.name ?? "",
     industry: existing?.industry ?? "",
+    linkedin_url: existing?.linkedin_url ?? "",
+    alignable_url: existing?.alignable_url ?? "",
     domains: (existing?.domains ?? []).join(", "),
     address: ((existing?.address as { lines?: string[] } | null)?.lines ?? []).join("\n"),
     seat_count: existing?.seat_count != null ? String(existing.seat_count) : "",
@@ -44,6 +46,8 @@ export function AddCompany({ me, onDone, existing, people = [] }: {
       const body = {
         name: form.name.trim(),
         industry: form.industry.trim(),
+        linkedin_url: form.linkedin_url.trim(),
+        alignable_url: form.alignable_url.trim(),
         domains: form.domains.split(/[,;\s]+/).map((d) => d.trim()).filter(Boolean),
         address: form.address.trim() ? { lines: form.address.split("\n") } : null,
         ...(isFF && form.seat_count ? { seat_count: Number(form.seat_count) } : {}),
@@ -82,6 +86,19 @@ export function AddCompany({ me, onDone, existing, people = [] }: {
           <Field label="Industry">
             <input value={form.industry} aria-label="Industry"
               onChange={(e) => setForm({ ...form, industry: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="row">
+          <Field label="LinkedIn">
+            <input value={form.linkedin_url} aria-label="LinkedIn"
+              placeholder="linkedin.com/company/…"
+              onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} />
+          </Field>
+          <Field label="Alignable">
+            <input value={form.alignable_url} aria-label="Alignable"
+              placeholder="alignable.com/…"
+              onChange={(e) => setForm({ ...form, alignable_url: e.target.value })} />
           </Field>
         </div>
 

@@ -138,6 +138,8 @@ export interface Contact {
   source: string;
   background: string;
   tags: string[];
+  linkedin_url?: string;
+  alignable_url?: string;
   emails: { id: string; address: string; is_primary: boolean }[];
   phones: { id: string; number: string; is_primary: boolean }[];
   type_codes: string[];
@@ -156,6 +158,8 @@ export interface Company {
   id: string;
   name: string;
   industry: string;
+  linkedin_url?: string;
+  alignable_url?: string;
   domains?: string[];
   address?: { lines?: string[] } | null;
   is_client_company: boolean;

@@ -5,7 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { ClientStatus } from "../components/ClientStatus";
 import { useRowLink } from "../components/shell";
 
-import { Banner, Card, Empty, Pill, when, positionsLabel } from "../components/ui";
+import { Banner, Card, Empty, PageLinks, Pill, when, positionsLabel } from "../components/ui";
 import { AddCompany } from "./AddCompany";
 import { Company, Contact, Me, api } from "../lib/api";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
@@ -91,6 +91,8 @@ export function CompanyDetail({ me }: { me: Me }) {
         {c.is_client_company && <> · <Pill kind="ok">client company</Pill></>}
         {seats && seats.seat_count !== null
           && <> · {seats.seats_in_use} of {seats.seat_count} seats used</>}
+        {(c.linkedin_url || c.alignable_url) && <> · <PageLinks linkedin={c.linkedin_url}
+          alignable={c.alignable_url} /></>}
       </p>
 
       <ClientStatus me={me} company={c} />

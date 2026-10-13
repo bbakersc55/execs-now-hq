@@ -157,3 +157,18 @@ export function ToastHost() {
     ? <div className="toast bad" role="alert">{text}</div>
     : <div className="toast" role="status">{text}</div>;
 }
+
+/** Someone's LinkedIn and Alignable pages, as links (owner, 2026-10-12).
+ *  Nothing when they have neither. */
+export function PageLinks({ linkedin, alignable }: { linkedin?: string; alignable?: string }) {
+  const links = [["LinkedIn", linkedin], ["Alignable", alignable]].filter(([, url]) => url);
+  if (links.length === 0) return null;
+  return (
+    <span className="page-links">
+      {links.map(([name, url], i) => (
+        <span key={name}>{i > 0 && " · "}
+          <a href={url} target="_blank" rel="noopener noreferrer">{name}</a></span>
+      ))}
+    </span>
+  );
+}

@@ -57,7 +57,8 @@ def _json_field(request, name):
 
 #: What a one-click group merge fills on the survivor when the survivor has it
 #: empty (2026-09-29). The two-record screen asks field by field instead.
-MERGE_FILL_FIELDS = ("title", "source", "background", "referral_fee_terms", "company_id")
+MERGE_FILL_FIELDS = ("title", "source", "background", "referral_fee_terms", "company_id",
+                     "linkedin_url", "alignable_url")
 
 class TenantStaffViewSet(viewsets.ModelViewSet):
     permission_classes = [crm_perms.IsTenantStaff]
@@ -737,6 +738,66 @@ class ServiceCategoryViewSet(ContactTypeViewSet):
 
     def get_queryset(self):
         return ServiceCategory.objects.all()
+
+
+class ContactTagViewSet(viewsets.GenericViewSet):
+    """The practice's contact tags, for Settings (owner, 2026-10-12).
+
+    A tag is added on a contact, as it always was: it is a word on a contact
+    and has no row of its own. What was missing is changing one everywhere:
+    `rename` (onto a tag that exists already merges the two) and `remove`.
+    The practice owner's, and audited, because one press changes many
+    contacts.
+    """
+
+    permission_classes = [crm_perms.IsTenantStaff, crm_perms.IsFF]
+
+    def _counts(self) -> list[dict]:
+        counts: dict = {}
+        for tags in Contact.objects.exclude(tags=[]).values_list("tags", flat=True):
+            for tag in tags:
+                counts[tag] = counts.get(tag, 0) + 1
+        return [{"tag": tag, "contacts": n}
+                for tag, n in sorted(counts.items(), key=lambda row: row[0].lower())]
+
+    def _tag(self, request, key):
+        tag = str(request.data.get(key) or "").strip()
+        if not tag:
+            raise ValidationError({key: "Say which tag."})
+        if len(tag) > 64:
+            raise ValidationError({key: "A tag is 64 characters at most."})
+        return tag
+
+    def list(self, request):
+        return Response(self._counts())
+
+    @transaction.atomic
+    def _rewrite(self, request, old, new, verb):
+        changed = 0
+        for contact in Contact.objects.filter(tags__contains=[old]):
+            kept = []
+            for tag in contact.tags:
+                tag = new if tag == old else tag
+                if tag and tag not in kept:
+                    kept.append(tag)
+            contact.tags = kept
+            contact.save(update_fields=["tags", "updated_at"])
+            changed += 1
+        if changed:
+            AuditEvent.objects.create(
+                tenant=request.tenant, actor=request.user, verb=verb,
+                target_type="contact_tag", target_id=None,
+                payload={"tag": old, "to": new, "contacts": changed})
+        return Response({"changed": changed, "tags": self._counts()})
+
+    @action(detail=False, methods=["post"])
+    def rename(self, request):
+        old, new = self._tag(request, "tag"), self._tag(request, "to")
+        return self._rewrite(request, old, new, "contact_tag.renamed")
+
+    @action(detail=False, methods=["post"])
+    def remove(self, request):
+        return self._rewrite(request, self._tag(request, "tag"), "", "contact_tag.removed")
 
 
 class StageAutomationViewSet(TenantStaffViewSet):

@@ -6,7 +6,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { EnrolledIn } from "../components/EnrolledIn";
 import { ContactCommitments } from "../components/ContactCommitments";
 import { GrantPortalAccess } from "../components/GrantPortalAccess";
-import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
+import { Banner, Card, Empty, Field, PageLinks, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
 import { Contact, Me, OutboxMessage, api } from "../lib/api";
 
@@ -97,6 +97,8 @@ export function ContactDetail({ me }: { me: Me }) {
       <p className="sub">
         {c.title || "No title"}
         {c.type_codes.map((t) => <span key={t}> · <Pill>{t.replace(/_/g, " ")}</Pill></span>)}
+        {(c.linkedin_url || c.alignable_url) && <> · <PageLinks linkedin={c.linkedin_url}
+          alignable={c.alignable_url} /></>}
       </p>
 
       {params.get("merged") === "1" && (
