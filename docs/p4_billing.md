@@ -392,3 +392,26 @@ the keys arrive; the other six points do not wait on it.
 
 **Order:** Phase 0, then stop and report what the sandbox showed; then
 subscriptions; then client invoicing; stopping after each.
+
+---
+
+## 9. Heard on the 2026-10-12 call, not decided
+
+Recorded as said. None of it changes §7 or §8 until Bryan decides; D9's "$20
+a month by default" is the only figure here that is already a decision.
+
+| What | Heard |
+|---|---|
+| During beta | **$20 a month** (as D9). |
+| Beta practices after release, base | **$50 a month for life.** |
+| Modules | **$25 or $50 a month each.** Which module is which is not said. |
+| Portal seats | **25 included, then $10 a month for each further 25.** |
+
+**Hard cost.** The platform's cost for a practice is a **share of hosting**.
+AI and email are on the practice's own accounts (its Anthropic key, its own
+mailbox), so they are not a platform cost and are not in the price.
+
+Open, for when this is decided: whether "for life" covers modules or only the
+base; what a released, non-beta practice pays as its base; and whether portal
+seats are counted per practice or per client company (CLAUDE.md models a seat
+count per client company).
