@@ -357,3 +357,45 @@ def test_the_self_serve_path_is_closed_to_someone_whose_access_was_revoked(
     sent_before = len(dev_outbox)
     assert client.post("/auth/magic/request", {"email": invited.user.email}).status_code == 200
     assert len(dev_outbox) == sent_before, "A revoked person was sent a sign-in link."
+
+
+# ------------------- an address outside the client's own domain (2026-10-12)
+
+@pytest.mark.django_db
+def test_someone_outside_the_clients_domain_is_invited_and_signs_in_by_link(
+    seeded_tenant, ff, api, company, dev_outbox, in_tenant_a, client
+):
+    """A board member on gmail. The company's domain is its own; nothing about
+    granting access, the invitation, or a link asked for later goes by it."""
+    from .factories import CompanyDomainFactory
+
+    CompanyDomainFactory(tenant=seeded_tenant, company=company, domain="northwind.invalid")
+    colleague = a_contact(seeded_tenant, company, "Dana")              # on the domain
+    board = a_contact(seeded_tenant, company, "Morgan", email="Morgan.Board@gmail.com")
+
+    for contact in (colleague, board):
+        made = post(api.as_(ff), "/api/portal-access/", {"contact": str(contact.pk)})
+        assert made.status_code == 201, made.content
+    membership = Membership.all_objects.get(contact=board)
+    assert (membership.role, membership.client_company_id) == ("ECC", company.pk)
+    assert membership.user.email == "morgan.board@gmail.com"
+
+    # The invitation went to the gmail address, and its link signs them in.
+    invitation = dev_outbox[-1]
+    assert invitation.to == ["morgan.board@gmail.com"]
+    signed_in = Client()
+    assert signed_in.get(f"/auth/magic/{link_in(invitation)}").context["valid"] is True
+    assert signed_in.post(f"/auth/magic/{link_in(invitation)}").status_code == 200
+    me = signed_in.get("/api/me").json()
+    assert (me["role"], me["email"]) == ("ECC", "morgan.board@gmail.com")
+    # They see their company's work and nothing of the practice's own screens.
+    assert signed_in.get("/api/tasks/").status_code == 200
+    assert signed_in.get("/api/contacts/").status_code == 403
+
+    # Later, from the sign-in page, typed as they type it.
+    client.post("/auth/magic/request", {"email": " Morgan.Board@Gmail.com "})
+    asked_for = dev_outbox[-1]
+    assert asked_for.to == ["morgan.board@gmail.com"] and asked_for is not invitation
+    again = Client()
+    assert again.post(f"/auth/magic/{link_in(asked_for)}").status_code == 200
+    assert again.get("/api/me").json()["role"] == "ECC"
