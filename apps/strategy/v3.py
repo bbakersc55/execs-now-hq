@@ -485,7 +485,7 @@ def pdf_context(session, context: dict, sections: dict, merge: dict) -> dict:
         paths.append({**path, "title": render(settings[f"path_{side}_title"]),
                       "moves": [{"headline": render(line), "detail": ""}
                                 for line in settings[f"path_{side}_points"]]})
-    return {
+    out = {
         "snapshot": chips(session, sections.get(precall.get("code"), [])),
         "six_key": {**context["six_key"], "chart": chart(ratings),
                     "scale": settings["rating_scale"]},
@@ -494,3 +494,34 @@ def pdf_context(session, context: dict, sections: dict, merge: dict) -> dict:
         "path_pair": paths,
         "custom_sections": printing_sections(session, sections),
     }
+    # A part the template took off the prospect's map, or took out altogether
+    # (owner, 2026-10-12): what it would have printed is left empty, and the
+    # document's own blocks are each drawn only when they have something.
+    for kind in off_the_map(session):
+        out.update(BLANK[kind](context, out))
+    return out
+
+
+#: What each part puts on the document, emptied.
+BLANK = {
+    "precall": lambda context, out: {"snapshot": []},
+    "ratings": lambda context, out: {
+        "six_key": {**out["six_key"], "ratings": [], "chart": None, "complete": False}},
+    "mirror": lambda context, out: {
+        "destination": [], "mirror_goal": "", "mirror_unlocks": "",
+        "mirror_goal_points": [], "mirror_unlocks_points": []},
+    "map": lambda context, out: {"map_rows": [], "horizons": [], "focused_cards": []},
+    "values": lambda context, out: {"values": []},
+    "paths": lambda context, out: {"path_pair": []},
+    "scope": lambda context, out: {"scope": [], "next_steps": [], "money": []},
+}
+
+
+def off_the_map(session) -> list:
+    """The parts of this session's template that put nothing on the document:
+    switched off it, or not in the template at all. From the snapshot, so a
+    session started before a tick was changed prints as it was started."""
+    present = {section.get("kind"): section
+               for section in session.template_snapshot.get("sections", [])}
+    return [kind for kind in BLANK
+            if kind not in present or present[kind].get("hide_from_pdf")]

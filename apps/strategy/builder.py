@@ -57,8 +57,13 @@ PARTS = (
 )
 KINDS = tuple(part[0] for part in PARTS)
 
-#: The only part a template can switch off in the first cut (D1).
-OPTIONAL_KINDS = (VALUES,)
+#: The parts a template can take out. It was "What they value" alone (D1);
+#: since 2026-10-12 it is every part, the built-in ones included.
+OPTIONAL_KINDS = KINDS
+
+#: The parts that put something on the PDF, and so can be taken off it. The
+#: diagnostic's answers never print, so there is nothing of it to put on.
+PRINTING_KINDS = (PRECALL, RATINGS, MIRROR, MAP, VALUES, PATHS, SCOPE)
 
 #: What a question in each kind is: its shape, when it is asked, how many the
 #: section holds, and the flags the builder sets rather than the practice.
@@ -218,7 +223,8 @@ def duplicate(source: StrategyTemplate, *, name) -> StrategyTemplate:
             tenant=source.tenant, template=copy, code=section.code, kind=section.kind,
             title=section.title, position=section.position, intro=section.intro,
             time_budget_minutes=section.time_budget_minutes,
-            show_in_pdf=section.show_in_pdf, deleted_at=section.deleted_at)
+            show_in_pdf=section.show_in_pdf, hide_from_pdf=section.hide_from_pdf,
+            deleted_at=section.deleted_at)
     for question in StrategyQuestion.objects.filter(template=source):
         question.pk = None
         question.id = None
@@ -299,10 +305,16 @@ def move_section(template, *, code, by) -> StrategySection:
     return section
 
 
+def on_pdf(section) -> bool:
+    """Whether a section is on the prospect's map: a section of the practice's
+    own when it was switched on, one of the eight parts unless it was switched
+    off, and the diagnostic never."""
+    if section.kind == CUSTOM:
+        return section.show_in_pdf
+    return section.kind in PRINTING_KINDS and not section.hide_from_pdf
+
+
 def _check_printing(template, section, *, questions) -> None:
-    if section.kind != CUSTOM:
-        raise SessionError("Only a section of your own is switched on or off the "
-                           "document. The eight parts print as they always have.")
     printing = _sections(template).filter(show_in_pdf=True).exclude(pk=section.pk).count()
     if printing >= PRINTING_MOST:
         raise SessionError(f"The document has room for {PRINTING_MOST} sections of your "
@@ -320,13 +332,19 @@ def update_section(template, *, code, title=None, time_budget_minutes=...,
     if show_in_pdf is not None:
         if not isinstance(show_in_pdf, bool):
             raise SessionError("show_in_pdf is true or false.")
-        if show_in_pdf:
-            _check_printing(template, section,
-                            questions=_live_questions(section).count())
-        elif section.kind != CUSTOM:
-            _check_printing(template, section, questions=0)
-        section.show_in_pdf = show_in_pdf
-        section.save(update_fields=["show_in_pdf", "updated_at"])
+        if section.kind != CUSTOM:
+            # One of the eight parts: on unless taken off (2026-10-12).
+            if section.kind not in PRINTING_KINDS:
+                raise SessionError(f"Nothing from “{section.title}” goes on the "
+                                   "prospect's map, so there is nothing to switch.")
+            section.hide_from_pdf = not show_in_pdf
+            section.save(update_fields=["hide_from_pdf", "updated_at"])
+        else:
+            if show_in_pdf:
+                _check_printing(template, section,
+                                questions=_live_questions(section).count())
+            section.show_in_pdf = show_in_pdf
+            section.save(update_fields=["show_in_pdf", "updated_at"])
     if title is not None:
         title = " ".join(str(title).split())
         if not title:
@@ -353,8 +371,6 @@ def set_included(template, *, kind=None, included: bool, code=None) -> StrategyS
         section = _sections(template, removed=True).filter(code=code).first()
         if section is None:
             raise SessionError("That section is not in this template.", status=404)
-        if section.kind != CUSTOM and section.kind not in OPTIONAL_KINDS:
-            raise SessionError(f"“{section.title}” cannot be taken out of a template.")
         if included and section.deleted_at is not None and section.kind == CUSTOM:
             if _sections(template).filter(kind=CUSTOM).count() >= CUSTOM_MOST:
                 raise SessionError(f"A template holds {CUSTOM_MOST} sections of your "
@@ -363,12 +379,15 @@ def set_included(template, *, kind=None, included: bool, code=None) -> StrategyS
                 _check_printing(template, section,
                                 questions=_live_questions(section).count())
     elif kind not in OPTIONAL_KINDS:
-        raise SessionError("Only “What they value” and sections of your own can be "
-                           "taken out of a template.")
+        raise SessionError("That is not a part of a template.")
     else:
         section = _sections(template, removed=True).filter(kind=kind).first()
     if section is None:
         raise SessionError("That section is not in this template.", status=404)
+    if not included and section.deleted_at is None \
+            and _sections(template).exclude(pk=section.pk).count() == 0:
+        raise SessionError("A template needs at least one section. Put another back "
+                           "before taking this one out.")
     section.deleted_at = None if included else (section.deleted_at or timezone.now())
     section.save(update_fields=["deleted_at", "updated_at"])
     return section
@@ -697,9 +716,14 @@ def readiness(template) -> list[str]:
     stored, so it cannot claim something that has stopped being true."""
     missing = []
     by_kind = {section.kind: section for section in _sections(template)}
+    # A part the practice took out is not missing: it is out (2026-10-12).
+    # One with no row at all was never made, and still is.
+    every = {section.kind for section in _sections(template, removed=True)}
     for kind, _code, title, _budget in PARTS:
-        if kind not in by_kind and kind not in OPTIONAL_KINDS:
+        if kind not in every:
             missing.append(f"The “{title}” section is missing.")
+    if not by_kind:
+        missing.append("A template needs at least one section.")
     ratings = by_kind.get(RATINGS)
     if ratings is not None:
         rated = list(_live_questions(ratings))
@@ -755,6 +779,9 @@ def snapshot(template) -> dict:
             "time_budget_minutes": section.time_budget_minutes,
             "intro": section.intro,
             "show_in_pdf": section.show_in_pdf,
+            # Only when it is so: a snapshot of a template that takes nothing
+            # off the map is, key for key, what it was before this existed.
+            **({"hide_from_pdf": True} if section.hide_from_pdf else {}),
             "questions": by_section.get(section.pk, []),
         } for section in _sections(template)],
     }
@@ -773,11 +800,17 @@ def represent(template) -> dict:
             "code": section.code, "kind": section.kind, "title": section.title,
             "time_budget_minutes": section.time_budget_minutes,
             "included": section.deleted_at is None,
-            "optional": section.kind in OPTIONAL_KINDS,
+            # As it was on the wire when only this part could be taken out:
+            # the screen offers "take out" on every part itself (2026-10-12).
+            "optional": section.kind == VALUES,
             "response_schema": rule.get("schema"),
             "most": rule.get("most", 0),
             "fixed_count": bool(rule.get("exactly")),
             "questions": frozen.get(section.code, {}).get("questions", []),
+            # One of the eight parts taken off the prospect's map says so.
+            # Said only then, so a template that takes nothing off reads on
+            # the wire exactly as it did.
+            **({"off_map": True} if section.hide_from_pdf else {}),
         })
         # A section of the practice's own says what else it can do. The eight
         # parts' entries are as they were.

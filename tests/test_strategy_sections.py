@@ -191,15 +191,30 @@ def test_a_removed_section_keeps_its_questions_and_comes_back_with_them(blank, f
 
 
 @pytest.mark.django_db
-def test_only_your_own_sections_and_what_they_value_can_be_taken_out(blank, ff, api):
+def test_any_section_can_be_taken_out_and_put_back_the_built_in_ones_included(
+        blank, ff, api):
+    """Owner, 2026-10-12. It was only "What they value" and sections of the
+    practice's own."""
     before = full_fingerprint(blank)
-    for code in ("strategy_map", "snapshot", "six_key_components", "diagnostic", "mirror",
-                 "two_paths", "scope_agreement"):
-        refused = post(api, ff, url(blank, "include/"), {"code": code, "included": False})
-        assert refused.status_code == 400, code
     assert post(api, ff, url(blank, "include/"),
                 {"code": "no_such", "included": False}).status_code == 404
     assert full_fingerprint(blank) == before
+    built_in = ("strategy_map", "snapshot", "six_key_components", "diagnostic", "mirror",
+                "two_paths", "scope_agreement")
+    for code in built_in:
+        out = post(api, ff, url(blank, "include/"), {"code": code, "included": False})
+        assert out.status_code == 200, (code, out.json())
+        assert code not in [s["code"] for s in builder.snapshot(blank)["sections"]]
+        assert not any("is missing" in line for line in out.json()["missing"]), \
+            "taken out is not missing"
+    # The last one left stays: a template is at least one section.
+    last = post(api, ff, url(blank, "include/"),
+                {"code": "what_they_value", "included": False})
+    assert last.status_code == 400 and "at least one section" in last.json()["detail"]
+    for code in built_in:
+        back = post(api, ff, url(blank, "include/"), {"code": code, "included": True})
+        assert back.status_code == 200, code
+    assert full_fingerprint(blank) == before, "each back exactly as it was"
     # What they value still goes out by its kind, as before, and by its code.
     assert post(api, ff, url(blank, "include/"),
                 {"kind": "values", "included": False}).status_code == 200
@@ -241,7 +256,7 @@ def test_the_document_takes_two_of_your_sections_of_four_questions(blank, ff, ap
     assert show(codes[1], False).status_code == 200
     assert post(api, ff, url(blank, "questions/"),
                 {"section": codes[1], "prompt": "P4"}).status_code == 201
-    # Not a switch on the eight parts, and not a word.
+    # Not a switch on the diagnostic, which prints nothing, and not a word.
     assert show("diagnostic").status_code == 400
     assert show("diagnostic", False).status_code == 400
     assert show(codes[2], "yes").status_code == 400
@@ -493,3 +508,113 @@ def test_a_template_with_a_custom_section_duplicates_with_it(template, with_cust
     copied = get(api, ff, f"{ROOT}{copy['id']}/").json()
     assert order(copied) == order(get(api, ff, url(template)).json())
     assert len(custom(copied)["questions"]) == 3
+
+
+# =========================== on the prospect's map, and out of the template
+# Owner, 2026-10-12: any section can be removed, the built-in ones included,
+# and each has a tick, "On the prospect's map".
+
+#: A part's code, and something only that part puts on the document.
+ON_THE_MAP = {
+    "snapshot": "22 people",
+    "six_key_components": "<svg",
+    "mirror": "Two branches running",
+    "what_they_value": "Straight talk",
+    "two_paths": "Someone owns the list",
+    "scope_agreement": "November 3",
+}
+
+
+def started(tenant, template, prospect, ff):
+    return services.start(tenant=tenant, contact=prospect, template=template, owner=ff.user)
+
+
+@pytest.mark.django_db
+def test_nothing_is_off_the_map_until_it_is_taken_off(session, template):
+    run(session)
+    html = pdf.render_html(session)
+    for code, marker in ON_THE_MAP.items():
+        assert marker in html, code
+    assert "map-card" in html or "horizon" in html or "Strategy Map" in html
+    # Said only when it is so: the snapshot and the builder's own view of a
+    # template that takes nothing off are what they were before the tick.
+    assert all("hide_from_pdf" not in s for s in builder.snapshot(template)["sections"])
+    assert all("off_map" not in s for s in builder.represent(template)["sections"])
+    assert v3.off_the_map(session) == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("code", list(ON_THE_MAP))
+def test_a_part_taken_off_the_map_is_not_on_the_document_and_the_rest_is(
+        code, session, template, seeded_tenant, prospect, ff, api):
+    off = post(api, ff, url(template, "section/"), {"code": code, "show_in_pdf": False})
+    assert off.status_code == 200, off.json()
+    assert sections_of(off.json())[template.sections.get(code=code).kind]["off_map"] is True
+    # A session keeps what it started with.
+    run(session)
+    assert ON_THE_MAP[code] in pdf.render_html(session)
+
+    later = started(seeded_tenant, template, prospect, ff)
+    run(later)
+    html = pdf.render_html(later)
+    assert ON_THE_MAP[code] not in html, f"{code} is off the map"
+    for other, marker in ON_THE_MAP.items():
+        if other != code:
+            assert marker in html, f"{other} is still on it"
+    # It is still asked on the call: off the map is not out of the session.
+    assert code in [s["code"] for s in later.template_snapshot["sections"]]
+
+    # Back on, and a session started after that prints it again.
+    on = post(api, ff, url(template, "section/"), {"code": code, "show_in_pdf": True})
+    assert on.status_code == 200
+    assert "off_map" not in sections_of(on.json())[template.sections.get(code=code).kind]
+    again = started(seeded_tenant, template, prospect, ff)
+    run(again)
+    assert ON_THE_MAP[code] in pdf.render_html(again)
+
+
+@pytest.mark.django_db
+def test_the_strategy_map_itself_can_be_taken_off_the_document(
+        session, template, seeded_tenant, prospect, ff, api):
+    run(session)
+    with_map = pdf.context_for(session)
+    assert with_map["map_rows"], "the scenario has rows"
+    assert post(api, ff, url(template, "section/"),
+                {"code": "strategy_map", "show_in_pdf": False}).status_code == 200
+    later = started(seeded_tenant, template, prospect, ff)
+    run(later)
+    context = pdf.context_for(later)
+    assert context["map_rows"] == [] and context["focused_cards"] == []
+    pdf.render_html(later)
+
+
+@pytest.mark.django_db
+def test_the_diagnostic_has_no_tick_because_nothing_of_it_prints(template, ff, api):
+    for value in (True, False):
+        refused = post(api, ff, url(template, "section/"),
+                       {"code": "diagnostic", "show_in_pdf": value})
+        assert refused.status_code == 400
+        assert "nothing to switch" in refused.json()["detail"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("code", ["snapshot", "six_key_components", "diagnostic", "mirror",
+                                  "strategy_map", "what_they_value", "two_paths",
+                                  "scope_agreement"])
+def test_a_session_runs_and_prints_without_a_part_that_was_taken_out(
+        code, template, seeded_tenant, prospect, ff, api):
+    out = post(api, ff, url(template, "include/"), {"code": code, "included": False})
+    assert out.status_code == 200, out.json()
+    assert out.json()["ready"] is True, out.json()["missing"]
+    session = started(seeded_tenant, template, prospect, ff)
+    kind = template.sections.get(code=code).kind
+    assert v3.section_of(session, kind) is None
+    # The live view opens, and the document is drawn, without it.
+    live = get(api, ff, f"/api/strategy-sessions/{session.pk}/")
+    assert live.status_code == 200, live.content[:300]
+    assert code not in [s["code"] for s in live.json()["sections"]]
+    html = pdf.render_html(session)
+    from weasyprint import HTML
+    assert len(HTML(string=html).render().pages) <= 2
+    if code in ON_THE_MAP:
+        assert ON_THE_MAP[code] not in html

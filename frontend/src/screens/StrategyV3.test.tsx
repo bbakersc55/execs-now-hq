@@ -200,8 +200,43 @@ describe("the template builder", () => {
     await userEvent.click(await screen.findByRole("button",
       { name: "Take “What they value” out of this template" }));
     expect(sent(fetchMock, "include/")).toEqual([{ kind: "values", included: false }]);
-    // Only that part offers it.
-    expect(screen.getAllByRole("button", { name: /out of this template/ })).toHaveLength(1);
+  });
+
+  it("offers to take any part out, the built-in ones included (2026-10-12)", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const template = aBuilder();
+    const fetchMock = showBuilder(template, aMe(), { [`POST ${ROOT}include/`]: template });
+    await screen.findByRole("button", { name: "Take “What they value” out of this template" });
+    // Every part of the template offers it, not only What they value.
+    expect(screen.getAllByRole("button", { name: /out of this template/ }))
+      .toHaveLength(template.sections.length);
+    await userEvent.click(screen.getByRole("button",
+      { name: "Take “Strategy Map” out of this template" }));
+    expect(sent(fetchMock, "include/")).toEqual([{ kind: "map", included: false }]);
+  });
+
+  it("has the tick, On the prospect's map, on every section (2026-10-12)", async () => {
+    const template = aBuilder();
+    const sections = template.sections.map((s) => s.kind === "values"
+      ? { ...s, off_map: true } : s);
+    const fetchMock = showBuilder({ ...template, sections }, aMe(), {
+      [`POST ${ROOT}section/`]: () => ({ status: 200, body: template }) });
+    await screen.findByLabelText("On the prospect's map: Strategy Map");
+    expect(screen.getAllByLabelText(/^On the prospect's map: /))
+      .toHaveLength(template.sections.length);
+    // On unless it was taken off; the diagnostic prints nothing, so its tick
+    // is off and cannot be changed.
+    expect(screen.getByLabelText("On the prospect's map: Strategy Map")).toBeChecked();
+    expect(screen.getByLabelText("On the prospect's map: What they value")).not.toBeChecked();
+    const diagnostic = screen.getByLabelText("On the prospect's map: Diagnostic");
+    expect(diagnostic).not.toBeChecked();
+    expect(diagnostic).toBeDisabled();
+    expect(screen.getByText(/nothing from this section goes on it/)).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("On the prospect's map: Strategy Map"));
+    await userEvent.click(screen.getByLabelText("On the prospect's map: What they value"));
+    await waitFor(() => expect(sent(fetchMock, "section/")).toEqual([
+      { code: "strategy_map", show_in_pdf: false },
+      { code: "what_they_value", show_in_pdf: true }]));
   });
 
   it("shows a part that is out, with the way back", async () => {
@@ -327,14 +362,13 @@ describe("sections of your own in the builder", () => {
         .not.toBeInTheDocument();
     });
 
-  it("prints a section of your own only when ticked, and offers that on no other part",
+  it("puts a section of your own on the map only when ticked: it starts off",
     async () => {
       const fetchMock = showBuilder(withCustom(), aMe(), {
         [`POST ${ROOT}section/`]: () => ({ status: 200, body: withCustom() }) });
       const print = await screen.findByLabelText(
-        "Print this section on the document: Leadership bench");
+        "On the prospect's map: Leadership bench");
       expect(print).not.toBeChecked();
-      expect(screen.getAllByLabelText(/^Print this section on the document/)).toHaveLength(1);
       await userEvent.click(print);
       await waitFor(() => expect(sent(fetchMock, "section/")).toEqual([
         { code: "custom_ab12cd34", show_in_pdf: true }]));
@@ -371,7 +405,7 @@ describe("sections of your own in the builder", () => {
     await screen.findByText("Our session");
     expect(screen.queryByRole("button", { name: "Add a section" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^Move section/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Print this section on the document: Leadership bench"))
+    expect(screen.getByLabelText("On the prospect's map: Leadership bench"))
       .toBeDisabled();
   });
 });

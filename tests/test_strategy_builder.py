@@ -464,10 +464,10 @@ def test_what_they_value_can_be_switched_off_and_back_on(v3, ff, api):
     on = post(api, ff, url(v3, "include/"), {"kind": "values", "included": True})
     assert [q["key"] for q in sections_of(on.json())["values"]["questions"]] == [key], \
         "back as it was"
-    # Only that part, in the first cut (D1).
-    for kind in ("ratings", "diagnostic", "mirror", "map", "paths", "scope", "precall", ""):
-        assert post(api, ff, url(v3, "include/"), {"kind": kind, "included": False}) \
-            .status_code == 400, kind
+    # It was only that part in the first cut (D1). Since 2026-10-12 every
+    # part can be taken out; tests/test_strategy_sections.py has that.
+    assert post(api, ff, url(v3, "include/"), {"kind": "", "included": False}) \
+        .status_code == 400
     assert post(api, ff, url(v3, "include/"), {"kind": "values",
                                                "included": "no"}).status_code == 400
 

@@ -817,6 +817,8 @@ export interface BuilderSection {
   /** Only on a section the practice added (P3 part two): whether it prints
    *  on the document, and the kinds of answer its questions may take. */
   custom?: boolean; show_in_pdf?: boolean; schemas?: string[];
+  /** One of the eight parts taken off the prospect's map. Sent only then. */
+  off_map?: boolean;
 }
 
 /** GET /api/strategy-template-builder/<id>/ — one builder template (P3). */

@@ -130,6 +130,10 @@ class StrategySection(TenantScopedModel):
     intro = models.TextField(blank=True, default="", db_default="")
     #: A custom section's answers print on page two of the PDF.
     show_in_pdf = models.BooleanField(default=False, db_default=False)
+    #: One of the eight parts taken off the PDF (v3 only; owner, 2026-10-12).
+    #: Its own column, and false, so every template and every session that
+    #: exists prints exactly as it did.
+    hide_from_pdf = models.BooleanField(default=False, db_default=False)
     #: A removed section (v3 only). Kept, so its code and its questions' keys
     #: stay spent.
     deleted_at = models.DateTimeField(null=True, blank=True)

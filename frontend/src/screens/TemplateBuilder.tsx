@@ -332,18 +332,25 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
         disabled={off} maxLength={255}
         onSave={(title) => change("section/", { code: section.code, title })} />
 
-      {section.custom && (
-        <label className="small" style={{ display: "flex", gap: ".4rem", margin: ".5rem 0" }}
-          title={section.questions.length > 4
-            ? "The document has room for four questions from a section." : ""}>
-          <input type="checkbox" style={{ width: "auto" }} checked={!!section.show_in_pdf}
-            disabled={off} aria-label={`Print this section on the document: ${section.title}`}
-            onChange={(e) => change("section/", { code: section.code,
-                                                  show_in_pdf: e.target.checked })} />
-          Print this section on the document (written answers and agreed items only;
-          two sections of up to four questions fit)
-        </label>
-      )}
+      {/* Every section has the tick (owner, 2026-10-12). One of the eight
+          parts is on the map unless it is taken off; a section of the
+          practice's own is off until it is put on; the diagnostic's answers
+          never print, so its tick is off and cannot be changed. */}
+      <label className="small" style={{ display: "flex", gap: ".4rem", margin: ".5rem 0" }}
+        title={section.custom && section.questions.length > 4
+          ? "The document has room for four questions from a section." : ""}>
+        <input type="checkbox" style={{ width: "auto" }}
+          checked={section.custom ? !!section.show_in_pdf
+            : section.kind !== "diagnostic" && !section.off_map}
+          disabled={off || section.kind === "diagnostic"}
+          aria-label={`On the prospect's map: ${section.title}`}
+          onChange={(e) => change("section/", { code: section.code,
+                                                show_in_pdf: e.target.checked })} />
+        On the prospect's map
+        {section.custom && " (written answers and agreed items only; two sections of up to "
+          + "four questions fit)"}
+        {section.kind === "diagnostic" && " (nothing from this section goes on it)"}
+      </label>
       {section.kind === "ratings" && (
         <Saved label="Scale line (shown above the ratings and under the chart)"
           ariaLabel="Rating scale line" value={s.rating_scale} disabled={off} maxLength={160}
@@ -406,7 +413,7 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
         <p className="tiny muted">This part holds {section.most} at most.</p>
       )}
 
-      {mayEdit && section.optional && (
+      {mayEdit && (
         <p style={{ marginBottom: 0 }}>
           <button className="ghost small" disabled={busy}
             onClick={() => {
