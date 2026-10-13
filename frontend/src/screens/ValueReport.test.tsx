@@ -789,7 +789,8 @@ describe("the goals are in order of priority (2026-10-07)", () => {
     const theirs = { "GET /api/goal-order/": anOrder({ may_propose: true }) };
     const me = () => aMe({ role: "FCC" });
 
-    it("moves a goal on screen and nothing is sent until they propose it", async () => {
+    it("puts a proposal together as a list, with the goals left in the current order",
+      async () => {
       const user = userEvent.setup();
       const fetchMock = show(report(), me(), {
         "POST /api/goal-order/": () => ({ status: 201, body: anOrder({ may_propose: true }) }),
@@ -800,8 +801,16 @@ describe("the goals are in order of priority (2026-10-07)", () => {
 
       await user.click(screen.getByRole("button", { name: `Move ${A} down` }));
 
-      expect(shown()).toEqual([`1${B}`, `2${A}`, C]);
+      // The cards do not move: the order in force is the practice's until it
+      // accepts. What they are proposing is the list in the box above.
+      expect(shown()).toEqual([`1${A}`, `2${B}`, C]);
       const card = screen.getByText("A new order for the goals").closest("section")!;
+      expect([...card.querySelectorAll("ol li")].map((li) => li.textContent)).toEqual([B, A]);
+      expect(within(card).getByText(/the goals below\s+stay in the current order/))
+        .toBeInTheDocument();
+      // The arrows go by the list: A is now last in it, B first.
+      expect(screen.getByRole("button", { name: `Move ${A} down` })).toBeDisabled();
+      expect(screen.getByRole("button", { name: `Move ${B} up` })).toBeDisabled();
       expect(within(card).getByText(/this is a proposal:\s+nothing changes until they accept it/))
         .toBeInTheDocument();
       expect(within(card).getByText(/Executives Now sets their order/)).toBeInTheDocument();
@@ -813,8 +822,19 @@ describe("the goals are in order of priority (2026-10-07)", () => {
       // Their company is implied: only the order and the reason travel.
       await waitFor(() => expect(posts(fetchMock)).toEqual([
         ["/api/goal-order/", { order: [B_ID, GOAL], note: "Month-end is what hurts." }]]));
-      // Sent, so the goals go back to the order that is actually in force.
-      await waitFor(() => expect(shown()).toEqual([`1${A}`, `2${B}`, C]));
+      await waitFor(() => expect(screen.queryByText("A new order for the goals"))
+        .not.toBeInTheDocument());
+      expect(shown()).toEqual([`1${A}`, `2${B}`, C]);
+    });
+
+    it("has the box to propose a goal as wide as the boxes above it", async () => {
+      show(report(), me(), {
+        ...theirs, "GET /api/goal-proposals/": { company: COMPANY, may_propose: true,
+                                                 may_decide: false, proposals: [] },
+      }, "/report");
+      const form = (await screen.findByLabelText("The goal you propose")).closest("form")!;
+      // A card whose own child is a form is held to 720px (theme.css).
+      expect(form.parentElement).not.toHaveClass("card");
     });
 
     it("can put them back, and moving one back by hand is the same thing", async () => {

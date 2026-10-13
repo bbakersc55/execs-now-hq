@@ -60,7 +60,8 @@ export function Report({ me }: { me: Me }) {
   const [params] = useSearchParams();
   const [company, setCompany] = useState<string>(params.get("company") ?? "");
   const [note, setNote] = useState("");
-  // A client's unsent order: the goals as they have moved them, not yet proposed.
+  // A client's unsent order: a list they are putting together, not yet proposed.
+  // The goal cards never follow it: they are in the order that is in force.
   const [draft, setDraft] = useState<string[] | null>(null);
 
   const companies = useQuery<{ id: string; name: string; is_client_company: boolean }[]>({
@@ -129,12 +130,15 @@ export function Report({ me }: { me: Me }) {
   const data = report.data;
   const mayReorder = !!order.data?.may_reorder;
   const mayPropose = !!order.data?.may_propose;
-  // What is on screen: the real order, or the one a client is putting together.
-  const current = draft
-    ? [...data.current].sort((a, b) => draft.indexOf(a.id) - draft.indexOf(b.id))
-    : data.current;
+  // The cards are in the order in force, whatever a client is proposing
+  // (owner, 2026-10-12). What they are putting together is a list, above.
+  const current = data.current;
+  const working = draft ?? current.map((b) => b.id);
+  const drafted = draft
+    ? [...current].sort((a, b) => draft.indexOf(a.id) - draft.indexOf(b.id))
+    : current;
   const move = (goal: string, by: -1 | 1) => {
-    const ids = current.map((b) => b.id);
+    const ids = [...working];
     const from = ids.indexOf(goal);
     const to = from + by;
     if (from < 0 || to < 0 || to >= ids.length) return;
@@ -181,7 +185,7 @@ export function Report({ me }: { me: Me }) {
                        setNote={setNote} />
       )}
       {order.data && (
-        <OrderCard order={order.data} draft={draft} blocks={current}
+        <OrderCard order={order.data} draft={draft} blocks={drafted}
           onSent={() => { setDraft(null); refresh(); }} onReset={() => setDraft(null)}
           onDecided={refresh} setNote={setNote} />
       )}
@@ -193,7 +197,8 @@ export function Report({ me }: { me: Me }) {
                   position={index + 1}
                   onMove={(mayReorder || mayPropose) && current.length > 1
                     ? (by) => move(block.id, by) : undefined}
-                  first={index === 0} last={index === current.length - 1}
+                  first={working.indexOf(block.id) === 0}
+                  last={working.indexOf(block.id) === working.length - 1}
                   moving={setOrder.isPending} />
       ))}
       </div>
@@ -761,6 +766,8 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
   return (
     <Card title="Goals">
       {error && <Banner kind="bad">{error}</Banner>}
+      {/* The form is inside a div so the box is as wide as the boxes above it:
+          a card whose own child is a form is held to a form's width. */}
       <p className="small" style={{ marginTop: 0 }}>
         Goals are set together with {practice}.
         {data.may_propose
@@ -768,6 +775,7 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
           : " Your company's owner can propose one."}
       </p>
       {data.may_propose && (
+        <div className="propose-goal">
         <form onSubmit={(e) => { e.preventDefault(); if (title.trim()) propose.mutate(); }}>
           <input aria-label="The goal you propose" placeholder="What should we set out to change?"
                  value={title} maxLength={255} onChange={(e) => setTitle(e.target.value)} />
@@ -779,6 +787,7 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
             {propose.isPending ? "Sending…" : "Propose this goal"}
           </button>
         </form>
+        </div>
       )}
       {(waiting.length > 0 || answered.length > 0) && (
         <ul className="timeline" style={{ marginTop: "var(--s3)" }}>
@@ -915,8 +924,9 @@ function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }
       <Card title="A new order for the goals" tone="current">
         {error && <Banner kind="bad">{error}</Banner>}
         <p className="small" style={{ marginTop: 0 }}>
-          You have moved the goals. {practice} sets their order, so this is a proposal:
-          nothing changes until they accept it.
+          This is the order you are putting together. {practice} sets their order, so
+          this is a proposal: nothing changes until they accept it, and the goals below
+          stay in the current order.
         </p>
         {names(blocks)}
         <textarea aria-label="Why this order (optional)" rows={2} value={why}
