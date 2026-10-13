@@ -3,12 +3,85 @@
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated the night
 of 2026-10-10 Mountain (2026-10-11 UTC, the date the specs and the runbook
 carry)**, after Release 10 (P6 M1, Bookkeeping) and P6 M2's two stops on
-`dev`. **The next session starts at "Tonight's state" and "Tomorrow's queue"
-below.** Everything from "Next" down was last brought up to date on 10/5 and
+`dev`. **The next session starts at "The night of 2026-10-12" below, then
+"Tonight's state" and "Tomorrow's queue".** Everything from "Next" down was last brought up to date on 10/5 and
 after Release 7; where it and the section below disagree, the section below
 is the newer. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
+
+## The night of 2026-10-12: the call's backlog, a spec, and ten fixes
+
+**This section is the newest. Read it first, then "Tonight's state" below,
+which is as it was on 10/10 except where this says otherwise.**
+
+**Production is unchanged: `main` at `a4037fb`, Release 10.** Everything
+below is on `dev`, pushed, and not released. The demo deploys from `dev` and
+applies the three new migrations itself at start; **that deploy was not
+checked.**
+
+**Earlier on 10/12:** two M2 fixes (`c06279e`, empty forecast lists say
+"None."; `82cffe4`, the month's forecast kept by a daily job,
+`finance.keep_month_forecast`), and the demo was reseeded onto `82cffe4` by
+Bryan, with the forecast data in it. Queue items 1, 3 and 4 below are done;
+item 2, Bryan's look at stop 2, is still his.
+
+**The record of the 10/12 call** (`61aef34`):
+
+- `docs/beta_feedback_2026-10-12.md` is the backlog, each item with a status
+  and, for tonight's, the commit that built it.
+- `docs/p4_billing.md` §9 is the pricing heard on the call, not decided.
+- `docs/p7_client_teams_permissions.md` is the **spec for client teams and
+  permissions, with fifteen decisions open (§10). No code.** The one to
+  read first is P7-1: "their current rights" is what a Manager of the
+  default team has, not what a Member has.
+
+**Ten quick fixes, each its own commit on a green gate:**
+
+| Commit | What |
+|---|---|
+| `f86df49` | Portal "Where we are": goal cards stay in the current order while a client proposes another; the proposal is a list; the Goals box is full width |
+| `4d43f57` | Work: a goal card in rows (title; status, date, owner; progress and bar) |
+| `800987c` | Tasks: sorted by due date by default, with a sort control on board and list |
+| `7a3f4b5` | Meeting queue: the practice by name; a practice task to anyone on the team; a client's task filed under goal, project and task, existing or new, keeping its assignee; portal seats read live |
+| `0401a1a` | Contacts and companies: LinkedIn and Alignable links. Settings, Tags (rename, remove). **Migration `crm` 0035** |
+| `891aa9c`, `67536fc` | Notes: search matches part of a word in the body; folders. **Migration `notes` 0003** |
+| `ffd8ca0` | Template builder: any section can be taken out; "On the prospect's map" on each. **Migration `strategy` 0018** |
+| `795f762` | Strategy map: no em dashes in drafted text; the mirror, values and next steps editable on the PDF card |
+| `32daa97` | Replies: a sentence under the title |
+| `562397a` | Test only: an invitation to an address outside the client's domain signs in by link |
+
+- **The three migrations are additive, with no data step, and are applied to
+  the laptop's `execsnowhq_local`.** None is in production. At the next
+  release they ride with `finance` 0009 and 0010: five in all, none
+  destructive, so no dry run is owed.
+- **The laptop's qcluster needs a restart and `ensure_schedules`** to have
+  `finance.keep_month_forecast`; production gets that schedule only when
+  `ensure_schedules` is run there after the release.
+
+**Open from tonight, each Bryan's:**
+
+1. **Telling the model not to write em dashes** changes the prompts, and the
+   prompts are in the v2, classic and v3 golden files
+   (`claude_requests.json`, `prompt_constants.json`). Goldens are regenerated
+   only on his yes. Until then the filter (`apps/strategy/dashes.py`) is what
+   keeps them out of drafted rows, mirrors and pros and cons.
+2. **Melissa's assignment bug was not reproduced** from its one line. What
+   was found and fixed is in `7a3f4b5`'s message. If it happens again: who
+   was named, whether they had a portal sign-in at the time, and which
+   button was pressed.
+3. **Words on the PDF that still cannot be changed for one session:** the
+   ones that come from the template (a next step's label, the two paths'
+   titles and lines, the rated items' labels, the chart's heading, the header
+   chips' labels, a custom section's questions). They are changed on the
+   template, for sessions started after.
+4. **"What you have changed" and "How good it has been"** on the Forecast tab
+   still hide when empty; only the two lists he named say "None."
+5. **Nothing built tonight has been seen in a browser by anyone.**
+
+Tests at the last code commit, by `scripts/gate.sh`: **3051 backend passed
+(3 skipped, 2 xfailed), 997 frontend**, migration check and type check clean,
+the v2 and v3 golden files unchanged.
 
 ## Tonight's state (end of 2026-10-10 Mountain)
 
