@@ -338,3 +338,171 @@ def test_the_free_rules_place_what_they_can_and_claude_gets_the_rest_at_low_effo
     assert exact.payload["proposed_outcome"] == "portal"
     assert first_name_only.payload["owner_side"] == "other"
     assert stranger.payload["proposed_outcome"] == "follow_up"
+
+
+# ----------------------------- who it is assigned to, and where (2026-10-12)
+
+@pytest.mark.django_db
+def test_a_practice_task_is_assigned_to_anyone_on_the_team(seeded_tenant, ff, api, people):
+    from .conftest import _member
+
+    assistant = _member(seeded_tenant, "VA")
+    item = _item(seeded_tenant, None, "")
+    response = _approve(api, ff, item, owner_side="practice",
+                        assignee_id=str(assistant.user_id))
+    assert response.status_code == 201, response.json()
+    item.refresh_from_db()
+    task = Task.objects.get(pk=item.created_record_id)
+    assert task.assignee_id == assistant.user_id
+    # Nobody chosen leaves it unassigned, as before.
+    other = _item(seeded_tenant, None, "")
+    assert _approve(api, ff, other, owner_side="practice").status_code == 201
+    other.refresh_from_db()
+    assert Task.objects.get(pk=other.created_record_id).assignee_id is None
+
+
+@pytest.mark.django_db
+def test_a_practice_task_is_not_assigned_to_a_client_or_another_practice(
+        seeded_tenant, tenant_b, ff, api, people):
+    from .conftest import _member
+
+    outsider = _member(tenant_b, "VA")
+    for user_id in (people["seat"].user_id, outsider.user_id, "not-an-id"):
+        item = _item(seeded_tenant, None, "")
+        response = _approve(api, ff, item, owner_side="practice", assignee_id=str(user_id))
+        assert response.status_code == 400, user_id
+        assert "practice's team" in response.json()["detail"]
+        item.refresh_from_db()
+        assert item.state == "pending"
+
+
+@pytest.mark.django_db
+def test_the_client_task_is_filed_under_a_new_goal_and_project_and_keeps_its_assignee(
+        seeded_tenant, ff, api, people):
+    from apps.work.models import Goal, Project
+
+    colleague = ContactFactory(tenant=seeded_tenant, first_name="Lee", last_name="Marsh",
+                               company=people["acme"])
+    other_seat = MembershipFactory(tenant=seeded_tenant, role="ECC",
+                                   client_company=people["acme"], contact=colleague)
+    item = _item(seeded_tenant, people["seated"], "Dana Reyes", due="2026-10-03")
+    response = _approve(
+        api, ff, item, owner_side="other", outcome="portal",
+        assignee_id=str(other_seat.user_id),
+        file={"goal": "new", "goal_title": "Close the books in five days",
+              "project": "new", "project_title": "Month-end checklist", "task": "new"})
+    assert response.status_code == 201, response.json()
+    task = Commitment.objects.get().task
+    goal, project = Goal.objects.get(), Project.objects.get()
+    assert (goal.title, goal.client_company_id) == (
+        "Close the books in five days", people["acme"].pk)
+    assert (project.title, project.goal_id, project.client_company_id) == (
+        "Month-end checklist", goal.pk, people["acme"].pk)
+    # Whoever was chosen is kept on everything it made.
+    assert task.assignee_id == other_seat.user_id
+    assert (task.project_id, task.goal_id) == (project.pk, None)
+    assert goal.client_owner_contact_id == colleague.pk
+    assert project.client_owner_contact_id == colleague.pk
+    assert task.client_owner_contact_id == colleague.pk
+    assert task.status == Task.Status.WAITING_ON_CLIENT and task.is_client_visible
+
+
+@pytest.mark.django_db
+def test_the_client_task_goes_under_an_existing_goal_and_project_or_onto_an_existing_task(
+        seeded_tenant, ff, api, people):
+    from apps.work.models import Goal, Project
+
+    goal = Goal.objects.create(tenant=seeded_tenant, client_company=people["acme"],
+                               title="Cut overload")
+    project = Project.objects.create(tenant=seeded_tenant, client_company=people["acme"],
+                                     goal=goal, title="Order to cash")
+    existing = Task.objects.create(tenant=seeded_tenant, client_company=people["acme"],
+                                   project=project, title="Map the invoice process",
+                                   is_client_visible=True)
+
+    item = _item(seeded_tenant, people["seated"], "Dana Reyes")
+    response = _approve(api, ff, item, owner_side="other", outcome="portal",
+                        file={"goal": str(goal.pk), "project": str(project.pk)})
+    assert response.status_code == 201, response.json()
+    made = Commitment.objects.get(proposal_item=item).task
+    assert (made.project_id, made.assignee_id) == (project.pk, people["seat"].user_id)
+
+    # Straight onto a goal, with no project.
+    item = _item(seeded_tenant, people["seated"], "Dana Reyes")
+    assert _approve(api, ff, item, owner_side="other", outcome="portal",
+                    file={"goal": str(goal.pk)}).status_code == 201
+    made = Commitment.objects.get(proposal_item=item).task
+    assert (made.goal_id, made.project_id) == (goal.pk, None)
+
+    # An existing task becomes theirs; no second task is made.
+    count = Task.objects.count()
+    item = _item(seeded_tenant, people["seated"], "Dana Reyes")
+    assert _approve(api, ff, item, owner_side="other", outcome="portal",
+                    file={"goal": str(goal.pk), "project": str(project.pk),
+                          "task": str(existing.pk)}).status_code == 201
+    existing.refresh_from_db()
+    assert Commitment.objects.get(proposal_item=item).task_id == existing.pk
+    assert existing.assignee_id == people["seat"].user_id
+    assert (existing.title, Task.objects.count()) == ("Map the invoice process", count)
+
+
+@pytest.mark.django_db
+def test_filing_is_refused_outside_the_clients_own_work(seeded_tenant, tenant_b, ff, api,
+                                                        people):
+    from apps.work.models import Goal, Project
+
+    elsewhere = ClientCompanyFactory(tenant=seeded_tenant, name="Ridgeline")
+    theirs = Goal.objects.create(tenant=seeded_tenant, client_company=elsewhere,
+                                 title="Ridgeline's goal")
+    foreign = Goal.all_objects.create(
+        tenant=tenant_b, client_company=ClientCompanyFactory(tenant=tenant_b), title="B's")
+    mine = Goal.objects.create(tenant=seeded_tenant, client_company=people["acme"],
+                               title="Acme's goal")
+    loose = Project.objects.create(tenant=seeded_tenant, client_company=people["acme"],
+                                   title="Not under that goal")
+    outsider = MembershipFactory(tenant=seeded_tenant, role="FCC", client_company=elsewhere)
+    refusals = [
+        ({"file": {"goal": str(theirs.pk)}}, "not one of Acme's"),
+        ({"file": {"goal": str(foreign.pk)}}, "not one of Acme's"),
+        ({"file": {"goal": str(mine.pk), "project": str(loose.pk)}}, "not under the goal"),
+        ({"file": {"goal": "new", "goal_title": "  "}}, "Give the new goal a name"),
+        ({"assignee_id": str(outsider.user_id)}, "Acme's own portal users"),
+        ({"assignee_id": str(ff.user_id)}, "Acme's own portal users"),
+    ]
+    for choice, said in refusals:
+        item = _item(seeded_tenant, people["seated"], "Dana Reyes")
+        response = _approve(api, ff, item, owner_side="other", outcome="portal", **choice)
+        assert response.status_code == 400, choice
+        assert said in response.json()["detail"], response.json()
+        item.refresh_from_db()
+        assert item.state == "pending"
+    assert Goal.all_objects.count() == 3 and not Commitment.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_seat_is_found_by_the_contacts_own_address_and_is_read_live(
+        seeded_tenant, ff, api, people):
+    """Melissa, 2026-10-12: the person had a portal sign-in, the queue said
+    they had no seat, and the task had to be reassigned by hand. Two ways
+    that happens: the sign-in was never linked to this contact row, and the
+    seat was given after the notes were read."""
+    from apps.crm.models import ContactEmail
+
+    # A sign-in for Priya that is not linked to her contact row.
+    login = MembershipFactory(tenant=seeded_tenant, role="ECC",
+                              client_company=people["acme"], contact=None)
+    ContactEmail.objects.create(tenant=seeded_tenant, contact=people["unseated"],
+                                address=login.user.email.upper(), is_primary=True)
+    assert ownership.seat_for(people["unseated"]).pk == login.pk
+
+    # Read when the notes were parsed, before she had it: "no seat".
+    item = _item(seeded_tenant, people["unseated"], "Priya Shah", owner_side="other",
+                 owner_kind="client", owner_has_seat=False, proposed_outcome="record_only")
+    body = api.as_(ff).get(f"/api/meeting-proposals/{item.proposal_id}/").json()
+    shown = next(row for row in body["items"] if row["id"] == str(item.pk))
+    assert shown["owner_seat"] == {
+        "user_id": str(login.user_id), "company_id": str(people["acme"].pk),
+        "company_name": "Acme"}
+    response = _approve(api, ff, item, owner_side="other", outcome="portal")
+    assert response.status_code == 201, response.json()
+    assert Commitment.objects.get().task.assignee_id == login.user_id

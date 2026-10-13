@@ -38,10 +38,24 @@ def seat_for(contact):
         return None
     from apps.tenancy.models import Membership
 
-    return (Membership.objects.filter(contact=contact, role__in=("FCC", "ECC"),
-                                      revoked_at__isnull=True,
-                                      client_company__isnull=False)
-            .select_related("user", "client_company").first())
+    seats = (Membership.objects.filter(role__in=("FCC", "ECC"), revoked_at__isnull=True,
+                                       client_company__isnull=False)
+             .select_related("user", "client_company"))
+    seat = seats.filter(contact=contact).order_by("created_at").first()
+    if seat is not None:
+        return seat
+    # A seat whose membership was never linked to this contact row (a second
+    # row for the same person, or an invitation typed by address) is still
+    # theirs when it signs in with one of the contact's own addresses. Found
+    # 2026-10-12: without this the person "has no portal seat", the task is
+    # made some other way, and somebody reassigns it by hand.
+    addresses = [a.lower() for a in contact.emails.values_list("address", flat=True) if a]
+    if not addresses:
+        return None
+    from django.db.models.functions import Lower
+
+    return (seats.annotate(_address=Lower("user__email"))
+            .filter(_address__in=addresses).order_by("created_at").first())
 
 
 def _kind_from_record(contact) -> str:

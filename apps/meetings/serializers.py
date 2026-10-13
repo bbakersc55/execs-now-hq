@@ -28,7 +28,30 @@ def represent_item(item) -> dict:
         # same-named people apart. Only for items still waiting.
         "candidates": _live_candidates(item),
         "owner_candidates": _owner_candidates(item),
+        # The owner's portal seat as it is now, not as it was when the notes
+        # were read (2026-10-12): a seat given since then counts.
+        "owner_seat": _owner_seat(item),
     }
+
+
+def _seat(contact_id):
+    from apps.crm.models import Contact
+    from apps.meetings import ownership
+
+    contact = Contact.objects.filter(pk=contact_id, deleted_at__isnull=True).first() \
+        if contact_id else None
+    seat = ownership.seat_for(contact)
+    if seat is None:
+        return None
+    return {"user_id": str(seat.user_id), "company_id": str(seat.client_company_id),
+            "company_name": seat.client_company.name}
+
+
+def _owner_seat(item):
+    payload = item.payload or {}
+    if item.kind != ProposalItem.Kind.ACTION_ITEM or item.state != ProposalItem.State.PENDING:
+        return None
+    return _seat(payload.get("proposed_owner_contact_id"))
 
 
 def _with_context(rows: list[dict]) -> list[dict]:
@@ -61,7 +84,8 @@ def _owner_candidates(item):
         return None
     from apps.meetings import matching
 
-    return _with_context(matching.candidates_for(item.tenant, name=owner))
+    return [{**row, "seat": _seat(row["contact_id"])}
+            for row in _with_context(matching.candidates_for(item.tenant, name=owner))]
 
 
 def _owner_name(item) -> str:

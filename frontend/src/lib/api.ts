@@ -1289,6 +1289,8 @@ export interface ContactCandidate {
   contact_id: string; name: string; company: string; email: string;
   match_reason: string; confidence: number; rank: number;
   emails?: string[]; last_meeting?: string | null;
+  /** For an action item's owner: their portal seat as it is now, if any. */
+  seat?: PortalSeat | null;
 }
 
 export interface ProposalItem {
@@ -1333,7 +1335,12 @@ export interface ProposalItem {
   };
   /** The owner's contact, by name, when the notes' owner matched one. */
   owner_contact_name?: string;
+  /** The owner's portal seat as it is now, for a pending action item. */
+  owner_seat?: PortalSeat | null;
 }
+
+/** A client user's portal sign-in: who, and for which client company. */
+export interface PortalSeat { user_id: string; company_id: string; company_name: string }
 
 /** Something a person outside the practice said they would do (2026-09-28). */
 export interface Commitment {

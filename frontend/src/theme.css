@@ -790,6 +790,11 @@ ul.work-tree.card-grid .goal-card { margin-bottom: 0; }
 }
 .measure-line .to { color: var(--gray-light); font-weight: 400; }
 .measure-line .unit { font-size: var(--t-13); color: var(--muted); font-weight: 400; }
+/* The meeting queue: where a client's task is filed, one level to a line. */
+.filing { display: flex; flex-direction: column; gap: var(--s2);
+          margin: var(--s2) 0 0 var(--s6); }
+.filing label { flex-wrap: wrap; }
+.filing input { width: auto; flex: 1 1 220px; }
 .subrow {
   display: flex; align-items: center; gap: var(--s3); padding: var(--s2) 0;
   border-top: 1px solid var(--line); font-size: var(--t-13);

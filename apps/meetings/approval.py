@@ -273,6 +273,9 @@ def approve_task_item(item, *, actor, role, choice: dict):
         client_owner_contact=owner,
         due_date=choice.get("due_date") or payload.get("proposed_due_date") or None,
         contact=owner,
+        # Anyone on the practice's team, not only whoever is reviewing
+        # (owner, 2026-10-12). Nobody chosen leaves it unassigned, as before.
+        assignee=_team_member(item.tenant, choice.get("assignee_id")),
     )
 
     # FR-5.13 / FR-5.19 — stakeholders are created; the notification they will
@@ -340,13 +343,9 @@ def approve_action_item(item, *, actor, role, choice: dict, request=None):
             raise ApprovalRefused(
                 f"{name} has no portal seat, so the task cannot be theirs in the portal. "
                 "Follow up, or record it.")
-        from apps.crm.models import Task
-
-        task = work_services.create_task(
-            tenant=item.tenant, actor=actor, role=role, title=text[:255],
-            description=item.source_excerpt, client_company=seat.client_company,
-            client_owner_contact=contact, contact=contact, assignee=seat.user,
-            due_date=due, status=Task.Status.WAITING_ON_CLIENT)
+        task = _file_for_client(
+            item, actor=actor, role=role, choice=choice, seat=seat, contact=contact,
+            title=text[:255], due=due)
         if choice.get("notify_me"):
             _attach_practice_stakeholder(task, actor)
         commitment.task = task
@@ -370,6 +369,112 @@ def approve_action_item(item, *, actor, role, choice: dict, request=None):
     commitment.save()
     _mark(item, actor, "commitment", commitment.pk)
     return commitment
+
+
+def _team_member(tenant, user_id):
+    """The practice's own person a task is assigned to, or None when nobody
+    was chosen. Anyone else is refused: a client is assigned work in the
+    portal, by its own choice below."""
+    from apps.tenancy.models import TENANT_ROLES, Membership
+
+    if not user_id:
+        return None
+    member = Membership.all_objects.filter(
+        tenant=tenant, user_id=_uuid(user_id), role__in=TENANT_ROLES,
+        revoked_at__isnull=True).select_related("user").first()
+    if member is None:
+        raise ApprovalRefused("Choose someone on the practice's team to assign it to.")
+    return member.user
+
+
+def _uuid(value):
+    import uuid
+
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _file_for_client(item, *, actor, role, choice, seat, contact, title, due):
+    """The client's task, where the reviewer filed it (owner, 2026-10-12).
+
+    `choice["file"]` walks the three levels in order: an existing goal or a
+    new one, then an existing project or a new one, then an existing task or
+    a new one. Nothing chosen at a level leaves that level out, and nothing
+    chosen at all is what this did before: a new task filed under nothing.
+    **Whoever was chosen is kept on what this creates**: the assignee of a
+    new task, and the client-side owner of a new goal or project.
+    """
+    from apps.crm.models import Task
+    from apps.work import permissions as work_perms
+    from apps.work.models import Goal, Project
+
+    tenant, company = item.tenant, seat.client_company
+    assignee = seat.user
+    if choice.get("assignee_id"):
+        chosen = _uuid(choice["assignee_id"])
+        if not work_perms.is_client_side_user(tenant.pk, chosen, company.pk):
+            raise ApprovalRefused(
+                f"Choose one of {company.name}'s own portal users to assign it to.")
+        from apps.tenancy.models import Membership
+
+        seat = Membership.all_objects.filter(
+            tenant=tenant, user_id=chosen, client_company=company,
+            revoked_at__isnull=True).select_related("user", "contact").first()
+        assignee = seat.user
+        contact = seat.contact or contact
+    place = choice.get("file") or {}
+
+    def one(model, pk, what):
+        row = model.all_objects.filter(
+            tenant=tenant, pk=_uuid(pk), client_company=company,
+            deleted_at__isnull=True).first()
+        if row is None:
+            raise ApprovalRefused(f"That {what} is not one of {company.name}'s.")
+        return row
+
+    def named(key, what):
+        text = (place.get(key) or "").strip()[:255]
+        if not text:
+            raise ApprovalRefused(f"Give the new {what} a name.")
+        return text
+
+    goal = project = None
+    if place.get("goal") == "new":
+        goal = Goal.objects.create(
+            tenant=tenant, owner=actor, client_company=company,
+            title=named("goal_title", "goal"), client_owner_contact=contact)
+    elif place.get("goal"):
+        goal = one(Goal, place["goal"], "goal")
+    if place.get("project") == "new":
+        project = Project.objects.create(
+            tenant=tenant, owner=actor, client_company=company, goal=goal,
+            title=named("project_title", "project"), client_owner_contact=contact)
+    elif place.get("project"):
+        project = one(Project, place["project"], "project")
+        if goal is not None and project.goal_id != goal.pk:
+            raise ApprovalRefused("That project is not under the goal you chose.")
+
+    if place.get("task") and place["task"] != "new":
+        # An existing task: it becomes theirs. Nothing else about it changes.
+        task = one(Task, place["task"], "task")
+        if not task.is_client_visible:
+            raise ApprovalRefused("That task is not one the client can see.")
+        if project is not None and task.project_id != project.pk:
+            raise ApprovalRefused("That task is not in the project you chose.")
+        if project is None and goal is not None and task.goal_id != goal.pk and (
+                task.project is None or task.project.goal_id != goal.pk):
+            raise ApprovalRefused("That task is not under the goal you chose.")
+        work_services.apply_task_changes(task, actor=actor, role=role,
+                                         changes={"assignee": assignee})
+        return task
+    return work_services.create_task(
+        tenant=tenant, actor=actor, role=role, title=title,
+        description=item.source_excerpt, client_company=company,
+        client_owner_contact=contact, contact=contact, assignee=assignee,
+        project=project, goal=None if project is not None else goal,
+        due_date=due, status=Task.Status.WAITING_ON_CLIENT)
 
 
 def _date(value):

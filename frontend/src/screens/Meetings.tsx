@@ -10,9 +10,10 @@ import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
   Backfill, BackfillPlan, ContactCandidate, DismissReason, DriveFolder, DriveHealth, FailedFile,
   FolderPast, Me,
-  MeetingProposal, WatchFolder, asksToConfirm,
+  MeetingProposal, PortalPerson, PortalSeat, Task, WatchFolder, WorkParent, asksToConfirm,
   ProposalItem, api,
 } from "../lib/api";
+import { usePracticeName } from "../lib/branding";
 
 /**
  * Module 5 — the review queue (PRD §7).
@@ -1116,7 +1117,21 @@ function ItemRow({ item, onChanged, setNote }: {
   const [side, setSide] = useState<"practice" | "other">(
     payload.owner_side === "other" ? "other" : "practice");
   const [kind, setKind] = useState<string>(payload.owner_kind || "third_party");
-  const hasSeat = !!payload.owner_has_seat;
+  // The seat of whoever is chosen, as it is now (2026-10-12): a seat given
+  // after the notes were read counts, and so does choosing someone else.
+  const seat: PortalSeat | null = owners.length > 0
+    ? (owners.find((o) => o.contact_id === ownerPick)?.seat ?? null)
+    : (item.owner_seat ?? null);
+  const hasSeat = !!seat || (item.owner_seat === undefined && !!payload.owner_has_seat);
+  const practice = usePracticeName();
+  const practices = /s$/i.test(practice) ? `${practice}'` : `${practice}'s`;
+  // A practice task: anyone on the team. The client's: where it is filed.
+  const [assignee, setAssignee] = useState("");
+  const [filing, setFiling] = useState<Filing>(NOT_FILED);
+  const team = useQuery<PortalPerson[]>({
+    queryKey: ["portal-people"], queryFn: () => api.get("/api/portal-people/"),
+    enabled: item.state === "pending" && item.kind === "action_item",
+  });
   const [outcome, setOutcome] = useState<string>(payload.proposed_outcome
     || (hasSeat ? "portal" : ["prospect", "third_party"].includes(kind) ? "follow_up"
         : "record_only"));
@@ -1124,6 +1139,13 @@ function ItemRow({ item, onChanged, setNote }: {
   const [followUp, setFollowUp] = useState(payload.proposed_due_date ?? inAWeek);
   const [notifyMe, setNotifyMe] = useState(true);
   const ownerName = item.owner_contact_name || payload.proposed_owner_text || "";
+  // Someone without a seat cannot be assigned in the portal: fall back to
+  // what the owner's rule gives them, rather than send what will be refused.
+  useEffect(() => {
+    if (outcome === "portal" && !hasSeat) {
+      setOutcome(["prospect", "third_party"].includes(kind) ? "follow_up" : "record_only");
+    }
+  }, [outcome, hasSeat, kind]);
 
   // Owner, 2026-09-29: creating someone new over a strong email match is
   // refused by the server with the match named; this is that match, shown
@@ -1154,6 +1176,8 @@ function ItemRow({ item, onChanged, setNote }: {
               : { company_id: company }) }
       : item.kind === "action_item"
         ? { owner_side: side,
+            ...(side === "practice" && assignee ? { assignee_id: assignee } : {}),
+            ...(side === "other" && outcome === "portal" ? filingBody(filing) : {}),
             ...(side === "other" && owners.length > 0
               ? { owner_contact_id: ownerPick || null } : {}),
             ...(side === "other" ? { owner_kind: kind, outcome,
@@ -1179,7 +1203,7 @@ function ItemRow({ item, onChanged, setNote }: {
           </p>
           {ours && (
             <p className="tiny muted" style={{ margin: "2px 0 0" }}>
-              {payload.practice_name ?? "Your practice"} — the practice. Recorded
+              {payload.practice_name ?? "Your practice"} — {practice}. Recorded
               as attending; nothing to decide.
             </p>
           )}
@@ -1190,7 +1214,7 @@ function ItemRow({ item, onChanged, setNote }: {
             </p>
           )}
         </div>
-        {ours ? <Pill kind="ok">us</Pill>
+        {ours ? <Pill kind="ok">{practice}</Pill>
           : decided && <Pill kind={item.state === "approved" ? "ok" : ""}>{item.state}</Pill>}
       </div>
 
@@ -1198,9 +1222,9 @@ function ItemRow({ item, onChanged, setNote }: {
         <div className="ownership">
           <p className="small" style={{ margin: 0 }}>
             <strong>Owner:</strong>{" "}
-            {!ownerName ? "nobody named — the practice's to do"
+            {!ownerName ? `nobody named — ${practices} to do`
               : payload.owner_side === "practice"
-                ? `${payload.owner_practice_name || ownerName} — the practice`
+                ? `${payload.owner_practice_name || ownerName} — ${practice}`
                 : `${ownerName}${payload.owner_side === "other"
                     ? ` — ${(payload.owner_kind || "someone else").replace("_", " ")}`
                     + (hasSeat ? " · has a portal seat" : "") : ""}`}
@@ -1211,8 +1235,16 @@ function ItemRow({ item, onChanged, setNote }: {
             <label className="choice">
               <input type="radio" name={`side-${item.id}`} checked={side === "practice"}
                 onChange={() => setSide("practice")} />
-              <span>Ours — make it a task</span>
+              <span>{practices} — make it a task</span>
             </label>
+            {side === "practice" && (
+              <select aria-label="Assign the task to" value={assignee}
+                style={{ width: "auto" }} onChange={(e) => setAssignee(e.target.value)}>
+                <option value="">Assigned to nobody yet</option>
+                {(team.data ?? []).filter((p) => ["FF", "CF", "VA"].includes(p.role))
+                  .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
             <label className="choice">
               <input type="radio" name={`side-${item.id}`} checked={side === "other"}
                 disabled={!ownerName} onChange={() => setSide("other")} />
@@ -1228,7 +1260,7 @@ function ItemRow({ item, onChanged, setNote }: {
               </select>
             )}
             {side === "other" && (
-              <select aria-label={`What ${ownerName} is to us`} value={kind}
+              <select aria-label={`What ${ownerName} is to ${practice}`} value={kind}
                 style={{ width: "auto" }} onChange={(e) => setKind(e.target.value)}>
                 <option value="client">Client</option>
                 <option value="prospect">Prospect</option>
@@ -1243,7 +1275,7 @@ function ItemRow({ item, onChanged, setNote }: {
               <label className="choice">
                 <input type="radio" name={`outcome-${item.id}`} checked={outcome === "follow_up"}
                   onChange={() => setOutcome("follow_up")} />
-                <span>Follow up — a task for us to check it happened, on</span>
+                <span>Follow up — a task for {practice} to check it happened, on</span>
                 <input type="date" aria-label="Follow-up date" value={followUp}
                   style={{ width: "auto" }}
                   onChange={(e) => { setFollowUp(e.target.value); setOutcome("follow_up"); }} />
@@ -1266,6 +1298,10 @@ function ItemRow({ item, onChanged, setNote }: {
                   </label>
                 )}
               </label>
+              {outcome === "portal" && seat && (
+                <FileForClient seat={seat} people={team.data ?? []} value={filing}
+                               onChange={setFiling} />
+              )}
             </fieldset>
           )}
         </div>
@@ -1289,7 +1325,7 @@ function ItemRow({ item, onChanged, setNote }: {
               </span>
             )}
           </Field>
-          <Field label="What they are to us">
+          <Field label={`What they are to ${practice}`}>
             <select aria-label={`Type for ${payload.parsed_name}`} value={type}
               onChange={(e) => setType(e.target.value)}>
               <option value="prospect">Prospect</option>
@@ -1410,6 +1446,110 @@ function samePeople(rows: ContactCandidate[]): number {
 }
 
 /** What tells same-named people apart: company, address, last meeting. */
+/** Where the client's task goes, and whose it is (owner, 2026-10-12). At each
+ *  level: "" leaves the level out, "new" makes one with the title beside it,
+ *  anything else is the id of one that exists. */
+interface Filing {
+  assignee: string;
+  goal: string; goalTitle: string;
+  project: string; projectTitle: string;
+  task: string;
+}
+const NOT_FILED: Filing = { assignee: "", goal: "", goalTitle: "", project: "",
+                            projectTitle: "", task: "new" };
+
+function filingBody(f: Filing) {
+  const file = {
+    ...(f.goal ? { goal: f.goal } : {}),
+    ...(f.goal === "new" ? { goal_title: f.goalTitle } : {}),
+    ...(f.project ? { project: f.project } : {}),
+    ...(f.project === "new" ? { project_title: f.projectTitle } : {}),
+    ...(f.task !== "new" ? { task: f.task } : {}),
+  };
+  return { ...(f.assignee ? { assignee_id: f.assignee } : {}),
+           ...(Object.keys(file).length > 0 ? { file } : {}) };
+}
+
+/**
+ * The client's task: who it is assigned to, and where it sits. Goal, then
+ * project, then task, each one either chosen from what the client company has
+ * or made here. Whoever is chosen is kept on everything this makes.
+ */
+function FileForClient({ seat, people, value, onChange }: {
+  seat: PortalSeat; people: PortalPerson[]; value: Filing;
+  onChange: (next: Filing) => void;
+}) {
+  const company = seat.company_id;
+  const goals = useQuery<WorkParent[]>({
+    queryKey: ["goals", company],
+    queryFn: () => api.get(`/api/goals/?client_company=${company}`),
+  });
+  const projects = useQuery<WorkParent[]>({
+    queryKey: ["projects", company],
+    queryFn: () => api.get(`/api/projects/?client_company=${company}`),
+  });
+  const tasks = useQuery<Task[]>({
+    queryKey: ["tasks", company],
+    queryFn: () => api.get(`/api/tasks/?client_company=${company}`),
+  });
+  const colleagues = people.filter((p) => p.company === company);
+  // A project of the chosen goal; with no goal chosen, any of the company's.
+  const projectOptions = value.goal === "new" ? []
+    : (projects.data ?? []).filter((p) => !value.goal || p.goal === value.goal);
+  // A task of the chosen project, or one filed straight on the chosen goal.
+  const taskOptions = (tasks.data ?? []).filter((t) =>
+    t.is_client_visible && t.status !== "done" && t.status !== "cancelled"
+    && (value.project && value.project !== "new" ? t.project === value.project
+      : value.goal && value.goal !== "new" && !value.project
+        ? t.goal === value.goal && !t.project : false));
+  const set = (change: Partial<Filing>) => onChange({ ...value, ...change });
+  return (
+    <div className="filing" role="group" aria-label={`File it for ${seat.company_name}`}>
+      <label className="inline small">Assigned to
+        <select aria-label="Assign the client's task to" style={{ width: "auto" }}
+          value={value.assignee || seat.user_id}
+          onChange={(e) => set({ assignee: e.target.value })}>
+          {colleagues.length === 0 && <option value={seat.user_id}>The person named</option>}
+          {colleagues.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+      <label className="inline small">Goal
+        <select aria-label="Under which goal" style={{ width: "auto" }} value={value.goal}
+          onChange={(e) => set({ goal: e.target.value, project: "", task: "new" })}>
+          <option value="">No goal</option>
+          {(goals.data ?? []).filter((g) => !g.is_historical)
+            .map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+          <option value="new">A new goal…</option>
+        </select>
+        {value.goal === "new" && (
+          <input aria-label="The new goal" placeholder="The new goal" value={value.goalTitle}
+            maxLength={255} onChange={(e) => set({ goalTitle: e.target.value })} />
+        )}
+      </label>
+      <label className="inline small">Project
+        <select aria-label="In which project" style={{ width: "auto" }} value={value.project}
+          onChange={(e) => set({ project: e.target.value, task: "new" })}>
+          <option value="">No project</option>
+          {projectOptions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+          <option value="new">A new project…</option>
+        </select>
+        {value.project === "new" && (
+          <input aria-label="The new project" placeholder="The new project"
+            value={value.projectTitle} maxLength={255}
+            onChange={(e) => set({ projectTitle: e.target.value })} />
+        )}
+      </label>
+      <label className="inline small">Task
+        <select aria-label="Which task" style={{ width: "auto" }} value={value.task}
+          onChange={(e) => set({ task: e.target.value })}>
+          <option value="new">A new task, from this item</option>
+          {taskOptions.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 function describe(row: ContactCandidate): string {
   const email = row.emails?.[0] || row.email;
   return [

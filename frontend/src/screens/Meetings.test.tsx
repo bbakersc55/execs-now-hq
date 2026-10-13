@@ -506,7 +506,7 @@ describe("our own side of the table", () => {
 
     // Shown — who was in the room is the point of the record.
     expect(await screen.findByText(/Bryan Baker · bryan@x.test/)).toBeInTheDocument();
-    expect(screen.getByText(/the practice\. Recorded as attending/))
+    expect(screen.getByText(/— your practice\. Recorded as attending/))
       .toBeInTheDocument();
 
     // Not asked about: no type, no match picker, no approve, no reject.
@@ -799,9 +799,128 @@ describe("an action item owned by someone else", () => {
       ?.body).toMatchObject({ owner_side: "other", outcome: "record_only" }));
   });
 
+  it("names the practice where it used to say ours and us", async () => {
+    const user = userEvent.setup();
+    show({ [`GET /api/meeting-proposals/${ID}/`]: withOwner({ owner_kind: "prospect" }),
+           "GET /api/branding": { display_name: "Summit Operations Partners" } });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    expect(await screen.findByRole("radio",
+      { name: "Summit Operations Partners' — make it a task" })).toBeInTheDocument();
+    expect(screen.getByText(/a task for Summit Operations Partners to check it happened/))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText("What Dana Reyes is to Summit Operations Partners"))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/\bOurs\b/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bfor us\b/)).not.toBeInTheDocument();
+  });
+
+  const PEOPLE = [
+    { id: "u1", name: "Bryan Baker", role: "FF", company: null },
+    { id: "u2", name: "Val the Assistant", role: "VA", company: null },
+    { id: "u3", name: "Dana Reyes", role: "FCC", company: "co1" },
+    { id: "u4", name: "Lee Marsh", role: "ECC", company: "co1" },
+    { id: "u5", name: "Someone at Ridgeline", role: "FCC", company: "co2" },
+  ];
+  const SEAT = { user_id: "u3", company_id: "co1", company_name: "Acme" };
+  const seated = () => {
+    const base = withOwner({ owner_kind: "client", owner_has_seat: false,
+                             proposed_outcome: "record_only" });
+    return aProposal({ items: (base.items ?? []).map((i) => i.id === "i2"
+      ? { ...i, owner_seat: SEAT } : i) as never });
+  };
+  const WORK = {
+    "GET /api/portal-people/": PEOPLE,
+    "GET /api/goals/": [{ id: "g1", title: "Cut overload", is_historical: false },
+                        { id: "g9", title: "Last year's", is_historical: true }],
+    "GET /api/projects/": [{ id: "p1", title: "Order to cash", goal: "g1" },
+                           { id: "p2", title: "Loose project", goal: null }],
+    "GET /api/tasks/": [
+      { id: "t1", title: "Map the invoice process", project: "p1", goal: null,
+        is_client_visible: true, status: "in_progress" },
+      { id: "t2", title: "Hidden from the client", project: "p1", goal: null,
+        is_client_visible: false, status: "in_progress" },
+      { id: "t3", title: "In the loose project", project: "p2", goal: null,
+        is_client_visible: true, status: "not_started" }],
+  };
+
+  it("offers the portal by the seat as it is now, not as it was when the notes were read",
+    async () => {
+      const { user, fetchMock } = await open(seated());
+      // The notes said no seat; they have one now.
+      const portal = await screen.findByRole("radio", { name: /Assign in the portal/ });
+      expect(portal).toBeEnabled();
+      await user.click(portal);
+      expect(await screen.findByRole("group", { name: "File it for Acme" }))
+        .toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+      // Nothing chosen in the tool: what it sent before, and nothing more.
+      await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+        ?.body).toEqual({ owner_side: "other", owner_kind: "client", outcome: "portal",
+                          notify_me: true }));
+    });
+
+  it("files the client's task: goal, then project, then task, or a new one at any level",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = show({ [`GET /api/meeting-proposals/${ID}/`]: seated(), ...WORK,
+                               "POST /api/proposal-items/i2/approve/": {} });
+      await user.click(await screen.findByRole("button", { name: "Review" }));
+      await user.click(await screen.findByRole("radio", { name: /Assign in the portal/ }));
+      const tool = await screen.findByRole("group", { name: "File it for Acme" });
+
+      // Only this client's own people, and the person named by default.
+      const who = within(tool).getByLabelText("Assign the client's task to");
+      await within(who).findByRole("option", { name: "Lee Marsh" });
+      expect(within(who).getAllByRole("option").map((o) => o.textContent))
+        .toEqual(["Dana Reyes", "Lee Marsh"]);
+      expect(who).toHaveValue("u3");
+
+      // An existing goal narrows the projects to its own; a historical goal is not offered.
+      const goal = within(tool).getByLabelText("Under which goal");
+      expect(within(goal).queryByRole("option", { name: "Last year's" })).toBeNull();
+      await user.selectOptions(goal, "g1");
+      const project = within(tool).getByLabelText("In which project");
+      expect(within(project).getAllByRole("option").map((o) => o.textContent))
+        .toEqual(["No project", "Order to cash", "A new project…"]);
+      await user.selectOptions(project, "p1");
+      // Only tasks of that project that the client can see.
+      const task = within(tool).getByLabelText("Which task");
+      expect(within(task).getAllByRole("option").map((o) => o.textContent))
+        .toEqual(["A new task, from this item", "Map the invoice process"]);
+
+      // A new project in place, under the existing goal, for a colleague.
+      await user.selectOptions(project, "new");
+      await user.type(within(tool).getByLabelText("The new project"), "Month-end checklist");
+      await user.selectOptions(who, "u4");
+      await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+      await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+        ?.body).toEqual({
+          owner_side: "other", owner_kind: "client", outcome: "portal", notify_me: true,
+          assignee_id: "u4",
+          file: { goal: "g1", project: "new", project_title: "Month-end checklist" } }));
+    });
+
+  it("assigns a practice task to anyone on the team", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ [`GET /api/meeting-proposals/${ID}/`]: withOwner({
+                               owner_kind: "client" }), ...WORK,
+                             "POST /api/proposal-items/i2/approve/": {} });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await user.click(await screen.findByRole("radio", { name: /— make it a task/ }));
+    const who = screen.getByLabelText("Assign the task to");
+    await within(who).findByRole("option", { name: "Val the Assistant" });
+    // The team only: no client user is offered a practice task.
+    expect(within(who).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["Assigned to nobody yet", "Bryan Baker", "Val the Assistant"]);
+    await user.selectOptions(who, "u2");
+    await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+      ?.body).toEqual({ owner_side: "practice", assignee_id: "u2" }));
+  });
+
   it("lets the reviewer say it is ours after all", async () => {
     const { user, fetchMock } = await open(withOwner({ owner_kind: "client" }));
-    await user.click(await screen.findByRole("radio", { name: /Ours — make it a task/ }));
+    await user.click(await screen.findByRole("radio", { name: /— make it a task/ }));
     await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
       ?.body).toEqual({ owner_side: "practice" }));
