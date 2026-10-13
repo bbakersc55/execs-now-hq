@@ -18,7 +18,7 @@ from apps.crm.models import (
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage,
     PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
 )
-from apps.notes.models import Note, NotePinUnlock
+from apps.notes.models import Note, NoteFolder, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
     Comment, CompanyGoalOrder, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
@@ -98,6 +98,7 @@ register(ImportRow, factories.ImportRowFactory)
 register(ImportMappingProfile, factories.ImportMappingProfileFactory)
 register(Task, factories.TaskFactory)
 register(Note, factories.NoteFactory)
+register(NoteFolder, factories.NoteFolderFactory, endpoints=("/api/note-folders/",))
 register(NotePinUnlock, factories.NotePinUnlockFactory, api_exposed=False)
 
 # --- Module 3 ---

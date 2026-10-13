@@ -25,6 +25,12 @@ def _links(note) -> dict:
         "company_name": note.company.name if note.company_id else "",
         "task": str(note.task_id) if note.task_id else None,
         "task_title": note.task.title if note.task_id else "",
+        # The one folder it is in: one the practice added, or the built-in
+        # one its link gives it.
+        "folder": str(note.folder_id) if note.folder_id else None,
+        "folder_name": (note.folder.name if note.folder_id
+                        else Note.BUILT_IN[note.built_in_folder]),
+        "built_in_folder": note.built_in_folder,
     }
 
 
@@ -82,6 +88,7 @@ class NoteWriteSerializer(serializers.Serializer):
     contact = serializers.UUIDField(required=False, allow_null=True)
     company = serializers.UUIDField(required=False, allow_null=True)
     task = serializers.UUIDField(required=False, allow_null=True)
+    folder = serializers.UUIDField(required=False, allow_null=True)
     source = serializers.ChoiceField(
         choices=[Note.Source.MANUAL, Note.Source.RECORDING], required=False
     )
@@ -112,6 +119,16 @@ class NoteWriteSerializer(serializers.Serializer):
         from apps.crm.models import Task
 
         return self._scoped(Task, value)
+
+    def validate_folder(self, value):
+        from apps.notes.models import NoteFolder
+
+        if value is None:
+            return None
+        folder = NoteFolder.objects.filter(pk=value).first()
+        if folder is None:
+            raise serializers.ValidationError("That is not one of your folders.")
+        return folder
 
     def validate(self, attrs):
         instance = self.instance

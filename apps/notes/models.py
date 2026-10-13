@@ -36,7 +36,34 @@ def _vector(field, weight):
     return SearchVector(field, weight=weight, config=SEARCH_CONFIG)
 
 
+class NoteFolder(TenantScopedModel):
+    """A folder the practice added (owner, 2026-10-12).
+
+    The three built-in folders have no row: which of them a note is in is
+    read from what the note is linked to (a contact, a company, neither), so
+    it can never disagree with the link. A note put in one of these instead
+    sits here and in no built-in folder: a note is in exactly one folder.
+    """
+
+    name = models.CharField(max_length=80)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "note_folder"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "name"], name="note_folder_name_once"),
+        ]
+
+
 class Note(TenantScopedModel):
+    #: The built-in folders, by what a note is linked to.
+    INTERNAL, CONTACTS, COMPANIES = "internal", "contacts", "companies"
+    BUILT_IN = {INTERNAL: "Internal", CONTACTS: "Contacts", COMPANIES: "Companies"}
+
     class Source(models.TextChoices):
         MANUAL = "manual", "Written in the app"
         IMPORT = "import", "Created by a CSV import"
@@ -78,6 +105,11 @@ class Note(TenantScopedModel):
         "crm.Task", null=True, blank=True, on_delete=models.SET_NULL, related_name="notes"
     )
     source = models.CharField(max_length=16, choices=Source.choices, default=Source.MANUAL)
+    # A folder the practice added, or null for the built-in one its link gives
+    # it. Removing the folder puts its notes back in theirs.
+    folder = models.ForeignKey(
+        NoteFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="notes",
+    )
     # FR-1.31 — an import rollback removes the notes it created.
     import_batch = models.ForeignKey(
         "crm.ImportBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="notes"
@@ -158,6 +190,14 @@ class Note(TenantScopedModel):
     @property
     def is_locked(self) -> bool:
         return self.pin_hash is not None
+
+    @property
+    def built_in_folder(self) -> str:
+        """Contacts when it is on a contact, Companies when on a company,
+        Internal when on neither (a task alone is the practice's own)."""
+        if self.contact_id:
+            return self.CONTACTS
+        return self.COMPANIES if self.company_id else self.INTERNAL
 
 
 class NotePinUnlock(TenantScopedModel):

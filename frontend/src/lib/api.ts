@@ -402,7 +402,14 @@ export interface NoteStub extends NoteLinks {
   stub: true;
   created_at: string;
   can_reset_pin: boolean;
+  /** A folder the practice added, or null for the built-in one its link gives it. */
+  folder?: string | null;
+  folder_name?: string;
+  built_in_folder?: "internal" | "contacts" | "companies";
 }
+
+/** A notes folder, with how many notes are in it as the grid is narrowed. */
+export interface NoteFolder { id: string; name: string; built_in?: boolean; notes?: number }
 
 export type TranscriptionState = "none" | "uploading" | "transcribing" | "done" | "failed";
 export type SummaryState = "none" | "drafting" | "proposed" | "accepted" | "discarded" | "failed";

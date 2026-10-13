@@ -1,11 +1,11 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { Lock } from "lucide-react";
 
 import { Chip, FilterBar, PageHead, SearchField } from "../components/shell";
 import { Banner, Empty, when } from "../components/ui";
-import { Me, Note, api } from "../lib/api";
+import { Me, Note, NoteFolder, api } from "../lib/api";
 import { LinkChips, NoteDetail } from "./NoteDetail";
 
 export function NoteRow({ note }: { note: Note }) {
@@ -21,7 +21,8 @@ export function NoteRow({ note }: { note: Note }) {
 
 interface NoteCard { id: string; title: string; is_locked: boolean; created_at: string }
 interface Option { id: string; name: string }
-interface Grid { total: number; results: NoteCard[]; companies: Option[]; contacts: Option[] }
+interface Grid { total: number; results: NoteCard[]; companies: Option[]; contacts: Option[];
+                 folders?: NoteFolder[] }
 
 /** The grid opens with this many, and "Show older" adds this many. */
 const PAGE = 20;
@@ -63,10 +64,96 @@ function day(value: string) {
  */
 export function Notes({ me }: { me: Me }) {
   const { id } = useParams();
-  return id ? <NoteDetail me={me} /> : <NotesGrid />;
+  return id ? <NoteDetail me={me} /> : <NotesGrid me={me} />;
 }
 
-function NotesGrid() {
+/**
+ * The folders, as a row above the grid (owner, 2026-10-12). Opening one
+ * filters the grid to it. Three are built in and follow what a note is linked
+ * to; the practice adds its own, and the practice owner renames or removes
+ * the one that is open. A folder's number is how many notes opening it shows.
+ */
+function Folders({ me, folders, open, onOpen }: {
+  me: Me; folders: NoteFolder[]; open: string; onOpen: (id: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<"" | "add" | "rename" | "remove">("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const current = folders.find((f) => f.id === open);
+  const done = () => {
+    setMode(""); setName(""); setError("");
+    qc.invalidateQueries({ queryKey: ["notes"] });
+    qc.invalidateQueries({ queryKey: ["note-folders"] });
+  };
+  const failed = (e: Error) => setError(e.message);
+  const add = useMutation({
+    mutationFn: () => api.post<NoteFolder>("/api/note-folders/", { name }),
+    onSuccess: (made) => { done(); onOpen(made.id); }, onError: failed,
+  });
+  const rename = useMutation({
+    mutationFn: () => api.patch<NoteFolder>(`/api/note-folders/${open}/`, { name }),
+    onSuccess: done, onError: failed,
+  });
+  const remove = useMutation({
+    mutationFn: () => api.del(`/api/note-folders/${open}/`),
+    onSuccess: () => { done(); onOpen(""); }, onError: failed,
+  });
+  const mayChange = me.role === "FF" && !!current && !current.built_in;
+
+  return (
+    <>
+      <div className="tabs" role="tablist" aria-label="Folders" style={{ flexWrap: "wrap" }}>
+        <button type="button" role="tab" aria-selected={!open}
+          className={open ? "tab" : "tab on"} onClick={() => onOpen("")}>All notes</button>
+        {folders.map((f) => (
+          <button type="button" role="tab" key={f.id} aria-selected={open === f.id}
+            className={open === f.id ? "tab on" : "tab"} onClick={() => onOpen(f.id)}>
+            {f.name} <span className="muted">{f.notes ?? 0}</span>
+          </button>
+        ))}
+        <button type="button" className="tab" onClick={() => { setMode("add"); setName(""); }}>
+          + New folder</button>
+      </div>
+      {error && <Banner kind="bad">{error}</Banner>}
+      {(mode === "add" || mode === "rename") && (
+        <form className="listbar" onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) (mode === "add" ? add : rename).mutate();
+        }}>
+          <input aria-label={mode === "add" ? "The new folder's name" : "The folder's new name"}
+            placeholder="Folder name" value={name} maxLength={80} autoFocus
+            style={{ width: "auto", flex: "0 1 280px" }}
+            onChange={(e) => setName(e.target.value)} />
+          <button className="primary small" type="submit"
+            disabled={!name.trim() || add.isPending || rename.isPending}>
+            {mode === "add" ? "Add folder" : "Rename"}</button>
+          <button className="small" type="button" onClick={() => { setMode(""); setError(""); }}>
+            Cancel</button>
+        </form>
+      )}
+      {mode === "remove" && current && (
+        <div className="listbar">
+          <span className="small">Remove the folder "{current.name}"? Its {current.notes ?? 0}{" "}
+            note{current.notes === 1 ? "" : "s"} are kept, each back in the folder its link
+            gives it.</span>
+          <button className="primary small" disabled={remove.isPending}
+            onClick={() => remove.mutate()}>Remove the folder</button>
+          <button className="small" onClick={() => setMode("")}>Cancel</button>
+        </div>
+      )}
+      {mayChange && mode === "" && (
+        <p className="small">
+          <button className="ghost small"
+            onClick={() => { setMode("rename"); setName(current!.name); }}>Rename folder</button>{" "}
+          <button className="ghost small" onClick={() => setMode("remove")}>Remove folder</button>
+        </p>
+      )}
+    </>
+  );
+}
+
+function NotesGrid({ me }: { me: Me }) {
   // Search and filters live in the address, so "Back to notes" and the
   // browser's Back both return to exactly this grid.
   const [params, setParams] = useSearchParams();
@@ -106,7 +193,8 @@ function NotesGrid() {
   const range = get("date");
   const { after, before } = bounds(range, get("from"), get("to"));
   const locked = get("locked");
-  const narrowed = !!(q || company || contact || name || after || before || locked);
+  const folder = get("folder");
+  const narrowed = !!(q || company || contact || name || after || before || locked || folder);
   const step = narrowed ? MATCH_PAGE : PAGE;
   const limit = Number(get("show")) || step;
 
@@ -116,6 +204,7 @@ function NotesGrid() {
   if (contact) request.set("contact", contact);
   if (name) request.set("name", name);
   if (locked) request.set("locked", locked);
+  if (folder) request.set("folder", folder);
   if (after) request.set("after", after.toISOString());
   if (before) request.set("before", before.toISOString());
   request.set("limit", String(limit));
@@ -175,6 +264,9 @@ function NotesGrid() {
         </div>
       </div>
 
+      <Folders me={me} folders={grid.data?.folders ?? []} open={folder}
+        onOpen={(id) => set({ folder: id })} />
+
       {range === "custom" && (
         <div className="listbar">
           <label className="inline small">From
@@ -203,6 +295,9 @@ function NotesGrid() {
             onClear={() => set({ date: "", from: "", to: "" })} />}
           {name && <Chip label={`Name: ${name}`} onClear={() => setNameTerm("")} />}
           {locked && <Chip label="Locked only" onClear={() => set({ locked: "" })} />}
+          {folder && <Chip
+            label={`Folder: ${(grid.data?.folders ?? []).find((f) => f.id === folder)?.name ?? "…"}`}
+            onClear={() => set({ folder: "" })} />}
         </FilterBar>
       )}
       {grid.isError && (

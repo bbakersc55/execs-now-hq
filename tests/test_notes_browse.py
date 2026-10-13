@@ -260,3 +260,164 @@ def test_a_contacts_company_is_not_given_to_someone_who_cannot_see_the_contact(
     assert titles(api.as_(cf), company=str(elsewhere.pk)) == []
     # The practice owner sees the contact, so for them it counts.
     assert titles(api.as_(ff), company=str(elsewhere.pk)) == ["My note"]
+
+
+# ------------------------------------- search matches the body (2026-10-12)
+
+@pytest.mark.django_db
+def test_search_matches_the_body_as_it_is_typed_not_only_whole_words(
+        seeded_tenant, ff, api):
+    """The bug: "quart" found nothing in a note about the quarterly review,
+    while the Name box matches any part of a title, so the body looked
+    unsearched."""
+    client = api.as_(ff)
+    note(client, title="Call with Dana", body="We agreed the quarterly pricing review.")
+    note(client, title="Quartz countertops", body="Nothing to do with it.")
+    note(client, title="Unrelated", body="Lunch.")
+    # A whole word from the body matched before, and still does.
+    assert titles(client, q="pricing") == ["Call with Dana"]
+    # Part of a word: the title's and the body's, title first.
+    assert titles(client, q="quart") == ["Quartz countertops", "Call with Dana"]
+    assert titles(client, q="pric rev") == ["Call with Dana"]
+    # The same search everywhere notes are searched.
+    listed = [n["title"] for n in client.get("/api/notes/", {"q": "quart"}).json()]
+    assert listed == ["Quartz countertops", "Call with Dana"]
+    # Punctuation is not a query language to trip over.
+    for term in ("quart:", "!!", "a & b |", "'quart", "(pricing"):
+        assert client.get(URL, {"q": term}).status_code == 200, term
+
+
+@pytest.mark.django_db
+def test_part_of_a_word_still_never_finds_a_locked_notes_body(seeded_tenant, ff, va, api):
+    client = api.as_(ff)
+    locked = note(client, title="Board matter", body=SECRET.lower())
+    lock(client, locked["id"])
+    auto = note(client, body=f"{SECRET.lower()} second note")
+    lock(client, auto["id"])
+    for viewer in (ff, va):
+        for term in ("confid", "severance", "sever disc"):
+            found = api.as_(viewer).get(URL, {"q": term}).json()
+            assert found["results"] == [], (viewer.role, term)
+    # Its typed title is still what finds it, in part too.
+    assert titles(api.as_(va), q="boar") == ["Board matter"]
+
+
+# ------------------------------------------------------- folders (2026-10-12)
+
+FOLDERS = "/api/note-folders/"
+
+
+def folders(client, **params):
+    return {f["name"]: f["notes"] for f in client.get(URL, params).json()["folders"]}
+
+
+@pytest.mark.django_db
+def test_a_note_is_in_one_folder_and_opening_a_folder_filters_to_it(
+        seeded_tenant, in_tenant_a, ff, api):
+    client = api.as_(ff)
+    contact = ContactFactory(tenant=seeded_tenant)
+    company = CompanyFactory(tenant=seeded_tenant)
+    note(client, title="On nothing")
+    note(client, title="On a contact", contact=str(contact.pk))
+    note(client, title="On a company", company=str(company.pk))
+    moved = note(client, title="On a contact, filed", contact=str(contact.pk))
+    made = post(client, FOLDERS, {"name": "  Board   papers "})
+    assert made.status_code == 201 and made.json()["name"] == "Board papers"
+    folder = made.json()["id"]
+    changed = client.patch(f"/api/notes/{moved['id']}/", json.dumps({"folder": folder}),
+                           content_type="application/json").json()
+    assert (changed["folder"], changed["folder_name"], changed["built_in_folder"]) == (
+        folder, "Board papers", "contacts")
+
+    assert folders(client) == {"Internal": 1, "Contacts": 1, "Companies": 1,
+                               "Board papers": 1}
+    assert titles(client, folder="internal") == ["On nothing"]
+    assert titles(client, folder="contacts") == ["On a contact"]
+    assert titles(client, folder="companies") == ["On a company"]
+    assert titles(client, folder=folder) == ["On a contact, filed"]
+    # Every note is in exactly one of them.
+    assert sum(folders(client).values()) == client.get(URL).json()["total"] == 4
+    # The counts follow the search, so a folder's number is what opening it shows.
+    assert folders(client, q="filed") == {"Internal": 0, "Contacts": 0, "Companies": 0,
+                                          "Board papers": 1}
+    assert client.get(URL, {"folder": "nonsense"}).status_code == 400
+
+    # Taken out of the folder, it is back in the one its link gives it.
+    back = client.patch(f"/api/notes/{moved['id']}/", json.dumps({"folder": None}),
+                        content_type="application/json").json()
+    assert (back["folder"], back["folder_name"]) == (None, "Contacts")
+    assert folders(client)["Contacts"] == 2
+
+
+@pytest.mark.django_db
+def test_removing_a_folder_removes_no_note(seeded_tenant, ff, api):
+    from apps.tenancy.models import AuditEvent
+
+    client = api.as_(ff)
+    folder = post(client, FOLDERS, {"name": "Board papers"}).json()["id"]
+    kept = note(client, title="Minutes", folder=folder)
+    assert kept["folder_name"] == "Board papers"
+    assert client.patch(f"{FOLDERS}{folder}/", json.dumps({"name": "Board"}),
+                        content_type="application/json").json()["name"] == "Board"
+    assert client.delete(f"{FOLDERS}{folder}/").json() == {"notes_returned": 1}
+    assert titles(client, folder="internal") == ["Minutes"]
+    assert AuditEvent.all_objects.filter(verb="note_folder.removed",
+                                     payload__notes=1).count() == 1
+
+
+@pytest.mark.django_db
+def test_a_folders_name_is_needed_and_is_not_one_that_exists(seeded_tenant, ff, api):
+    client = api.as_(ff)
+    assert post(client, FOLDERS, {"name": "Clients A to M"}).status_code == 201
+    for name in ("", "   ", "clients a to m", "Internal", "contacts", "x" * 81):
+        assert post(client, FOLDERS, {"name": name}).status_code == 400, name
+    assert [f["name"] for f in client.get(FOLDERS).json()] == ["Clients A to M"]
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_a_folder_is_its_own_practices(seeded_tenant, tenant_b, ff, api):
+    from apps.notes.models import NoteFolder
+    from apps.tenancy.context import tenant_context
+
+    from .conftest import _member
+
+    with tenant_context(tenant_b.pk):
+        theirs = NoteFolder.objects.create(tenant=tenant_b, name="SECRET-FOLDER")
+    client = api.as_(ff)
+    mine = note(client, title="Mine")
+    assert "SECRET-FOLDER" not in client.get(FOLDERS).content.decode()
+    assert "SECRET-FOLDER" not in client.get(URL).content.decode()
+    assert client.get(URL, {"folder": str(theirs.pk)}).json()["results"] == []
+    # Not somewhere a note of mine can be put, renamed from here, or removed.
+    refused = client.patch(f"/api/notes/{mine['id']}/", json.dumps({"folder": str(theirs.pk)}),
+                           content_type="application/json")
+    assert refused.status_code == 400
+    assert client.patch(f"{FOLDERS}{theirs.pk}/", json.dumps({"name": "x"}),
+                        content_type="application/json").status_code == 404
+    assert client.delete(f"{FOLDERS}{theirs.pk}/").status_code == 404
+    # The same name is free in each practice.
+    assert post(client, FOLDERS, {"name": "SECRET-FOLDER"}).status_code == 201
+    assert post(api.as_(_member(tenant_b, "FF")), FOLDERS,
+                {"name": "SECRET-FOLDER"}).status_code == 400
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role,adds,changes", [
+    ("FF", 201, 200), ("CF", 201, 403), ("VA", 201, 403), ("FCC", 403, 403),
+    ("ECC", 403, 403)])
+def test_role_boundaries_the_team_adds_a_folder_and_the_owner_changes_one(
+        role, adds, changes, seeded_tenant, in_tenant_a, api):
+    from apps.notes.models import NoteFolder
+
+    from .conftest import _member
+
+    company = ClientCompanyFactory(tenant=seeded_tenant) if role in ("FCC", "ECC") else None
+    member = _member(seeded_tenant, role, company)
+    existing = NoteFolder.objects.create(tenant=seeded_tenant, name="Existing")
+    client = api.as_(member)
+    assert post(client, FOLDERS, {"name": "Mine"}).status_code == adds
+    assert client.get(FOLDERS).status_code == (200 if adds == 201 else 403)
+    assert client.patch(f"{FOLDERS}{existing.pk}/", json.dumps({"name": "Renamed"}),
+                        content_type="application/json").status_code == changes
+    assert client.delete(f"{FOLDERS}{existing.pk}/").status_code == changes
+    assert NoteFolder.objects.filter(pk=existing.pk).exists() == (changes != 200)

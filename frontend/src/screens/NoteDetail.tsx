@@ -6,7 +6,7 @@ import { LinkPicker, Links } from "../components/LinkPicker";
 import { PinDialog } from "../components/PinDialog";
 import { clock } from "../components/Recorder";
 import { Banner, Card, Pill, when } from "../components/ui";
-import { Me, Note, NoteFull, NoteStub, NotesSettings, api } from "../lib/api";
+import { Me, Note, NoteFolder, NoteFull, NoteStub, NotesSettings, api } from "../lib/api";
 import { retry as retryUpload } from "../lib/pendingUploads";
 
 export function LinkChips({ note }: { note: NoteStub | NoteFull }) {
@@ -65,10 +65,35 @@ export function NoteDetail(_: { me: Me }) {
  * text keeps a readable line and the page is not half empty. For a locked
  * note this is the stub's own content, links and date, and nothing more.
  */
-function About({ note }: { note: Note }) {
+const BUILT_IN = { internal: "Internal", contacts: "Contacts", companies: "Companies" };
+
+/** The one folder a note is in: a folder the practice added, or the built-in
+ *  one its link gives it. Chosen here on an open note; read on a locked one. */
+function FolderOf({ note, onMoved }: { note: Note; onMoved?: (n: Note) => void }) {
+  const folders = useQuery<NoteFolder[]>({
+    queryKey: ["note-folders"], queryFn: () => api.get<NoteFolder[]>("/api/note-folders/"),
+    enabled: !!onMoved,
+  });
+  const move = useMutation({
+    mutationFn: (folder: string) =>
+      api.patch<Note>(`/api/notes/${note.id}/`, { folder: folder || null }),
+    onSuccess: (n) => onMoved?.(n),
+  });
+  if (!onMoved || (folders.data ?? []).length === 0) return <>{note.folder_name ?? "—"}</>;
+  return (
+    <select aria-label="Folder" value={note.folder ?? ""} disabled={move.isPending}
+      onChange={(e) => move.mutate(e.target.value)}>
+      <option value="">{BUILT_IN[note.built_in_folder ?? "internal"]}</option>
+      {(folders.data ?? []).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+    </select>
+  );
+}
+
+function About({ note, onMoved }: { note: Note; onMoved?: (n: Note) => void }) {
   return (
     <Card title="About this note">
       <dl className="facts">
+        <dt>Folder</dt><dd><FolderOf note={note} onMoved={onMoved} /></dd>
         <dt>Linked to</dt><dd><LinkChips note={note} /></dd>
         <dt>Created</dt><dd>{when(note.created_at)}</dd>
         {!note.stub && note.created_by_name && <><dt>Written by</dt><dd>{note.created_by_name}</dd></>}
@@ -206,7 +231,7 @@ function OpenNote({ note, onChange }: { note: NoteFull; onChange: (n?: Note) => 
       {/* Beside the text: what it is linked to, and for a recording its
           state and the summary, which is read against the transcript. */}
       <aside className="note-side">
-        <About note={note} />
+        <About note={note} onMoved={onChange} />
         {recorded && <RecordingCard note={note}
           retention={settings.data?.audio_retention_days} act={act.mutate} />}
         {note.transcript && <SummaryCard note={note} act={act.mutate} />}

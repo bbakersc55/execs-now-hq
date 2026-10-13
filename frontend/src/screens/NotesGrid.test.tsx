@@ -32,7 +32,7 @@ function show(route = "/notes", extra: Record<string, unknown> = {}, me = aMe())
     "GET /api/notes/settings/": { audio_retention_days: 30 },
     "GET /api/notes/n1/": OPEN,
     ...extra,
-    "GET /api/notes/browse/": grid(),
+    "GET /api/notes/browse/": extra["GET /api/notes/browse/"] ?? grid(),
   });
   vi.stubGlobal("fetch", fetchMock);
   render(
@@ -217,5 +217,106 @@ describe("the notes grid", () => {
     show("/notes/n1");
     expect(await screen.findByRole("link", { name: /Back to notes/ }))
       .toHaveAttribute("href", "/notes");
+  });
+});
+
+describe("folders (2026-10-12)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const FOLDERS = [
+    { id: "internal", name: "Internal", built_in: true, notes: 4 },
+    { id: "contacts", name: "Contacts", built_in: true, notes: 7 },
+    { id: "companies", name: "Companies", built_in: true, notes: 2 },
+    { id: "f1", name: "Board papers", built_in: false, notes: 1 },
+  ];
+  const withFolders = { "GET /api/notes/browse/": { ...grid(), folders: FOLDERS } };
+  const sent = (fetchMock: ReturnType<typeof show>, method: string) =>
+    fetchMock.calls.filter((c) => c.method === method).map((c) => [c.url, c.body]);
+
+  it("shows the three built-in folders and the practice's own, each with its count",
+    async () => {
+      show("/notes", withFolders);
+      const row = await screen.findByRole("tablist", { name: "Folders" });
+      await within(row).findByRole("tab", { name: "Board papers 1" });
+      expect(within(row).getAllByRole("tab").map((t) => t.textContent)).toEqual(
+        ["All notes", "Internal 4", "Contacts 7", "Companies 2", "Board papers 1"]);
+      expect(within(row).getByRole("tab", { name: "All notes" }))
+        .toHaveAttribute("aria-selected", "true");
+    });
+
+  it("opens a folder: the grid asks for it, the address says so, and it clears as a chip",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = show("/notes", withFolders);
+      await user.click(await screen.findByRole("tab", { name: "Contacts 7" }));
+      expect(screen.getByLabelText("address")).toHaveTextContent("/notes?folder=contacts");
+      expect(fetchMock.calls.some((c) => c.url.includes("folder=contacts"))).toBe(true);
+      expect(screen.getByRole("tab", { name: "Contacts 7" }))
+        .toHaveAttribute("aria-selected", "true");
+      expect(screen.getByText("Folder: Contacts")).toBeInTheDocument();
+    });
+
+  it("adds a folder and opens it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show("/notes", {
+      ...withFolders, "POST /api/note-folders/": { id: "f2", name: "Clients A to M" } });
+    await user.click(await screen.findByRole("button", { name: "+ New folder" }));
+    await user.type(screen.getByLabelText("The new folder's name"), "Clients A to M");
+    await user.click(screen.getByRole("button", { name: "Add folder" }));
+    expect(await screen.findByLabelText("address")).toHaveTextContent("/notes?folder=f2");
+    expect(sent(fetchMock, "POST")).toEqual([["/api/note-folders/", { name: "Clients A to M" }]]);
+  });
+
+  it("lets the practice owner rename or remove the folder that is open, and nobody else",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = show("/notes?folder=f1", {
+        ...withFolders, "PATCH /api/note-folders/f1/": { id: "f1", name: "Board" },
+        "DELETE /api/note-folders/f1/": { notes_returned: 1 } }, aMe({ role: "FF" }));
+      await user.click(await screen.findByRole("button", { name: "Rename folder" }));
+      const name = screen.getByLabelText("The folder's new name");
+      expect(name).toHaveValue("Board papers");
+      await user.clear(name);
+      await user.type(name, "Board");
+      await user.click(screen.getByRole("button", { name: "Rename" }));
+      expect(await screen.findByRole("button", { name: "Remove folder" })).toBeInTheDocument();
+      expect(sent(fetchMock, "PATCH")).toEqual([["/api/note-folders/f1/", { name: "Board" }]]);
+
+      // Removing says the notes are kept, before anything is sent.
+      await user.click(screen.getByRole("button", { name: "Remove folder" }));
+      expect(screen.getByText(/Its 1\s+note are kept, each back in the folder its link/))
+        .toBeInTheDocument();
+      expect(sent(fetchMock, "DELETE")).toEqual([]);
+      await user.click(screen.getByRole("button", { name: "Remove the folder" }));
+      expect(await screen.findByLabelText("address")).toHaveTextContent(/\/notes$/);
+    });
+
+  it.each(["CF", "VA"] as const)("offers %s no rename or remove", async (role) => {
+    show("/notes?folder=f1", withFolders, aMe({ role }));
+    await screen.findByRole("tab", { name: "Board papers 1" });
+    expect(screen.queryByRole("button", { name: "Rename folder" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove folder" })).toBeNull();
+  });
+
+  it("offers neither on a built-in folder, to anyone", async () => {
+    show("/notes?folder=contacts", withFolders, aMe({ role: "FF" }));
+    await screen.findByRole("tab", { name: "Contacts 7" });
+    expect(screen.queryByRole("button", { name: "Rename folder" })).toBeNull();
+  });
+
+  it("moves an open note to another folder from its page", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show("/notes/n1", {
+      "GET /api/note-folders/": [{ id: "f1", name: "Board papers" }],
+      "GET /api/notes/n1/": { ...OPEN, folder: null, folder_name: "Contacts",
+                              built_in_folder: "contacts" },
+      "PATCH /api/notes/n1/": { ...OPEN, folder: "f1", folder_name: "Board papers",
+                                built_in_folder: "contacts" } });
+    const picker = await screen.findByLabelText("Folder");
+    await within(picker).findByRole("option", { name: "Board papers" });
+    expect(within(picker).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["Contacts", "Board papers"]);
+    await user.selectOptions(picker, "f1");
+    expect(sent(fetchMock, "PATCH")).toEqual([["/api/notes/n1/", { folder: "f1" }]]);
   });
 });

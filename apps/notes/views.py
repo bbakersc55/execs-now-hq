@@ -9,7 +9,7 @@ read or change its content first requires the unlock.
 from __future__ import annotations
 
 from django.contrib.postgres.search import SearchQuery, SearchRank
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets
@@ -29,15 +29,65 @@ LIST_LIMIT = 200
 BROWSE_PAGE = 20
 
 
+def search_query(term: str):
+    """What a typed search asks the index for (FR-2.7).
+
+    The words as typed, **or** every word with the last few letters still to
+    come. Found 2026-10-12: the index holds whole words, so "quart" matched
+    nothing in a note about the quarterly review, while the Name box beside
+    it matches any part of a title. To the person typing, the title was
+    searched and the body was not. Still only the index, so what a locked
+    note may match is unchanged.
+    """
+    import re
+
+    query = SearchQuery(term, config=SEARCH_CONFIG, search_type="websearch")
+    words = [w for w in re.findall(r"\w+", term) if any(ch.isalnum() for ch in w)]
+    if words:
+        query |= SearchQuery(" & ".join(f"{word}:*" for word in words),
+                             config=SEARCH_CONFIG, search_type="raw")
+    return query
+
+
 def search_notes(request, term, *, limit=50):
     """FR-2.7 — against the generated index, so a locked note can only ever
     match on a typed title (see models.search_vector)."""
-    query = SearchQuery(term, config=SEARCH_CONFIG, search_type="websearch")
+    query = search_query(term)
     qs = access.note_queryset_for(
         request, Note.objects.filter(deleted_at__isnull=True, search_vector=query)
-    ).select_related("contact", "company", "task", "created_by", "audio_file", "tenant")
+    ).select_related("contact", "company", "task", "created_by", "audio_file", "tenant",
+                     "folder")
     return list(qs.annotate(rank=SearchRank("search_vector", query))
                 .order_by("-rank", "-created_at")[:limit])
+
+
+def _in_folder(folder: str):
+    """The notes in one folder, or None when it names no folder. A note in a
+    folder the practice added is in that one and in no built-in folder."""
+    built_in = Q(folder__isnull=True)
+    if folder == Note.INTERNAL:
+        return built_in & Q(contact__isnull=True, company__isnull=True)
+    if folder == Note.CONTACTS:
+        return built_in & Q(contact__isnull=False)
+    if folder == Note.COMPANIES:
+        return built_in & Q(contact__isnull=True, company__isnull=False)
+    return Q(folder_id=folder) if _is_uuid(folder) else None
+
+
+def _folders(notes) -> list[dict]:
+    """Every folder with how many of these notes are in it: the three
+    built-in ones first, then the practice's own by name."""
+    from apps.notes.models import NoteFolder
+
+    rows = [{"id": key, "name": name, "built_in": True,
+             "notes": notes.filter(_in_folder(key)).count()}
+            for key, name in Note.BUILT_IN.items()]
+    counts = dict(notes.filter(folder__isnull=False).values_list("folder_id")
+                  .annotate(n=Count("pk")).values_list("folder_id", "n"))
+    rows += [{"id": str(folder.pk), "name": folder.name, "built_in": False,
+              "notes": counts.get(folder.pk, 0)}
+             for folder in NoteFolder.objects.order_by("name")]
+    return rows
 
 
 def _is_uuid(value) -> bool:
@@ -64,7 +114,7 @@ class NoteViewSet(viewsets.GenericViewSet):
         return access.note_queryset_for(
             self.request,
             Note.objects.filter(deleted_at__isnull=True).select_related(
-                "contact", "company", "task", "created_by", "audio_file", "tenant"
+                "contact", "company", "task", "created_by", "audio_file", "tenant", "folder"
             ),
         )
 
@@ -166,9 +216,20 @@ class NoteViewSet(viewsets.GenericViewSet):
                 return Response({"detail": f"{bound} must be a date and time."}, status=400)
             qs = qs.filter(**{lookup: moment})
 
+        # Folder counts are of everything else that is chosen, so a folder's
+        # number is how many notes opening it would show.
+        in_any_folder = qs
+        folder = (params.get("folder") or "").strip()
+        if folder:
+            match = _in_folder(folder)
+            if match is None:
+                return Response({"detail": "That is not a folder."}, status=400)
+            qs = qs.filter(match)
+
         term = (params.get("q") or "").strip()
         if term:
-            query = SearchQuery(term, config=SEARCH_CONFIG, search_type="websearch")
+            query = search_query(term)
+            in_any_folder = in_any_folder.filter(search_vector=query)
             qs = qs.filter(search_vector=query).annotate(
                 rank=SearchRank("search_vector", query)).order_by("-rank", "-created_at")
         else:
@@ -209,6 +270,7 @@ class NoteViewSet(viewsets.GenericViewSet):
             ],
             "companies": options(companies),
             "contacts": options(contacts),
+            "folders": _folders(in_any_folder),
         })
 
     def retrieve(self, request, pk=None):
@@ -232,6 +294,7 @@ class NoteViewSet(viewsets.GenericViewSet):
             tenant=request.tenant, created_by=request.user, source=source,
             title=title, title_is_auto=title_is_auto, body=body,
             contact=data.get("contact"), company=data.get("company"), task=data.get("task"),
+            folder=data.get("folder"),
             transcription_state=(Note.TranscriptionState.UPLOADING
                                  if source == Note.Source.RECORDING
                                  else Note.TranscriptionState.NONE),
@@ -250,7 +313,7 @@ class NoteViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         fields = []
-        for link in ("contact", "company", "task"):
+        for link in ("contact", "company", "task", "folder"):
             if link in data:
                 setattr(note, link, data[link])
                 fields.append(link)
@@ -467,3 +530,83 @@ class NoteViewSet(viewsets.GenericViewSet):
             "max_recording_seconds": recording.MAX_SECONDS,
             "warn_at_seconds": recording.WARN_AT_SECONDS,
         })
+
+
+class NoteFolderViewSet(viewsets.GenericViewSet):
+    """The folders the practice has added (owner, 2026-10-12).
+
+    Anyone on the practice's team adds one, as anyone writes a note. Renaming
+    and removing change it for everyone, so they are the practice owner's.
+    Removing a folder removes no note: each goes back to the built-in folder
+    its link gives it.
+    """
+
+    permission_classes = [crm_perms.IsTenantStaff]
+
+    def _name(self, request, folder=None):
+        from rest_framework.exceptions import ValidationError
+
+        from apps.notes.models import NoteFolder
+
+        name = " ".join(str(request.data.get("name") or "").split())
+        if not name:
+            raise ValidationError({"name": "Give the folder a name."})
+        if len(name) > 80:
+            raise ValidationError({"name": "A folder's name is 80 characters at most."})
+        taken = NoteFolder.objects.filter(name__iexact=name)
+        if folder is not None:
+            taken = taken.exclude(pk=folder.pk)
+        if name.lower() in {label.lower() for label in Note.BUILT_IN.values()} \
+                or taken.exists():
+            raise ValidationError({"name": f"There is already a folder called {name}."})
+        return name
+
+    def _folder(self, pk):
+        from django.http import Http404
+
+        from apps.notes.models import NoteFolder
+
+        folder = NoteFolder.objects.filter(pk=pk).first() if _is_uuid(pk) else None
+        if folder is None:
+            raise Http404
+        return folder
+
+    def _owner_only(self, request):
+        if crm_perms.role_of(request) != Role.FF:
+            return Response({"detail": "Renaming or removing a folder changes it for "
+                                       "everyone, so it is the practice owner's to do."},
+                            status=403)
+        return None
+
+    def list(self, request):
+        from apps.notes.models import NoteFolder
+
+        return Response([{"id": str(f.pk), "name": f.name}
+                         for f in NoteFolder.objects.order_by("name")])
+
+    def create(self, request):
+        from apps.notes.models import NoteFolder
+
+        folder = NoteFolder.objects.create(
+            tenant=request.tenant, name=self._name(request), created_by=request.user)
+        return Response({"id": str(folder.pk), "name": folder.name}, status=201)
+
+    def partial_update(self, request, pk=None):
+        folder = self._folder(pk)
+        if (refused := self._owner_only(request)) is not None:
+            return refused
+        folder.name = self._name(request, folder)
+        folder.save(update_fields=["name", "updated_at"])
+        return Response({"id": str(folder.pk), "name": folder.name})
+
+    def destroy(self, request, pk=None):
+        folder = self._folder(pk)
+        if (refused := self._owner_only(request)) is not None:
+            return refused
+        held = folder.notes.count()
+        AuditEvent.all_objects.create(
+            tenant=folder.tenant, actor=request.user, verb="note_folder.removed",
+            target_type="note_folder", target_id=folder.pk,
+            payload={"name": folder.name, "notes": held})
+        folder.delete()
+        return Response({"notes_returned": held})

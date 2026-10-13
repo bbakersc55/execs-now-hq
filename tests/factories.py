@@ -21,7 +21,7 @@ from apps.meetings.models import (
     Commitment, DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting,
     MeetingParticipant, MeetingProposal, MeetingSourceFile, ProposalItem,
 )
-from apps.notes.models import Note, NotePinUnlock
+from apps.notes.models import Note, NoteFolder, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
     Comment, CompanyGoalOrder, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
@@ -466,6 +466,14 @@ class NoteFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     body = "Note body"
+
+
+class NoteFolderFactory(TenantScopedFactory):
+    class Meta:
+        model = NoteFolder
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Folder {n}")
 
 
 class NotePinUnlockFactory(TenantScopedFactory):
