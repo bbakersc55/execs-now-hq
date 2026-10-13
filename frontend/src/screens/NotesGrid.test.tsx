@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -263,7 +263,11 @@ describe("folders (2026-10-12)", () => {
     await user.click(await screen.findByRole("button", { name: "+ New folder" }));
     await user.type(screen.getByLabelText("The new folder's name"), "Clients A to M");
     await user.click(screen.getByRole("button", { name: "Add folder" }));
-    expect(await screen.findByLabelText("address")).toHaveTextContent("/notes?folder=f2");
+    await waitFor(() => expect(sent(fetchMock, "POST"))
+      .toEqual([["/api/note-folders/", { name: "Clients A to M" }]]));
+    // The address is there from the start: wait for it to change.
+    await waitFor(() => expect(screen.getByLabelText("address"))
+      .toHaveTextContent("/notes?folder=f2"));
     expect(sent(fetchMock, "POST")).toEqual([["/api/note-folders/", { name: "Clients A to M" }]]);
   });
 
@@ -280,7 +284,8 @@ describe("folders (2026-10-12)", () => {
       await user.type(name, "Board");
       await user.click(screen.getByRole("button", { name: "Rename" }));
       expect(await screen.findByRole("button", { name: "Remove folder" })).toBeInTheDocument();
-      expect(sent(fetchMock, "PATCH")).toEqual([["/api/note-folders/f1/", { name: "Board" }]]);
+      await waitFor(() => expect(sent(fetchMock, "PATCH"))
+        .toEqual([["/api/note-folders/f1/", { name: "Board" }]]));
 
       // Removing says the notes are kept, before anything is sent.
       await user.click(screen.getByRole("button", { name: "Remove folder" }));
@@ -288,7 +293,8 @@ describe("folders (2026-10-12)", () => {
         .toBeInTheDocument();
       expect(sent(fetchMock, "DELETE")).toEqual([]);
       await user.click(screen.getByRole("button", { name: "Remove the folder" }));
-      expect(await screen.findByLabelText("address")).toHaveTextContent(/\/notes$/);
+      await waitFor(() => expect(screen.getByLabelText("address"))
+        .toHaveTextContent(/\/notes$/));
     });
 
   it.each(["CF", "VA"] as const)("offers %s no rename or remove", async (role) => {
@@ -317,6 +323,7 @@ describe("folders (2026-10-12)", () => {
     expect(within(picker).getAllByRole("option").map((o) => o.textContent))
       .toEqual(["Contacts", "Board papers"]);
     await user.selectOptions(picker, "f1");
-    expect(sent(fetchMock, "PATCH")).toEqual([["/api/notes/n1/", { folder: "f1" }]]);
+    await waitFor(() => expect(sent(fetchMock, "PATCH"))
+      .toEqual([["/api/notes/n1/", { folder: "f1" }]]));
   });
 });
