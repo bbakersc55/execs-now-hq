@@ -1124,3 +1124,61 @@ describe("a v3 session in the live view", () => {
     expect(screen.queryByRole("button", { name: /Propose/ })).not.toBeInTheDocument();
   });
 });
+
+// ============================== the words on the document (2026-10-12)
+
+describe("the words on the document can be changed where it is sent", () => {
+  const SESSION = `/api/strategy-sessions/${SESSION_ID}/`;
+  const withWords = () => {
+    const base = aV3Session();
+    return aV3Session({
+      mirror: { goal: "Two branches.", unlocks: "Weekly numbers." },
+      sections: [...(base.sections ?? []),
+        { code: "what_they_value", kind: "values", title: "What they value", position: 5,
+          time_budget_minutes: 5, questions: [
+            q("v1", "Value 1 — and why", { response_schema: "value_pair" })] },
+        { code: "scope_agreement", kind: "scope", title: "Scope", position: 6,
+          time_budget_minutes: 5, questions: [
+            q("s1", "Start date", { response_schema: "agreed_note" }),
+            q("s2", "Investment discussed", { response_schema: "agreed_note",
+                                             is_financial: true })] }],
+      answers: [
+        { question_key: "v1", value: { value: "Straight talk", why: "Oversold before" },
+          answered_by: "fractional", fractional_note: "", updated_at: "" },
+        { question_key: "s1", value: { agreed: true, notes: "November 3" },
+          answered_by: "fractional", fractional_note: "", updated_at: "" }],
+    } as Partial<StrategySessionRow>);
+  };
+
+  it("gathers the mirror, what they value and the next steps, and saves each where it lives",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = showSession(withWords(), aMe(), {
+        [`PATCH ${SESSION}`]: () => ({ status: 200, body: withWords() }),
+        [`POST ${SESSION}answers/`]: () => ({ status: 200, body: withWords() }) });
+      await user.click(await screen.findByText("Change the words on the document"));
+      const goal = screen.getByLabelText("On the document: their goal");
+      expect(goal).toHaveValue("Two branches.");
+      expect(screen.getByLabelText("On the document: value 1")).toHaveValue("Straight talk");
+      expect(screen.getByLabelText("On the document: Start date")).toHaveValue("November 3");
+      // Money is not a next step, and is not offered here.
+      expect(screen.queryByLabelText("On the document: Investment discussed")).toBeNull();
+      const save = screen.getByRole("button", { name: "Save these words" });
+      expect(save).toBeDisabled();
+
+      await user.clear(goal);
+      await user.type(goal, "Two branches by spring.");
+      await user.clear(screen.getByLabelText("On the document: why value 1 matters"));
+      await user.type(screen.getByLabelText("On the document: why value 1 matters"), "Burned");
+      await user.clear(screen.getByLabelText("On the document: Start date"));
+      await user.type(screen.getByLabelText("On the document: Start date"), "November 10");
+      expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+      await user.click(save);
+
+      await waitFor(() => expect(fetchMock.calls.filter((c) => c.method !== "GET"
+        && (c.url === SESSION || c.url.endsWith("answers/"))).map((c) => c.body)).toEqual([
+        { mirror_goal: "Two branches by spring.", mirror_unlocks: "Weekly numbers." },
+        { question_key: "v1", value: { value: "Straight talk", why: "Burned" } },
+        { question_key: "s1", value: { agreed: true, notes: "November 10" } }]));
+    });
+});

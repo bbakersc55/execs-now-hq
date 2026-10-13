@@ -983,6 +983,7 @@ function PdfCard({ data, path, onChanged, setNote }: {
           Include {FLAG_LABEL[key]}
         </label>
       ))}
+      <DocumentWords data={data} path={path} onChanged={onChanged} setNote={setNote} />
       <div className="row tight" style={{ marginTop: ".75rem" }}>
         <a className="btn ghost" href={`${path}pdf/?as=html`} target="_blank"
            rel="noreferrer">Preview the document</a>
@@ -1038,6 +1039,101 @@ function PdfCard({ data, path, onChanged, setNote }: {
         sends the email exactly as it reads above.
       </p>
     </Card>
+  );
+}
+
+/**
+ * The words that go on the document, to change before it is sent (owner,
+ * 2026-10-12): the mirror, what they value, and the next steps, gathered
+ * where the document is previewed. Each saves to where it came from, so the
+ * section above and the document read the same. The map's cards and the two
+ * paths' pros and cons are edited on their own cards, above.
+ */
+function DocumentWords({ data, path, onChanged, setNote }: {
+  data: StrategySessionRow; path: string; onChanged: () => void;
+  setNote: (text: string) => void;
+}) {
+  const answers = Object.fromEntries((data.answers ?? []).map((a) => [a.question_key, a]));
+  const questions = (code: string, schema: string) => (data.sections ?? [])
+    .filter((section) => section.code === code)
+    .flatMap((section) => section.questions)
+    .filter((q) => q.response_schema === schema && !q.is_financial);
+  const values = questions("what_they_value", "value_pair");
+  const steps = questions("scope_agreement", "agreed_note");
+  const hasMirror = (data.sections ?? []).some((section) => section.code === "mirror");
+
+  const [goal, setGoal] = useState(data.mirror.goal);
+  const [unlocks, setUnlocks] = useState(data.mirror.unlocks);
+  const [edits, setEdits] = useState<Record<string, AnswerValue>>({});
+  const now = (key: string): AnswerValue => edits[key] ?? answers[key]?.value ?? {};
+  const edit = (key: string, change: AnswerValue) =>
+    setEdits({ ...edits, [key]: { ...now(key), ...change } });
+  const mirrorChanged = goal !== data.mirror.goal || unlocks !== data.mirror.unlocks;
+  const changed = mirrorChanged || Object.keys(edits).length > 0;
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (mirrorChanged) await api.patch(path, { mirror_goal: goal, mirror_unlocks: unlocks });
+      for (const [question_key, value] of Object.entries(edits)) {
+        await api.post(`${path}answers/`, { question_key, value });
+      }
+    },
+    onSuccess: () => { setEdits({}); setNote("Saved. The document has the new words.");
+                       onChanged(); },
+    onError: (e: Error) => setNote(e.message),
+  });
+
+  if (!hasMirror && values.length === 0 && steps.length === 0) return null;
+  return (
+    <details className="document-words" style={{ marginTop: ".75rem" }}>
+      <summary><strong className="small">Change the words on the document</strong></summary>
+      {hasMirror && (
+        <>
+          <Field label="The mirror: their goal">
+            <textarea aria-label="On the document: their goal" rows={2} value={goal}
+              onChange={(e) => setGoal(e.target.value)} />
+          </Field>
+          <Field label="The mirror: what unlocks it">
+            <textarea aria-label="On the document: what unlocks it" rows={2} value={unlocks}
+              onChange={(e) => setUnlocks(e.target.value)} />
+          </Field>
+        </>
+      )}
+      {values.length > 0 && <p className="small" style={{ margin: ".5rem 0 0" }}>
+        <strong>What they value</strong></p>}
+      {values.map((q, i) => (
+        <div className="row" key={q.key}>
+          <input aria-label={`On the document: value ${i + 1}`} placeholder="What they value"
+            value={String(now(q.key).value ?? "")}
+            onChange={(e) => edit(q.key, { value: e.target.value })} />
+          <input aria-label={`On the document: why value ${i + 1} matters`} placeholder="Why"
+            value={String(now(q.key).why ?? "")}
+            onChange={(e) => edit(q.key, { why: e.target.value })} />
+        </div>
+      ))}
+      {steps.length > 0 && <p className="small" style={{ margin: ".5rem 0 0" }}>
+        <strong>Next steps</strong></p>}
+      {steps.map((q) => (
+        <div className="row" key={q.key} style={{ alignItems: "center" }}>
+          <label className="inline small" style={{ flex: "0 0 40%" }}>
+            <input type="checkbox" style={{ width: "auto" }}
+              aria-label={`On the document: agreed, ${q.prompt}`}
+              checked={Boolean(now(q.key).agreed)}
+              onChange={(e) => edit(q.key, { agreed: e.target.checked })} />
+            {q.prompt}
+          </label>
+          <input aria-label={`On the document: ${q.prompt}`} placeholder="What was agreed"
+            value={String(now(q.key).notes ?? "")}
+            onChange={(e) => edit(q.key, { notes: e.target.value })} />
+        </div>
+      ))}
+      <div className="row tight" style={{ marginTop: ".5rem" }}>
+        <button className="primary small" disabled={!changed || save.isPending}
+          onClick={() => save.mutate()}>Save these words</button>
+        {changed && <span className="small muted">Not saved yet: the document and the
+          preview still have the old words.</span>}
+      </div>
+    </details>
   );
 }
 

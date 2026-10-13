@@ -21,6 +21,7 @@ import json
 import re
 
 from apps.strategy import services
+from apps.strategy import dashes
 from apps.strategy.models import StrategyMapRow, StrategyPathNote
 
 ROWS_PURPOSE = "strategy_rows"
@@ -197,18 +198,20 @@ def _clean_row(raw) -> dict | None:
         horizon = int(horizon.strip())
     if horizon not in (30, 60, 90):
         horizon = None                   # never guessed into the column
-    header = " ".join(str(raw.get("header") or "").split())[:120]
-    statement = " ".join(str(raw.get("statement") or "").split())
+    # No em dashes in drafted map text (owner, 2026-10-12): a colon in the
+    # header, a comma or a full stop in everything that reads as a sentence.
+    header = dashes.title(" ".join(str(raw.get("header") or "").split()))[:120]
+    statement = dashes.sentence(" ".join(str(raw.get("statement") or "").split()))
     return {
         # What Claude drafted is kept beside what a person edits it into.
         "header": header, "proposed_header": header,
         "statement": statement, "proposed_statement": statement,
-        "bottleneck": bottleneck,
-        "root_cause": (raw.get("root_cause") or "").strip(),
-        "the_fix": (raw.get("the_fix") or "").strip(),
-        "owner_text": (raw.get("owner_text") or "").strip()[:200],
+        "bottleneck": dashes.sentence(bottleneck),
+        "root_cause": dashes.sentence(raw.get("root_cause") or ""),
+        "the_fix": dashes.sentence(raw.get("the_fix") or ""),
+        "owner_text": dashes.sentence(raw.get("owner_text") or "")[:200],
         "horizon": horizon,
-        "measurable": (raw.get("measurable") or "").strip()[:255],
+        "measurable": dashes.sentence(raw.get("measurable") or "")[:255],
     }
 
 
@@ -481,8 +484,8 @@ def draft_mirror(session):
     payload = _json_payload(text)
     if not isinstance(payload, dict):
         return None
-    session.proposed_mirror_goal = (payload.get("goal") or "").strip()
-    session.proposed_mirror_unlocks = (payload.get("unlocks") or "").strip()
+    session.proposed_mirror_goal = dashes.sentence(payload.get("goal") or "")
+    session.proposed_mirror_unlocks = dashes.sentence(payload.get("unlocks") or "")
     session.save(update_fields=["proposed_mirror_goal", "proposed_mirror_unlocks",
                                 "updated_at"])
     return session
@@ -637,7 +640,7 @@ def draft_path_notes(session, *, trigger="button"):
             # Three is the brief's ceiling; a fourth is padding, and padding on
             # a decision page is what makes a prospect stop reading.
             for raw in items[:3]:
-                line = str(raw or "").strip()
+                line = dashes.sentence(str(raw or ""))
                 if not line or (path, kind, line.lower()) in existing:
                     continue
                 existing.add((path, kind, line.lower()))
