@@ -811,6 +811,35 @@ def test_explain_sends_nothing_until_pressed_and_never_a_clients_name(
 
 
 @pytest.mark.django_db
+def test_explain_and_review_leave_room_for_the_models_reasoning(
+        with_clients, ff, api, fake_claude):
+    """Found on the demo, 2026-10-13: "Explain this forecast" came back "cut
+    off or empty" every time. The model reasons before it writes, the
+    reasoning is counted against `max_tokens`, and 800 did not hold both. The
+    double answers as the API does: a thinking block, then the text."""
+    fake_claude.thinking_tokens = 3000
+    fake_claude.reply = (
+        "The low point is the week of the 26th, when the card's payment and your draw "
+        "both go out before Client A's recurring invoice lands. Rent and the card move "
+        "it most. Moving the draw a week later would lift it above your floor.")
+    answer = post(api, ff, F + "explain/", {"view": "90"})
+    assert answer.status_code == 200, answer.json()
+    assert answer.json()["text"] == fake_claude.reply
+    assert fake_claude.requests[-1]["output_config"] == {"effort": "low"}
+
+    fake_claude.reply = json.dumps({"one_offs": [], "missed": [], "questions": [
+        {"topic": "hire", "question": "Are you planning to hire in the next six months?"}]})
+    answer = post(api, ff, F + "review/", {})
+    assert answer.status_code == 200, answer.json()
+    assert [row["topic"] for row in answer.json()["questions"]] == ["hire"]
+
+    # An answer that truly does not fit is still refused, not shown in part.
+    fake_claude.thinking_tokens = 20000
+    cut = post(api, ff, F + "explain/", {"view": "90"})
+    assert cut.status_code == 502 and "cut off or empty" in json.dumps(cut.json())
+
+
+@pytest.mark.django_db
 def test_the_setting_lifts_the_letters_and_is_the_owners_and_audited(
         with_clients, ff, api, fake_claude):
     tenant = with_clients["tenant"]

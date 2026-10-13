@@ -255,6 +255,10 @@ class FakeClaude:
         self.model = "claude-opus-5"
         self.raise_exc = None
         self.web_searches = 2
+        #: What the model spends reasoning before it writes. It is counted as
+        #: output, so a request whose `max_tokens` cannot hold it and the
+        #: answer comes back as the API sends it: cut off, with no text.
+        self.thinking_tokens = 0
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs):
@@ -268,6 +272,22 @@ class FakeClaude:
         # the web cannot pass a test that asserts it searched.
         server_tool_use = (SimpleNamespace(web_search_requests=self.web_searches)
                            if kwargs.get("tools") else None)
+        if self.thinking_tokens:
+            # Thinking is on by default and its text is omitted by default.
+            thinking = SimpleNamespace(type="thinking", thinking="", signature="sig")
+            spent = self.thinking_tokens + len(self.reply) // 3
+            if spent > kwargs["max_tokens"]:
+                return SimpleNamespace(
+                    model=self.model, stop_reason="max_tokens",
+                    usage=SimpleNamespace(input_tokens=12000,
+                                          output_tokens=kwargs["max_tokens"],
+                                          server_tool_use=server_tool_use),
+                    content=[thinking])
+            return SimpleNamespace(
+                model=self.model, stop_reason=self.stop_reason,
+                usage=SimpleNamespace(input_tokens=12000, output_tokens=spent,
+                                      server_tool_use=server_tool_use),
+                content=[thinking, SimpleNamespace(type="text", text=self.reply)])
         return SimpleNamespace(
             model=self.model, stop_reason=self.stop_reason,
             usage=SimpleNamespace(input_tokens=12000, output_tokens=800,

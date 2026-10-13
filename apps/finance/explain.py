@@ -42,6 +42,9 @@ MAX_LINES = 60
 #: Roughly what one press reads and writes, until the practice has its own
 #: average: the price shown on the button before it is pressed.
 TOKENS = (900, 400)
+#: The ceiling on one answer: room for the model's reasoning, which is counted
+#: as output, and then the answer (see `forecast_ai.MAX_TOKENS`).
+MAX_TOKENS = 16000
 
 #: The steps of guided mode, as the screen numbers them (§4.2).
 STEPS = {
@@ -170,7 +173,7 @@ def explain(tenant, *, step, rec=None) -> dict:
     try:
         text, call = claude.complete_with_call(
             tenant=tenant, purpose=PURPOSE, system=SYSTEM,
-            user_text=what_is_sent(step, rec), trigger="button", max_tokens=700,
+            user_text=what_is_sent(step, rec), trigger="button", max_tokens=MAX_TOKENS,
             target_type="finance_reconciliation" if rec is not None else "",
             target_id=rec.pk if rec is not None else None)
     except claude.ClaudeRefused:

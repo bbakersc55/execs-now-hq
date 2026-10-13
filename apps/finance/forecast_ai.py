@@ -38,6 +38,11 @@ REVIEW = "finance_review_forecast"
 EXPLAIN_TOKENS = (2500, 500)
 REVIEW_TOKENS = (6000, 1200)
 MAX_LINES = 120
+#: The ceiling on one answer. The model reasons before it writes, and that
+#: reasoning is counted as output: at 800 it used the whole of it on a
+#: forecast's lines and "Explain this forecast" came back cut off every time
+#: (2026-10-13). The answer's length is set by the prompt, not by this.
+MAX_TOKENS = 16000
 #: What a question in the review may be about.
 TOPICS = ("client", "hire", "equipment", "tax", "trip", "other")
 
@@ -163,7 +168,7 @@ def status(tenant) -> dict:
             "include_client_names": forecast.settings_for(tenant).include_client_names}
 
 
-def _ask(tenant, *, purpose, system, text, max_tokens):
+def _ask(tenant, *, purpose, system, text, effort=None):
     from apps.tenancy import claude
 
     now = explain.status(tenant, purpose)
@@ -172,7 +177,7 @@ def _ask(tenant, *, purpose, system, text, max_tokens):
     try:
         answer, call = claude.complete_with_call(
             tenant=tenant, purpose=purpose, system=system, user_text=text,
-            trigger="button", max_tokens=max_tokens)
+            trigger="button", max_tokens=MAX_TOKENS, effort=effort)
     except claude.ClaudeRefused:
         raise FinanceError("Claude declined to answer that. Nothing was changed.",
                            status=502) from None
@@ -184,7 +189,7 @@ def _ask(tenant, *, purpose, system, text, max_tokens):
 def explain_forecast(tenant, *, view: str = "90") -> dict:
     """Ask Claude to read the forecast. Writes nothing but its `ai_call`."""
     answer, call, used = _ask(tenant, purpose=EXPLAIN, system=EXPLAIN_SYSTEM,
-                              text=explain_input(tenant, view), max_tokens=800)
+                              text=explain_input(tenant, view), effort="low")
     return {"text": answer, "cost_usd": str(call.cost_usd), "disclaimer": DISCLAIMER,
             "used_today": used, "cap": explain.DAILY_CAP}
 
@@ -297,8 +302,7 @@ def review(tenant) -> dict:
     """One call. Returns three lists for the owner to answer; stores nothing
     and changes nothing."""
     text, regular, missed = review_input(tenant)
-    answer, call, used = _ask(tenant, purpose=REVIEW, system=REVIEW_SYSTEM, text=text,
-                              max_tokens=2000)
+    answer, call, used = _ask(tenant, purpose=REVIEW, system=REVIEW_SYSTEM, text=text)
     data = _read(answer)
     questions = []
     for row in data.get("questions") if isinstance(data.get("questions"), list) else []:
