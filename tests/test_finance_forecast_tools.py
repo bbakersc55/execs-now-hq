@@ -980,7 +980,8 @@ def test_review_proposes_and_asks_and_nothing_enters_the_forecast_unconfirmed(
     assert f"| out | {RENT} (Rent and coworking) | monthly | $695.00 |" in sent_text
     assert "NOT PICKED UP" in sent_text and "Ledger & Quill (Professional services: " \
         "Accounting)" in sent_text
-    assert "Welton" not in sent_text and "Client A (Referral fees received)" in sent_text
+    # The same letter for the same client throughout, as Explain has them.
+    assert "Welton" not in sent_text and "Client C (Referral fees received)" in sent_text
     for never in ("Globex", "Acme", "INV-", "Dana"):
         assert never not in json.dumps(request, default=str), never
     assert "names no amount of money" in request["system"]
@@ -1031,6 +1032,62 @@ def test_review_proposes_and_asks_and_nothing_enters_the_forecast_unconfirmed(
         "Ledger & Quill, tax return": "review", "Operations analyst": "review"}
     with tenant_context(tenant.pk):
         assert AiCall.objects.count() == 1, "the answers ask Claude nothing"
+
+
+@pytest.mark.django_db
+def test_review_is_told_the_money_in_the_forecast_already_has(
+        with_clients, ff, api, fake_claude):
+    """Found on the demo, 2026-10-13: sent costs only, the review's first
+    question was where client payments land and whether to include them."""
+    tenant = with_clients["tenant"]
+    fake_claude.reply = json.dumps({"one_offs": [], "missed": [], "questions": []})
+    assert post(api, ff, F + "review/", {}).status_code == 200
+    request = fake_claude.requests[-1]
+    text = request["messages"][0]["content"]
+    known = [row for row in get(api, ff, F).json()["lines"] if row["kind"] == "known"]
+    schedule = [row for row in known if row["cadence"] == "monthly"]
+    [open_one] = [row for row in known if not row["cadence"]]
+    money_in = text[text.index("MONEY IN, already in the forecast from invoices (2)"):]
+    assert money_in.splitlines()[1:] == [
+        f"- Client A | recurring invoice | monthly | "
+        f"${schedule[0]['amount_cents'] / 100:,.2f} each | {len(schedule)} in the next 12 "
+        f"months, the first expected {schedule[0]['on_date']}",
+        f"- Client B | open invoices: 1 | $6,800.00 in all | expected "
+        f"{open_one['on_date']}"]
+    assert "do not ask where client payments are or whether they are included" \
+        in request["system"]
+    # A client is a letter here too, and never an invoice number or a person.
+    for never in ("Globex", "Acme", "Welton", "Dana", "Ann", "INV-",
+                  with_clients["invoice"]["number"]):
+        assert never not in json.dumps(request, default=str), never
+    # ...unless the practice owner has switched client names on.
+    post(api, ff, F + "client-names/", {"include": True})
+    post(api, ff, F + "review/", {})
+    named = fake_claude.requests[-1]["messages"][0]["content"]
+    assert "- Acme Fasteners | recurring invoice | monthly | " in named
+    assert "- Globex Logistics | open invoices: 1 | $6,800.00 in all" in named
+    assert "Client A" not in named and "INV-" not in named
+    # A second open invoice for the same client is in the same line.
+    from apps.billing.models import ClientInvoice
+
+    with tenant_context(tenant.pk):
+        company = ClientInvoice.objects.get(pk=with_clients["invoice"]["id"]).client_company
+    invoice(api, ff, company, with_clients["contact"], TODAY, TODAY + timedelta(days=24))
+    post(api, ff, F + "review/", {})
+    assert "- Globex Logistics | open invoices: 2 | $13,600.00 in all | expected " in \
+        fake_claude.requests[-1]["messages"][0]["content"]
+
+
+@pytest.mark.django_db
+def test_review_says_so_when_no_money_in_is_forecast_from_invoices(
+        running, ff, api, fake_claude):
+    fake_claude.reply = json.dumps({"one_offs": [], "missed": [], "questions": []})
+    assert post(api, ff, F + "review/", {}).status_code == 200
+    text = fake_claude.requests[-1]["messages"][0]["content"]
+    assert text.splitlines()[-2:] == [
+        "MONEY IN, already in the forecast from invoices (0) (client | what | how often "
+        "or how much | when):",
+        "- none: no recurring invoice schedule and no open invoice"]
 
 
 @pytest.mark.django_db

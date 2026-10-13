@@ -3,17 +3,47 @@
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated the night
 of 2026-10-10 Mountain (2026-10-11 UTC, the date the specs and the runbook
 carry)**, after Release 10 (P6 M1, Bookkeeping) and P6 M2's two stops on
-`dev`. **The next session starts at "The night of 2026-10-12" below, then
-"Tonight's state" and "Tomorrow's queue".** Everything from "Next" down was last brought up to date on 10/5 and
+`dev`. **The next session starts at "2026-10-13" below, then "The night of
+2026-10-12", "Tonight's state" and "Tomorrow's queue".** Everything from "Next" down was last brought up to date on 10/5 and
 after Release 7; where it and the section below disagree, the section below
 is the newer. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
+## 2026-10-13: three M2 findings from the demo, and P7 put to Bryan
+
+**This section is the newest.** Production is unchanged (`main` at `a4037fb`,
+Release 10). Everything here is on `dev`, pushed, and not released.
+
+**Bryan looked at stop 2 on the demo** (queue item 2) and found three things.
+Each is its own commit on a green gate; the detail is in the M2 spec, "As
+built: after Bryan's look on the demo".
+
+| Commit | What |
+|---|---|
+| `54b9d6c` | "Explain this forecast" was cut off every time: the output ceiling is 16,000 for the three pressed buttons, and Explain asks for low effort |
+| `e4aa2df` | The form a review's proposal opens follows the proposal: its cadence, and the date it next falls. A planned line can repeat "Every year". **Migration `finance` 0011** (a new choice, no SQL), applied to `execsnowhq_local` |
+| the commit after it | Review is sent a summary of the money in the forecast already has, by client, and told not to ask about it |
+
+- **The next release now carries six migrations:** `finance` 0009, 0010 and
+  0011, `crm` 0035, `notes` 0003, `strategy` 0018. None is destructive or
+  writes data, so no dry run is owed.
+- **Not proven:** none of the three has been run with a real key or seen in
+  a browser. The cause of the first is inferred from how the model is
+  documented to behave; the demo's `ai_call` rows were not read. The first
+  thing to do on the demo after its deploy is press Explain once.
+- **The demo deploy of these commits was not checked.**
+
+**P7 was put to Bryan** as M1 and M2 were: what it proposes and the fifteen
+decisions with a recommendation on each. **No answers yet, nothing built.**
+The four to read closely are P7-1, P7-4, P7-7 and P7-9. One correction is
+owed to the spec when the answers are recorded: its task migration is
+numbered `crm` 0035, which was taken on 10/12, so it becomes `crm` 0036.
+
 ## The night of 2026-10-12: the call's backlog, a spec, and ten fixes
 
-**This section is the newest. Read it first, then "Tonight's state" below,
-which is as it was on 10/10 except where this says otherwise.**
+**Read this after the section above, then "Tonight's state" below, which is
+as it was on 10/10 except where this says otherwise.**
 
 **Production is unchanged: `main` at `a4037fb`, Release 10.** Everything
 below is on `dev`, pushed, and not released. The demo deploys from `dev` and

@@ -666,3 +666,33 @@ the demo's history is tidier than anyone's.
   is worked out, as before.
 - No migration. **At a release, `ensure_schedules` must be run in production
   for the schedule to exist there.**
+
+## As built: after Bryan's look on the demo (2026-10-13) — three fixes
+
+- **"Explain this forecast" was cut off every time.** The model reasons
+  before it writes and the reasoning is counted as output; Explain allowed
+  800 tokens for both. The ceiling is 16,000 for Explain, Review and M1's
+  "Explain this step", and Explain this forecast asks for low effort. The
+  answer's length is still set by the prompt. **The cause is inferred, not
+  observed:** the demo's `ai_call` rows were not read.
+- **The form a review's proposal opens follows the proposal.** The review
+  names a cadence for each line that was not picked up (monthly, quarterly,
+  yearly); where it does not, the cadence is worked out from how far apart
+  the books show the line. "When" is the date it next falls, counted from
+  the day the books last show it, and is never today. A planned line can
+  repeat **"Every year"** (`finance` 0011, the new choice only, no SQL).
+  Confirming a "likely annual" item is unchanged: once, on its date.
+- **Review is told what money in the forecast already has:** a line for each
+  client's recurring invoice schedule (how often, how much each, how many in
+  the next 12 months, the first expected) and a line for each client's open
+  invoices (how many, their total, when expected), and is told not to ask
+  about it. By letter, or by name with "Include client names in AI
+  explanations" on; the letters are now the same ones Explain uses. No
+  invoice number. This adds invoice amounts to what Review sends; Explain
+  already sent them (M2-12).
+
+**Proven by tests:** each of the three, the first with a double that answers
+as the API does (a thinking block, then the text, and cut off when the limit
+cannot hold both). **Not run with a real key since:** whether Explain now
+answers, what it says at low effort, and whether Review stops asking about
+client payments.

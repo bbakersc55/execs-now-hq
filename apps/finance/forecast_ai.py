@@ -8,6 +8,9 @@ so every amount the owner then sees comes from the books and every amount
 that enters the forecast is one the owner typed or confirmed.
 
 - **Pressed only.** Nothing is sent by opening the screen.
+- **Review is told what money in the forecast already has:** each client's
+  recurring invoice schedule and open invoices, in summary, so it does not
+  ask about revenue that is there.
 - **Names (M2-12).** Payee and category names are sent for expenses. A client
   is "Client A", "Client B", the same letter for the same client throughout
   one call, unless the practice owner has switched on "Include client names
@@ -77,7 +80,11 @@ REVIEW_SYSTEM = (
     "questions about what the books cannot know in the next six months; topic is one of "
     "client, hire, equipment, tax, trip, other. Use only ids you were given. Each \"why\" "
     "and \"question\" is one plain sentence of at most 200 characters, and names no "
-    "amount of money. An empty list is a fine answer. " + NO_ADVICE)
+    "amount of money. An empty list is a fine answer. MONEY IN is what the app already "
+    "forecasts from the practice's own invoices: each client's recurring invoice "
+    "schedule and open invoices. It is in the forecast, so do not ask where client "
+    "payments are or whether they are included; a question about a client is about what "
+    "the invoices cannot show, such as one leaving or one starting. " + NO_ADVICE)
 
 
 def _dollars(cents: int) -> str:
@@ -197,10 +204,12 @@ def explain_forecast(tenant, *, view: str = "90") -> dict:
 
 # ----------------------------------------------------------- the review
 
-def _candidates(tenant, today: date) -> tuple[list[dict], list[dict]]:
+def _candidates(tenant, today: date) -> tuple[list[dict], list[dict], list[dict]]:
     """What the review is shown, from the books: the regular lines as found,
     and every other category-and-payee of the last 12 closed months. Each
-    carries its own figures, so what the owner then sees is the books'."""
+    carries its own figures, so what the owner then sees is the books'. And
+    the forecast's known lines, which the review is told of and not asked
+    about."""
     parts = forecast._gather(tenant, today, adjusted={})
     closed = parts["closed"]
     if not parts["ready"]:
@@ -233,17 +242,40 @@ def _candidates(tenant, today: date) -> tuple[list[dict], list[dict]]:
         item["ref"] = f"R{index}"
     for index, item in enumerate(missed, start=1):
         item["ref"] = f"N{index}"
-    return regular, missed
+    return regular, missed, parts["known"]
+
+
+def _money_in(known: list[dict], who) -> list[str]:
+    """The invoices the forecast already counts, a line for each client's
+    recurring schedule and one for their open invoices (found on the demo,
+    2026-10-13: sent costs only, the review asked where client payments
+    land). `who` names the client as the setting allows."""
+    schedules, invoices = {}, {}
+    for row in sorted(known, key=lambda row: row["on_date"]):
+        found = schedules if row["group"].startswith("schedule:") else invoices
+        found.setdefault(row["group"] if found is schedules else row["who"],
+                         []).append(row)
+    out = []
+    for rows in schedules.values():
+        out.append(f"- {who(rows[0]['who'])} | recurring invoice | {rows[0]['cadence']} | "
+                   f"{_dollars(rows[0]['amount_cents'])} each | {len(rows)} in the next 12 "
+                   f"months, the first expected {rows[0]['on_date']}")
+    for name, rows in invoices.items():
+        out.append(f"- {who(name)} | open invoices: {len(rows)} | "
+                   f"{_dollars(sum(row['amount_cents'] for row in rows))} in all | expected "
+                   f"{rows[0]['on_date']}"
+                   + (f" to {rows[-1]['on_date']}" if len(rows) > 1 else ""))
+    return sorted(out)
 
 
 def review_input(tenant, today: date | None = None) -> tuple[str, list[dict], list[dict]]:
     """The whole of what goes to Claude for "Review with Claude", and the two
     lists its answer is read against."""
     today = today or timezone.localdate()
-    regular, missed = _candidates(tenant, today)
+    regular, missed, known = _candidates(tenant, today)
     include = forecast.settings_for(tenant).include_client_names
     letters = _letters([item["who"] for item in regular + missed
-                        if item["direction"] == "in"])
+                        if item["direction"] == "in"] + [row["who"] for row in known])
 
     def who(item) -> str:
         name = item["who"]
@@ -267,6 +299,11 @@ def review_input(tenant, today: date | None = None) -> tuple[str, list[dict], li
                  "months seen):")
     for item in missed[:MAX_LINES]:
         parts.append(f"- {item['ref']} | {item['direction']} | {who(item)} | {seen(item)}")
+    money_in = _money_in(known, lambda name: name if include else letters[name])
+    parts.append(f"MONEY IN, already in the forecast from invoices ({len(money_in)}) "
+                 "(client | what | how often or how much | when):")
+    parts += money_in[:MAX_LINES] or ["- none: no recurring invoice schedule and no open "
+                                      "invoice"]
     return "\n".join(parts), regular[:MAX_LINES], missed[:MAX_LINES]
 
 
