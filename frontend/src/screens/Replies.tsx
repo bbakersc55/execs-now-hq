@@ -47,8 +47,8 @@ export function Replies({ me }: { me: Me }) {
   return (
     <>
       <PageHead title="Replies"
-        sub="Mail that came back on threads the app started. Anything we could
-             not place is here — nothing is ever dropped."
+        sub="Replies to mail the app sent, matched to your contacts; a reply that
+             could not be matched waits here to be filed."
         action={me.role === "FF" && (
           <button className="primary" disabled={collect.isPending}
             onClick={() => collect.mutate()}>

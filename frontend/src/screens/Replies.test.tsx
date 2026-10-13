@@ -117,3 +117,14 @@ describe("replies that came back", () => {
     expect(await screen.findByText(/Nothing waiting to be filed/)).toBeInTheDocument();
   });
 });
+
+describe("the Replies screen says what it is (2026-10-12)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("has one sentence under its title", async () => {
+    show();
+    expect(await screen.findByText(
+      "Replies to mail the app sent, matched to your contacts; a reply that could not "
+      + "be matched waits here to be filed.")).toHaveClass("sub");
+  });
+});
