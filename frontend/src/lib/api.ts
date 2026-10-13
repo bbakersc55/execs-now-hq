@@ -1785,7 +1785,7 @@ export interface ForecastLine {
   /** What the owner changed about it, in words, and that adjustment's id. */
   adjusted: string; adjustment: string; what_if?: boolean;
   amount_cents: number; on_date: string; label: string; detail: string;
-  cadence: "" | "monthly" | "quarterly"; category: string; link: string;
+  cadence: "" | "monthly" | "quarterly" | "yearly"; category: string; link: string;
   /** False for a charge on a card: it is cash when the card is paid. */
   counted: boolean; on_card: string;
 }
@@ -1821,7 +1821,7 @@ export interface Forecast {
 
 export interface PlannedLine {
   id: string; description: string; direction: "in" | "out"; amount_cents: number;
-  on_date: string; repeat: "" | "monthly" | "quarterly"; until: string | null;
+  on_date: string; repeat: "" | "monthly" | "quarterly" | "yearly"; until: string | null;
   is_what_if: boolean; source: "" | "review" | "annual";
   state: "planned" | "what_if" | "happened" | "lapsed"; next_on: string | null;
 }
@@ -1854,8 +1854,10 @@ export interface ForecastAiStatus {
 export interface ReviewItem {
   group: string; who: string; category: string; direction: "in" | "out";
   months: { month: string; amount_cents: number }[]; last_on: string;
-  last_amount_cents: number; why: string; cadence?: string; amount_cents?: number;
-  detail?: string;
+  last_amount_cents: number; why: string; amount_cents?: number; detail?: string;
+  /** A regular line's own cadence; for one that was not picked up, the
+   *  cadence the review proposed, with the date it next falls. */
+  cadence?: PlannedLine["repeat"]; next_on?: string;
 }
 
 export interface ForecastReview {

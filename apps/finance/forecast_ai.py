@@ -69,10 +69,11 @@ REVIEW_SYSTEM = (
     "NOT PICKED UP lines (it does not). Each has an id. Your job is to propose and to "
     "ask; the owner decides. Answer with one JSON object and nothing else:\n"
     "{\"one_offs\": [{\"id\": \"R3\", \"why\": \"…\"}],\n"
-    " \"missed\": [{\"id\": \"N7\", \"why\": \"…\"}],\n"
+    " \"missed\": [{\"id\": \"N7\", \"cadence\": \"yearly\", \"why\": \"…\"}],\n"
     " \"questions\": [{\"topic\": \"hire\", \"question\": \"…\"}]}\n"
     "one_offs: REGULAR lines that look like one-off costs, not recurring ones. "
-    "missed: NOT PICKED UP lines that look recurring. questions: up to six short "
+    "missed: NOT PICKED UP lines that look recurring, each with the cadence it looks "
+    "to have: monthly, quarterly or yearly. questions: up to six short "
     "questions about what the books cannot know in the next six months; topic is one of "
     "client, hire, equipment, tax, trip, other. Use only ids you were given. Each \"why\" "
     "and \"question\" is one plain sentence of at most 200 characters, and names no "
@@ -286,22 +287,54 @@ def _sentence(value) -> str:
     return " ".join(str(value or "").split())[:240]
 
 
-def _pick(rows, by_ref: dict) -> list[dict]:
+def _cadence(proposed, item: dict) -> str:
+    """How often a line that was not picked up looks to recur: as Claude
+    proposed it, when that is one a planned line can have; otherwise from how
+    far apart the books show it (seen in one month only: yearly)."""
+    if proposed in forecast.REPEAT_MONTHS:
+        return proposed
+    months = [date.fromisoformat(m["month"] + "-01") for m in item["months"]]
+    gap = min((forecast._months_between(a, b) for a, b in zip(months, months[1:])),
+              default=12)
+    return "yearly" if gap >= 11 else "quarterly" if gap >= 3 else "monthly"
+
+
+def _next_on(item: dict, cadence: str, today: date) -> str:
+    """When it next falls: from the day the books last show it, by its
+    cadence, to the first day after today. Arithmetic on the books; a yearly
+    item last seen in March is next March, never today."""
+    last = date.fromisoformat(item["last_on"])
+    step, on, n = forecast.REPEAT_MONTHS[cadence], last, 0
+    while on <= today:
+        n += 1
+        on = forecast._add_months(last, step * n, last.day)
+    return on.isoformat()
+
+
+def _pick(rows, by_ref: dict, today: date | None = None) -> list[dict]:
+    """`today` is given for the lines that were not picked up: each then
+    carries the cadence proposed and the date it next falls, which is what
+    the form the owner confirms it in starts from."""
     out, seen = [], set()
     for row in rows if isinstance(rows, list) else []:
         ref = str(row.get("id", "")) if isinstance(row, dict) else ""
         if ref in by_ref and ref not in seen:      # only what we sent, each once
             seen.add(ref)
             item = by_ref[ref]
-            out.append({key: item[key] for key in item if key != "ref"}
-                       | {"why": _sentence(row.get("why"))})
+            picked = ({key: item[key] for key in item if key != "ref"}
+                      | {"why": _sentence(row.get("why"))})
+            if today is not None:
+                picked["cadence"] = _cadence(row.get("cadence"), item)
+                picked["next_on"] = _next_on(item, picked["cadence"], today)
+            out.append(picked)
     return out
 
 
 def review(tenant) -> dict:
     """One call. Returns three lists for the owner to answer; stores nothing
     and changes nothing."""
-    text, regular, missed = review_input(tenant)
+    today = timezone.localdate()
+    text, regular, missed = review_input(tenant, today)
     answer, call, used = _ask(tenant, purpose=REVIEW, system=REVIEW_SYSTEM, text=text)
     data = _read(answer)
     questions = []
@@ -311,7 +344,8 @@ def review(tenant) -> dict:
             questions.append({"topic": topic, "question": _sentence(row.get("question"))})
     return {
         "one_offs": _pick(data.get("one_offs"), {item["ref"]: item for item in regular}),
-        "missed": _pick(data.get("missed"), {item["ref"]: item for item in missed}),
+        "missed": _pick(data.get("missed"), {item["ref"]: item for item in missed},
+                        today),
         "questions": questions[:6],
         "cost_usd": str(call.cost_usd), "disclaimer": DISCLAIMER, "used_today": used,
         "cap": explain.DAILY_CAP}

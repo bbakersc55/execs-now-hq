@@ -643,7 +643,7 @@ def _planned(tenant, today: date, end: date) -> tuple[list[dict], list[dict]]:
             tenant=tenant, removed_at__isnull=True).select_related("created_by"):
         dates = []
         if row.happened_at is None:
-            step = {"monthly": 1, "quarterly": 3}.get(row.repeat, 0)
+            step = REPEAT_MONTHS.get(row.repeat, 0)
             on, last = row.on_date, min(row.until or end, end)
             while on <= last:
                 if on >= today:
@@ -859,6 +859,9 @@ def groups(tenant, today: date | None = None) -> dict:
 
 # ------------------------------------------------- planned lines, adjustments
 
+#: How many months apart a repeating planned line falls.
+REPEAT_MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
+
 PLANNED_FIELDS = ("description", "direction", "amount_cents", "on_date", "repeat", "until",
                   "is_what_if")
 
@@ -894,7 +897,7 @@ def save_planned(tenant, *, actor, planned=None, source="", line_key="", **field
     if "repeat" in fields:
         row.repeat = fields["repeat"] or ""
         if row.repeat not in FinanceForecastPlanned.Repeat.values:
-            raise FinanceError("repeat is monthly, quarterly, or nothing.")
+            raise FinanceError("repeat is monthly, quarterly, yearly, or nothing.")
     if "until" in fields:
         row.until = _a_day(fields["until"], "The last date") if fields["until"] else None
     if row.until and (not row.repeat or row.until < row.on_date):

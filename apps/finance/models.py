@@ -511,6 +511,7 @@ class FinanceForecastPlanned(TenantScopedModel):
         ONCE = "", "Once"
         MONTHLY = "monthly", "Every month"
         QUARTERLY = "quarterly", "Every three months"
+        YEARLY = "yearly", "Every year"
 
     class Source(models.TextChoices):
         TYPED = "", "Typed"

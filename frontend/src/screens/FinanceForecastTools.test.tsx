@@ -433,7 +433,8 @@ describe("the buttons that ask Claude", () => {
     missed: [{ group: "pattern:quill", who: "Ledger & Quill", direction: "out",
                category: "Accounting: Tax preparation", why: "Looks like a yearly return.",
                months: [{ month: "2026-03", amount_cents: 185000 }],
-               last_on: "2026-03-18", last_amount_cents: 185000 }],
+               last_on: "2026-03-18", last_amount_cents: 185000, cadence: "yearly",
+               next_on: "2027-03-18" }],
     questions: [{ topic: "hire", question: "Are you taking anyone on before spring?" }],
     cost_usd: "0.058000", disclaimer: FINANCE_DISCLAIMER, used_today: 3, cap: 20 };
 
@@ -465,11 +466,13 @@ describe("the buttons that ask Claude", () => {
       expect(amount).toHaveValue("1850.00");          // the books' own figure, to start from
       await userEvent.clear(amount);
       await userEvent.type(amount, "1,950");
-      await userEvent.selectOptions(
-        within(quill).getByLabelText("Adding Ledger & Quill: how often"), "");
-      const when = within(quill).getByLabelText("Adding Ledger & Quill: date");
-      await userEvent.clear(when);
-      await userEvent.type(when, "2027-03-18");
+      // The form follows the proposal: yearly, from when it next falls, not
+      // "Every month" from today (found on the demo, 2026-10-13).
+      const often = within(quill).getByLabelText("Adding Ledger & Quill: how often");
+      expect(often).toHaveValue("yearly");
+      expect(within(often).getByRole("option", { name: "Every year" })).toBeInTheDocument();
+      expect(within(quill).getByLabelText("Adding Ledger & Quill: date"))
+        .toHaveValue("2027-03-18");
       await userEvent.click(within(quill).getByRole("button", { name: "Add it" }));
       expect(await within(quill).findByText("Added as a planned line.")).toBeInTheDocument();
       // 3. A question about what the books cannot know: answered with nothing.
@@ -483,7 +486,7 @@ describe("the buttons that ask Claude", () => {
         { line: "pattern:bank", kind: "not_regular", source: "review" }]);
       expect(sent(fetchMock, "planned/")).toEqual([{
         description: "Ledger & Quill", direction: "out", amount_cents: 195000,
-        on_date: "2027-03-18", repeat: "", until: null, is_what_if: false,
+        on_date: "2027-03-18", repeat: "yearly", until: null, is_what_if: false,
         source: "review" }]);
       await userEvent.click(within(review).getByRole("button", { name: "Close the review" }));
       expect(screen.queryByRole("region", { name: "The review" })).toBeNull();

@@ -228,6 +228,24 @@ def test_a_planned_line_is_in_the_forecast_until_it_happens_or_is_removed(
 
 
 @pytest.mark.django_db
+def test_a_planned_line_can_repeat_every_year(running, ff, api):
+    first = forecast._add_months(THIS, 5).replace(day=18)
+    made = post(api, ff, F + "planned/", {
+        "description": "Tax preparation", "amount_cents": 185_000,
+        "on_date": first.isoformat(), "repeat": "yearly"})
+    assert made.status_code == 201
+    [row] = made.json()["planned"]
+    assert (row["repeat"], row["next_on"]) == ("yearly", first.isoformat())
+    assert [found["on_date"] for found in line(made.json(), "Tax preparation")] == [
+        first.isoformat()], "once in the 12 months the forecast covers"
+    refused = post(api, ff, F + "planned/", {
+        "description": "Tax preparation", "amount_cents": 185_000,
+        "on_date": first.isoformat(), "repeat": "weekly"})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == "repeat is monthly, quarterly, yearly, or nothing."
+
+
+@pytest.mark.django_db
 def test_a_planned_line_whose_date_passed_a_week_ago_is_asked_about_not_forecast(
         running, ff, api):
     with tenant_context(running["tenant"].pk):
@@ -944,7 +962,7 @@ def test_review_proposes_and_asks_and_nothing_enters_the_forecast_unconfirmed(
         "one_offs": [{"id": by_who["Front Range Bank"], "why": "Seen twice only."},
                      {"id": "R999", "why": "Not one we sent."},
                      {"id": by_who["Front Range Bank"], "why": "Said twice."}],
-        "missed": [{"id": by_who["Ledger & Quill"],
+        "missed": [{"id": by_who["Ledger & Quill"], "cadence": "yearly",
                     "why": "A tax return once a year looks annual.  " + "x" * 400},
                    {"id": by_who[RENT], "why": "A regular id in the wrong list."}],
         "questions": [{"topic": "hire", "question": "Are you taking anyone on?"},
@@ -976,6 +994,11 @@ def test_review_proposes_and_asks_and_nothing_enters_the_forecast_unconfirmed(
     assert missed_one["months"] == [{"month": back(1).isoformat()[:7],
                                      "amount_cents": 185_000}]
     assert missed_one["last_amount_cents"] == 185_000, "from the books, not from Claude"
+    # The form it opens follows the proposal: yearly, from when it next falls.
+    assert missed_one["cadence"] == "yearly"
+    assert missed_one["next_on"] == forecast._add_months(
+        date.fromisoformat(on(back(1), 18)), 12).isoformat()
+    assert "cadence it looks to have: monthly, quarterly or yearly" in request["system"]
     assert [row["topic"] for row in reviewed["questions"]] == [
         "hire", "other", "other", "other", "other", "other"]
     assert reviewed["questions"][1]["question"] == "Any trips planned?"
@@ -1008,6 +1031,36 @@ def test_review_proposes_and_asks_and_nothing_enters_the_forecast_unconfirmed(
         "Ledger & Quill, tax return": "review", "Operations analyst": "review"}
     with tenant_context(tenant.pk):
         assert AiCall.objects.count() == 1, "the answers ask Claude nothing"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("proposed, months, cadence, months_on", [
+    ("yearly", [1], "yearly", 12),              # found on the demo: tax preparation
+    ("quarterly", [4, 1], "quarterly", 3),
+    ("monthly", [1], "monthly", 1),
+    # Not a cadence a planned line can have, or none given: from the books.
+    ("weekly", [1], "yearly", 12),
+    (None, [4, 1], "quarterly", 3),
+    (None, [2, 1], "monthly", 1),
+])
+def test_a_line_the_review_adds_starts_from_the_cadence_proposed_and_its_next_date(
+        proposed, months, cadence, months_on):
+    """Found on the demo, 2026-10-13: a yearly item opened as "Every month"
+    from today. The cadence is the proposal's; the date is arithmetic on the
+    day the books last show it, and is never today."""
+    last = date.fromisoformat(on(back(months[-1]), 18))
+    item = {"ref": "N1", "who": "Ledger & Quill", "last_on": last.isoformat(),
+            "months": [{"month": back(n).isoformat()[:7], "amount_cents": 185_000}
+                       for n in months]}
+    row = {"id": "N1", "why": "Looks recurring."}
+    if proposed is not None:
+        row["cadence"] = proposed
+    [picked] = forecast_ai._pick([row], {"N1": item}, TODAY)
+    assert picked["cadence"] == cadence
+    expected = forecast._add_months(last, months_on)
+    if expected <= TODAY:                       # this month's has already passed
+        expected = forecast._add_months(last, months_on * 2)
+    assert picked["next_on"] == expected.isoformat() and expected > TODAY
 
 
 @pytest.mark.django_db

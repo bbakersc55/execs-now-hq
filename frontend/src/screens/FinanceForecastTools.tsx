@@ -134,7 +134,7 @@ export function LineActions({ line, tried, busy, trial, onToggle, onAmount, send
 // ------------------------------------------------------------ planned lines
 
 type Draft = { description: string; direction: "in" | "out"; amount_cents: number;
-               on_date: string; repeat: "" | "monthly" | "quarterly"; until: string;
+               on_date: string; repeat: PlannedLine["repeat"]; until: string;
                is_what_if: boolean };
 
 /** The form a planned line is typed in: also what a confirmed "likely
@@ -177,6 +177,7 @@ export function PlannedForm({ start, label, busy, save, onSave, onCancel }: {
             <option value="">Once</option>
             <option value="monthly">Every month</option>
             <option value="quarterly">Every three months</option>
+            <option value="yearly">Every year</option>
           </select>
         </Field>
         {form.repeat && (
@@ -206,6 +207,9 @@ const body = (draft: Draft) => ({
   description: draft.description.trim(), direction: draft.direction,
   amount_cents: draft.amount_cents, on_date: draft.on_date, repeat: draft.repeat,
   until: draft.repeat && draft.until ? draft.until : null, is_what_if: draft.is_what_if });
+
+const EVERY = { monthly: "every month", quarterly: "every three months",
+                yearly: "every year" };
 
 const STATE = { planned: "", what_if: "what-if", happened: "happened",
                 lapsed: "did not happen?" };
@@ -238,7 +242,7 @@ export function Planned({ planned, attempt, busy, onTry, send }: {
                 <tr key={row.id} className={row.state === "happened" ? "muted" : undefined}>
                   <td style={{ whiteSpace: "nowrap" }}>{longDate(row.on_date)}
                     {row.repeat && <div className="small muted">
-                      {row.repeat === "monthly" ? "every month" : "every three months"}
+                      {EVERY[row.repeat]}
                       {row.until ? ` until ${longDate(row.until)}` : ""}</div>}</td>
                   <td>{row.description}
                     {STATE[row.state] && <> <Pill kind={row.state === "lapsed" ? "warn" : ""}>
@@ -581,7 +585,9 @@ function Review({ review, busy, send, onClose }: {
             <>
               <PlannedForm label={`Adding ${item.who}`} busy={busy} save="Add it"
                 start={{ description: item.who, direction: item.direction,
-                         amount_cents: item.last_amount_cents, repeat: "monthly" }}
+                         amount_cents: item.last_amount_cents,
+                         // As proposed, and from when the books say it next falls.
+                         repeat: item.cadence ?? "", on_date: item.next_on ?? today() }}
                 onSave={(draft) => { send("post", "planned/", { ...body(draft),
                                                                 source: "review" });
                                      answered(item.group, "Added as a planned line."); }} />
