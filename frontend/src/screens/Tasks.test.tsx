@@ -402,3 +402,60 @@ describe("Tasks carries the same company dimension as Work", () => {
     expect(fetchMock.calls.some((c) => c.url.startsWith("/api/companies/"))).toBe(false);
   });
 });
+
+describe("tasks are sorted, on the board and in the list (2026-10-12)", () => {
+  beforeEach(() => { vi.unstubAllGlobals(); window.localStorage.clear(); });
+
+  const SORTED = [
+    aTask({ id: "s1", title: "No date, urgent", priority: 3, due_date: null,
+            updated_at: "2026-10-12T09:00:00Z" }),
+    aTask({ id: "s2", title: "Next month", due_date: "2026-11-20",
+            updated_at: "2026-10-12T18:00:00Z" }),
+    aTask({ id: "s3", title: "Overdue", due_date: "2026-09-01",
+            updated_at: "2026-10-05T09:00:00Z" }),
+    aTask({ id: "s4", title: "This week, high", priority: 2, due_date: "2026-10-14",
+            updated_at: "2026-10-11T09:00:00Z" }),
+  ];
+  const titles = (root: HTMLElement) =>
+    [...root.querySelectorAll('a[href^="/tasks/"]')].map((a) => a.textContent);
+
+  it("defaults to due date: overdue first, then soonest, undated last", async () => {
+    open(aMe({ role: "FF" }), { "/api/tasks/": SORTED });
+    const column = await screen.findByLabelText("Not started column");
+    await within(column).findByText("Overdue");
+    expect(screen.getByLabelText("Sort by")).toHaveValue("due");
+    expect(titles(column)).toEqual(
+      ["Overdue", "This week, high", "Next month", "No date, urgent"]);
+  });
+
+  it("sorts by priority then due, and by recently updated, in both views", async () => {
+    const user = userEvent.setup();
+    open(aMe({ role: "FF" }), { "/api/tasks/": SORTED });
+    const column = await screen.findByLabelText("Not started column");
+    await within(column).findByText("Overdue");
+
+    await user.selectOptions(screen.getByLabelText("Sort by"), "priority");
+    expect(titles(column)).toEqual(
+      ["No date, urgent", "This week, high", "Overdue", "Next month"]);
+
+    await user.selectOptions(screen.getByLabelText("Sort by"), "updated");
+    expect(titles(column)).toEqual(
+      ["Next month", "No date, urgent", "This week, high", "Overdue"]);
+
+    // The list keeps the same order, and the choice.
+    await user.click(screen.getByRole("button", { name: "List" }));
+    const table = await screen.findByRole("table");
+    expect(titles(table)).toEqual(
+      ["Next month", "No date, urgent", "This week, high", "Overdue"]);
+    await user.selectOptions(screen.getByLabelText("Sort by"), "due");
+    expect(titles(table)).toEqual(
+      ["Overdue", "This week, high", "Next month", "No date, urgent"]);
+    // A column heading sorts by that instead; a second click goes back.
+    await user.click(within(table).getByText("Task"));
+    expect(titles(table)).toEqual(
+      ["Next month", "No date, urgent", "Overdue", "This week, high"]);
+    await user.click(within(table).getByText(/^Task/));
+    expect(titles(table)).toEqual(
+      ["Overdue", "This week, high", "Next month", "No date, urgent"]);
+  });
+});

@@ -9,6 +9,7 @@ import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Avatar, Chip, FilterBar, PageHead, useRemembered, useRowLink } from "../components/shell";
+import { useRemembered as useRememberedValue } from "../lib/remembered";
 import { Banner, toast, when } from "../components/ui";
 import { TaskSheet } from "./TaskDetail";
 import { Me, PortalPerson, Task, WorkStatus, WorkParent, api } from "../lib/api";
@@ -19,6 +20,24 @@ const TENANT = ["FF", "CF", "VA"];
  *  status. The client filter is the same dimension the Work screen groups by,
  *  and it narrows the two filters below it for the same reason the New task
  *  form does: an option that cannot match anything is worse than no option. */
+export type TaskSort = "due" | "priority" | "updated";
+const SORTS: [TaskSort, string][] = [
+  ["due", "Due date"], ["priority", "Priority, then due"], ["updated", "Recently updated"]];
+
+/** The order of the board's columns and the list's groups (owner, 2026-10-12).
+ *  By due date: overdue first because it is the earliest, then the soonest,
+ *  and a task with no date last. */
+export function sortTasks(tasks: Task[], by: TaskSort): Task[] {
+  const due = (a: Task, b: Task) =>
+    (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999");
+  const title = (a: Task, b: Task) => a.title.localeCompare(b.title);
+  return [...tasks].sort((a, b) => {
+    if (by === "updated") return b.updated_at.localeCompare(a.updated_at) || title(a, b);
+    if (by === "priority") return b.priority - a.priority || due(a, b) || title(a, b);
+    return due(a, b) || b.priority - a.priority || title(a, b);
+  });
+}
+
 export function Tasks({ me }: { me: Me }) {
   // Board is the default (design brief, Tier 1), and the choice is remembered
   // in this browser like the company filter beside it.
@@ -27,6 +46,7 @@ export function Tasks({ me }: { me: Me }) {
   const { id: openTaskId } = useParams();
   const [search, setSearch] = useState("");
   const [priority, setPriority] = useState("");
+  const [sort, setSort] = useRememberedValue<TaskSort>("enhq.tasks.sort", "due");
   const [collapsedCols, setCollapsedCols] = useState<string[]>([]);
   const [project, setProject] = useState("");
   const [assignee, setAssignee] = useState("");
@@ -73,9 +93,9 @@ export function Tasks({ me }: { me: Me }) {
   };
 
   const term = search.trim().toLowerCase();
-  const rows = (tasks.data ?? [])
+  const rows = sortTasks((tasks.data ?? [])
     .filter((t) => !priority || String(t.priority) === priority)
-    .filter((t) => !term || t.title.toLowerCase().includes(term));
+    .filter((t) => !term || t.title.toLowerCase().includes(term)), sort);
   const isTenant = !(me.role === "FCC" || me.role === "ECC");
   const anyFilter = !!(company || project || assignee || status || priority || search);
   const board = useBoardDrag({ isTenant, tasks: rows });
@@ -138,6 +158,10 @@ export function Tasks({ me }: { me: Me }) {
         {status && <Chip label={`Status: ${STATUS_LABELS[status as WorkStatus]}`}
           onClear={() => setStatus("")} />}
         <span style={{ marginLeft: "auto" }} className="row tight">
+          <select aria-label="Sort by" value={sort} style={{ width: "auto", minWidth: 170 }}
+            onChange={(e) => setSort(e.target.value as TaskSort)}>
+            {SORTS.map(([key, label]) => <option key={key} value={key}>Sort: {label}</option>)}
+          </select>
           <button className={view === "board" ? "small primary" : "small"}
             aria-pressed={view === "board"} onClick={() => setBoardView(true)}>Board</button>
           <button className={view === "list" ? "small primary" : "small"}
@@ -339,23 +363,22 @@ function TaskCard({ task, board }: { task: Task; board: ReturnType<typeof useBoa
   );
 }
 
-/** The list view: grouped by project, collapsible, sortable. */
+/** The list view: grouped by project, collapsible. Its rows come in the order
+ *  the sort control chose; a click on Task or Status sorts by that instead,
+ *  and a second click goes back. */
 function ListView({ rows }: { rows: Task[] }) {
   const rowLink = useRowLink();
-  const [sort, setSort] = useState<"title" | "due_date" | "status">("due_date");
+  const [sort, setSort] = useState<"" | "title" | "status">("");
   const groups = new Map<string, Task[]>();
   for (const task of rows) {
     const key = task.project_title || task.goal_title || "Filed under nothing";
     groups.set(key, [...(groups.get(key) ?? []), task]);
   }
-  const sorted = (list: Task[]) => [...list].sort((a, b) => {
-    if (sort === "title") return a.title.localeCompare(b.title);
-    if (sort === "status") return a.status.localeCompare(b.status);
-    return (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999");
-  });
-  const header = (label: string, key: typeof sort) => (
+  const sorted = (list: Task[]) => sort === "" ? list : [...list].sort((a, b) =>
+    sort === "title" ? a.title.localeCompare(b.title) : a.status.localeCompare(b.status));
+  const header = (label: string, key: "title" | "status") => (
     <th className="sortable" aria-sort={sort === key ? "ascending" : "none"}
-      onClick={() => setSort(key)}>{label}{sort === key ? " ↑" : ""}</th>
+      onClick={() => setSort(sort === key ? "" : key)}>{label}{sort === key ? " ↑" : ""}</th>
   );
 
   return (
@@ -373,7 +396,7 @@ function ListView({ rows }: { rows: Task[] }) {
                 {header("Task", "title")}
                 {header("Status", "status")}
                 <th>Assignee</th>
-                {header("Due", "due_date")}
+                <th>Due</th>
                 <th>Priority</th>
               </tr>
             </thead>
