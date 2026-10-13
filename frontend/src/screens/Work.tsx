@@ -223,9 +223,12 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
           aria-expanded={!collapsed}
           aria-label={`${collapsed ? "Expand" : "Collapse"} ${goal.title}`}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(); }}>
-          {collapsed ? <ChevronRight size={18} strokeWidth={1.75} />
-            : <ChevronDown size={18} strokeWidth={1.75} />}
-          <div className="grow">
+          {/* The title has the card's whole width, and everything about the
+              goal sits under it in rows (owner, 2026-10-12): a long title
+              used to share its line with the status, the date and the owner. */}
+          <div className="title">
+            {collapsed ? <ChevronRight size={18} strokeWidth={1.75} />
+              : <ChevronDown size={18} strokeWidth={1.75} />}
             {/* The head expands and collapses, so the title is what opens
                 the goal; no underline, like every other name. */}
             <h3>
@@ -237,6 +240,14 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
                 onClick={(e) => e.stopPropagation()}>{goal.title}</Link>
               {goal.is_historical && <> <span className="pill">behind us</span></>}
             </h3>
+          </div>
+          <div className="meta" aria-label={`About ${goal.title}`}>
+            <StatusPill status={goal.status} derived={goal.status_is_derived} />
+            {goal.horizon_days && <span className="pill">{goal.horizon_days} days</span>}
+            {goal.target_date && <span className="pill">{goal.target_date}</span>}
+            <Avatar name={goal.client_owner_contact?.name || goal.owner?.name} />
+          </div>
+          <div>
             {/* The measure leads when there is one — the report's rule, on the
                 screen the practice reads (FR-4B.18). */}
             {goal.measurable_kind === "numeric" && goal.baseline_value !== null && (
@@ -256,19 +267,14 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
               </p>
             )}
             {own.length > 0 && (
-              <div className="inline tiny muted" style={{ marginTop: "var(--s2)" }}>
-                <span className="meter" style={{ width: 160 }}>
+              <div className="progress tiny muted">
+                <span>{done} of {own.length} done</span>
+                <span className="meter" role="img"
+                      aria-label={`${done} of ${own.length} tasks done`}>
                   <span style={{ width: `${Math.round(100 * done / own.length)}%` }} />
                 </span>
-                {done} of {own.length} done
               </div>
             )}
-          </div>
-          <div className="right">
-            <StatusPill status={goal.status} derived={goal.status_is_derived} />
-            {goal.horizon_days && <span className="pill">{goal.horizon_days} days</span>}
-            {goal.target_date && <span className="pill">{goal.target_date}</span>}
-            <Avatar name={goal.client_owner_contact?.name || goal.owner?.name} />
           </div>
         </div>
 

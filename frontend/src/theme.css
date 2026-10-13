@@ -770,12 +770,16 @@ ul.work-tree > li { margin: 0; }
 ul.work-tree.card-grid .goal-card { margin-bottom: 0; }
 
 .goal-card { margin-bottom: var(--s3); }
-.goal-card .head {
-  display: flex; align-items: flex-start; gap: var(--s3); cursor: pointer;
-}
-.goal-card .head h3 { margin: 0; }
-.goal-card .head .grow { flex: 1; min-width: 0; }
-.goal-card .right { display: flex; align-items: center; gap: var(--s2); }
+/* Rows, each the card's whole width: the title; the status, date and owner;
+   then the progress line with its bar under it. */
+.goal-card .head { display: flex; flex-direction: column; gap: var(--s2); cursor: pointer; }
+.goal-card .head .title { display: flex; align-items: flex-start; gap: var(--s2); }
+.goal-card .head .title > svg { flex: none; margin-top: 3px; }
+.goal-card .head h3 { margin: 0; flex: 1; min-width: 0; font-weight: 700; }
+.goal-card .head .meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); }
+.goal-card .head .progress { display: flex; flex-direction: column; gap: var(--s1);
+                             margin-top: var(--s2); }
+.goal-card .head .progress .meter { max-width: none; width: 100%; }
 .meter { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden;
          max-width: 220px; }
 .meter > span { display: block; height: 100%; background: var(--navy-300); }

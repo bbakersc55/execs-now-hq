@@ -97,6 +97,26 @@ describe("Work shows three levels at once, not one", () => {
     expect(within(block).queryByText("Straight on the goal")).toBeNull();
   });
 
+  it("lays a goal's card out in rows: the title, then status and owner, then progress",
+    async () => {
+      open();
+      const goal = await branch("Cut supervisor overload");
+      const head = goal.querySelector(".head") as HTMLElement;
+      const [title, meta, rest] = [...head.children] as HTMLElement[];
+      // The title alone on the first row, with the card's whole width.
+      expect(title).toHaveClass("title");
+      expect(title.querySelector("h3")).toHaveTextContent("Cut supervisor overload");
+      expect(title.querySelector(".pill")).toBeNull();
+      // Status, dates and the owner together on the second.
+      expect(meta).toHaveClass("meta");
+      expect(meta.querySelector(".pill")).not.toBeNull();
+      // Then the progress line, with its bar under it across the card.
+      const progress = rest.querySelector(".progress") as HTMLElement;
+      expect(progress).toHaveTextContent("0 of 2 done");
+      expect(within(progress).getByRole("img", { name: "0 of 2 tasks done" }))
+        .toBeInTheDocument();
+    });
+
   it("says so when a goal holds nothing, rather than looking broken", async () => {
     open();
     expect(await within(await branch("Empty goal")).findByText(/Nothing under this goal yet/))
