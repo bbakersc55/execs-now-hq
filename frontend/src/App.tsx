@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-  Receipt, Landmark } from "lucide-react";
+  Receipt, Landmark, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
 
@@ -47,6 +47,7 @@ import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
 import { ClientInvoices } from "./screens/ClientInvoices";
+import { YourTeam } from "./screens/YourTeam";
 import { Finance } from "./screens/Finance";
 import { FinanceSettings } from "./screens/FinanceSettings";
 import { InvoiceDetail } from "./screens/InvoiceDetail";
@@ -149,6 +150,8 @@ const NAV: NavItem[] = [
   // not a document somebody remembered to send.
   { to: "/report", label: "Where we are", roles: CLIENT , icon: BarChart3 },
   { to: "/invoices", label: "Invoices", roles: CLIENT, icon: Receipt },
+  // P7 phase 3: the client owner sets up their company's teams.
+  { to: "/team", label: "Your team", roles: ["FCC"], icon: Users },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
   { to: "/sending-queue", label: "Sending queue", roles: TENANT , icon: Send },
   { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
@@ -376,6 +379,7 @@ export function App() {
             <Route path="/invoices" element={me.role && CLIENT.includes(me.role)
               ? <ClientInvoices /> : <Invoices me={me} />} />
             <Route path="/invoices/:id" element={<InvoiceDetail me={me} />} />
+            {me.role === "FCC" && <Route path="/team" element={<YourTeam me={me} />} />}
             {me.role === "FF" && <Route path="/settings/invoices"
               element={<Settings me={me}><InvoiceSettings /></Settings>} />}
             {/* P5: the books. No route at all for anyone but the practice owner. */}

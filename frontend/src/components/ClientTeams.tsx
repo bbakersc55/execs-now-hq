@@ -7,6 +7,7 @@ import {
 import {
   LEVEL_CODES, LEVEL_LABEL, MAY_CREATE_CODES, MAY_CREATE_LABEL, roleLabel,
 } from "../lib/roles";
+import { usePracticeName } from "../lib/branding";
 import { Banner, Card, Field } from "./ui";
 
 const MANAGES = ["FF", "CF"];
@@ -115,8 +116,14 @@ export const placementBody = (value: Placement) => ({
   level: value.level, may_create: value.may_create,
 });
 
+/** The practice, by name, in the portal's words. Asked only where shown. */
+function PracticeName() {
+  return <>{usePracticeName()}</>;
+}
+
 /**
- * P7 phase 2 — a client company's teams, set up by the practice.
+ * P7 phases 2 and 3 — a client company's teams, set up by the practice, or by
+ * the client owner in the portal ("Your team").
  *
  * Teams first: each with what it holds and who is on it. Then the people:
  * for each, their level on every team, whether they are senior leadership
@@ -125,15 +132,21 @@ export const placementBody = (value: Placement) => ({
  * is what is held. A level takes effect the moment it is set.
  *
  * The practice owner, and an associate on a company they are assigned. An
- * assistant is not shown the card.
+ * assistant is not shown the card. The client owner, for their own company:
+ * a client owner's settings are left to the practice, and nobody is given
+ * more to create than the client owner may create (the server says so too).
  */
-export function ClientTeamsCard({ me, company }: { me: Me; company: Company }) {
+export function ClientTeamsCard({ me, company }: {
+  me: Me; company: Pick<Company, "id" | "is_client_company">;
+}) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
   const key = ["client-teams", company.id];
-  const mayManage = !!me.role && MANAGES.includes(me.role) && company.is_client_company;
+  const portal = me.role === "FCC";
+  const mayManage = portal ? company.id === me.client_company
+    : !!me.role && MANAGES.includes(me.role) && company.is_client_company;
 
   const card = useQuery<ClientTeams>({
     queryKey: key,
@@ -192,6 +205,11 @@ export function ClientTeamsCard({ me, company }: { me: Me; company: Company }) {
   if (!mayManage || !card.data) return null;
   const data = card.data;
   const busy = level.isPending || person.isPending;
+  // The client owner gives nobody more to create than they may themselves.
+  const ceiling = portal
+    ? MAY_CREATE_CODES.indexOf((data.people.find((p) => p.role === "FCC"
+        && p.email === me.email)?.may_create ?? "nothing") as typeof MAY_CREATE_CODES[number])
+    : MAY_CREATE_CODES.length - 1;
 
   // Archiving says what will move before it is confirmed.
   const askToArchive = async (team: ClientTeams["teams"][number]) => {
@@ -217,8 +235,11 @@ export function ClientTeamsCard({ me, company }: { me: Me; company: Company }) {
       <p className="small muted" style={{ marginTop: 0 }}>
         A member sees their own work; a manager, their team's and the other teams' read-only;
         senior leadership edits goals too; a viewer looks and changes nothing. A change here
-        takes effect at once. To check what someone sees, use “See the portal as” beside
-        their name above.
+        takes effect at once.{" "}
+        {portal
+          ? <>To check what someone sees, use “Act as a colleague” in your account menu.
+              A client owner’s own settings are set by <PracticeName />.</>
+          : <>To check what someone sees, use “See the portal as” beside their name above.</>}
       </p>
       <table aria-label="Teams">
         <thead><tr><th>Team</th><th>Holds</th><th>People</th><th></th></tr></thead>
@@ -308,14 +329,21 @@ export function ClientTeamsCard({ me, company }: { me: Me; company: Company }) {
                     </>
                   )}
                   <td>
-                    <select aria-label={`What ${p.name} may create`} value={p.may_create}
-                      disabled={busy}
-                      onChange={(e) => person.mutate({ membership: p.id,
-                                                       may_create: e.target.value })}>
-                      {MAY_CREATE_CODES.map((code) => (
-                        <option key={code} value={code}>{MAY_CREATE_LABEL[code]}</option>
-                      ))}
-                    </select>
+                    {portal && owner ? (
+                      <span className="small">{MAY_CREATE_LABEL[p.may_create]}
+                        <span className="muted"> · set by <PracticeName /></span></span>
+                    ) : (
+                      <select aria-label={`What ${p.name} may create`} value={p.may_create}
+                        disabled={busy}
+                        onChange={(e) => person.mutate({ membership: p.id,
+                                                         may_create: e.target.value })}>
+                        {MAY_CREATE_CODES.map((code, i) => (
+                          <option key={code} value={code}
+                            disabled={i > ceiling && code !== p.may_create}>
+                            {MAY_CREATE_LABEL[code]}</option>
+                        ))}
+                      </select>
+                    )}
                     {!owner && p.teams.length === 0 && !p.leads_all_teams && (
                       <div className="small muted">On no team: sees only work that is theirs.</div>
                     )}

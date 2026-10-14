@@ -613,3 +613,78 @@ controls and what each sends; the archive confirmation's words; the
 invitation's three choices; the Team field on the two forms; the filter on
 Work). **Not seen in a browser by anyone.**
 
+
+---
+
+## As built: phase 3 (2026-10-14) — the client owner sets teams up
+
+**Seen by a client owner:** **Your team** in the portal's sidebar, under
+"Your engagement", and on it the same Teams card the practice has on the
+company's page. **Seen by every other client user:** nothing new. **Seen by
+the practice:** nothing new; what a client owner changes shows on the
+practice's card, and in the audit trail under the client owner's name.
+
+**What the client owner can do** (`/team`, `frontend/src/screens/YourTeam.tsx`;
+the routes are phase 2's `/api/client-teams/`, opened to them)
+
+- Add a team, rename one (the default included), archive one, with the same
+  confirmation of what moves to the default team. Nothing is deleted.
+- Put a colleague on a team at a level (Viewer, Member, Manager, Senior
+  leadership), change it, or take them off; make a colleague senior
+  leadership of every team; set what a colleague may create.
+- Each change takes effect at once, and is audited with the client owner as
+  the one who made it, under the same verbs as the practice's.
+- For their own company only. Another company of the same practice, its
+  teams and its people, are not found; so is anything of another practice.
+- It does not invite people or change seats (§4.2).
+
+**Readings made while building, each Bryan's to overrule**
+
+1. **"Your team" is a new page.** §4.2 places the card on "the page that
+   lists the company's users today, and where 'Act as a colleague' lives".
+   There is no such page: "Act as a colleague" is a picker in the account
+   menu, and nothing in the portal lists the company's users. The card is the
+   list now.
+2. **A client owner's settings are the practice's.** A client owner does not
+   change their own may-create, senior leadership or levels, nor another
+   client owner's: the row says "set by <practice>", and the server answers
+   403 with that sentence. Otherwise a client owner could give themselves
+   "Goals too", which P7-7 makes something given deliberately.
+3. **A client owner gives nobody more to create than they may create
+   themselves.** With "projects and tasks" (everyone's today), "Goals too" is
+   shown and not offered, and refused with a sentence if sent. Without this,
+   "Goals too" given to a colleague would be the client owner's through "Act
+   as a colleague". Lowering someone who has more is never refused. Once the
+   practice gives the client owner "Goals too", they may give it.
+4. **Any other client user is refused with a sentence, not "not found"**,
+   on their own company's routes ("Only your client owner sets up your
+   company's teams."): it is their company, and the role is what stops them.
+   Phase 2 answered them 404. The teams' names, for a picker, are refused to
+   them too until phase 4's screens ask for them.
+5. **The client owner acting as a colleague has the colleague's reach,** and
+   so no card, until they stop.
+
+**Still phase 4** (the portal for everyone else): "Mine / My team /
+Everyone"; a read-only sheet saying "Only <team>'s manager can change this";
+"New" offering only what a person may create (it is still offered, and
+answered with a sentence); the team asked for when someone on several makes
+work; the assignee picker narrowed to the task's team (the server already
+refuses the rest); a goal made by someone with "Goals too", and a senior
+leader or the client owner editing a goal; P7-10's level names in the
+portal's other places, the acting banner's "Client team member" among them.
+
+**No migration in phase 3.**
+
+**Proven by tests:** `tests/test_client_teams_portal.py` (the client owner
+makes, renames and archives a team, sets a level, senior leadership and
+may-create, each audited as theirs; a level they set taking effect on the
+colleague's own routes; a client owner's settings refused, theirs and a
+second client owner's; the may-create ceiling and its lifting by the
+practice; every other level refused on every route, and the client owner
+while acting as a colleague; another company and another practice not
+found), the phase 2 test changed for (4), and
+`frontend/src/screens/YourTeam.test.tsx` (the page and its card; the client
+owner's row read-only and naming the practice; "Goals too" not offered, then
+offered; a change sent for their own company; nothing asked for another
+client user; "Your team" in the sidebar for the client owner alone). **Not
+seen in a browser by anyone.**

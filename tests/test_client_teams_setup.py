@@ -248,13 +248,16 @@ def test_role_boundaries_who_sets_a_clients_teams_up(world, cf, va):
     assert card(associate, company)["may_manage"] is True
     assert associate.get(f"{T}?company={other.pk}").status_code == 404
 
-    # A client user, the client owner included, reaches none of it yet.
-    for level in ("owner", "manager", "leader_all", "viewer"):
+    # A client user other than the client owner is refused, with a sentence;
+    # the client owner's own card is phase 3 (test_client_teams_portal.py).
+    for level in ("manager", "leader_all", "viewer"):
         client = api.as_(who[level])
-        assert client.get(f"{T}?company={company.pk}").status_code == 404, level
-        assert client.get(f"{T}names/?company={company.pk}").status_code == 404, level
+        assert client.get(f"{T}?company={company.pk}").status_code == 403, level
+        assert client.get(f"{T}names/?company={company.pk}").status_code == 403, level
         for method, url, body in writes:
-            assert call(client, method, url, body).status_code == 404, (level, url)
+            refused = call(client, method, url, body)
+            assert refused.status_code == 403, (level, url)
+            assert "client owner" in refused.json()["detail"]
 
     assert not ClientTeam.all_objects.filter(name__in=("Finance", "Revenue")).exists()
     assert Membership.all_objects.get(pk=who["member"].pk).may_create == "projects"

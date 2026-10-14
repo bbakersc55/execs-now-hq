@@ -14,7 +14,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.tenancy.models import CLIENT_ROLES
+from apps.tenancy.models import CLIENT_ROLES, Role
 from apps.work.models import ClientTeam, ClientTeamMember
 
 Level = ClientTeamMember.Level
@@ -80,8 +80,8 @@ def place_on_default(membership, level=UNCHOSEN_LEVEL) -> ClientTeamMember | Non
 # ------------------------------------------------- phase 2: setting teams up
 #
 # Who may: whoever manages that company's portal users (the practice owner,
-# or an associate assigned to the company), and from phase 3 the client
-# owner. Every change is in the audit trail with who made it, as a portal
+# or an associate assigned to the company), and the client owner of their
+# own company (phase 3, below). Every change is in the audit trail with who made it, as a portal
 # role change is.
 
 class TeamError(Exception):
@@ -260,6 +260,39 @@ def set_person(membership, *, actor, may_create=None, leads_all_teams=None) -> N
         touched.append("leads_all_teams")
     if touched:
         membership.save(update_fields=touched + ["updated_at"])
+
+
+# ------------------------------------- phase 3: the client owner sets them up
+#
+# The same card and the same changes as the practice's (§4.2), for their own
+# company only, with two limits. A client owner's own settings, and another
+# client owner's, are the practice's to set. And a client owner gives nobody
+# more to create than they may create themselves: without it, "Goals too"
+# given to a colleague would be theirs through "Act as a colleague".
+
+class TeamRefused(TeamError):
+    """Not this person's to change: a 403, said in words."""
+
+
+def _practice(tenant) -> str:
+    from apps.crm.services import email_layout
+
+    brand = email_layout.branding(tenant)
+    return brand.display_name or brand.practice_name or "the practice"
+
+
+def check_client_owner(owner, person, *, may_create=None) -> None:
+    """Raises TeamRefused for what a client owner may not change on `person`."""
+    from apps.tenancy.models import MayCreate
+
+    if person.role == Role.FCC:
+        raise TeamRefused(f"A client owner's settings are set by {_practice(owner.tenant)}.")
+    order = list(MayCreate.values)
+    if may_create in order and order.index(may_create) > order.index(owner.may_create):
+        raise TeamRefused(
+            "You can give someone at most what you may create yourself "
+            f"({MayCreate(owner.may_create).label.lower()}). "
+            f"{_practice(owner.tenant)} can change that.")
 
 
 def overview(company) -> dict:

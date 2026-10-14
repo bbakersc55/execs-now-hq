@@ -1358,7 +1358,8 @@ class PortalAccessViewSet(WorkViewSet):
 
 
 class ClientTeamViewSet(WorkViewSet):
-    """P7 phase 2 — a client company's teams, set up by the practice.
+    """P7 phases 2 and 3 — a client company's teams, set up by the practice
+    or by the client owner.
 
     GET   /api/client-teams/?company=        the Teams card
     GET   /api/client-teams/names/?company=  the teams, for a picker
@@ -1372,8 +1373,10 @@ class ClientTeamViewSet(WorkViewSet):
     **Who:** whoever manages that company's portal users (matrix §9): the
     practice owner, or an associate on a company they are assigned. An
     assistant reads the names, to file work on a team, and changes nothing.
-    A client user reaches none of it until phase 3 gives the client owner
-    their own card. Out of scope is not found.
+    **The client owner** (phase 3): all of it, for their own company only,
+    except a client owner's own settings and giving more to create than they
+    may (`teams.check_client_owner`). Any other client user is refused.
+    Out of scope is not found.
     """
 
     model = None
@@ -1383,25 +1386,42 @@ class ClientTeamViewSet(WorkViewSet):
 
         return ClientTeam.objects.none()
 
+    @staticmethod
+    def _is_client_owner(request):
+        return crm_perms.role_of(request) == Role.FCC
+
     def _may_manage(self, request):
-        return crm_perms.role_of(request) in (crm_perms.Role.FF, crm_perms.Role.CF)
+        return crm_perms.role_of(request) in (crm_perms.Role.FF, crm_perms.Role.CF) \
+            or self._is_client_owner(request)
 
     def _refuse_unless_manager(self, request):
-        if crm_perms.role_of(request) not in crm_perms.TENANT_ROLES:
+        role = crm_perms.role_of(request)
+        if role not in crm_perms.TENANT_ROLES and role not in CLIENT_ROLES:
             raise Http404
         if not self._may_manage(request):
-            return Response({"detail": "Assistants don't set up a client's teams."},
+            return Response({"detail": "Assistants don't set up a client's teams."
+                             if role in crm_perms.TENANT_ROLES
+                             else "Only your client owner sets up your company's teams."},
                             status=403)
         return None
 
     def _company(self, request, company_id):
         from apps.crm.models import Company
 
-        if crm_perms.role_of(request) not in crm_perms.TENANT_ROLES \
-                or not _is_uuid(str(company_id or "")):
+        role = crm_perms.role_of(request)
+        if not _is_uuid(str(company_id or "")):
             raise Http404
-        company = crm_perms.company_queryset_for(
-            request, Company.objects.filter(pk=company_id, deleted_at__isnull=True)).first()
+        if role in CLIENT_ROLES:
+            # A client user's own company, and nothing else, whatever is asked.
+            if str(company_id) != str(request.membership.client_company_id):
+                raise Http404
+            company = Company.objects.filter(pk=company_id, deleted_at__isnull=True).first()
+        elif role in crm_perms.TENANT_ROLES:
+            company = crm_perms.company_queryset_for(
+                request, Company.objects.filter(pk=company_id, deleted_at__isnull=True)
+            ).first()
+        else:
+            company = None
         if company is None:
             raise Http404
         return company
@@ -1440,6 +1460,9 @@ class ClientTeamViewSet(WorkViewSet):
     @action(detail=False, methods=["get"])
     def names(self, request):
         company = self._company(request, request.query_params.get("company"))
+        if crm_perms.role_of(request) in CLIENT_ROLES \
+                and (refused := self._refuse_unless_manager(request)) is not None:
+            return refused
         return Response(teams.names_for(company))
 
     def create(self, request):
@@ -1485,7 +1508,11 @@ class ClientTeamViewSet(WorkViewSet):
             return refused
         person = self._person(team.client_company, request.data.get("membership"))
         try:
+            if self._is_client_owner(request):
+                teams.check_client_owner(request.membership, person)
             teams.set_level(team, person, request.data.get("level"), actor=request.user)
+        except teams.TeamRefused as exc:
+            return Response({"detail": str(exc)}, status=403)
         except teams.TeamError as exc:
             return Response({"detail": str(exc)}, status=400)
         return self._card(request, team.client_company)
@@ -1504,9 +1531,14 @@ class ClientTeamViewSet(WorkViewSet):
         if (refused := self._refuse_unless_manager(request)) is not None:
             return refused
         try:
+            if self._is_client_owner(request):
+                teams.check_client_owner(request.membership, found,
+                                         may_create=request.data.get("may_create"))
             teams.set_person(found, actor=request.user,
                              may_create=request.data.get("may_create"),
                              leads_all_teams=request.data.get("leads_all_teams"))
+        except teams.TeamRefused as exc:
+            return Response({"detail": str(exc)}, status=403)
         except teams.TeamError as exc:
             return Response({"detail": str(exc)}, status=400)
         return self._card(request, company)
