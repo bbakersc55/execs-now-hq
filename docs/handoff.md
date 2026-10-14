@@ -56,25 +56,27 @@ read-only; for a board member or an investor), and **"nothing"** as a
 may-create choice. They are recorded in the spec, §10, and the task
 migration is corrected to `crm` 0036.
 
-**P7 phase 1 is built and NOT committed.** It is in the working tree on
-`dev`: the tables, the three migrations (`tenancy` 0014, `work` 0010 with the
-data step, `crm` 0036 with its task half), the rule in
-`apps/work/permissions.py`, `manage.py client_teams_dry_run`, and
-`tests/test_client_teams.py`. The spec's "As built: phase 1" says what is
-wired, what is ruled and not yet opened, and eight readings that are Bryan's
-to overrule.
+**P7 phase 1 is built, committed and pushed (`31e13a8`), and not released.**
+The tables, the three migrations (`tenancy` 0014, `work` 0010 with the data
+step, `crm` 0036 with its task half), the rule in `apps/work/permissions.py`,
+`manage.py client_teams_dry_run`, and `tests/test_client_teams.py`. The
+spec's "As built: phase 1" says what is wired, what is ruled and not yet
+opened, and the readings Bryan ruled on (1, 2, 4 and 5 stand; 3 overruled).
 
-- **Why not committed:** the gate is red on exactly three tests, the strategy
-  goldens (`classic`, `focused`, `v3`). Their dump lists every column of a
-  converted goal and project, so the two new columns show
-  (`goal.created_by_client`, `project.client_team_id`). No strategy output
-  changed. **Goldens are regenerated only on Bryan's yes;** the other way is
-  to have the dump leave out columns added after the pin. Everything else is
-  green: 3089 backend passed, 997 frontend, migration check and type check
-  clean.
-- **Not applied anywhere,** the laptop included: the laptop rule wants the
-  full suite green first. **Until `migrate` is run, the laptop's dev server
-  errors on anything that reads a membership, project, task or goal.**
+- **One release-day change, by Bryan's ruling:** a client's project is
+  deleted only by whoever made it or by the client owner; anyone else who may
+  change it sets it to cancelled.
+- **Applied to the laptop's `execsnowhq_local`** after the gate was green: 4
+  default teams, 3 portal users placed as Manager, 12 projects and 86 tasks
+  given a team, as the dry run said. Not in production.
+- **Golden files regenerated on Bryan's yes, twice, each for one cause:** in
+  `31e13a8`, `converted_goals.json` and `converted_projects.json` gain the two
+  new columns; in the commit after it, `claude_requests.json` and
+  `prompt_constants.json` gain the no-em-dash sentence. The real-session
+  fingerprints are still 4 identical.
+- **The model is now told to write no em dashes** in the four drafting
+  prompts (rows, consolidate, mirror, pros and cons). The filter stays. No
+  real call has been made with the new prompts.
 - **The production dry run is owed before phase 1 is released,** and Bryan's
   yes on it before "release" (the data step writes). The command arrives
   with the release, so before it the same plan is read from production by a
@@ -136,7 +138,8 @@ item 2, Bryan's look at stop 2, is still his.
 
 **Open from tonight, each Bryan's:**
 
-1. **Telling the model not to write em dashes** changes the prompts, and the
+1. **Done 2026-10-13, on Bryan's yes (see the section above).** As it was
+   written: **Telling the model not to write em dashes** changes the prompts, and the
    prompts are in the v2, classic and v3 golden files
    (`claude_requests.json`, `prompt_constants.json`). Goldens are regenerated
    only on his yes. Until then the filter (`apps/strategy/dashes.py`) is what

@@ -1,7 +1,8 @@
 """No em dashes in the map text Claude drafts (owner, 2026-10-12).
 
-Whatever the model is told, a dash can slip through, and this text goes on a
-document a prospect keeps. So every drafted row, mirror and pro or con passes
+The model is told (the last line before "Reply with JSON only" in each of
+`ai.py`'s four drafting prompts, since 2026-10-13). Whatever it is told, a
+dash can slip through, and this text goes on a document a prospect keeps. So every drafted row, mirror and pro or con passes
 through here on its way in: in a title a dash becomes a colon, and in a
 sentence it becomes a comma, or a full stop when what follows starts a new
 sentence. Only what Claude drafts: a person's own words are never touched.

@@ -79,6 +79,9 @@ use. The measurable is how they would know it worked — a thing already being \
 counted, or an obvious count of what the answer describes. The horizon is your \
 read of how long the fix takes, and only 30, 60 or 90.
 
+Write no em dashes. Where you would use one, use a comma, a colon or a new \
+sentence.
+
 Reply with JSON only: a list of objects with the keys "header", "statement", \
 "bottleneck", "root_cause", "the_fix", "owner_text", "horizon", "measurable". No \
 prose around it, no markdown fence."""
@@ -95,6 +98,9 @@ and one clause saying why, drawn from what they said.
 You are given only their answers. Assert nothing that is not in them. Name no \
 cause the input does not name. If they never stated a destination, say so in the \
 "goal" field rather than inventing one.
+
+Write no em dashes. Where you would use one, use a comma, a colon or a new \
+sentence.
 
 Reply with JSON only: an object with the keys "goal" and "unlocks". No prose \
 around it, no markdown fence."""
@@ -121,6 +127,9 @@ timelines nobody agreed, no claim about {practice}'s results elsewhere, and no \
 promise of an outcome. A con of Path B is a real cost or risk of bringing \
 someone in — write it honestly; a document where one column has no downside \
 persuades nobody.
+
+Write no em dashes. Where you would use one, use a comma, a colon or a new \
+sentence.
 
 Reply with JSON only: {{"a": {{"pros": [], "cons": []}}, "b": {{"pros": [], \
 "cons": []}}}}. No prose around it, no markdown fence."""
@@ -357,6 +366,9 @@ empty — never invent one. Plain operator's words.
 
 Each target also has a "header" of 3 to 6 words naming it, in title case, and a \
 "statement": one sentence saying what will change and why it matters.
+
+Write no em dashes. Where you would use one, use a comma, a colon or a new \
+sentence.
 
 Reply with JSON only: a list of objects with the keys "header", "statement", \
 "bottleneck", "root_cause", "the_fix", "owner_text", "horizon", "measurable", \
