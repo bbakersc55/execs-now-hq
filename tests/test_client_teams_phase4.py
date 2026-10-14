@@ -301,3 +301,21 @@ def test_tenant_isolation_nothing_in_phase_4_reaches_another_company_or_practice
     assert patch(b_owner, f"/api/goals/{world['goal']}/", {"title": "x"}).status_code == 404
     assert b_owner.get(f"/api/tasks/?view=everyone").json() == []
     assert Goal.all_objects.get(pk=world["goal"]).title == "Cut order-to-cash to 20 days"
+
+
+@pytest.mark.django_db
+def test_senior_leadership_of_every_team_is_what_a_viewer_is_then_called(world):
+    """Bryan's demo check 5 (2026-10-14): a viewer on Everyone given senior
+    leadership of every team on the Teams card reads "Senior leadership" on
+    Portal access and in the acting banner, not "Viewer"."""
+    who, api, company = world["who"], world["api"], world["company"]
+    practice = api.as_(world["ff"])
+    viewer = who["viewer"]
+    assert post(practice, "/api/client-teams/person/",
+                {"membership": str(viewer.pk), "leads_all_teams": True}).status_code == 200
+
+    listed = practice.get(f"/api/portal-access/?company={company.pk}").json()["people"]
+    assert {p["id"]: p["level_label"] for p in listed}[str(viewer.pk)] == "Senior leadership"
+
+    assert post(practice, "/api/act-as/", {"membership": str(viewer.pk)}).status_code in (200, 201)
+    assert me(practice)["acting"]["as_label"] == "Senior leadership"

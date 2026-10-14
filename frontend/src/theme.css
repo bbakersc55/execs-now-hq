@@ -1134,6 +1134,8 @@ textarea.code { font-size: var(--t-13); line-height: 1.5; white-space: pre; tab-
    ("Senior leadership", "Projects and tasks"), never squeezed to "Mer"; on a
    window too narrow for every team's column, the table scrolls inside the
    card rather than running past its edge. */
+/* Portal access's role picker never shrinks to an empty box in its cell. */
+select.role-pick { width: auto; min-width: 11rem; }
 .team-levels { overflow-x: auto; }
 .team-levels select { width: auto; max-width: none; }
 .team-levels td { white-space: nowrap; }

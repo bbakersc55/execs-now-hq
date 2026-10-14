@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Company, Me, PortalAccess, PortalCandidates, api } from "../lib/api";
-import { PORTAL_ROLE_CODES, roleLabel } from "../lib/roles";
+import { LEVEL_LABEL, PORTAL_ROLE_CODES, roleLabel } from "../lib/roles";
 import { ActAsButton } from "./ActAs";
 import { PlacementFields, Placement, START, placementBody } from "./ClientTeams";
 import { Banner, Card, Empty, Field, when } from "./ui";
@@ -14,6 +14,17 @@ function invitationLine(p: PortalAccess["people"][number]): string {
   return new Date(p.invitation_expires_at) < new Date()
     ? `Invitation expired ${when(p.invitation_expires_at)} · not signed in`
     : `Invited · link valid until ${when(p.invitation_expires_at)}`;
+}
+
+/**
+ * Their level, and the teams they are on, under their name (P7-10). Senior
+ * leadership of every team is said as that, whatever their level on a team.
+ */
+export function levelLine(p: PortalAccess["people"][number]): string {
+  if (p.role === "FCC") return p.level_label;
+  if (p.leads_all_teams) return `${LEVEL_LABEL.leader} of every team`;
+  return p.level_label + (p.teams.length > 0
+    ? ` · ${p.teams.map((t) => t.name).join(", ")}` : "");
 }
 
 export const PORTAL_ROLES = PORTAL_ROLE_CODES.map((value) => ({ value, label: roleLabel(value) }));
@@ -144,12 +155,12 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                 <td>{p.name}<div className="when">{p.email}</div>
                   {/* P7-10: their level, where "Client team member" used to be all
                       that was said. Set on the Teams card below. */}
-                  <div className="when">{p.level_label}
-                    {p.role !== "FCC" && p.teams.length > 0
-                      && ` · ${p.teams.map((t) => t.name).join(", ")}`}</div>
+                  <div className="when">{levelLine(p)}</div>
                   <div className="when">{invitationLine(p)}</div></td>
                 <td>
-                  <select aria-label={`Role for ${p.name}`} value={p.role}
+                  {/* Shows their level, not "Client team member": the level
+                      itself is set on the Teams card below. */}
+                  <select aria-label={`Role for ${p.name}`} value={p.role} className="role-pick"
                     disabled={changeRole.isPending}
                     onChange={(e) => {
                       const role = e.target.value;
@@ -160,7 +171,11 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                       }
                       changeRole.mutate({ id: p.id, role });
                     }}>
-                    {PORTAL_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    {PORTAL_ROLES.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.value === "ECC" && p.role === "ECC" ? p.level_label : r.label}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td>

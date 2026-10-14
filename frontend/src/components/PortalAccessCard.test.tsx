@@ -121,3 +121,26 @@ describe("Resend invitation, on a portal-access row", () => {
     expect(screen.getAllByRole("button", { name: "Resend invitation" })).toHaveLength(3);
   });
 });
+
+describe("each person's level, on Portal access (Bryan, 2026-10-14)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("shows the level as the role picker's chosen value", async () => {
+    open([person({ level_label: "Manager" }),
+          person({ id: "m2", name: "Bruce Wayne", role: "FCC", level_label: "Client owner",
+                   teams: [] })]);
+    const picker = within(await row("Priya Shah")).getByRole("combobox", { name: "Role for Priya Shah" });
+    expect((picker as HTMLSelectElement).selectedOptions[0].textContent).toBe("Manager");
+    const owner = within(await row("Bruce Wayne")).getByRole("combobox", { name: "Role for Bruce Wayne" });
+    expect((owner as HTMLSelectElement).selectedOptions[0].textContent).toBe("Client owner");
+  });
+
+  it("says senior leadership of every team, whatever their level on a team", async () => {
+    open([person({ level_label: "Senior leadership", leads_all_teams: true,
+                   teams: [{ team: "t0", name: "Everyone", level: "viewer" }] })]);
+    const line = within(await row("Priya Shah"));
+    expect(line.getByText("Senior leadership of every team")).toBeInTheDocument();
+    expect((line.getByRole("combobox") as HTMLSelectElement).selectedOptions[0].textContent)
+      .toBe("Senior leadership");
+  });
+});

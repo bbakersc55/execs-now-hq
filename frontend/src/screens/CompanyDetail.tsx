@@ -137,8 +137,13 @@ export function CompanyDetail({ me }: { me: Me }) {
         </Card>
 
         <PortalAccessCard me={me} company={c} />
-        <ClientTeamsCard me={me} company={c} />
+      </div>
 
+      {/* A table with a column per team: it takes the page's width, below the
+          pair above, rather than half of it (Bryan, 2026-10-14). */}
+      <ClientTeamsCard me={me} company={c} />
+
+      <div className="record-cols">
         <CallNotes me={me} company={id!} />
         <Card title="Timeline">
           {(timeline.data ?? []).length === 0 ? <Empty>Nothing yet.</Empty> : (
