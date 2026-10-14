@@ -51,3 +51,9 @@ is built unless its row says so. Pricing heard on the same call is in
 |---|---|---|
 | L1 | **A format editor for the PDF.** | later |
 | L2 | **Integrations to migrate from Notion and ClickUp directly** (after W4's CSV import). | later |
+
+## UI
+
+| # | Item | Status |
+|---|---|---|
+| U1 | **"New invoice" and a recurring invoice's "Edit" open as a modal** over a grayed-out page, not as a drop-down in the list. Drilling into a sent invoice stays as it is. Asked 2026-10-14. | later |
