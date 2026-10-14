@@ -607,3 +607,28 @@ def test_the_dry_run_prints_the_plan_and_writes_nothing(world, capsys):
     assert "Northwind Foods" in out and "before: 9 portal user(s)" in out
     assert "after:  one team, \"Everyone\" (the default); 9 on it as Manager" in out
     assert (ClientTeam.all_objects.count(), ClientTeamMember.all_objects.count()) == before
+
+
+@pytest.mark.django_db
+def test_the_script_for_a_database_without_p7_says_what_the_command_says(world, capsys):
+    """Production is asked before the release, by code that has no teams yet:
+    `scripts/p7_phase1_dry_run.py`, piped into its shell. It must read what
+    the migration will do, word for word."""
+    import runpy
+    from pathlib import Path
+
+    from django.core.management import call_command
+
+    # As before P7, which is when it is run: nobody placed, nothing on a team.
+    ClientTeam.all_objects.all().delete()
+    call_command("client_teams_dry_run")
+    command = capsys.readouterr().out
+    before = (ClientTeam.all_objects.count(), ClientTeamMember.all_objects.count())
+    runpy.run_path(str(Path(__file__).parent.parent / "scripts" / "p7_phase1_dry_run.py"))
+    script = capsys.readouterr().out
+    assert script == command and "Northwind Foods" in script
+    assert (ClientTeam.all_objects.count(), ClientTeamMember.all_objects.count()) == before
+    source = (Path(__file__).parent.parent / "scripts" / "p7_phase1_dry_run.py").read_text()
+    assert "team_backfill" not in source.split('"""')[2], "it imports nothing P7 added"
+    assert "ClientTeam" not in source and "client_team" not in source.split('"""')[2]
+

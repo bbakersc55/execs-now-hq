@@ -85,15 +85,32 @@ opened, and the readings Bryan ruled on (1, 2, 4 and 5 stand; 3 overruled).
   set teams up** (P7-8's two halves disagree). **Not seen in a browser.**
   Phases 3 (the client owner's card) and 4 (the portal for members, managers
   and senior leaders) are not started.
-- **The production dry run is owed before phase 1 is released,** and Bryan's
-  yes on it before "release" (the data step writes). The command arrives
-  with the release, so before it the same plan is read from production by a
-  script piped into its shell, as the demo's pre-check is; it reads only
-  columns that exist today. Production reads are refused to Claude Code, so
-  it is handed to Bryan as a paste block when phase 1 is to go. The laptop's
-  dry run (a scrubbed copy of production) is in the 10/13 report: 4 default
-  teams, 3 portal users placed as Manager, 12 projects and 86 tasks given a
-  team, 28 tasks left to follow their project.
+- **Releasing phase 1, the morning of 10/14. Three things, in this order.**
+  1. **The dry run, by Bryan, before "release".** Production has no P7 code,
+     so the command is not there; `scripts/p7_phase1_dry_run.py` reads the
+     same plan using only columns that exist today, writes nothing, and a
+     test holds its words to the command's. Production reads are refused to
+     Claude Code, so it is handed to Bryan as a paste block (Claude Code
+     prompt, with `!`):
+
+     ```
+     ! cd ~/projects/execs-now-hq && railway ssh --service execs-now-hq -- "echo $(base64 -w0 scripts/p7_phase1_dry_run.py) | base64 -d | python manage.py shell"
+     ```
+
+     He pastes the output back; the data step waits for his yes on it. For
+     comparison, the laptop's (a scrubbed copy of production as of its last
+     refresh): 4 default teams, 3 portal users placed as Manager, 12 projects
+     and 86 tasks given a team, 28 tasks left to follow their project.
+  2. **Release `9645a16`, not `dev`.** P7-15: phase 1 goes alone. `dev` also
+     holds phase 2 (`5285f41`) and whatever follows, so the push is
+     `git push origin 9645a16:main`, as Release 5 was done. `9645a16` is phase
+     1 (`31e13a8`) and the em-dash prompts; it passed the gate. Three
+     migrations will be listed as waiting: `tenancy` 0014, `work` 0010, `crm`
+     0036. The two data steps print their counts as they apply; compare them
+     with the dry run's.
+  3. **One thing changes for clients on that release** (Bryan's ruling): a
+     client's project is deleted only by whoever made it or by the client
+     owner.
 
 ## The night of 2026-10-12: the call's backlog, a spec, and ten fixes
 
