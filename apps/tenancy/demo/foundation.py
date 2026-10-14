@@ -525,6 +525,8 @@ def counts(world: World) -> dict:
                          for k in FinanceEntry.Kind.values},
         "bank imports committed": FinanceImportBatch.objects.filter(
             status="committed").count(),
+        "PDF statements imported": FinanceImportBatch.objects.filter(
+            status="committed", statement_file__isnull=False).count(),
         "import rules": FinanceRule.objects.count(),
         "stored files": StoredFile.objects.count(),
         "mail connection kept": bool(world.extra.get("mail_connection_kept")),

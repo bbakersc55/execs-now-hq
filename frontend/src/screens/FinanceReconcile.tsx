@@ -587,6 +587,7 @@ function Report({ rec, busy, error, onReopen, onClose }: {
         <button className="ghost small" onClick={() => window.print()}>Print</button>
         <button className="ghost small" onClick={onClose}>Close this</button></span>}>
       {error && <Banner kind="bad">{error}</Banner>}
+      <Statements kept={rec.statements ?? []} />
       {!data ? <p>Opening the report…</p> : (
         <section aria-label="Reconciliation report">
           <p className="small" style={{ marginTop: 0 }}>

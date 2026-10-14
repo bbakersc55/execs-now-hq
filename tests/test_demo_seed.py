@@ -260,8 +260,36 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert entries.filter(kind="income", direction="out").count() == 1    # a refund
         # Another, entered late, and the correcting entry in the open month.
         assert entries.filter(kind="expense", direction="in").count() == 2
-        batch = FinanceImportBatch.objects.get()
+        batch = FinanceImportBatch.objects.get(source="csv")
         assert batch.status == "committed"
+        # One PDF statement, imported, so the PDF import and the statement on
+        # Reconcile can be shown (owner, 2026-10-14). Written without Claude.
+        from apps.finance import reconcile as reconciling, statement_pdf
+        from apps.finance.models import FinanceReconciliation
+        from apps.tenancy import storage
+
+        last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+        pdf = FinanceImportBatch.objects.get(source="pdf")
+        assert (pdf.status, pdf.period_start, pdf.ai_call_id) == (
+            "committed", last_month, None)
+        assert pdf.filename == f"FrontRange_statement_{last_month:%Y_%m}.pdf"
+        rec = FinanceReconciliation.objects.get(account=pdf.account, month=last_month)
+        assert (pdf.period_end, pdf.last_balance_cents) == (
+            rec.statement_on, rec.statement_balance_cents)
+        # It is a real PDF with text in it, it adds up, and it is the
+        # statement the Reconcile screen shows for that month.
+        content = storage.read(pdf.statement_file)
+        assert statement_pdf.inspect(content)["pages"] >= 1
+        assert statement_pdf.adds_up(pdf)["difference_cents"] == 0
+        lines = FinanceImportRow.objects.filter(batch=pdf)
+        assert lines.count() >= 10
+        assert set(lines.values_list("outcome", flat=True)) == {"duplicate"}
+        [shown] = reconciling.statements(pdf.tenant)[(pdf.account_id, last_month)]
+        assert shown["filename"] == pdf.filename
+        assert reconciling.represent(rec, detail=True)["statements"] == [shown]
+        # The newest figure the bank gave is still this month's file's.
+        from apps.finance import importer
+        assert importer.bank_said(pdf.tenant)[pdf.account_id]["on"] >= today.replace(day=1)
         assert 1 <= FinanceRule.objects.count() <= 6
         assert FinanceImportRow.objects.filter(batch=batch,
                                                outcome="invoice_payment").count() >= 1

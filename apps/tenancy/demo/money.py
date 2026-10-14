@@ -87,6 +87,7 @@ def history(world) -> None:
     _bank_import(world, books, held_back, window_start)
     if _last_month(world) >= first:
         _reconcile_and_close(world, books, _last_month(world))
+        _pdf_statement(world, books)
         _correcting_entry(world, books)
     _this_month_in_progress(world, books)
     _reshape_the_chart(world, books)
@@ -570,6 +571,107 @@ def _reconcile_and_close(world, books, month: date) -> None:
             reconcile.finish(rec, actor=owner)
     with at(moment(min(after + timedelta(days=6), world.today), 17, 30)):
         reconcile.close(world.tenant, actor=owner, month=month)
+
+
+STATEMENT_HTML = """<!doctype html><html><head><meta charset="utf-8"><style>
+@page {{ size: Letter; margin: 0.7in; }}
+body {{ font-family: Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #222; }}
+h1 {{ font-size: 16pt; margin: 0; }} .muted {{ color: #666; }}
+table {{ width: 100%; border-collapse: collapse; margin-top: 14pt; }}
+th {{ text-align: left; border-bottom: 1px solid #999; padding: 3pt 4pt; }}
+td {{ padding: 2.5pt 4pt; border-bottom: 1px solid #eee; }}
+.n {{ text-align: right; white-space: nowrap; }} .sum td {{ font-weight: bold; }}
+</style></head><body>
+<h1>Front Range Bank</h1>
+<p class="muted">A fictional bank, for a demonstration. This is not a real statement.</p>
+<p><strong>Business checking, account ending {last4}</strong><br>
+{practice}<br>Statement period {start} to {end}</p>
+<table><tr><td>Beginning balance on {start}</td><td class="n">{opening}</td></tr>
+<tr><td>Deposits and other credits</td><td class="n">{money_in}</td></tr>
+<tr><td>Withdrawals and other debits</td><td class="n">{money_out}</td></tr>
+<tr class="sum"><td>Ending balance on {end}</td><td class="n">{closing}</td></tr></table>
+<table><tr><th>Date</th><th>Description</th><th class="n">Withdrawals</th>
+<th class="n">Deposits</th></tr>{rows}</table>
+</body></html>"""
+
+
+def _pdf_statement(world, books) -> None:
+    """Last month's bank statement, as a PDF, imported (owner, 2026-10-14),
+    so the PDF import and the statement on the Reconcile screen can be shown.
+
+    **Written without Claude,** as everything in the seed is: the PDF is drawn
+    from what last month's reconciliation ticked, and the import is recorded
+    as it would stand after a read, with every line already in the books
+    (the month was entered and reconciled before its statement was filed).
+    So it has no `ai_call`, and its screen shows no cost. The bank is
+    fictional and the page says so."""
+    import html
+
+    from weasyprint import HTML
+
+    from apps.finance import importer, statement_pdf
+    from apps.finance.models import (
+        FinanceImportBatch, FinanceImportRow, FinanceReconciliation,
+    )
+    from apps.tenancy import storage
+
+    reconcile, finance = _reconcile(), _finance()
+    owner, tenant, bank, month = world.owner, world.tenant, books["bank"], _last_month(world)
+    rec = FinanceReconciliation.objects.filter(account=bank, month=month).first()
+    if rec is None:
+        return
+    shown = [line for line in reconcile.lines(rec) if line["cleared"]]
+    sums = reconcile.totals(rec)
+
+    def dollars(cents: int) -> str:
+        return f"{'-' if cents < 0 else ''}${abs(cents) / 100:,.2f}"
+
+    def words(line) -> str:
+        return " ".join((line["counterparty"] or line["description"]).upper().split())[:60]
+
+    def day(value) -> str:
+        return f"{value:%B} {value.day}, {value.year}"
+
+    rows = "".join(
+        f"<tr><td>{date.fromisoformat(line['on_date']):%m/%d}</td>"
+        f"<td>{html.escape(words(line))}</td>"
+        f"<td class='n'>{dollars(line['amount_cents']) if line['way'] == 'out' else ''}</td>"
+        f"<td class='n'>{dollars(line['amount_cents']) if line['way'] == 'in' else ''}</td></tr>"
+        for line in shown)
+    content = HTML(string=STATEMENT_HTML.format(
+        last4=bank.last4 or "0000", practice=html.escape(tenant.name), start=day(month),
+        end=day(rec.statement_on), opening=dollars(sums["starting_balance_cents"]),
+        money_in=dollars(sums["cleared_in_cents"]),
+        money_out=dollars(sums["cleared_out_cents"]),
+        closing=dollars(rec.statement_balance_cents), rows=rows)).write_pdf()
+    name = f"FrontRange_statement_{month:%Y_%m}.pdf"
+    filed = min(next_month(month) + timedelta(days=5), world.today)
+    with at(moment(filed, 15, 50)) as now:
+        batch = FinanceImportBatch.objects.create(
+            tenant=tenant, account=bank, filename=name, created_by=owner,
+            source=FinanceImportBatch.Source.PDF, mapping=dict(statement_pdf.MAPPING),
+            status=FinanceImportBatch.Status.COMMITTED, committed_at=now,
+            statement_file=storage.save(
+                tenant=tenant, content=content,
+                object_key=storage.object_key("statements", name),
+                purpose=statement_pdf.STORED_AS, content_type="application/pdf"),
+            period_start=month, period_end=rec.statement_on,
+            opening_balance_cents=sums["starting_balance_cents"],
+            last_balance_cents=rec.statement_balance_cents, last_balance_on=rec.statement_on)
+        for number, line in enumerate(shown, start=2):
+            signed = line["amount_cents"] if line["way"] == "in" else -line["amount_cents"]
+            FinanceImportRow.objects.create(
+                tenant=tenant, batch=batch, row_number=number,
+                raw={"Date": line["on_date"], "Description": words(line),
+                     "Amount": f"{signed / 100:.2f}"},
+                on_date=date.fromisoformat(line["on_date"]),
+                amount_cents=line["amount_cents"], direction=line["way"],
+                description=words(line), outcome=FinanceImportRow.Outcome.DUPLICATE)
+        batch.counts = importer._counts(batch)
+        batch.save(update_fields=["counts", "updated_at"])
+        finance.audit(tenant, "import_committed", owner, batch, account=bank.name,
+                      filename=name, counts=batch.counts)
+    world.extra["pdf_statement"] = batch
 
 
 def _late_refund(world, books, month: date) -> None:
