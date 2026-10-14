@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { Me, PortalPerson, Task, WorkParent, api } from "../lib/api";
+import { ClientTeamName, Me, PortalPerson, Task, WorkParent, api } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
 import { Banner, Card, Field } from "./ui";
 
@@ -16,16 +16,27 @@ type Outcome = { kind: string; text: string; link: string };
  * Everything here is the client's own company: the server scopes the project
  * and people lists, and these forms filter them again so a stale or wider
  * response still cannot offer what FR-3.9a.2 would refuse.
+ *
+ * P7 phase 4: "New" offers only what this person may create (§3), asks which
+ * team when they may put work on more than one (§1.2), and offers as the
+ * assignee only someone the task's team may be handed to.
  */
+type Kind = "task" | "project" | "goal";
+
 export function PortalCreate({ me, offer = ["task", "project"] }: {
-  me: Me; offer?: ("task" | "project")[];
+  me: Me; offer?: Kind[];
 }) {
-  const [open, setOpen] = useState<"task" | "project" | null>(null);
+  const [open, setOpen] = useState<Kind | null>(null);
   const [done, setDone] = useState<Outcome | null>(null);
   const close = (outcome: Outcome | null) => {
     setOpen(null);
     if (outcome) setDone(outcome);
   };
+
+  // Without the server's word (an older answer), tasks and projects as before.
+  const may = me.portal?.may_create ?? { task: true, project: true, goal: false };
+  offer = offer.filter((kind) => may[kind]);
+  if (offer.length === 0 && !done) return null;
 
   return (
     <>
@@ -38,6 +49,9 @@ export function PortalCreate({ me, offer = ["task", "project"] }: {
         {offer.includes("project") && (
           <button onClick={() => { setOpen("project"); setDone(null); }}>New project</button>
         )}
+        {offer.includes("goal") && (
+          <button onClick={() => { setOpen("goal"); setDone(null); }}>New goal</button>
+        )}
       </div>
       {done && (
         <Banner kind={done.kind}>
@@ -45,15 +59,49 @@ export function PortalCreate({ me, offer = ["task", "project"] }: {
         </Banner>
       )}
       {open === "task" && <NewTaskForm me={me} onClose={close} />}
-      {open === "project" && <NewProjectForm onClose={close} />}
+      {open === "project" && <NewProjectForm me={me} onClose={close} />}
+      {open === "goal" && <NewGoalForm onClose={close} />}
     </>
   );
+}
+
+/** The teams this person may put new work on, and the one it lands on when
+ *  they name none: the default team if they are on it, else the first. */
+function useTeams(me: Me) {
+  const teams: ClientTeamName[] = me.portal?.teams ?? [];
+  const home = teams.find((t) => t.is_default)?.id ?? teams[0]?.id ?? "";
+  return { teams, home };
+}
+
+function TeamPicker({ teams, value, onChange, label }: {
+  teams: ClientTeamName[]; value: string; onChange: (team: string) => void; label: string;
+}) {
+  if (teams.length < 2) return null;
+  return (
+    <Field label="Team">
+      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+        {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+    </Field>
+  );
+}
+
+/** Who a task on this team may be handed to (the server's answer). */
+export function usePeopleFor(team: string | null | undefined, enabled = true) {
+  return useQuery<PortalPerson[]>({
+    queryKey: ["portal-people", team || ""],
+    queryFn: () => api.get<PortalPerson[]>(
+      `/api/portal-people/${team ? `?team=${team}` : ""}`),
+    enabled,
+  });
 }
 
 function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => void }) {
   const qc = useQueryClient();
   const practice = usePracticeName();
-  const [form, setForm] = useState({ title: "", project: "", assignee: "", due_date: "" });
+  const { teams, home } = useTeams(me);
+  const [form, setForm] = useState({ title: "", project: "", assignee: "", due_date: "",
+                                     team: home });
   const [steps, setSteps] = useState<string[]>([]);
   const [step, setStep] = useState("");
   const [error, setError] = useState("");
@@ -61,10 +109,12 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
   const projects = useQuery<WorkParent[]>({
     queryKey: ["projects"], queryFn: () => api.get<WorkParent[]>("/api/projects/"),
   });
-  const people = useQuery<PortalPerson[]>({
-    queryKey: ["portal-people"], queryFn: () => api.get<PortalPerson[]>("/api/portal-people/"),
-  });
   const ourProjects = (projects.data ?? []).filter((p) => p.client_company === me.client_company);
+  // In a project the task is on the project's team; otherwise on the one chosen.
+  const team = form.project
+    ? ourProjects.find((p) => p.id === form.project)?.client_team ?? ""
+    : form.team;
+  const people = usePeopleFor(team);
   const colleagues = (people.data ?? []).filter((p) => p.company === me.client_company);
 
   const create = useMutation({
@@ -72,6 +122,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
       const task = await api.post<Task>("/api/tasks/", {
         title: form.title.trim(),
         ...(form.project ? { project: form.project } : {}),
+        ...(!form.project && form.team ? { client_team: form.team } : {}),
         ...(form.assignee ? { assignee: form.assignee } : {}),
         ...(form.due_date ? { due_date: form.due_date } : {}),
       });
@@ -118,11 +169,15 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
         <div className="row">
           <Field label="Project">
             <select aria-label="Project for the new task" value={form.project}
-              onChange={(e) => setForm({ ...form, project: e.target.value })}>
+              onChange={(e) => setForm({ ...form, project: e.target.value, assignee: "" })}>
               <option value="">No project</option>
               {ourProjects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
           </Field>
+          {!form.project && (
+            <TeamPicker teams={teams} value={form.team} label="Team for the new task"
+              onChange={(next) => setForm({ ...form, team: next, assignee: "" })} />
+          )}
           <Field label="Assign to">
             <select aria-label="Assign the new task to" value={form.assignee}
               onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
@@ -157,7 +212,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
         </Field>
 
         <p className="small muted">
-          You can assign it to anyone at your company. It is shown to {practice} straight away.
+          You can assign it to anyone on its team. It is shown to {practice} straight away.
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
           {create.isPending ? "Creating…" : "Create task"}
@@ -167,10 +222,11 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
   );
 }
 
-function NewProjectForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
+function NewProjectForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => void }) {
   const qc = useQueryClient();
   const practice = usePracticeName();
-  const [form, setForm] = useState({ title: "", description: "", target_date: "" });
+  const { teams, home } = useTeams(me);
+  const [form, setForm] = useState({ title: "", description: "", target_date: "", team: home });
   const [error, setError] = useState("");
 
   const create = useMutation({
@@ -179,6 +235,7 @@ function NewProjectForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
       title: form.title.trim(),
       ...(form.description.trim() ? { description: form.description.trim() } : {}),
       ...(form.target_date ? { target_date: form.target_date } : {}),
+      ...(form.team ? { client_team: form.team } : {}),
     }),
     onSuccess: (project) => {
       qc.invalidateQueries({ queryKey: ["projects"] });
@@ -199,16 +256,72 @@ function NewProjectForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
           <textarea aria-label="New project description" rows={2} value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
-        <Field label="Target date">
-          <input aria-label="Target date for the new project" type="date" value={form.target_date}
-            onChange={(e) => setForm({ ...form, target_date: e.target.value })} />
-        </Field>
+        <div className="row">
+          <Field label="Target date">
+            <input aria-label="Target date for the new project" type="date"
+              value={form.target_date}
+              onChange={(e) => setForm({ ...form, target_date: e.target.value })} />
+          </Field>
+          <TeamPicker teams={teams} value={form.team} label="Team for the new project"
+            onChange={(next) => setForm({ ...form, team: next })} />
+        </div>
         <p className="small muted">
           A project groups your company's own tasks. Goals are set with {practice}, so a
           project you add stands on its own rather than under a goal.
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
           {create.isPending ? "Creating…" : "Create project"}
+        </button>
+      </form>
+    </Card>
+  );
+}
+
+
+/** P7-7: a client user given "Goals too" adds a goal for their company. It is
+ *  live at once, marked as theirs, and the practice is told. Its measure and
+ *  its outcome stay the practice's to set. */
+function NewGoalForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
+  const qc = useQueryClient();
+  const practice = usePracticeName();
+  const [form, setForm] = useState({ title: "", description: "", target_date: "" });
+  const [error, setError] = useState("");
+
+  const create = useMutation({
+    mutationFn: () => api.post<WorkParent>("/api/goals/", {
+      title: form.title.trim(),
+      ...(form.description.trim() ? { description: form.description.trim() } : {}),
+      ...(form.target_date ? { target_date: form.target_date } : {}),
+    }),
+    onSuccess: (goal) => {
+      qc.invalidateQueries({ queryKey: ["goals"] });
+      onClose({ kind: "ok", text: `“${goal.title}” added.`, link: `/work/goals/${goal.id}` });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  return (
+    <Card title="New goal" actions={<button onClick={() => onClose(null)}>Cancel</button>}>
+      {error && <Banner kind="bad">{error}</Banner>}
+      <form onSubmit={(e) => { e.preventDefault(); setError(""); create.mutate(); }}>
+        <Field label="Title">
+          <input aria-label="New goal title" value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        </Field>
+        <Field label="Description">
+          <textarea aria-label="New goal description" rows={2} value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </Field>
+        <Field label="Target date">
+          <input aria-label="Target date for the new goal" type="date" value={form.target_date}
+            onChange={(e) => setForm({ ...form, target_date: e.target.value })} />
+        </Field>
+        <p className="small muted">
+          It is your company's goal straight away, marked as added by you, and {practice} is
+          told. How it is measured is set with {practice}.
+        </p>
+        <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
+          {create.isPending ? "Adding…" : "Add the goal"}
         </button>
       </form>
     </Card>

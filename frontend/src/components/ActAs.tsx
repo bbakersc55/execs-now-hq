@@ -47,7 +47,7 @@ export function ActingBanner({ me }: { me: Me }) {
     <div role="status" aria-label="Acting as" className="acting-bar">
       <Banner kind="warn">
         <span className="says">
-          <strong>{a.real_name} is acting as {a.as_name}</strong> ({roleLabel(a.as_role)}
+          <strong>{a.real_name} is acting as {a.as_name}</strong> ({a.as_label || roleLabel(a.as_role)}
           {a.company_name && `, ${a.company_name}`}). Everything done here is recorded as done by
           {" "}{a.real_name} on behalf of {a.as_name}, and <strong>no email is sent</strong>.
           {error && <> {error}</>}

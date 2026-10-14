@@ -93,12 +93,28 @@ export interface Me {
   /** FR-3.42 — set while the real person acts as another user. Everything
    *  above then describes the acted-as user. */
   acting?: Acting | null;
+  /** P7 phase 4: a client user's rights. Null for the practice. */
+  portal?: PortalRights | null;
 }
 
 export interface Acting {
   real_name: string; real_email: string; real_role: string;
   as_membership: string; as_name: string; as_email: string; as_role: string;
+  /** P7-10: what the acted-as client user is called, by level. */
+  as_label?: string;
   company: string; company_name: string;
+}
+
+/** P7 phase 4: what a client user may do, so the portal offers only that. */
+export interface PortalRights {
+  level_label: string;
+  may_create: { task: boolean; project: boolean; goal: boolean };
+  edits_goals: boolean;
+  /** Offered "Mine / My team / Everyone". */
+  has_teams_view: boolean;
+  /** The teams they may put new work on. */
+  teams: ClientTeamName[];
+  may_propose_goal: boolean;
 }
 
 /** GET /api/act-as/candidates/ — who the real person may act as. */
@@ -450,7 +466,11 @@ export type WorkStatus =
 export interface Person { id: string | null; name: string }
 
 /** /api/portal-people/ — for a client user, only their own company's users. */
-export interface PortalPerson { id: string; name: string; role: string; company: string | null }
+export interface PortalPerson {
+  id: string; name: string; role: string; company: string | null;
+  /** P7-10: a client user's level ("Manager"), or "Client owner". */
+  label?: string;
+}
 
 /** Module 3. `may_edit` / `may_delete` carry FR-3.9a, so the UI never
  *  re-derives the client-edit rule and cannot drift from the server. */
@@ -483,6 +503,9 @@ export interface Task {
   may_edit: boolean;
   may_delete: boolean;
   may_set_visibility: boolean;
+  /** P7 phase 4: why a client may see this and not change it, said once at
+   *  the top of its sheet. "" where they may, and always for the practice. */
+  read_only_line?: string;
 }
 
 export type MeasurableKind = "numeric" | "qualitative" | "none" | null;
@@ -527,6 +550,16 @@ export interface WorkParent {
   target_value?: string | null;
   horizon_days?: number | null;
   outcome_statement?: string;
+  /** P7 phase 4, for a client user: what they may do with it, and why not
+   *  once where they may not. Absent for the practice, whose screens decide
+   *  by role. */
+  may_edit?: boolean;
+  may_delete?: boolean;
+  read_only_line?: string;
+  /** On a goal a client user added (P7-7): "<name>, <client company>". */
+  added_by?: string;
+  /** On a goal, for a client who may change it: the fields that are theirs. */
+  editable_fields?: string[];
 }
 
 export interface WorkComment {

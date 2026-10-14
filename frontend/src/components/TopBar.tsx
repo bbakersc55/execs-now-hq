@@ -49,7 +49,9 @@ function ProfileMenu({ me, practice }: { me: Me; practice: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const name = me.full_name || me.email;
-  const role = me.area === "platform" ? "Platform owner" : roleLabel(me.role);
+  // P7-10: a client user by their level, which the server names.
+  const role = me.area === "platform" ? "Platform owner"
+    : (me.portal && me.role_label) || roleLabel(me.role);
 
   const items = () => Array.from(
     wrap.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);

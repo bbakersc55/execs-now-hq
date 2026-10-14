@@ -92,6 +92,12 @@ def resolve(request, real):
     return None
 
 
+def _level_label(target) -> str:
+    from apps.work.permissions import ClientScope
+
+    return ClientScope(target).level_label
+
+
 def describe(real_user, real_role, target) -> dict:
     return {
         "real_name": real_user.full_name or real_user.email,
@@ -101,6 +107,8 @@ def describe(real_user, real_role, target) -> dict:
         "as_name": target.user.full_name or target.user.email,
         "as_email": target.user.email,
         "as_role": target.role,
+        # P7-10: the banner names a client user by their level.
+        "as_label": _level_label(target),
         "company": str(target.client_company_id),
         "company_name": target.client_company.name if target.client_company else "",
     }

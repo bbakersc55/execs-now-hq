@@ -8,6 +8,7 @@ import {
 } from "../components/CompanyFilter";
 import { TeamFilter, useTeamFilter } from "../components/ClientTeams";
 import { PortalCreate } from "../components/PortalCreate";
+import { PortalViewSwitch, usePortalView } from "../components/PortalView";
 import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Avatar, PageHead, useRowLink } from "../components/shell";
@@ -36,19 +37,27 @@ export function Work({ me }: { me: Me }) {
   const onTeam = <T extends { client_team?: string | null }>(rows: T[]) =>
     teamFilter.team ? rows.filter((r) => r.client_team === teamFilter.team) : rows;
 
+  // P7 §4.3: a manager, a senior leader or the client owner narrows the
+  // projects and tasks to theirs or their team's. Goals are the company's.
+  const portalView = usePortalView(me);
+  const only = portalView.param ? `?${portalView.param}` : "";
+  const and = portalView.param ? `&${portalView.param}` : "";
   const goals = useQuery<WorkParent[]>({
     queryKey: ["goals"], queryFn: () => api.get<WorkParent[]>("/api/goals/"),
   });
   const projects = useQuery<WorkParent[]>({
-    queryKey: ["projects"], queryFn: () => api.get<WorkParent[]>("/api/projects/"),
+    queryKey: ["projects", portalView.view],
+    queryFn: () => api.get<WorkParent[]>(`/api/projects/${only}`),
   });
   const unfiled = useQuery<Task[]>({
-    queryKey: ["tasks", "unfiled"], queryFn: () => api.get<Task[]>("/api/tasks/?unfiled=1"),
+    queryKey: ["tasks", "unfiled", portalView.view],
+    queryFn: () => api.get<Task[]>(`/api/tasks/?unfiled=1${and}`),
   });
   // The whole list, so the tree is built here rather than by a children call
   // per goal. One request either way, and the rows are already cached.
   const tasks = useQuery<Task[]>({
-    queryKey: ["tasks", "all"], queryFn: () => api.get<Task[]>("/api/tasks/"),
+    queryKey: ["tasks", "all", portalView.view],
+    queryFn: () => api.get<Task[]>(`/api/tasks/${only}`),
   });
   // A client's proposed order waits here for the practice, where the goals are.
   const proposals = useQuery<GoalOrderProposal[]>({
@@ -83,8 +92,11 @@ export function Work({ me }: { me: Me }) {
 
       {isTenant && <StaffCreate me={me} />}
       {isTenant && <ClientActivity />}
-      {/* FR-3.35 / 3.35a — a client creates tasks and projects, never goals. */}
-      {!isTenant && <PortalCreate me={me} />}
+      {/* FR-3.35 / 3.35a, and P7 §3: a client creates what they may. */}
+      {!isTenant && <PortalCreate me={me} offer={["task", "project", "goal"]} />}
+      {portalView.offered && (
+        <PortalViewSwitch value={portalView.view} onChange={portalView.choose} />
+      )}
 
       {/* One selector above all three lists, because it governs all three. */}
       {isTenant && (
@@ -120,10 +132,11 @@ export function Work({ me }: { me: Me }) {
       <Card title="Goals">
         {/* Where a client would look for "New goal": whose goals are, and
             where a client owner proposes one. */}
-        {!isTenant && (
+        {!isTenant && !me.portal?.may_create.goal && (
           <p className="small muted" style={{ marginTop: 0 }}>
             Goals are set together with {practice}.
-            {me.role === "FCC" && <> <Link to="/report">Propose a goal</Link></>}
+            {(me.portal ? me.portal.may_propose_goal : me.role === "FCC")
+              && <> <Link to="/report">Propose a goal</Link></>}
           </p>
         )}
         <Grouped rows={mine(goals.data ?? [])} headings={isTenant} cards
@@ -257,6 +270,8 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
             <StatusPill status={goal.status} derived={goal.status_is_derived} />
             {goal.horizon_days && <span className="pill">{goal.horizon_days} days</span>}
             {goal.target_date && <span className="pill">{goal.target_date}</span>}
+            {/* P7-7: a goal a client user added, live at once and marked. */}
+            {goal.added_by && <span className="pill">Added by {goal.added_by}</span>}
             <Avatar name={goal.client_owner_contact?.name || goal.owner?.name} />
           </div>
           <div>

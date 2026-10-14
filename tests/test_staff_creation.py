@@ -211,18 +211,28 @@ def test_staff_edit_a_projects_details_including_its_dates(seeded_tenant, ff, ap
 @pytest.mark.django_db
 def test_a_client_never_edits_the_practices_goals_or_projects(seeded_tenant, ff, api, company,
                                                               in_tenant_a):
+    """The practice's project stays the practice's. A goal is the company's
+    (P7-2, phase 4): the client owner and senior leadership change its words,
+    and nobody else on the client's side does."""
     goal = GoalFactory(tenant=seeded_tenant, title="Cut DSO", client_company=company)
     project = ProjectFactory(tenant=seeded_tenant, title="Order-to-cash",
                              client_company=company)
     client_user = MembershipFactory(tenant=seeded_tenant, role="FCC", client_company=company)
+    colleague = MembershipFactory(tenant=seeded_tenant, role="ECC", client_company=company)
 
-    assert api.as_(client_user).patch(f"/api/goals/{goal.pk}/", {"title": "Mine now"},
+    assert api.as_(colleague).patch(f"/api/goals/{goal.pk}/", {"title": "Mine now"},
+                                    content_type="application/json").status_code == 403
+    assert api.as_(client_user).patch(f"/api/goals/{goal.pk}/", {"measurable": "Days"},
                                       content_type="application/json").status_code == 403
-    assert api.as_(client_user).patch(f"/api/projects/{project.pk}/", {"title": "Mine now"},
-                                      content_type="application/json").status_code == 403
+    for who in (client_user, colleague):
+        assert api.as_(who).patch(f"/api/projects/{project.pk}/", {"title": "Mine now"},
+                                  content_type="application/json").status_code == 403
     goal.refresh_from_db()
     project.refresh_from_db()
-    assert goal.title == "Cut DSO" and project.title == "Order-to-cash"
+    assert goal.title == "Cut DSO" and goal.measurable == "" \
+        and project.title == "Order-to-cash"
+    assert api.as_(client_user).patch(f"/api/goals/{goal.pk}/", {"title": "Cut DSO to 30"},
+                                      content_type="application/json").status_code == 200
 
 
 @pytest.mark.django_db

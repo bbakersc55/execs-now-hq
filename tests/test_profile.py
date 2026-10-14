@@ -32,7 +32,9 @@ def member(tenant, role, **user):
 @pytest.mark.django_db
 @pytest.mark.parametrize("role,label", [
     ("FF", "Practice owner"), ("CF", "Associate"), ("VA", "Assistant"),
-    ("FCC", "Client owner"), ("ECC", "Client team member"),
+    # P7-10: a client user is shown by level. Given a sign-in, they are a
+    # Manager of their company's default team (P7-1).
+    ("FCC", "Client owner"), ("ECC", "Manager"),
 ])
 def test_every_role_reads_its_own_profile_with_the_role_by_name(seeded_tenant, api, role, label):
     membership = member(seeded_tenant, role, full_name="Pat Example")

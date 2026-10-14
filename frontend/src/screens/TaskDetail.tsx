@@ -9,9 +9,10 @@ import { StatusChange } from "../components/StatusChange";
 import { StatusPill } from "../components/StatusPill";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Sheet } from "../components/shell";
+import { usePeopleFor } from "../components/PortalCreate";
 import { Banner, Card, Empty, Field, Flash, toast, useFlash, when } from "../components/ui";
 import {
-  ChecklistItem, Me, Note, PortalPerson, Task, TaskUpdateRow, WorkParent, WorkStatus, api,
+  ChecklistItem, Me, Note, Task, TaskUpdateRow, WorkParent, WorkStatus, api,
 } from "../lib/api";
 import { NoteRow } from "./Notes";
 
@@ -40,12 +41,15 @@ function EditTask({ me, task, saving, onSave }: {
   const projects = useQuery<WorkParent[]>({
     queryKey: ["projects"], queryFn: () => api.get<WorkParent[]>("/api/projects/"), enabled: open,
   });
-  const people = useQuery<PortalPerson[]>({
-    queryKey: ["portal-people"], queryFn: () => api.get<PortalPerson[]>("/api/portal-people/"),
-    enabled: open,
-  });
   const projectChoices = (projects.data ?? [])
     .filter((p) => p.client_company === task.client_company);
+  // P7: a client hands a task to someone its team may be given work by: the
+  // team of the project it will be in, or its own.
+  const team = isClient
+    ? (form.project ? projectChoices.find((p) => p.id === form.project)?.client_team
+      : task.project ? null : task.client_team) ?? task.client_team
+    : null;
+  const people = usePeopleFor(isClient ? team : null, open);
   const peopleChoices = (people.data ?? []).filter((p) => isClient
     ? p.company === me.client_company
     : p.company === null || p.company === task.client_company);
@@ -277,9 +281,11 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
           && <span className="pill bad">hidden from the client</span>}
       </p>
       {message && <Banner kind="bad">{message}</Banner>}
+      {/* Said once (P7 §4.3): the practice's task, or another team's. */}
       {!t.may_edit && (
         <Banner kind="info">
-          This task is the practice's to change. Add a comment below and they will see it.
+          {t.read_only_line
+            || "This task is the practice's to change. Add a comment below and they will see it."}
         </Banner>
       )}
 

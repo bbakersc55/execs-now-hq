@@ -216,12 +216,13 @@ def test_role_boundaries_each_level_sees_and_changes_what_its_row_says(world, le
     project = post(client, "/api/projects/", {"title": "A new project"})
     assert project.status_code == (201 if row["adds"] else 403), project.content
 
-    # Goals are still the practice's to change through any route (phase 4
-    # opens it). The rule already knows who will be able to.
-    assert patch(client, f"/api/goals/{world['goal']}/", {"title": "x"}).status_code == 403
-    assert post(client, "/api/goals/", {"title": "A goal of ours"}).status_code == 403
+    # Goals (phase 4): a senior leader and the client owner change one; nobody
+    # here may add one, since nobody has "Goals too".
     goal = Goal.all_objects.get(pk=world["goal"])
     assert work_perms.client_may_edit_goal(Asking(me), goal) is row["goals"]
+    assert patch(client, f"/api/goals/{world['goal']}/", {"title": "x"}).status_code == \
+        (200 if row["goals"] else 403)
+    assert post(client, "/api/goals/", {"title": "A goal of ours"}).status_code == 403
 
 
 @pytest.mark.django_db
@@ -389,8 +390,9 @@ def test_role_boundaries_may_create_is_its_own_setting(world, setting, task, pro
         assert post(client, "/api/projects/", {"title": "One more"}).status_code == project
         assert {kind for kind in ("task", "project", "goal")
                 if work_perms.client_may_create(Asking(me), kind)} == rule
-        # Goals are not created through any route until phase 4.
-        assert post(client, "/api/goals/", {"title": "Ours"}).status_code == 403
+        # Goals (phase 4): made by "Goals too", and by nothing less.
+        assert post(client, "/api/goals/", {"title": "Ours"}).status_code == \
+            (201 if "goal" in rule else 403)
     # Assigned work is still theirs to do.
     member = world["api"].as_(world["who"]["member"])
     done = patch(member, f"/api/tasks/{world['tasks']['ops, of the member']}/",

@@ -274,7 +274,7 @@ class TeamRefused(TeamError):
     """Not this person's to change: a 403, said in words."""
 
 
-def _practice(tenant) -> str:
+def practice_name(tenant) -> str:
     from apps.crm.services import email_layout
 
     brand = email_layout.branding(tenant)
@@ -286,13 +286,13 @@ def check_client_owner(owner, person, *, may_create=None) -> None:
     from apps.tenancy.models import MayCreate
 
     if person.role == Role.FCC:
-        raise TeamRefused(f"A client owner's settings are set by {_practice(owner.tenant)}.")
+        raise TeamRefused(f"A client owner's settings are set by {practice_name(owner.tenant)}.")
     order = list(MayCreate.values)
     if may_create in order and order.index(may_create) > order.index(owner.may_create):
         raise TeamRefused(
             "You can give someone at most what you may create yourself "
             f"({MayCreate(owner.may_create).label.lower()}). "
-            f"{_practice(owner.tenant)} can change that.")
+            f"{practice_name(owner.tenant)} can change that.")
 
 
 def overview(company) -> dict:

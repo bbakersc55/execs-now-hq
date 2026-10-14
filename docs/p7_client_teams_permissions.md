@@ -688,3 +688,87 @@ owner's row read-only and naming the practice; "Goals too" not offered, then
 offered; a change sent for their own company; nothing asked for another
 client user; "Your team" in the sidebar for the client owner alone). **Not
 seen in a browser by anyone.**
+
+**Fixed after Bryan's demo checks (2026-10-14):** the card's people table ran
+past its edge in the portal, its pickers cut to "Mer" and "Projec" (the card
+was held to a form's 720px); team changes were in the audit trail and not on
+Activity, where they are now their own type, Team, with the acting practice
+user named as on any acted entry; and "X on behalf of X stopped acting" names
+X once.
+
+---
+
+## As built: phase 4 (2026-10-14) — the portal for everyone else
+
+**No migration.** The rule was phase 1's; phase 4 tells the portal what it
+says, and opens goals to the people §2 and §3 name.
+
+**What the portal is told** (`/api/me` → `portal`, from
+`ClientScope.describe`): the person's level by name, what they may create,
+whether they edit goals, whether they get "Mine / My team / Everyone", the
+teams they may put new work on, and whether "Propose a goal" is theirs. Every
+one of these is also held by the server on its own.
+
+**What each level sees now**
+
+| | Lists | A sheet they cannot change | New | Goals |
+|---|---|---|---|---|
+| **Member** | Their own work, and the projects it sits in (no switch) | No edit controls; "Only <team>'s manager can change this." once at the top | What "may create" gives, on their team | See all, read-only |
+| **Manager** | Mine / My team / Everyone (Everyone is the other teams, read-only) | Same line, on another team's work | Same, on their team; "which team?" if on several | See all, read-only |
+| **Senior leadership** | Mine / My team / Everyone | Same line, on a team they do not lead | Same, on the teams they lead | **Change** a goal's title, description and target date |
+| **Viewer** | Everything client-visible, read-only (no switch) | The line, everywhere | Nothing, whatever "may create" says | See all, read-only |
+| **Client owner** | Mine / My team / Everyone | (changes everything on the client's side) | What the practice set; "Goals too" adds goals | Change, as senior leadership |
+
+Work the practice owns stays the practice's at every level, with its own
+line ("This task is the practice's to change…").
+
+**Built**
+
+- **Mine / My team / Everyone** on Work and Tasks (`?view=`), for a
+  manager, a senior leader and the client owner. Narrows, never widens.
+- **The read-only line,** `read_only_line` on a task and on a project,
+  the same sentence the route answers with when it refuses.
+- **New offers only what may be created;** a viewer is offered nothing.
+  **Which team** is asked when the person may put work on more than one,
+  starting at the default team if they are on it.
+- **The assignee picker** lists only those the task's team may be handed
+  to (`/api/portal-people/?team=`), never someone who only looks.
+- **Goals:** "New goal" for "Goals too": live at once, "Added by <name>,
+  <company>" on Work and on the goal, and on the practice's Activity
+  ("added a goal for <company>: “…”"). A senior leader or the client owner
+  edits a goal's title, description and target date. A goal a client added
+  is deleted by its maker or the client owner.
+- **Level names** in the portal: the account menu, Profile, the acting
+  banner, and the people list. The practice's role picker still offers
+  "Client team member", because it chooses the role, not the level.
+
+**Readings made while building, each Bryan's to overrule**
+
+1. **A client's part of a goal is its words and its date:** title,
+   description, target date. The measure, the baseline and target, the
+   outcome statement, the client owner and the status stay the practice's
+   (Module 4B's judgement), refused with a sentence if sent.
+2. **A goal a client added is deleted by its maker or the client owner**
+   (as P7-13 has it for projects and tasks). A goal the practice set is never
+   a client's to delete.
+3. **"Propose a goal" stays the client owner's,** while they are not given
+   "Goals too". Bryan's note reads "stays for everyone who is not given goals
+   too"; only the client owner had it, so nobody else gains it.
+4. **The switch starts at Everyone,** what each person sees today, and is
+   remembered per person in their browser. "My team" is every team they are
+   on, at any level; for the client owner and senior leadership of every
+   team it is everything.
+5. **A goal sheet carries no read-only line:** "Where we are" is unchanged
+   (§4.3), and a goal is read-only to most people by nature.
+6. **"Add a task here" on a project's page** is offered where the person
+   may create tasks and may change that project.
+
+**Proven by tests:** `tests/test_client_teams_phase4.py` (what each level is
+told and called, the banner's level; the three views per level, never
+widening; the read-only line and the refusal saying the same; the assignee
+list per team; a goal added, marked, on Activity, held to its words; who
+changes and deletes a goal; another company and practice not reached), the
+phase 1 goal assertions changed for phase 4, and
+`frontend/src/screens/PortalLevels.test.tsx` (New by may-create; the goal
+form; which team, and that team's people; the switch and its requests; the
+"Added by" marker; the banner's level). **Not seen in a browser by anyone.**

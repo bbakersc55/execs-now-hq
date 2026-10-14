@@ -210,6 +210,25 @@ def _home_practice(user) -> str | None:
     return email_layout.branding(membership.tenant).display_name if membership else None
 
 
+def _shown_role(membership) -> str | None:
+    """A role by its name; a client user by their level (P7-10)."""
+    if membership is None:
+        return None
+    if membership.is_client_user:
+        from apps.work.permissions import ClientScope
+
+        return ClientScope(membership).level_label
+    return role_label(membership.role)
+
+
+def _portal(request, membership) -> dict | None:
+    if membership is None or not membership.is_client_user:
+        return None
+    from apps.work.permissions import client_scope
+
+    return client_scope(request).describe()
+
+
 def me(request):
     from apps.tenancy import modules as practice_modules
 
@@ -221,7 +240,10 @@ def me(request):
         "email": request.user.email,
         "full_name": request.user.full_name,
         "role": membership.role if membership else None,
-        "role_label": role_label(membership.role) if membership else None,
+        "role_label": _shown_role(membership),
+        # P7 phase 4: what a client user may do, so the portal offers only
+        # that. The server refuses the rest on its own.
+        "portal": _portal(request, membership),
         # P2: the Practices area switch. `area` is "platform" only for the
         # platform owner after switching; then no practice is bound.
         "is_platform_owner": request.user.is_platform_owner,
@@ -271,7 +293,7 @@ def _profile(request) -> dict:
     return {
         "email": request.user.email,
         "full_name": request.user.full_name,
-        "role_label": role_label(membership.role) if membership else None,
+        "role_label": _shown_role(membership),
         "practice": email_layout_name(membership.tenant) if membership else None,
         "client_company_name": company.name if company else None,
         # A person's profile is theirs: nobody changes it from inside an

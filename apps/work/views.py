@@ -75,10 +75,22 @@ class DashboardView(viewsets.ViewSet):
 
 
 #: P7 — said to a client user who may see a thing and not change it.
-NOT_YOUR_TEAMS = "Only this team's manager can change this."
 MAY_NOT_CREATE = "You have not been set up to add {}. Your client owner can change that."
-PRACTICES_TASK = ("This task is the practice's to change. Add a comment and they will "
-                  "see it.")
+
+
+VIEW_REFUSED = "view is mine, team or everyone."
+
+
+def _narrowed(request, queryset, view, kind):
+    """P7 §4.3, "Mine / My team / Everyone", for a client user. It narrows
+    and never widens: the scope has already been applied. The practice's
+    lists take no such word. None for a view that is not one of the three."""
+    if view not in ("mine", "team", "everyone"):
+        return None
+    scope = work_perms.client_scope(request)
+    if scope is None:
+        return queryset
+    return getattr(scope, f"narrow_{kind}")(queryset, view)
 
 
 def _team_asked_for(request):
@@ -102,17 +114,6 @@ def _team_filter(request, team_id):
     if team.is_default and team.archived_at is None:
         on |= Q(client_team__isnull=True, client_company_id=team.client_company_id)
     return on
-
-
-def _why_not(request, task) -> str:
-    """Why a task cannot be changed: it is the practice's (FR-3.9a), or it is
-    a colleague's on a team this person does not manage (P7)."""
-    if not work_perms.is_client(request) or not task.is_client_visible:
-        return PRACTICES_TASK
-    if task.created_by_client or work_perms.is_client_side_user(
-            task.tenant_id, task.assignee_id, request.membership.client_company_id):
-        return NOT_YOUR_TEAMS
-    return PRACTICES_TASK
 
 
 class WorkViewSet(viewsets.GenericViewSet):
@@ -163,8 +164,13 @@ PARENT_FIELDS = ["title", "description", "client_company", "client_owner_contact
 
 
 class GoalViewSet(WorkViewSet):
-    """Matrix 7.2 — only the practice authors goals. A goal is the strategy the
-    engagement is judged against (FR-3.35a)."""
+    """Matrix 7.2 — the practice authors goals. A goal is the strategy the
+    engagement is judged against (FR-3.35a).
+
+    P7 phase 4: a client user given "Goals too" adds one for their company,
+    live at once and marked as theirs (P7-7); a senior leader or the client
+    owner changes a goal's title, description and target date (P7-2); a
+    goal a client made is deleted by its maker or the client owner."""
 
     model = Goal
     scoper = staticmethod(work_perms.goal_queryset_for)
@@ -188,6 +194,40 @@ class GoalViewSet(WorkViewSet):
             return Response({"detail": "Goals are set by the practice."}, status=403)
         return None
 
+    def _client_fields_only(self, request):
+        """A client's goal carries their words; the measurable and the outcome
+        statement stay the practice's (`CLIENT_GOAL_FIELDS`)."""
+        others = sorted(set(request.data) - set(work_perms.CLIENT_GOAL_FIELDS)
+                        - {"client_company"})
+        if others:
+            return Response({"detail": "A goal's title, description and target date are "
+                             "yours to set; the rest is set by "
+                             f"{teams.practice_name(request.tenant)}."}, status=403)
+        return None
+
+    def _client_create_goal(self, request):
+        if not work_perms.client_may_create(request, "goal"):
+            who = (teams.practice_name(request.tenant)
+                   if crm_perms.role_of(request) == Role.FCC else "Your client owner")
+            return Response({"detail": "You have not been set up to add goals. "
+                             f"{who} can change that."}, status=403)
+        if (refused := self._client_fields_only(request)) is not None:
+            return refused
+        serializer = self.write_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        data = {k: v for k, v in serializer.validated_data.items()
+                if k in work_perms.CLIENT_GOAL_FIELDS}
+        company = request.membership.client_company
+        goal = Goal.objects.create(tenant=request.tenant, owner=request.user,
+                                   client_company=company, created_by_client=True, **data)
+        # The practice is told (P7-7): on Activity, and by the goal's own
+        # "Added by" on Work.
+        AuditEvent.objects.create(tenant=request.tenant, actor=request.user,
+                                  verb="goal.added_by_client", target_type="company",
+                                  target_id=company.pk,
+                                  payload={"goal": str(goal.pk), "title": goal.title})
+        return Response(self._represent(goal), status=201)
+
     def list(self, request):
         qs = self.get_queryset().select_related("client_company", "owner",
                                                 "client_owner_contact")
@@ -200,6 +240,9 @@ class GoalViewSet(WorkViewSet):
             if (found := _team_filter(request, team)) is None:
                 return Response({"detail": "client_team must be a team's id."}, status=400)
             qs = qs.filter(found)
+        if self.kind == "project" and (view := request.query_params.get("view")):
+            if (qs := _narrowed(request, qs, view, "projects")) is None:
+                return Response({"detail": VIEW_REFUSED}, status=400)
         if self.kind != "goal":
             return Response([self._represent(e)
                              for e in qs.order_by("-created_at")[:LIST_LIMIT]])
@@ -225,6 +268,8 @@ class GoalViewSet(WorkViewSet):
         return Response(self._represent(self.load(pk)))
 
     def create(self, request):
+        if self.kind == "goal" and work_perms.is_client(request):
+            return self._client_create_goal(request)
         if (refused := self._staff_only(request)) is not None:
             return refused
         serializer = self.write_serializer(data=request.data, context={"request": request})
@@ -237,7 +282,14 @@ class GoalViewSet(WorkViewSet):
 
     def partial_update(self, request, pk=None):
         entity = self.load(pk)
-        if (refused := self._staff_only(request)) is not None:
+        if self.kind == "goal" and work_perms.is_client(request):
+            if not work_perms.client_may_edit_goal(request, entity):
+                return Response({"detail": "Goals are changed by "
+                                 f"{teams.practice_name(request.tenant)} and your senior "
+                                 "leadership."}, status=403)
+            if (refused := self._client_fields_only(request)) is not None:
+                return refused
+        elif (refused := self._staff_only(request)) is not None:
             return refused
         serializer = self.write_serializer(instance=entity, data=request.data, partial=True,
                                            context={"request": request})
@@ -248,7 +300,12 @@ class GoalViewSet(WorkViewSet):
     def destroy(self, request, pk=None):
         """FR-3.6 — children are detached and reported, never deleted."""
         entity = self.load(pk)
-        if (refused := self._staff_only(request)) is not None:
+        if self.kind == "goal" and work_perms.is_client(request):
+            if not work_perms.client_may_delete_goal(request, entity):
+                return Response({"detail": "Only the person who added this goal, or your "
+                                 "client owner, can delete it." if entity.created_by_client
+                                 else "Goals are set by the practice."}, status=403)
+        elif (refused := self._staff_only(request)) is not None:
             return refused
         detached = services.soft_delete(entity, actor=request.user,
                                         verb=f"{self.kind}.deleted")
@@ -325,9 +382,8 @@ class ProjectViewSet(GoalViewSet):
         if not work_perms.is_client(request) \
                 or work_perms.client_may_edit_project(request, project):
             return None
-        if not project.created_by_client:
-            return Response({"detail": "This project belongs to the practice."}, status=403)
-        return Response({"detail": NOT_YOUR_TEAMS}, status=403)
+        return Response({"detail": work_perms.why_not_project(request, project)},
+                        status=403)
 
     def create(self, request):
         serializer = self.write_serializer(data=request.data, context={"request": request})
@@ -413,6 +469,9 @@ class TaskViewSet(WorkViewSet):
             qs = qs.filter(
                 Q(project__in=Project.objects.filter(found, deleted_at__isnull=True))
                 | (Q(project__isnull=True) & found))
+        if view := request.query_params.get("view"):
+            if (qs := _narrowed(request, qs, view, "tasks")) is None:
+                return Response({"detail": VIEW_REFUSED}, status=400)
         return Response([self._represent(t) for t in
                          qs.order_by("-created_at")[:LIST_LIMIT]])
 
@@ -449,7 +508,7 @@ class TaskViewSet(WorkViewSet):
     def partial_update(self, request, pk=None):
         task = self.load(pk)
         if not work_perms.may_write(request, task):
-            return Response({"detail": _why_not(request, task)}, status=403)
+            return Response({"detail": work_perms.why_not_task(request, task)}, status=403)
         serializer = work_serializers.TaskSerializer(instance=task, data=request.data,
                                                      partial=True,
                                                      context={"request": request})
@@ -1560,16 +1619,33 @@ class AssignablePeopleView(viewsets.GenericViewSet):
         if membership is None:
             return Response({"detail": "You're not a member of this practice."}, status=403)
         rows = Membership.objects.filter(revoked_at__isnull=True).select_related("user")
-        if crm_perms.role_of(request) in CLIENT_ROLES:
+        client = crm_perms.role_of(request) in CLIENT_ROLES
+        if client:
             rows = rows.filter(client_company_id=membership.client_company_id,
                                role__in=CLIENT_ROLES)
+        rows = list(rows.order_by("role", "user__email"))
+        # P7 phase 4: for a task on this team, only those it may be handed to
+        # (`client_may_assign_to`: never someone who only looks).
+        team = request.query_params.get("team")
+        if client and team:
+            if not _is_uuid(team):
+                return Response({"detail": "team must be a team's id."}, status=400)
+            team = uuid.UUID(team)
+            rows = [row for row in rows
+                    if work_perms.client_may_assign_to(request, row.user_id, team)]
         return Response([
             {"id": str(row.user_id),
              "name": row.user.full_name or row.user.email,
              "role": row.role,
+             # P7-10: a client user is shown by level, the client owner as such.
+             **({"label": _level_label_of(row)} if row.role in CLIENT_ROLES else {}),
              "company": str(row.client_company_id) if row.client_company_id else None}
-            for row in rows.order_by("role", "user__email")
+            for row in rows
         ])
+
+
+def _level_label_of(membership) -> str:
+    return work_perms.ClientScope(membership).level_label
 
 
 # ==================================================== Module 4B — value report

@@ -24,6 +24,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
   const [newTask, setNewTask] = useState("");
   const [editing, setEditing] = useState(false);
   const isTenant = !!me.role && TENANT.includes(me.role);
+  const [clientEditing, setClientEditing] = useState(false);
   const plural = kind === "goal" ? "goals" : "projects";
 
   const entity = useQuery<WorkParent>({
@@ -84,6 +85,11 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
         {" · "}<StatusPill status={e.status} derived={e.status_is_derived} />
       </p>
       {message && <Banner kind="bad">{message}</Banner>}
+      {/* P7 §4.3: said once, where a client may look and not change. */}
+      {!isTenant && e.may_edit === false && e.read_only_line && (
+        <Banner kind="info">{e.read_only_line}</Banner>
+      )}
+      {e.added_by && <p className="small muted">Added by {e.added_by}.</p>}
 
       <Card title="Status" actions={isTenant ? (
         <div className="row">
@@ -125,6 +131,23 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
           </Card>
         ))}
 
+      {/* P7 phase 4: a client changes the words of what they may change; a
+          goal's measure and outcome stay the practice's. */}
+      {!isTenant && e.may_edit && (clientEditing
+        ? <ClientDetails entity={e} kind={kind} onClose={() => setClientEditing(false)}
+            onSaved={() => {
+              setClientEditing(false);
+              qc.invalidateQueries({ queryKey: [kind, id] });
+              qc.invalidateQueries({ queryKey: [plural] });
+            }} />
+        : (
+          <Card title="Details" actions={
+            <button onClick={() => setClientEditing(true)}>Edit details</button>
+          }>
+            <p className="small muted">The title, the description and the target date.</p>
+          </Card>
+        ))}
+
       {kind === "goal" && (
         <Card title="Projects">
           {(children.data?.projects ?? []).length === 0 ? <Empty>No projects yet.</Empty> : (
@@ -155,6 +178,8 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
             ))}
           </ul>
         )}
+        {(isTenant || (me.portal?.may_create.task ?? true)
+          && (kind === "goal" || e.may_edit !== false)) && (
         <div className="row">
           <Field label="Add a task here">
             <input aria-label="New task title" value={newTask}
@@ -163,13 +188,14 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
           <button className="primary" disabled={!newTask.trim() || addTask.isPending}
             onClick={() => addTask.mutate()}>Add task</button>
         </div>
+        )}
       </Card>
 
       <StakeholdersPanel me={me} target={kind} id={id!} />
 
       <CommentsPanel me={me} target={kind} id={id!} />
 
-      {isTenant && (
+      {(isTenant || e.may_delete) && (
         <Card title="Delete">
           <p className="small">
             Deleting a {kind} does not delete its work: the projects and tasks under it are
@@ -268,6 +294,51 @@ function EditDetails({ entity, kind, onClose, onSaved }: {
             </select>
           </Field>
         </div>
+        <button className="primary" type="submit" disabled={!form.title.trim() || save.isPending}>
+          {save.isPending ? "Saving…" : "Save details"}
+        </button>
+      </form>
+    </Card>
+  );
+}
+
+
+/** P7 phase 4: what a client may change on a goal (a senior leader or the
+ *  client owner) or on a project they may edit: its words and its date. */
+function ClientDetails({ entity, kind, onClose, onSaved }: {
+  entity: WorkParent; kind: "goal" | "project"; onClose: () => void; onSaved: () => void;
+}) {
+  const plural = kind === "goal" ? "goals" : "projects";
+  const [form, setForm] = useState({
+    title: entity.title, description: entity.description ?? "",
+    target_date: entity.target_date ?? "",
+  });
+  const [error, setError] = useState("");
+  const save = useMutation({
+    mutationFn: () => api.patch<WorkParent>(`/api/${plural}/${entity.id}/`, {
+      title: form.title.trim(), description: form.description.trim(),
+      target_date: form.target_date || null,
+    }),
+    onSuccess: onSaved,
+    onError: (e: Error) => setError(e.message),
+  });
+  const what = kind === "goal" ? "Goal" : "Project";
+  return (
+    <Card title="Details" actions={<button onClick={onClose}>Cancel</button>}>
+      {error && <Banner kind="bad">{error}</Banner>}
+      <form onSubmit={(ev) => { ev.preventDefault(); setError(""); save.mutate(); }}>
+        <Field label="Title">
+          <input aria-label={`${what} title`} value={form.title}
+            onChange={(ev) => setForm({ ...form, title: ev.target.value })} />
+        </Field>
+        <Field label="Description">
+          <textarea aria-label={`${what} description`} rows={3} value={form.description}
+            onChange={(ev) => setForm({ ...form, description: ev.target.value })} />
+        </Field>
+        <Field label="Target date">
+          <input aria-label="Target date" type="date" value={form.target_date}
+            onChange={(ev) => setForm({ ...form, target_date: ev.target.value })} />
+        </Field>
         <button className="primary" type="submit" disabled={!form.title.trim() || save.isPending}>
           {save.isPending ? "Saving…" : "Save details"}
         </button>

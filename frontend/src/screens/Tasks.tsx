@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { TeamFilter, useTeamFilter } from "../components/ClientTeams";
 import { CompanyFilter, INTERNAL, inCompany, useCompanyFilter } from "../components/CompanyFilter";
 import { PortalCreate } from "../components/PortalCreate";
+import { PortalViewSwitch, usePortalView } from "../components/PortalView";
 import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
@@ -54,6 +55,9 @@ export function Tasks({ me }: { me: Me }) {
   const [status, setStatus] = useState("");
   const { isTenant: staff, clients, company, choose } = useCompanyFilter(me, "tasks-company");
   const teamFilter = useTeamFilter(staff ? company : "");
+  // P7 §4.3: "Mine / My team / Everyone" for a manager, a senior leader and
+  // the client owner. The server narrows; it never widens.
+  const portalView = usePortalView(me);
 
   const query = new URLSearchParams();
   // Filtered by the server, like the three beside it, so the list is never
@@ -63,6 +67,7 @@ export function Tasks({ me }: { me: Me }) {
   if (teamFilter.team) query.set("client_team", teamFilter.team);
   if (assignee) query.set("assignee", assignee);
   if (status) query.set("status", status);
+  if (portalView.param) query.set("view", portalView.view);
 
   const tasks = useQuery<Task[]>({
     queryKey: ["tasks", query.toString()],
@@ -130,6 +135,9 @@ export function Tasks({ me }: { me: Me }) {
         {staff && (
           <TeamFilter teams={teamFilter.teams} value={teamFilter.team}
             onChange={teamFilter.choose} />
+        )}
+        {portalView.offered && (
+          <PortalViewSwitch value={portalView.view} onChange={portalView.choose} />
         )}
         <select aria-label="Filter by project" value={project}
           style={{ width: "auto", minWidth: 150 }}

@@ -76,6 +76,7 @@ def represent_checklist_item(item: TaskChecklistItem) -> dict:
 
 
 def represent_task(task: Task, *, request) -> dict:
+    may_edit = work_perms.may_write(request, task)
     return {
         "id": str(task.pk),
         "title": task.title,
@@ -101,9 +102,13 @@ def represent_task(task: Task, *, request) -> dict:
         "created_at": task.created_at.isoformat(),
         "updated_at": task.updated_at.isoformat(),
         # What this requester may do, so the UI need not re-derive FR-3.9a.
-        "may_edit": work_perms.may_write(request, task),
+        "may_edit": may_edit,
         "may_delete": (crm_perms.role_of(request) not in CLIENT_ROLES
                        or work_perms.client_may_delete(request, task)),
+        # P7 §4.3: said once, at the top of a sheet a client may see and not
+        # change. Empty where they may, and always for the practice.
+        "read_only_line": ("" if may_edit or not work_perms.is_client(request)
+                           else work_perms.why_not_task(request, task)),
         "may_set_visibility": crm_perms.role_of(request) not in CLIENT_ROLES,
     }
 
@@ -217,7 +222,36 @@ def represent_parent(entity, *, request, kind: str) -> dict:
             "created_by_client": entity.created_by_client,
             **_team(entity, request),
         })
+    data.update(_parent_rights(entity, request=request, kind=kind))
     return data
+
+
+def _parent_rights(entity, *, request, kind: str) -> dict:
+    """What this requester may do with a project or a goal (P7 phase 4), so
+    the portal draws only the controls it would be allowed, and says why
+    once where it draws none. The practice is told nothing new here: its
+    screens decide by role, as before."""
+    if not work_perms.is_client(request):
+        return {"added_by": _added_by(entity)} if kind == "goal" else {}
+    if kind == "project":
+        may_edit = work_perms.client_may_edit_project(request, entity)
+        return {"may_edit": may_edit,
+                "may_delete": work_perms.client_may_delete_project(request, entity),
+                "read_only_line": "" if may_edit else work_perms.why_not_project(
+                    request, entity)}
+    return {"may_edit": work_perms.client_may_edit_goal(request, entity),
+            "may_delete": work_perms.client_may_delete_goal(request, entity),
+            "read_only_line": "", "added_by": _added_by(entity),
+            "editable_fields": list(work_perms.CLIENT_GOAL_FIELDS)}
+
+
+def _added_by(goal) -> str:
+    """"Added by <name>, <client company>" for a goal a client user made
+    (P7-7). Empty for the practice's."""
+    if not getattr(goal, "created_by_client", False) or goal.owner is None:
+        return ""
+    company = goal.client_company.name if goal.client_company_id else ""
+    return ", ".join(x for x in (goal.owner.full_name or goal.owner.email, company) if x)
 
 
 class ScopedFieldsMixin:

@@ -92,6 +92,8 @@ AUDIT = {
     "project.deleted": ("work", "deleted a project"),
     "goal.deleted": ("work", "deleted a goal"),
     "goal.proposed": ("work", "proposed a goal for {target}"),
+    # P7-7: a client user given "Goals too" adds one, live at once.
+    "goal.added_by_client": ("work", "added a goal for {target}"),
     "goal.proposal_accepted": ("work", "accepted a goal {target} proposed"),
     "goal.proposal_declined": ("work", "declined a goal {target} proposed"),
     "goal.reordered": ("work", "changed the order of {target}'s goals"),
@@ -410,6 +412,8 @@ def _audit_entries(scope, since, until, actor):
         by, behalf = _person(a.actor, a.acting_user)
         text = (_team_text(a, target, phrasing) if category == "team"
                 else phrasing.format(target=target or "a record"))
+        if a.verb == "goal.added_by_client" and a.payload.get("title"):
+            text += f": “{a.payload['title']}”"
         if a.verb == "act_as.ended":
             text += f" ({a.payload.get('reason') or 'no longer permitted'})"
         out.append(_entry(f"a-{a.pk}", a.created_at, category, a.verb, text,

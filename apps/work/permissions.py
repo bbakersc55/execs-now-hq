@@ -237,6 +237,90 @@ class ClientScope:
         """Can be handed a task of this team."""
         return self.is_owner or self.leads_all or self.works_in(team_id)
 
+    # --- phase 4: what the portal is told -------------------------------------
+
+    @property
+    def has_teams_view(self) -> bool:
+        """Offered "Mine / My team / Everyone" (§4.3): a manager or a senior
+        leader. The client owner too: they see everything, and their own
+        list is worth having."""
+        from apps.work.teams import Level
+
+        return self.is_owner or self.leads_all or any(
+            level in (Level.MANAGER, Level.LEADER) for level in self.levels.values())
+
+    def _on_my_teams(self, *, task: bool) -> Q:
+        """On a team this person is on, at any level. A task in a project is
+        on its project's team; one with no team is the default team's."""
+        from apps.work.models import Project
+
+        mine = set(self.levels)
+        if self.leads_all or self.is_owner:
+            return Q()
+        own = Q(client_team_id__in=mine)
+        if self.default_team_id in mine:
+            own |= Q(client_team__isnull=True)
+        if not task:
+            return own
+        projects = Project.all_objects.filter(
+            own, tenant_id=self.tenant_id, client_company_id=self.company_id).values("pk")
+        return Q(project_id__in=projects) | (Q(project__isnull=True) & own)
+
+    def narrow_tasks(self, queryset, view: str):
+        """`view` is "mine", "team" or "everyone" (§4.3). Only ever narrows
+        what `tasks` already gave."""
+        if view == "mine":
+            from apps.work.models import Project
+
+            theirs = Project.all_objects.filter(
+                self._their_projects(), tenant_id=self.tenant_id,
+                client_company_id=self.company_id).values("pk")
+            return queryset.filter(self._their_tasks() | Q(project_id__in=theirs))
+        if view == "team":
+            return queryset.filter(self._on_my_teams(task=True))
+        return queryset
+
+    def narrow_projects(self, queryset, view: str):
+        if view == "mine":
+            return queryset.filter(self._their_projects())
+        if view == "team":
+            return queryset.filter(self._on_my_teams(task=False))
+        return queryset
+
+    def teams_to_add_to(self) -> list[dict]:
+        """The teams this person may put new work on, for "which team?"."""
+        from apps.work.models import ClientTeam
+
+        live = ClientTeam.all_objects.filter(
+            tenant_id=self.tenant_id, client_company_id=self.company_id,
+            archived_at__isnull=True)
+        if not (self.is_owner or self.leads_all):
+            live = live.filter(pk__in=[team for team in self.levels if self.works_in(team)])
+        return [{"id": str(pk), "name": name, "is_default": is_default}
+                for pk, name, is_default in live.order_by("-is_default", "name")
+                .values_list("pk", "name", "is_default")]
+
+    @property
+    def level_label(self) -> str:
+        """What they are called where they are listed (P7-10)."""
+        from apps.tenancy.roles import level_label
+
+        return level_label(self.membership.role, self.levels.values(), self.leads_all)
+
+    def describe(self) -> dict:
+        """What the portal's screens need to offer only what this person may
+        do (§4.3). The server holds every one of these on its own as well."""
+        return {
+            "level_label": self.level_label,
+            "may_create": {kind: self.may_make(kind) for kind in ("task", "project", "goal")},
+            "edits_goals": self.edits_goals,
+            "has_teams_view": self.has_teams_view,
+            "teams": self.teams_to_add_to() if self.acts else [],
+            # The client owner's "Propose a goal" stays while they may not
+            # make one (P7-7, Bryan's note).
+            "may_propose_goal": self.is_owner and not self.may_make("goal"),
+        }
+
 
 def client_scope(request) -> ClientScope | None:
     """The requester's `ClientScope`, or None for anyone at the practice.
@@ -429,8 +513,7 @@ def client_may_delete_project(request, project) -> bool:
 
 def client_may_edit_goal(request, goal) -> bool:
     """P7 §2.1 — a senior leader and the client owner edit any goal of their
-    company. **Not asked by any route yet:** goals stay the practice's to
-    change until phase 4 opens it, with the say on which fields."""
+    company: its `CLIENT_GOAL_FIELDS` only (phase 4)."""
     scope = client_scope(request)
     return scope is not None and goal.client_company_id == scope.company_id \
         and scope.edits_goals
@@ -481,6 +564,66 @@ def client_team_for_new(request, *, project=None, wanted=None):
         return wanted
     found = live.order_by("-is_default", "name").values_list("pk", flat=True).first()
     return found or scope.default_team_id
+
+
+# ------------------------------------------- phase 4: why a thing is read-only
+#
+# Said once, at the top of a sheet a person may see and not change (§4.3),
+# and as the refusal when they try. One sentence for both.
+
+PRACTICES_TASK = ("This task is the practice's to change. Add a comment and they will "
+                  "see it.")
+PRACTICES_PROJECT = "This project belongs to the practice."
+
+
+def team_line(team_name: str) -> str:
+    return (f"Only {team_name}'s manager can change this." if team_name
+            else "Only this team's manager can change this.")
+
+
+def _team_name(scope, entity) -> str:
+    from apps.work.models import ClientTeam
+
+    team_id = scope.team_of(entity)
+    return ClientTeam.all_objects.filter(pk=team_id).values_list(
+        "name", flat=True).first() or "" if team_id else ""
+
+
+def why_not_task(request, task) -> str:
+    """Why a task cannot be changed: it is the practice's (FR-3.9a), or it is
+    on a team this person does not run (P7)."""
+    scope = client_scope(request)
+    if scope is None or not task.is_client_visible:
+        return PRACTICES_TASK
+    if task.created_by_client or is_client_side_user(
+            task.tenant_id, task.assignee_id, scope.company_id):
+        return team_line(_team_name(scope, task))
+    return PRACTICES_TASK
+
+
+def why_not_project(request, project) -> str:
+    scope = client_scope(request)
+    if scope is None or not project.created_by_client:
+        return PRACTICES_PROJECT
+    return team_line(_team_name(scope, project))
+
+
+# --------------------------------------------------- phase 4: a client's goals
+
+#: What a senior leader or the client owner may change on a goal (P7-2). The
+#: measurable, its baseline and target, and the outcome statement are the
+#: practice's judgement of the engagement (Module 4B), and stay the practice's.
+CLIENT_GOAL_FIELDS = ("title", "description", "target_date")
+
+
+def client_may_delete_goal(request, goal) -> bool:
+    """A goal a client user made is deleted by whoever made it or by the
+    client owner, as a project is (P7-13). A goal the practice made, never."""
+    scope = client_scope(request)
+    if scope is None or goal.client_company_id != scope.company_id \
+            or not goal.created_by_client or not scope.acts:
+        return False
+    return scope.is_owner or goal.owner_id == scope.user_id
 
 
 def may_write(request, task) -> bool:
