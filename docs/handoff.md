@@ -1,16 +1,43 @@
 # Execs NOW HQ — handoff to the next chat
 
-Written 2026-10-03, replacing the 2026-09-22 version; **last updated the
-evening of 2026-10-13 Mountain (2026-10-14 UTC, the date the specs and the
-runbook carry)**, after Release 11 and a long day on `dev`. **The next
-session starts at "Tomorrow: Release 12" just below.** Then "2026-10-13",
-which is the day in order. Everything from "Next" down was last brought up to
+Written 2026-10-03, replacing the 2026-09-22 version; **last updated
+2026-10-14**, after Release 12. **The next session starts at "2026-10-14"
+just below.** Then "Release 12: the plan as it was" and "2026-10-13", which
+is the day in order. Everything from "Next" down was last brought up to
 date on 10/5; where it and a newer section disagree, the newer holds. Upload
 this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
 
-## Tomorrow: Release 12 is all of `dev`
+## 2026-10-14: Release 12 is out
+
+- **Release 12 is live: `bd6dceb`,** all of `dev` as planned, recorded step
+  by step in the runbook. The dry run of P7 phase 1's data step was read from
+  production first and Bryan said yes to it: 4 default teams, 6 portal users
+  as Manager, 14 projects and 100 tasks given a team. `work` 0010 and `crm`
+  0036 printed exactly those. A fresh backup was taken by Bryan first.
+  `/healthz` 200 throughout; push to new code 3 min 18 s.
+- **R1's check command was wrong:** `gcloud storage ls -l` ends in a `TOTAL:`
+  line, which `sort -k2 | tail -1` showed in place of the newest dump. The
+  runbook's R1 now drops it with `grep -v '^TOTAL'`.
+- **The first real PDF statement was read on production by Bryan:** the
+  beginning balance, the ending balance and every line correct. **Estimated
+  $0.15, cost $0.08.** The estimate runs about double the actual: not a bug,
+  something to tune later.
+- **On production, set by Bryan:** payment terms, and both client invoice
+  schedules. A schedule's day writes a draft only: it is numbered when a
+  person makes it ready, and sent only when the send is approved in the
+  Sending queue. There is no setting that sends one by itself.
+- **Backlog U1** (a new "UI" section in `docs/beta_feedback_2026-10-12.md`):
+  "New invoice" and a schedule's "Edit" open as a modal over a grayed-out
+  page. Later.
+- **P7 phase 3 is being built on `dev`** (the client owner's Teams card in
+  the portal); see the spec's "As built: phase 3" once it is there.
+- Still open from "After the release" below: the demo reseed for its PDF
+  statement, if it has not been done; the laptop's `pip install` and qcluster
+  restart.
+
+## Release 12: the plan as it was (done 10/14; see above)
 
 **Bryan, the evening of 10/13: Release 12 is all of `dev`, after the phase 1
 dry run on production and his yes.** Not phase 1 alone, as first planned.
