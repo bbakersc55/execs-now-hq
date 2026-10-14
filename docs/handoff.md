@@ -10,10 +10,26 @@ is the newer. Upload this at the start of the next chat with: "Read this handoff
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## 2026-10-13: three M2 findings from the demo, and P7 put to Bryan
+## 2026-10-13: three M2 findings from the demo, Release 11, and P7 put to Bryan
 
-**This section is the newest.** Production is unchanged (`main` at `a4037fb`,
-Release 10). Everything here is on `dev`, pushed, and not released.
+**This section is the newest.** **Production is `main` at `147087f`: Release
+11, 2026-10-14 00:05 UTC (10/13, 6:05 PM Mountain).** It carries everything
+that was on `dev`: P6 M2 (the cash forecast, both stops), the ten fixes of
+10/12, and the three below. Six migrations, all OK; the record is in the
+runbook. Where the sections below say "not released" or "production is
+unchanged", this is the newer.
+
+- **The Cash forecast module is off for Executives Now** until Bryan switches
+  it on in the Practices area (it needs Bookkeeping).
+- `ensure_schedules` was run in production: `finance.keep_month_forecast`
+  exists for both practices. **The laptop's qcluster still needs a restart
+  and `ensure_schedules`.**
+- **Nothing in Release 11 has been seen in a signed-in browser on
+  production.** The smoke check is Bryan's: the Forecast tab once the module
+  is on, Explain pressed once, Review run once, and one of the 10/12 fixes
+  (Notes folders, the Tags setting).
+- A fresh backup before a release is Bryan's to run: the "run now" command
+  was refused to Claude Code by the permission check.
 
 **Bryan looked at stop 2 on the demo** (queue item 2) and found three things.
 Each is its own commit on a green gate; the detail is in the M2 spec, "As
@@ -23,16 +39,16 @@ built: after Bryan's look on the demo".
 |---|---|
 | `54b9d6c` | "Explain this forecast" was cut off every time: the output ceiling is 16,000 for the three pressed buttons, and Explain asks for low effort |
 | `e4aa2df` | The form a review's proposal opens follows the proposal: its cadence, and the date it next falls. A planned line can repeat "Every year". **Migration `finance` 0011** (a new choice, no SQL), applied to `execsnowhq_local` |
-| the commit after it | Review is sent a summary of the money in the forecast already has, by client, and told not to ask about it |
+| `147087f` | Review is sent a summary of the money in the forecast already has, by client, and told not to ask about it |
 
-- **The next release now carries six migrations:** `finance` 0009, 0010 and
-  0011, `crm` 0035, `notes` 0003, `strategy` 0018. None is destructive or
-  writes data, so no dry run is owed.
 - **Not proven:** none of the three has been run with a real key or seen in
   a browser. The cause of the first is inferred from how the model is
   documented to behave; the demo's `ai_call` rows were not read. The first
   thing to do on the demo after its deploy is press Explain once.
 - **The demo deploy of these commits was not checked.**
+- **Still open behind this:** M3's spec (queue item 6); §5.6's move of old
+  invoice income; the smoke check of Release 10; "the monthly AI budget can
+  be set to stop, not warn".
 
 **P7 was put to Bryan** as M1 and M2 were: what it proposes and the fifteen
 decisions with a recommendation on each. **No answers yet, nothing built.**

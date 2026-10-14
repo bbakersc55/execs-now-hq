@@ -335,6 +335,31 @@ when it went out, and production's database was not read afterwards: what
 the data steps did is known from the migration's own output and from the
 code.**
 
+**Observed at Release 11 (2026-10-14 UTC, 6 migrations: P6 M2, the cash
+forecast, both stops and the three fixes from the owner's look on the demo;
+the ten fixes of 10/12):** backup confirmed (the 2026-10-13 08:01 UTC dump,
+3,209,336 bytes, 16 hours old). **No fresh one was taken:** the "run now"
+command in R1 was refused to Claude Code by the permission check
+("Production Deploy"), so a fresh dump before a release is the owner's to
+run. The commit released, `147087f`, had passed `scripts/gate.sh`. `main`
+fast-forwarded from `a4037fb` and pushed 00:05:02, by
+`git push origin dev:main`; worker `WAITING` 00:06:08 listing exactly
+`crm.0035`, `finance.0009`, `finance.0010`, `finance.0011`, `notes.0003` and
+`strategy.0018`; applied 00:06:31–38, all OK; `migrations current` 00:06:42,
+worker running 00:06:45. **Web came up on the new code by itself,** before
+R6: gunicorn listening 00:06:55 with "Migrations are current", sixteen
+seconds after the migration. R6 was run all the same at 00:06:58, which
+deployed it once more. The new code was answering by 00:07:03 (the forecast
+route, which exists only in this release, answers 403 where the old code
+answered 404). **Push to new code: 2 min 1 s.** `/healthz` was 200 at every
+sample, every 5 to 6 s from 00:05 on. **Worker paused about 37 s.** After:
+`ensure_schedules` created `finance.keep_month_forecast` for both practices
+(first run 2026-10-14 00:00 Mountain); no migration unapplied. All six
+migrations are additive with no data step. **Nothing in the release had been
+seen in a signed-in browser on production when it went out; the three fixes
+of 10/13 had not been run with a real key anywhere; production's database
+was not read afterwards.**
+
 **Observed at Release 8 (2026-10-08, 5 migrations: P3's example and sections,
 the alignment pass, client invoicing, the books, and the import with 1099
 payees):** backup confirmed (08:00 UTC dump, 3.1 MB), and a fresh one taken by
