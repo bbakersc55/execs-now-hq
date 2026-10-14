@@ -42,7 +42,8 @@ LINES_MOST = 50
 DEFAULT_SUBJECT = "Invoice {Number} from {Practice}"
 DEFAULT_BODY = ("Hi {First name},\n\nInvoice {Number} for {Total} is attached. "
                 "It is due {Due date}.\n\nThank you,\n{Practice}")
-MERGE_FIELDS = ("Client", "First name", "Number", "Total", "Due date", "Practice")
+MERGE_FIELDS = ("Client", "First name", "Number", "Total", "Due date", "Payment terms",
+                "Practice")
 _MERGE = re.compile(r"\{([A-Za-z ]+)\}")
 
 
@@ -97,6 +98,36 @@ def _a_date(value, what) -> date:
         raise BillingError(f"{what} is a date, as YYYY-MM-DD.") from None
 
 
+# ------------------------------------------------------------ payment terms
+#
+# One number of days: 0 is due on receipt, 15 is net 15. The practice has a
+# default; a schedule and an invoice may each name their own. An invoice's due
+# date is its issue date and its terms, so the two can never disagree, and
+# "overdue" counts from that date.
+
+TERMS_MOST = 365
+
+
+def clean_terms_days(value, what="Payment terms") -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= TERMS_MOST:
+        raise BillingError(f"{what} are a number of days, 0 to {TERMS_MOST}. "
+                           "0 is due on receipt.")
+    return value
+
+
+def terms_label(days: int) -> str:
+    """As printed on the invoice, and said everywhere else."""
+    return "Due on receipt" if days == 0 else f"Net {days}"
+
+
+def terms_days_of(invoice) -> int:
+    """An invoice's terms: its own, or for one written before they were kept,
+    the days between its two dates."""
+    if invoice.terms_days is not None:
+        return invoice.terms_days
+    return max((invoice.due_date - invoice.issue_date).days, 0)
+
+
 def is_overdue(invoice, today=None) -> bool:
     """Not a status: worked out when read, so it cannot go stale."""
     today = today or timezone.localdate()
@@ -132,10 +163,7 @@ def update_settings(tenant, changes: dict, *, actor=None) -> InvoiceSettings:
                                f"{row.next_value} now.")
         row.next_value = value
     if "terms_days" in changes:
-        days = changes["terms_days"]
-        if isinstance(days, bool) or not isinstance(days, int) or not 0 <= days <= 365:
-            raise BillingError("Payment terms are a number of days, 0 to 365.")
-        row.terms_days = days
+        row.terms_days = clean_terms_days(changes["terms_days"])
     for field in ("default_notes", "default_terms", "pay_instructions", "email_body"):
         if field in changes:
             setattr(row, field, str(changes[field] or "").strip())
@@ -218,19 +246,32 @@ def _recipient(tenant, *, kind, company, contact):
                            "company.")
 
 
-EDITABLE = ("issue_date", "due_date", "tax_cents", "notes", "terms", "pay_instructions",
-            "email_to", "email_subject", "email_body", "bill_to_address")
+EDITABLE = ("issue_date", "due_date", "terms_days", "tax_cents", "notes", "terms",
+            "pay_instructions", "email_to", "email_subject", "email_body",
+            "bill_to_address")
 
 
 def _apply(invoice, changes: dict, config: InvoiceSettings) -> None:
+    # Read before the dates move: for an invoice from before terms were
+    # kept, they are the distance between the two dates as they stand.
+    if invoice.terms_days is None and invoice.due_date and invoice.issue_date:
+        invoice.terms_days = terms_days_of(invoice)
     if "issue_date" in changes:
         invoice.issue_date = _a_date(changes["issue_date"], "The issue date")
-        if "due_date" not in changes:
-            invoice.due_date = invoice.issue_date + timedelta(days=config.terms_days)
+    if "terms_days" in changes:
+        invoice.terms_days = clean_terms_days(changes["terms_days"])
     if "due_date" in changes:
+        # A due date given outright is terms of that many days: the two are
+        # one fact, and whichever is set last carries the other with it.
         invoice.due_date = _a_date(changes["due_date"], "The due date")
-    if invoice.due_date < invoice.issue_date:
-        raise BillingError("The due date cannot be before the issue date.")
+        if invoice.due_date < invoice.issue_date:
+            raise BillingError("The due date cannot be before the issue date.")
+        if (invoice.due_date - invoice.issue_date).days > TERMS_MOST:
+            raise BillingError(f"The due date is at most {TERMS_MOST} days after the "
+                               "issue date.")
+        invoice.terms_days = (invoice.due_date - invoice.issue_date).days
+    elif "issue_date" in changes or "terms_days" in changes:
+        invoice.due_date = invoice.issue_date + timedelta(days=terms_days_of(invoice))
     if "tax_cents" in changes:
         invoice.tax_cents = money.cents(changes["tax_cents"], what="Tax")
     for field in ("notes", "terms", "pay_instructions", "email_body"):
@@ -268,11 +309,15 @@ def create_draft(tenant, *, actor, kind=K.ONE_OFF, client_company=None, contact=
     _recipient(tenant, kind=kind, company=client_company, contact=contact)
     config = settings_for(tenant)
     today = timezone.localdate()
+    # Its schedule's terms where the schedule names its own; the practice's
+    # otherwise. Either way they are the invoice's own from here on.
+    days = schedule.terms_days if schedule is not None and schedule.terms_days is not None \
+        else config.terms_days
     invoice = ClientInvoice(
         tenant=tenant, kind=kind, client_company=client_company, contact=contact,
         schedule=schedule, income_category=_income_category(tenant, income_category),
-        issue_date=today,
-        due_date=today + timedelta(days=config.terms_days),
+        issue_date=today, terms_days=days,
+        due_date=today + timedelta(days=days),
         notes=config.default_notes, terms=config.default_terms,
         pay_instructions=config.pay_instructions,
         email_subject=config.email_subject or DEFAULT_SUBJECT,
@@ -339,6 +384,7 @@ def merge_values(invoice) -> dict:
         "Number": invoice.number or "",
         "Total": money.dollars(invoice.total_cents),
         "Due date": f"{invoice.due_date:%B} {invoice.due_date.day}, {invoice.due_date.year}",
+        "Payment terms": terms_label(terms_days_of(invoice)),
         "Practice": practice_name(invoice.tenant),
     }
 
@@ -693,7 +739,8 @@ def _schedule_lines(tenant, lines) -> list[dict]:
 @transaction.atomic
 def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=None,
                   day_of_month=None, starts_on=None, ends_on=..., lines=None, notes=None,
-                  terms=None, is_active=None, income_category=...) -> ClientInvoiceSchedule:
+                  terms=None, is_active=None, income_category=...,
+                  terms_days=...) -> ClientInvoiceSchedule:
     made = schedule is None
     if made:
         _recipient(tenant, kind=K.RECURRING, company=client_company, contact=contact)
@@ -725,6 +772,9 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
         schedule.notes = str(notes).strip()
     if terms is not None:
         schedule.terms = str(terms).strip()
+    if terms_days is not ...:
+        # None is "the practice's terms, as they stand when each is written".
+        schedule.terms_days = None if terms_days is None else clean_terms_days(terms_days)
     if is_active is not None:
         schedule.is_active = bool(is_active)
     if income_category is not ...:

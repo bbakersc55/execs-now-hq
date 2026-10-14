@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Flash, useFlash } from "../components/ui";
@@ -18,7 +19,7 @@ export function InvoiceSettings() {
   const save = useMutation({
     mutationFn: (f: InvoiceSettingsData) => api.post<InvoiceSettingsData>(
       "/api/invoice-settings/", {
-        prefix: f.prefix, next_value: Number(f.next_value), terms_days: Number(f.terms_days),
+        prefix: f.prefix, next_value: Number(f.next_value),
         default_notes: f.default_notes, default_terms: f.default_terms,
         pay_instructions: f.pay_instructions, email_subject: f.email_subject,
         email_body: f.email_body }),
@@ -56,9 +57,11 @@ export function InvoiceSettings() {
             <input type="number" min={1} aria-label="Next number" value={form.next_value}
               onChange={(e) => set({ next_value: Number(e.target.value) })} />
           </Field>
-          <Field label="Payment due, in days">
-            <input type="number" min={0} max={365} aria-label="Payment terms in days"
-              value={form.terms_days} onChange={(e) => set({ terms_days: Number(e.target.value) })} />
+          <Field label="Payment terms">
+            <p className="small" style={{ margin: ".35rem 0" }}>
+              {form.terms_label}. <Link to="/settings/finance">Change them under Finance,
+              Paid invoices</Link>
+            </p>
           </Field>
         </div>
         <p className="tiny muted" style={{ marginBottom: 0 }}>

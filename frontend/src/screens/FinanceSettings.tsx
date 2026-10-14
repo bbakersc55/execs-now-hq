@@ -5,10 +5,12 @@ import { Link } from "react-router-dom";
 import { FinanceCategories } from "../components/FinanceCategories";
 import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
 import { PriceBox } from "../components/InvoiceLines";
+import { TermsPicker } from "../components/PaymentTerms";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill } from "../components/ui";
 import {
-  FinanceAccount, FinanceCategory, FinanceRule, FinanceSettingsData, Me, YearFacts, api,
+  FinanceAccount, FinanceCategory, FinanceRule, FinanceSettingsData, InvoiceSettingsData, Me,
+  YearFacts, api,
 } from "../lib/api";
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
@@ -36,6 +38,16 @@ export function FinanceSettings() {
     queryKey: ["finance-settings"], queryFn: () => api.get("/api/finance-settings/") });
   // P6 M1: the tools that reshape the chart are the Bookkeeping module's.
   const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
+  // The practice's payment terms live with the rest of what an invoice
+  // starts with; they are set here, beside where paid invoices go.
+  const invoicing = useQuery<InvoiceSettingsData>({
+    queryKey: ["invoice-settings"], retry: false,
+    queryFn: () => api.get<InvoiceSettingsData>("/api/invoice-settings/") });
+  const setTerms = useMutation({
+    mutationFn: (days: number) => api.post<InvoiceSettingsData>(
+      "/api/invoice-settings/", { terms_days: days }),
+    onSuccess: (data) => qc.setQueryData(["invoice-settings"], data),
+  });
   const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
   const send = useMutation({
     mutationFn: ({ url, body, method }: { url: string; body: object;
@@ -143,6 +155,22 @@ export function FinanceSettings() {
             </select>
           </Field>
         </div>
+        {invoicing.data && (
+          <>
+            <div className="row" style={{ marginTop: "var(--s3)" }}>
+              <TermsPicker label="The practice's payment terms" value={invoicing.data.terms_days}
+                disabled={setTerms.isPending}
+                onChange={(days) => { if (days !== null) setTerms.mutate(days); }} />
+            </div>
+            {setTerms.isError && <Banner kind="bad">{(setTerms.error as Error).message}</Banner>}
+            <p className="small muted" style={{ marginBottom: 0 }}>
+              What a new invoice starts with: its due date is its issue date and these terms,
+              they print on it, and it is overdue the day after. A recurring invoice or a
+              single invoice can name terms of its own. Changing this changes no invoice
+              already written.
+            </p>
+          </>
+        )}
       </Card>
 
       <Rules />

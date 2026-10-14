@@ -907,3 +907,122 @@ def test_merging_two_contacts_keeps_their_invoices_and_what_was_printed(acme, ff
         row = ClientInvoice.objects.get(pk=invoice["id"])
         assert row.contact_id == keeper.pk
         assert row.bill_to["email"] == "dana@acme.invalid"
+
+
+# ============================================================ payment terms
+
+SETTINGS = "/api/invoice-settings/"
+
+
+@pytest.mark.django_db
+def test_payment_terms_are_the_practices_default_and_each_invoices_own(acme, ff, api):
+    """Owner, 2026-10-14. One number of days: 0 is due on receipt, 15 is net
+    15. The due date is the issue date and the terms, so they never disagree;
+    the terms print on the invoice; and overdue counts from that date."""
+    from apps.billing import pdf
+
+    today = timezone.localdate()
+    assert get(api, ff, SETTINGS).json()["terms_label"] == "Net 15"
+    made = draft(api, ff, *acme).json()
+    assert (made["terms_days"], made["terms_label"]) == (15, "Net 15")
+    assert made["due_date"] == (today + timedelta(days=15)).isoformat()
+
+    # The practice's default changes what a NEW invoice starts with, and
+    # nothing already written.
+    for days, label in ((0, "Due on receipt"), (30, "Net 30"), (45, "Net 45")):
+        saved = post(api, ff, SETTINGS, {"terms_days": days})
+        assert saved.status_code == 200 and saved.json()["terms_label"] == label
+        new = draft(api, ff, *acme).json()
+        assert (new["terms_days"], new["terms_label"]) == (days, label)
+        assert new["due_date"] == (today + timedelta(days=days)).isoformat()
+    assert get(api, ff, f"{ROOT}{made['id']}/").json()["terms_label"] == "Net 15"
+    for bad in (-1, 366, "30", None, True, 1.5):
+        refused = post(api, ff, SETTINGS, {"terms_days": bad})
+        assert refused.status_code == 400 and "0 is due on receipt" in refused.json()["detail"]
+
+    # On one invoice: its own terms move its due date, and so does its issue date.
+    one = f"{ROOT}{made['id']}/"
+    changed = patch(api, ff, one, {"terms_days": 30}).json()
+    assert (changed["terms_label"], changed["due_date"]) == (
+        "Net 30", (today + timedelta(days=30)).isoformat())
+    moved = patch(api, ff, one, {"issue_date": "2026-11-03"}).json()
+    assert (moved["issue_date"], moved["due_date"], moved["terms_days"]) == (
+        "2026-11-03", "2026-12-03", 30)
+    receipt = patch(api, ff, one, {"terms_days": 0}).json()
+    assert (receipt["terms_label"], receipt["due_date"]) == ("Due on receipt", "2026-11-03")
+    # A due date given outright is terms of that many days.
+    dated = patch(api, ff, one, {"due_date": "2026-11-13"}).json()
+    assert (dated["terms_days"], dated["terms_label"]) == (10, "Net 10")
+    assert patch(api, ff, one, {"terms_days": 400}).status_code == 400
+    assert patch(api, ff, one, {"due_date": "2026-11-01"}).status_code == 400
+    assert patch(api, ff, one, {"due_date": "2028-11-13"}).status_code == 400
+
+    # It prints on the invoice, and can be said in the covering email.
+    patch(api, ff, one, {"terms_days": 0,
+                         "email_body": "Invoice {Number}, {Payment terms}, due {Due date}."})
+    assert post(api, ff, one + "make-ready/").status_code == 200
+    with tenant_context(acme[0].tenant_id):
+        invoice = ClientInvoice.objects.get(pk=made["id"])
+        html = pdf.render_html(invoice)
+        assert "Payment terms" in html and "Due on receipt" in html
+        assert html.index("Payment terms") < html.index("Due on receipt") \
+            < html.index("<strong>November 3, 2026</strong>"), "beside the due date"
+        body = services.render(invoice.email_body, services.merge_values(invoice))
+    assert body == f"Invoice {invoice.number}, Due on receipt, due November 3, 2026."
+    assert "Payment terms" in get(api, ff, SETTINGS).json()["merge_fields"]
+
+
+@pytest.mark.django_db
+def test_overdue_counts_from_the_terms(acme, ff, api):
+    today = timezone.localdate()
+    issued = (today - timedelta(days=16)).isoformat()
+    net15 = sent(api, ff, *acme, issue_date=issued, terms_days=15)
+    net30 = sent(api, ff, *acme, issue_date=issued, terms_days=30)
+    on_receipt = sent(api, ff, *acme, issue_date=today.isoformat(), terms_days=0)
+    yesterday = sent(api, ff, *acme, issue_date=(today - timedelta(days=1)).isoformat(),
+                     terms_days=0)
+    overdue = {row["id"] for row in get(api, ff, ROOT).json()["invoices"] if row["overdue"]}
+    assert overdue == {net15["id"], yesterday["id"]}
+    assert net30["id"] not in overdue
+    assert on_receipt["id"] not in overdue, "due today is not overdue until tomorrow"
+
+
+@pytest.mark.django_db
+def test_an_invoice_from_before_terms_were_kept_reads_them_from_its_dates(acme, ff, api):
+    made = draft(api, ff, *acme, issue_date="2026-09-01", due_date="2026-09-21").json()
+    with tenant_context(acme[0].tenant_id):
+        ClientInvoice.objects.filter(pk=made["id"]).update(terms_days=None)
+    one = f"{ROOT}{made['id']}/"
+    assert (get(api, ff, one).json()["terms_days"], get(api, ff, one).json()["terms_label"]) \
+        == (20, "Net 20")
+    # Moving its issue date keeps those terms, and from then they are its own.
+    moved = patch(api, ff, one, {"issue_date": "2026-09-10"}).json()
+    assert (moved["due_date"], moved["terms_days"]) == ("2026-09-30", 20)
+    with tenant_context(acme[0].tenant_id):
+        assert ClientInvoice.objects.get(pk=made["id"]).terms_days == 20
+
+
+@pytest.mark.django_db
+def test_a_schedule_has_its_own_terms_or_the_practices_as_they_stand(acme, ff, api):
+    company, contact = acme
+    body = {"client_company": str(company.pk), "contact": str(contact.pk), "day_of_month": 5,
+            "starts_on": "2026-10-08", "lines": LINES}
+    own = post(api, ff, "/api/invoice-schedules/", {**body, "terms_days": 30}).json()
+    assert (own["terms_days"], own["terms_label"]) == (30, "Net 30")
+    follows = post(api, ff, "/api/invoice-schedules/", body).json()
+    assert (follows["terms_days"], follows["terms_label"]) == (None, "Net 15")
+    post(api, ff, SETTINGS, {"terms_days": 0})
+    listed = {row["id"]: row for row in get(api, ff, "/api/invoice-schedules/").json()}
+    assert listed[follows["id"]]["terms_label"] == "Due on receipt"
+    assert listed[own["id"]]["terms_label"] == "Net 30"
+    with tenant_context(company.tenant_id):
+        written = {str(i.schedule_id): i for i in services.run_schedules(
+            company.tenant, today=date(2026, 11, 5))}
+    assert (written[own["id"]].terms_days, written[own["id"]].due_date) == (
+        30, date(2026, 12, 5))
+    assert (written[follows["id"]].terms_days, written[follows["id"]].due_date) == (
+        0, date(2026, 11, 5))
+    assert patch(api, ff, f"/api/invoice-schedules/{own['id']}/", {"terms_days": None}
+                 ).json()["terms_days"] is None
+    assert patch(api, ff, f"/api/invoice-schedules/{own['id']}/", {"terms_days": 999}
+                 ).status_code == 400

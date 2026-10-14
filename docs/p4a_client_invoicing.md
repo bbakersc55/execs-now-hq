@@ -293,3 +293,33 @@ Differences from the text above:
 **Build, once approved:** one phase. Migration SQL shown first; applied on
 `execsnowhq_local` only; then stop with tests and what was not seen in a
 browser. No release until the owner says so.
+
+## Added 2026-10-14: payment terms (owner)
+
+**One number of days.** 0 is "Due on receipt", 15 is "Net 15", 30 is "Net
+30", and any other number from 1 to 365 is "Net" that number.
+
+- **The practice's default** is under Settings → Finance → Paid invoices. It
+  is the `terms_days` the invoice settings already held, now set there and
+  only there; the invoice settings screen says it and links to it.
+- **A recurring invoice** names its own, or follows the practice's as they
+  stand on the day each draft is written.
+- **An invoice** takes them when its draft is written (its schedule's, else
+  the practice's) and keeps them as its own: changing the practice's default
+  or a schedule changes no invoice already written.
+- **The due date is the issue date and the terms.** On a draft it is worked
+  out and shown, not typed; moving the issue date or the terms moves it. The
+  API still takes a `due_date`, and reads it as terms of that many days, so
+  the two are always one fact.
+- **It prints on the invoice,** as "Payment terms", above the due date, and
+  `{Payment terms}` can be used in the covering email.
+- **Overdue counts from it:** an open invoice is overdue the day after its
+  due date, as before.
+- The free-text "Terms" block on an invoice is unchanged and is separate: it
+  is wording, this is the number.
+- The cash forecast reads a recurring invoice's own terms where it has them.
+
+`billing` 0003 adds `terms_days` to the invoice and the schedule, both
+nullable, with no data step. An invoice written before this has none and is
+read from its two dates (`services.terms_days_of`), so nothing is rewritten.
+

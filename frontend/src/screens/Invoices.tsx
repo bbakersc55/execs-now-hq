@@ -4,10 +4,12 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { InvoiceLines, cleanLines } from "../components/InvoiceLines";
 import { IncomeCategoryPicker } from "../components/IncomeCategoryPicker";
+import { TermsPicker } from "../components/PaymentTerms";
 import { PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
-  Company, Contact, Invoice, InvoiceLine, InvoiceList, InvoiceRow, InvoiceSchedule, Me, api,
+  Company, Contact, Invoice, InvoiceLine, InvoiceList, InvoiceRow, InvoiceSchedule,
+  InvoiceSettingsData, Me, api,
 } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
 
@@ -257,14 +259,20 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
     { description: "", quantity: "1", unit_price_cents: 0 }]);
   // The practice owner's: where its invoices' payments go in the books.
   const [income, setIncome] = useState("");
+  // null: the practice's terms, as they stand when each invoice is written.
+  const [terms, setTerms] = useState<number | null>(null);
+  const practice = useQuery<InvoiceSettingsData>({
+    queryKey: ["invoice-settings"], retry: false,
+    queryFn: () => api.get<InvoiceSettingsData>("/api/invoice-settings/") });
   const people = useRecipients(company);
   const done = () => qc.invalidateQueries({ queryKey: ["invoice-schedules"] });
   const save = useMutation({
     mutationFn: () => api.post<InvoiceSchedule>("/api/invoice-schedules/", {
       client_company: company, contact, day_of_month: Number(day), lines: cleanLines(lines),
+      ...(terms !== null ? { terms_days: terms } : {}),
       ...(owner && income ? { income_category: income } : {}) }),
     onSuccess: () => {
-      done(); setAdding(false); setCompany(""); setContact(""); setIncome("");
+      done(); setAdding(false); setCompany(""); setContact(""); setIncome(""); setTerms(null);
       setLines([{ description: "", quantity: "1", unit_price_cents: 0 }]);
     },
   });
@@ -290,7 +298,8 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
       {rows.length === 0 && !adding && <Empty>No recurring invoices.</Empty>}
       {rows.length > 0 && (
         <table>
-          <thead><tr><th>Client</th><th>Addressed to</th><th>Day</th><th>Next draft</th>
+          <thead><tr><th>Client</th><th>Addressed to</th><th>Day</th><th>Terms</th>
+            <th>Next draft</th>
             <th className="money">Each month</th>
             {owner && <th>In your books</th>}<th /></tr></thead>
           <tbody>
@@ -299,6 +308,8 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
                 <td>{row.client_company.name}</td>
                 <td>{row.contact.name}</td>
                 <td>{row.day_of_month}</td>
+                <td>{row.terms_label}
+                  {row.terms_days === null && <span className="muted"> · the practice's</span>}</td>
                 <td>{row.is_active ? longDate(row.next_on) : <Pill>paused</Pill>}</td>
                 <td className="money">{dollars(row.total_cents)}</td>
                 {owner && (
@@ -342,6 +353,8 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
               <input type="number" min={1} max={28} aria-label="Day of the month" value={day}
                 style={{ width: "5rem" }} onChange={(e) => setDay(e.target.value)} />
             </Field>
+            <TermsPicker label="Payment terms for the recurring invoice" value={terms}
+              practice={practice.data?.terms_days} onChange={setTerms} />
           </div>
           <InvoiceLines lines={lines} onChange={setLines} />
           {owner && (

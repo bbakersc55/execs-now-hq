@@ -514,6 +514,39 @@ describe("accounts, categories and the lock", () => {
       expect(screen.getByRole("button", { name: "Restore Old one" })).toBeInTheDocument();
     });
 
+  it("sets the practice's payment terms under Paid invoices", async () => {
+    // Owner, 2026-10-14: due on receipt, net 15, net 30, or a number of days.
+    const settings = { prefix: "INV-", next_value: 1, next_number: "INV-0001",
+                       terms_days: 15, terms_label: "Net 15", default_notes: "",
+                       default_terms: "", pay_instructions: "", email_subject: "",
+                       email_body: "", merge_fields: [] };
+    const fetchMock = showSettings({
+      "POST /api/invoice-settings/": (body: unknown) => ({
+        body: { ...settings, ...(body as object) } }),
+      "GET /api/invoice-settings/": settings });
+    const terms = await screen.findByLabelText("The practice's payment terms");
+    expect(terms).toHaveValue("15");
+    expect(screen.getByText(/Changing this changes no invoice\s+already written/))
+      .toBeInTheDocument();
+    await userEvent.selectOptions(terms, "0");
+    await waitFor(() => expect(terms).toHaveValue("0"));
+    await userEvent.selectOptions(terms, "other");
+    const days = await screen.findByLabelText("The practice's payment terms, in days");
+    // Kept as typed until the box is left: emptying it on the way to another
+    // number is not "due on receipt", and nothing is saved once a digit.
+    await userEvent.clear(days);
+    await userEvent.type(days, "60");
+    await userEvent.tab();
+    await waitFor(() => expect(sent(fetchMock, "/api/invoice-settings/")).toEqual([
+      { terms_days: 0 }, { terms_days: 45 }, { terms_days: 60 }]));
+    // Nonsense goes back to what it was, and sends nothing.
+    await userEvent.clear(days);
+    await userEvent.type(days, "900");
+    await userEvent.tab();
+    expect(days).toHaveValue(60);
+    expect(sent(fetchMock, "/api/invoice-settings/")).toHaveLength(3);
+  });
+
   it("sends each kind of paid invoice to its own income category", async () => {
     const fetchMock = showSettings({
       "POST /api/finance-settings/": () => ({ body: {} }),

@@ -28,6 +28,8 @@ class InvoiceSettings(TenantScopedModel):
     prefix = models.CharField(max_length=12, default="INV-", db_default="INV-")
     #: The next number to give. Raised by the practice owner, never lowered.
     next_value = models.PositiveIntegerField(default=1, db_default=1)
+    #: The practice's payment terms: 0 is due on receipt, 15 is net 15. What
+    #: a new invoice and a schedule that names none of its own start from.
     terms_days = models.PositiveSmallIntegerField(default=15, db_default=15)
     default_notes = models.TextField(blank=True, default="", db_default="")
     default_terms = models.TextField(blank=True, default="", db_default="")
@@ -58,6 +60,9 @@ class ClientInvoiceSchedule(TenantScopedModel):
     lines = models.JSONField(default=list)
     notes = models.TextField(blank=True, default="", db_default="")
     terms = models.TextField(blank=True, default="", db_default="")
+    #: Its own payment terms, in days. Empty: the practice's, as they stand
+    #: on the day each invoice is written.
+    terms_days = models.PositiveSmallIntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True, db_default=True)
     #: Where its invoices' payments are entered in the books, when the
     #: practice owner chose something other than what recurring invoices go
@@ -111,6 +116,10 @@ class ClientInvoice(TenantScopedModel):
                                         on_delete=models.SET_NULL, related_name="+")
     number = models.CharField(max_length=40, null=True, blank=True)
     issue_date = models.DateField()
+    #: Payment terms, in days: the due date is the issue date and these, and
+    #: "overdue" counts from it. Empty on an invoice written before terms
+    #: were kept (2026-10-14); `services.terms_days_of` reads it from the dates.
+    terms_days = models.PositiveSmallIntegerField(null=True, blank=True)
     due_date = models.DateField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT,
                               db_default=Status.DRAFT)

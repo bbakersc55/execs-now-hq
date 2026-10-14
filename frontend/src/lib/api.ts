@@ -1470,6 +1470,9 @@ export interface InvoiceRow {
   client_company: { id: string; name: string } | null;
   contact: { id: string; name: string };
   issue_date: string; due_date: string;
+  /** Payment terms in days (0 is due on receipt), and as they are said. The
+   *  due date is the issue date and these. */
+  terms_days: number; terms_label: string;
   total_cents: number; paid_cents: number; balance_cents: number;
   from_schedule: boolean;
   /** For a ready invoice: is its email waiting for approval, or sent back? */
@@ -1510,6 +1513,7 @@ export interface InvoiceList {
 
 export interface InvoiceSettingsData {
   prefix: string; next_value: number; next_number: string; terms_days: number;
+  terms_label: string;
   default_notes: string; default_terms: string; pay_instructions: string;
   email_subject: string; email_body: string; merge_fields: string[];
 }
@@ -1519,6 +1523,8 @@ export interface InvoiceSchedule {
   contact: { id: string; name: string };
   day_of_month: number; next_on: string; ends_on: string | null;
   lines: InvoiceLine[]; total_cents: number; notes: string; terms: string;
+  /** Its own payment terms, or null for the practice's; and what that is today. */
+  terms_days: number | null; terms_label: string;
   is_active: boolean;
   /** As on an invoice: the practice owner's only. */
   income_category?: string;

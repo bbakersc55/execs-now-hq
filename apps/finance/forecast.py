@@ -226,7 +226,9 @@ def _known(tenant, today: date, end: date, adjusted: dict) -> tuple[list[dict], 
         habit = late.get(schedule.client_company_id)
         written = schedule.next_on
         while written <= end and (schedule.ends_on is None or written <= schedule.ends_on):
-            due = written + timedelta(days=terms)
+            # Its own payment terms where it names them, the practice's otherwise.
+            due = written + timedelta(days=terms if schedule.terms_days is None
+                                      else schedule.terms_days)
             expected = max(due + timedelta(days=habit or 0), today)
             if expected <= end:
                 lines.append({

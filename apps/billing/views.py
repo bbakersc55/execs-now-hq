@@ -58,6 +58,8 @@ def represent_row(invoice, today=None) -> dict:
         "contact": {"id": str(invoice.contact_id), "name": _name(invoice.contact)},
         "issue_date": invoice.issue_date.isoformat(),
         "due_date": invoice.due_date.isoformat(),
+        "terms_days": services.terms_days_of(invoice),
+        "terms_label": services.terms_label(services.terms_days_of(invoice)),
         "total_cents": invoice.total_cents, "paid_cents": invoice.paid_cents,
         "balance_cents": invoice.balance_cents,
         "from_schedule": invoice.schedule_id is not None,
@@ -441,6 +443,7 @@ class InvoiceSettingsView(BillingViewSet):
     def _represent(row) -> dict:
         return {
             "prefix": row.prefix, "next_value": row.next_value, "terms_days": row.terms_days,
+            "terms_label": services.terms_label(row.terms_days),
             "default_notes": row.default_notes, "default_terms": row.default_terms,
             "pay_instructions": row.pay_instructions,
             "email_subject": row.email_subject or services.DEFAULT_SUBJECT,
@@ -491,6 +494,11 @@ class ScheduleViewSet(BillingViewSet):
             "ends_on": row.ends_on.isoformat() if row.ends_on else None,
             "lines": lines, "total_cents": sum(line["amount_cents"] for line in lines),
             "notes": row.notes, "terms": row.terms, "is_active": row.is_active,
+            # Its own terms, or null for the practice's; and what that comes to today.
+            "terms_days": row.terms_days,
+            "terms_label": services.terms_label(
+                row.terms_days if row.terms_days is not None
+                else services.settings_for(row.tenant).terms_days),
             **books_category(row, self._role()),
         }
 
@@ -511,6 +519,8 @@ class ScheduleViewSet(BillingViewSet):
                 fields[name] = data[name]
         if "ends_on" in data:
             fields["ends_on"] = data["ends_on"]
+        if "terms_days" in data:
+            fields["terms_days"] = data["terms_days"]
         if data.get("contact"):
             fields["contact"] = self._contact(data["contact"])
         try:

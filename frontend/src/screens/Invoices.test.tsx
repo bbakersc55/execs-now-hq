@@ -21,7 +21,8 @@ function row(more: Partial<InvoiceRow> = {}): InvoiceRow {
   return { id: ID, kind: "one_off", number: "INV-0007", status: "sent", status_label: "Sent",
            overdue: false, client_company: { id: "co1", name: "Acme Facilities" },
            contact: { id: "c1", name: "Dana Reyes" }, issue_date: "2026-10-01",
-           due_date: "2026-10-16", total_cents: 680000, paid_cents: 0, balance_cents: 680000,
+           due_date: "2026-10-16", terms_days: 15, terms_label: "Net 15",
+           total_cents: 680000, paid_cents: 0, balance_cents: 680000,
            from_schedule: false, send_state: "", ...more };
 }
 
@@ -161,7 +162,8 @@ describe("the invoices list", () => {
     const schedule = { id: "s1", client_company: { id: "co1", name: "Acme Facilities" },
                        contact: { id: "c1", name: "Dana Reyes" }, day_of_month: 5,
                        next_on: "2026-11-05", ends_on: null, lines: [], total_cents: 680000,
-                       notes: "", terms: "", is_active: true };
+                       notes: "", terms: "", terms_days: null, terms_label: "Net 15",
+                       is_active: true };
     const fetchMock = mockApi({
       "PATCH /api/invoice-schedules/s1/": () => ({ body: { ...schedule, is_active: false } }),
       "GET /api/invoice-schedules/": [schedule], "GET /api/companies/": COMPANIES,
@@ -210,6 +212,39 @@ describe("one invoice", () => {
       { description: "Workshop", quantity: "1.50", unit_price_cents: 100050 }] });
     expect(screen.getByRole("link", { name: "Preview the PDF" })).toHaveAttribute(
       "href", `${ONE}preview/`);
+  });
+
+  it("sets a draft's payment terms, and works its due date out from them", async () => {
+    // Owner, 2026-10-14: due on receipt, net 15, net 30, or a number of days.
+    const fetchMock = show(draft(), aMe(), { [`PATCH ${ONE}`]: () => ({ body: draft() }) });
+    const terms = await screen.findByLabelText("Payment terms for this invoice");
+    expect(terms).toHaveValue("15");
+    expect(within(terms).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Due on receipt", "Net 15", "Net 30", "A number of days…"]);
+    const due = screen.getByLabelText("Due date");
+    expect(due).toHaveTextContent("October 16, 2026");          // issued October 1
+    await userEvent.selectOptions(terms, "0");
+    expect(due).toHaveTextContent("October 1, 2026");
+    await userEvent.selectOptions(terms, "30");
+    expect(due).toHaveTextContent("October 31, 2026");
+    await userEvent.selectOptions(terms, "other");
+    const days = screen.getByLabelText("Payment terms for this invoice, in days");
+    expect(days).toHaveValue(45);
+    expect(due).toHaveTextContent("November 15, 2026");
+    // Moving the issue date moves the due date with it: it is never typed.
+    await userEvent.clear(screen.getByLabelText("Issue date"));
+    await userEvent.type(screen.getByLabelText("Issue date"), "2026-11-03");
+    expect(due).toHaveTextContent("December 18, 2026");
+    await userEvent.click(screen.getByRole("button", { name: "Save the draft" }));
+    await waitFor(() => expect(sent(fetchMock, ONE)).toHaveLength(1));
+    expect(sent(fetchMock, ONE)[0]).toMatchObject({ issue_date: "2026-11-03", terms_days: 45 });
+    expect(sent(fetchMock, ONE)[0]).not.toHaveProperty("due_date");
+  });
+
+  it("says a sent invoice's terms beside its due date", async () => {
+    show(invoice({ terms_days: 0, terms_label: "Due on receipt", due_date: "2026-10-01" }));
+    expect(await screen.findByText(/Issued October 1, 2026 · Due on receipt · due/))
+      .toBeInTheDocument();
   });
 
   it("says what making ready does, and does it", async () => {
@@ -442,6 +477,7 @@ describe("where an invoice's payments go in the books", () => {
 describe("invoice settings", () => {
   it("says why how-to-pay matters, and saves numbers as numbers", async () => {
     const data = { prefix: "INV-", next_value: 12, next_number: "INV-0012", terms_days: 15,
+                   terms_label: "Net 15",
                    default_notes: "", default_terms: "", pay_instructions: "",
                    email_subject: "Invoice {Number} from {Practice}", email_body: "Hi",
                    merge_fields: ["Number", "Practice"] };
@@ -457,7 +493,12 @@ describe("invoice settings", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(sent(fetchMock, "/api/invoice-settings/")).toHaveLength(1));
     expect(sent(fetchMock, "/api/invoice-settings/")[0]).toMatchObject({
-      pay_instructions: "By check.", next_value: 12, terms_days: 15, prefix: "INV-" });
+      pay_instructions: "By check.", next_value: 12, prefix: "INV-" });
+    // The practice's payment terms are said here and set in one place only.
+    expect(sent(fetchMock, "/api/invoice-settings/")[0]).not.toHaveProperty("terms_days");
+    expect(screen.getByText(/Net 15\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Change them under Finance/ }))
+      .toHaveAttribute("href", "/settings/finance");
   });
 });
 

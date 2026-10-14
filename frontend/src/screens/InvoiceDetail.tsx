@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { InvoiceLines, PriceBox, cleanLines } from "../components/InvoiceLines";
 import { IncomeCategoryPicker } from "../components/IncomeCategoryPicker";
+import { TermsPicker, dueOn } from "../components/PaymentTerms";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import { Invoice, InvoiceEvent, InvoiceLine, Me, api } from "../lib/api";
@@ -180,7 +181,8 @@ function Summary({ invoice: i }: { invoice: Invoice }) {
         <strong>{i.bill_to.company || i.bill_to.name}</strong>
         {i.bill_to.company && <> · {i.bill_to.name}</>}
         {i.bill_to.address && <span style={{ whiteSpace: "pre-line" }}><br />{i.bill_to.address}</span>}
-        <br />Issued {longDate(i.issue_date)} · due <strong>{longDate(i.due_date)}</strong>
+        <br />Issued {longDate(i.issue_date)} · {i.terms_label} · due{" "}
+        <strong>{longDate(i.due_date)}</strong>
       </p>
       <table className="invoice-lines">
         <thead><tr><th>Description</th><th className="num">Quantity</th>
@@ -230,7 +232,7 @@ function Draft({ invoice: i, busy, onSaved, onError, onReady, onDelete }: {
   onReady: () => void; onDelete?: () => void;
 }) {
   const start = () => ({
-    issue_date: i.issue_date, due_date: i.due_date, tax_cents: i.tax_cents,
+    issue_date: i.issue_date, terms_days: i.terms_days, tax_cents: i.tax_cents,
     notes: i.notes, terms: i.terms, pay_instructions: i.pay_instructions,
     email_to: i.email_to, email_subject: i.email_subject, email_body: i.email_body,
     bill_to_address: i.bill_to.address ?? "",
@@ -275,9 +277,14 @@ function Draft({ invoice: i, busy, onSaved, onError, onReady, onDelete }: {
             <input type="date" aria-label="Issue date" value={form.issue_date} disabled={busy}
               onChange={(e) => change({ issue_date: e.target.value })} />
           </Field>
-          <Field label="Due date">
-            <input type="date" aria-label="Due date" value={form.due_date} disabled={busy}
-              onChange={(e) => change({ due_date: e.target.value })} />
+          <TermsPicker label="Payment terms for this invoice" value={form.terms_days}
+            disabled={busy}
+            onChange={(days) => { if (days !== null) change({ terms_days: days }); }} />
+          <Field label="Due">
+            {/* Worked out, never typed: the issue date and the terms. */}
+            <p className="small" aria-label="Due date" style={{ margin: ".35rem 0" }}>
+              <strong>{longDate(dueOn(form.issue_date, form.terms_days)) || "—"}</strong>
+            </p>
           </Field>
         </div>
         <InvoiceLines lines={lines} disabled={busy}

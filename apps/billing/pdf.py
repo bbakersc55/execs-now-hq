@@ -34,6 +34,7 @@ def context_for(invoice) -> dict:
         "number": invoice.number,
         "issue_date": long_date(invoice.issue_date),
         "due_date": long_date(invoice.due_date),
+        "payment_terms": _terms(invoice),
         "bill_to": invoice.bill_to or {},
         "lines": lines,
         "subtotal": money.dollars(invoice.subtotal_cents),
@@ -45,6 +46,12 @@ def context_for(invoice) -> dict:
         # Empty until P4's NMI phase; nothing prints for it while it is.
         "pay_url": invoice.pay_url,
     }
+
+
+def _terms(invoice) -> str:
+    from apps.billing import services      # services imports this module
+
+    return services.terms_label(services.terms_days_of(invoice))
 
 
 def render_html(invoice) -> str:
