@@ -360,13 +360,20 @@ def client_may_edit(request, task) -> bool:
 
 
 def client_may_delete(request, task) -> bool:
-    """FR-3.9a.3 — narrower than editing: only tasks they created themselves.
-    Deleting work a fractional assigned is not a client's call."""
+    """FR-3.9a.3 — narrower than editing: a task a client made, deleted by
+    whoever made it. Deleting work the practice made or assigned is not a
+    client's call, at any level.
+
+    P7-13, as Bryan ruled on 2026-10-13 and 10-14: the client owner may
+    delete a colleague's task as well, as they may a colleague's project. A
+    manager or a senior leader cancels it."""
     from apps.work.services import creator_of
 
     membership = _membership(request)
     if not client_may_edit(request, task) or not task.created_by_client:
         return False
+    if membership.role == Role.FCC:
+        return True
     creator = creator_of(task)
     return creator is not None and creator.pk == membership.user_id
 

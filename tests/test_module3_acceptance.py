@@ -379,7 +379,7 @@ def test_fr_3_9a_boundary_2_a_client_can_only_assign_within_their_company(
 
 
 @pytest.mark.django_db
-def test_fr_3_9a_boundary_3_a_client_deletes_only_what_they_created(
+def test_fr_3_9a_boundary_3_a_client_deletes_only_what_a_client_created(
     seeded_tenant, ff, api, client_company, portal
 ):
     staff = api.as_(ff)
@@ -394,8 +394,14 @@ def test_fr_3_9a_boundary_3_a_client_deletes_only_what_they_created(
     # Editable, but not deletable: the fractional assigned it.
     assert viewer.get(f"/api/tasks/{assigned['id']}/").json()["may_edit"] is True
     assert viewer.delete(f"/api/tasks/{assigned['id']}/").status_code == 403
-    assert viewer.delete(f"/api/tasks/{colleagues['id']}/").status_code == 403
     assert Task.all_objects.get(pk=assigned["id"]).deleted_at is None
+    # A colleague's own task: not another colleague's to delete...
+    owners = make(viewer, "/api/tasks/", title="The client owner's")
+    other = api.as_(portal["ecc"])
+    assert other.delete(f"/api/tasks/{owners['id']}/").status_code == 403
+    # ...and the client owner's, as a colleague's project is (Bryan, 2026-10-14,
+    # changing what this test held until then: 403 for the client owner too).
+    assert viewer.delete(f"/api/tasks/{colleagues['id']}/").status_code == 204
 
 
 @pytest.mark.django_db

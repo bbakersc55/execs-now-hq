@@ -300,11 +300,22 @@ def test_role_boundaries_a_manager_does_not_delete_a_colleagues_task(world):
     """P7-13: delete stays with whoever made the thing."""
     who, client = world["who"], world["api"].as_
     colleagues = world["tasks"]["ops, of a colleague"]
-    for level in ("manager", "leader", "leader_all", "owner"):
-        assert client(who[level]).delete(f"/api/tasks/{colleagues}/").status_code == 403
+    for level in ("manager", "leader", "leader_all"):
+        refused = client(who[level]).delete(f"/api/tasks/{colleagues}/")
+        assert refused.status_code == 403 and "client owner" in refused.json()["detail"]
         cancelled = patch(client(who[level]), f"/api/tasks/{colleagues}/",
                           {"status": "cancelled"})
         assert cancelled.status_code == 200, level
+    # The client owner may, as for a project; and never the practice's task.
+    assert client(who["owner"]).get(f"/api/tasks/{colleagues}/").json()["may_delete"] is True
+    practices = world["tasks"]["of the practice"]
+    assert client(who["owner"]).delete(f"/api/tasks/{practices}/").status_code == 403
+    members = world["tasks"]["ops, of the member"]          # made by the practice, assigned
+    assert client(who["owner"]).delete(f"/api/tasks/{members}/").status_code == 403
+    assert Task.all_objects.filter(pk__in=[practices, members],
+                                   deleted_at__isnull=True).count() == 2
+    alone = world["tasks"]["ops, in no project"]
+    assert client(who["owner"]).delete(f"/api/tasks/{alone}/").status_code == 204
     assert client(who["ops_colleague"]).delete(f"/api/tasks/{colleagues}/").status_code == 204
 
     # The same for a project (Bryan, 2026-10-13): its maker or the client

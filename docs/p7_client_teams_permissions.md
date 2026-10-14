@@ -328,9 +328,12 @@ migration is.
 
 **Recommended: nothing changes for anyone on the day of the release.**
 
-**One release-day change, by Bryan's ruling of 2026-10-13:** a client user
-who did not make a project, and is not the client owner, can no longer
-delete it; they can set it to cancelled. See "As built: phase 1", reading 3.
+**Two release-day changes, by Bryan's rulings of 2026-10-13 and 10-14:** a
+client user who did not make a project, and is not the client owner, can no
+longer delete it (they can set it to cancelled); and the client owner may
+delete a task a colleague made. See "As built: phase 1", reading 3. The
+second is in a commit after phase 2, so it goes out with whichever release
+carries that commit.
 
 Bryan's recommendation is that every existing portal user becomes a member
 of a default team with their current rights. Those two halves do not quite
@@ -490,9 +493,13 @@ is overruled, as it now reads.
    project is deleted by whoever made it or by the client owner; a manager
    or a senior leader cancels it (sets it to cancelled). **This is a
    release-day change, the only one in phase 1:** before, any client user of
-   the company could delete a project a colleague had made. For a task the
-   rule is as FR-3.9a.3 has it and its test pins it: only whoever made it,
-   the client owner not excepted.
+   the company could delete a project a colleague had made. **A task is the
+   same (Bryan, 2026-10-14):** whoever made it, or the client owner. Until
+   then FR-3.9a.3 kept it to its maker alone, the client owner not excepted,
+   and its test was changed on that word. A task the practice made or
+   assigned stays untouchable by any client user. So there are two
+   release-day changes: fewer people delete a project, and the client owner
+   may delete a colleague's task.
 4. **A senior leader of selected teams** hands a task to anyone on a team
    they lead; **of every team**, and the client owner, to anyone who takes
    work.

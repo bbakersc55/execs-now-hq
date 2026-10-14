@@ -470,7 +470,8 @@ class TaskViewSet(WorkViewSet):
         role = crm_perms.role_of(request)
         allowed = (role not in CLIENT_ROLES) or work_perms.client_may_delete(request, task)
         if not allowed:
-            return Response({"detail": "You can delete only tasks you created."}, status=403)
+            return Response({"detail": "Only the person who made this task, or your "
+                                       "client owner, can delete it."}, status=403)
         task.deleted_at = timezone.now()
         task.save(update_fields=["deleted_at", "updated_at"])
         AuditEvent.all_objects.create(

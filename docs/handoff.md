@@ -111,6 +111,12 @@ opened, and the readings Bryan ruled on (1, 2, 4 and 5 stand; 3 overruled).
   3. **One thing changes for clients on that release** (Bryan's ruling): a
      client's project is deleted only by whoever made it or by the client
      owner.
+  4. **Ask Bryan which commit goes.** He accepted phase 2 on 10/14 UTC (the
+     evening of 10/13 Mountain), and ruled that **the client owner may delete
+     a colleague's task**, which is a commit after phase 2. Step 2 was
+     written when phase 1 was to go alone. If he now wants phase 2 and that
+     ruling out with it, the push is `dev` and not `9645a16`; the dry run and
+     the three migrations are the same either way (phase 2 has none).
 
 ## The night of 2026-10-12: the call's backlog, a spec, and ten fixes
 
