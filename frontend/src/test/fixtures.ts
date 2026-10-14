@@ -148,6 +148,7 @@ export function aTask(overrides: Partial<Task> = {}): Task {
     contact: null,
     is_client_visible: true,
     created_by_client: false,
+    client_team: null, client_team_name: "",
     created_at: "2026-09-11T15:00:00Z",
     updated_at: "2026-09-11T15:00:00Z",
     may_edit: true,

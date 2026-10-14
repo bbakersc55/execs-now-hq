@@ -22,3 +22,24 @@ export function roleLabel(code: string | null | undefined): string {
 export const STAFF_ROLES = ["FF", "CF", "VA"] as const;
 /** The two portal roles a client user can hold. */
 export const PORTAL_ROLE_CODES = ["FCC", "ECC"] as const;
+
+/**
+ * P7: a client user's level on a team, and what they may create. The backend
+ * twin is apps/tenancy/roles.py; tests/test_vocabulary.py keeps them identical.
+ */
+export const LEVEL_LABEL: Record<string, string> = {
+  viewer: "Viewer",
+  member: "Member",
+  manager: "Manager",
+  leader: "Senior leadership",
+};
+/** Least first, which is the order the pickers list them in. */
+export const LEVEL_CODES = ["viewer", "member", "manager", "leader"] as const;
+
+export const MAY_CREATE_LABEL: Record<string, string> = {
+  nothing: "Nothing",
+  tasks: "Tasks only",
+  projects: "Projects and tasks",
+  goals: "Goals too",
+};
+export const MAY_CREATE_CODES = ["nothing", "tasks", "projects", "goals"] as const;

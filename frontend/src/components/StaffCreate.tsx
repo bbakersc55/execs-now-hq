@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { Company, Contact, Me, PortalPerson, Task, WorkParent, api } from "../lib/api";
 import { HOW_A_COMPANY_BECOMES_A_CLIENT } from "./ClientStatus";
+import { TeamField } from "./ClientTeams";
 import { Banner, Card, Field } from "./ui";
 
 const TENANT_ROLES = ["FF", "CF", "VA"];
@@ -169,7 +170,7 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     title: "", description: "", company: "", goal: "", project: "",
-    assignee: "", client_owner_contact: "", due_date: "", priority: 1,
+    assignee: "", client_owner_contact: "", due_date: "", priority: 1, team: "",
   });
   const [visible, setVisible] = useState(true);
   const [steps, setSteps] = useState<string[]>([]);
@@ -191,7 +192,8 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
 
   // Changing the company invalidates every choice scoped to the old one.
   const setCompany = (company: string) => {
-    setForm({ ...form, company, goal: "", project: "", assignee: "", client_owner_contact: "" });
+    setForm({ ...form, company, goal: "", project: "", assignee: "", client_owner_contact: "",
+              team: "" });
     setVisible(!!company);
   };
 
@@ -205,6 +207,8 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
         // with both is listed twice — once straight under the goal and again
         // under the project — while the goal's status counts it only once.
         ...(form.project ? { project: form.project } : form.goal ? { goal: form.goal } : {}),
+        // In a project a task is on the project's team: there is none to send.
+        ...(form.team && !form.project ? { client_team: form.team } : {}),
         ...(form.assignee ? { assignee: form.assignee } : {}),
         ...(form.client_owner_contact
           ? { client_owner_contact: form.client_owner_contact } : {}),
@@ -292,6 +296,18 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
               </select>
             )}
           </Field>
+          {chosenProject ? (
+            chosenProject.client_team_name && (
+              <Field label="Team">
+                <p className="small muted" style={{ margin: ".35rem 0" }}>
+                  {chosenProject.client_team_name}, the project's team.
+                </p>
+              </Field>
+            )
+          ) : (
+            <TeamField company={form.company} value={form.team} label="Team for the new task"
+              onChange={(team) => setForm({ ...form, team })} />
+          )}
         </div>
 
         <div className="row">
@@ -375,14 +391,14 @@ function NewParentForm({ kind, onClose }: {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     title: "", description: "", company: "", goal: "", client_owner_contact: "",
-    start_date: "", target_date: "",
+    start_date: "", target_date: "", team: "",
   });
   const [error, setError] = useState("");
   const lists = useScopedLists(form.company);
   const plural = kind === "goal" ? "goals" : "projects";
 
   const setCompany = (company: string) =>
-    setForm({ ...form, company, goal: "", client_owner_contact: "" });
+    setForm({ ...form, company, goal: "", client_owner_contact: "", team: "" });
 
   const create = useMutation({
     mutationFn: () => api.post<WorkParent>(`/api/${plural}/`, {
@@ -394,6 +410,7 @@ function NewParentForm({ kind, onClose }: {
       ...(form.target_date ? { target_date: form.target_date } : {}),
       ...(kind === "project" && form.goal ? { goal: form.goal } : {}),
       ...(kind === "project" && form.start_date ? { start_date: form.start_date } : {}),
+      ...(kind === "project" && form.team ? { client_team: form.team } : {}),
     }),
     onSuccess: (entity) => {
       qc.invalidateQueries({ queryKey: [plural] });
@@ -435,6 +452,11 @@ function NewParentForm({ kind, onClose }: {
           <ClientOwnerField value={form.client_owner_contact} company={form.company}
             contacts={lists.theirContacts}
             onChange={(v) => setForm({ ...form, client_owner_contact: v })} />
+          {kind === "project" && (
+            <TeamField company={form.company} value={form.team}
+              label="Team for the new project"
+              onChange={(team) => setForm({ ...form, team })} />
+          )}
           {kind === "project" && (
             <Field label="Start">
               <input aria-label="Start date for the new project" type="date"

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
+import { TeamFilter, useTeamFilter } from "../components/ClientTeams";
 import { CompanyFilter, INTERNAL, inCompany, useCompanyFilter } from "../components/CompanyFilter";
 import { PortalCreate } from "../components/PortalCreate";
 import { StaffCreate } from "../components/StaffCreate";
@@ -52,12 +53,14 @@ export function Tasks({ me }: { me: Me }) {
   const [assignee, setAssignee] = useState("");
   const [status, setStatus] = useState("");
   const { isTenant: staff, clients, company, choose } = useCompanyFilter(me, "tasks-company");
+  const teamFilter = useTeamFilter(staff ? company : "");
 
   const query = new URLSearchParams();
   // Filtered by the server, like the three beside it, so the list is never
   // longer than LIST_LIMIT of the wrong company's work.
   if (company) query.set("client_company", company);
   if (project) query.set("project", project);
+  if (teamFilter.team) query.set("client_team", teamFilter.team);
   if (assignee) query.set("assignee", assignee);
   if (status) query.set("status", status);
 
@@ -123,6 +126,10 @@ export function Tasks({ me }: { me: Me }) {
         {staff && (
           <CompanyFilter value={company} onChange={chooseCompany} companies={clients}
             asChip />
+        )}
+        {staff && (
+          <TeamFilter teams={teamFilter.teams} value={teamFilter.team}
+            onChange={teamFilter.choose} />
         )}
         <select aria-label="Filter by project" value={project}
           style={{ width: "auto", minWidth: 150 }}

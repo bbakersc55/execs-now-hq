@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Company, Me, PortalAccess, PortalCandidates, api } from "../lib/api";
 import { PORTAL_ROLE_CODES, roleLabel } from "../lib/roles";
 import { ActAsButton } from "./ActAs";
+import { PlacementFields, Placement, START, placementBody } from "./ClientTeams";
 import { Banner, Card, Empty, Field, when } from "./ui";
 
 /** Where someone stands with their invitation, in one line under their name. */
@@ -52,6 +53,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
   const qc = useQueryClient();
   const [term, setTerm] = useState("");
   const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [placed, setPlaced] = useState<Record<string, Placement>>({});
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
 
   const access = usePortalAccess(me, company);
@@ -70,10 +72,13 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
     qc.invalidateQueries({ queryKey: ["companies"] });
   };
   const grant = useMutation({
-    mutationFn: (body: { contact: string; role: string }) => api.post("/api/portal-access/", body),
+    mutationFn: (body: { contact: string; role: string } & Partial<Placement>) =>
+      api.post("/api/portal-access/", body),
     onSuccess: () => {
       setTerm("");
       setChosen({});
+      setPlaced({});
+      qc.invalidateQueries({ queryKey: ["client-teams", company.id] });
       setMessage({ kind: "ok", text: "Access granted and an invitation sent. Its link is valid for 7 days." });
       refresh();
     },
@@ -137,6 +142,11 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
             {a.people.map((p) => (
               <tr key={p.id}>
                 <td>{p.name}<div className="when">{p.email}</div>
+                  {/* P7-10: their level, where "Client team member" used to be all
+                      that was said. Set on the Teams card below. */}
+                  <div className="when">{p.level_label}
+                    {p.role !== "FCC" && p.teams.length > 0
+                      && ` · ${p.teams.map((t) => t.name).join(", ")}`}</div>
                   <div className="when">{invitationLine(p)}</div></td>
                 <td>
                   <select aria-label={`Role for ${p.name}`} value={p.role}
@@ -187,10 +197,13 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
         <ul className="small" style={{ listStyle: "none", paddingLeft: 0 }}>
           {waiting.map((p) => {
             const role = chosen[p.contact] ?? p.role;
+            const place = placed[p.contact] ?? START;
             return (
               <li key={p.contact} style={{ padding: ".2rem 0" }}>
                 <button className="ghost small" disabled={!!p.refusal || grant.isPending}
-                  title={p.refusal ?? ""} onClick={() => grant.mutate({ contact: p.contact, role })}>
+                  title={p.refusal ?? ""}
+                  onClick={() => grant.mutate({ contact: p.contact, role,
+                                                ...(role === "FCC" ? {} : placementBody(place)) })}>
                   Grant
                 </button>{" "}
                 {!p.refusal && (
@@ -198,6 +211,12 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                     onChange={(e) => setChosen({ ...chosen, [p.contact]: e.target.value })}>
                     {PORTAL_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
+                )}{" "}
+                {/* P7-9: the team, the level and what they may create, starting
+                    at Member. A client owner has everything, so is asked nothing. */}
+                {!p.refusal && role !== "FCC" && (
+                  <PlacementFields company={company.id} name={p.name} value={place}
+                    onChange={(next) => setPlaced({ ...placed, [p.contact]: next })} />
                 )}{" "}
                 {p.name} <span className="muted">{p.email || "no email"}</span>
                 {p.refusal && <div className="muted" style={{ paddingLeft: "3.6rem" }}>{p.refusal}</div>}
@@ -208,7 +227,8 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
       )}
       <p className="small muted">
         The company's primary contact is offered as its client owner and everyone else as a
-        client team member; choose otherwise before granting, or change a role above.
+        client team member, starting as a Member who may create projects and tasks; choose
+        otherwise before granting, or change it afterwards on the Teams card.
       </p>
     </Card>
   );

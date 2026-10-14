@@ -474,6 +474,10 @@ export interface Task {
   contact: string | null;
   is_client_visible: boolean;
   created_by_client: boolean;
+  /** P7: the client team it is on (its project's, for a task in one). Null
+   *  and "" for the practice's own work. */
+  client_team: string | null;
+  client_team_name: string;
   created_at: string;
   updated_at: string;
   may_edit: boolean;
@@ -507,6 +511,9 @@ export interface WorkParent {
   goal_title?: string;
   start_date?: string | null;
   created_by_client?: boolean;
+  /** P7, on a project only: the client team it is on. */
+  client_team?: string | null;
+  client_team_name?: string;
   /** Module 4B, on a goal only. The Work screen leads with the measure when
    *  there is one, exactly as the value report does (FR-4B.18). */
   measurable_kind?: MeasurableKind;
@@ -582,12 +589,38 @@ export interface PortalAccess {
   company: string; seat_count: number | null; seats_in_use: number;
   seats_available: number | null; may_manage: boolean;
   people: { id: string; role: string; email: string; name: string;
+            /** P7-10: "Client owner", or their highest level on any team. */
+            level_label: string;
+            teams: { team: string; name: string; level: string }[];
+            may_create: string; leads_all_teams: boolean;
             contact: string | null; invited_at: string | null;
             /** Whether they have ever signed in. */
             signed_in: boolean;
             /** When the invitation they still hold runs out (it may have), or
              *  null if they hold none. */
             invitation_expires_at: string | null }[];
+}
+
+/** P7: a client company's team, for a picker. */
+export interface ClientTeamName { id: string; name: string; is_default: boolean }
+
+/** P7 phase 2: the Teams card of one client company. */
+export interface ClientTeams {
+  company: string; may_manage: boolean;
+  teams: (ClientTeamName & {
+    projects: number; open_tasks: number;
+    people: { membership: string; name: string; level: string }[];
+  })[];
+  people: { id: string; name: string; email: string; role: string;
+            may_create: string; leads_all_teams: boolean;
+            teams: { team: string; level: string }[] }[];
+  /** Only on the answer to an archive: what moved, and where. */
+  archived?: { projects: number; tasks: number; people_moved: number; moved_to: string };
+}
+
+export interface ClientTeamArchivePreview {
+  projects: number; tasks: number; people: number; people_left_on_no_team: number;
+  moves_to: string;
 }
 
 /** Who may be granted portal access, and for anyone who may not, the reason. */

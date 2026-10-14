@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { TeamField } from "../components/ClientTeams";
 import { CommentsPanel } from "../components/CommentsPanel";
 import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
@@ -201,6 +202,7 @@ function EditDetails({ entity, kind, onClose, onSaved }: {
     target_date: entity.target_date ?? "",
     start_date: entity.start_date ?? "",
     client_owner_contact: entity.client_owner_contact.id ?? "",
+    team: entity.client_team ?? "",
   });
   const [error, setError] = useState("");
 
@@ -216,6 +218,9 @@ function EditDetails({ entity, kind, onClose, onSaved }: {
       description: form.description.trim(),
       target_date: form.target_date || null,
       ...(kind === "project" ? { start_date: form.start_date || null } : {}),
+      // Moving a project to another team moves its tasks with it.
+      ...(kind === "project" && form.team && form.team !== (entity.client_team ?? "")
+        ? { client_team: form.team } : {}),
       client_owner_contact: form.client_owner_contact || null,
     }),
     onSuccess: onSaved,
@@ -241,6 +246,10 @@ function EditDetails({ entity, kind, onClose, onSaved }: {
               <input aria-label="Start date" type="date" value={form.start_date}
                 onChange={(ev) => setForm({ ...form, start_date: ev.target.value })} />
             </Field>
+          )}
+          {kind === "project" && entity.client_company && (
+            <TeamField company={entity.client_company} value={form.team} label="Team"
+              onChange={(team) => setForm({ ...form, team })} />
           )}
           <Field label="Target date">
             <input aria-label="Target date" type="date" value={form.target_date}

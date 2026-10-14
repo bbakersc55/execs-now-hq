@@ -519,3 +519,90 @@ run twice, and undone; the dry run writing nothing.
 see); no level other than Manager has been held by a real person; the data
 step has run on the laptop's copy only as a dry run.
 
+---
+
+## As built: phase 2 (2026-10-13) — the practice sets teams up
+
+**Seen by the practice:** on a client company's page, under "Portal access",
+a **Teams** card; a **Team** field on a new or edited project and on a task
+that is in no project; a **filter by team** on Work and Tasks, beside the one
+by client; and three more choices on an invitation. **Seen by a client user:**
+nothing new on their screens, and whatever level they are set to from the
+moment it is set.
+
+**The Teams card** (`frontend/src/components/ClientTeams.tsx`,
+`/api/client-teams/`)
+
+- Each team: its name, what it holds (its projects, and its open tasks, those
+  inside its projects included), how many people are on it. Add a team,
+  rename one, archive one. The default team is renamed like any other and is
+  never archived.
+- **Archiving says what will move before it is confirmed:** the projects and
+  the tasks in no project go to the default team. Nothing is deleted.
+- Each person: their level on every team ("Not on it", Viewer, Member,
+  Manager, Senior leadership), "senior leadership of every team", and what
+  they may create (Nothing, Tasks only, Projects and tasks, Goals too). The
+  client owner's row says they have everything; only their may-create is set.
+- Every control saves as it is changed, and every change is in the audit
+  trail with who made it: `client_team.created`, `.renamed`, `.archived`,
+  `.level_set`, `.person_removed`, `portal.may_create_changed`,
+  `portal.leads_all_teams_changed`.
+
+**The Team field.** A project for a client company, and a task for one that
+is in no project, name a team; left alone, it is the default team. A task in
+a project shows its project's team and is not asked. Moving a project moves
+its tasks. The field is drawn only when the company has more than one team.
+
+**The invitation** (P7-9). Granting portal access asks for the team, the
+level and may-create, starting at the default team, Member, and projects and
+tasks. A client owner is asked nothing. Someone whose access is taken away
+and given back is where they were.
+
+**Level names** are in `apps/tenancy/roles.py` and `frontend/src/lib/roles.ts`
+(`LEVEL_LABEL`, `MAY_CREATE_LABEL`), held identical by `test_vocabulary.py`.
+On the practice's list of a company's portal users each person now reads by
+level and teams ("Manager · Operations, Sales") or "Client owner" (P7-10).
+
+**Readings made while building, each Bryan's to overrule**
+
+1. **Who sets teams up: the practice owner, and an associate on a company
+   they are assigned. Not an assistant.** P7-8 was answered "whoever may
+   manage that company's portal users today, an assistant included", and
+   those two halves do not agree: today an assistant cannot grant, change or
+   revoke portal access (matrix §9). The narrower reading is built. An
+   assistant reads the teams' names, so that they can file work on a team,
+   and sees no card. One word from Bryan opens it to them.
+2. **Archiving a team does not leave anyone on no team.** A person who was
+   on that team and no other joins the default team at the level they held.
+   The confirmation says how many.
+3. **P7-10 is done where the practice lists a company's portal users, and
+   not yet elsewhere.** The role picker still offers "Client owner" and
+   "Client team member", because it is choosing the role, not the level; the
+   portal's own lists and the "act as" picker are phases 3 and 4.
+4. **Taking someone off their last team is allowed,** and the card says what
+   it means: they see only work that is theirs.
+5. **A team's "open tasks"** are its tasks not done and not cancelled, in its
+   projects or in none.
+
+**Known, and waiting for phases 3 and 4**
+
+- The portal has not changed. A person set to Member or Viewer today is held
+  to it by the server: a task they may not change shows no edit controls
+  (the portal already reads `may_edit`), but "New task" and "New project"
+  are still offered to someone who may not create, and answer with a
+  sentence; and the assignee picker still offers every colleague, where the
+  server now refuses one who is not on the task's team, also with a sentence.
+- The client owner sets nothing up yet (phase 3).
+- No migration in phase 2.
+
+**Proven by tests:** `tests/test_client_teams_setup.py` (the card; make,
+rename, archive with its preview and what moves; a level, senior leadership
+and may-create each taking effect on the person's own routes at once; who may
+and who may not, by role, on every route; a team not found from another
+practice or reached through another company; the Team field and the filter;
+the invitation's choices, its refusals, and a restored sign-in; every audit
+verb) and `frontend/src/components/ClientTeams.test.tsx` (the card's
+controls and what each sends; the archive confirmation's words; the
+invitation's three choices; the Team field on the two forms; the filter on
+Work). **Not seen in a browser by anyone.**
+

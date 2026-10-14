@@ -42,7 +42,7 @@ describe("GrantPortalAccess", () => {
     // Preselected to the server's default for this person.
     expect(screen.getByLabelText("Portal role")).toHaveValue("ECC");
     await userEvent.click(screen.getByRole("button", { name: "Grant portal access" }));
-    expect(granted).toEqual({ contact: CONTACT, role: "ECC" });
+    expect(granted).toEqual({ contact: CONTACT, role: "ECC", level: "member", may_create: "projects" });
     expect(await screen.findByText(/Access granted and an invitation sent/)).toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe("GrantPortalAccess", () => {
     expect(select).toHaveValue("FCC");
     await userEvent.selectOptions(select, "ECC");
     await userEvent.click(screen.getByRole("button", { name: "Grant portal access" }));
-    expect(granted).toEqual({ contact: CONTACT, role: "ECC" });
+    expect(granted).toEqual({ contact: CONTACT, role: "ECC", level: "member", may_create: "projects" });
   });
 
   it("explains a refusal instead of offering a button that would fail", async () => {

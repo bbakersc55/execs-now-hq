@@ -12,7 +12,9 @@ const from_now = (days: number) => new Date(Date.now() + days * DAY).toISOString
 function person(over: Record<string, unknown> = {}) {
   return { id: "m1", role: "ECC", email: "priya@acme.invalid", name: "Priya Shah",
            contact: "c1", invited_at: "2026-10-01T15:00:00Z", signed_in: false,
-           invitation_expires_at: from_now(5), ...over };
+           invitation_expires_at: from_now(5), level_label: "Member",
+           teams: [{ team: "t0", name: "Everyone", level: "member" }],
+           may_create: "projects", leads_all_teams: false, ...over };
 }
 
 function open(people: unknown[], routes: Record<string, unknown> = {}) {

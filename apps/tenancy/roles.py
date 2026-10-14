@@ -21,3 +21,35 @@ UNKNOWN_ROLE = "Team member"
 
 def role_label(code: str | None) -> str:
     return ROLE_LABEL.get(code or "", UNKNOWN_ROLE)
+
+
+# P7: a client user's level on a team, and what they may create. Shown in
+# place of "Client team member" wherever a client user is listed (P7-10); the
+# client owner stays "Client owner". The codes are the schema's.
+LEVEL_LABEL = {
+    "viewer": "Viewer",
+    "member": "Member",
+    "manager": "Manager",
+    "leader": "Senior leadership",
+}
+#: Least first: the level shown for someone on several teams is the highest.
+LEVEL_ORDER = ("viewer", "member", "manager", "leader")
+ON_NO_TEAM = "On no team"
+
+MAY_CREATE_LABEL = {
+    "nothing": "Nothing",
+    "tasks": "Tasks only",
+    "projects": "Projects and tasks",
+    "goals": "Goals too",
+}
+
+
+def level_label(role: str | None, levels=(), leads_all_teams: bool = False) -> str:
+    """What a client user is called where they are listed: "Client owner", or
+    the highest level they hold on any team."""
+    if role == "FCC":
+        return ROLE_LABEL["FCC"]
+    if leads_all_teams:
+        return LEVEL_LABEL["leader"]
+    held = [level for level in LEVEL_ORDER if level in set(levels)]
+    return LEVEL_LABEL[held[-1]] if held else ON_NO_TEAM

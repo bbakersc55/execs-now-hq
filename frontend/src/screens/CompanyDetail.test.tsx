@@ -142,7 +142,7 @@ describe("the portal-access picker", () => {
     expect(screen.getByText("Ben Orji")).toBeInTheDocument();
 
     await userEvent.click(buttons[0]);
-    expect(granted).toEqual({ contact: "p1", role: "ECC" });
+    expect(granted).toEqual({ contact: "p1", role: "ECC", level: "member", may_create: "projects" });
     expect(await screen.findByText(/Access granted and an invitation sent/)).toBeInTheDocument();
   });
 
@@ -179,6 +179,9 @@ describe("the portal-access picker", () => {
       const body = url.startsWith("/api/portal-access/candidates/")
         ? candidates([aPerson()])
         : url.startsWith("/api/portal-access/") ? ACCESS
+        : url.startsWith("/api/client-teams/names/") ? []
+        : url.startsWith("/api/client-teams/")
+          ? { company: COMPANY_ID, may_manage: true, teams: [], people: [] }
         : url.startsWith(`/api/companies/${COMPANY_ID}/timeline`) ? []
         : url.startsWith(`/api/companies/${COMPANY_ID}/`) ? aCompany()
         : [];
@@ -235,9 +238,9 @@ describe("changing an existing portal user's role", () => {
 
   const PEOPLE = [
     { id: "m1", role: "FCC", email: "dana@adapt.invalid", name: "Dana Reyes",
-      contact: "p1", invited_at: null },
+      contact: "p1", invited_at: null, level_label: "Client owner", teams: [], may_create: "projects", leads_all_teams: false },
     { id: "m2", role: "ECC", email: "ben@adapt.invalid", name: "Ben Orji",
-      contact: "p2", invited_at: null },
+      contact: "p2", invited_at: null, level_label: "Member", teams: [], may_create: "projects", leads_all_teams: false },
   ];
 
   function withPatch(onPatch: (body: unknown) => void) {
@@ -314,7 +317,7 @@ describe("seat usage after a revoke", () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     let inUse = 2;
     const person = { id: "m2", role: "ECC", email: "ben@adapt.invalid", name: "Ben Orji",
-                     contact: "p2", invited_at: null };
+                     contact: "p2", invited_at: null, level_label: "Member", teams: [], may_create: "projects", leads_all_teams: false };
     renderCompany({
       [`/api/companies/${COMPANY_ID}/timeline/`]: [],
       // The company record is deliberately stale: it must not be what the header reads.

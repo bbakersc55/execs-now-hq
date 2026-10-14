@@ -22,6 +22,7 @@ router.register("client-activity", views.ClientActivityView, basename="client-ac
 # on 2026-09-16: the feed is the practice's, and a client role is refused.
 router.register("activity", views.ActivityView, basename="activity")
 router.register("portal-access", views.PortalAccessViewSet, basename="portal-access")
+router.register("client-teams", views.ClientTeamViewSet, basename="client-team")
 router.register("portal-people", views.AssignablePeopleView, basename="portal-people")
 
 # --- Module 4B — the client value report ---

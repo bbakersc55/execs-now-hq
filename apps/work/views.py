@@ -87,6 +87,23 @@ def _team_asked_for(request):
     return asked if asked and _is_uuid(str(asked)) else None
 
 
+def _team_filter(request, team_id):
+    """What "on this team" means for a project, or a task in no project: the
+    team is its own, or it has none and the team is its company's default.
+    None when the id is not a team's; a team out of reach matches nothing."""
+    from apps.work.models import ClientTeam
+
+    if not _is_uuid(str(team_id)):
+        return None
+    team = ClientTeam.objects.filter(pk=team_id).first()
+    if team is None:
+        return Q(pk__in=[])
+    on = Q(client_team_id=team.pk)
+    if team.is_default and team.archived_at is None:
+        on |= Q(client_team__isnull=True, client_company_id=team.client_company_id)
+    return on
+
+
 def _why_not(request, task) -> str:
     """Why a task cannot be changed: it is the practice's (FR-3.9a), or it is
     a colleague's on a team this person does not manage (P7)."""
@@ -179,6 +196,10 @@ class GoalViewSet(WorkViewSet):
             if not _is_uuid(company):
                 return Response({"detail": "client_company must be an id."}, status=400)
             qs = qs.filter(client_company_id=company)
+        if self.kind == "project" and (team := request.query_params.get("client_team")):
+            if (found := _team_filter(request, team)) is None:
+                return Response({"detail": "client_team must be a team's id."}, status=400)
+            qs = qs.filter(found)
         if self.kind != "goal":
             return Response([self._represent(e)
                              for e in qs.order_by("-created_at")[:LIST_LIMIT]])
@@ -295,7 +316,7 @@ class ProjectViewSet(GoalViewSet):
     scoper = staticmethod(work_perms.project_queryset_for)
     kind = "project"
     write_serializer = work_serializers.ProjectSerializer
-    fields = PARENT_FIELDS + ["goal", "start_date"]
+    fields = PARENT_FIELDS + ["goal", "start_date", "client_team"]
 
     def _staff_only(self, request):
         return None      # clients may create and edit their own projects
@@ -321,9 +342,9 @@ class ProjectViewSet(GoalViewSet):
                     request, wanted=_team_asked_for(request))
             except work_perms.NotTheirTeam as exc:
                 return Response({"detail": str(exc)}, status=403)
-        elif data.get("client_company") is not None:
-            # P7 §1.2: the practice's project for a client starts on the
-            # company's default team. Phase 2 puts the choice on the form.
+        elif data.get("client_company") is not None and data.get("client_team") is None:
+            # P7 §1.2: the practice's project for a client is on the team
+            # the form named, and on the company's default team otherwise.
             data["client_team"] = teams.default_team(request.tenant.pk,
                                                      data["client_company"].pk)
         project = Project.objects.create(
@@ -385,6 +406,13 @@ class TaskViewSet(WorkViewSet):
             qs = qs.filter(status__in=status_filter.split(","))
         if request.query_params.get("unfiled") == "1":
             qs = qs.filter(project__isnull=True, goal__isnull=True)
+        if team := request.query_params.get("client_team"):
+            if (found := _team_filter(request, team)) is None:
+                return Response({"detail": "client_team must be a team's id."}, status=400)
+            # A task in a project is on its project's team; one in none, its own.
+            qs = qs.filter(
+                Q(project__in=Project.objects.filter(found, deleted_at__isnull=True))
+                | (Q(project__isnull=True) & found))
         return Response([self._represent(t) for t in
                          qs.order_by("-created_at")[:LIST_LIMIT]])
 
@@ -1262,10 +1290,20 @@ class PortalAccessViewSet(WorkViewSet):
         ).first() if _is_uuid(request.data.get("contact") or "") else None
         if contact is None:
             raise Http404
+        team = None
+        if request.data.get("team"):
+            # A team of that person's own company, or it is not there at all.
+            team = teams.team_of_company(contact.company, request.data.get("team")) \
+                if contact.company is not None else None
+            if team is None:
+                return Response({"detail": "That team is not one of this company's."},
+                                status=400)
         try:
             membership = portal.grant(tenant=request.tenant, contact=contact,
                                       role=request.data.get("role") or None,
-                                      actor=request.user)
+                                      actor=request.user, team=team,
+                                      level=request.data.get("level") or None,
+                                      may_create=request.data.get("may_create") or None)
         except portal.SeatsExhausted as exc:
             return Response({"detail": str(exc)}, status=409)
         except portal.PortalAccessRefused as exc:
@@ -1316,6 +1354,161 @@ class PortalAccessViewSet(WorkViewSet):
         if not self._may_manage(request):
             return Response({"detail": "Assistants don't revoke portal access."}, status=403)
         return Response(portal.revoke(self._live_access(request, pk), actor=request.user))
+
+
+class ClientTeamViewSet(WorkViewSet):
+    """P7 phase 2 — a client company's teams, set up by the practice.
+
+    GET   /api/client-teams/?company=        the Teams card
+    GET   /api/client-teams/names/?company=  the teams, for a picker
+    POST  /api/client-teams/                 {company, name}
+    PATCH /api/client-teams/<id>/            {name}
+    GET   /api/client-teams/<id>/archive/    what archiving would move
+    POST  /api/client-teams/<id>/archive/    archive it
+    POST  /api/client-teams/<id>/level/      {membership, level}; level null takes them off
+    POST  /api/client-teams/person/          {membership, may_create?, leads_all_teams?}
+
+    **Who:** whoever manages that company's portal users (matrix §9): the
+    practice owner, or an associate on a company they are assigned. An
+    assistant reads the names, to file work on a team, and changes nothing.
+    A client user reaches none of it until phase 3 gives the client owner
+    their own card. Out of scope is not found.
+    """
+
+    model = None
+
+    def get_queryset(self):
+        from apps.work.models import ClientTeam
+
+        return ClientTeam.objects.none()
+
+    def _may_manage(self, request):
+        return crm_perms.role_of(request) in (crm_perms.Role.FF, crm_perms.Role.CF)
+
+    def _refuse_unless_manager(self, request):
+        if crm_perms.role_of(request) not in crm_perms.TENANT_ROLES:
+            raise Http404
+        if not self._may_manage(request):
+            return Response({"detail": "Assistants don't set up a client's teams."},
+                            status=403)
+        return None
+
+    def _company(self, request, company_id):
+        from apps.crm.models import Company
+
+        if crm_perms.role_of(request) not in crm_perms.TENANT_ROLES \
+                or not _is_uuid(str(company_id or "")):
+            raise Http404
+        company = crm_perms.company_queryset_for(
+            request, Company.objects.filter(pk=company_id, deleted_at__isnull=True)).first()
+        if company is None:
+            raise Http404
+        return company
+
+    def _team(self, request, pk):
+        from apps.work.models import ClientTeam
+
+        team = ClientTeam.objects.filter(pk=pk, archived_at__isnull=True).select_related(
+            "client_company").first() if _is_uuid(str(pk or "")) else None
+        if team is None:
+            raise Http404
+        self._company(request, team.client_company_id)      # an associate: assigned only
+        return team
+
+    def _person(self, company, membership_id):
+        from apps.tenancy.models import Membership
+
+        person = Membership.objects.filter(
+            pk=membership_id, role__in=CLIENT_ROLES, revoked_at__isnull=True,
+            client_company=company).select_related("user").first() \
+            if _is_uuid(str(membership_id or "")) else None
+        if person is None:
+            raise Http404
+        return person
+
+    def _card(self, request, company, status=200):
+        return Response({**teams.overview(company), "may_manage": self._may_manage(request)},
+                        status=status)
+
+    def list(self, request):
+        company = self._company(request, request.query_params.get("company"))
+        if (refused := self._refuse_unless_manager(request)) is not None:
+            return refused
+        return self._card(request, company)
+
+    @action(detail=False, methods=["get"])
+    def names(self, request):
+        company = self._company(request, request.query_params.get("company"))
+        return Response(teams.names_for(company))
+
+    def create(self, request):
+        company = self._company(request, request.data.get("company"))
+        if (refused := self._refuse_unless_manager(request)) is not None:
+            return refused
+        try:
+            teams.create_team(company, request.data.get("name"), actor=request.user)
+        except teams.TeamError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return self._card(request, company, status=201)
+
+    def partial_update(self, request, pk=None):
+        team = self._team(request, pk)
+        if (refused := self._refuse_unless_manager(request)) is not None:
+            return refused
+        try:
+            teams.rename_team(team, request.data.get("name"), actor=request.user)
+        except teams.TeamError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return self._card(request, team.client_company)
+
+    @action(detail=True, methods=["get", "post"])
+    def archive(self, request, pk=None):
+        team = self._team(request, pk)
+        if (refused := self._refuse_unless_manager(request)) is not None:
+            return refused
+        try:
+            if request.method == "GET":
+                preview = teams.archive_preview(team)
+                preview.pop("_only_here")
+                return Response(preview)
+            moved = teams.archive_team(team, actor=request.user)
+        except teams.TeamError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({**teams.overview(team.client_company),
+                         "may_manage": True, "archived": moved})
+
+    @action(detail=True, methods=["post"])
+    def level(self, request, pk=None):
+        team = self._team(request, pk)
+        if (refused := self._refuse_unless_manager(request)) is not None:
+            return refused
+        person = self._person(team.client_company, request.data.get("membership"))
+        try:
+            teams.set_level(team, person, request.data.get("level"), actor=request.user)
+        except teams.TeamError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return self._card(request, team.client_company)
+
+    @action(detail=False, methods=["post"])
+    def person(self, request):
+        from apps.tenancy.models import Membership
+
+        found = Membership.objects.filter(
+            pk=request.data.get("membership"), role__in=CLIENT_ROLES,
+            revoked_at__isnull=True).select_related("client_company").first() \
+            if _is_uuid(str(request.data.get("membership") or "")) else None
+        if found is None:
+            raise Http404
+        company = self._company(request, found.client_company_id)
+        if (refused := self._refuse_unless_manager(request)) is not None:
+            return refused
+        try:
+            teams.set_person(found, actor=request.user,
+                             may_create=request.data.get("may_create"),
+                             leads_all_teams=request.data.get("leads_all_teams"))
+        except teams.TeamError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return self._card(request, company)
 
 
 class AssignablePeopleView(viewsets.GenericViewSet):

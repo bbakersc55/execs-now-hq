@@ -77,6 +77,14 @@ opened, and the readings Bryan ruled on (1, 2, 4 and 5 stand; 3 overruled).
 - **The model is now told to write no em dashes** in the four drafting
   prompts (rows, consolidate, mirror, pros and cons). The filter stays. No
   real call has been made with the new prompts.
+- **P7 phase 2 is built on `dev` and not released** (the commit after
+  `9645a16`): the practice's Teams card on a client company's page, the Team
+  field on projects and tasks with a filter by team, and the invitation's
+  team, level and may-create. No migration. The spec's "As built: phase 2"
+  has five readings for Bryan, the first being that **an assistant does not
+  set teams up** (P7-8's two halves disagree). **Not seen in a browser.**
+  Phases 3 (the client owner's card) and 4 (the portal for members, managers
+  and senior leaders) are not started.
 - **The production dry run is owed before phase 1 is released,** and Bryan's
   yes on it before "release" (the data step writes). The command arrives
   with the release, so before it the same plan is read from production by a

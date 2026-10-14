@@ -97,6 +97,7 @@ def represent_task(task: Task, *, request) -> dict:
         "contact": str(task.contact_id) if task.contact_id else None,
         "is_client_visible": task.is_client_visible,
         "created_by_client": task.created_by_client,
+        **_team(task, request),
         "created_at": task.created_at.isoformat(),
         "updated_at": task.updated_at.isoformat(),
         # What this requester may do, so the UI need not re-derive FR-3.9a.
@@ -105,6 +106,72 @@ def represent_task(task: Task, *, request) -> dict:
                        or work_perms.client_may_delete(request, task)),
         "may_set_visibility": crm_perms.role_of(request) not in CLIENT_ROLES,
     }
+
+
+def _team_names(request) -> dict:
+    """`{team id: name}` and each company's default team, read once a request
+    (P7). A thing with no team of its own is on its company's default one."""
+    held = getattr(request, "_client_team_names", None)
+    if held is None:
+        from apps.work.models import ClientTeam
+
+        held = {"name": {}, "default": {}}
+        for pk, name, company, is_default in ClientTeam.all_objects.filter(
+                tenant_id=request.tenant.pk, archived_at__isnull=True).values_list(
+                "pk", "name", "client_company_id", "is_default"):
+            held["name"][pk] = name
+            if is_default:
+                held["default"][company] = pk
+        try:
+            request._client_team_names = held
+        except AttributeError:
+            pass
+    return held
+
+
+def _team(entity, request) -> dict:
+    """The team a project or a task is on: its own, its project's for a task
+    in one (§1.2), and the company's default when it was never given one.
+    Nothing for the practice's own work."""
+    own = entity
+    if isinstance(entity, Task) and entity.project_id:
+        own = entity.project
+    if entity.client_company_id is None:
+        return {"client_team": None, "client_team_name": ""}
+    names = _team_names(request)
+    team = own.client_team_id if own.client_team_id in names["name"] \
+        else names["default"].get(entity.client_company_id)
+    return {"client_team": str(team) if team else None,
+            "client_team_name": names["name"].get(team, "")}
+
+
+def _staff_team(serializer, attrs, company, *, follows_project=False):
+    """The `client_team` a member of the practice named for a client's work
+    (P7 §4.1): a live team of that company, or it is refused in words. A
+    client user's own new work is placed by the view (`client_team_for_new`),
+    and a task in a project follows the project, so for both it is dropped."""
+    from apps.work import teams
+
+    request = serializer.context["request"]
+    if work_perms.is_client(request) or follows_project:
+        attrs.pop("client_team", None)
+        return
+    moved = serializer.instance is not None and "client_company" in attrs \
+        and getattr(serializer.instance, "client_company_id", None) != getattr(
+            company, "pk", None)
+    if "client_team" not in attrs and not moved:
+        return
+    wanted = attrs.get("client_team")
+    if company is None:
+        attrs["client_team"] = None
+    elif wanted is None:
+        attrs["client_team"] = teams.default_team(company.tenant_id, company.pk)
+    else:
+        team = teams.team_of_company(company, wanted)
+        if team is None:
+            raise serializers.ValidationError(
+                {"client_team": f"That team is not one of {company.name}'s."})
+        attrs["client_team"] = team
 
 
 def represent_parent(entity, *, request, kind: str) -> dict:
@@ -148,6 +215,7 @@ def represent_parent(entity, *, request, kind: str) -> dict:
             "goal_title": entity.goal.title if entity.goal_id else "",
             "start_date": entity.start_date.isoformat() if entity.start_date else None,
             "created_by_client": entity.created_by_client,
+            **_team(entity, request),
         })
     return data
 
@@ -253,6 +321,7 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
 class ProjectSerializer(GoalSerializer):
     goal = serializers.UUIDField(required=False, allow_null=True)
     start_date = serializers.DateField(required=False, allow_null=True)
+    client_team = serializers.UUIDField(required=False, allow_null=True)
 
     def validate_goal(self, value):
         # A client may file a project under a goal (owner, 2026-10-07), and the
@@ -264,6 +333,9 @@ class ProjectSerializer(GoalSerializer):
     def validate(self, attrs):
         if self.instance is None and not (attrs.get("title") or "").strip():
             raise serializers.ValidationError({"title": "A project needs a title."})
+        company = attrs["client_company"] if "client_company" in attrs \
+            else getattr(self.instance, "client_company", None)
+        _staff_team(self, attrs, company)
         return attrs
 
 
@@ -279,6 +351,7 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
     assignee = serializers.UUIDField(required=False, allow_null=True)
     client_owner_contact = serializers.UUIDField(required=False, allow_null=True)
     is_client_visible = serializers.BooleanField(required=False)
+    client_team = serializers.UUIDField(required=False, allow_null=True)
     # FR-3.16 — prompted, never forced. Not a model field.
     client_facing_line = serializers.CharField(required=False, allow_blank=True)
 
@@ -330,6 +403,9 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
                    else getattr(self.instance, "project", None))
         if goal is not None and project is not None:
             raise serializers.ValidationError({"project": self.ONE_PARENT})
+        company = attrs["client_company"] if "client_company" in attrs \
+            else getattr(self.instance, "client_company", None)
+        _staff_team(self, attrs, company, follows_project=project is not None)
         # P7: a client hands a task to someone on the task's own team. The
         # team of a new task in no project is settled after this, by the
         # view; there the check is only that the colleague takes work at all.
@@ -417,9 +493,25 @@ def represent_digest(digest, *, full=False) -> dict:
 
 
 def represent_access(membership) -> dict:
+    from apps.tenancy.roles import level_label
+    from apps.work.models import ClientTeamMember
+
+    on = list(ClientTeamMember.all_objects.filter(
+        membership=membership, team__archived_at__isnull=True,
+        team__client_company_id=membership.client_company_id,
+    ).order_by("-team__is_default", "team__name").values_list(
+        "team_id", "team__name", "level"))
     return {
         "id": str(membership.pk),
         "role": membership.role,
+        # P7-10: what they are called where they are listed, in place of
+        # "Client team member": their level, or "Client owner".
+        "level_label": level_label(membership.role, [level for _t, _n, level in on],
+                                   membership.leads_all_teams),
+        "teams": [{"team": str(team), "name": name, "level": level}
+                  for team, name, level in on],
+        "may_create": membership.may_create,
+        "leads_all_teams": membership.leads_all_teams,
         "email": membership.user.email,
         "name": membership.user.full_name or membership.user.email,
         "contact": str(membership.contact_id) if membership.contact_id else None,

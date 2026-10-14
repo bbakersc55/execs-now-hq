@@ -6,11 +6,12 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   CompanyFilter, CompanyGroup, groupByCompany, inCompany, useCompanyFilter,
 } from "../components/CompanyFilter";
+import { TeamFilter, useTeamFilter } from "../components/ClientTeams";
 import { PortalCreate } from "../components/PortalCreate";
 import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Avatar, PageHead, useRowLink } from "../components/shell";
-import { Banner, Card, Empty, when } from "../components/ui";
+import { Banner, Card, Empty, Field, when } from "../components/ui";
 import {
   GoalOrderProposal, GoalProposal, Me, Task, TaskUpdateRow, WorkParent, api,
 } from "../lib/api";
@@ -29,6 +30,11 @@ export function Work({ me }: { me: Me }) {
   const rowLink = useRowLink();
   const isTenant = !!me.role && TENANT.includes(me.role);
   const { clients, company, choose } = useCompanyFilter(me, "work-company");
+  // P7: with one client chosen, the work can be narrowed to one of its teams.
+  // A goal is the company's and is on no team, so goals are never narrowed.
+  const teamFilter = useTeamFilter(isTenant ? company : "");
+  const onTeam = <T extends { client_team?: string | null }>(rows: T[]) =>
+    teamFilter.team ? rows.filter((r) => r.client_team === teamFilter.team) : rows;
 
   const goals = useQuery<WorkParent[]>({
     queryKey: ["goals"], queryFn: () => api.get<WorkParent[]>("/api/goals/"),
@@ -56,7 +62,7 @@ export function Work({ me }: { me: Me }) {
     enabled: isTenant,
   });
   const practice = usePracticeName();
-  const orphanProjects = (projects.data ?? []).filter((p) => !p.goal);
+  const orphanProjects = onTeam(projects.data ?? []).filter((p) => !p.goal);
   const [collapsed, toggle] = useCollapsed(me);
 
   // Narrowing and grouping are the same question asked twice: which company's
@@ -85,6 +91,12 @@ export function Work({ me }: { me: Me }) {
         <Card>
           <div className="row">
             <CompanyFilter value={company} onChange={choose} companies={clients} />
+            {teamFilter.teams.length > 1 && (
+              <Field label="Team">
+                <TeamFilter teams={teamFilter.teams} value={teamFilter.team}
+                  onChange={teamFilter.choose} />
+              </Field>
+            )}
           </div>
         </Card>
       )}
@@ -118,9 +130,9 @@ export function Work({ me }: { me: Me }) {
           empty={company ? "No goals for this client yet." : "No goals yet."}
           render={(g) => (
             <GoalBranch key={g.id} goal={g}
-              projects={(projects.data ?? []).filter((p) => p.goal === g.id)}
-              tasks={(tasks.data ?? []).filter((t) => t.goal === g.id && !t.project)}
-              allTasks={tasks.data ?? []}
+              projects={onTeam(projects.data ?? []).filter((p) => p.goal === g.id)}
+              tasks={onTeam(tasks.data ?? []).filter((t) => t.goal === g.id && !t.project)}
+              allTasks={onTeam(tasks.data ?? [])}
               collapsed={collapsed.includes(g.id)}
               onToggle={() => toggle(g.id)} />
           )} />
@@ -141,7 +153,7 @@ export function Work({ me }: { me: Me }) {
       </Card>
 
       <Card title="Tasks filed under nothing">
-        <Grouped rows={mine(unfiled.data ?? [])} headings={isTenant} empty="None."
+        <Grouped rows={mine(onTeam(unfiled.data ?? []))} headings={isTenant} empty="None."
           render={(t) => (
             <li key={t.id} {...rowLink(`/tasks/${t.id}`)}>
               <Link className="rowname" to={`/tasks/${t.id}`}>{t.title}</Link>{" "}

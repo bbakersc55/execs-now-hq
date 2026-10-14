@@ -72,6 +72,27 @@ def test_the_frontend_uses_the_same_names():
     assert f'UNKNOWN_ROLE = "{UNKNOWN_ROLE}"' in source
 
 
+def test_the_level_and_may_create_names_are_the_same_everywhere():
+    """P7: one list each, the model's choices and the frontend's reading it."""
+    from apps.tenancy.models import MayCreate
+    from apps.tenancy.roles import (
+        LEVEL_LABEL, LEVEL_ORDER, MAY_CREATE_LABEL, ON_NO_TEAM, level_label,
+    )
+    from apps.work.models import ClientTeamMember
+
+    assert dict(ClientTeamMember.Level.choices) == LEVEL_LABEL
+    assert set(LEVEL_ORDER) == set(LEVEL_LABEL)
+    assert dict(MayCreate.choices) == MAY_CREATE_LABEL
+    source = (ROOT / "frontend/src/lib/roles.ts").read_text()
+    for name, labels in (("LEVEL_LABEL", LEVEL_LABEL), ("MAY_CREATE_LABEL", MAY_CREATE_LABEL)):
+        block = re.search(name + r"[^{]*\{(.*?)\};", source, re.S).group(1)
+        assert dict(re.findall(r'(\w+):\s*"([^"]+)"', block)) == labels, name
+    assert level_label("FCC", ["member"]) == "Client owner"
+    assert level_label("ECC", ["member", "manager", "viewer"]) == "Manager"
+    assert level_label("ECC", ["viewer"], leads_all_teams=True) == "Senior leadership"
+    assert level_label("ECC", []) == ON_NO_TEAM
+
+
 def test_me_and_the_staff_list_carry_the_name(api, ff):
     me = api.as_(ff).get("/api/me").json()
     assert me["role"] == "FF" and me["role_label"] == "Practice owner"

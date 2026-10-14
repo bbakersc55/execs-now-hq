@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
+import { TeamField } from "../components/ClientTeams";
 import { CommentsPanel } from "../components/CommentsPanel";
 import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { StatusChange } from "../components/StatusChange";
@@ -302,8 +303,16 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
               <option value={3}>Urgent</option>
             </select>
           </Field>
+          {/* P7: a client's task in no project is on a team, which the
+              practice may change here. In a project it is the project's. */}
+          {isTenant && t.client_company && !t.project && (
+            <TeamField company={t.client_company} value={t.client_team ?? ""}
+              label="Team" onChange={(team) => change({ client_team: team })} />
+          )}
         </div>
         <p className="small muted">
+          {t.client_team_name && <>Team: {t.client_team_name}
+            {t.project ? " (the project's)" : ""} · </>}
           Assignee: {t.assignee.name || "unassigned"} · Owner: {t.owner.name || "—"} ·
           Client owner: {t.client_owner_contact.name || "—"} · updated {when(t.updated_at)}
         </p>

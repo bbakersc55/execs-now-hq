@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { Me, PortalAccess, PortalCandidates, api } from "../lib/api";
 import { ActAsButton } from "./ActAs";
+import { PlacementFields, Placement, START, placementBody } from "./ClientTeams";
 import { PORTAL_ROLES } from "./PortalAccessCard";
 import { Banner, Card } from "./ui";
 
@@ -20,6 +21,7 @@ export function GrantPortalAccess({ me, contactId }: { me: Me; contactId: string
   const qc = useQueryClient();
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
+  const [place, setPlace] = useState<Placement>(START);
   const mayManage = !!me.role && ["FF", "CF"].includes(me.role);
 
   const candidate = useQuery<PortalCandidates>({
@@ -42,10 +44,13 @@ export function GrantPortalAccess({ me, contactId }: { me: Me; contactId: string
   const signsIn = (access.data?.people ?? []).find((p) => p.contact === contactId);
 
   const grant = useMutation({
-    mutationFn: (role: string) => api.post("/api/portal-access/", { contact: contactId, role }),
+    mutationFn: (role: string) => api.post("/api/portal-access/", {
+      contact: contactId, role, ...(role === "FCC" ? {} : placementBody(place)) }),
     onSuccess: () => {
       setMessage({ kind: "ok", text: "Access granted and an invitation sent. Its link is valid for 7 days." });
       setChosen(null);
+      setPlace(START);
+      qc.invalidateQueries({ queryKey: ["client-teams"] });
       qc.invalidateQueries({ queryKey: ["portal-candidate", contactId] });
       qc.invalidateQueries({ queryKey: ["portal-access"] });
     },
@@ -85,6 +90,12 @@ export function GrantPortalAccess({ me, contactId }: { me: Me; contactId: string
             {seat_count !== null
               && ` · ${seats_in_use} of ${seat_count} seat${seat_count === 1 ? "" : "s"} in use`}
           </p>
+          {role !== "FCC" && company && (
+            <p className="small">
+              <PlacementFields company={company} name={person.name} value={place}
+                onChange={setPlace} />
+            </p>
+          )}
           <button className="primary" disabled={grant.isPending}
             onClick={() => grant.mutate(role)}>Grant portal access</button>
           <p className="small muted">

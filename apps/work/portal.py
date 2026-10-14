@@ -79,10 +79,19 @@ def access_rows(company):
 
 
 @transaction.atomic
-def grant(*, tenant, contact, role=None, actor):
-    """Create the login, consume a seat, send the invitation."""
+def grant(*, tenant, contact, role=None, actor, team=None, level=None, may_create=None):
+    """Create the login, consume a seat, send the invitation.
+
+    P7-9: a person invited now starts on the company's default team as a
+    Member, able to create projects and tasks, unless the form says
+    otherwise. `team` is a live team of the contact's company; `level` and
+    `may_create` are the codes. Someone whose access is being given back
+    keeps the teams and the settings they had, unless one is named here."""
     from apps.accounts.models import MagicLinkPurpose, MagicLinkToken, User
     from apps.accounts.views import _send_magic_link
+
+    from apps.tenancy.models import MayCreate
+    from apps.work import teams
 
     refused = refusal_for(contact, tenant=tenant, role=role)
     if refused is not None:
@@ -91,6 +100,14 @@ def grant(*, tenant, contact, role=None, actor):
     company = contact.company
     role = role or default_role_for(contact)
     existing = Membership.all_objects.filter(tenant=tenant, contact=contact).first()
+    if level not in (None, "") and level not in teams.Level.values:
+        raise PortalAccessRefused("The level is viewer, member, manager or senior "
+                                  "leadership.")
+    if may_create not in (None, "") and may_create not in MayCreate.values:
+        raise PortalAccessRefused("May create is nothing, tasks, projects or goals.")
+    if team is not None and (team.client_company_id != company.pk
+                             or team.archived_at is not None):
+        raise PortalAccessRefused(f"That team is not one of {company.name}'s.")
 
     # FR-3.33e — counted from live memberships, and named in the refusal.
     seats = seat_refusal(company)
@@ -117,13 +134,35 @@ def grant(*, tenant, contact, role=None, actor):
             contact=contact, invited_by=actor, invited_at=timezone.now(),
         )
 
+    # Saving the membership has put a new person on the default team
+    # (apps.work.signals). What was chosen, or P7-9's start, replaces that.
+    placed = None
+    if existing is None or team is not None or level:
+        placed = team or teams.default_team(tenant.pk, company.pk)
+        if existing is None and team is not None and not placed.is_default:
+            teams.ClientTeamMember.all_objects.filter(
+                membership=membership, team__is_default=True).delete()
+        current = teams.ClientTeamMember.all_objects.filter(
+            team=placed, membership=membership).first()
+        chosen = level or (teams.Level.MEMBER if existing is None and role != Role.FCC
+                           else current.level if current else teams.UNCHOSEN_LEVEL)
+        teams.place(placed, membership, chosen)
+    if may_create:
+        membership.may_create = may_create
+        membership.save(update_fields=["may_create", "updated_at"])
+
     _, raw = MagicLinkToken.issue(tenant=tenant, user=user, purpose=MagicLinkPurpose.INVITE)
     _send_magic_link(membership, raw, invitation=True)
+    on = teams.ClientTeamMember.all_objects.filter(
+        membership=membership, team=placed).first() if placed is not None else None
     AuditEvent.all_objects.create(
         tenant=tenant, actor=actor, verb="portal.access_granted",
         target_type="membership", target_id=membership.pk,
         payload={"contact": str(contact.pk), "role": role, "company": str(company.pk),
-                 "seats_in_use": company.seats_in_use},
+                 "seats_in_use": company.seats_in_use,
+                 "team": str(placed.pk) if placed is not None else None,
+                 "level": on.level if on is not None else None,
+                 "may_create": membership.may_create},
     )
     return membership
 

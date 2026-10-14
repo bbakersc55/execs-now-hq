@@ -103,7 +103,7 @@ describe("starting to act as someone", () => {
     const access = {
       company: COMPANY_ID, seat_count: 3, seats_in_use: 1, seats_available: 2, may_manage: true,
       people: [{ id: "m2", role: "ECC", email: "priya@acme.invalid", name: "Priya Shah",
-                 contact: "p2", invited_at: null }],
+                 contact: "p2", invited_at: null, level_label: "Member", teams: [], may_create: "projects", leads_all_teams: false }],
     };
     const routes = {
       "/api/portal-access/candidates/": { company: COMPANY_ID, company_name: "Acme",
@@ -160,7 +160,7 @@ describe("the entry point on a contact page", () => {
   const ACCESS = {
     company: COMPANY_ID, seat_count: 3, seats_in_use: 1, seats_available: 2, may_manage: true,
     people: [{ id: "m2", role: "ECC", email: "priya@acme.invalid", name: "Priya Shah",
-               contact: CONTACT, invited_at: null }],
+               contact: CONTACT, invited_at: null, level_label: "Member", teams: [], may_create: "projects", leads_all_teams: false }],
   };
 
   function show(me = aMe()) {

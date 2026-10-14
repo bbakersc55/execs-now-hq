@@ -8,6 +8,7 @@ import { useRowLink } from "../components/shell";
 import { Banner, Card, Empty, PageLinks, Pill, when, positionsLabel } from "../components/ui";
 import { AddCompany } from "./AddCompany";
 import { Company, Contact, Me, api } from "../lib/api";
+import { ClientTeamsCard } from "../components/ClientTeams";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
@@ -136,6 +137,7 @@ export function CompanyDetail({ me }: { me: Me }) {
         </Card>
 
         <PortalAccessCard me={me} company={c} />
+        <ClientTeamsCard me={me} company={c} />
 
         <CallNotes me={me} company={id!} />
         <Card title="Timeline">
