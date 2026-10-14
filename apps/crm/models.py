@@ -1131,6 +1131,12 @@ class Task(TenantScopedModel):
     # column default is the safe one.
     is_client_visible = models.BooleanField(default=False)
     created_by_client = models.BooleanField(default=False)  # FR-3.37
+    # P7 §1.2: the team of a client's task that is in no project. A task in a
+    # project reads its project's team, and this is not consulted.
+    client_team = models.ForeignKey(
+        "work.ClientTeam", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tasks",
+    )
 
     class Meta(TenantScopedModel.Meta):
         db_table = "task"

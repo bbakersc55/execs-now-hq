@@ -96,6 +96,67 @@ class WorkItem(TenantScopedModel):
         abstract = True
 
 
+class ClientTeam(TenantScopedModel):
+    """A named group of client users inside one client company (P7 §1):
+    "Operations", "Front office". Never shared between companies.
+
+    Every company with portal users has one default team, "Everyone", which
+    is where its people and its work are until someone makes another. A team
+    is archived, never deleted: its work moves to the default team.
+    """
+
+    DEFAULT_NAME = "Everyone"
+
+    client_company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
+                                       related_name="client_teams")
+    name = models.CharField(max_length=80)
+    is_default = models.BooleanField(default=False, db_default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "client_team"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["client_company", "name"], condition=models.Q(archived_at__isnull=True),
+                name="client_team_one_live_name_per_company"),
+            models.UniqueConstraint(
+                fields=["client_company"],
+                condition=models.Q(is_default=True, archived_at__isnull=True),
+                name="client_team_one_live_default_per_company"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class ClientTeamMember(TenantScopedModel):
+    """A client user's level on one team (P7 §2). The client owner has no
+    rows that matter: they have everything, in every team. The membership is
+    a client one of the team's own company, which `apps.work.teams` checks
+    and `permissions.client_scope` reads past if it is ever not so."""
+
+    class Level(models.TextChoices):
+        VIEWER = "viewer", "Viewer"
+        MEMBER = "member", "Member"
+        MANAGER = "manager", "Manager"
+        LEADER = "leader", "Senior leadership"
+
+    team = models.ForeignKey(ClientTeam, on_delete=models.CASCADE, related_name="members")
+    membership = models.ForeignKey("tenancy.Membership", on_delete=models.CASCADE,
+                                   related_name="client_teams")
+    level = models.CharField(max_length=8, choices=Level.choices)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "client_team_member"
+        constraints = [
+            models.UniqueConstraint(fields=["team", "membership"],
+                                    name="client_team_member_once_per_team"),
+        ]
+
+
 class Goal(WorkItem):
     """FR-3.1. Client-facing strategy; never authored by a client (FR-3.35a).
 
@@ -158,6 +219,9 @@ class Goal(WorkItem):
     # The fractional's client-facing sentence, and the headline for a goal with
     # no number (FR-4B.10, FR-4B.19). Not the description, which is internal.
     outcome_statement = models.TextField(blank=True, default="")
+    # P7 §3: added by a client user who was given "goals too". Until P7 no
+    # client could, so a goal had no such mark.
+    created_by_client = models.BooleanField(default=False, db_default=False)
 
     class Meta(WorkItem.Meta):
         db_table = "goal"
@@ -504,6 +568,11 @@ class Project(WorkItem):
     )
     start_date = models.DateField(null=True, blank=True)
     created_by_client = models.BooleanField(default=False)
+    # P7 §1.2: the team it belongs to. Null for the practice's own projects,
+    # which have no client company; null on a client's project reads as the
+    # company's default team (`permissions.team_of`).
+    client_team = models.ForeignKey(ClientTeam, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="projects")
     # FR-4.28/4.31 — a map row becomes a Goal *or* a Project, chosen per row,
     # and either way the row it came from stays on the record.
     source_map_row = models.ForeignKey("strategy.StrategyMapRow", null=True, blank=True,

@@ -234,6 +234,17 @@ CLIENT_ROLES = {Role.FCC, Role.ECC}
 TENANT_ROLES = {Role.FF, Role.CF, Role.VA}
 
 
+class MayCreate(models.TextChoices):
+    """What a client user may create in the portal (P7 §3). Separate from
+    their level on a team: a member may be allowed projects, a manager held
+    to tasks."""
+
+    NOTHING = "nothing", "Nothing"
+    TASKS = "tasks", "Tasks only"
+    PROJECTS = "projects", "Projects and tasks"
+    GOALS = "goals", "Goals too"
+
+
 class Membership(TenantScopedModel):
     """User x tenant x role. One per user in Beta (assumption B4)."""
 
@@ -258,10 +269,24 @@ class Membership(TenantScopedModel):
     )
     invited_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)  # FR-3.33g
+    # P7, for client roles only (the constraint below keeps both at their
+    # defaults for anyone at the practice). "Projects and tasks" is what a
+    # client user could create before P7.
+    may_create = models.CharField(max_length=8, choices=MayCreate.choices,
+                                  default=MayCreate.PROJECTS,
+                                  db_default=MayCreate.PROJECTS)
+    #: Senior leadership of every team of their company, the ones made later
+    #: included. Senior leadership of selected teams is a level on each.
+    leads_all_teams = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "membership"
         constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(role__in=["FCC", "ECC"])
+                           | models.Q(may_create="projects", leads_all_teams=False)),
+                name="membership_portal_settings_are_a_client_users",
+            ),
             models.UniqueConstraint(
                 fields=["tenant", "user"], name="membership_one_per_user_per_tenant"
             ),

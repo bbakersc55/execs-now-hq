@@ -53,6 +53,15 @@ def create_task(*, tenant, actor, role, client_facing_line="",
     """
     is_client = role in CLIENT_ROLES
     fields.setdefault("is_client_visible", fields.get("client_company") is not None)
+    # P7 §1.2: a client's task that is in no project is on a team: the one
+    # its maker chose, or the company's default. In a project it follows the
+    # project, and holds none of its own.
+    company = fields.get("client_company")
+    if company is not None and fields.get("project") is None \
+            and fields.get("client_team") is None and fields.get("client_team_id") is None:
+        from apps.work import teams
+
+        fields["client_team"] = teams.default_team(tenant.pk, company.pk)
     task = Task.objects.create(tenant=tenant, created_by_client=is_client, **fields)
     updates.record(task, K.CREATED, actor=actor, role=role,
                    to_value=task.title, client_facing_line=client_facing_line,

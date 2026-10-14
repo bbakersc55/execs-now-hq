@@ -21,6 +21,7 @@ from apps.crm.models import (
 from apps.notes.models import Note, NoteFolder, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
+    ClientTeam, ClientTeamMember,
     Comment, CompanyGoalOrder, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
     GoalOrderProposal, GoalProposal,
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
@@ -125,6 +126,10 @@ register(GoalOrderProposal, factories.GoalOrderProposalFactory, api_exposed=Fals
 # Read through its company (`/api/goal-proposals/?client_company=`), and
 # decided by id; tests/test_goal_proposals.py covers both.
 register(GoalProposal, factories.GoalProposalFactory, api_exposed=False)
+# P7 phase 1: no route reads or writes a team yet. tests/test_client_teams.py
+# holds that a team is never reachable from another company or practice.
+register(ClientTeam, factories.ClientTeamFactory, api_exposed=False)
+register(ClientTeamMember, factories.ClientTeamMemberFactory, api_exposed=False)
 # Never addressed by id at all: read and written through `/api/goal-order/`.
 register(CompanyGoalOrder, factories.CompanyGoalOrderFactory, api_exposed=False)
 register(GoalReportExport, factories.GoalReportExportFactory,

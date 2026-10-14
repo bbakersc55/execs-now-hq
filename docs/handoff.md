@@ -50,11 +50,40 @@ built: after Bryan's look on the demo".
   invoice income; the smoke check of Release 10; "the monthly AI budget can
   be set to stop, not warn".
 
-**P7 was put to Bryan** as M1 and M2 were: what it proposes and the fifteen
-decisions with a recommendation on each. **No answers yet, nothing built.**
-The four to read closely are P7-1, P7-4, P7-7 and P7-9. One correction is
-owed to the spec when the answers are recorded: its task migration is
-numbered `crm` 0035, which was taken on 10/12, so it becomes `crm` 0036.
+**P7: Bryan answered all fifteen decisions as recommended (10/13)** and added
+two things: a fourth level, **Viewer** (sees everything in the company
+read-only; for a board member or an investor), and **"nothing"** as a
+may-create choice. They are recorded in the spec, §10, and the task
+migration is corrected to `crm` 0036.
+
+**P7 phase 1 is built and NOT committed.** It is in the working tree on
+`dev`: the tables, the three migrations (`tenancy` 0014, `work` 0010 with the
+data step, `crm` 0036 with its task half), the rule in
+`apps/work/permissions.py`, `manage.py client_teams_dry_run`, and
+`tests/test_client_teams.py`. The spec's "As built: phase 1" says what is
+wired, what is ruled and not yet opened, and eight readings that are Bryan's
+to overrule.
+
+- **Why not committed:** the gate is red on exactly three tests, the strategy
+  goldens (`classic`, `focused`, `v3`). Their dump lists every column of a
+  converted goal and project, so the two new columns show
+  (`goal.created_by_client`, `project.client_team_id`). No strategy output
+  changed. **Goldens are regenerated only on Bryan's yes;** the other way is
+  to have the dump leave out columns added after the pin. Everything else is
+  green: 3089 backend passed, 997 frontend, migration check and type check
+  clean.
+- **Not applied anywhere,** the laptop included: the laptop rule wants the
+  full suite green first. **Until `migrate` is run, the laptop's dev server
+  errors on anything that reads a membership, project, task or goal.**
+- **The production dry run is owed before phase 1 is released,** and Bryan's
+  yes on it before "release" (the data step writes). The command arrives
+  with the release, so before it the same plan is read from production by a
+  script piped into its shell, as the demo's pre-check is; it reads only
+  columns that exist today. Production reads are refused to Claude Code, so
+  it is handed to Bryan as a paste block when phase 1 is to go. The laptop's
+  dry run (a scrubbed copy of production) is in the 10/13 report: 4 default
+  teams, 3 portal users placed as Manager, 12 projects and 86 tasks given a
+  team, 28 tasks left to follow their project.
 
 ## The night of 2026-10-12: the call's backlog, a spec, and ten fixes
 

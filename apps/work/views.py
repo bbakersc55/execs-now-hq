@@ -31,6 +31,7 @@ from apps.work import goal_proposals
 from apps.work import portal
 from apps.work import services
 from apps.work import stakeholders as stakeholder_service
+from apps.work import teams
 from apps.work import milestones as milestone_service
 from apps.work import narratives as narrative_service
 from apps.work import value_pdf
@@ -71,6 +72,30 @@ class DashboardView(viewsets.ViewSet):
         from apps.work import dashboard
 
         return Response(dashboard.for_request(request))
+
+
+#: P7 — said to a client user who may see a thing and not change it.
+NOT_YOUR_TEAMS = "Only this team's manager can change this."
+MAY_NOT_CREATE = "You have not been set up to add {}. Your client owner can change that."
+PRACTICES_TASK = ("This task is the practice's to change. Add a comment and they will "
+                  "see it.")
+
+
+def _team_asked_for(request):
+    """The `client_team` a client user named for new work, or None."""
+    asked = request.data.get("client_team")
+    return asked if asked and _is_uuid(str(asked)) else None
+
+
+def _why_not(request, task) -> str:
+    """Why a task cannot be changed: it is the practice's (FR-3.9a), or it is
+    a colleague's on a team this person does not manage (P7)."""
+    if not work_perms.is_client(request) or not task.is_client_visible:
+        return PRACTICES_TASK
+    if task.created_by_client or work_perms.is_client_side_user(
+            task.tenant_id, task.assignee_id, request.membership.client_company_id):
+        return NOT_YOUR_TEAMS
+    return PRACTICES_TASK
 
 
 class WorkViewSet(viewsets.GenericViewSet):
@@ -275,12 +300,32 @@ class ProjectViewSet(GoalViewSet):
     def _staff_only(self, request):
         return None      # clients may create and edit their own projects
 
+    def _not_theirs_to_change(self, request, project):
+        if not work_perms.is_client(request) \
+                or work_perms.client_may_edit_project(request, project):
+            return None
+        if not project.created_by_client:
+            return Response({"detail": "This project belongs to the practice."}, status=403)
+        return Response({"detail": NOT_YOUR_TEAMS}, status=403)
+
     def create(self, request):
         serializer = self.write_serializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
         if work_perms.is_client(request):
+            if not work_perms.client_may_create(request, "project"):
+                return Response({"detail": MAY_NOT_CREATE.format("projects")}, status=403)
             data["client_company"] = request.membership.client_company
+            try:
+                data["client_team_id"] = work_perms.client_team_for_new(
+                    request, wanted=_team_asked_for(request))
+            except work_perms.NotTheirTeam as exc:
+                return Response({"detail": str(exc)}, status=403)
+        elif data.get("client_company") is not None:
+            # P7 §1.2: the practice's project for a client starts on the
+            # company's default team. Phase 2 puts the choice on the form.
+            data["client_team"] = teams.default_team(request.tenant.pk,
+                                                     data["client_company"].pk)
         project = Project.objects.create(
             tenant=request.tenant, owner=request.user,
             created_by_client=work_perms.is_client(request), **data,
@@ -289,14 +334,22 @@ class ProjectViewSet(GoalViewSet):
 
     def partial_update(self, request, pk=None):
         project = self.load(pk)
-        if work_perms.is_client(request) and not project.created_by_client:
-            return Response({"detail": "This project belongs to the practice."}, status=403)
+        if (refused := self._not_theirs_to_change(request, project)) is not None:
+            return refused
         return super().partial_update(request, pk)
 
     def destroy(self, request, pk=None):
         project = self.load(pk)
-        if work_perms.is_client(request) and not project.created_by_client:
-            return Response({"detail": "This project belongs to the practice."}, status=403)
+        if work_perms.is_client(request) \
+                and not work_perms.client_may_delete_project(request, project):
+            if not project.created_by_client:
+                return Response({"detail": "This project belongs to the practice."},
+                                status=403)
+            # P7-13: its maker or the client owner deletes; anyone else who
+            # may change it cancels it.
+            return Response({"detail": "Only the person who made this project, or your "
+                                       "client owner, can delete it. You can set it to "
+                                       "cancelled."}, status=403)
         detached = services.soft_delete(project, actor=request.user, verb="project.deleted")
         return Response({"detached": detached})
 
@@ -348,8 +401,18 @@ class TaskViewSet(WorkViewSet):
         line = data.pop("client_facing_line", "")
         role = crm_perms.role_of(request)
         if work_perms.is_client(request):
+            if not work_perms.client_may_create(request, "task"):
+                return Response({"detail": MAY_NOT_CREATE.format("tasks")}, status=403)
             data["client_company"] = request.membership.client_company
             data["is_client_visible"] = True
+            try:
+                team = work_perms.client_team_for_new(
+                    request, project=data.get("project"),
+                    wanted=_team_asked_for(request))
+            except work_perms.NotTheirTeam as exc:
+                return Response({"detail": str(exc)}, status=403)
+            if data.get("project") is None:      # in a project it follows the project
+                data["client_team_id"] = team
         task = services.create_task(tenant=request.tenant, actor=request.user, role=role,
                                     client_facing_line=line, **data)
         self.object = task
@@ -358,11 +421,7 @@ class TaskViewSet(WorkViewSet):
     def partial_update(self, request, pk=None):
         task = self.load(pk)
         if not work_perms.may_write(request, task):
-            return Response(
-                {"detail": "This task is the practice's to change. Add a comment and "
-                           "they will see it."},
-                status=403,
-            )
+            return Response({"detail": _why_not(request, task)}, status=403)
         serializer = work_serializers.TaskSerializer(instance=task, data=request.data,
                                                      partial=True,
                                                      context={"request": request})
@@ -529,6 +588,8 @@ class CommentViewSet(WorkViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         entity = self._target(request, data)
+        if work_perms.is_client(request) and not work_perms.client_may_comment(request):
+            return Response({"detail": "You can read this, and not add to it."}, status=403)
         comment = services.add_comment(
             entity, author=request.user, role=crm_perms.role_of(request),
             body=data["body"], visibility=data.get("visibility"),
@@ -1396,7 +1457,7 @@ class ValueReportViewSet(ValueReportBase):
 
     def retrieve(self, request, pk=None):
         goal = self.goal_or_404(request, pk)
-        task_queryset = work_perms.task_queryset_for(request, Task.objects.all())
+        task_queryset = work_perms.report_task_queryset_for(request, Task.objects.all())
         return Response(value_report.goal_block(
             goal, request=request, for_client=self.for_client(),
             task_queryset=task_queryset))

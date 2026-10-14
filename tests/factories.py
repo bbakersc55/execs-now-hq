@@ -24,6 +24,7 @@ from apps.meetings.models import (
 from apps.notes.models import Note, NoteFolder, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
 from apps.work.models import (
+    ClientTeam, ClientTeamMember,
     Comment, CompanyGoalOrder, Digest, DigestItem, Goal, GoalMeasurement, GoalMilestone,
     GoalOrderProposal, GoalProposal,
     GoalNarrative, GoalNarrativeVersion, GoalReportExport, GoalResolution,
@@ -672,6 +673,39 @@ class GoalProposalFactory(TenantScopedFactory):
     client_company = factory.SubFactory(ClientCompanyFactory,
                                         tenant=factory.SelfAttribute("..tenant"))
     title = factory.Sequence(lambda n: f"Proposed goal {n}")
+
+
+class ClientTeamFactory(TenantScopedFactory):
+    class Meta:
+        model = ClientTeam
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    name = factory.Sequence(lambda n: f"Team {n}")
+
+
+class ClientTeamMemberFactory(TenantScopedFactory):
+    """A client team member's place on their company's default team. Saving
+    the membership is what puts them there (`apps.work.signals`), so the row
+    this hands back is that one, at the level asked for, and not a second."""
+
+    class Meta:
+        model = ClientTeamMember
+
+    tenant = factory.SubFactory(TenantFactory)
+    membership = factory.SubFactory(
+        MembershipFactory, tenant=factory.SelfAttribute("..tenant"), role="ECC",
+        client_company=factory.SubFactory(ClientCompanyFactory,
+                                          tenant=factory.SelfAttribute("..tenant")))
+    level = "member"
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        row = model_class.all_objects.get(membership=kwargs["membership"])
+        row.level = kwargs["level"]
+        row.save(update_fields=["level", "updated_at"])
+        return row
 
 
 class CompanyGoalOrderFactory(TenantScopedFactory):

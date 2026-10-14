@@ -4,6 +4,7 @@
     "baseline_value": null,
     "client_company_id": "<id-2>",
     "client_owner_contact_id": "<id-5>",
+    "created_by_client": false,
     "deleted_at": null,
     "description": "Root cause: Reports are built by hand\n\nThe fix: A five-line scorecard reviewed every Monday",
     "direction": "",

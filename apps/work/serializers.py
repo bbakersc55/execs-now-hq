@@ -330,6 +330,21 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
                    else getattr(self.instance, "project", None))
         if goal is not None and project is not None:
             raise serializers.ValidationError({"project": self.ONE_PARENT})
+        # P7: a client hands a task to someone on the task's own team. The
+        # team of a new task in no project is settled after this, by the
+        # view; there the check is only that the colleague takes work at all.
+        # Asked only when the assignee changes: a save that sends back who
+        # already has it is not a handing-over.
+        request = self.context["request"]
+        if attrs.get("assignee") is not None and work_perms.is_client(request) \
+                and attrs["assignee"].pk != getattr(self.instance, "assignee_id", None):
+            scope = work_perms.client_scope(request)
+            team = (scope.team_of(project) if project is not None
+                    else scope.team_of(self.instance) if self.instance is not None
+                    else None)
+            if not work_perms.client_may_assign_to(request, attrs["assignee"].pk, team):
+                raise serializers.ValidationError({
+                    "assignee": "You can assign this only to someone on its team."})
         return attrs
 
 

@@ -376,7 +376,7 @@ def report_for(request, *, company, for_client: bool) -> dict:
     """The all-goals report: the engagement timeline first, then every goal,
     **current first and historical below** (FR-4B.1)."""
     goals = goals_for_company(request, company.pk)
-    task_queryset = work_perms.task_queryset_for(request, Task.objects.all())
+    task_queryset = work_perms.report_task_queryset_for(request, Task.objects.all())
     blocks = [goal_block(g, request=request, for_client=for_client,
                          task_queryset=task_queryset) for g in goals]
     current = [b for b in blocks if not b["is_historical"]]

@@ -1,6 +1,7 @@
 # P7 — Client teams and permissions
 
-**Spec · 2026-10-12 · decisions open (§10) · no code until they are answered**
+**Spec · 2026-10-12 · all fifteen decisions answered by Bryan 2026-10-13, as
+recommended, with two additions (§10) · phase 1 building**
 
 Asked for on the 2026-10-12 call (`docs/beta_feedback_2026-10-12.md`, S1).
 Today every client user in a client company sees the same things, and the
@@ -18,14 +19,18 @@ leadership all of it.
 - **Senior leadership** has full edit on all three levels (goals, projects,
   tasks) across selected teams, or all of them.
 - The **client owner** has everything.
-- **Per user, what they may create:** tasks only; projects and tasks; or
-  goals too.
+- **Per user, what they may create:** nothing; tasks only; projects and
+  tasks; or goals too. ("Nothing" added 2026-10-13, so a member can be
+  assigned work without being able to create any.)
+- A **viewer** (added 2026-10-13) sees every goal, project and client-visible
+  task in the company, read-only, and creates and edits nothing. It is for a
+  board member or an investor who signs in to look.
 - Teams are set up **by the practice or by the client owner**.
 - **Steps** (a task's checklist) carry no permissions of their own.
 - **Digests and the value report keep their current audiences.**
 
-Everything else here is a proposal, and each open point is a row in §10 with
-a recommendation.
+Everything else here was a proposal, each open point a row in §10 with a
+recommendation; Bryan took every recommendation on 2026-10-13.
 
 ---
 
@@ -110,6 +115,7 @@ they have everything, in every team.
 | **Manager** | See all, read-only | See and edit all | See all, read-only |
 | **Senior leadership** (selected teams, or all) | See all; **edit** | See and edit all, in the teams they lead | See all, read-only |
 | **Client owner** | See all; edit | See and edit all | (no other teams: all are theirs) |
+| **Viewer** | See all, read-only | See all, read-only | See all, read-only |
 
 ### 2.2 A member
 
@@ -139,6 +145,23 @@ they have everything, in every team.
 - In the other teams: sees, read-only.
 - **Edits goals** (P7-2: because a goal belongs to the company, a senior
   leader edits any goal, whichever teams they lead).
+
+### 2.4a A viewer
+
+Added by Bryan, 2026-10-13: a board member or an investor who signs in to
+look.
+
+- Sees every goal, every project and every client-visible task of the
+  company. Changes nothing and creates nothing, whatever "may create" says.
+- It is a level like the others, held on a team (the default team, for
+  someone who is in no other). What a viewer sees does not depend on which
+  team holds it: it is the whole company.
+- A person who is a viewer on one team and a member, manager or senior
+  leader on another has the rights of the higher level: the viewer row only
+  adds sight.
+- **As built, and Bryan's to overrule:** a viewer does not comment (a comment
+  is something created), and a task cannot be assigned to someone who is
+  only a viewer.
 
 ### 2.5 What no client level changes
 
@@ -173,6 +196,7 @@ Set per user, by whoever sets up teams (§1.3):
 
 | Setting | May create |
 |---|---|
+| **Nothing** | Nothing. They may still be assigned work, and edit what is theirs |
 | **Tasks only** | Tasks, in their own team, or with no project |
 | **Projects and tasks** | Those, and projects in their team (under a goal or not) |
 | **Goals too** | Those, and goals for the company |
@@ -252,8 +276,8 @@ its place wherever a client user is listed, and keeping "Client owner".
 | Table | Columns | Notes |
 |---|---|---|
 | `client_team` *(new)* | `id`, `tenant_id`, `client_company_id`, `name`, `is_default`, `archived_at`, `created_by_id` | Unique live name per company; exactly one live default per company |
-| `client_team_member` *(new)* | `id`, `tenant_id`, `team_id`, `membership_id`, `level` (`member`, `manager`, `leader`) | Unique per team and membership. The membership must be a client one of the team's own company (checked in code, and by the isolation tests) |
-| `membership` | `+ may_create` (`tasks`, `projects`, `goals`; default `projects`), `+ leads_all_teams` (boolean, default false) | Meaningful for client roles only; a check constraint keeps both at their defaults for practice roles |
+| `client_team_member` *(new)* | `id`, `tenant_id`, `team_id`, `membership_id`, `level` (`member`, `manager`, `leader`, `viewer`) | Unique per team and membership. The membership must be a client one of the team's own company (checked in code, and by the isolation tests) |
+| `membership` | `+ may_create` (`nothing`, `tasks`, `projects`, `goals`; default `projects`), `+ leads_all_teams` (boolean, default false) | Meaningful for client roles only; a check constraint keeps both at their defaults for practice roles |
 | `project` | `+ client_team_id` (nullable) | Null for the practice's internal projects, which have no client company |
 | `task` | `+ client_team_id` (nullable) | Set for a standalone client task; a task in a project reads its project's |
 | `goal` | `+ created_by_client` (boolean, default false) | A goal has no such flag today, because a client could not create one |
@@ -278,7 +302,8 @@ Three, in this order, shown as SQL before they are generated:
 2. **`work` 0010** — `client_team`, `client_team_member`,
    `project.client_team_id`, `goal.created_by_client`. Additive. Then a
    **data step** (below).
-3. **`crm` 0035** — `task.client_team_id`. Additive, with the task half of
+3. **`crm` 0036** — `task.client_team_id`. (Written as 0035 on 10/12; that
+   number was taken the same night by the LinkedIn and Alignable links.) Additive, with the task half of
    the data step.
 
 **The data step, which writes:**
@@ -302,6 +327,10 @@ migration is.
 ## 7. What changes for existing portal users
 
 **Recommended: nothing changes for anyone on the day of the release.**
+
+**One release-day change, by Bryan's ruling of 2026-10-13:** a client user
+who did not make a project, and is not the client owner, can no longer
+delete it; they can set it to cancelled. See "As built: phase 1", reading 3.
 
 Bryan's recommendation is that every existing portal user becomes a member
 of a default team with their current rights. Those two halves do not quite
@@ -375,23 +404,29 @@ switch: it is how the portal works, for every practice.
 
 ## 10. Decisions
 
-| # | Question | Recommendation | Bryan |
+| # | Question | Recommendation | Bryan, 2026-10-13 |
 |---|---|---|---|
-| **P7-1** | **Existing portal users: Manager of the default team, or Member?** "Their current rights" is what a Manager has (§7). | **Manager of the default team,** so nobody loses anything on release day; set people to Member as real teams are made. | |
-| **P7-2** | **Does a goal belong to a team?** "Senior leadership has full edit on all three levels across selected teams" reads as if it might. | **No: a goal is the company's.** Everyone sees every goal; any senior leader, and the client owner, may edit any goal. A goal per team would hide the engagement's shape from the people doing the work, and the value report is one report. | |
-| **P7-3** | **What "assigned to them" means for a project,** which has no assignee today. | **Its client-side owner** (the field exists). No new column. | |
-| **P7-4** | **Do "full edit" and "everything" reach work the practice owns?** Today a client user cannot edit a task assigned to someone at the practice, or see one that is not client-visible. | **No.** Levels divide the client's side of the work among the client's people; they do not widen it. | |
-| **P7-5** | **Does a member see the name of a project their task sits in?** | **Yes: the name and their own tasks in it,** nothing else of it. | |
-| **P7-6** | **May a member reassign their own task?** | **Yes, within their team.** It leaves their list unless they created it. | |
-| **P7-7** | **A goal created by a client user: live at once, or a proposal the practice accepts?** | **Live at once, marked as added by the client, and the practice is told.** "Goals too" is given deliberately, per user; a second gate would make it the same as today's proposal. | |
-| **P7-8** | **Who on the practice side sets up teams?** | **Whoever may manage that company's portal users today,** an assistant included. | |
-| **P7-9** | **The default for a newly invited portal user.** | **The default team, level Member, may create "projects and tasks".** New people start narrow; existing people keep what they have (P7-1). | |
-| **P7-10** | **The shown name of `ECC`,** "Client team member", beside the new "team" and "member". | **Show the level** (Member, Manager, Senior leadership) wherever a client user is listed; keep "Client owner". The code `ECC` stays in code and data. | |
-| **P7-11** | **May a user be in more than one team?** | **Yes,** with a level on each. | |
-| **P7-12** | **Archiving a team.** | **Its work moves to the default team; its people keep their sign-in.** Never deletes work. | |
-| **P7-13** | **Manager and senior leader: delete, or cancel?** | **Cancel only.** Delete stays with whoever created the thing. | |
-| **P7-14** | **Is this a module with a switch, or how the portal works?** | **How the portal works.** With one default team and everyone a Manager it is today's portal. | |
-| **P7-15** | **Phases and releases.** | **Four phases as §9; phase 1 released alone,** with the dry run of its data step. | |
+| **P7-1** | **Existing portal users: Manager of the default team, or Member?** "Their current rights" is what a Manager has (§7). | **Manager of the default team,** so nobody loses anything on release day; set people to Member as real teams are made. | As recommended, 10/13 |
+| **P7-2** | **Does a goal belong to a team?** "Senior leadership has full edit on all three levels across selected teams" reads as if it might. | **No: a goal is the company's.** Everyone sees every goal; any senior leader, and the client owner, may edit any goal. A goal per team would hide the engagement's shape from the people doing the work, and the value report is one report. | As recommended, 10/13 |
+| **P7-3** | **What "assigned to them" means for a project,** which has no assignee today. | **Its client-side owner** (the field exists). No new column. | As recommended, 10/13 |
+| **P7-4** | **Do "full edit" and "everything" reach work the practice owns?** Today a client user cannot edit a task assigned to someone at the practice, or see one that is not client-visible. | **No.** Levels divide the client's side of the work among the client's people; they do not widen it. | As recommended, 10/13 |
+| **P7-5** | **Does a member see the name of a project their task sits in?** | **Yes: the name and their own tasks in it,** nothing else of it. | As recommended, 10/13 |
+| **P7-6** | **May a member reassign their own task?** | **Yes, within their team.** It leaves their list unless they created it. | As recommended, 10/13 |
+| **P7-7** | **A goal created by a client user: live at once, or a proposal the practice accepts?** | **Live at once, marked as added by the client, and the practice is told.** "Goals too" is given deliberately, per user; a second gate would make it the same as today's proposal. | As recommended, 10/13 |
+| **P7-8** | **Who on the practice side sets up teams?** | **Whoever may manage that company's portal users today,** an assistant included. | As recommended, 10/13 |
+| **P7-9** | **The default for a newly invited portal user.** | **The default team, level Member, may create "projects and tasks".** New people start narrow; existing people keep what they have (P7-1). | As recommended, 10/13 |
+| **P7-10** | **The shown name of `ECC`,** "Client team member", beside the new "team" and "member". | **Show the level** (Member, Manager, Senior leadership) wherever a client user is listed; keep "Client owner". The code `ECC` stays in code and data. | As recommended, 10/13 |
+| **P7-11** | **May a user be in more than one team?** | **Yes,** with a level on each. | As recommended, 10/13 |
+| **P7-12** | **Archiving a team.** | **Its work moves to the default team; its people keep their sign-in.** Never deletes work. | As recommended, 10/13 |
+| **P7-13** | **Manager and senior leader: delete, or cancel?** | **Cancel only.** Delete stays with whoever created the thing. | As recommended, 10/13 |
+| **P7-14** | **Is this a module with a switch, or how the portal works?** | **How the portal works.** With one default team and everyone a Manager it is today's portal. | As recommended, 10/13 |
+| **P7-15** | **Phases and releases.** | **Four phases as §9; phase 1 released alone,** with the dry run of its data step. | As recommended, 10/13 |
+
+| **P7-16** | *(Bryan's addition)* **A fourth level, Viewer.** | | Sees every goal, project and client-visible task in the company, read-only; creates nothing, edits nothing. For a board member or an investor (§2.4a). |
+| **P7-17** | *(Bryan's addition)* **"Nothing" as a may-create choice.** | | A member can be assigned work without being able to create any (§3). |
+
+On P7-7 Bryan added: the Propose button stays for everyone who is not given
+"goals too".
 
 ## 11. Not in P7
 
@@ -402,3 +437,85 @@ switch: it is how the portal works, for every practice.
 - Private tasks (on the roadmap, its own spec).
 - Two practices sharing one client (backlog S6, its own spec); P7's teams are
   inside one client company of one practice.
+
+---
+
+## As built: phase 1 (2026-10-13) — the tables, the data step and the rule
+
+**Seen by a user: one thing.** Every portal user is a Manager of their
+company's default team, which is what each could see and do before, except
+that a client's project is now deleted only by whoever made it or by the
+client owner (reading 3, below).
+
+**What exists**
+
+- `client_team` and `client_team_member` (`apps/work/models.py`);
+  `membership.may_create` and `membership.leads_all_teams`;
+  `project.client_team`, `task.client_team`, `goal.created_by_client`.
+- **The rule, in one place:** `ClientScope` in `apps/work/permissions.py`,
+  read once a request by `client_scope(request)`. The querysets and
+  `client_may_edit` ask it after FR-3.13 and FR-3.9a have had their say. No
+  view decides for itself.
+- **The data step** is `apps/work/team_backfill.py`, read by the two
+  migrations, by `manage.py client_teams_dry_run`, and by the test that holds
+  it to the rule as it was before P7.
+- **A portal user is placed the moment they have a sign-in**
+  (`apps/work/signals.py`): on the default team, as Manager. Until phase 2's
+  invitation form there is nowhere to choose a level, and anything less
+  would give a person invited after the release less than one invited
+  before. P7-9 (new people start as Member) takes effect with that form.
+
+**Wired to the routes now**, because with everyone a Manager each gives the
+answer it gave before: which projects and tasks a client user sees and may
+change; who a task may be handed to; "may create" for tasks and projects; a
+viewer not commenting; the team new work lands on.
+
+**Ruled and tested, and not opened by any route until phase 4:** a senior
+leader or the client owner editing a goal, and a goal created by someone
+given "goals too". Both would change what a client owner can do on the day
+phase 1 is released, and the second needs the practice told. Which of a
+goal's fields a client may change (the outcome statement is the practice's
+sentence) is a question for phase 4.
+
+**Readings made while building.** Bryan, 2026-10-13: 1, 2, 4 and 5 stand; 3
+is overruled, as it now reads.
+
+1. **The tasks in a project that is theirs are theirs.** A member who made a
+   project, or is its client-side owner, sees its tasks and may change the
+   ones on the client's side.
+2. **A viewer does not comment,** and **a task is not handed to someone who
+   only looks** (§2.4a).
+3. ~~Deleting a client's project is as it was.~~ **Overruled by Bryan,
+   2026-10-13: P7-13 applies to projects as well as tasks.** A client's
+   project is deleted by whoever made it or by the client owner; a manager
+   or a senior leader cancels it (sets it to cancelled). **This is a
+   release-day change, the only one in phase 1:** before, any client user of
+   the company could delete a project a colleague had made. For a task the
+   rule is as FR-3.9a.3 has it and its test pins it: only whoever made it,
+   the client owner not excepted.
+4. **A senior leader of selected teams** hands a task to anyone on a team
+   they lead; **of every team**, and the client owner, to anyone who takes
+   work.
+5. **New work with no team named** goes to its maker's team; for someone on
+   several, the default team if they are on it, else the first by name. The
+   portal asks in phase 4.
+6. **The value report's arithmetic is the company's for every level:** a
+   member sees a goal's progress worked out from every client-visible task,
+   not from their own (`report_task_queryset_for`).
+7. **The data step gives a default team to every company that has a project
+   or a task,** portal users or not, as §6 says. On the laptop that includes
+   the practice's own company, which has tasks filed against it.
+8. **The level names are on the model** (`ClientTeamMember.Level`), not yet
+   in `roles.py` and `roles.ts`: nothing shows one until phase 2 (P7-10).
+
+**Proven by tests** (`tests/test_client_teams.py`): each row of §2.1 through
+the routes a portal user calls, viewer and "on no team" included; what no
+level widens; may-create, "nothing" included; assignment within a team; a
+person on two teams; the two new tables in the isolation registry, and a team
+giving nothing outside its own company or practice; the data step leaving
+every portal user reaching, id for id, what the rule before P7 gave them,
+run twice, and undone; the dry run writing nothing.
+**Not proven:** nothing was looked at in a browser (there is nothing new to
+see); no level other than Manager has been held by a real person; the data
+step has run on the laptop's copy only as a dry run.
+

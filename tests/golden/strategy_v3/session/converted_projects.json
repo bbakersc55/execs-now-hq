@@ -2,6 +2,7 @@
   {
     "client_company_id": "<id-2>",
     "client_owner_contact_id": null,
+    "client_team_id": null,
     "created_by_client": false,
     "deleted_at": null,
     "description": "Root cause: No system\n\nThe fix: Move scheduling into the dispatch tool",
