@@ -443,3 +443,30 @@ Differences from the text above:
 | **F12** | **Not in this round:** 1099 and W-2 tracking (it is in `CLAUDE.md`'s list for this module), receipts attached to entries, live bank feeds, budgets, accrual, double-entry and a true balance sheet, and any QuickBooks connection. | As listed. 1099 tracking is the natural next piece: "Contractors and associates" by payee for a year. |
 | F13 | Invoice payments recorded before this is built get their entries from the migration, with the count shown first. | Yes. Today that is whatever has been recorded on the laptop; production has none. |
 | **F14** | **One stop or two for the build.** This is larger than client invoicing: the import is about half of it. | **Two stops:** first the entries, accounts, categories, paid invoices as income, the P&L, the balance view, the dashboard and the export; then the import, rules and matching. The first is useful by itself. Say if you would rather have one. |
+
+## Added 2026-10-14: importing from a statement (owner)
+
+### A bank's own file: OFX, QFX, QBO
+
+The import takes a CSV, or the bank's own OFX file under any of its three
+names (QFX is Quicken's, QBO is QuickBooks'). **No AI is used.** The format
+says which value is the date, the amount and the bank's id for a line, so the
+file is read into the columns a CSV has (`apps/finance/bank_files.py`) and
+from there it is the same import: the same dry run, the practice's own rules,
+the same commit and rollback.
+
+- There are no columns to choose, and the account's remembered CSV columns
+  are left as they are.
+- The bank's own id for each line (`FITID`) is what marks a line as already
+  in the books, so the same statement downloaded twice, or as a CSV, adds
+  nothing.
+- The statement's closing balance (`LEDGERBAL`) is kept as the bank's own
+  balance for that day, as a CSV's running-balance column is, and is what the
+  balance view and the Reconcile screen set beside the books. A card's is
+  what is owed.
+- **Nothing else is read.** The account and routing numbers in the file are
+  never copied anywhere.
+- A file holding more than one account is refused: one account at a time.
+- Both OFX 1.x (SGML) and 2.x (XML) are read. It is recognized by what it
+  is, not by its name.
+

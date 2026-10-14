@@ -85,7 +85,7 @@ async function toTheDryRun(extra: Record<string, unknown> = {}) {
     "POST /api/finance-imports/detect/": () => ({ body: DETECTED }),
     "POST /api/finance-imports/dry-run/": () => ({ status: 201, body: BATCH }), ...extra });
   await userEvent.selectOptions(await screen.findByLabelText("Account to import into"), "a1");
-  await userEvent.upload(screen.getByLabelText("The CSV file"),
+  await userEvent.upload(screen.getByLabelText("The file from your bank"),
                          new File(["Date,Description,Amount\n"], "checking.csv",
                                   { type: "text/csv" }));
   await userEvent.click(screen.getByRole("button", { name: "Read the file" }));
@@ -103,7 +103,7 @@ describe("importing a bank or card file", () => {
     const read = await screen.findByRole("button", { name: "Read the file" });
     expect(read).toBeDisabled();
     await userEvent.selectOptions(screen.getByLabelText("Account to import into"), "a2");
-    await userEvent.upload(screen.getByLabelText("The CSV file"),
+    await userEvent.upload(screen.getByLabelText("The file from your bank"),
                            new File(["x"], "card.csv", { type: "text/csv" }));
     await userEvent.click(read);
     expect(await screen.findByText(/This is a first guess from the column names/))
@@ -119,11 +119,41 @@ describe("importing a bank or card file", () => {
     expect(posts(fetchMock, "dry-run/")).toHaveLength(0);
   });
 
+  it("takes a bank's own OFX, QFX or QBO file, with no columns to choose", async () => {
+    // Owner, 2026-10-14. The format says which value is which.
+    const fetchMock = show("import", {
+      "POST /api/finance-imports/dry-run/": () => ({ status: 201, body: BATCH }),
+      "POST /api/finance-imports/detect/": () => ({ body: {
+        ...DETECTED, kind: "ofx", fixed: true,
+        header: ["Date", "Description", "Amount", "Transaction ID", "Check number"],
+        sample: [{ Date: "2026-10-01", Description: "ADOBE", Amount: "-59.99",
+                   "Transaction ID": "2026100101", "Check number": "" }] } }) });
+    const file = await screen.findByLabelText("The file from your bank");
+    for (const kind of [".csv", ".ofx", ".qfx", ".qbo"]) {
+      expect(file.getAttribute("accept")).toContain(kind);
+    }
+    expect(screen.getByText(/a CSV, or the bank's own OFX, QFX \(Quicken\) or QBO/))
+      .toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Account to import into"), "a1");
+    await userEvent.upload(file, new File(["<OFX>"], "export.qfx", { type: "" }),
+                           { applyAccept: false });
+    await userEvent.click(screen.getByRole("button", { name: "Read the file" }));
+    expect(await screen.findByText(/your bank's own file format, which says which value is/))
+      .toBeInTheDocument();
+    expect(screen.queryByLabelText("Column for: Date")).toBeNull();
+    expect(screen.queryByLabelText("Sign of the amount")).toBeNull();
+    expect(within(screen.getByLabelText("The first lines of the file"))
+      .getByText("2026100101")).toBeInTheDocument();
+    // The dry run is the next step, as for a CSV.
+    await userEvent.click(screen.getByRole("button", { name: "Show me what would happen" }));
+    await waitFor(() => expect(posts(fetchMock, "dry-run/")).toHaveLength(1));
+  });
+
   it("says a saved mapping is being used", async () => {
     show("import", { "POST /api/finance-imports/detect/":
       () => ({ body: { ...DETECTED, from_saved: true } }) });
     await userEvent.selectOptions(await screen.findByLabelText("Account to import into"), "a1");
-    await userEvent.upload(screen.getByLabelText("The CSV file"),
+    await userEvent.upload(screen.getByLabelText("The file from your bank"),
                            new File(["x"], "c.csv", { type: "text/csv" }));
     await userEvent.click(screen.getByRole("button", { name: "Read the file" }));
     expect(await screen.findByText(/Using the columns you chose last time/)).toBeInTheDocument();

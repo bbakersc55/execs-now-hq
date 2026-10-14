@@ -811,3 +811,170 @@ def test_merging_a_payee_into_another_contact_keeps_the_flag_and_the_total(payee
     rows = get(api, ff, P + "?year=2026").json()["payees"]
     assert [(r["contact"], r["total_cents"], r["is_payee"]) for r in rows
             if r["name"] == "Casey Contractor"] == [(str(keeper.pk), 250000, True)]
+
+
+# ============================================ a bank's own file: OFX, QFX, QBO
+
+#: OFX 1.x, as most banks still write it: SGML, where a value's tag is not
+#: closed. The same six lines as `BANK`, with the bank's own id for each.
+OFX_SGML = """OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+SECURITY:NONE
+ENCODING:USASCII
+CHARSET:1252
+COMPRESSION:NONE
+OLDFILEUID:NONE
+NEWFILEUID:NONE
+
+<OFX>
+<SIGNONMSGSRSV1><SONRS><STATUS><CODE>0<SEVERITY>INFO</STATUS>
+<DTSERVER>20261005120000<LANGUAGE>ENG<FI><ORG>Example Bank<FID>9999</FI></SONRS></SIGNONMSGSRSV1>
+<BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>
+<STMTRS><CURDEF>USD
+<BANKACCTFROM><BANKID>123456789<ACCTID>000987654321<ACCTTYPE>CHECKING</BANKACCTFROM>
+<BANKTRANLIST><DTSTART>20261001<DTEND>20261005
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261001120000.000[-7:MST]<TRNAMT>-59.99<FITID>2026100101<NAME>ADOBE *CREATIVE CLOUD
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261001<TRNAMT>-5.00<FITID>2026100102<NAME>COFFEE BAR
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261001<TRNAMT>-5.00<FITID>2026100103<NAME>COFFEE BAR
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261002<TRNAMT>6800.00<FITID>2026100201<NAME>DEPOSIT<MEMO>ACME FACILITIES &amp; CO
+<STMTTRN><TRNTYPE>CHECK<DTPOSTED>20261003<TRNAMT>-500.00<FITID>2026100301<CHECKNUM>1042<NAME>CHECK 1042
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261004<TRNAMT>-3000.00<FITID>2026100401<NAME>OWNER DRAW<MEMO>OWNER DRAW
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>notaday<TRNAMT>-1.00<FITID>2026100501<NAME>BROKEN LINE
+</BANKTRANLIST>
+<LEDGERBAL><BALAMT>13230.01<DTASOF>20261005120000</LEDGERBAL>
+<AVAILBAL><BALAMT>13000.00<DTASOF>20261005120000</AVAILBAL>
+</STMTRS></STMTTRNRS></BANKMSGSRSV1>
+</OFX>
+"""
+
+#: OFX 2.x, which is XML: every tag closed. A card's statement.
+OFX_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<?OFX OFXHEADER="200" VERSION="211" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
+<OFX><CREDITCARDMSGSRSV1><CCSTMTTRNRS><CCSTMTRS><CURDEF>USD</CURDEF>
+<CCACCTFROM><ACCTID>4111111111111111</ACCTID></CCACCTFROM>
+<BANKTRANLIST><DTSTART>20261001</DTSTART><DTEND>20261031</DTEND>
+<STMTTRN><TRNTYPE>DEBIT</TRNTYPE><DTPOSTED>20261006</DTPOSTED><TRNAMT>-212.40</TRNAMT>
+<FITID>C-1</FITID><NAME>HOTEL ALPINE</NAME><MEMO>DENVER CO</MEMO></STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20261020</DTPOSTED><TRNAMT>500.00</TRNAMT>
+<FITID>C-2</FITID><NAME>PAYMENT THANK YOU</NAME></STMTTRN>
+</BANKTRANLIST>
+<LEDGERBAL><BALAMT>-212.40</BALAMT><DTASOF>20261031</DTASOF></LEDGERBAL>
+</CCSTMTRS></CCSTMTTRNRS></CREDITCARDMSGSRSV1></OFX>
+"""
+
+
+@pytest.mark.django_db
+def test_an_ofx_file_is_read_into_the_same_import_with_nothing_to_map(books, ff, api):
+    """Owner, 2026-10-14: OFX, QFX and QBO beside CSV, parsed without AI.
+    Same mapping, dry run, rules and commit."""
+    tenant = books["tenant"]
+    dry(api, ff, books)                              # the account's CSV columns, remembered
+    with tenant_context(tenant.pk):
+        saved = FinanceImportProfile.objects.get().mapping
+        FinanceImportBatch.objects.all().delete()
+    post(api, ff, RULES, {"contains": "adobe", "treat_as": "category",
+                          "category": books["cat"]["Software"]["id"]})
+
+    found = upload(api, ff, I + "detect/", books["bank"], OFX_SGML, name="export.ofx")
+    assert found.status_code == 200, found.content
+    found = found.json()
+    assert (found["kind"], found["fixed"], found["from_saved"], found["lines"]) == (
+        "ofx", True, False, 7)
+    assert found["header"] == ["Date", "Description", "Amount", "Transaction ID",
+                               "Check number"]
+    assert found["sample"][0] == {
+        "Date": "2026-10-01", "Description": "ADOBE *CREATIVE CLOUD", "Amount": "-59.99",
+        "Transaction ID": "2026100101", "Check number": ""}
+    assert found["mapping"]["bank_id"] == "Transaction ID"
+    with tenant_context(tenant.pk):
+        assert not FinanceImportBatch.objects.exists(), "detecting writes nothing"
+
+    before = snapshot(tenant)
+    # Whatever mapping is sent with it, the format's own is the one used.
+    made = upload(api, ff, I + "dry-run/", books["bank"], OFX_SGML,
+                  mapping={"date": "Nonsense"}, name="export.ofx")
+    assert made.status_code == 201, made.content
+    batch = made.json()
+    assert snapshot(tenant) == before, "the dry run writes nothing to the books"
+    rows = batch["rows"]
+    assert [(r["on_date"], r["amount_cents"], r["direction"], r["description"])
+            for r in rows[:6]] == [
+        ("2026-10-01", 5999, "out", "ADOBE *CREATIVE CLOUD"),
+        ("2026-10-01", 500, "out", "COFFEE BAR"), ("2026-10-01", 500, "out", "COFFEE BAR"),
+        ("2026-10-02", 680000, "in", "DEPOSIT ACME FACILITIES & CO"),
+        ("2026-10-03", 50000, "out", "CHECK 1042"),
+        ("2026-10-04", 300000, "out", "OWNER DRAW")]
+    assert [r["outcome"] for r in rows] == ["new"] * 6 + ["error"]
+    assert "notaday" in rows[6]["error"]
+    # The practice's own rules decide, as for a CSV.
+    assert rows[0]["category"]["name"] == "Software" and rows[0]["rule"]["contains"] == "adobe"
+    # The statement's closing balance, checked against the account as a CSV's is.
+    assert (batch["last_balance_cents"], batch["last_balance_on"]) == (1323001, "2026-10-05")
+    # No account or routing number is anywhere in what was kept.
+    with tenant_context(tenant.pk):
+        kept = json.dumps([FinanceImportBatch.objects.get().mapping]
+                          + list(FinanceImportRow.objects.values_list("raw", flat=True)))
+        assert "000987654321" not in kept and "123456789" not in kept
+        assert FinanceImportProfile.objects.get().mapping == saved, \
+            "and the account's CSV columns are still the ones remembered"
+
+    done = post(api, ff, f"{I}{batch['id']}/commit/")
+    assert done.status_code == 200, done.content
+    with tenant_context(tenant.pk):
+        made_entries = {e.description: e for e in FinanceEntry.objects.filter(
+            source=FinanceEntry.Source.IMPORT)}
+        assert len(made_entries) == 5          # the two coffees share a description
+        assert made_entries["CHECK 1042"].reference == "1042"
+        assert made_entries["CHECK 1042"].bank_id == "2026100301"
+        assert FinanceEntry.objects.filter(source=FinanceEntry.Source.IMPORT).count() == 6
+    # What the balance view and the Reconcile screen set beside the books.
+    from apps.finance import importer
+    with tenant_context(tenant.pk):
+        [said] = importer.bank_said(tenant).values()
+    assert (said["cents"], said["on"].isoformat()) == (1323001, "2026-10-05")
+
+    # The same statement again, as Quicken's file and as a CSV: nothing new.
+    again = upload(api, ff, I + "dry-run/", books["bank"], OFX_SGML, name="export.QFX").json()
+    assert [r["outcome"] for r in again["rows"]] == ["duplicate"] * 6 + ["error"]
+    as_csv = dry(api, ff, books, text=(
+        "Date,Description,Amount\n10/01/2026,ADOBE *CREATIVE CLOUD,-59.99\n"
+        "10/03/2026,CHECK 1042,-500.00\n10/09/2026,NEW ONE,-1.00\n"),
+        mapping={"date": "Date", "description": "Description", "amount": "Amount",
+                 "date_format": "%m/%d/%Y", "sign": "negative_is_out"})
+    assert [r["outcome"] for r in as_csv["rows"]] == ["duplicate", "duplicate", "new"]
+
+
+@pytest.mark.django_db
+def test_an_xml_ofx_card_file_reads_and_its_balance_is_what_is_owed(books, ff, api):
+    for name in ("card.qbo", "card.ofx", "statement.txt"):       # by what it is, not its name
+        made = upload(api, ff, I + "dry-run/", books["card"], OFX_XML, name=name)
+        assert made.status_code == 201, (name, made.content)
+    batch = made.json()
+    assert [(r["on_date"], r["amount_cents"], r["direction"], r["description"], r["outcome"])
+            for r in batch["rows"]] == [
+        ("2026-10-06", 21240, "out", "HOTEL ALPINE DENVER CO", "new"),
+        ("2026-10-20", 50000, "in", "PAYMENT THANK YOU", "new")]
+    # The file writes what is owed as a negative number; the books, as a positive one.
+    assert (batch["last_balance_cents"], batch["last_balance_on"]) == (21240, "2026-10-31")
+    with tenant_context(books["tenant"].pk):
+        assert "4111111111111111" not in json.dumps(
+            list(FinanceImportRow.objects.values_list("raw", flat=True)))
+        assert not FinanceImportProfile.objects.exists(), "nothing to remember: no columns chosen"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("text, name, why", [
+    ("Date,Description\n", "export.ofx", "not a bank file this import reads"),
+    ("<OFX><BANKMSGSRSV1><STMTRS><BANKTRANLIST></BANKTRANLIST></STMTRS></BANKMSGSRSV1></OFX>",
+     "empty.ofx", "no transactions"),
+    (OFX_SGML.replace("</STMTRS>", "</STMTRS><STMTRS><BANKTRANLIST></BANKTRANLIST></STMTRS>"),
+     "two.qfx", "more than one account"),
+    ("", "nothing.qbo", "empty"),
+])
+def test_a_bank_file_that_cannot_be_read_is_refused_in_words(books, ff, api, text, name, why):
+    for step in ("detect/", "dry-run/"):
+        refused = upload(api, ff, I + step, books["bank"], text, name=name)
+        assert refused.status_code == 400 and why in refused.json()["detail"], refused.content
+    with tenant_context(books["tenant"].pk):
+        assert not FinanceImportBatch.objects.exists()

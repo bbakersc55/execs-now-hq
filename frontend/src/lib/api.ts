@@ -1671,6 +1671,9 @@ export interface ImportMapping {
 export interface ImportDetected {
   header: string[]; sample: Record<string, string>[]; lines: number;
   mapping: ImportMapping; from_saved: boolean;
+  /** "ofx" for a bank's own file (OFX, QFX, QBO): its columns are the
+   *  format's, so `fixed` is true and there is nothing to map. */
+  kind?: "csv" | "ofx" | "pdf"; fixed?: boolean;
   date_formats: { value: string; label: string }[];
 }
 

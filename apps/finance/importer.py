@@ -16,6 +16,9 @@ card's. Every match is proposed with both sides shown and is the owner's to
 decline.
 
 No AI is used. Rules are the owner's own, remembered (`rules.py`).
+
+The file is a CSV, or the bank's own OFX, QFX or QBO (`bank_files.py`), which
+is read into the same columns and from there is the same import.
 """
 
 from __future__ import annotations
@@ -86,6 +89,27 @@ def read(file_bytes: bytes) -> tuple[list[str], list[dict]]:
                            "most at a time. Export a shorter range of dates.")
     return header, [{name: (row[i].strip() if i < len(row) else "")
                      for i, name in enumerate(header) if name} for row in rows[1:]]
+
+
+def parse(file_bytes: bytes, filename: str = "") -> dict:
+    """Any file this import takes, as `{kind, header, rows, mapping, closing}`.
+
+    For a CSV the mapping is the owner's to choose, so it is None here. For
+    an OFX, QFX or QBO file the columns are the format's own and so is the
+    mapping; `closing` is the statement's closing balance where it gives one.
+    """
+    from apps.finance import bank_files
+
+    if not file_bytes or not file_bytes.strip():
+        raise FinanceError("That file is empty.")
+    if bank_files.is_ofx(file_bytes, filename):
+        found = bank_files.read(file_bytes)
+        if len(found["rows"]) > ROWS_MOST:
+            raise FinanceError(f"That file has {len(found['rows']):,} lines; {ROWS_MOST:,} "
+                               "is the most at a time. Download a shorter range of dates.")
+        return {"kind": bank_files.KIND, "mapping": dict(bank_files.MAPPING), **found}
+    header, rows = read(file_bytes)
+    return {"kind": "csv", "header": header, "rows": rows, "mapping": None, "closing": None}
 
 
 def parse_amount(text: str) -> int | None:
@@ -345,8 +369,10 @@ def dry_run(tenant, *, account, filename, file_bytes, mapping, actor=None):
     and its rows, and nothing to the books."""
     if account.closed_at is not None:
         raise FinanceError(f"“{account.name}” is closed.")
-    header, raws = read(file_bytes)
-    mapping = clean_mapping(mapping, header)
+    parsed = parse(file_bytes, filename)
+    header, raws = parsed["header"], parsed["rows"]
+    # A bank's own file format says which value is which: nothing to choose.
+    mapping = clean_mapping(parsed["mapping"] or mapping, header)
     services.ensure_chart(tenant)
     batch = FinanceImportBatch.all_objects.create(
         tenant=tenant, account=account, filename=(filename or "export.csv")[:255],
@@ -383,12 +409,20 @@ def dry_run(tenant, *, account, filename, file_bytes, mapping, actor=None):
             else:
                 _apply_rule(row, rules, account)
         row.save()
+    if parsed["closing"] is not None:
+        # The statement's own closing balance. A card's is what is owed,
+        # which the file writes as a negative number and the books as a
+        # positive one.
+        on, cents = parsed["closing"]
+        last_balance = (on, -cents if account.kind == FinanceAccount.Kind.CARD else cents)
     if last_balance is not None:
         batch.last_balance_on, batch.last_balance_cents = last_balance
     batch.counts = _counts(batch)
     batch.save()
-    FinanceImportProfile.all_objects.update_or_create(
-        account=account, defaults={"tenant": tenant, "mapping": mapping})
+    if parsed["mapping"] is None:
+        # Only a CSV's columns are the owner's choice, and worth remembering.
+        FinanceImportProfile.all_objects.update_or_create(
+            account=account, defaults={"tenant": tenant, "mapping": mapping})
     return batch
 
 

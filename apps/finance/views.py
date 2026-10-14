@@ -681,8 +681,9 @@ class ImportViewSet(FinanceViewSet):
             return Response({"detail": "Choose the file your bank gave you."}, status=400)
         try:
             account = self._one(FinanceAccount, request.data.get("account"), "account")
-            header, rows = importer.read(upload.read())
-            saved = importer.profile_for(account)
+            parsed = importer.parse(upload.read(), upload.name)
+            header, rows = parsed["header"], parsed["rows"]
+            saved = importer.profile_for(account) if parsed["mapping"] is None else None
             usable = saved if saved and all(
                 not saved.get(key) or saved[key] in header
                 for key in ("date", "description", "amount", "debit", "credit")) else None
@@ -690,7 +691,10 @@ class ImportViewSet(FinanceViewSet):
             return self._refusal(exc)
         return Response({
             "header": header, "sample": rows[:5], "lines": len(rows),
-            "mapping": usable or importer.suggest(header, rows),
+            # "csv", or "ofx" for a bank's own file (OFX, QFX, QBO), whose
+            # columns are the format's: there is nothing to map.
+            "kind": parsed["kind"], "fixed": parsed["mapping"] is not None,
+            "mapping": parsed["mapping"] or usable or importer.suggest(header, rows),
             "from_saved": usable is not None,
             "date_formats": [{"value": fmt, "label": label}
                              for fmt, label in importer.DATE_FORMATS],

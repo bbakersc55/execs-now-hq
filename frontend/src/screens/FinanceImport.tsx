@@ -18,6 +18,10 @@ import { dollars, longDate } from "../lib/money";
  * accepts or declines a proposed match. A committed import can be rolled back.
  */
 
+/** A CSV, or a bank's own OFX file under any of its three names. */
+const ACCEPTS = ".csv,text/csv,.ofx,.qfx,.qbo,application/x-ofx,application/vnd.intu.qfx,"
+  + "application/vnd.intu.qbo";
+
 const SOURCES: [keyof ImportMapping, string, boolean][] = [
   ["date", "Date", true], ["description", "Description", true],
   ["amount", "Amount (one column)", false], ["debit", "Money out (its own column)", false],
@@ -109,9 +113,10 @@ export function FinanceImport({ accounts, categories }: {
       {!batch && (
         <Card title="1. The file, and which column is which">
           <p className="small muted" style={{ marginTop: 0 }}>
-            Download a CSV from your bank or card's website and choose the account it is
-            for. Downloading an overlapping range each month is fine: lines already in the
-            books are recognized and left out.
+            Download a file from your bank or card's website and choose the account it is
+            for: a CSV, or the bank's own OFX, QFX (Quicken) or QBO (QuickBooks) file.
+            Downloading an overlapping range each month is fine: lines already in the books
+            are recognized and left out.
           </p>
           {open.length === 0 ? <Empty>Add the account this file is for first, in Accounts
             and categories.</Empty> : (
@@ -123,8 +128,8 @@ export function FinanceImport({ accounts, categories }: {
                   {open.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </Field>
-              <Field label="The CSV file">
-                <input type="file" accept=".csv,text/csv" aria-label="The CSV file"
+              <Field label="The file from your bank">
+                <input type="file" accept={ACCEPTS} aria-label="The file from your bank"
                   onChange={(e) => { setFile(e.target.files?.[0] ?? null); setDetected(null); }} />
               </Field>
               <button disabled={!account || !file || detect.isPending}
@@ -134,9 +139,13 @@ export function FinanceImport({ accounts, categories }: {
           {detected && mapping && (
             <>
               <p className="small">{detected.lines} lines.{" "}
-                {detected.from_saved ? "Using the columns you chose last time for this account."
-                  : "This is a first guess from the column names: check it."}</p>
-              <div className="row">
+                {detected.fixed
+                  ? "This is your bank's own file format, which says which value is which: "
+                    + "there are no columns to choose."
+                  : detected.from_saved
+                    ? "Using the columns you chose last time for this account."
+                    : "This is a first guess from the column names: check it."}</p>
+              {!detected.fixed && <><div className="row">
                 {SOURCES.map(([key, label, required]) => (
                   <Field key={key} label={label}>
                     <select aria-label={`Column for: ${label}`} value={mapping[key]}
@@ -165,7 +174,7 @@ export function FinanceImport({ accounts, categories }: {
                     </select>
                   </Field>
                 )}
-              </div>
+              </div></>}
               <table aria-label="The first lines of the file">
                 <thead><tr>{detected.header.map((h) => <th key={h}>{h}</th>)}</tr></thead>
                 <tbody>{detected.sample.map((line, i) => (
