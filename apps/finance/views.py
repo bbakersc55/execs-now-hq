@@ -627,6 +627,25 @@ def represent_row(row) -> dict:
     }
 
 
+def _statement(batch) -> dict | None:
+    """A PDF statement's own facts, for an import made from one: its period,
+    its two balances, whether the lines read add up to them, where the PDF
+    is, and what the read cost. None for a CSV or a bank's own file."""
+    from apps.finance import statement_pdf
+
+    if batch.statement_file_id is None:
+        return None
+    return {
+        "pdf": f"/api/finance-imports/{batch.pk}/statement/",
+        "period_start": batch.period_start.isoformat() if batch.period_start else None,
+        "period_end": batch.period_end.isoformat() if batch.period_end else None,
+        "opening_balance_cents": batch.opening_balance_cents,
+        "closing_balance_cents": batch.last_balance_cents,
+        "adds_up": statement_pdf.adds_up(batch),
+        "cost_usd": str(batch.ai_call.cost_usd) if batch.ai_call_id else None,
+    }
+
+
 def represent_batch(batch, *, rows=False) -> dict:
     from apps.finance.models import FinanceImportRow
 
@@ -640,6 +659,7 @@ def represent_batch(batch, *, rows=False) -> dict:
         "last_balance_cents": batch.last_balance_cents,
         "last_balance_on": batch.last_balance_on.isoformat() if batch.last_balance_on
         else None,
+        "source": batch.source, "statement": _statement(batch),
     }
     if rows:
         out["rows"] = [represent_row(row) for row in FinanceImportRow.objects.filter(
@@ -674,14 +694,25 @@ class ImportViewSet(FinanceViewSet):
     def detect(self, request):
         """Step 1: the file's columns, a few lines, and a first guess at the
         mapping (or the one saved for this account). Writes nothing."""
-        from apps.finance import importer
+        from apps.finance import importer, statement_pdf
 
         upload = request.FILES.get("file")
         if upload is None:
             return Response({"detail": "Choose the file your bank gave you."}, status=400)
         try:
             account = self._one(FinanceAccount, request.data.get("account"), "account")
-            parsed = importer.parse(upload.read(), upload.name)
+            content = upload.read()
+            if content and statement_pdf.is_pdf(content, upload.name):
+                # A PDF has nothing to show until it is read, and reading it
+                # costs: this says how many pages and about how much, and
+                # asks Claude nothing.
+                found = statement_pdf.inspect(content)
+                return Response({
+                    "kind": statement_pdf.KIND, "fixed": True, "header": [], "sample": [],
+                    "lines": 0, "mapping": statement_pdf.MAPPING, "from_saved": False,
+                    "date_formats": [], **statement_pdf.status(request.tenant,
+                                                               found["pages"])})
+            parsed = importer.parse(content, upload.name)
             header, rows = parsed["header"], parsed["rows"]
             saved = importer.profile_for(account) if parsed["mapping"] is None else None
             usable = saved if saved and all(
@@ -743,6 +774,26 @@ class ImportViewSet(FinanceViewSet):
         except services.FinanceError as exc:
             return self._refusal(exc)
         return Response(represent_batch(self._batch(pk), rows=True))
+
+    @action(detail=True, methods=["get"])
+    def statement(self, request, pk=None):
+        """The PDF an import was read from: the statement itself."""
+        from django.http import HttpResponse
+
+        from apps.tenancy import storage
+
+        batch = self._batch(pk)
+        if batch.statement_file_id is None:
+            raise Http404
+        try:
+            content = storage.read(batch.statement_file)
+        except storage.StorageError:
+            return Response({"detail": "The statement could not be read just now."},
+                            status=503)
+        response = HttpResponse(content, content_type="application/pdf")
+        name = batch.filename.replace('"', "")
+        response["Content-Disposition"] = f'inline; filename="{name}"'
+        return response
 
     @action(detail=True, methods=["post"])
     def commit(self, request, pk=None):

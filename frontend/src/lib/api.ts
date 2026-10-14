@@ -1674,6 +1674,9 @@ export interface ImportDetected {
   /** "ofx" for a bank's own file (OFX, QFX, QBO): its columns are the
    *  format's, so `fixed` is true and there is nothing to map. */
   kind?: "csv" | "ofx" | "pdf"; fixed?: boolean;
+  /** A PDF statement only: how long it is, about what Claude's reading of
+   *  it costs, and why it cannot be read when it cannot. */
+  pages?: number; estimate_usd?: string; refused?: string;
   date_formats: { value: string; label: string }[];
 }
 
@@ -1693,11 +1696,30 @@ export interface BankImportRow {
   error: string; raw: Record<string, string> | null;
 }
 
+/** What is kept from a PDF statement: its period, its two balances, whether
+ *  the lines read add up to them, where the PDF is, and what the read cost. */
+export interface StatementFacts {
+  pdf: string; period_start: string | null; period_end: string | null;
+  opening_balance_cents: number | null; closing_balance_cents: number | null;
+  adds_up: { in_cents: number; out_cents: number; expected_cents: number;
+             difference_cents: number } | null;
+  cost_usd: string | null;
+}
+
+/** A PDF statement imported for one account and month, on the Reconcile screen. */
+export interface KeptStatement {
+  id: string; filename: string; pdf: string; period_start: string | null;
+  period_end: string; closing_balance_cents: number | null;
+}
+
 export interface BankImportBatch {
   id: string; account: { id: string; name: string }; filename: string;
   status: "dry_run" | "committed" | "rolled_back"; status_label: string;
   counts: Record<string, number>; created_at: string; committed_at: string | null;
   last_balance_cents: number | null; last_balance_on: string | null;
+  source?: "csv" | "ofx" | "pdf";
+  /** For an import read from a PDF statement, the statement's own facts. */
+  statement?: StatementFacts | null;
   rows?: BankImportRow[];
   rolled_back?: { removed: number; unmatched: number;
                   kept: { on_date: string; amount_cents: number; description: string }[] };
@@ -1733,6 +1755,8 @@ export interface ReconcileGrid {
               last4: string; reconciled_monthly: boolean; opening_on: string;
               opening_balance_cents: number; next_month: string | null;
               cells: Record<string, ReconcileCell>;
+              /** By month: the PDF statements imported for it. */
+              statements?: Record<string, KeptStatement[]>;
               bank_said?: { on: string; cents: number } | null }[];
   locked_through: string | null;
   /** The close that set the lock; null when it was typed before closing existed. */
@@ -1760,6 +1784,7 @@ export interface Reconciliation {
   starting_balance_cents: number; cleared_in_cents: number; cleared_out_cents: number;
   expected_cents: number; difference_cents: number;
   lines: ReconcileLine[]; first: boolean; period_start: string; hints: ReconcileHint[];
+  statements?: KeptStatement[];
   unplaced: { id: string; on_date: string; amount_cents: number; description: string;
               counterparty: string }[];
   cannot_reopen: string; can_discard: boolean;

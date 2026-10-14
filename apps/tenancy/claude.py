@@ -202,7 +202,8 @@ WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_use
 
 def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
                        target_type: str = "", target_id=None, trigger: str = "auto",
-                       max_tokens: int = 16000, tools=None, effort: str | None = None):
+                       max_tokens: int = 16000, tools=None, effort: str | None = None,
+                       document: bytes | None = None):
     """As `complete`, and also hands back the `AiCall` row it wrote.
 
     Module 4 needs it: a drafted map row records **which run produced it**, so a
@@ -217,6 +218,10 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
     `effort` ("low" … "max") sets how hard the model reasons, which is billed
     as output. Left unset, the model's own default. A labelling job — the
     owner classification — asks for "low" (2026-09-28).
+
+    `document` is a PDF, sent with the request for the model to read: a bank
+    statement (`apps/finance/statement_pdf.py`), and nothing else so far. It
+    goes before the text, as the API asks, and is not kept by this module.
     """
     import anthropic
 
@@ -230,7 +235,9 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
         from apps.tenancy import ai_guard
 
         input_hash = hashlib.sha256(
-            "\x1f".join([purpose, system, user_text]).encode()).hexdigest()
+            "\x1f".join([purpose, system, user_text]).encode()
+            + (b"\x1f" + hashlib.sha256(document).digest() if document else b"")
+        ).hexdigest()
         reason = ai_guard.refusal(tenant, purpose=purpose, target_type=target_type,
                                   target_id=target_id, input_hash=input_hash)
         if reason is not None:
@@ -261,12 +268,22 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
     except ClaudeUnavailable as exc:
         fail(str(exc), exc)
 
+    content = user_text
+    if document is not None:
+        import base64
+
+        content = [
+            {"type": "document",
+             "source": {"type": "base64", "media_type": "application/pdf",
+                        "data": base64.standard_b64encode(document).decode("ascii")}},
+            {"type": "text", "text": user_text},
+        ]
     try:
         response = _client(key).beta.messages.create(
             model=settings.ANTHROPIC_MODEL,
             max_tokens=max_tokens,
             system=system,
-            messages=[{"role": "user", "content": user_text}],
+            messages=[{"role": "user", "content": content}],
             betas=[FALLBACK_BETA],
             fallbacks="default",
             **({"tools": tools} if tools else {}),

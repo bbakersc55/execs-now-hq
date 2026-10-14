@@ -20,6 +20,8 @@
 #   anthropic                    — Claude, the only LLM (CLAUDE.md); first used in Module 2
 #   weasyprint                   — the strategy session PDF (Module 4, FR-4.23)
 #   gunicorn                     — the production WSGI server on Railway (Phase 7)
+#   pypdf                        — counts a PDF statement's pages and tells a scan from
+#                                  one with text, before Claude is asked to read it
 # Everything else below is a transitive dependency of those.
 
 annotated-types==0.8.0
@@ -84,6 +86,7 @@ fonttools==4.65.0
 pyphen==0.18.1
 pillow==12.3.0
 pydyf==0.12.1
+pypdf==6.20.1
 tinycss2==1.5.1
 tinyhtml5==2.1.0
 weasyprint==70.0

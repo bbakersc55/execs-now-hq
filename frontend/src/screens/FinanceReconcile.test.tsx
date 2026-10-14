@@ -180,6 +180,23 @@ describe("the Reconcile tab", () => {
 });
 
 describe("reconciling an account", () => {
+  it("shows the PDF statement imported for the month, since it is the statement",
+    async () => {
+      // Owner, 2026-10-14: kept with its import, shown here for its month.
+      const kept = { id: "b1", filename: "october.pdf",
+                     pdf: "/api/finance-imports/b1/statement/", period_start: "2026-10-01",
+                     period_end: "2026-10-09", closing_balance_cents: 2412000 };
+      show({}, { accounts: [{ ...GRID.accounts[0], statements: { "2026-10": [kept] } },
+                            ...GRID.accounts.slice(1)] });
+      await userEvent.click(await screen.findByRole("button",
+                                                    { name: "Checking, October 2026: start" }));
+      const said = screen.getByLabelText("The statement for this month");
+      expect(said).toHaveTextContent(
+        "The statement: october.pdf (ending $24,120.00 on October 9, 2026)");
+      expect(within(said).getByRole("link", { name: "october.pdf" }))
+        .toHaveAttribute("href", "/api/finance-imports/b1/statement/");
+    });
+
   it("starts one from the statement's date and balance, offering the bank's own figure",
     async () => {
       const fetchMock = show({ "POST /api/finance-reconcile/": () => ({

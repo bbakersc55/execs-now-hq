@@ -514,6 +514,28 @@ def unplaced(rec) -> list[dict]:
              "counterparty": entry.counterparty} for entry in loose]
 
 
+def statements(tenant) -> dict:
+    """`{(account id, month): [the PDF statements imported for it]}` (owner,
+    2026-10-14): a statement read from a PDF is kept with its import, and is
+    shown here for its month, since it is what the month is reconciled to."""
+    from apps.finance.models import FinanceImportBatch
+
+    out: dict = {}
+    for batch in (FinanceImportBatch.all_objects.filter(
+            tenant=tenant, statement_file__isnull=False,
+            status=FinanceImportBatch.Status.COMMITTED).order_by("committed_at")):
+        ended = batch.period_end or batch.last_balance_on
+        if ended is None:
+            continue
+        out.setdefault((batch.account_id, month_start(ended)), []).append({
+            "id": str(batch.pk), "filename": batch.filename,
+            "pdf": f"/api/finance-imports/{batch.pk}/statement/",
+            "period_start": batch.period_start.isoformat() if batch.period_start else None,
+            "period_end": ended.isoformat(),
+            "closing_balance_cents": batch.last_balance_cents})
+    return out
+
+
 def represent(rec, *, detail=False) -> dict:
     account = rec.account
     out = {
@@ -536,6 +558,7 @@ def represent(rec, *, detail=False) -> dict:
     before = previous(rec)
     out.update({
         **sums, "lines": rows,
+        "statements": statements(rec.tenant).get((account.pk, rec.month), []),
         "first": before is None,
         "period_start": (before.statement_on + timedelta(days=1) if before
                          else began(account)).isoformat(),
@@ -769,6 +792,7 @@ def grid(tenant, user) -> dict:
             .select_related("account", "finished_by"):
         recs[(rec.account_id, rec.month)] = rec
     accounts = []
+    kept = statements(tenant)
     for account in FinanceAccount.all_objects.filter(tenant=tenant).order_by("kind", "name"):
         mine = {month: rec for (pk, month), rec in recs.items() if pk == account.pk}
         if account.closed_at is not None and not mine:
@@ -800,6 +824,9 @@ def grid(tenant, user) -> dict:
             # What starting a reconciliation here would be: the next month, or
             # any month for an account's first.
             "next_month": next_month(newest).isoformat()[:7] if newest else None,
+            # The PDF statements imported for each month: the statement itself.
+            "statements": {month.isoformat()[:7]: found
+                           for (pk, month), found in kept.items() if pk == account.pk},
             "cells": cells})
     due = next_to_close(tenant, locked)
     setter = closes.get(month_start(locked)) if locked is not None else None

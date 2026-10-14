@@ -149,6 +149,81 @@ describe("importing a bank or card file", () => {
     await waitFor(() => expect(posts(fetchMock, "dry-run/")).toHaveLength(1));
   });
 
+  describe("a PDF statement", () => {
+    // Owner, 2026-10-14. Claude reads it; priced before, costed after.
+    const PDF = { ...DETECTED, kind: "pdf" as const, fixed: true, header: [], sample: [],
+                  lines: 0, pages: 3, estimate_usd: "0.1730", refused: "" };
+    const FACTS = { pdf: "/api/finance-imports/b1/statement/", period_start: "2026-10-01",
+                    period_end: "2026-10-31", opening_balance_cents: 1000000,
+                    closing_balance_cents: 1623501, cost_usd: "0.164200",
+                    adds_up: { in_cents: 680000, out_cents: 56499, expected_cents: 1623501,
+                               difference_cents: 0 } };
+
+    async function choose(detected: object, batch: object = { ...BATCH, source: "pdf",
+                                                              statement: FACTS }) {
+      const fetchMock = show("import", {
+        "POST /api/finance-imports/dry-run/": () => ({ status: 201, body: batch }),
+        "POST /api/finance-imports/detect/": () => ({ body: detected }) });
+      const file = await screen.findByLabelText("The file from your bank");
+      expect(file.getAttribute("accept")).toContain(".pdf");
+      await userEvent.selectOptions(screen.getByLabelText("Account to import into"), "a1");
+      await userEvent.upload(file, new File(["%PDF"], "october.pdf",
+                                            { type: "application/pdf" }));
+      await userEvent.click(screen.getByRole("button", { name: "Read the file" }));
+      return fetchMock;
+    }
+
+    it("says how long it is and about what it costs before Claude reads it", async () => {
+      const fetchMock = await choose(PDF);
+      const card = await screen.findByRole("group", { name: "The PDF statement" });
+      expect(card).toHaveTextContent("A PDF statement, 3 pages.");
+      expect(card).toHaveTextContent("for about $0.17 of your AI budget");
+      expect(card).toHaveTextContent("never the account number, a name or an address");
+      expect(card).toHaveTextContent("sent to Anthropic as it is");
+      // No columns to choose, and nothing read until the button is pressed.
+      expect(screen.queryByLabelText("Column for: Date")).toBeNull();
+      expect(posts(fetchMock, "dry-run/")).toHaveLength(0);
+      await userEvent.click(within(card).getByRole("button", {
+        name: "Read it with Claude, about $0.17" }));
+      await waitFor(() => expect(posts(fetchMock, "dry-run/")).toHaveLength(1));
+
+      // The ordinary dry run, with what was read set against itself.
+      const read = await screen.findByRole("group", {
+        name: "What was read from the statement" });
+      expect(read).toHaveTextContent("Read from the PDF by Claude for $0.1642.");
+      expect(read).toHaveTextContent(
+        "The statement runs October 1, 2026 to October 31, 2026.");
+      expect(read).toHaveTextContent(
+        "Beginning balance $10,000.00. Ending balance $16,235.01.");
+      expect(read).toHaveTextContent(
+        "The lines read add up to the statement's ending balance.");
+      expect(within(read).getByRole("link", { name: "Open the statement" }))
+        .toHaveAttribute("href", "/api/finance-imports/b1/statement/");
+      expect(screen.getByText("Nothing has been written to the books. This is the dry run."))
+        .toBeInTheDocument();
+    });
+
+    it("says by how much the lines miss the ending balance, before anything is written",
+      async () => {
+        await choose(PDF, { ...BATCH, source: "pdf", statement: { ...FACTS, adds_up: {
+          in_cents: 680000, out_cents: 56499, expected_cents: 1623501,
+          difference_cents: -23501 } } });
+        await userEvent.click(await screen.findByRole("button", {
+          name: /Read it with Claude/ }));
+        expect(await screen.findByText(
+          /The lines read come to \$16,235.01, which is\s+\$235.01\s+more than the statement's ending balance/))
+          .toBeInTheDocument();
+      });
+
+    it("says why it cannot be read, and offers no button that would fail", async () => {
+      const fetchMock = await choose({ ...PDF, refused:
+        "This month's AI budget is spent, and a PDF statement is read by Claude." });
+      expect(await screen.findByText(/This month's AI budget is spent/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Read it with Claude/ })).toBeDisabled();
+      expect(posts(fetchMock, "dry-run/")).toHaveLength(0);
+    });
+  });
+
   it("says a saved mapping is being used", async () => {
     show("import", { "POST /api/finance-imports/detect/":
       () => ({ body: { ...DETECTED, from_saved: true } }) });

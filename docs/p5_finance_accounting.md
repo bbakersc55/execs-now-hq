@@ -470,3 +470,55 @@ the same commit and rollback.
 - Both OFX 1.x (SGML) and 2.x (XML) are read. It is recognized by what it
   is, not by its name.
 
+### A PDF statement
+
+A PDF has no columns to map, so this is the one part of the import that asks
+Claude (`apps/finance/statement_pdf.py`). Everything after the read is the
+ordinary import.
+
+1. **Choosing the file** says how many pages it has and about what reading it
+   costs, worked out from the pages. It asks Claude nothing and writes
+   nothing. With no Anthropic key, or with the month's AI budget spent, it
+   says so and the button is not offered.
+2. **"Read it with Claude"** sends the PDF, once. Claude returns the lines
+   (date, description, amount, in or out), the period, and the beginning and
+   ending balance as printed. It is told to work out and correct nothing.
+3. **The ordinary dry run.** Every line is shown with what would happen to
+   it; the practice's own rules decide categories; lines already in the
+   books are recognized; nothing is written. Beside it: the period, the two
+   balances, what the read cost, and **whether the lines read add up to the
+   ending balance** (arithmetic done here on what was read, so a misread or
+   missed line shows before anything is written).
+4. **Commit and rollback** as for any import. The ending balance becomes the
+   bank's own balance for that day, as a CSV's running balance does, and is
+   set beside the books on the balance view and on Reconcile.
+
+- **Costed after:** the `ai_call` the read wrote is on the import. A read
+  that fails still cost and is still on the record; the message says so.
+- **It counts against the practice's monthly AI budget** and is refused
+  before it is read when that is spent. It does not count against the twenty
+  a day that the Explain buttons share.
+- **What is kept from the PDF:** its lines, its period and its two balances.
+  **Never an account or routing number, a name or an address.** The prompt
+  forbids them, nothing in the import has a place to put them, and any run of
+  eight or more digits in a description is cut to its last four before it is
+  stored ("TRANSFER TO ACCT …4321").
+- **The PDF itself is kept with the import,** because it is the statement,
+  and is shown on the Reconcile screen for its month: where a reconciliation
+  is started and on an open one. It is the practice owner's alone, as the
+  books are. **It is sent to Anthropic as it is** when it is read, and the
+  screen says so before the button is pressed.
+- **Refused in plain words, for now:** a scan (a PDF with no text in it); one
+  locked with a password; one over 40 pages or 20 MB; and a statement with
+  more on it than can be read in one go (about 300 lines), for which the
+  bank's CSV or OFX file is the way.
+
+`finance` 0012 adds to an import: where it came from (CSV, a bank file, a
+PDF), the stored statement, its period, its beginning balance, and the call
+that read it. Additive, no data step. A new dependency, `pypdf`, counts the
+pages and tells a scan from a PDF with text.
+
+**Not proven:** no real statement has been read. The tests answer for Claude,
+so how well it copies a real bank's layout, and what a read really costs, are
+unknown until one is tried.
+

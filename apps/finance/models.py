@@ -292,10 +292,30 @@ class FinanceImportBatch(TenantScopedModel):
         COMMITTED = "committed", "Committed"
         ROLLED_BACK = "rolled_back", "Rolled back"
 
+    class Source(models.TextChoices):
+        CSV = "csv", "A CSV file"
+        #: The bank's own file: OFX, or QFX or QBO, which are OFX.
+        OFX = "ofx", "A bank file (OFX, QFX, QBO)"
+        #: A PDF statement, read by Claude (`statement_pdf.py`).
+        PDF = "pdf", "A PDF statement"
+
     account = models.ForeignKey(FinanceAccount, on_delete=models.PROTECT,
                                 related_name="import_batches")
     filename = models.CharField(max_length=255)
+    source = models.CharField(max_length=4, choices=Source.choices, default=Source.CSV,
+                              db_default=Source.CSV)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRY_RUN)
+    # A PDF statement only. The file itself is kept, because it is the
+    # statement; from it are kept its period, its two balances and its
+    # lines, and **nothing else**: no account number, no name, no address.
+    statement_file = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
+                                       on_delete=models.PROTECT, related_name="+")
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    opening_balance_cents = models.BigIntegerField(null=True, blank=True)
+    #: The call that read it: what it cost.
+    ai_call = models.ForeignKey("tenancy.AiCall", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
     #: As the dry run used it, so the commit writes what was shown.
     mapping = models.JSONField(default=dict)
     counts = models.JSONField(default=dict)

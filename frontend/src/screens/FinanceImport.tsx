@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
   FinanceAccount, FinanceCategory, BankImportBatch, ImportDetected, ImportMapping, BankImportRow,
-  PayeeReport, api,
+  PayeeReport, StatementFacts, api,
 } from "../lib/api";
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
@@ -20,7 +20,7 @@ import { dollars, longDate } from "../lib/money";
 
 /** A CSV, or a bank's own OFX file under any of its three names. */
 const ACCEPTS = ".csv,text/csv,.ofx,.qfx,.qbo,application/x-ofx,application/vnd.intu.qfx,"
-  + "application/vnd.intu.qbo";
+  + "application/vnd.intu.qbo,.pdf,application/pdf";
 
 const SOURCES: [keyof ImportMapping, string, boolean][] = [
   ["date", "Date", true], ["description", "Description", true],
@@ -114,9 +114,10 @@ export function FinanceImport({ accounts, categories }: {
         <Card title="1. The file, and which column is which">
           <p className="small muted" style={{ marginTop: 0 }}>
             Download a file from your bank or card's website and choose the account it is
-            for: a CSV, or the bank's own OFX, QFX (Quicken) or QBO (QuickBooks) file.
-            Downloading an overlapping range each month is fine: lines already in the books
-            are recognized and left out.
+            for: a CSV, or the bank's own OFX, QFX (Quicken) or QBO (QuickBooks) file. A PDF
+            statement works too: Claude reads it, which costs a little and is priced before
+            it is read. Downloading an overlapping range each month is fine: lines already
+            in the books are recognized and left out.
           </p>
           {open.length === 0 ? <Empty>Add the account this file is for first, in Accounts
             and categories.</Empty> : (
@@ -136,7 +137,30 @@ export function FinanceImport({ accounts, categories }: {
                 onClick={() => detect.mutate()}>Read the file</button>
             </div>
           )}
-          {detected && mapping && (
+          {detected && detected.kind === "pdf" && (
+            <div role="group" aria-label="The PDF statement">
+              <p className="small">
+                A PDF statement, {detected.pages} page{detected.pages === 1 ? "" : "s"}.
+                Claude reads it and copies out its lines, its period and its beginning and
+                ending balance, for about <strong>${Number(detected.estimate_usd).toFixed(2)}
+                </strong> of your AI budget. You then see every line before anything is
+                written, as for any import.
+              </p>
+              <p className="small muted">
+                The statement is sent to Anthropic as it is, to be read. From it only the
+                lines, the period and the two balances are kept: never the account number,
+                a name or an address. The PDF itself is kept with the import and shown on
+                the Reconcile screen for its month.
+              </p>
+              {detected.refused && <Banner kind="bad">{detected.refused}</Banner>}
+              <p><button className="primary" disabled={dryRun.isPending || !!detected.refused}
+                onClick={() => dryRun.mutate()}>
+                {dryRun.isPending ? "Claude is reading the statement…"
+                  : `Read it with Claude, about $${Number(detected.estimate_usd).toFixed(2)}`}
+              </button></p>
+            </div>
+          )}
+          {detected && mapping && detected.kind !== "pdf" && (
             <>
               <p className="small">{detected.lines} lines.{" "}
                 {detected.fixed
@@ -210,7 +234,10 @@ export function FinanceImport({ accounts, categories }: {
               <tbody>
                 {(history.data ?? []).filter((b) => b.status !== "dry_run").map((b) => (
                   <tr key={b.id}>
-                    <td>{b.filename}</td><td>{b.account.name}</td>
+                    <td>{b.filename}
+                      {b.statement && <> <a href={b.statement.pdf} target="_blank"
+                        rel="noreferrer" aria-label={`Open the statement ${b.filename}`}>
+                        PDF</a></>}</td><td>{b.account.name}</td>
                     <td>{b.committed_at ? when(b.committed_at) : ""}</td>
                     <td>{(b.counts.new ?? 0) + (b.counts.transfer ?? 0)}
                       {b.status === "rolled_back" && <> <Pill>rolled back</Pill></>}</td>
@@ -234,6 +261,44 @@ export function FinanceImport({ accounts, categories }: {
   );
 }
 
+/** What was read from a PDF statement, set against itself: the lines Claude
+ *  copied out, added up here, beside the ending balance the statement prints.
+ *  A difference means a line was misread or missed, and is said before
+ *  anything is written. */
+function StatementRead({ facts: s }: { facts: StatementFacts }) {
+  const sum = s.adds_up;
+  return (
+    <div role="group" aria-label="What was read from the statement" className="small">
+      <p style={{ margin: 0 }}>
+        Read from the PDF by Claude
+        {s.cost_usd !== null && <> for ${Number(s.cost_usd).toFixed(4)}</>}.{" "}
+        {s.period_start && s.period_end
+          && <>The statement runs {longDate(s.period_start)} to {longDate(s.period_end)}. </>}
+        {s.opening_balance_cents !== null
+          && <>Beginning balance {dollars(s.opening_balance_cents)}. </>}
+        {s.closing_balance_cents !== null
+          && <>Ending balance {dollars(s.closing_balance_cents)}. </>}
+        <a href={s.pdf} target="_blank" rel="noreferrer">Open the statement</a>
+      </p>
+      {sum === null && (
+        <p className="muted">The statement printed no beginning or ending balance to check
+          the lines against: check them against the PDF yourself.</p>
+      )}
+      {sum && sum.difference_cents === 0 && (
+        <p>The lines read add up to the statement's ending balance.</p>
+      )}
+      {sum && sum.difference_cents !== 0 && (
+        <Banner kind="bad">
+          The lines read come to {dollars(sum.expected_cents)}, which is{" "}
+          {dollars(Math.abs(sum.difference_cents))}{" "}
+          {sum.difference_cents > 0 ? "less" : "more"} than the statement's ending balance. A
+          line was misread or missed: check them against the PDF before writing anything.
+        </Banner>
+      )}
+    </div>
+  );
+}
+
 function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit, onCancel }: {
   batch: BankImportBatch; accounts: FinanceAccount[]; categories: FinanceCategory[];
   payees: PayeeReport["payees"]; busy: boolean;
@@ -247,6 +312,7 @@ function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit,
   return (
     <Card title={`2. What would happen: ${batch.filename} into ${batch.account.name}`}>
       <Banner kind="info">Nothing has been written to the books. This is the dry run.</Banner>
+      {batch.statement && <StatementRead facts={batch.statement} />}
       <p className="small" aria-label="What the import would do">
         <strong>{writes}</strong> new {writes === 1 ? "entry" : "entries"}
         {(c.needs_category ?? 0) > 0 && <> ({c.needs_category} with no category yet)</>}

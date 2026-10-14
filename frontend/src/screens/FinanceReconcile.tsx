@@ -6,7 +6,7 @@ import { PriceBox } from "../components/InvoiceLines";
 import { Banner, Card, Field, Pill } from "../components/ui";
 import {
   ExplainAnswer, ExplainStatus, FinanceCategory, MonthDetail, ReconcileCell, ReconcileGrid,
-  ReconcileLine, ReconcileReport, Reconciliation, ReopenPlan, api,
+  KeptStatement, ReconcileLine, ReconcileReport, Reconciliation, ReopenPlan, api,
 } from "../lib/api";
 import { FINANCE_DISCLAIMER, GUIDE_STEPS, categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
@@ -189,6 +189,25 @@ function Grid({ data, open, onOpen }: {
   );
 }
 
+/** The PDF statements imported for this account and month: the statement
+ *  itself, kept with its import (owner, 2026-10-14). */
+function Statements({ kept }: { kept: KeptStatement[] }) {
+  if (kept.length === 0) return null;
+  return (
+    <p className="small" aria-label="The statement for this month">
+      {kept.length === 1 ? "The statement: " : "The statements: "}
+      {kept.map((s, i) => (
+        <span key={s.id}>{i > 0 && ", "}
+          <a href={s.pdf} target="_blank" rel="noreferrer">{s.filename}</a>
+          {s.closing_balance_cents !== null
+            && <span className="muted"> (ending {dollars(s.closing_balance_cents)} on{" "}
+              {longDate(s.period_end)})</span>}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 // ------------------------------------------------------------ start one
 
 function Start({ data, account, month, onCancel, onStarted }: {
@@ -229,6 +248,7 @@ function Start({ data, account, month, onCancel, onStarted }: {
       </div>
       {said && <p className="small muted">Your bank's file ended at {dollars(said.cents)} on{" "}
         {longDate(said.on)}. Check it against the statement.</p>}
+      <Statements kept={row.statements?.[month] ?? []} />
       {later && (
         <>
           <label className="row tight small">
@@ -361,6 +381,7 @@ function Working({ id, refresh, onClose, onStep }: {
     <Card title={`${data.account.name}, ${data.month_label}`} tone="current"
       actions={<button className="ghost small" onClick={onClose}>Close this</button>}>
       {error && <Banner kind="bad">{error}</Banner>}
+      <Statements kept={data.statements ?? []} />
       {data.reopened_at && (
         <p className="small muted" style={{ marginTop: 0 }}>
           Reopened by {data.reopened_by} on {longDate(data.reopened_at.slice(0, 10))}:{" "}

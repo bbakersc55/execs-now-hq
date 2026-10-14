@@ -978,3 +978,272 @@ def test_a_bank_file_that_cannot_be_read_is_refused_in_words(books, ff, api, tex
         assert refused.status_code == 400 and why in refused.json()["detail"], refused.content
     with tenant_context(books["tenant"].pk):
         assert not FinanceImportBatch.objects.exists()
+
+
+# ======================================================== a PDF statement
+
+STATEMENT_HTML = """<html><body style="font-family: sans-serif; font-size: 10pt">
+<h1>Example Bank</h1><p>Statement for account ending 4421, October 1 to October 31, 2026.
+Account number 000987654321. Bryan Baker, 12 Elm Street, Denver CO.</p>
+<p>Beginning balance $10,000.00. Ending balance $16,235.01.</p>
+<table>{rows}</table></body></html>"""
+READ = {
+    "period_start": "2026-10-01", "period_end": "2026-10-31",
+    "opening_balance": "10000.00", "closing_balance": "16,235.01",
+    # What a model might add unasked: there is nowhere for it to be kept.
+    "account_number": "000987654321", "account_holder": "Bryan Baker",
+    "transactions": [
+        {"date": "2026-10-01", "description": "ADOBE *CREATIVE  CLOUD", "amount": "59.99",
+         "direction": "out"},
+        {"date": "2026-10-02", "description": "DEPOSIT ACME FACILITIES", "amount": "6800.00",
+         "direction": "in"},
+        {"date": "2026-10-03", "description": "ONLINE TRANSFER TO ACCT 000987654321 REF 12",
+         "amount": "500.00", "direction": "out"},
+        {"date": "2026-10-04", "description": "CHECK 1042", "amount": "5.00",
+         "direction": "out", "account": "000987654321"},
+        {"date": "soon", "description": "SMUDGED LINE", "amount": "1.00", "direction": "out"},
+        {"date": "2026-10-06", "description": "NO DIRECTION", "amount": "2.00"},
+        {"date": "2026-10-07", "description": "UNREADABLE AMOUNT", "amount": "",
+         "direction": "out"},
+    ]}
+
+
+def a_pdf(html: str) -> bytes:
+    from weasyprint import HTML
+
+    return HTML(string=html).write_pdf()
+
+
+@pytest.fixture(scope="module")
+def statement_pdf_bytes():
+    rows = "".join(f"<tr><td>10/0{n}</td><td>Line {n} of the statement</td><td>{n}.00</td></tr>"
+                   for n in range(1, 8))
+    return a_pdf(STATEMENT_HTML.format(rows=rows))
+
+
+@pytest.fixture(scope="module")
+def scanned_pdf_bytes():
+    # A picture of a statement: a page with an image on it and no text.
+    pixel = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+             "2mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+    return a_pdf(f'<html><body><img src="{pixel}" style="width:15cm;height:20cm"></body></html>')
+
+
+def upload_pdf(api, who, url, account, content, name="october.pdf"):
+    return api.as_(who).post(url, {
+        "file": SimpleUploadedFile(name, content, content_type="application/pdf"),
+        "account": account["id"]})
+
+
+@pytest.mark.django_db
+def test_a_pdf_statement_is_priced_first_read_by_claude_and_goes_through_the_dry_run(
+        books, ff, api, fake_claude, statement_pdf_bytes):
+    """Owner, 2026-10-14."""
+    import base64
+
+    from apps.finance import importer, reconcile, statement_pdf
+    from apps.tenancy.models import AiCall, StoredFile
+
+    tenant = books["tenant"]
+    post(api, ff, RULES, {"contains": "adobe", "treat_as": "category",
+                          "category": books["cat"]["Software"]["id"]})
+    fake_claude.reply = "Here it is:\n```json\n" + json.dumps(READ) + "\n```"
+
+    # Choosing the file says how long it is and about what it costs. It asks
+    # Claude nothing and writes nothing.
+    found = upload_pdf(api, ff, I + "detect/", books["bank"], statement_pdf_bytes)
+    assert found.status_code == 200, found.content
+    found = found.json()
+    assert (found["kind"], found["pages"], found["refused"]) == ("pdf", 1, "")
+    assert float(found["estimate_usd"]) > 0
+    assert fake_claude.requests == []
+    with tenant_context(tenant.pk):
+        assert not FinanceImportBatch.objects.exists() and not AiCall.objects.exists()
+        entries_before = FinanceEntry.objects.count()
+
+    made = upload_pdf(api, ff, I + "dry-run/", books["bank"], statement_pdf_bytes)
+    assert made.status_code == 201, made.content
+    batch = made.json()
+
+    # One call, with the statement itself and a prompt that forbids what
+    # must never be kept.
+    [request] = fake_claude.requests
+    document, text = request["messages"][0]["content"]
+    assert document["type"] == "document"
+    assert document["source"]["media_type"] == "application/pdf"
+    assert base64.standard_b64decode(document["source"]["data"]) == statement_pdf_bytes
+    assert text == {"type": "text", "text": "Read this statement."}
+    for words in ("Do NOT include the account number", "holder's name or address",
+                  "Do not work out, estimate or correct any figure"):
+        assert words in request["system"], words
+
+    # The ordinary dry run: every line with what would happen to it, and
+    # nothing in the books.
+    rows = batch["rows"]
+    assert (batch["source"], batch["status"], batch["filename"]) == (
+        "pdf", "dry_run", "october.pdf")
+    assert [(r["on_date"], r["amount_cents"], r["direction"], r["description"], r["outcome"])
+            for r in rows[:4]] == [
+        ("2026-10-01", 5999, "out", "ADOBE *CREATIVE CLOUD", "new"),
+        ("2026-10-02", 680000, "in", "DEPOSIT ACME FACILITIES", "new"),
+        ("2026-10-03", 50000, "out", "ONLINE TRANSFER TO ACCT …4321 REF 12", "new"),
+        ("2026-10-04", 500, "out", "CHECK 1042", "new")]
+    assert [r["outcome"] for r in rows[4:]] == ["error"] * 3
+    assert "soon" in rows[4]["error"] and "is not an amount" in rows[5]["error"]
+    assert rows[0]["category"]["name"] == "Software", "the practice's own rules decide"
+    with tenant_context(tenant.pk):
+        assert FinanceEntry.objects.count() == entries_before
+
+    # The statement's own facts, and arithmetic on what was read: it adds up.
+    statement = batch["statement"]
+    assert (statement["period_start"], statement["period_end"]) == ("2026-10-01", "2026-10-31")
+    assert (statement["opening_balance_cents"], statement["closing_balance_cents"]) == (
+        1000000, 1623501)
+    assert statement["adds_up"] == {"in_cents": 680000, "out_cents": 56499,
+                                    "expected_cents": 1623501, "difference_cents": 0}
+    assert (batch["last_balance_cents"], batch["last_balance_on"]) == (1623501, "2026-10-31")
+    # Costed after: the call that read it, on the import.
+    with tenant_context(tenant.pk):
+        call = AiCall.objects.get()
+        assert (call.purpose, call.trigger, call.succeeded) == (
+            "finance_read_statement", "button", True)
+        assert float(statement["cost_usd"]) == float(call.cost_usd) and call.cost_usd > 0
+
+        # Kept: the PDF itself, with the import. Not kept: whose it is.
+        row = FinanceImportBatch.objects.get()
+        stored = StoredFile.objects.get(pk=row.statement_file_id)
+        assert (stored.purpose, stored.content_type) == ("bank_statement", "application/pdf")
+        kept = json.dumps([row.mapping, row.counts, row.filename]
+                          + list(FinanceImportRow.objects.values_list("raw", "description")))
+        for never in ("000987654321", "Bryan Baker", "account_holder", "Elm Street"):
+            assert never not in kept, never
+        assert not FinanceImportProfile.objects.exists()
+    served = api.as_(ff).get(statement["pdf"])
+    assert served.status_code == 200 and served["Content-Type"] == "application/pdf"
+    assert served.content == statement_pdf_bytes
+
+    # Commit, as any import; then it is the statement for its month.
+    assert post(api, ff, f"{I}{batch['id']}/commit/").status_code == 200
+    with tenant_context(tenant.pk):
+        assert FinanceEntry.objects.filter(source=FinanceEntry.Source.IMPORT).count() == 4
+        [said] = importer.bank_said(tenant).values()
+        assert (said["cents"], said["on"].isoformat()) == (1623501, "2026-10-31")
+        [(key, [shown])] = reconcile.statements(tenant).items()
+        assert key == (row.account_id, reconcile.month_start(row.period_end))
+        assert (shown["filename"], shown["pdf"], shown["closing_balance_cents"]) == (
+            "october.pdf", statement["pdf"], 1623501)
+        account = [a for a in reconcile.grid(tenant, ff.user)["accounts"]
+                   if a["id"] == books["bank"]["id"]][0]
+        assert list(account["statements"]) == ["2026-10"]
+
+    # The same statement again is read again, and adds nothing.
+    again = upload_pdf(api, ff, I + "dry-run/", books["bank"], statement_pdf_bytes).json()
+    assert [r["outcome"] for r in again["rows"]] == ["duplicate"] * 4 + ["error"] * 3
+    assert len(fake_claude.requests) == 2
+    assert statement_pdf.scrub("CARD 4111 1111 1111 1111 PURCHASE") == "CARD …1111 PURCHASE"
+    assert statement_pdf.scrub("CHECK 1042 10/04") == "CHECK 1042 10/04"
+
+
+@pytest.mark.django_db
+def test_a_pdf_whose_lines_do_not_add_up_says_by_how_much_and_a_cards_balance_is_owed(
+        books, ff, api, fake_claude, statement_pdf_bytes):
+    fake_claude.reply = json.dumps({**READ, "closing_balance": "16000.00"})
+    batch = upload_pdf(api, ff, I + "dry-run/", books["bank"], statement_pdf_bytes).json()
+    assert batch["statement"]["adds_up"]["difference_cents"] == 1600000 - 1623501
+    # A card: purchases add to what is owed, a payment takes away.
+    fake_claude.reply = json.dumps({
+        "period_start": "2026-10-01", "period_end": "2026-10-31",
+        "opening_balance": "500.00", "closing_balance": "212.40",
+        "transactions": [
+            {"date": "2026-10-06", "description": "HOTEL", "amount": "212.40",
+             "direction": "out"},
+            {"date": "2026-10-20", "description": "PAYMENT THANK YOU", "amount": "500.00",
+             "direction": "in"}]})
+    card = upload_pdf(api, ff, I + "dry-run/", books["card"], statement_pdf_bytes).json()
+    assert card["statement"]["adds_up"]["difference_cents"] == 0
+    assert card["last_balance_cents"] == 21240
+    # A statement that prints no balances has nothing to add up to.
+    fake_claude.reply = json.dumps({**READ, "opening_balance": None, "closing_balance": None})
+    bare = upload_pdf(api, ff, I + "dry-run/", books["bank"], statement_pdf_bytes).json()
+    assert bare["statement"]["adds_up"] is None and bare["last_balance_cents"] is None
+
+
+@pytest.mark.django_db
+def test_a_pdf_that_cannot_be_read_is_refused_in_plain_words(
+        books, ff, api, fake_claude, statement_pdf_bytes, scanned_pdf_bytes, settings):
+    from decimal import Decimal
+
+    from apps.tenancy.models import AiCall
+
+    tenant = books["tenant"]
+
+    def both(content, name="october.pdf"):
+        return [upload_pdf(api, ff, I + step, books["bank"], content, name=name)
+                for step in ("detect/", "dry-run/")]
+
+    # A scan: a picture of a statement, with no text in it.
+    for refused in both(scanned_pdf_bytes):
+        assert refused.status_code == 400
+        assert refused.json()["detail"].startswith("This PDF is a scan")
+    for refused in both(b"%PDF-1.7 this is not really one"):
+        assert refused.status_code == 400 and "not a PDF" in refused.json()["detail"]
+    assert fake_claude.requests == [], "and Claude was asked nothing"
+
+    # What Claude sends back cannot be used: nothing is imported, and it still cost.
+    for reply, words in (("I could not read it.", "could not be used"),
+                         (json.dumps({"transactions": []}), "found no transactions")):
+        fake_claude.reply = reply
+        refused = upload_pdf(api, ff, I + "dry-run/", books["bank"], statement_pdf_bytes)
+        assert refused.status_code == 502 and words in refused.json()["detail"]
+        assert "still an AI call" in refused.json()["detail"]
+    fake_claude.stop_reason = "max_tokens"
+    long_one = upload_pdf(api, ff, I + "dry-run/", books["bank"], statement_pdf_bytes)
+    assert long_one.status_code == 502
+    assert "more on it than can be read in one go" in long_one.json()["detail"]
+    fake_claude.stop_reason = "end_turn"
+    with tenant_context(tenant.pk):
+        assert AiCall.objects.count() == 3, "each read is on the record, failed or not"
+        assert not FinanceImportBatch.objects.exists()
+        assert not FinanceEntry.objects.filter(source=FinanceEntry.Source.IMPORT).exists()
+
+    # Counted against the practice's AI budget: spent, it is refused before it is read.
+    asked = len(fake_claude.requests)
+    with tenant_context(tenant.pk):
+        AiCall.objects.update(cost_usd=Decimal("2.00"))
+    tenant.ai_monthly_budget_usd = Decimal("5.00")
+    tenant.save()
+    found, made = both(statement_pdf_bytes)
+    assert found.status_code == 200 and "AI budget is spent" in found.json()["refused"]
+    assert made.status_code == 409 and "AI budget is spent" in made.json()["detail"]
+    tenant.ai_monthly_budget_usd = Decimal("50.00")
+    tenant.save()
+    assert both(statement_pdf_bytes)[0].json()["refused"] == ""
+    # No key: said before, and refused.
+    settings.ANTHROPIC_API_KEY = ""
+    found, made = both(statement_pdf_bytes)
+    assert "No Anthropic API key" in found.json()["refused"]
+    assert made.status_code == 409 and "No Anthropic API key" in made.json()["detail"]
+    assert len(fake_claude.requests) == asked + 1, "only the one read the budget allowed"
+
+
+@pytest.mark.django_db
+def test_role_boundaries_and_isolation_the_statement_is_the_practice_owners_alone(
+        books, ff, va, cf, fcc, tenant_b, api, fake_claude, statement_pdf_bytes):
+    fake_claude.reply = json.dumps(READ)
+    batch = upload_pdf(api, ff, I + "dry-run/", books["bank"], statement_pdf_bytes).json()
+    pdf = batch["statement"]["pdf"]
+    assert api.as_(ff).get(pdf).status_code == 200
+    for who in (va, cf):
+        assert api.as_(who).get(pdf).status_code == 403
+        assert upload_pdf(api, who, I + "dry-run/", books["bank"],
+                          statement_pdf_bytes).status_code == 403
+    assert api.as_(fcc).get(pdf).status_code == 404
+    stranger = _member(tenant_b, "FF")
+    assert api.as_(stranger).get(pdf).status_code == 404
+    assert upload_pdf(api, stranger, I + "dry-run/", books["bank"],
+                      statement_pdf_bytes).status_code == 404
+    assert len(fake_claude.requests) == 1
+    # A CSV's import has no statement to serve.
+    plain = dry(api, ff, books)
+    assert plain["statement"] is None and plain["source"] == "csv"
+    assert api.as_(ff).get(f"{I}{plain['id']}/statement/").status_code == 404

@@ -18,7 +18,9 @@ decline.
 No AI is used. Rules are the owner's own, remembered (`rules.py`).
 
 The file is a CSV, or the bank's own OFX, QFX or QBO (`bank_files.py`), which
-is read into the same columns and from there is the same import.
+is read into the same columns and from there is the same import. A PDF
+statement is the one exception to "no AI": Claude reads it
+(`statement_pdf.py`), and what it reads then goes through this same dry run.
 """
 
 from __future__ import annotations
@@ -363,20 +365,48 @@ def _counts(batch) -> dict:
     return counts
 
 
-@transaction.atomic
 def dry_run(tenant, *, account, filename, file_bytes, mapping, actor=None):
     """Read every line and decide what would happen to it. Writes this batch
-    and its rows, and nothing to the books."""
+    and its rows, and nothing to the books.
+
+    A PDF statement is read by Claude first, outside the transaction that
+    writes the batch: that read costs whatever happens after it, so its
+    `ai_call` must stand even if the rest fails."""
+    from apps.finance import statement_pdf
+
     if account.closed_at is not None:
         raise FinanceError(f"“{account.name}” is closed.")
-    parsed = parse(file_bytes, filename)
+    if file_bytes and statement_pdf.is_pdf(file_bytes, filename):
+        parsed = statement_pdf.read(tenant, file_bytes=file_bytes)
+    else:
+        parsed = parse(file_bytes, filename)
+    return _dry_run(tenant, account=account, filename=filename, file_bytes=file_bytes,
+                    mapping=mapping, parsed=parsed, actor=actor)
+
+
+@transaction.atomic
+def _dry_run(tenant, *, account, filename, file_bytes, mapping, parsed, actor=None):
+    from apps.finance import bank_files, statement_pdf
+
     header, raws = parsed["header"], parsed["rows"]
     # A bank's own file format says which value is which: nothing to choose.
     mapping = clean_mapping(parsed["mapping"] or mapping, header)
     services.ensure_chart(tenant)
     batch = FinanceImportBatch.all_objects.create(
         tenant=tenant, account=account, filename=(filename or "export.csv")[:255],
-        mapping=mapping, created_by=actor)
+        mapping=mapping, created_by=actor, source=parsed["kind"])
+    if parsed["kind"] == statement_pdf.KIND:
+        from apps.tenancy import storage
+
+        # The PDF is the statement, so it is kept with the import. From it:
+        # the period and the two balances, and nothing about whose it is.
+        batch.statement_file = storage.save(
+            tenant=tenant, content=file_bytes,
+            object_key=storage.object_key("statements", batch.filename),
+            purpose=statement_pdf.STORED_AS, content_type="application/pdf")
+        batch.period_start, batch.period_end = parsed["period_start"], parsed["period_end"]
+        batch.opening_balance_cents = parsed["opening"]
+        batch.ai_call = parsed["call"]
     books = _Books(tenant, account)
     rules = list(FinanceRule.all_objects.filter(tenant=tenant, is_active=True)
                  .select_related("category", "other_account", "payee_contact"))
@@ -411,10 +441,12 @@ def dry_run(tenant, *, account, filename, file_bytes, mapping, actor=None):
         row.save()
     if parsed["closing"] is not None:
         # The statement's own closing balance. A card's is what is owed,
-        # which the file writes as a negative number and the books as a
-        # positive one.
+        # which an OFX file writes as a negative number and the books as a
+        # positive one; a PDF's is asked for as what is owed.
         on, cents = parsed["closing"]
-        last_balance = (on, -cents if account.kind == FinanceAccount.Kind.CARD else cents)
+        owed_as_negative = parsed["kind"] == bank_files.KIND \
+            and account.kind == FinanceAccount.Kind.CARD
+        last_balance = (on, -cents if owed_as_negative else cents)
     if last_balance is not None:
         batch.last_balance_on, batch.last_balance_cents = last_balance
     batch.counts = _counts(batch)
