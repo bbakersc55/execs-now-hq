@@ -228,7 +228,7 @@ Anything destructive or data-rewriting has your explicit yes on the dry run
 
 | # | Step | Command | Gate |
 |---|---|---|---|
-| R1 | Confirm the backup | `gcloud storage ls -l "gs://execs-now-hq-db-backups/execsnowhq_prod_*" \| sort -k2 \| tail -1` | The newest dump is from the most recent 08:00 UTC run (02:00 Mountain), under 24 hours old, and over the 1 KB floor. If not, stop: run the backup by hand first and check again. **Not `railway redeploy --service backup`**, which rebuilds the service and runs nothing (observed 2026-10-08). The cron's "run now" is `railway api 'mutation($id:String!){deploymentInstanceExecutionCreate(input:{serviceInstanceId:$id})}' --raw-var id=8653b0cf-2067-45ab-b09c-8303172165f2`; the dump landed three seconds after it. |
+| R1 | Confirm the backup | `gcloud storage ls -l "gs://execs-now-hq-db-backups/execsnowhq_prod_*" \| grep -v '^TOTAL' \| sort -k2 \| tail -1` (the `grep` drops the listing's closing `TOTAL:` line, which otherwise sorts last and is all `tail -1` shows; seen at Release 12) | The newest dump is from the most recent 08:00 UTC run (02:00 Mountain), under 24 hours old, and over the 1 KB floor. If not, stop: run the backup by hand first and check again. **Not `railway redeploy --service backup`**, which rebuilds the service and runs nothing (observed 2026-10-08). The cron's "run now" is `railway api 'mutation($id:String!){deploymentInstanceExecutionCreate(input:{serviceInstanceId:$id})}' --raw-var id=8653b0cf-2067-45ab-b09c-8303172165f2`; the dump landed three seconds after it. |
 | R2 | Release | merge `dev` → `main`, push | Railway builds web and qcluster |
 | R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else |
 | R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report |
@@ -334,6 +334,31 @@ only from R3 on and not every 5 s as before. **Worker paused about 37 s.**
 when it went out, and production's database was not read afterwards: what
 the data steps did is known from the migration's own output and from the
 code.**
+
+**Observed at Release 12 (2026-10-14 UTC, 6 migrations: P7 phases 1 and 2,
+client teams; invoicing's payment terms and a recurring invoice's Edit; bank
+import from OFX, QFX, QBO and a PDF statement):** the dry run of P7 phase 1's
+data step (`scripts/p7_phase1_dry_run.py`, piped into production's shell by
+the owner) printed 4 default teams, 6 portal users as Manager, 14 projects
+and 100 tasks given a team, 38 tasks left to follow their project; the owner
+said yes to it, with "stop if either migration prints lower". A fresh backup
+taken first by the owner with R1's "run now": `execsnowhq_prod_20261014_154923`,
+15:49:26, 3,239,847 bytes. The commit released, `bd6dceb`, had passed
+`scripts/gate.sh`. `main` fast-forwarded from `147087f` and pushed 15:52:08;
+worker `WAITING` 15:54:04 listing exactly `billing.0003`, `billing.0004`,
+`tenancy.0014`, `work.0010`, `crm.0036` and `finance.0012`; applied
+15:54:28–36, all OK. **The data steps printed what the dry run did:**
+`work.0010: 4 default team(s); 6 portal user(s) placed as Manager; 14
+project(s) given a team.` and `crm.0036: 100 task(s) in no project given
+their company's default team.` `migrations current` 15:54:37, worker running
+15:54:40; web redeployed 15:55:01, "Migrations are current" in its log (so
+`pypdf` was there: `config/startup.py` refuses a start without it); new code
+answering by 15:55:26 (`/api/client-teams/` 404 to 403). **Push to new code:
+3 min 18 s.** `/healthz` 200 at all 46 samples, every 5 s from 15:52:07 to
+15:56:09. **Worker paused about 36 s.** After: no new schedule, so no
+`ensure_schedules`; no migration unapplied. **Nothing in the release had been
+seen in a signed-in browser on production when it went out** (the owner had
+checked it all on the demo); no PDF statement has been read with a real key.
 
 **Observed at Release 11 (2026-10-14 UTC, 6 migrations: P6 M2, the cash
 forecast, both stops and the three fixes from the owner's look on the demo;
