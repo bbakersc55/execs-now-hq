@@ -245,37 +245,158 @@ function NewInvoice({ clients, owner, preset, onClose }: {
   );
 }
 
+/** A recurring invoice as its form holds it. `terms` null is the practice's. */
+type ScheduleDraft = {
+  company: string; contact: string; day: string; lines: InvoiceLine[];
+  terms: number | null; income: string; pay_instructions: string;
+  email_subject: string; email_body: string;
+};
+
+const blankSchedule = (): ScheduleDraft => ({
+  company: "", contact: "", day: "1",
+  lines: [{ description: "", quantity: "1", unit_price_cents: 0 }],
+  terms: null, income: "", pay_instructions: "", email_subject: "", email_body: "" });
+
+const scheduleDraft = (row: InvoiceSchedule): ScheduleDraft => ({
+  company: row.client_company.id, contact: row.contact.id, day: String(row.day_of_month),
+  lines: row.lines.length ? row.lines : blankSchedule().lines,
+  terms: row.terms_days, income: row.income_category ?? "",
+  pay_instructions: row.pay_instructions, email_subject: row.email_subject,
+  email_body: row.email_body });
+
+/**
+ * The one form a recurring invoice is made and changed in (owner, 2026-10-14:
+ * once saved it could only be paused).
+ *
+ * Its own "how to pay" and covering email are optional: left empty, each
+ * invoice it writes takes the practice's, as it stands that day. A change
+ * applies to the invoices it writes from then on. The ones already written
+ * are documents of their own and are not touched.
+ */
+function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
+  editing: InvoiceSchedule | null; clients: Company[]; owner: boolean;
+  practice: InvoiceSettingsData | undefined; onDone: () => void; onCancel: () => void;
+}) {
+  const [form, setForm] = useState<ScheduleDraft>(
+    editing ? scheduleDraft(editing) : blankSchedule);
+  const set = (patch: Partial<ScheduleDraft>) => setForm({ ...form, ...patch });
+  const people = useRecipients(form.company);
+  const what = editing ? `${editing.client_company.name}'s recurring invoice`
+    : "the recurring invoice";
+  const save = useMutation({
+    mutationFn: () => {
+      const body = {
+        client_company: form.company, contact: form.contact, day_of_month: Number(form.day),
+        lines: cleanLines(form.lines) };
+      return editing
+        // Everything the form holds, so what is saved is what is shown: an
+        // emptied box goes back to the practice's own.
+        ? api.patch<InvoiceSchedule>(`/api/invoice-schedules/${editing.id}/`, {
+          ...body, terms_days: form.terms, pay_instructions: form.pay_instructions,
+          email_subject: form.email_subject, email_body: form.email_body,
+          ...(owner ? { income_category: form.income } : {}) })
+        // A new one names only what was chosen; the rest is the practice's.
+        : api.post<InvoiceSchedule>("/api/invoice-schedules/", {
+          ...body,
+          ...(form.terms !== null ? { terms_days: form.terms } : {}),
+          ...(form.pay_instructions.trim() ? { pay_instructions: form.pay_instructions } : {}),
+          ...(form.email_subject.trim() ? { email_subject: form.email_subject } : {}),
+          ...(form.email_body.trim() ? { email_body: form.email_body } : {}),
+          ...(owner && form.income ? { income_category: form.income } : {}) });
+    },
+    onSuccess: onDone,
+  });
+  // The people offered are the chosen company's. While they load for a
+  // schedule being edited, the person it is addressed to is still offered.
+  const offered = editing && form.company === editing.client_company.id
+    && !people.some((c) => c.id === editing.contact.id)
+    ? [{ id: editing.contact.id, label: editing.contact.name },
+       ...people.map((c) => ({ id: c.id, label: name(c) }))]
+    : people.map((c) => ({ id: c.id, label: name(c) }));
+  return (
+    <div className="card" role="group"
+      aria-label={editing ? `Editing ${what}` : "The new recurring invoice"}>
+      {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
+      {editing && (
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Changes apply to the invoices it writes from now on. Invoices it has already
+          written are not changed.
+        </p>
+      )}
+      <div className="row">
+        <Field label="Client company">
+          <select aria-label="Client company for the recurring invoice" value={form.company}
+            onChange={(e) => set({ company: e.target.value, contact: "" })}>
+            <option value="">Choose a client</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Addressed to">
+          <select aria-label="Recurring invoice addressed to" value={form.contact}
+            disabled={offered.length === 0} onChange={(e) => set({ contact: e.target.value })}>
+            <option value="">Choose a person</option>
+            {offered.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Day of the month (1 to 28)">
+          <input type="number" min={1} max={28} aria-label="Day of the month" value={form.day}
+            style={{ width: "5rem" }} onChange={(e) => set({ day: e.target.value })} />
+        </Field>
+        <TermsPicker label="Payment terms for the recurring invoice" value={form.terms}
+          practice={practice?.terms_days} onChange={(terms) => set({ terms })} />
+      </div>
+      <InvoiceLines lines={form.lines} onChange={(lines) => set({ lines })} />
+      {owner && (
+        <Field label="In your books, its payments go to">
+          <IncomeCategoryPicker kind="recurring" value={form.income}
+            onChange={(income) => set({ income })}
+            label={editing ? `Income category for ${what}`
+              : "Income category for the new recurring invoice"} />
+        </Field>
+      )}
+      <Field label="How to pay (leave empty for the practice's own)">
+        <textarea rows={2} aria-label="How to pay, for the recurring invoice"
+          placeholder={practice?.pay_instructions ?? ""} value={form.pay_instructions}
+          onChange={(e) => set({ pay_instructions: e.target.value })} />
+      </Field>
+      <Field label="Covering email (leave empty for the practice's own)">
+        <input aria-label="Email subject, for the recurring invoice" maxLength={200}
+          placeholder={practice?.email_subject ?? ""} value={form.email_subject}
+          onChange={(e) => set({ email_subject: e.target.value })} />
+        <textarea rows={4} aria-label="Email body, for the recurring invoice"
+          placeholder={practice?.email_body ?? ""} value={form.email_body}
+          onChange={(e) => set({ email_body: e.target.value })} />
+        {practice && (
+          <p className="tiny muted" style={{ marginBottom: 0 }}>
+            You can use {practice.merge_fields.map((f) => `{${f}}`).join(", ")}. They are
+            filled in when each invoice is made ready.
+          </p>
+        )}
+      </Field>
+      <div className="row tight" style={{ marginTop: "var(--s3)" }}>
+        <button className="primary"
+          disabled={!form.company || !form.contact || cleanLines(form.lines).length === 0
+            || save.isPending}
+          onClick={() => save.mutate()}>
+          {editing ? "Save the changes" : "Save the recurring invoice"}</button>
+        <button className="ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 /** Recurring invoices: each writes a draft on its day and nothing else. */
 function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
   const qc = useQueryClient();
   const schedules = useQuery<InvoiceSchedule[]>({
     queryKey: ["invoice-schedules"],
     queryFn: () => api.get<InvoiceSchedule[]>("/api/invoice-schedules/") });
-  const [adding, setAdding] = useState(false);
-  const [company, setCompany] = useState("");
-  const [contact, setContact] = useState("");
-  const [day, setDay] = useState("1");
-  const [lines, setLines] = useState<InvoiceLine[]>([
-    { description: "", quantity: "1", unit_price_cents: 0 }]);
-  // The practice owner's: where its invoices' payments go in the books.
-  const [income, setIncome] = useState("");
-  // null: the practice's terms, as they stand when each invoice is written.
-  const [terms, setTerms] = useState<number | null>(null);
+  // "new", a schedule's id, or nothing open.
+  const [open, setOpen] = useState("");
   const practice = useQuery<InvoiceSettingsData>({
     queryKey: ["invoice-settings"], retry: false,
     queryFn: () => api.get<InvoiceSettingsData>("/api/invoice-settings/") });
-  const people = useRecipients(company);
   const done = () => qc.invalidateQueries({ queryKey: ["invoice-schedules"] });
-  const save = useMutation({
-    mutationFn: () => api.post<InvoiceSchedule>("/api/invoice-schedules/", {
-      client_company: company, contact, day_of_month: Number(day), lines: cleanLines(lines),
-      ...(terms !== null ? { terms_days: terms } : {}),
-      ...(owner && income ? { income_category: income } : {}) }),
-    onSuccess: () => {
-      done(); setAdding(false); setCompany(""); setContact(""); setIncome(""); setTerms(null);
-      setLines([{ description: "", quantity: "1", unit_price_cents: 0 }]);
-    },
-  });
   const toggle = useMutation({
     mutationFn: (row: InvoiceSchedule) => api.patch<InvoiceSchedule>(
       `/api/invoice-schedules/${row.id}/`, { is_active: !row.is_active }),
@@ -287,15 +408,16 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
     onSuccess: done,
   });
   const rows = schedules.data ?? [];
+  const editing = rows.find((row) => row.id === open) ?? null;
   return (
     <Card title="Recurring invoices"
-      actions={!adding && <button className="small" onClick={() => setAdding(true)}>
+      actions={!open && <button className="small" onClick={() => setOpen("new")}>
         New recurring invoice</button>}>
       <p className="small muted" style={{ marginTop: 0 }}>
         On its day each month a recurring invoice writes a draft. It does not number it and
         does not send it: you check the draft and make it ready, as for any other.
       </p>
-      {rows.length === 0 && !adding && <Empty>No recurring invoices.</Empty>}
+      {rows.length === 0 && !open && <Empty>No recurring invoices.</Empty>}
       {rows.length > 0 && (
         <table>
           <thead><tr><th>Client</th><th>Addressed to</th><th>Day</th><th>Terms</th>
@@ -321,6 +443,9 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
                   </td>
                 )}
                 <td className="money">
+                  <button className="ghost small" disabled={!!open}
+                    aria-label={`Edit the recurring invoice for ${row.client_company.name}`}
+                    onClick={() => setOpen(row.id)}>Edit</button>{" "}
                   <button className="ghost small" disabled={toggle.isPending}
                     aria-label={`${row.is_active ? "Pause" : "Resume"} the recurring invoice for ${row.client_company.name}`}
                     onClick={() => toggle.mutate(row)}>
@@ -331,45 +456,10 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
           </tbody>
         </table>
       )}
-      {adding && (
-        <div className="card">
-          {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
-          <div className="row">
-            <Field label="Client company">
-              <select aria-label="Client company for the recurring invoice" value={company}
-                onChange={(e) => { setCompany(e.target.value); setContact(""); }}>
-                <option value="">Choose a client</option>
-                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Addressed to">
-              <select aria-label="Recurring invoice addressed to" value={contact}
-                disabled={people.length === 0} onChange={(e) => setContact(e.target.value)}>
-                <option value="">Choose a person</option>
-                {people.map((c) => <option key={c.id} value={c.id}>{name(c)}</option>)}
-              </select>
-            </Field>
-            <Field label="Day of the month (1 to 28)">
-              <input type="number" min={1} max={28} aria-label="Day of the month" value={day}
-                style={{ width: "5rem" }} onChange={(e) => setDay(e.target.value)} />
-            </Field>
-            <TermsPicker label="Payment terms for the recurring invoice" value={terms}
-              practice={practice.data?.terms_days} onChange={setTerms} />
-          </div>
-          <InvoiceLines lines={lines} onChange={setLines} />
-          {owner && (
-            <Field label="In your books, its payments go to">
-              <IncomeCategoryPicker kind="recurring" value={income} onChange={setIncome}
-                label="Income category for the new recurring invoice" />
-            </Field>
-          )}
-          <div className="row tight" style={{ marginTop: "var(--s3)" }}>
-            <button className="primary"
-              disabled={!company || !contact || cleanLines(lines).length === 0 || save.isPending}
-              onClick={() => save.mutate()}>Save the recurring invoice</button>
-            <button className="ghost" onClick={() => setAdding(false)}>Cancel</button>
-          </div>
-        </div>
+      {(open === "new" || editing) && (
+        <ScheduleForm key={open} editing={editing} clients={clients} owner={owner}
+          practice={practice.data} onCancel={() => setOpen("")}
+          onDone={() => { done(); setOpen(""); }} />
       )}
     </Card>
   );

@@ -499,6 +499,9 @@ class ScheduleViewSet(BillingViewSet):
             "terms_label": services.terms_label(
                 row.terms_days if row.terms_days is not None
                 else services.settings_for(row.tenant).terms_days),
+            # Its own, or "" for the practice's as it stands when each is written.
+            "pay_instructions": row.pay_instructions,
+            "email_subject": row.email_subject, "email_body": row.email_body,
             **books_category(row, self._role()),
         }
 
@@ -514,7 +517,8 @@ class ScheduleViewSet(BillingViewSet):
     def _save(self, request, schedule=None):
         data = request.data
         fields = {}
-        for name in ("day_of_month", "starts_on", "lines", "notes", "terms", "is_active"):
+        for name in ("day_of_month", "starts_on", "lines", "notes", "terms", "is_active",
+                     "pay_instructions", "email_subject", "email_body"):
             if name in data:
                 fields[name] = data[name]
         if "ends_on" in data:
@@ -529,6 +533,9 @@ class ScheduleViewSet(BillingViewSet):
                 fields["client_company"] = self._company(data.get("client_company"))
                 if "contact" not in fields:
                     raise services.BillingError("Choose who the invoices are addressed to.")
+            elif data.get("client_company"):
+                # Another client of the practice, within the editor's own reach.
+                fields["client_company"] = self._company(data["client_company"])
             row = services.save_schedule(request.tenant, actor=request.user,
                                          schedule=schedule, **fields)
         except services.BillingError as exc:

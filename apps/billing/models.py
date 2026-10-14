@@ -63,6 +63,11 @@ class ClientInvoiceSchedule(TenantScopedModel):
     #: Its own payment terms, in days. Empty: the practice's, as they stand
     #: on the day each invoice is written.
     terms_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: Its own "how to pay" and its own covering email. Each empty: the
+    #: practice's, as it stands on the day each invoice is written.
+    pay_instructions = models.TextField(blank=True, default="", db_default="")
+    email_subject = models.CharField(max_length=200, blank=True, default="", db_default="")
+    email_body = models.TextField(blank=True, default="", db_default="")
     is_active = models.BooleanField(default=True, db_default=True)
     #: Where its invoices' payments are entered in the books, when the
     #: practice owner chose something other than what recurring invoices go

@@ -1525,6 +1525,8 @@ export interface InvoiceSchedule {
   lines: InvoiceLine[]; total_cents: number; notes: string; terms: string;
   /** Its own payment terms, or null for the practice's; and what that is today. */
   terms_days: number | null; terms_label: string;
+  /** Its own, or "" for the practice's as it stands when each is written. */
+  pay_instructions: string; email_subject: string; email_body: string;
   is_active: boolean;
   /** As on an invoice: the practice owner's only. */
   income_category?: string;

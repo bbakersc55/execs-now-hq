@@ -736,33 +736,81 @@ def _schedule_lines(tenant, lines) -> list[dict]:
              "unit_price_cents": line["unit_price_cents"]} for line in cleaned]
 
 
+def _schedule_facts(schedule) -> dict:
+    """What a schedule says, in the words a change to it is recorded in."""
+    lines = [f"{line['description']} x {line['quantity']} at "
+             f"{money.dollars(line['unit_price_cents'])}" for line in schedule.lines or []]
+    total = sum(money.line_amount(Decimal(str(line["quantity"])), line["unit_price_cents"])
+                for line in schedule.lines or [])
+    return {
+        "client_company": str(schedule.client_company_id or ""),
+        "contact": str(schedule.contact_id or ""),
+        "day_of_month": schedule.day_of_month,
+        "next_on": schedule.next_on.isoformat() if schedule.next_on else "",
+        "ends_on": schedule.ends_on.isoformat() if schedule.ends_on else "",
+        "lines": lines, "amount": money.dollars(total),
+        "terms_days": schedule.terms_days,
+        "income_category": str(schedule.income_category_id or ""),
+        "notes": schedule.notes, "terms": schedule.terms,
+        "pay_instructions": schedule.pay_instructions,
+        "email_subject": schedule.email_subject, "email_body": schedule.email_body,
+        "is_active": schedule.is_active,
+    }
+
+
 @transaction.atomic
 def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=None,
                   day_of_month=None, starts_on=None, ends_on=..., lines=None, notes=None,
-                  terms=None, is_active=None, income_category=...,
-                  terms_days=...) -> ClientInvoiceSchedule:
+                  terms=None, is_active=None, income_category=..., terms_days=...,
+                  pay_instructions=None, email_subject=None,
+                  email_body=None) -> ClientInvoiceSchedule:
+    """Make a recurring invoice, or change one (owner, 2026-10-14: every part
+    of it can be edited, where before it could only be paused).
+
+    **A change applies to the invoices it writes from then on, never to one
+    already written:** an invoice is a row of its own, copied from the
+    schedule on its day, and nothing here reaches it. What changed is
+    recorded, from and to."""
     made = schedule is None
+    today = timezone.localdate()
     if made:
         _recipient(tenant, kind=K.RECURRING, company=client_company, contact=contact)
         schedule = ClientInvoiceSchedule(tenant=tenant, client_company=client_company,
                                          contact=contact, created_by=actor,
-                                         day_of_month=0, next_on=timezone.localdate())
+                                         day_of_month=0, next_on=today)
         if lines is None or day_of_month is None:
             raise BillingError("A schedule needs its lines and a day of the month.")
-    elif contact is not None:
-        _recipient(tenant, kind=K.RECURRING, company=schedule.client_company,
-                   contact=contact)
-        schedule.contact = contact
+        before = {}
+    else:
+        schedule = ClientInvoiceSchedule.all_objects.select_for_update().get(pk=schedule.pk)
+        before = _schedule_facts(schedule)
+        if client_company is not None and client_company.pk != schedule.client_company_id:
+            # Another client: someone there has to be named, never carried over.
+            if contact is None:
+                raise BillingError(
+                    f"Choose who at {client_company.name} the invoices are addressed to.")
+            schedule.client_company = client_company
+        if contact is not None:
+            _recipient(tenant, kind=K.RECURRING, company=schedule.client_company,
+                       contact=contact)
+            schedule.contact = contact
+    old_day = schedule.day_of_month
     if day_of_month is not None:
         if isinstance(day_of_month, bool) or not isinstance(day_of_month, int) \
                 or not 1 <= day_of_month <= 28:
             raise BillingError("The day of the month is from 1 to 28.")
         schedule.day_of_month = day_of_month
-    if made or starts_on is not None or day_of_month is not None:
+    if made or starts_on is not None:
         # The first draft is written on the next such day, today included.
-        start = _a_date(starts_on, "The first date") if starts_on else timezone.localdate()
+        start = _a_date(starts_on, "The first date") if starts_on else today
         first = start.replace(day=schedule.day_of_month)
         schedule.next_on = first if first >= start else _next_month(start,
+                                                                   schedule.day_of_month)
+    elif schedule.day_of_month != old_day:
+        # A new day moves the next draft within the month it was already
+        # coming in, so a change of day never writes a second one this month.
+        moved = schedule.next_on.replace(day=schedule.day_of_month)
+        schedule.next_on = moved if moved > today else _next_month(today,
                                                                    schedule.day_of_month)
     if ends_on is not ...:
         schedule.ends_on = _a_date(ends_on, "The last date") if ends_on else None
@@ -775,16 +823,29 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
     if terms_days is not ...:
         # None is "the practice's terms, as they stand when each is written".
         schedule.terms_days = None if terms_days is None else clean_terms_days(terms_days)
+    if pay_instructions is not None:
+        schedule.pay_instructions = str(pay_instructions).strip()
+    if email_subject is not None:
+        schedule.email_subject = " ".join(str(email_subject).split())[:200]
+    if email_body is not None:
+        schedule.email_body = str(email_body).strip()
+    _check_merge(schedule.email_subject)
+    _check_merge(schedule.email_body)
     if is_active is not None:
         schedule.is_active = bool(is_active)
     if income_category is not ...:
         schedule.income_category = _income_category(tenant, income_category)
     schedule.save()
-    AuditEvent.all_objects.create(
-        tenant=tenant, actor=actor,
-        verb="billing.schedule_created" if made else "billing.schedule_changed",
-        target_type="client_invoice_schedule", target_id=schedule.pk,
-        payload={"company": str(schedule.client_company_id)})
+    after = _schedule_facts(schedule)
+    changed = {field: {"from": before.get(field), "to": value}
+               for field, value in after.items() if not made and before.get(field) != value}
+    if made or changed:
+        AuditEvent.all_objects.create(
+            tenant=tenant, actor=actor,
+            verb="billing.schedule_created" if made else "billing.schedule_changed",
+            target_type="client_invoice_schedule", target_id=schedule.pk,
+            payload={"company": str(schedule.client_company_id),
+                     **({"amount": after["amount"]} if made else {"changed": changed})})
     return schedule
 
 
@@ -807,10 +868,10 @@ def run_schedules(tenant, today=None) -> list[ClientInvoice]:
                 schedule.is_active = False
                 schedule.save(update_fields=["is_active", "updated_at"])
                 continue
-            # Its own notes and terms where it has them; the practice's
-            # defaults where it does not.
-            own = {field: value for field, value in (("notes", schedule.notes),
-                                                     ("terms", schedule.terms)) if value}
+            # Its own wording where it has it; the practice's where it does not.
+            own = {field: getattr(schedule, field)
+                   for field in ("notes", "terms", "pay_instructions", "email_subject",
+                                 "email_body") if getattr(schedule, field)}
             made.append(create_draft(
                 tenant, actor=None, kind=K.RECURRING, client_company=company,
                 contact=schedule.contact, schedule=schedule, lines=list(schedule.lines),

@@ -1026,3 +1026,165 @@ def test_a_schedule_has_its_own_terms_or_the_practices_as_they_stand(acme, ff, a
                  ).json()["terms_days"] is None
     assert patch(api, ff, f"/api/invoice-schedules/{own['id']}/", {"terms_days": 999}
                  ).status_code == 400
+
+
+# ================================================== editing a recurring invoice
+
+SCHEDULES = "/api/invoice-schedules/"
+
+
+@pytest.mark.django_db
+def test_every_part_of_a_recurring_invoice_can_be_changed_and_only_for_what_it_writes_next(
+        acme, ff, api, dev_outbox):
+    """Owner, 2026-10-14: once saved it could only be paused. A change applies
+    to the invoices it writes from then on, never to one already written, and
+    is recorded, from and to."""
+    company, contact = acme
+    tenant = company.tenant
+    other, other_contact = a_client(tenant, name="Globex Logistics", first="Ann")
+    made = post(api, ff, SCHEDULES, {
+        "client_company": str(company.pk), "contact": str(contact.pk), "day_of_month": 5,
+        "starts_on": "2026-10-08", "lines": LINES}).json()
+    one = f"{SCHEDULES}{made['id']}/"
+    assert (made["pay_instructions"], made["email_subject"], made["email_body"]) == ("", "", "")
+    with tenant_context(tenant.pk):
+        [first] = services.run_schedules(tenant, today=date(2026, 11, 5))
+        first_as_written = {field: getattr(first, field) for field in (
+            "total_cents", "due_date", "terms_days", "pay_instructions", "email_subject",
+            "email_body", "client_company_id", "contact_id", "notes")}
+        first_lines = list(first.lines.order_by("position").values_list(
+            "description", "unit_price_cents"))
+        assert first.pay_instructions.startswith("Bank transfer to Example Bank")
+
+    new_lines = [{"description": "Monthly retainer, from December", "quantity": "1",
+                  "unit_price_cents": 650000}]
+    changed = patch(api, ff, one, {
+        "client_company": str(other.pk), "contact": str(other_contact.pk),
+        "day_of_month": 12, "lines": new_lines, "terms_days": 30,
+        "pay_instructions": "By check, to the address above.",
+        "email_subject": "Your {Practice} retainer, {Number}",
+        "email_body": "Hi {First name},\\n\\n{Total}, {Payment terms}.",
+        "notes": "Retainer."})
+    assert changed.status_code == 200, changed.content
+    changed = changed.json()
+    assert changed["client_company"]["name"] == "Globex Logistics"
+    assert changed["contact"]["id"] == str(other_contact.pk)
+    assert (changed["day_of_month"], changed["total_cents"], changed["terms_label"]) == (
+        12, 650000, "Net 30")
+    # A new day moves the next draft within the month it was already coming
+    # in: never a second one in a month it has already written for.
+    assert changed["next_on"] == "2026-12-12"
+
+    with tenant_context(tenant.pk):
+        # The invoice already written is exactly as it was written.
+        first.refresh_from_db()
+        assert {field: getattr(first, field) for field in first_as_written} == first_as_written
+        assert list(first.lines.order_by("position").values_list(
+            "description", "unit_price_cents")) == first_lines
+        assert services.run_schedules(tenant, today=date(2026, 12, 11)) == []
+        [second] = services.run_schedules(tenant, today=date(2026, 12, 12))
+        assert (second.client_company_id, second.contact_id) == (other.pk, other_contact.pk)
+        assert (second.total_cents, second.terms_days, second.due_date) == (
+            650000, 30, date(2027, 1, 11))
+        assert second.pay_instructions == "By check, to the address above."
+        assert second.email_subject == "Your {Practice} retainer, {Number}"
+        assert second.email_body.endswith("{Total}, {Payment terms}.")
+        assert second.notes == "Retainer."
+        assert (second.status, second.number) == ("draft", None), "it still numbers nothing"
+
+        # Recorded like other changes: who, and each thing from and to.
+        [event] = AuditEvent.objects.filter(verb="billing.schedule_changed")
+        assert event.actor_id == ff.user_id and str(event.target_id) == made["id"]
+        was = event.payload["changed"]
+        assert set(was) == {"client_company", "contact", "day_of_month", "next_on", "lines",
+                            "amount", "terms_days", "pay_instructions", "email_subject",
+                            "email_body", "notes"}
+        assert was["amount"] == {"from": "$6,800.00", "to": "$6,500.00"}
+        assert was["day_of_month"] == {"from": 5, "to": 12}
+        assert was["terms_days"] == {"from": None, "to": 30}
+        assert was["lines"]["to"] == ["Monthly retainer, from December x 1.00 at $6,500.00"]
+    assert len(dev_outbox) == 0, "and it sends nothing"
+
+    # Saving it again unchanged records nothing; emptying its own wording goes
+    # back to the practice's, as it stands when the next one is written.
+    assert patch(api, ff, one, {"day_of_month": 12, "terms_days": 30}).status_code == 200
+    back = patch(api, ff, one, {"pay_instructions": "", "email_subject": "", "email_body": "",
+                                "terms_days": None}).json()
+    assert (back["pay_instructions"], back["terms_days"]) == ("", None)
+    with tenant_context(tenant.pk):
+        assert AuditEvent.objects.filter(verb="billing.schedule_changed").count() == 2
+        [third] = services.run_schedules(tenant, today=date(2027, 1, 12))
+        assert third.pay_instructions.startswith("Bank transfer to Example Bank")
+        assert third.email_subject == services.DEFAULT_SUBJECT and third.terms_days == 15
+
+
+@pytest.mark.django_db
+def test_a_recurring_invoices_edit_is_refused_in_words_and_changes_nothing(acme, ff, api):
+    company, contact = acme
+    tenant = company.tenant
+    other, other_contact = a_client(tenant, name="Globex Logistics", first="Ann")
+    prospect = ContactFactory(tenant=tenant, first_name="Pat", last_name="Lee")
+    made = post(api, ff, SCHEDULES, {
+        "client_company": str(company.pk), "contact": str(contact.pk), "day_of_month": 5,
+        "starts_on": "2026-10-08", "lines": LINES}).json()
+    one = f"{SCHEDULES}{made['id']}/"
+    refusals = [
+        ({"client_company": str(other.pk)}, 400, "Choose who at Globex Logistics"),
+        ({"client_company": str(other.pk), "contact": str(contact.pk)}, 400, ""),
+        ({"contact": str(other_contact.pk)}, 400, ""),
+        ({"contact": str(prospect.pk)}, 400, ""),
+        ({"day_of_month": 31}, 400, "from 1 to 28"),
+        ({"lines": []}, 400, "at least one line"),
+        ({"terms_days": 999}, 400, "0 is due on receipt"),
+        ({"email_body": "Hello {Nickname}"}, 400, "Nickname"),
+    ]
+    for body, status, words in refusals:
+        refused = patch(api, ff, one, body)
+        assert refused.status_code == status, (body, refused.content)
+        assert words in refused.json()["detail"], body
+    [now] = get(api, ff, SCHEDULES).json()
+    assert {key: now[key] for key in made} == made
+    with tenant_context(tenant.pk):
+        assert not AuditEvent.objects.filter(verb="billing.schedule_changed").exists()
+
+
+@pytest.mark.django_db
+def test_role_boundaries_who_edits_a_recurring_invoice(acme, ff, cf, va, fcc, api):
+    """As making one: the practice owner, and an associate on a company they
+    are assigned, and only within it. The books' category stays the owner's."""
+    company, contact = acme
+    tenant = company.tenant
+    other, other_contact = a_client(tenant, name="Globex Logistics", first="Ann")
+    made = post(api, ff, SCHEDULES, {
+        "client_company": str(company.pk), "contact": str(contact.pk), "day_of_month": 5,
+        "lines": LINES}).json()
+    one = f"{SCHEDULES}{made['id']}/"
+    edit = {"day_of_month": 9, "pay_instructions": "By check."}
+    assert patch(api, va, one, edit).status_code in (403, 404)
+    assert patch(api, fcc, one, edit).status_code in (403, 404)
+    assert patch(api, cf, one, edit).status_code == 404, "not assigned: not found"
+    ClientAssignmentFactory(tenant=tenant, user=cf.user, company=company)
+    assert patch(api, cf, one, edit).status_code == 200
+    # An associate cannot move it to a client they are not assigned.
+    assert patch(api, cf, one, {"client_company": str(other.pk),
+                                "contact": str(other_contact.pk)}).status_code == 404
+    assert patch(api, cf, one, {"income_category": ""}).status_code == 403
+    assert get(api, ff, SCHEDULES).json()[0]["client_company"]["id"] == str(company.pk)
+
+
+@pytest.mark.django_db
+def test_tenant_isolation_a_recurring_invoice_is_not_edited_from_another_practice(
+        acme, ff, tenant_b, api):
+    company, contact = acme
+    made = post(api, ff, SCHEDULES, {
+        "client_company": str(company.pk), "contact": str(contact.pk), "day_of_month": 5,
+        "lines": LINES}).json()
+    stranger = _member(tenant_b, "FF")
+    theirs, their_contact = a_client(tenant_b, name="Initech", first="Bo")
+    assert patch(api, stranger, f"{SCHEDULES}{made['id']}/",
+                 {"day_of_month": 9}).status_code == 404
+    # Nor is it moved to another practice's company, or addressed to its people.
+    for body in ({"client_company": str(theirs.pk), "contact": str(their_contact.pk)},
+                 {"contact": str(their_contact.pk)}):
+        assert patch(api, ff, f"{SCHEDULES}{made['id']}/", body).status_code in (400, 404)
+    assert get(api, ff, SCHEDULES).json()[0]["day_of_month"] == 5

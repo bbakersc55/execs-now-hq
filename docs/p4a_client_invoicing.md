@@ -323,3 +323,31 @@ browser. No release until the owner says so.
 nullable, with no data step. An invoice written before this has none and is
 read from its two dates (`services.terms_days_of`), so nothing is rewritten.
 
+## Added 2026-10-14: a recurring invoice can be edited (owner)
+
+Once saved, a recurring invoice could only be paused. Each row of "Recurring
+invoices" now has **Edit**, which opens the same form it was made in, holding
+what it holds: the client and who it is addressed to, its lines (the amount),
+the day, its payment terms, the income category (the practice owner's), and
+two things it could not say before, its own **how to pay** and its own
+**covering email**. Left empty, each of those is the practice's, as it stands
+on the day each invoice is written.
+
+- **A change applies to the invoices it writes from then on, never to one
+  already written.** An invoice is copied from the schedule on its day and is
+  a document of its own; nothing in an edit reaches it.
+- **A new day moves the next draft within the month it was already coming
+  in,** so changing the day never writes a second invoice in a month it has
+  already written for. (Before, any save that named the day recounted the
+  next date from today.)
+- **Moving it to another client** needs someone at that client named; the
+  person it was addressed to is never carried across.
+- **Recorded like other changes:** `billing.schedule_changed`, with who made
+  it and each thing that changed, from and to (the lines in words, and the
+  amount). A save that changes nothing records nothing.
+- **Who:** as for making one. The practice owner, and an associate on a
+  company they are assigned, and only between companies they are assigned.
+
+`billing` 0004 adds `pay_instructions`, `email_subject` and `email_body` to
+the schedule, each empty by default, with no data step.
+

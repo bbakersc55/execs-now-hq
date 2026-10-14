@@ -118,6 +118,25 @@ opened, and the readings Bryan ruled on (1, 2, 4 and 5 stand; 3 overruled).
      ruling out with it, the push is `dev` and not `9645a16`; the dry run and
      the three migrations are the same either way (phase 2 has none).
 
+### Later on 10/14 UTC (the evening of 10/13 Mountain): one ruling and two invoicing fixes
+
+All on `dev`, pushed, each on a green gate, **none released, none seen in a
+browser.**
+
+| Commit | What |
+|---|---|
+| `a1dd5e6` | P7: the client owner may delete a colleague's task, as a project. A task the practice made or assigned stays untouchable |
+| `37661d3` | Invoicing: payment terms. The practice's default under Settings → Finance → Paid invoices; each schedule's and each invoice's own; the due date worked out from them; printed on the invoice. **Migration `billing` 0003** |
+| the commit after it | Invoicing: a recurring invoice can be edited (client, lines, day, terms, income category, how to pay, covering email), for the invoices it writes from then on; recorded from and to. **Migration `billing` 0004** |
+
+- Both billing migrations are additive with no data step, applied to the
+  laptop's `execsnowhq_local`, and not in production.
+- **The next release of `dev` carries five migrations:** `tenancy` 0014,
+  `work` 0010 and `crm` 0036 (P7 phase 1, two of them with data steps: the
+  dry run and Bryan's yes come first), and `billing` 0003 and 0004.
+- Bryan accepted P7 phase 2 and its readings 1, 2 and 3 (an assistant does
+  not set teams up). Phases 3 and 4 are not started.
+
 ## The night of 2026-10-12: the call's backlog, a spec, and ten fixes
 
 **Read this after the section above, then "Tonight's state" below, which is

@@ -180,6 +180,156 @@ describe("the invoices list", () => {
   });
 });
 
+describe("editing a recurring invoice", () => {
+  // Owner, 2026-10-14: once saved it could only be paused.
+  const SETTINGS = { prefix: "INV-", next_value: 1, next_number: "INV-0001", terms_days: 15,
+                     terms_label: "Net 15", default_notes: "", default_terms: "",
+                     pay_instructions: "Bank transfer to Example Bank.",
+                     email_subject: "Invoice {Number} from {Practice}",
+                     email_body: "Hi {First name}", merge_fields: ["Number", "Practice"] };
+  const SCHEDULE = {
+    id: "s1", client_company: { id: "co1", name: "Acme Facilities" },
+    contact: { id: "c1", name: "Dana Reyes" }, day_of_month: 5, next_on: "2026-11-05",
+    ends_on: null, total_cents: 500000, notes: "", terms: "", terms_days: null,
+    terms_label: "Net 15", pay_instructions: "", email_subject: "", email_body: "",
+    is_active: true,
+    lines: [{ description: "Monthly retainer", quantity: "1", unit_price_cents: 500000,
+              amount_cents: 500000 }] };
+  const CLIENTS = [...COMPANIES, { id: "co3", name: "Globex Logistics", industry: "",
+                                   is_client_company: true, seat_count: null,
+                                   primary_contact: null }];
+  const PEOPLE = [...CONTACTS, { id: "c3", first_name: "Ann", last_name: "Reyes",
+                                 company: "co3" }];
+
+  function show(me = aMe(), routes: Record<string, unknown> = {}) {
+    const fetchMock = mockApi({
+      "PATCH /api/invoice-schedules/s1/": () => ({ body: SCHEDULE }),
+      "POST /api/invoice-schedules/": () => ({ status: 201, body: SCHEDULE }),
+      ...routes,
+      "GET /api/invoice-schedules/": [SCHEDULE], "GET /api/invoice-settings/": SETTINGS,
+      "GET /api/companies/": CLIENTS, "GET /api/contacts/": PEOPLE,
+      "GET /api/finance-categories/": [], "GET /api/finance-settings/": {},
+      "GET /api/invoices/": LIST });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Invoices me={me} />);
+    return fetchMock;
+  }
+
+  it("opens with what the schedule holds, and says what a change does and does not touch",
+    async () => {
+      show();
+      await userEvent.click(await screen.findByRole("button", {
+        name: "Edit the recurring invoice for Acme Facilities" }));
+      const form = screen.getByRole("group", {
+        name: "Editing Acme Facilities's recurring invoice" });
+      expect(form).toHaveTextContent(
+        "Changes apply to the invoices it writes from now on. Invoices it has already "
+        + "written are not changed.");
+      expect(within(form).getByLabelText("Client company for the recurring invoice"))
+        .toHaveValue("co1");
+      await waitFor(() => expect(
+        within(form).getByLabelText("Recurring invoice addressed to")).toHaveValue("c1"));
+      expect(within(form).getByLabelText("Day of the month")).toHaveValue(5);
+      expect(within(form).getByLabelText("Description of line 1"))
+        .toHaveValue("Monthly retainer");
+      // Its terms are the practice's until it names its own.
+      const terms = within(form).getByLabelText("Payment terms for the recurring invoice");
+      expect(terms).toHaveValue("practice");
+      expect(within(terms).getAllByRole("option")[0])
+        .toHaveTextContent("The practice's (Net 15)");
+      // Left empty, how-to-pay and the email are the practice's, shown faintly.
+      expect(within(form).getByLabelText("How to pay, for the recurring invoice"))
+        .toHaveAttribute("placeholder", "Bank transfer to Example Bank.");
+      expect(within(form).getByLabelText("Email subject, for the recurring invoice"))
+        .toHaveValue("");
+      // One thing at a time: no second form, no other Edit.
+      expect(screen.getByRole("button", {
+        name: "Edit the recurring invoice for Acme Facilities" })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "New recurring invoice" })).toBeNull();
+      await userEvent.click(within(form).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("group", { name: /Editing/ })).toBeNull();
+    });
+
+  it("saves the client, the amount, the day, the terms, how to pay and the email",
+    async () => {
+      const fetchMock = show();
+      await userEvent.click(await screen.findByRole("button", {
+        name: "Edit the recurring invoice for Acme Facilities" }));
+      const form = screen.getByRole("group", { name: /Editing/ });
+      const save = within(form).getByRole("button", { name: "Save the changes" });
+      // Another client: someone there has to be chosen before it can be saved.
+      await userEvent.selectOptions(
+        within(form).getByLabelText("Client company for the recurring invoice"), "co3");
+      expect(save).toBeDisabled();
+      await userEvent.selectOptions(
+        await within(form).findByLabelText("Recurring invoice addressed to"), "c3");
+      const day = within(form).getByLabelText("Day of the month");
+      await userEvent.clear(day);
+      await userEvent.type(day, "12");
+      const price = within(form).getByLabelText("Price of line 1");
+      await userEvent.clear(price);
+      await userEvent.type(price, "6,500");
+      await userEvent.selectOptions(
+        within(form).getByLabelText("Payment terms for the recurring invoice"), "30");
+      await userEvent.type(within(form).getByLabelText("How to pay, for the recurring invoice"),
+                           "By check.");
+      await userEvent.type(
+        within(form).getByLabelText("Email subject, for the recurring invoice"),
+        "Your retainer");
+      await userEvent.click(save);
+      await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/s1/")).toHaveLength(1));
+      expect(sent(fetchMock, "/api/invoice-schedules/s1/")[0]).toEqual({
+        client_company: "co3", contact: "c3", day_of_month: 12,
+        lines: [{ description: "Monthly retainer", quantity: "1", unit_price_cents: 650000 }],
+        terms_days: 30, pay_instructions: "By check.", email_subject: "Your retainer",
+        email_body: "", income_category: "" });
+      await waitFor(() => expect(screen.queryByRole("group", { name: /Editing/ })).toBeNull());
+    });
+
+  it("shows the server's refusal and keeps the form open", async () => {
+    show(aMe(), { "PATCH /api/invoice-schedules/s1/": () => ({
+      status: 400, body: { detail: "The day of the month is from 1 to 28." } }) });
+    await userEvent.click(await screen.findByRole("button", {
+      name: "Edit the recurring invoice for Acme Facilities" }));
+    const form = screen.getByRole("group", { name: /Editing/ });
+    await userEvent.click(within(form).getByRole("button", { name: "Save the changes" }));
+    expect(await within(form).findByText("The day of the month is from 1 to 28."))
+      .toBeInTheDocument();
+  });
+
+  it("an associate edits it too, and is sent no books category to send back", async () => {
+    const fetchMock = show(aMe({ role: "CF" }));
+    await userEvent.click(await screen.findByRole("button", {
+      name: "Edit the recurring invoice for Acme Facilities" }));
+    const form = screen.getByRole("group", { name: /Editing/ });
+    expect(within(form).queryByLabelText(/Income category/)).toBeNull();
+    await userEvent.click(within(form).getByRole("button", { name: "Save the changes" }));
+    await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/s1/")).toHaveLength(1));
+    expect(sent(fetchMock, "/api/invoice-schedules/s1/")[0]).not.toHaveProperty(
+      "income_category");
+  });
+
+  it("a new one names only what was chosen: the rest is the practice's", async () => {
+    const fetchMock = show();
+    await userEvent.click(await screen.findByRole("button", { name: "New recurring invoice" }));
+    const form = screen.getByRole("group", { name: "The new recurring invoice" });
+    await userEvent.selectOptions(
+      within(form).getByLabelText("Client company for the recurring invoice"), "co1");
+    await userEvent.selectOptions(
+      await within(form).findByLabelText("Recurring invoice addressed to"), "c1");
+    await userEvent.type(within(form).getByLabelText("Description of line 1"), "Retainer");
+    await userEvent.type(within(form).getByLabelText("Price of line 1"), "5000");
+    await userEvent.selectOptions(
+      within(form).getByLabelText("Payment terms for the recurring invoice"), "0");
+    await userEvent.click(within(form).getByRole("button", {
+      name: "Save the recurring invoice" }));
+    await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/")).toHaveLength(1));
+    expect(sent(fetchMock, "/api/invoice-schedules/")[0]).toEqual({
+      client_company: "co1", contact: "c1", day_of_month: 1, terms_days: 0,
+      lines: [{ description: "Retainer", quantity: "1", unit_price_cents: 500000 }] });
+  });
+});
+
 describe("one invoice", () => {
   function show(data: Invoice, me = aMe(), extra: Record<string, unknown> = {}) {
     const fetchMock = mockApi({ ...extra, [`GET ${ONE}history/`]: [
