@@ -72,6 +72,16 @@ describe("Your team, the client owner's page", () => {
       ["Goals too", true]]);
   });
 
+  it("is not held to a form's width, and its pickers size to their labels", async () => {
+    // Bryan, 2026-10-14: on the portal the people table ran past the card and
+    // the pickers read "Mer", "Projec". A card with a form as a direct child
+    // is held to 720px (theme.css, "Readable width"); this one holds tables.
+    show();
+    const people = await screen.findByRole("table", { name: "People and their levels" });
+    expect(document.querySelector("section.card > form")).toBeNull();
+    expect(people.closest(".team-levels")).not.toBeNull();
+  });
+
   it("offers Goals too once the practice has given it to the client owner", async () => {
     show(OWNER, card("goals"));
     const ben = await screen.findByRole("combobox", { name: "What Ben Orji may create" });

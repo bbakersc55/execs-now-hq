@@ -25,7 +25,8 @@ Sources, and what is not here yet:
   title of a PIN-gated note: the PIN is a screen (FR-2.8) and the feed must not
   be the hole in it.
 - `audit_event` — stage changes, imports, portal grants and revokes, act-as
-  sessions, digest approvals and sends, Gmail connections, merges, deletes.
+  sessions, digest approvals and sends, Gmail connections, merges, deletes,
+  and a client's teams set up (P7), by the practice or the client owner.
 - `outbox_message` — mail that left, with who it went to.
 
 **Meetings and inbound email are absent because Modules 5 and 6 do not exist
@@ -39,7 +40,8 @@ from apps.crm import permissions as crm_perms
 from apps.crm.models import Company, Contact, ImportBatch, OutboxMessage, Task
 from apps.notes.models import Note
 from apps.tenancy.models import AuditEvent, Membership
-from apps.work.models import Comment, Goal, Project, TaskUpdate
+from apps.tenancy.roles import LEVEL_LABEL, MAY_CREATE_LABEL
+from apps.work.models import ClientTeam, Comment, Goal, Project, TaskUpdate
 
 # Per-source cap before merging. Beta volume is small and the feed is a read of
 # five tables; when real volume arrives this becomes keyset pagination rather
@@ -49,7 +51,7 @@ SOURCE_CAP = 500
 LIMIT = 200
 
 CATEGORIES = ("work", "comment", "note", "email", "pipeline", "import",
-              "portal", "act_as", "digest", "settings")
+              "portal", "team", "act_as", "digest", "settings")
 
 # Verb → (category, phrasing). A verb absent here is absent from the feed, so
 # adding an audited action is a deliberate act rather than an automatic leak.
@@ -106,7 +108,42 @@ AUDIT = {
     "stakeholder.cadence_changed": ("settings", "changed a stakeholder's cadence"),
     "notes.retention_changed": ("settings", "changed the note retention period"),
     "ai.key_rotated": ("settings", "rotated the Claude API key"),
+    # P7: a client's teams. Worded from the payload by `_team_text`.
+    "client_team.created": ("team", "added a team"),
+    "client_team.renamed": ("team", "renamed a team"),
+    "client_team.archived": ("team", "archived a team"),
+    "client_team.level_set": ("team", "set {target}'s level on a team"),
+    "client_team.person_removed": ("team", "took {target} off a team"),
+    "portal.may_create_changed": ("team", "changed what {target} may create"),
+    "portal.leads_all_teams_changed": ("team", "changed {target}'s senior leadership"),
 }
+
+
+def _team_text(a, target, phrasing) -> str:
+    """A team change in words, from what its audit row carries."""
+    p, who = a.payload or {}, target or "someone"
+    team = f"“{p.get('team_name') or p.get('name') or ''}”"
+    to, was = p.get("to"), p.get("from")
+    if a.verb == "client_team.created":
+        return f"added the team {team}"
+    if a.verb == "client_team.renamed":
+        return f"renamed the team “{was}” to “{to}”"
+    if a.verb == "client_team.archived":
+        return (f"archived the team {team}: {p.get('projects', 0)} project(s) and "
+                f"{p.get('tasks', 0)} task(s) moved to the default team")
+    if a.verb == "client_team.level_set":
+        level = LEVEL_LABEL.get(to, to)
+        return (f"put {who} on {team} as {level}" if not was
+                else f"changed {who} on {team} from {LEVEL_LABEL.get(was, was)} to {level}")
+    if a.verb == "client_team.person_removed":
+        return f"took {who} off {team}"
+    if a.verb == "portal.may_create_changed":
+        return (f"changed what {who} may create from {MAY_CREATE_LABEL.get(was, was)} "
+                f"to {MAY_CREATE_LABEL.get(to, to)}")
+    if a.verb == "portal.leads_all_teams_changed":
+        return (f"made {who} senior leadership of every team" if to
+                else f"made {who} no longer senior leadership of every team")
+    return phrasing.format(target=target or "a record")
 
 
 def _name(user):
@@ -114,8 +151,10 @@ def _name(user):
 
 
 def _person(user, acting_user):
-    """"by X on behalf of Y" — X is the real person, Y who they acted as."""
-    if acting_user:
+    """"by X on behalf of Y" — X is the real person, Y who they acted as.
+    A row the real person wrote as themselves while acting (stopping, above
+    all) names them once."""
+    if acting_user and getattr(user, "pk", None) != acting_user.pk:
         return _name(acting_user), _name(user)
     return _name(user) or "The system", None
 
@@ -337,6 +376,8 @@ def _audit_entries(scope, since, until, actor):
     tasks = {t.pk: t for t in Task.all_objects.filter(pk__in=ids("task"))
              .select_related("client_company", "contact")}
     batches = {b.pk: b for b in ImportBatch.all_objects.filter(pk__in=ids("import_batch"))}
+    teams = {t.pk: t for t in ClientTeam.all_objects.filter(pk__in=ids("client_team"))
+             .select_related("client_company")}
 
     out = []
     for a in rows:
@@ -363,8 +404,12 @@ def _audit_entries(scope, since, until, actor):
                 target = t.title
         elif a.target_type == "import_batch":
             target = str(batches.get(a.target_id) or "")
+        elif a.target_type == "client_team":
+            t = teams.get(a.target_id)
+            company = t.client_company if t else None
         by, behalf = _person(a.actor, a.acting_user)
-        text = phrasing.format(target=target or "a record")
+        text = (_team_text(a, target, phrasing) if category == "team"
+                else phrasing.format(target=target or "a record"))
         if a.verb == "act_as.ended":
             text += f" ({a.payload.get('reason') or 'no longer permitted'})"
         out.append(_entry(f"a-{a.pk}", a.created_at, category, a.verb, text,

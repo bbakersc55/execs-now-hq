@@ -1130,6 +1130,15 @@ textarea.code { font-size: var(--t-13); line-height: 1.5; white-space: pre; tab-
             border: 1px solid var(--line); border-radius: var(--radius-sm);
             background: var(--bg); }
 .filter-select { width: auto; min-width: 150px; }
+/* P7: the Teams card's people. Each picker as wide as its longest label
+   ("Senior leadership", "Projects and tasks"), never squeezed to "Mer"; on a
+   window too narrow for every team's column, the table scrolls inside the
+   card rather than running past its edge. */
+.team-levels { overflow-x: auto; }
+.team-levels select { width: auto; max-width: none; }
+.team-levels td { white-space: nowrap; }
+.team-levels td:first-child, .team-levels td div.small { white-space: normal; }
+.team-levels td:first-child { min-width: 10rem; }
 .recipients-count { margin: var(--s3) 0; }
 
 /* Pages reached from an email with no sign-in: the unsubscribe page. */

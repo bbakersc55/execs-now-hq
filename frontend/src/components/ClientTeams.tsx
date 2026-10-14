@@ -276,13 +276,18 @@ export function ClientTeamsCard({ me, company }: {
           ))}
         </tbody>
       </table>
-      <form className="row" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-        <input aria-label="Name of the new team" placeholder="Operations, Sales, Front office…"
-          value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-        <button type="submit" disabled={!name.trim() || add.isPending}>Add a team</button>
-      </form>
+      {/* In a div: a card with a form of its own is held to a form's width
+          (theme.css, "Readable width"), and this one is a table's. */}
+      <div>
+        <form className="row" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
+          <input aria-label="Name of the new team" placeholder="Operations, Sales, Front office…"
+            value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" disabled={!name.trim() || add.isPending}>Add a team</button>
+        </form>
+      </div>
 
       {data.people.length > 0 && (
+        <div className="team-levels">
         <table aria-label="People and their levels" style={{ marginTop: "var(--s3)" }}>
           <thead>
             <tr>
@@ -353,6 +358,7 @@ export function ClientTeamsCard({ me, company }: {
             })}
           </tbody>
         </table>
+        </div>
       )}
     </Card>
   );

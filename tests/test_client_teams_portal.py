@@ -230,3 +230,46 @@ def test_tenant_isolation_a_client_owner_reaches_only_their_own_company(world, t
     assert not ClientTeamMember.all_objects.filter(team=t["ops"], membership=outsider).exists()
     assert Membership.all_objects.get(pk=outsider.pk).may_create == "projects"
     assert Membership.all_objects.get(pk=stranger.pk).may_create == "projects"
+
+
+@pytest.mark.django_db
+def test_the_practices_activity_shows_team_changes_by_the_client_owner_and_who_acted(world):
+    """Bryan, 2026-10-14: the three changes he made acting as the client owner
+    were in the audit trail and not on Activity."""
+    company, t, who = world["company"], world["teams"], world["who"]
+    practice = world["api"].as_(world["ff"])
+    assert post(practice, "/api/act-as/", {"membership": str(who["owner"].pk)}
+                ).status_code == 201
+    assert post(practice, T, {"company": str(company.pk), "name": "Front office"}
+                ).status_code == 201
+    front = ClientTeam.all_objects.get(client_company=company, name="Front office")
+    assert post(practice, f"{T}{front.pk}/level/",
+                {"membership": str(who["member"].pk), "level": "member"}).status_code == 200
+    assert post(practice, f"{T}{front.pk}/archive/").status_code == 200
+    assert post(practice, f"{T}person/", {"membership": str(who["member"].pk),
+                                          "may_create": "tasks"}).status_code == 200
+    assert post(practice, "/api/act-as/stop/").status_code == 200
+
+    response = practice.get("/api/activity/?category=team")
+    assert response.status_code == 200, response.content
+    rows = response.json()
+    member_name = who["member"].user.full_name or who["member"].user.email
+    assert [e["text"] for e in rows] == [
+        f"changed what {member_name} may create from Projects and tasks to Tasks only",
+        "archived the team “Front office”: 0 project(s) and 0 task(s) moved to the "
+        "default team",
+        f"put {member_name} on “Front office” as Member",
+        "added the team “Front office”",
+    ]
+    owner_name = who["owner"].user.full_name or who["owner"].user.email
+    practice_name = world["ff"].user.full_name or world["ff"].user.email
+    for e in rows:
+        assert (e["category"], e["by"], e["on_behalf_of"]) == (
+            "team", practice_name, owner_name), e
+        assert e["company"]["id"] == str(company.pk), e
+    # And the client owner's own change, not acted, names them alone.
+    assert patch(world["api"].as_(who["owner"]), f"{T}{t['ops'].pk}/",
+                 {"name": "Ops"}).status_code == 200
+    renamed = practice.get("/api/activity/?category=team").json()[0]
+    assert (renamed["text"], renamed["by"], renamed["on_behalf_of"]) == (
+        "renamed the team “Operations” to “Ops”", owner_name, None)

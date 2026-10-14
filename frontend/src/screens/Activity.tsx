@@ -15,7 +15,7 @@ const LINK: Record<string, string> = {
 
 const CATEGORY_LABELS: Record<string, string> = {
   work: "Work", comment: "Comments", note: "Notes", email: "Email",
-  pipeline: "Pipeline", import: "Imports", portal: "Portal access",
+  pipeline: "Pipeline", import: "Imports", portal: "Portal access", team: "Team",
   act_as: "Acting as", digest: "Digests", settings: "Settings",
 };
 

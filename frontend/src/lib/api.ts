@@ -110,7 +110,7 @@ export interface ActAsCandidate {
 /** GET /api/activity/ — the practice's feed across every account. */
 export const ACTIVITY_CATEGORIES = [
   "work", "comment", "note", "email", "pipeline",
-  "import", "portal", "act_as", "digest", "settings",
+  "import", "portal", "team", "act_as", "digest", "settings",
 ] as const;
 
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number];

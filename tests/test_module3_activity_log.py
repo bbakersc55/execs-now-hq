@@ -245,7 +245,11 @@ def test_work_done_while_acting_reads_by_x_on_behalf_of_y(ff, api, world):
     assert acted["on_behalf_of"] == "Priya Client"
     began = next(e for e in rows if e["kind"] == "act_as.started")
     assert began["text"] == "began acting as Priya Client" and began["on_behalf_of"] is None
-    assert any(e["kind"] == "act_as.stopped" for e in rows)
+    # Stopping is written by the real person as themselves: named once
+    # (Bryan, 2026-10-14: not "X on behalf of X").
+    stopped = next(e for e in rows if e["kind"] == "act_as.stopped")
+    assert stopped["on_behalf_of"] is None
+    assert stopped["text"] == "stopped acting as Priya Client"
     plain = next(e for e in rows if "Shared: install is Tuesday." in e["text"])
     assert plain["on_behalf_of"] is None
 
