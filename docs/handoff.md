@@ -1,14 +1,127 @@
 # Execs NOW HQ — handoff to the next chat
 
-Written 2026-10-03, replacing the 2026-09-22 version; **last updated the night
-of 2026-10-10 Mountain (2026-10-11 UTC, the date the specs and the runbook
-carry)**, after Release 10 (P6 M1, Bookkeeping) and P6 M2's two stops on
-`dev`. **The next session starts at "2026-10-13" below, then "The night of
-2026-10-12", "Tonight's state" and "Tomorrow's queue".** Everything from "Next" down was last brought up to date on 10/5 and
-after Release 7; where it and the section below disagree, the section below
-is the newer. Upload this at the start of the next chat with: "Read this handoff,
-then pick up where it leaves off." The specs in `docs/` are the source of
-truth; this covers what they don't, and what changed since 9/30.
+Written 2026-10-03, replacing the 2026-09-22 version; **last updated the
+evening of 2026-10-13 Mountain (2026-10-14 UTC, the date the specs and the
+runbook carry)**, after Release 11 and a long day on `dev`. **The next
+session starts at "Tomorrow: Release 12" just below.** Then "2026-10-13",
+which is the day in order. Everything from "Next" down was last brought up to
+date on 10/5; where it and a newer section disagree, the newer holds. Upload
+this at the start of the next chat with: "Read this handoff, then pick up
+where it leaves off." The specs in `docs/` are the source of truth; this
+covers what they don't, and what changed since 9/30.
+
+## Tomorrow: Release 12 is all of `dev`
+
+**Bryan, the evening of 10/13: Release 12 is all of `dev`, after the phase 1
+dry run on production and his yes.** Not phase 1 alone, as first planned.
+Production is `main` at `147087f` (Release 11). Nothing below has been
+released, **and none of it has been seen in a browser by anyone.**
+
+### In this order
+
+1. **The dry run of P7 phase 1's data step, by Bryan, on production.**
+   Production has no P7 code, so `manage.py client_teams_dry_run` is not
+   there yet. `scripts/p7_phase1_dry_run.py` reads the same plan using only
+   columns that exist today, writes nothing, and a test holds its words to
+   the command's. Production reads are refused to Claude Code, so it is
+   handed to Bryan as a paste block (Claude Code prompt, with `!`):
+
+   ```
+   ! cd ~/projects/execs-now-hq && railway ssh --service execs-now-hq -- "echo $(base64 -w0 scripts/p7_phase1_dry_run.py) | base64 -d | python manage.py shell"
+   ```
+
+   He pastes the output back. It lists, for every company that gets a
+   default team: its portal users before, and the team, the people placed
+   as Manager and the work given a team after. **The release waits for his
+   yes on it.** For comparison, the laptop's copy of production (as of its
+   last refresh): 4 default teams, 3 portal users placed as Manager, 12
+   projects and 86 tasks given a team, 28 tasks left to follow their project.
+   Production will have more portal users than the laptop's scrubbed copy
+   shows if any were invited since the refresh.
+2. **Confirm the backup** (R1). A fresh one before the release is Bryan's to
+   run: the "run now" command was refused to Claude Code.
+3. **Release, on the word "release":** `git push origin dev:main`, by
+   "Releasing a migration". The commit to release is the head of `dev`, which
+   must be a tree the gate passed.
+4. **Six migrations will be listed as waiting, and no others:**
+
+   | Migration | What | Data step |
+   |---|---|---|
+   | `tenancy` 0014 | `membership.may_create`, `leads_all_teams` | none |
+   | `work` 0010 | client teams, a project's team, `goal.created_by_client` | **yes: default teams, people as Manager, projects.** Prints its counts |
+   | `crm` 0036 | a task's team | **yes: tasks in no project.** Prints its count |
+   | `billing` 0003 | payment terms on an invoice and a schedule | none |
+   | `billing` 0004 | a schedule's own how-to-pay and covering email | none |
+   | `finance` 0012 | an import's source, statement, period and the call that read it | none |
+
+   Compare the two printed counts with the dry run's before going on.
+5. **A new dependency, `pypdf`**, is in `requirements.txt`, so the build
+   installs it. `config/startup.py` names it: a build without it refuses to
+   start and says why.
+6. **After:** no new schedule, so `ensure_schedules` is not needed.
+   `/healthz`; a route that exists only in this release goes from 404 to 403
+   (`/api/client-teams/`). Then the record in the runbook, as Release 12.
+
+### What Release 12 carries, in the order it was built
+
+| Commit | What |
+|---|---|
+| `31e13a8` | **P7 phase 1:** client teams, levels and may-create, everyone a Manager of their company's default team |
+| `9645a16` | Strategy map: the model is told to write no em dashes (goldens regenerated on Bryan's yes) |
+| `5285f41` | **P7 phase 2:** the practice's Teams card, the Team field and filter, the invitation's team, level and may-create |
+| `6e42a15` | The dry-run script for a database without P7 |
+| `a1dd5e6` | P7: the client owner may delete a colleague's task |
+| `37661d3` | Invoicing: payment terms |
+| `23faf54` | Invoicing: a recurring invoice can be edited |
+| `235787e` | Bank import: OFX, QFX and QBO files |
+| `6f17916` | Bank import: a PDF statement, read by Claude |
+| the two after it | The demo's seed imports one PDF statement; this handoff |
+
+### What changes for people on the day
+
+- **Client users, two things** (Bryan's rulings): a client's project is
+  deleted only by whoever made it or by the client owner, where any client
+  user of the company could before; and the client owner may delete a task a
+  colleague made. Nothing else about any portal user's reach changes: each is
+  a Manager of a team called "Everyone".
+- **A person invited to a portal from now on starts as a Member** (P7-9) and
+  sees only work that is theirs, unless the form is set otherwise. In a
+  company still on one team, that is less than the people already there see.
+- **The practice** gains the Teams card, payment terms under Settings →
+  Finance → Paid invoices, Edit on a recurring invoice, and OFX, QFX, QBO and
+  PDF in the bank import.
+- **A draft invoice's due date is no longer typed:** it is the issue date and
+  the terms.
+
+### Not proven, to check in a browser once it is out
+
+- **No PDF statement has been read by a real key.** How well Claude copies a
+  real bank's layout, and what a read really costs, are unknown. The first
+  real one is the test: check its lines against the PDF, and that "the lines
+  add up" says so.
+- **No real OFX, QFX or QBO file has been tried.** The reader is tested on
+  the two forms of the format, written by hand.
+- **The em-dash sentence has not been through a real call.**
+- **P7:** no level other than Manager has been held by a real person. Before
+  setting anyone below Manager, know that the portal's own screens have not
+  changed (phases 3 and 4): "New task" is still offered to someone who may
+  not create, and answers with a sentence.
+- Everything from Release 11 that was unseen is still unseen: the M2 fixes
+  ("Explain this forecast" above all, whose fix rests on an inferred cause).
+
+### After the release
+
+- **Reseed the demo** (the three steps under "The demo as it is set up") to
+  get the PDF statement there: last month's bank statement, fictional and
+  saying so, imported, and shown on Reconcile for that month and under
+  Earlier imports. The seed draws it without Claude, so it shows no cost.
+- **The laptop:** `pip install -r requirements.txt` after a pull (for
+  `pypdf`); every `dev` migration is applied to `execsnowhq_local`. Its
+  qcluster still needs a restart and `ensure_schedules`.
+- **Open with Bryan:** P7 phases 3 (the client owner's own Teams card) and 4
+  (the portal for members, managers and senior leaders, and goals by a client
+  user); M3's spec; §5.6's move of old invoice income; a smoke check of
+  Releases 10 and 11; "the monthly AI budget can be set to stop, not warn".
 
 ## 2026-10-13: three M2 findings from the demo, Release 11, and P7 put to Bryan
 
@@ -85,38 +198,8 @@ opened, and the readings Bryan ruled on (1, 2, 4 and 5 stand; 3 overruled).
   set teams up** (P7-8's two halves disagree). **Not seen in a browser.**
   Phases 3 (the client owner's card) and 4 (the portal for members, managers
   and senior leaders) are not started.
-- **Releasing phase 1, the morning of 10/14. Three things, in this order.**
-  1. **The dry run, by Bryan, before "release".** Production has no P7 code,
-     so the command is not there; `scripts/p7_phase1_dry_run.py` reads the
-     same plan using only columns that exist today, writes nothing, and a
-     test holds its words to the command's. Production reads are refused to
-     Claude Code, so it is handed to Bryan as a paste block (Claude Code
-     prompt, with `!`):
-
-     ```
-     ! cd ~/projects/execs-now-hq && railway ssh --service execs-now-hq -- "echo $(base64 -w0 scripts/p7_phase1_dry_run.py) | base64 -d | python manage.py shell"
-     ```
-
-     He pastes the output back; the data step waits for his yes on it. For
-     comparison, the laptop's (a scrubbed copy of production as of its last
-     refresh): 4 default teams, 3 portal users placed as Manager, 12 projects
-     and 86 tasks given a team, 28 tasks left to follow their project.
-  2. **Release `9645a16`, not `dev`.** P7-15: phase 1 goes alone. `dev` also
-     holds phase 2 (`5285f41`) and whatever follows, so the push is
-     `git push origin 9645a16:main`, as Release 5 was done. `9645a16` is phase
-     1 (`31e13a8`) and the em-dash prompts; it passed the gate. Three
-     migrations will be listed as waiting: `tenancy` 0014, `work` 0010, `crm`
-     0036. The two data steps print their counts as they apply; compare them
-     with the dry run's.
-  3. **One thing changes for clients on that release** (Bryan's ruling): a
-     client's project is deleted only by whoever made it or by the client
-     owner.
-  4. **Ask Bryan which commit goes.** He accepted phase 2 on 10/14 UTC (the
-     evening of 10/13 Mountain), and ruled that **the client owner may delete
-     a colleague's task**, which is a commit after phase 2. Step 2 was
-     written when phase 1 was to go alone. If he now wants phase 2 and that
-     ruling out with it, the push is `dev` and not `9645a16`; the dry run and
-     the three migrations are the same either way (phase 2 has none).
+- **How phase 1 is released is now "Tomorrow: Release 12", at the top:** all
+  of `dev`, after the dry run on production and Bryan's yes.
 
 ### Later on 10/14 UTC (the evening of 10/13 Mountain): one ruling and two invoicing fixes
 
@@ -127,13 +210,16 @@ browser.**
 |---|---|
 | `a1dd5e6` | P7: the client owner may delete a colleague's task, as a project. A task the practice made or assigned stays untouchable |
 | `37661d3` | Invoicing: payment terms. The practice's default under Settings → Finance → Paid invoices; each schedule's and each invoice's own; the due date worked out from them; printed on the invoice. **Migration `billing` 0003** |
-| the commit after it | Invoicing: a recurring invoice can be edited (client, lines, day, terms, income category, how to pay, covering email), for the invoices it writes from then on; recorded from and to. **Migration `billing` 0004** |
+| `23faf54` | Invoicing: a recurring invoice can be edited (client, lines, day, terms, income category, how to pay, covering email), for the invoices it writes from then on; recorded from and to. **Migration `billing` 0004** |
 
 - Both billing migrations are additive with no data step, applied to the
   laptop's `execsnowhq_local`, and not in production.
-- **The next release of `dev` carries five migrations:** `tenancy` 0014,
-  `work` 0010 and `crm` 0036 (P7 phase 1, two of them with data steps: the
-  dry run and Bryan's yes come first), and `billing` 0003 and 0004.
+- **Then, the same evening, the bank import from statements:** OFX, QFX and
+  QBO files (`235787e`, no migration), a PDF statement read by Claude
+  (`6f17916`, **migration `finance` 0012**, and the new dependency `pypdf`),
+  and one PDF statement in the demo's seed. The specs are the two sections
+  added to `docs/p5_finance_accounting.md` on 2026-10-14.
+- **The release carries six migrations:** see "Tomorrow: Release 12".
 - Bryan accepted P7 phase 2 and its readings 1, 2 and 3 (an assistant does
   not set teams up). Phases 3 and 4 are not started.
 
