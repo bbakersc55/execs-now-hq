@@ -1,7 +1,7 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-15**, after Release 13. **The next session starts at "2026-10-15"
+2026-10-15**, after Release 14. **The next session starts at "2026-10-15"
 just below.** Then "Release 12: the plan as it was" and "2026-10-13", which
 is the day in order. Everything from "Next" down was last brought up to
 date on 10/5; where it and a newer section disagree, the newer holds. Upload
@@ -9,16 +9,29 @@ this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
 
-## 2026-10-15: Release 13, then three jobs
+## 2026-10-15: Release 13, three jobs, Release 14
+
+- **Release 14 is live: `84880d5`,** all of `dev`: the invoice modal (U1),
+  the practice's words (W2) and the strategy map as Word (W3). `tenancy 0015`
+  applied by the runbook (WAITING listed it alone; applied 18:43:51–57).
+  Push to new code 2 min 22 s, `/healthz` 200 on all 47 samples, worker
+  paused about 41 s, nothing unapplied. `python-docx` built and runs in
+  production. Backup: the owner's run-now dump of 15:24:58 UTC. **The
+  push's own web deployment went live by itself once the migration was in**,
+  so the R6 redeploy was redundant this time (runbook, Release 14).
+- **Release 13's open checks are closed:** its run-now backup was confirmed
+  (15:24:58 UTC, 3.2 MB), and its worker was processing jobs at 18:42:13,
+  just before Release 14's push.
+- Demo checks of all three jobs passed (owner, 2026-10-15). **Not yet seen in
+  production:** the practice's words with anything but the defaults (no
+  practice has set any), and a Word file opened in Word itself.
 
 - **Release 13 is live: `f91c08c`,** no migration: P7 phases 3 and 4 (the
   client owner's Your team page; what each level sees and may do), team
   changes on Activity, the Senior leadership labels, the Viewer's line and
   no comment box for a Viewer, and the company page's layout. Pushed 15:29:02
   UTC, new bundle served 15:32:33 (3 min 31 s), `/healthz` 200 on all 38
-  samples. **Not yet confirmed:** the worker's "migrations current" line
-  (asked of Bryan), and the run-now backup Bryan started (his gcloud sign-in
-  had expired).
+  samples. (Its two open checks were closed at Release 14, below.)
 - **Layout is now looked at before it is committed,** in headless Chrome
   with a throwaway harness (the real app, canned API answers, a button
   clicked by name), at 1920 and 1366. The harness is not committed.

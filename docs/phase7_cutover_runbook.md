@@ -422,6 +422,36 @@ exist, and the served bundle contains the new screens' text. **The owner had
 not run the digest schedule's laptop checklist before this release**; nothing
 in it has been seen in a browser in production yet.
 
+**Observed at Release 13 (2026-10-15 UTC, no migration: P7 phases 3 and 4,
+the Senior leadership labels, the Viewer's line, the company page's
+layout):** `main` fast-forwarded from `bd6dceb` to `f91c08c` and pushed
+15:29:02; new bundle served 15:32:33. **Push to new code: 3 min 31 s.**
+`/healthz` 200 on all 38 samples. A run-now backup was taken by the owner
+first (dump of 15:24:58 UTC, 3.2 MB). The worker's "migrations current" was
+not read at the time; at Release 14 its log showed it processing jobs at
+18:42:13, just before the push (`apps.work.tasks.tick` and others), so it had
+started, and nothing was left unapplied.
+
+**Observed at Release 14 (2026-10-15 UTC, 1 migration, `tenancy 0015`:
+the invoice modal, the practice's words, the strategy map as Word, and the
+new dependency `python-docx`):** R1 by the owner's ruling: the run-now dump
+of 15:24:58 UTC that morning (3,246,579 bytes), newer than the 08:00 run.
+`main` fast-forwarded from `f91c08c` to `84880d5` and pushed 18:42:18; worker
+`WAITING` 18:43:36 listing exactly `tenancy.0015_practice_work_words`;
+applied 18:43:51–57, OK; `migrations current` 18:44:12, `Q Cluster …
+starting` 18:44:17; R6 redeploy sent 18:44:28. **New code serving by
+18:44:40: 2 min 22 s from the push.** `/healthz` 200 on all 47 samples at
+5 s, 18:42:10–18:47:30. **Worker paused about 41 s.** No migration left
+unapplied (`showmigrations`: 0 open). **New this time: the push's own web
+deployment succeeded by itself** once the migration was in: its health check
+was still retrying, so it went live at 18:44:40, before the R6 redeploy had
+built. The redeploy then built and succeeded at 18:46:08, redundantly. R6 is
+still worth running, because a web deployment whose health check has already
+given up stays FAILED, but check the deployment list first: if the push's
+own deployment is SUCCESS on the new commit, R6 can be skipped. Done from
+Claude Code end to end: `railway logs`, `railway ssh … migrate` and
+`railway redeploy` against production were allowed this time.
+
 ---
 
 ## Part A — the owner's steps, in order
