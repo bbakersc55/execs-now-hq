@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, NavLink, useSearchParams } from "react-router-dom";
+import { Link, Navigate, NavLink, useNavigate, useSearchParams } from "react-router-dom";
 
 import { PriceBox } from "../components/InvoiceLines";
 import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
@@ -16,6 +16,8 @@ import { dollars, longDate } from "../lib/money";
 import { FinanceImport } from "./FinanceImport";
 import { FinanceForecast } from "./FinanceForecast";
 import { FinancePayees } from "./FinancePayees";
+import { PersonalFinance, PersonalTab } from "./PersonalFinance";
+import { FinanceSide, hasPersonal, rememberSide, rememberedSide } from "../lib/personal";
 import { FinanceReconcile } from "./FinanceReconcile";
 
 /**
@@ -59,16 +61,72 @@ function useBooks() {
            ready: !!accounts.data && !!categories.data };
 }
 
-export function Finance({ tab }: { tab: Tab }) {
+const PERSONAL_TABS: [PersonalTab, string, string][] = [
+  ["entries", "/finance/personal", "Entries"],
+  ["accounts", "/finance/personal/accounts", "Accounts"],
+  ["categories", "/finance/personal/categories", "Categories"],
+];
+
+/** P6 M4: Business | Personal, at the top of every Finance screen. The
+ *  browser remembers the side last used. */
+function SideSwitch({ side }: { side: FinanceSide }) {
+  const navigate = useNavigate();
+  const go = (to: FinanceSide) => {
+    rememberSide(to);
+    navigate(to === "personal" ? "/finance/personal" : "/finance");
+  };
+  return (
+    <div className="row tight" role="group" aria-label="Business or personal"
+      style={{ marginBottom: "var(--s3)" }}>
+      <button className={side === "business" ? "primary small" : "small"}
+        aria-pressed={side === "business"} onClick={() => go("business")}>Business</button>
+      <button className={side === "personal" ? "primary small" : "small"}
+        aria-pressed={side === "personal"} onClick={() => go("personal")}>Personal</button>
+    </div>
+  );
+}
+
+export function Finance({ tab = "entries", personalTab }: {
+  tab?: Tab; personalTab?: PersonalTab;
+}) {
   const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
   const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
   const forecasting = (me.data?.modules ?? []).includes("forecast");
+  const personal = hasPersonal(me.data);
+  if (personalTab) {
+    if (me.data && !personal) {
+      return <Banner kind="info">Personal finance is its own module, which this practice
+        does not have.</Banner>;
+    }
+    return (
+      <div className="personal-band">
+        <PageHead title="Personal finance"
+          sub="Your household's money, beside the practice's books. Only you see this: not
+            your team, not your clients." />
+        <SideSwitch side="personal" />
+        <nav className="row tight" aria-label="Personal finance"
+          style={{ marginBottom: "var(--s4)" }}>
+          {PERSONAL_TABS.map(([key, to, label]) => (
+            <NavLink key={key} to={to} end
+              className={({ isActive }) => (isActive ? "btn primary small" : "btn small")}>
+              {label}</NavLink>
+          ))}
+        </nav>
+        <PersonalFinance tab={personalTab} />
+      </div>
+    );
+  }
+  // Opened from the sidebar on the side last used.
+  if (personal && tab === "entries" && rememberedSide() === "personal") {
+    return <Navigate to="/finance/personal" replace />;
+  }
   return (
     <>
       <PageHead title="Finance"
         sub={<>Your practice's books, on a cash basis: income when it arrives, an expense
           when it leaves. Only you see this.{" "}
           <Link to="/settings/finance">Accounts and categories</Link></>} />
+      {personal && <SideSwitch side="business" />}
       <nav className="row tight" aria-label="Finance" style={{ marginBottom: "var(--s4)" }}>
         {TABS.filter(([key]) => (key !== "reconcile" || bookkeeping)
           && (key !== "forecast" || forecasting)).map(([key, to, label]) => (

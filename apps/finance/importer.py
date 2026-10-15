@@ -349,18 +349,48 @@ def _apply_rule(row, rules, account) -> None:
             if rule.other_account_id in (None, account.pk):
                 continue
             row.outcome, row.other_account = O.TRANSFER, rule.other_account
+        elif rule.side == "personal":
+            # P6 M4 decision 2: the owner's own spending, whatever the account.
+            row.side, row.personal_category = "personal", rule.personal_category
+            row.category = row.payee_contact = None
         elif _fits(rule.category, row.direction):
             row.category, row.payee_contact = rule.category, rule.payee_contact
+            if rule.side == "split" and rule.split_percent:
+                row.side, row.personal_category = "split", rule.personal_category
+                row.split_business_cents = round(row.amount_cents * rule.split_percent / 100)
+            else:
+                row.side = ""
         else:
             continue
         row.rule = rule
         return
 
 
+def _side_by_threshold(row, account, ledger) -> None:
+    """P6 M4 decision 5, for a line of a Mixed account no rule decided: under
+    the owner's threshold it is personal, in Everything else, without asking;
+    at or over it, it waits in To sort."""
+    if account.side != FinanceAccount.Side.MIXED or row.outcome != O.NEW or row.rule_id:
+        return
+    from apps.personal import services as personal
+
+    small = ledger is not None and row.amount_cents < ledger.to_sort_threshold_cents
+    if small:
+        row.side = "personal"
+        row.personal_category = personal.system_category(ledger, personal.EVERYTHING_ELSE)
+    else:
+        row.side = "to_sort"
+    row.category = None
+
+
 def _counts(batch) -> dict:
     rows = FinanceImportRow.all_objects.filter(batch=batch)
     counts = {outcome: rows.filter(outcome=outcome).count() for outcome in O.values}
-    counts["needs_category"] = rows.filter(outcome=O.NEW, category__isnull=True).count()
+    counts["needs_category"] = rows.filter(outcome=O.NEW, category__isnull=True,
+                                           side="").count()
+    # P6 M4: the personal side of a Mixed (or Business) account's lines.
+    counts["to_sort"] = rows.filter(outcome=O.NEW, side="to_sort").count()
+    counts["personal"] = rows.filter(outcome=O.NEW, side__in=("personal", "split")).count()
     counts["total"] = rows.count()
     return counts
 
@@ -409,7 +439,13 @@ def _dry_run(tenant, *, account, filename, file_bytes, mapping, parsed, actor=No
         batch.ai_call = parsed["call"]
     books = _Books(tenant, account)
     rules = list(FinanceRule.all_objects.filter(tenant=tenant, is_active=True)
-                 .select_related("category", "other_account", "payee_contact"))
+                 .select_related("category", "other_account", "payee_contact",
+                                 "personal_category"))
+    ledger = None
+    if account.side == FinanceAccount.Side.MIXED and actor is not None:
+        from apps.personal import services as personal
+
+        ledger = personal.ledger_for(actor)
     last_balance = None
     for number, raw in enumerate(raws, start=2):          # line 1 is the header
         row = FinanceImportRow(tenant=tenant, batch=batch, row_number=number, raw=raw,
@@ -438,6 +474,7 @@ def _dry_run(tenant, *, account, filename, file_bytes, mapping, parsed, actor=No
                 row.outcome, row.matched_entry = O.TRANSFER_MATCH, other_side
             else:
                 _apply_rule(row, rules, account)
+                _side_by_threshold(row, account, ledger)
         row.save()
     if parsed["closing"] is not None:
         # The statement's own closing balance. A card's is what is owed,
@@ -469,7 +506,8 @@ def _only_dry_run(batch) -> None:
 
 @transaction.atomic
 def decide(row, *, decision, category=None, other_account=None, payee_contact=...,
-           remember=None, actor=None) -> FinanceImportRow:
+           remember=None, actor=None, side=None, personal_category=None,
+           split_business_cents=None) -> FinanceImportRow:
     """What the owner says a line is, while the import is still a dry run.
 
     `decision`: "entry" (with a category, or none yet), "transfer" (with the
@@ -477,6 +515,10 @@ def decide(row, *, decision, category=None, other_account=None, payee_contact=..
     line becomes a new entry).
 
     `remember`: text to remember the choice by, for lines that contain it.
+
+    P6 M4: an "entry" has a `side` too: "business" (as before), "personal"
+    (the owner's own, in `personal_category` of their ledger), "split"
+    (`split_business_cents` of it business, in `category`) or "to_sort".
     """
     batch = FinanceImportBatch.all_objects.select_for_update().get(pk=row.batch_id)
     _only_dry_run(batch)
@@ -490,6 +532,8 @@ def decide(row, *, decision, category=None, other_account=None, payee_contact=..
             raise FinanceError("Choose a category that is in use.")
         row.outcome, row.category = O.NEW, category
         row.other_account = row.matched_entry = None
+        _decide_side(row, side=side, actor=actor, personal_category=personal_category,
+                     split_business_cents=split_business_cents)
     elif decision == "transfer":
         if other_account is None or other_account.tenant_id != row.tenant_id \
                 or other_account.pk == account.pk or other_account.closed_at is not None:
@@ -509,30 +553,70 @@ def decide(row, *, decision, category=None, other_account=None, payee_contact=..
         if payee_contact is not None and payee_contact.tenant_id != row.tenant_id:
             raise FinanceError("That person is not in this practice.", status=404)
         row.payee_contact = payee_contact
+    if decision != "entry":
+        row.side, row.personal_category, row.split_business_cents = "", None, None
     row.rule = None
     row.save()
 
-    if remember is not None and decision in ("entry", "transfer", "ignore"):
+    if remember is not None and decision in ("entry", "transfer", "ignore") \
+            and row.side != "to_sort":
         from apps.finance import rules as rule_service
 
+        split_percent = (round(row.split_business_cents * 100 / row.amount_cents)
+                         if row.side == "split" else None)
         rule = rule_service.save_rule(
             row.tenant, actor=actor, contains=remember,
             treat_as={"entry": "category", "transfer": "transfer",
                       "ignore": "ignore"}[decision],
             category=category, other_account=other_account,
-            payee_contact=row.payee_contact if decision == "entry" else None)
+            payee_contact=row.payee_contact if decision == "entry" else None,
+            side=row.side if decision == "entry" else "",
+            personal_category=row.personal_category if decision == "entry" else None,
+            split_percent=split_percent if split_percent and 0 < split_percent < 100
+            else None)
         row.rule = rule
         row.save(update_fields=["rule", "updated_at"])
         # The other undecided lines of this import take it at once.
         waiting = FinanceImportRow.all_objects.filter(
             batch=batch, outcome=O.NEW, category__isnull=True, rule__isnull=True)
         for other in waiting.exclude(pk=row.pk):
+            if other.side not in ("", "to_sort") and other.personal_category_id:
+                continue                      # already decided as personal
             _apply_rule(other, [rule], account)
             if other.rule_id:
                 other.save()
     batch.counts = _counts(batch)
     batch.save(update_fields=["counts", "updated_at"])
     return row
+
+
+def _decide_side(row, *, side, actor, personal_category, split_business_cents) -> None:
+    """The owner's side for a line (P6 M4 decision 2). With no side said, a
+    line keeps the side it had, unless a category was chosen: that is a
+    business line."""
+    if side is None:
+        side = "business" if row.category_id else (row.side or "business")
+    if side not in ("business", "personal", "split", "to_sort"):
+        raise FinanceError("side is business, personal, split or to_sort.")
+    if side in ("personal", "split"):
+        from apps.personal import services as personal
+
+        if actor is None:
+            raise FinanceError("A personal line needs whose ledger it goes to.")
+        ledger = personal.ledger_for(actor)
+        if personal_category is not None and personal_category.ledger_id != ledger.pk:
+            raise FinanceError("That personal category is not yours.", status=404)
+    if side == "split":
+        if row.category_id is None:
+            raise FinanceError("Choose the business category for the business part.")
+        if split_business_cents is None or not 0 < split_business_cents < row.amount_cents:
+            raise FinanceError("The business part of a split is more than nothing and less "
+                               "than the whole line.")
+    row.side = "" if side == "business" else side
+    row.personal_category = personal_category if side in ("personal", "split") else None
+    row.split_business_cents = split_business_cents if side == "split" else None
+    if side in ("personal", "to_sort"):
+        row.category = row.payee_contact = None
 
 
 # -------------------------------------------------------- commit and rollback
@@ -568,8 +652,17 @@ def commit(batch, *, actor=None) -> FinanceImportBatch:
                  "amount_cents": row.amount_cents, "direction": row.direction,
                  "description": row.description}):
             raise stale
+    ledger = None
+    if any(row.outcome == O.NEW and row.side in ("personal", "split") for row in writing):
+        from apps.personal import services as personal
+
+        if actor is None:
+            raise FinanceError("Personal lines need whose ledger they go to.")
+        ledger = personal.ledger_for(actor)
     for row in writing:
-        if row.outcome == O.NEW:
+        if row.outcome == O.NEW and row.side in ("personal", "split"):
+            _commit_personal(row, batch=batch, account=account, ledger=ledger, actor=actor)
+        elif row.outcome == O.NEW:
             entry = FinanceEntry.all_objects.create(
                 tenant=tenant, kind=_kind_for(row.category, row.direction),
                 direction=row.direction, on_date=row.on_date,
@@ -577,6 +670,9 @@ def commit(batch, *, actor=None) -> FinanceImportBatch:
                 description=row.description, bank_id=row.bank_id,
                 reference=str(row.raw.get(batch.mapping.get("reference") or "", ""))[:120],
                 payee_contact=row.payee_contact, source=FinanceEntry.Source.IMPORT,
+                # A Mixed account's line no rule placed waits to be sorted.
+                side=(FinanceEntry.Side.TO_SORT if row.side == "to_sort"
+                      else FinanceEntry.Side.BUSINESS),
                 created_by=actor)
             row.entry = entry
         elif row.outcome == O.TRANSFER:
@@ -606,10 +702,11 @@ def commit(batch, *, actor=None) -> FinanceImportBatch:
         elif row.outcome == O.TRANSFER_MATCH:
             if row.matched_entry is None or row.matched_entry.removed_at is not None:
                 raise stale
-        row.save(update_fields=["entry", "updated_at"])
-        if row.entry_id and row.outcome in (O.NEW, O.TRANSFER):
-            services.audit(tenant, "entry_added", actor, row.entry,
-                           after=services._state(row.entry), batch=str(batch.pk))
+        row.save(update_fields=["entry", "draw_entry", "updated_at"])
+        for made in (row.entry, row.draw_entry):
+            if made is not None and row.outcome in (O.NEW, O.TRANSFER):
+                services.audit(tenant, "entry_added", actor, made,
+                               after=services._state(made), batch=str(batch.pk))
     batch.status = S.COMMITTED
     batch.committed_at = timezone.now()
     batch.counts = _counts(batch)
@@ -623,6 +720,37 @@ def commit(batch, *, actor=None) -> FinanceImportBatch:
     return batch
 
 
+def _commit_personal(row, *, batch, account, ledger, actor) -> None:
+    """P6 M4 decision 3: the personal part of a line is an owner draw in the
+    books (money in: a contribution) and the spend itself in the owner's
+    ledger. A split's business part is an ordinary entry beside it."""
+    from apps.personal import services as personal
+
+    tenant = batch.tenant
+    personal_cents = row.amount_cents
+    if row.side == "split":
+        row.entry = FinanceEntry.all_objects.create(
+            tenant=tenant, kind=_kind_for(row.category, row.direction),
+            direction=row.direction, on_date=row.on_date,
+            amount_cents=row.split_business_cents, category=row.category, account=account,
+            description=row.description, bank_id=row.bank_id,
+            payee_contact=row.payee_contact, source=FinanceEntry.Source.IMPORT,
+            created_by=actor)
+        personal_cents = row.amount_cents - row.split_business_cents
+    draw = FinanceEntry.all_objects.create(
+        tenant=tenant, kind=K.OWNER, direction=row.direction, on_date=row.on_date,
+        amount_cents=personal_cents, category=personal.owner_category(tenant, row.direction),
+        account=account, description=row.description,
+        bank_id="" if row.side == "split" else row.bank_id,
+        source=FinanceEntry.Source.IMPORT, side=FinanceEntry.Side.PERSONAL,
+        created_by=actor)
+    personal.line_for_entry(draw, ledger=ledger, category=row.personal_category)
+    if row.side == "split":
+        row.draw_entry = draw
+    else:
+        row.entry = draw
+
+
 @transaction.atomic
 def rollback(batch, *, actor=None) -> dict:
     """Undo a committed import: every entry it made that has not been changed
@@ -633,17 +761,20 @@ def rollback(batch, *, actor=None) -> dict:
         raise FinanceError("Only a committed import can be rolled back.", status=409)
     tenant = batch.tenant
     rows = list(FinanceImportRow.all_objects.filter(batch=batch).select_related(
-        "entry", "matched_entry"))
+        "entry", "matched_entry", "draw_entry"))
     services._unlocked(tenant, *[row.on_date for row in rows
-                                 if row.entry_id or row.matched_entry_id])
+                                 if row.entry_id or row.matched_entry_id or row.draw_entry_id])
     from apps.finance import reconcile
     from apps.tenancy.models import AuditEvent
 
     edited = set(AuditEvent.all_objects.filter(
         tenant=tenant, verb="finance.entry_changed", target_type="finance_entry",
-        target_id__in=[row.entry_id for row in rows if row.entry_id],
+        target_id__in=[pk for row in rows for pk in (row.entry_id, row.draw_entry_id) if pk],
         created_at__gt=batch.committed_at).values_list("target_id", flat=True))
     removed, kept, unmatched = 0, [], 0
+    # A split's owner draw goes with its business part (P6 M4 decision 3).
+    rows = rows + [FinanceImportRow(outcome=row.outcome, entry=row.draw_entry)
+                   for row in rows if row.draw_entry_id]
     for row in rows:
         entry = row.entry
         if entry is not None and row.outcome in (O.NEW, O.TRANSFER):

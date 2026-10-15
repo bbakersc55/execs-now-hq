@@ -6,6 +6,7 @@ import {
   BankImportBatch, BankImportRow, FinanceAccount, FinanceCategory, FinanceRule, ImportDetected,
   PayeeReport,
 } from "../lib/api";
+import { aMe } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { Finance } from "./Finance";
 import { FinanceSettings } from "./FinanceSettings";
@@ -419,5 +420,50 @@ describe("import rules in the settings", () => {
       .toHaveLength(1));
     expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toEqual({
       is_active: false });
+  });
+});
+
+describe("sides in the dry run (P6 M4 decision 2)", () => {
+  const MIXED: BankImportBatch = {
+    ...BATCH, counts: { ...BATCH.counts, personal: 2, to_sort: 1 },
+    rows: [
+      row({ id: "m1", description: "NETFLIX.COM", side: "personal",
+            personal_category: { id: "p2", name: "Entertainment and subscriptions" },
+            rule: { id: "u2", contains: "NETFLIX" } }),
+      row({ id: "m2", row_number: 3, description: "COSTCO WHOLESALE", amount_cents: 31240,
+            side: "to_sort" }),
+      row({ id: "m3", row_number: 4, description: "VERIZON WIRELESS", amount_cents: 10000,
+            side: "split", split_business_cents: 6000, category: { id: "c3", name: "Meals" },
+            personal_category: { id: "p3", name: "Phone and internet" } }),
+      row({ id: "m4", row_number: 5, description: "ADOBE CREATIVE CLOUD" })],
+  };
+  const PERSONAL = {
+    categories: [{ id: "p1", name: "Groceries", type: "expense", parent: null, position: 0,
+                   system: false, tax_group: "", tax_group_label: "", archived: false }],
+    tax_groups: [] };
+
+  it("shows each line's side beside its category, and puts one on another side", async () => {
+    const fetchMock = await toTheDryRun({
+      "POST /api/finance-imports/dry-run/": () => ({ status: 201, body: MIXED }),
+      "GET /api/me": aMe({ modules: ["personal"] }),
+      "GET /api/personal/categories": PERSONAL,
+      "POST /api/finance-imports/b1/rows/m2/": () => ({ body: MIXED }) });
+    expect(screen.getByLabelText("What the import would do")).toHaveTextContent(
+      "2 personal (an owner draw in the books, the spend in your personal ledger) · 1 to sort");
+    expect(screen.getByLabelText("Side of line 2")).toHaveValue("personal");
+    expect(screen.getByText("your rule: contains “NETFLIX”")).toBeInTheDocument();
+    expect(screen.getByLabelText("Side of line 3")).toHaveValue("to_sort");
+    expect(screen.getByText("waits in Personal → To sort")).toBeInTheDocument();
+    expect(screen.getByText(/\$60\.00 business, \$40\.00 personal \(Phone and internet\)/))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText("Side of line 5")).toHaveValue("business");
+    await userEvent.selectOptions(screen.getByLabelText("Side of line 3"), "personal");
+    await waitFor(() => expect(posts(fetchMock, "/rows/m2/")[0].body)
+      .toEqual({ decision: "entry", side: "personal", category: null }));
+  });
+
+  it("offers no side to a practice without Personal finance", async () => {
+    await toTheDryRun({ "GET /api/me": aMe({ modules: [] }) });
+    expect(screen.queryByLabelText("Side of line 2")).toBeNull();
   });
 });

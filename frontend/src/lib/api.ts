@@ -1597,6 +1597,8 @@ export interface FinanceAccount {
   last4: string; opening_balance_cents: number; opening_on: string; closed: boolean;
   /** P6 M1: whether the month close asks for a reconciliation of it. */
   reconciled_monthly?: boolean;
+  /** P6 M4: "mixed" — each line sorted to a side. */
+  side?: "business" | "mixed";
 }
 
 export interface FinanceCategory {
@@ -1631,6 +1633,9 @@ export interface CategoryChange {
 }
 
 export interface FinanceEntry {
+  /** P6 M4: "" business, "personal" (an owner draw for personal spending),
+   *  "to_sort" (a Mixed account's line waiting for a side). */
+  side?: "" | "personal" | "to_sort";
   id: string; kind: EntryKind; kind_label: string; direction: "in" | "out";
   on_date: string; amount_cents: number;
   category: { id: string; name: string } | null;
@@ -1731,6 +1736,10 @@ export interface BankImportRow {
              amount_cents: number } | null;
   rule: { id: string; contains: string } | null;
   error: string; raw: Record<string, string> | null;
+  /** P6 M4: "" business, "personal", "split" or "to_sort". */
+  side?: "" | "personal" | "split" | "to_sort";
+  personal_category?: { id: string; name: string } | null;
+  split_business_cents?: number | null;
 }
 
 /** What is kept from a PDF statement: its period, its two balances, whether
@@ -1767,6 +1776,9 @@ export interface FinanceRule {
   category: { id: string; name: string } | null;
   other_account: { id: string; name: string } | null;
   account: { id: string; name: string } | null; is_active: boolean;
+  /** P6 M4: "" business, "personal" or "split". */
+  side?: "" | "personal" | "split"; split_percent?: number | null;
+  personal_category?: { id: string; name: string } | null;
 }
 
 export interface PayeeReport {
@@ -1970,4 +1982,37 @@ export interface ForecastReview {
   one_offs: ReviewItem[]; missed: ReviewItem[];
   questions: { topic: string; question: string }[];
   cost_usd: string; disclaimer: string; used_today: number; cap: number;
+}
+
+// ------------------------------------------------- P6 M4: personal finance
+
+export interface PersonalCategory {
+  id: string; name: string; type: "expense" | "income" | "transfer";
+  parent: string | null; position: number; system: boolean;
+  tax_group: string; tax_group_label: string; archived: boolean;
+}
+
+export interface PersonalChart {
+  categories: PersonalCategory[];
+  tax_groups: { code: string; label: string }[];
+}
+
+export interface PersonalAccount {
+  id: string; name: string; kind: "bank" | "card" | "cash"; kind_label: string;
+  last4: string; closed: boolean; side: "personal" | "mixed"; in_books: boolean;
+  opening_balance_cents?: number; opening_on?: string;
+}
+
+export interface PersonalLine {
+  id: string;
+  /** "line": in the ledger; "entry": a Mixed account's line waiting for a side. */
+  kind: "line" | "entry";
+  on_date: string; amount_cents: number; direction: "in" | "out"; description: string;
+  category: { id: string; name: string; tax_group?: string } | null;
+  account: { id: string; name: string } | null;
+  from_books: boolean; source: string; to_sort: boolean;
+}
+
+export interface PersonalLines {
+  lines: PersonalLine[]; to_sort: number; threshold_cents: number;
 }

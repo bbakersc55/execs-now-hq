@@ -20,8 +20,12 @@ BOOKKEEPING = "bookkeeping"
 #: The cash forecast (P6 M2). It reads closed months, which only Bookkeeping
 #: makes, so a practice has it only with Bookkeeping (M2-13).
 FORECAST = "forecast"
+#: Personal finance (P6 M4): the owner's household money, on its own side of
+#: Finance. Off for every practice until switched on (decision 27).
+PERSONAL = "personal"
 #: Code -> the name a person reads.
-MODULES = {BOOKKEEPING: "Bookkeeping", FORECAST: "Cash forecast"}
+MODULES = {BOOKKEEPING: "Bookkeeping", FORECAST: "Cash forecast",
+           PERSONAL: "Personal finance"}
 #: A module, and the one it cannot be had without.
 NEEDS = {FORECAST: BOOKKEEPING}
 

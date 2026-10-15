@@ -757,6 +757,10 @@ main:has(.pipeline-board) .sub { max-width: 80ch; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 
+/* P6 M4: the personal side of Finance wears its own band, so nobody mistakes
+   which money they are looking at. */
+.personal-band { border-top: 4px solid var(--orange); padding-top: var(--s3); }
+
 /* A form over a grayed-out page (`Modal`, backlog U1). */
 .modal {
   position: fixed; top: 8vh; left: 50%; transform: translateX(-50%); z-index: 41;

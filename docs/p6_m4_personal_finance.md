@@ -179,6 +179,67 @@ The brief (saved 2026-10-11) wins where the two differ, unless a recorded decisi
 - Where M3 sits now that M4 is high on the list.
 - Decided 10/15: where it lives (a toggle inside Finance), spouse sign-in (later), no month close, budget by arithmetic.
 
-## Stop 1 as built
+## Stop 1 as built (first slice, 2026-10-15)
 
-Filled in as stop 1 is built (below, when committed).
+**Built and tested:**
+
+- **Ownership** (the brief, decided 10/15): a new app, `apps/personal`, whose
+  rows hang off a `PersonalLedger` that belongs to one **user**, not a
+  practice. They are not tenant-scoped, so the ledger survives its owner
+  leaving any practice. The isolation family is extended to it
+  (`tests/test_personal_sides.py`): every model of the app is registered and
+  read through `of(user)`; another practice owner, anyone else in the
+  practice, the platform owner and a practice without the module reach none
+  of it.
+- **The module** (decision 27): "Personal finance", switched per practice in
+  the Practices area, off for every practice. Without it the routes are 404
+  and the switch is not shown.
+- **Account kinds** (decision 1): a practice account is Business or **Mixed**
+  (Settings → Finance, the Side column). Personal accounts are the
+  household's own, in the ledger. All carry connection fields, unused.
+- **A side on every line** (decision 2), set by rules (a rule now has a
+  side: business, personal, or split with a percent) and shown beside the
+  category in the import's dry run, where the owner can change it.
+- **The crossing posting** (decision 3): a personal line in a Mixed or
+  Business account is an **owner draw** in the books (money in: an owner
+  contribution) and the spend itself in the ledger, under a personal
+  category; a split is an expense for its business part and a draw for the
+  rest. Only business lines reach the P&L. Removing the draw (by hand, in
+  bulk, or by rolling the import back) removes its ledger line; editing its
+  date or amount carries to the ledger.
+- **The personal chart** (decision 4), with the CPA's six groups as
+  Tax-deductible marks on the sub-categories they fit (Personal →
+  Categories), editable.
+- **Light sorting** (decision 5): a Mixed account's line with no rule under
+  the owner's threshold (default $25) is personal, Everything else, without
+  asking; at or over it, it waits in **To sort**. Sorting it (to either side,
+  with a category) can remember a rule. Ledger lines are recategorized one
+  at a time or in bulk.
+- **The Business | Personal switch** at the top of Finance, remembered in the
+  browser; the Personal side has its own band, "Personal" in its title and
+  the personal disclaimer (decision 26), and three pages: Entries (with To
+  sort), Accounts, Categories.
+
+**Choices made while building, for Bryan to keep or overrule:**
+
+1. A **Mixed account lives in the practice's books**, not the ledger: its
+   business lines are the practice's, it is reconciled with the business
+   month (decision 8), and its personal lines are owner draws there. Its
+   personal lines are copied into the owner's ledger, so they stay the
+   owner's if they leave.
+2. A line of a Mixed account that waits in To sort is in the books as an
+   uncategorized expense or income until it is sorted (marked "to sort"),
+   because the bank shows it and the card's balance must be right.
+3. The threshold applies only to **Mixed** accounts: a Business account's
+   line with no rule is the practice's, as before; a personal rule still
+   reaches it.
+4. A split chosen by hand in the dry run is in dollars (the business part);
+   a split rule is a percent.
+5. Whose ledger: the person who commits the import (Finance is the practice
+   owner's alone).
+
+**Not built yet in stop 1** (the next slice): importing a statement into a
+**personal** account (with the business line paid personally), transfers
+between the household's own accounts, optional reconcile on personal
+accounts, and **Sort these with Claude**. The demo seed's personal side is a
+data step and waits for Bryan.

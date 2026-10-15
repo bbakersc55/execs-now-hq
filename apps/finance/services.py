@@ -202,7 +202,7 @@ def _clean_name(name, what) -> str:
 @transaction.atomic
 def save_account(tenant, *, actor, account=None, name=None, kind=None, last4=None,
                  opening_balance_cents=None, opening_on=None,
-                 reconciled_monthly=None) -> FinanceAccount:
+                 reconciled_monthly=None, side=None) -> FinanceAccount:
     from apps.finance.models import FinanceReconciliation
 
     made = account is None
@@ -241,6 +241,12 @@ def save_account(tenant, *, actor, account=None, name=None, kind=None, last4=Non
         if last4 and (len(last4) != 4 or not last4.isdigit()):
             raise FinanceError("The last four digits are four digits.")
         account.last4 = last4
+    if side is not None:
+        # P6 M4 decision 1. Its lines already in the books keep their sides:
+        # only lines imported from now on are sorted.
+        if side not in FinanceAccount.Side.values:
+            raise FinanceError("side is business or mixed.")
+        account.side = side
     if opening_balance_cents is not None:
         account.opening_balance_cents = _cents(opening_balance_cents, "An opening balance",
                                                signed=True)
@@ -255,7 +261,7 @@ def save_account(tenant, *, actor, account=None, name=None, kind=None, last4=Non
         account.reconciled_monthly = account.kind != FinanceAccount.Kind.CASH
     account.save()
     audit(tenant, "account_created" if made else "account_changed", actor, account,
-          name=account.name, kind=account.kind,
+          name=account.name, kind=account.kind, side=account.side,
           reconciled_monthly=account.reconciled_monthly,
           opening_balance_cents=account.opening_balance_cents,
           opening_on=account.opening_on.isoformat())
@@ -532,9 +538,28 @@ def update_entry(entry, *, actor, **changes) -> FinanceEntry:
     _shape(entry)
     _unlocked(entry.tenant, was, entry.on_date)
     reconcile.hold(entry, held)
+    _keep_side(entry)
     entry.save()
     audit(entry.tenant, "entry_changed", actor, entry, before=before, after=_state(entry))
     return entry
+
+
+def _keep_side(entry) -> None:
+    """P6 M4: an entry edited here stays true to its side. A To sort line
+    given a category, or a personal line made something other than owner
+    money, is the practice's now; a personal line still owner money carries
+    its new date and amount to the owner's ledger."""
+    from apps.personal import services as personal
+
+    if entry.side == FinanceEntry.Side.TO_SORT and (
+            entry.category_id is not None or entry.kind not in (K.INCOME, K.EXPENSE)):
+        entry.side = FinanceEntry.Side.BUSINESS
+    elif entry.side == FinanceEntry.Side.PERSONAL:
+        if entry.kind != K.OWNER:
+            entry.side = FinanceEntry.Side.BUSINESS
+            personal.entry_removed(entry, "Changed to a business entry in the books.")
+        else:
+            personal.entry_changed(entry)
 
 
 @transaction.atomic
@@ -557,6 +582,11 @@ def remove_entry(entry, *, actor, reason, from_invoice=False) -> FinanceEntry:
     entry.remove_reason = reason
     entry.save(update_fields=["removed_at", "removed_by", "remove_reason", "updated_at"])
     audit(entry.tenant, "entry_removed", actor, entry, before=_state(entry), reason=reason)
+    # P6 M4: an owner draw that stood for personal spending takes its line in
+    # the owner's ledger with it.
+    from apps.personal import services as personal
+
+    personal.entry_removed(entry, reason)
     return entry
 
 
@@ -580,7 +610,8 @@ def recategorize(tenant, *, actor, entries, category) -> int:
             continue
         before = _state(entry)
         entry.category = category
-        entry.save(update_fields=["category", "updated_at"])
+        _keep_side(entry)
+        entry.save(update_fields=["category", "side", "updated_at"])
         audit(tenant, "entry_changed", actor, entry, before=before, after=_state(entry))
     return len(rows)
 

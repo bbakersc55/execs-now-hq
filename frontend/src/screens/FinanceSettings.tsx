@@ -49,6 +49,7 @@ export function FinanceSettings() {
     onSuccess: (data) => qc.setQueryData(["invoice-settings"], data),
   });
   const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
+  const personal = (me.data?.modules ?? []).includes("personal");
   const send = useMutation({
     mutationFn: ({ url, body, method }: { url: string; body: object;
                                           method?: "patch" | "delete" }) =>
@@ -85,7 +86,8 @@ export function FinanceSettings() {
           <table>
             <thead><tr><th>Account</th><th>Kind</th><th>Started</th>
               <th className="money">Opening</th>
-              {bookkeeping && <th>Reconciled each month</th>}<th /></tr></thead>
+              {bookkeeping && <th>Reconciled each month</th>}
+              {personal && <th>Side</th>}<th /></tr></thead>
             <tbody>
               {(accounts.data ?? []).map((row) => (
                 <tr key={row.id}>
@@ -101,6 +103,19 @@ export function FinanceSettings() {
                         onChange={(e) => send.mutate({
                           url: `/api/finance-accounts/${row.id}/`, method: "patch",
                           body: { reconciled_monthly: e.target.checked } })} />
+                    </td>
+                  )}
+                  {personal && (
+                    <td>
+                      {/* P6 M4 decision 1: one card for everything. */}
+                      <select aria-label={`Side of ${row.name}`} value={row.side ?? "business"}
+                        disabled={busy} style={{ width: "auto" }}
+                        onChange={(e) => send.mutate({
+                          url: `/api/finance-accounts/${row.id}/`, method: "patch",
+                          body: { side: e.target.value } })}>
+                        <option value="business">Business</option>
+                        <option value="mixed">Mixed (business and personal)</option>
+                      </select>
                     </td>
                   )}
                   <td className="money">
@@ -231,7 +246,11 @@ function Rules() {
                 <td>“{rule.contains}”{!rule.is_active && <> <Pill>off</Pill></>}</td>
                 <td>{rule.treat_as === "ignore" ? "ignored"
                   : rule.treat_as === "transfer" ? `a transfer, ${rule.other_account?.name}`
-                    : rule.category?.name}</td>
+                    : rule.side === "personal"
+                      ? `personal${rule.personal_category ? `, ${rule.personal_category.name}` : ""}`
+                      : rule.side === "split"
+                        ? `${rule.split_percent}% ${rule.category?.name ?? ""}, the rest personal`
+                        : rule.category?.name}</td>
                 <td>{rule.account?.name ?? "any account"}</td>
                 <td className="money">
                   <button className="ghost small" disabled={busy}

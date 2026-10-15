@@ -33,7 +33,9 @@ def represent_account(row) -> dict:
             "opening_balance_cents": row.opening_balance_cents,
             "opening_on": row.opening_on.isoformat(), "closed": row.closed_at is not None,
             # P6 M1: whether the month close asks for a reconciliation of it.
-            "reconciled_monthly": row.reconciled_monthly}
+            "reconciled_monthly": row.reconciled_monthly,
+            # P6 M4: business, or mixed (each line sorted to a side).
+            "side": row.side}
 
 
 def represent_category(row, used=None) -> dict:
@@ -74,6 +76,9 @@ def represent_entry(entry) -> dict:
         "payee_contact": str(entry.payee_contact_id or ""),
         # An owner draw that was an estimated tax payment: "federal", "state" or "".
         "estimated_tax": entry.estimated_tax,
+        # P6 M4: "" business, "personal" (an owner draw standing for the
+        # owner's own spending) or "to_sort" (a Mixed account's line).
+        "side": entry.side,
     }
 
 
@@ -304,6 +309,13 @@ class AccountViewSet(FinanceViewSet):
             # "Reconciled each month" is Bookkeeping's (P6 M1 §1.6).
             self.needs_bookkeeping(request)
             fields["reconciled_monthly"] = data["reconciled_monthly"]
+        if "side" in data:
+            # A Mixed account is Personal finance's (P6 M4 decision 1).
+            from apps.tenancy import modules
+
+            if not modules.has(request.tenant, modules.PERSONAL):
+                raise Http404
+            fields["side"] = data["side"]
         try:
             row = services.save_account(request.tenant, actor=request.user, account=account,
                                         **fields)
@@ -622,6 +634,12 @@ def represent_row(row) -> dict:
                      "amount_cents": row.amount_cents} if matched else None),
         "rule": ({"id": str(row.rule_id), "contains": row.rule.contains}
                  if row.rule_id else None),
+        # P6 M4: the line's side, shown beside its category in the dry run.
+        "side": row.side,
+        "personal_category": ({"id": str(row.personal_category_id),
+                               "name": row.personal_category.name}
+                              if row.personal_category_id else None),
+        "split_business_cents": row.split_business_cents,
         "error": row.error_text,
         "raw": row.raw if row.outcome == "error" else None,
     }
@@ -764,6 +782,8 @@ class ImportViewSet(FinanceViewSet):
             if "payee_contact" in data:
                 fields["payee_contact"] = self._one(Contact, data["payee_contact"], "person") \
                     if data["payee_contact"] else None
+            if "side" in data:
+                fields.update(self._side(request, data))
             importer.decide(
                 row, decision=data.get("decision"), actor=request.user,
                 category=self._one(FinanceCategory, data["category"], "category")
@@ -774,6 +794,26 @@ class ImportViewSet(FinanceViewSet):
         except services.FinanceError as exc:
             return self._refusal(exc)
         return Response(represent_batch(self._batch(pk), rows=True))
+
+    @staticmethod
+    def _side(request, data) -> dict:
+        """P6 M4: a line's side, from a practice with Personal finance."""
+        from apps.personal import services as personal
+        from apps.tenancy import modules
+
+        if not modules.has(request.tenant, modules.PERSONAL):
+            raise Http404
+        fields = {"side": data.get("side") or "business"}
+        if data.get("personal_category"):
+            try:
+                fields["personal_category"] = personal.personal_category(
+                    personal.ledger_for(request.user), data["personal_category"])
+            except personal.PersonalError as exc:
+                raise services.FinanceError(str(exc), status=exc.status) from None
+        if data.get("split_business_cents") not in (None, ""):
+            fields["split_business_cents"] = services._cents(
+                data["split_business_cents"], "The business part")
+        return fields
 
     @action(detail=True, methods=["get"])
     def statement(self, request, pk=None):
@@ -828,7 +868,12 @@ class RuleViewSet(FinanceViewSet):
                                   if rule.other_account_id else None),
                 "account": ({"id": str(rule.account_id), "name": rule.account.name}
                             if rule.account_id else None),
-                "is_active": rule.is_active}
+                "is_active": rule.is_active,
+                # P6 M4: "" business, "personal" or "split".
+                "side": rule.side, "split_percent": rule.split_percent,
+                "personal_category": ({"id": str(rule.personal_category_id),
+                                       "name": rule.personal_category.name}
+                                      if rule.personal_category_id else None)}
 
     def _rules(self):
         from apps.finance.models import FinanceRule

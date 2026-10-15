@@ -16,7 +16,11 @@ As = FinanceRule.As
 
 @transaction.atomic
 def save_rule(tenant, *, actor, rule=None, contains=None, treat_as=None, category=...,
-              other_account=..., account=..., payee_contact=..., is_active=None):
+              other_account=..., account=..., payee_contact=..., is_active=None,
+              side=None, personal_category=..., split_percent=...):
+    """`side` (P6 M4 decision 2): "" business, "personal" (the line is the
+    owner's, in `personal_category`) or "split" (`split_percent` of it is
+    business, in `category`; the rest personal)."""
     made = rule is None
     if made:
         last = FinanceRule.all_objects.filter(tenant=tenant).aggregate(
@@ -45,7 +49,24 @@ def save_rule(tenant, *, actor, rule=None, contains=None, treat_as=None, categor
         setattr(rule, field, value)
     if is_active is not None:
         rule.is_active = bool(is_active)
-    if rule.treat_as == As.CATEGORY:
+    if side is not None:
+        if side not in ("", "business", "personal", "split"):
+            raise FinanceError("side is business, personal or split.")
+        rule.side = "" if side == "business" else side
+    if personal_category is not ...:
+        rule.personal_category = personal_category
+    if split_percent is not ...:
+        rule.split_percent = split_percent
+    if rule.side == "split" and not (rule.split_percent and 0 < rule.split_percent < 100):
+        raise FinanceError("A split keeps between 1 and 99 percent business.")
+    if rule.side != "split":
+        rule.split_percent = None
+    if rule.side == "":
+        rule.personal_category = None
+    if rule.treat_as == As.CATEGORY and rule.side == "personal":
+        # The owner's own: no business category, and nobody to pay as a 1099.
+        rule.category = rule.payee_contact = rule.other_account = None
+    elif rule.treat_as == As.CATEGORY:
         if rule.category is None or rule.category.archived_at is not None:
             raise FinanceError("Choose the category this rule gives a line.")
         rule.other_account = None
@@ -66,7 +87,7 @@ def save_rule(tenant, *, actor, rule=None, contains=None, treat_as=None, categor
     rule.save()
     audit(tenant, "rule_created" if made else "rule_changed", actor, rule,
           contains=rule.contains, treat_as=rule.treat_as,
-          category=str(rule.category_id or ""))
+          category=str(rule.category_id or ""), side=rule.side)
     return rule
 
 

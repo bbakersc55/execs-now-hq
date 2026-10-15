@@ -49,6 +49,22 @@ class FinanceAccount(TenantScopedModel):
     #: entries before it are "before reconciling began" and never asked about.
     reconciling_from = models.DateField(null=True, blank=True)
 
+    class Side(models.TextChoices):
+        BUSINESS = "business", "Business"
+        #: P6 M4 decision 1: one card for everything. Imported and reconciled
+        #: once; each line is sorted to a side, and only business lines are
+        #: the practice's earnings and costs.
+        MIXED = "mixed", "Mixed"
+
+    side = models.CharField(max_length=8, choices=Side.choices, default=Side.BUSINESS,
+                            db_default=Side.BUSINESS)
+    # A bank connection (Plaid or similar) later, without rework (P6 M4,
+    # brief "Connections"). Unused in this round: nothing reads or writes them.
+    connection_provider = models.CharField(max_length=24, blank=True, default="",
+                                           db_default="")
+    connection_ref = models.CharField(max_length=120, blank=True, default="", db_default="")
+    connection_data = models.JSONField(default=dict, blank=True, db_default={})
+
     class Meta(TenantScopedModel.Meta):
         db_table = "finance_account"
         ordering = ["kind", "name"]
@@ -196,6 +212,17 @@ class FinanceEntry(TenantScopedModel):
     #: (owner, 2026-10-10). Not an expense; the CPA's worksheet lists them by
     #: date in those two columns, and so does the worksheet export.
     estimated_tax = models.CharField(max_length=8, blank=True, default="", db_default="")
+    class Side(models.TextChoices):
+        #: The practice's own: everything before P6 M4.
+        BUSINESS = "", "Business"
+        #: An owner draw (or contribution) standing for a line of the owner's
+        #: personal spending, which is in their ledger (P6 M4 decision 3).
+        PERSONAL = "personal", "Personal"
+        #: A line of a Mixed account not yet sorted to a side (decision 5).
+        TO_SORT = "to_sort", "To sort"
+
+    side = models.CharField(max_length=8, choices=Side.choices, blank=True, default="",
+                            db_default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     removed_at = models.DateTimeField(null=True, blank=True)
@@ -223,6 +250,12 @@ class FinanceEntry(TenantScopedModel):
                 name="finance_entry_transfer_shape"),
             models.CheckConstraint(condition=Q(direction__in=("in", "out")),
                                    name="finance_entry_direction_in_or_out"),
+            # A personal line in the books is owner money; one waiting to be
+            # sorted is an uncategorized income or expense.
+            models.CheckConstraint(
+                condition=Q(side="") | Q(side="personal", kind="owner")
+                | Q(side="to_sort", kind__in=("income", "expense"), category__isnull=True),
+                name="finance_entry_side_shape"),
             # One fee entry and at most one tax entry for an invoice payment.
             models.UniqueConstraint(fields=["tenant", "client_payment", "kind"],
                                     condition=Q(removed_at__isnull=True,
@@ -263,6 +296,14 @@ class FinanceRule(TenantScopedModel):
                                       on_delete=models.SET_NULL, related_name="+")
     position = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True, db_default=True)
+    #: P6 M4 decision 2: which side a matching line is. Empty is business, as
+    #: every rule before M4; "personal" puts it in the owner's ledger under
+    #: `personal_category`; "split" keeps `split_percent` of it business.
+    side = models.CharField(max_length=8, blank=True, default="", db_default="")
+    personal_category = models.ForeignKey("personal.PersonalCategory", null=True,
+                                          blank=True, on_delete=models.SET_NULL,
+                                          related_name="+")
+    split_percent = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "finance_rule"
@@ -369,6 +410,17 @@ class FinanceImportRow(TenantScopedModel):
     #: What the commit made.
     entry = models.ForeignKey(FinanceEntry, null=True, blank=True, on_delete=models.SET_NULL,
                               related_name="import_rows")
+    #: P6 M4: the line's side ("" business, "personal", "split", "to_sort"),
+    #: as a rule or the owner set it, and for a personal or split line the
+    #: personal category and the business part.
+    side = models.CharField(max_length=8, blank=True, default="", db_default="")
+    personal_category = models.ForeignKey("personal.PersonalCategory", null=True,
+                                          blank=True, on_delete=models.SET_NULL,
+                                          related_name="+")
+    split_business_cents = models.BigIntegerField(null=True, blank=True)
+    #: The owner draw the commit made for its personal side.
+    draw_entry = models.ForeignKey(FinanceEntry, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="drawn_rows")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "finance_import_row"

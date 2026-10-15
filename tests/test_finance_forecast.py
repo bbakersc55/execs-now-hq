@@ -121,7 +121,8 @@ def test_the_forecast_is_a_module_of_its_own_that_needs_bookkeeping(
     assert switched.status_code == 200
     assert switched.json()["modules"] == [
         {"code": "bookkeeping", "name": "Bookkeeping", "enabled": True},
-        {"code": "forecast", "name": "Cash forecast", "enabled": True}]
+        {"code": "forecast", "name": "Cash forecast", "enabled": True},
+        {"code": "personal", "name": "Personal finance", "enabled": False}]
     assert get(api, ff, "/api/me").json()["modules"] == ["bookkeeping", "forecast"]
     assert get(api, ff, F).status_code == 200
     # And Bookkeeping stays while the forecast rests on it.

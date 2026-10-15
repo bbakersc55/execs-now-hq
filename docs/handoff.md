@@ -9,6 +9,18 @@ this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
 
+## 2026-10-15, later: M4 spec, and stop 1's first slice
+
+- **"Words" is now "Wording"**, a section of Settings → Branding (`9920f2f`).
+- **The M4 spec** is `docs/p6_m4_personal_finance.md` (`96428b1`), written
+  from Bryan's draft (`docs/p6_m4_personal_finance_spec_draft.md`, verbatim)
+  and the brief; three *Brief wins* points are marked in it.
+- **M4 stop 1, first slice** (sides): see the spec's "Stop 1 as built".
+  Migrations `finance 0013`, `personal 0001`, `finance 0014`, additive, on
+  the laptop only. Production needs them at the next release, and the module
+  switched on per practice. Not built yet: personal-account imports,
+  transfers, personal reconcile, Sort these with Claude, the demo seed.
+
 ## 2026-10-15: Release 13, three jobs, Release 14
 
 - **Release 14 is live: `84880d5`,** all of `dev`: the invoice modal (U1),

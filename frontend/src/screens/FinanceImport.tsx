@@ -4,10 +4,11 @@ import { useState } from "react";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
   FinanceAccount, FinanceCategory, BankImportBatch, ImportDetected, ImportMapping, BankImportRow,
-  PayeeReport, StatementFacts, api,
+  PayeeReport, StatementFacts, api, Me, PersonalCategory,
 } from "../lib/api";
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
+import { hasPersonal, personalOptions, usePersonalChart } from "../lib/personal";
 
 /**
  * Importing a bank or card export (P5 §4; matrix 13.8), in the contact
@@ -48,6 +49,10 @@ export function FinanceImport({ accounts, categories }: {
     queryKey: ["finance-payees", "list"],
     queryFn: () => api.get<PayeeReport>("/api/finance-payees/") });
   const open = accounts.filter((a) => !a.closed);
+  // P6 M4: with Personal finance, each line can be put on a side.
+  const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
+  const chart = usePersonalChart(hasPersonal(me.data));
+  const personal = hasPersonal(me.data) ? chart.data?.categories ?? [] : null;
   const refreshBooks = () => {
     for (const key of ["finance-imports", "finance-entries", "finance-pnl",
                        "finance-balance", "finance-rules", "finance-payees"]) {
@@ -217,7 +222,7 @@ export function FinanceImport({ accounts, categories }: {
       )}
 
       {batch && (
-        <DryRun batch={batch} accounts={open} categories={categories}
+        <DryRun personal={personal} batch={batch} accounts={open} categories={categories}
           payees={(payees.data?.payees ?? []).filter((p) => p.is_payee)}
           busy={decide.isPending || commit.isPending}
           onDecide={(row, body) => decide.mutate({ row, body })}
@@ -299,9 +304,10 @@ function StatementRead({ facts: s }: { facts: StatementFacts }) {
   );
 }
 
-function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit, onCancel }: {
+function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit, onCancel,
+                  personal }: {
   batch: BankImportBatch; accounts: FinanceAccount[]; categories: FinanceCategory[];
-  payees: PayeeReport["payees"]; busy: boolean;
+  payees: PayeeReport["payees"]; busy: boolean; personal: PersonalCategory[] | null;
   onDecide: (row: BankImportRow, body: object) => void; onCommit: () => void;
   onCancel: () => void;
 }) {
@@ -321,6 +327,10 @@ function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit,
         {" · "}<strong>{c.transfer_match ?? 0}</strong> the other side of a transfer
         {" · "}<strong>{c.ignore ?? 0}</strong> ignored
         {" · "}<strong>{c.error ?? 0}</strong> that cannot be read
+        {personal && ((c.personal ?? 0) > 0 || (c.to_sort ?? 0) > 0) && <>
+          {" · "}<strong>{c.personal ?? 0}</strong> personal (an owner draw in the books,
+          the spend in your personal ledger)
+          {" · "}<strong>{c.to_sort ?? 0}</strong> to sort</>}
       </p>
       <table>
         <thead><tr><th>Date</th><th>Line</th><th className="money">Amount</th>
@@ -332,8 +342,18 @@ function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit,
               <td>{row.description || (row.raw ? Object.values(row.raw).join(" · ") : "")}</td>
               <td className="money">{row.amount_cents === null ? ""
                 : `${row.direction === "out" ? "−" : "+"}${dollars(row.amount_cents)}`}</td>
-              <td><RowDecision row={row} others={others} categories={categories}
-                payees={payees} busy={busy} onDecide={(body) => onDecide(row, body)} /></td>
+              <td>
+                {personal && row.outcome === "new" && (
+                  <SideChoice row={row} personal={personal} busy={busy}
+                    onDecide={(body) => onDecide(row, body)} />)}
+                {(!personal || row.outcome !== "new" || !row.side || row.side === "split") && (
+                  <RowDecision row={row} others={others} categories={categories}
+                    payees={payees} busy={busy}
+                    onDecide={(body) => onDecide(row, row.side === "split"
+                      ? { ...body, side: "split", split_business_cents: row.split_business_cents,
+                          personal_category: row.personal_category?.id ?? null }
+                      : body)} />)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -349,6 +369,51 @@ function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit,
           have one.</p>
       )}
     </Card>
+  );
+}
+
+/**
+ * P6 M4 decision 2: which side a line is. Business keeps the choices below;
+ * Personal is an owner draw in the books and the spend in the owner's ledger,
+ * under a personal category; To sort leaves it for Personal → To sort. A split
+ * comes from a rule and is shown as one.
+ */
+function SideChoice({ row, personal, busy, onDecide }: {
+  row: BankImportRow; personal: PersonalCategory[]; busy: boolean;
+  onDecide: (body: object) => void;
+}) {
+  const line = `line ${row.row_number}`;
+  const side = row.side || "business";
+  return (
+    <span className="small" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap",
+                                     marginRight: 6 }}>
+      <select aria-label={`Side of ${line}`} value={side} disabled={busy}
+        style={{ width: "auto" }}
+        onChange={(e) => onDecide({ decision: "entry", side: e.target.value,
+                                    category: null })}>
+        <option value="business">Business</option>
+        <option value="personal">Personal</option>
+        <option value="to_sort">To sort later</option>
+        {side === "split" && <option value="split">Split</option>}
+      </select>
+      {side === "personal" && (
+        <select aria-label={`Personal category for ${line}`} disabled={busy}
+          value={row.personal_category?.id ?? ""} style={{ width: "auto", maxWidth: "16rem" }}
+          onChange={(e) => onDecide({ decision: "entry", side: "personal",
+                                      personal_category: e.target.value || null })}>
+          <option value="">No category yet (To sort)</option>
+          {personalOptions(personal, row.direction === "out" ? "expense" : undefined).map(
+            ([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+      )}
+      {side === "split" && row.split_business_cents != null && row.amount_cents != null && (
+        <Pill>{dollars(row.split_business_cents)} business,{" "}
+          {dollars(row.amount_cents - row.split_business_cents)} personal
+          {row.personal_category ? ` (${row.personal_category.name})` : ""}</Pill>
+      )}
+      {side === "to_sort" && <Pill>waits in Personal → To sort</Pill>}
+      {side === "personal" && row.rule && <Pill>your rule: contains “{row.rule.contains}”</Pill>}
+    </span>
   );
 }
 
