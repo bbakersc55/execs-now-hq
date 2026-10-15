@@ -12,6 +12,7 @@ import {
   ValueReport, ValueReportExport, WorkParent, api,
 } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
+import { useWords } from "../lib/words";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -56,6 +57,7 @@ export function Report({ me }: { me: Me }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const staff = isStaff(me);
+  const w = useWords();
   // `?company=` is how Work links to one client's report.
   const [params] = useSearchParams();
   const [company, setCompany] = useState<string>(params.get("company") ?? "");
@@ -152,11 +154,11 @@ export function Report({ me }: { me: Me }) {
   return (
     <>
       <PageHead title={`Where we are${staff ? ` · ${data.company.name}` : ""}`}
-        sub="Per goal: what we set out to change, where the measure stood when we
-             started, where it stands now, and what it adds up to." />
+        sub={`Per ${w.goal}: what we set out to change, where the measure stood when we
+             started, where it stands now, and what it adds up to.`} />
       {note && <Banner kind="info">{note}</Banner>}
       {!onReport && (
-        <Banner kind="bad">That goal is not on this report. It may have been removed,
+        <Banner kind="bad">That {w.goal} is not on this report. It may have been removed,
           or it is not yours to see.</Banner>
       )}
 
@@ -178,7 +180,7 @@ export function Report({ me }: { me: Me }) {
       {staff && <ExportCard company={chosen} setNote={setNote} />}
 
       {data.current.length === 0 && data.historical.length === 0 && (
-        <Empty>No goals are being tracked for this company yet.</Empty>
+        <Empty>No {w.goals} are being tracked for this company yet.</Empty>
       )}
       {proposed.data && (
         <ProposedGoals data={proposed.data} staff={staff} onChanged={refresh}
@@ -389,6 +391,7 @@ function Axis({ from, to, marks, legend = false }: {
 
 function ExportCard({ company, setNote }: { company: string; setNote: (s: string) => void }) {
   const qc = useQueryClient();
+  const w = useWords();
   const exports = useQuery<ValueReportExport[]>({
     queryKey: ["value-report-exports", company],
     queryFn: () => api.get<ValueReportExport[]>(
@@ -407,7 +410,7 @@ function ExportCard({ company, setNote }: { company: string; setNote: (s: string
   return (
     <Card title="The quarterly PDF">
       <p className="small muted">
-        A snapshot as it reads today, kept on the goal and the company. Exporting is
+        A snapshot as it reads today, kept on the {w.goal} and the company. Exporting is
         not sending: it reaches a client only as an attachment you approve.
       </p>
       <div className="row tight">
@@ -422,7 +425,7 @@ function ExportCard({ company, setNote }: { company: string; setNote: (s: string
             <li key={row.id}>
               <a href={`/api/value-report-exports/${row.id}/file/`} target="_blank"
                  rel="noreferrer">
-                {row.scope === "goal" ? row.goal_title : "Every goal"}
+                {row.scope === "goal" ? row.goal_title : `Every ${w.goal}`}
               </a>{" "}
               <span className="muted">· {when(row.exported_at)} · {row.exported_by.name}</span>
             </li>
@@ -513,6 +516,7 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle, position, onM
   first?: boolean; last?: boolean; moving?: boolean;
 }) {
   const staff = isStaff(me);
+  const w = useWords();
   const card = useRef<HTMLDivElement>(null);
   // A link to this goal lands on it, not at the top of a long report.
   useEffect(() => {
@@ -685,7 +689,7 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle, position, onM
 
       {staff && mayJudge(me) && (
         <details style={{ marginTop: ".5rem" }}>
-          <summary className="small">Resolve this goal</summary>
+          <summary className="small">Resolve this {w.goal}</summary>
           <div className="row" style={{ gap: ".4rem", marginTop: ".4rem" }}>
             <select aria-label={`Resolution for ${block.title}`} value={resolution}
                     onChange={(e) => setResolution(e.target.value)}>
@@ -729,6 +733,7 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
   data: GoalProposals; staff: boolean; onChanged: () => void; setNote: (s: string) => void;
 }) {
   const practice = usePracticeName();
+  const w = useWords();
   const [title, setTitle] = useState("");
   const [why, setWhy] = useState("");
   const [error, setError] = useState("");
@@ -748,11 +753,11 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
   if (staff) {
     if (waiting.length === 0) return null;
     return (
-      <Card title={waiting.length === 1 ? "A goal the client proposed"
-                                        : `${waiting.length} goals the client proposed`}
+      <Card title={waiting.length === 1 ? `${w.AGoal} the client proposed`
+                                        : `${waiting.length} ${w.goals} the client proposed`}
             tone="current">
         <p className="small muted" style={{ marginTop: 0 }}>
-          Not goals yet. Accepting one makes it a goal you own, word and measure;
+          Not {w.goals} yet. Accepting one makes it {w.aGoal} you own, word and measure;
           declining tells them why.
         </p>
         {waiting.map((p) => (
@@ -764,12 +769,12 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
   }
 
   return (
-    <Card title="Goals">
+    <Card title={w.Goals}>
       {error && <Banner kind="bad">{error}</Banner>}
       {/* The form is inside a div so the box is as wide as the boxes above it:
           a card whose own child is a form is held to a form's width. */}
       <p className="small" style={{ marginTop: 0 }}>
-        Goals are set together with {practice}.
+        {w.Goals} are set together with {practice}.
         {data.may_propose
           ? " Propose one here and they will take it up with you."
           : " Your company's owner can propose one."}
@@ -777,14 +782,14 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
       {data.may_propose && (
         <div className="propose-goal">
         <form onSubmit={(e) => { e.preventDefault(); if (title.trim()) propose.mutate(); }}>
-          <input aria-label="The goal you propose" placeholder="What should we set out to change?"
+          <input aria-label={`The ${w.goal} you propose`} placeholder="What should we set out to change?"
                  value={title} maxLength={255} onChange={(e) => setTitle(e.target.value)} />
           <textarea aria-label="Why it matters (optional)" rows={2} value={why}
                     placeholder="Why it matters (optional)" style={{ marginTop: "var(--s2)" }}
                     onChange={(e) => setWhy(e.target.value)} />
           <button className="primary" type="submit" style={{ marginTop: "var(--s2)" }}
                   disabled={!title.trim() || propose.isPending}>
-            {propose.isPending ? "Sending…" : "Propose this goal"}
+            {propose.isPending ? "Sending…" : `Propose this ${w.goal}`}
           </button>
         </form>
         </div>
@@ -796,7 +801,7 @@ function ProposedGoals({ data, staff, onChanged, setNote }: {
               <strong>{p.title}</strong>{" "}
               <Pill kind={p.state === "accepted" ? "ok" : ""}>
                 {p.state === "pending" ? `Waiting for ${practice}`
-                  : p.state === "accepted" ? "Now a goal" : "Not taken up"}
+                  : p.state === "accepted" ? `Now ${w.aGoal}` : "Not taken up"}
               </Pill>
               {p.state === "accepted" && p.goal_title && p.goal_title !== p.title && (
                 <div className="small">As: {p.goal_title}</div>
@@ -818,6 +823,7 @@ function ProposalReview({ proposal, mayDecide, onChanged, setNote }: {
   proposal: GoalProposal; mayDecide: boolean; onChanged: () => void;
   setNote: (s: string) => void;
 }) {
+  const w = useWords();
   const [title, setTitle] = useState(proposal.title);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -829,15 +835,15 @@ function ProposalReview({ proposal, mayDecide, onChanged, setNote }: {
         : (reason.trim() ? { note: reason.trim() } : {})),
     onSuccess: (_r, verb) => {
       setNote(verb === "accept"
-        ? "Accepted. It is a goal now: say how you will know it worked."
-        : "Declined. No goal was created.");
+        ? `Accepted. It is ${w.aGoal} now: say how you will know it worked.`
+        : `Declined. No ${w.goal} was created.`);
       onChanged();
     },
     onError: (e: Error) => { setError(e.message); onChanged(); },
   });
 
   return (
-    <div className="goal-project" aria-label={`Proposed goal: ${proposal.title}`} role="group">
+    <div className="goal-project" aria-label={`Proposed ${w.goal}: ${proposal.title}`} role="group">
       {error && <Banner kind="bad">{error}</Banner>}
       <p style={{ margin: 0 }}><strong>{proposal.title}</strong></p>
       {proposal.why && <p className="small" style={{ margin: 0 }}>“{proposal.why}”</p>}
@@ -847,11 +853,11 @@ function ProposalReview({ proposal, mayDecide, onChanged, setNote }: {
       {mayDecide ? (
         <>
           <div className="row tight" style={{ marginTop: "var(--s2)", flexWrap: "wrap" }}>
-            <input aria-label={`Goal title for ${proposal.title}`} value={title}
+            <input aria-label={`${w.Goal} title for ${proposal.title}`} value={title}
                    style={{ flex: "1 1 280px", width: "auto" }} maxLength={255}
                    onChange={(e) => setTitle(e.target.value)} />
             <button className="primary" disabled={!title.trim() || decide.isPending}
-                    onClick={() => decide.mutate("accept")}>Accept as a goal</button>
+                    onClick={() => decide.mutate("accept")}>Accept as {w.aGoal}</button>
           </div>
           <div className="row tight" style={{ marginTop: "var(--s2)", flexWrap: "wrap" }}>
             <input aria-label={`Reason for declining ${proposal.title}`} value={reason}
@@ -894,6 +900,7 @@ function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }
   setNote: (s: string) => void;
 }) {
   const practice = usePracticeName();
+  const w = useWords();
   const [why, setWhy] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -912,7 +919,7 @@ function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }
       verb === "decline" && reason.trim() ? { note: reason.trim() } : {}),
     onSuccess: (_r, verb) => {
       setReason(""); setError("");
-      setNote(verb === "accept" ? "Accepted. The goals are in the proposed order."
+      setNote(verb === "accept" ? `Accepted. The ${w.goals} are in the proposed order.`
                                 : "Declined. The order has not changed.");
       onDecided();
     },
@@ -921,11 +928,11 @@ function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }
 
   if (order.may_propose && draft) {
     return (
-      <Card title="A new order for the goals" tone="current">
+      <Card title={`A new order for the ${w.goals}`} tone="current">
         {error && <Banner kind="bad">{error}</Banner>}
         <p className="small" style={{ marginTop: 0 }}>
           This is the order you are putting together. {practice} sets their order, so
-          this is a proposal: nothing changes until they accept it, and the goals below
+          this is a proposal: nothing changes until they accept it, and the {w.goals} below
           stay in the current order.
         </p>
         {names(blocks)}
@@ -948,7 +955,7 @@ function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }
         <Card title="Your proposed order">
           <p className="small" style={{ marginTop: 0 }}>
             Proposed {when(pending.proposed_at)}{pending.proposed_by && ` by ${pending.proposed_by}`}.
-            {" "}{practice} has not answered yet, so the goals below are still in the
+            {" "}{practice} has not answered yet, so the {w.goals} below are still in the
             current order.
           </p>
           {names(pending.order)}
@@ -968,8 +975,8 @@ function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }
       );
     }
     return blocks.length > 1
-      ? <p className="small muted">The goals are in order of priority. Use the arrows on a
-          goal to propose a different order to {practice}.</p>
+      ? <p className="small muted">The {w.goals} are in order of priority. Use the arrows
+          on {w.aGoal} to propose a different order to {practice}.</p>
       : null;
   }
 
@@ -978,7 +985,7 @@ function OrderCard({ order, draft, blocks, onSent, onReset, onDecided, setNote }
     <Card title={`${pending.proposed_by || "The client"} proposed a new order`} tone="current">
       {error && <Banner kind="bad">{error}</Banner>}
       <p className="small muted" style={{ marginTop: 0 }}>
-        Proposed {when(pending.proposed_at)}. The goals below are still in the current order.
+        Proposed {when(pending.proposed_at)}. The {w.goals} below are still in the current order.
       </p>
       {names(pending.order)}
       {pending.note && <p className="small">“{pending.note}”</p>}
@@ -1022,6 +1029,7 @@ function GoalWork({ block, me, onChanged }: {
 }) {
   const qc = useQueryClient();
   const staff = isStaff(me);
+  const w = useWords();
   const [title, setTitle] = useState("");
   const [under, setUnder] = useState("");
   const [project, setProject] = useState("");
@@ -1059,12 +1067,12 @@ function GoalWork({ block, me, onChanged }: {
   const direct = tree.data?.tasks ?? [];
   return (
     <section className="goal-work" aria-label={`Work under ${block.title}`}>
-      <h4>The work under this goal</h4>
+      <h4>The work under this {w.goal}</h4>
       {error && <Banner kind="bad">{error}</Banner>}
       {tree.isError && <Banner kind="bad">{(tree.error as Error).message}</Banner>}
       {tree.isLoading && <p className="small muted">Loading the work…</p>}
       {tree.data && projects.length === 0 && direct.length === 0 && (
-        <Empty>Nothing has been filed under this goal yet.</Empty>
+        <Empty>Nothing has been filed under this {w.goal} yet.</Empty>
       )}
       {projects.map((p) => (
         <div key={p.id} className="goal-project">
@@ -1073,41 +1081,41 @@ function GoalWork({ block, me, onChanged }: {
             <StatusPill status={p.status} derived={p.status_is_derived} />
           </p>
           {p.tasks.length === 0
-            ? <p className="small muted" style={{ margin: 0 }}>No tasks yet.</p>
+            ? <p className="small muted" style={{ margin: 0 }}>No {w.tasks} yet.</p>
             : <ul>{p.tasks.map((t) => <TaskLine key={t.id} task={t} />)}</ul>}
         </div>
       ))}
       {direct.length > 0 && (
         <div className="goal-project">
           {projects.length > 0 && <p className="small muted" style={{ margin: 0 }}>
-            Filed straight on the goal</p>}
+            Filed straight on the {w.goal}</p>}
           <ul>{direct.map((t) => <TaskLine key={t.id} task={t} />)}</ul>
         </div>
       )}
 
       <form className="row tight" style={{ marginTop: "var(--s3)", flexWrap: "wrap" }}
             onSubmit={(e) => { e.preventDefault(); if (title.trim()) addTask.mutate(); }}>
-        <input aria-label={`New task under ${block.title}`} placeholder="Add a task"
+        <input aria-label={`New ${w.task} under ${block.title}`} placeholder={`Add ${w.aTask}`}
                style={{ flex: "1 1 240px", width: "auto" }}
                value={title} onChange={(e) => setTitle(e.target.value)} />
         {projects.length > 0 && (
-          <select aria-label="File the task under" value={under} style={{ width: "auto" }}
+          <select aria-label={`File the ${w.task} under`} value={under} style={{ width: "auto" }}
                   onChange={(e) => setUnder(e.target.value)}>
-            <option value="">On the goal itself</option>
+            <option value="">On the {w.goal} itself</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
           </select>
         )}
-        <button type="submit" disabled={!title.trim() || addTask.isPending}>Add task</button>
+        <button type="submit" disabled={!title.trim() || addTask.isPending}>Add {w.task}</button>
       </form>
       {/* A client too (owner, 2026-10-07): a project under a goal of their own
           company. Goals themselves stay the practice's. */}
       <form className="row tight" style={{ marginTop: "var(--s2)" }}
             onSubmit={(e) => { e.preventDefault(); if (project.trim()) addProject.mutate(); }}>
-        <input aria-label={`New project under ${block.title}`} placeholder="Add a project"
+        <input aria-label={`New ${w.project} under ${block.title}`} placeholder={`Add ${w.aProject}`}
                style={{ flex: "1 1 240px", width: "auto" }} value={project}
                onChange={(e) => setProject(e.target.value)} />
         <button type="submit" disabled={!project.trim() || addProject.isPending}>
-          Add project</button>
+          Add {w.project}</button>
       </form>
     </section>
   );

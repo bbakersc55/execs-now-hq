@@ -39,8 +39,9 @@ from __future__ import annotations
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Company, Contact, ImportBatch, OutboxMessage, Task
 from apps.notes.models import Note
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import AuditEvent, Membership
-from apps.tenancy.roles import LEVEL_LABEL, MAY_CREATE_LABEL
+from apps.tenancy.roles import LEVEL_LABEL, may_create_label
 from apps.work.models import ClientTeam, Comment, Goal, Project, TaskUpdate
 
 # Per-source cap before merging. Beta volume is small and the feed is a read of
@@ -55,6 +56,8 @@ CATEGORIES = ("work", "comment", "note", "email", "pipeline", "import",
 
 # Verb → (category, phrasing). A verb absent here is absent from the feed, so
 # adding an audited action is a deliberate act rather than an automatic leak.
+# `{task}`, `{goals}`, `{a_project}` and the like are the practice's words
+# (`_forms`), filled in when the feed is read.
 AUDIT = {
     "stage.changed": ("pipeline", "moved {target} to a new stage"),
     "contact.merged": ("pipeline", "merged {target}"),
@@ -86,20 +89,20 @@ AUDIT = {
     "email.sent": ("email", "sent a message"),
     "email.failed": ("email", "a message failed to send"),
     "email.suppressed": ("email", "a message was suppressed"),
-    "task.created_by_rule": ("work", "a stage rule created a task"),
-    "task.deleted": ("work", "deleted a task"),
-    "task.visibility_changed": ("work", "changed what the client can see on a task"),
-    "project.deleted": ("work", "deleted a project"),
-    "goal.deleted": ("work", "deleted a goal"),
-    "goal.proposed": ("work", "proposed a goal for {target}"),
+    "task.created_by_rule": ("work", "a stage rule created {a_task}"),
+    "task.deleted": ("work", "deleted {a_task}"),
+    "task.visibility_changed": ("work", "changed what the client can see on {a_task}"),
+    "project.deleted": ("work", "deleted {a_project}"),
+    "goal.deleted": ("work", "deleted {a_goal}"),
+    "goal.proposed": ("work", "proposed {a_goal} for {target}"),
     # P7-7: a client user given "Goals too" adds one, live at once.
-    "goal.added_by_client": ("work", "added a goal for {target}"),
-    "goal.proposal_accepted": ("work", "accepted a goal {target} proposed"),
-    "goal.proposal_declined": ("work", "declined a goal {target} proposed"),
-    "goal.reordered": ("work", "changed the order of {target}'s goals"),
-    "goal.order_proposed": ("work", "proposed a new order for {target}'s goals"),
-    "goal.order_accepted": ("work", "accepted the proposed order of {target}'s goals"),
-    "goal.order_declined": ("work", "declined the proposed order of {target}'s goals"),
+    "goal.added_by_client": ("work", "added {a_goal} for {target}"),
+    "goal.proposal_accepted": ("work", "accepted {a_goal} {target} proposed"),
+    "goal.proposal_declined": ("work", "declined {a_goal} {target} proposed"),
+    "goal.reordered": ("work", "changed the order of {target}'s {goals}"),
+    "goal.order_proposed": ("work", "proposed a new order for {target}'s {goals}"),
+    "goal.order_accepted": ("work", "accepted the proposed order of {target}'s {goals}"),
+    "goal.order_declined": ("work", "declined the proposed order of {target}'s {goals}"),
     "note.deleted": ("note", "deleted a note"),
     "gmail.connected": ("settings", "connected Gmail"),
     "gmail.disconnected": ("settings", "disconnected Gmail"),
@@ -121,7 +124,25 @@ AUDIT = {
 }
 
 
-def _team_text(a, target, phrasing) -> str:
+def _forms(w) -> dict:
+    """The practice's words as `AUDIT`'s phrasings name them."""
+    out = {}
+    for kind in practice_words.KINDS:
+        out[kind], out[kind + "s"] = w.of(kind), w.of(kind, plural=True)
+        out["a_" + kind] = getattr(w, "a_" + kind)
+    return out
+
+
+def _count_of(n, w, kind) -> str:
+    """"3 project(s)" while the plural is the word and an s; "3 activities"
+    (or "1 activity") when the practice's plural is not."""
+    one, many = w.of(kind), w.of(kind, plural=True)
+    if many == one + "s":
+        return f"{n} {one}(s)"
+    return f"{n} {one if n == 1 else many}"
+
+
+def _team_text(a, target, phrasing, w=practice_words.DEFAULT) -> str:
     """A team change in words, from what its audit row carries."""
     p, who = a.payload or {}, target or "someone"
     team = f"“{p.get('team_name') or p.get('name') or ''}”"
@@ -131,8 +152,8 @@ def _team_text(a, target, phrasing) -> str:
     if a.verb == "client_team.renamed":
         return f"renamed the team “{was}” to “{to}”"
     if a.verb == "client_team.archived":
-        return (f"archived the team {team}: {p.get('projects', 0)} project(s) and "
-                f"{p.get('tasks', 0)} task(s) moved to the default team")
+        return (f"archived the team {team}: {_count_of(p.get('projects', 0), w, 'project')} "
+                f"and {_count_of(p.get('tasks', 0), w, 'task')} moved to the default team")
     if a.verb == "client_team.level_set":
         level = LEVEL_LABEL.get(to, to)
         return (f"put {who} on {team} as {level}" if not was
@@ -140,12 +161,12 @@ def _team_text(a, target, phrasing) -> str:
     if a.verb == "client_team.person_removed":
         return f"took {who} off {team}"
     if a.verb == "portal.may_create_changed":
-        return (f"changed what {who} may create from {MAY_CREATE_LABEL.get(was, was)} "
-                f"to {MAY_CREATE_LABEL.get(to, to)}")
+        return (f"changed what {who} may create from {may_create_label(was, w)} "
+                f"to {may_create_label(to, w)}")
     if a.verb == "portal.leads_all_teams_changed":
         return (f"made {who} senior leadership of every team" if to
                 else f"made {who} no longer senior leadership of every team")
-    return phrasing.format(target=target or "a record")
+    return phrasing.format(target=target or "a record", **_forms(w))
 
 
 def _name(user):
@@ -172,6 +193,7 @@ class Scope:
     def __init__(self, request):
         self.request = request
         self.role = crm_perms.role_of(request)
+        self.words = practice_words.for_request(request)
         self.everything = self.role in ("FF", "VA")
         if self.everything:
             self.company_ids = None
@@ -253,7 +275,8 @@ def _work_entries(scope, since, until, actor):
                               f"to {STATUS_LABELS.get(u.to_value, u.to_value)}",
             "assignee_changed": f"reassigned {title} to {u.to_value or 'nobody'}",
             "due_changed": f"set the due date of {title} to {u.to_value or 'none'}",
-            "checklist_completed": f"completed the step “{u.to_value}” on {title}",
+            "checklist_completed": f"completed the {scope.words.step} “{u.to_value}” "
+                                   f"on {title}",
             "completed": f"completed {title}",
             "narrative": f"added a note on {title}: {u.client_facing_line}",
         }.get(u.kind, f"updated {title}")
@@ -381,6 +404,7 @@ def _audit_entries(scope, since, until, actor):
     teams = {t.pk: t for t in ClientTeam.all_objects.filter(pk__in=ids("client_team"))
              .select_related("client_company")}
 
+    forms = _forms(scope.words)
     out = []
     for a in rows:
         category, phrasing = AUDIT[a.verb]
@@ -410,8 +434,8 @@ def _audit_entries(scope, since, until, actor):
             t = teams.get(a.target_id)
             company = t.client_company if t else None
         by, behalf = _person(a.actor, a.acting_user)
-        text = (_team_text(a, target, phrasing) if category == "team"
-                else phrasing.format(target=target or "a record"))
+        text = (_team_text(a, target, phrasing, scope.words) if category == "team"
+                else phrasing.format(target=target or "a record", **forms))
         if a.verb == "goal.added_by_client" and a.payload.get("title"):
             text += f": “{a.payload['title']}”"
         if a.verb == "act_as.ended":

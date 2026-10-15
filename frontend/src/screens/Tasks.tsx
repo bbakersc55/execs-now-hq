@@ -15,6 +15,7 @@ import { useRemembered as useRememberedValue } from "../lib/remembered";
 import { Banner, toast, when } from "../components/ui";
 import { TaskSheet } from "./TaskDetail";
 import { Me, PortalPerson, Task, WorkStatus, WorkParent, api } from "../lib/api";
+import { useWords } from "../lib/words";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -43,6 +44,7 @@ export function sortTasks(tasks: Task[], by: TaskSort): Task[] {
 export function Tasks({ me }: { me: Me }) {
   // Board is the default (design brief, Tier 1), and the choice is remembered
   // in this browser like the company filter beside it.
+  const w = useWords();
   const [boardView, setBoardView] = useRemembered("enhq.tasks.board", true);
   const view = boardView ? "board" : "list";
   const { id: openTaskId } = useParams();
@@ -110,10 +112,10 @@ export function Tasks({ me }: { me: Me }) {
 
   return (
     <>
-      <PageHead title="Tasks"
+      <PageHead title={w.Tasks}
         sub={me.role === "FCC" || me.role === "ECC"
           ? "Everything your company can see, and everything you have added."
-          : "Everything across your goals and projects, filed or not."}
+          : `Everything across your ${w.goals} and ${w.projects}, filed or not.`}
         action={(me.role === "FCC" || me.role === "ECC")
           ? <PortalCreate me={me} offer={["task"]} />
           : <StaffCreate me={me} offer={["task"]} />} />
@@ -125,7 +127,7 @@ export function Tasks({ me }: { me: Me }) {
       } : undefined}>
         <span className="search">
           <Search size={16} strokeWidth={1.75} />
-          <input aria-label="Search tasks" placeholder="Search tasks"
+          <input aria-label={`Search ${w.tasks}`} placeholder={`Search ${w.tasks}`}
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </span>
         {staff && (
@@ -139,10 +141,10 @@ export function Tasks({ me }: { me: Me }) {
         {portalView.offered && (
           <PortalViewSwitch value={portalView.view} onChange={portalView.choose} />
         )}
-        <select aria-label="Filter by project" value={project}
+        <select aria-label={`Filter by ${w.project}`} value={project}
           style={{ width: "auto", minWidth: 150 }}
           onChange={(e) => setProject(e.target.value)}>
-          <option value="">Any project</option>
+          <option value="">Any {w.project}</option>
           {projectOptions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
         </select>
         <select aria-label="Filter by assignee" value={assignee}
@@ -166,7 +168,7 @@ export function Tasks({ me }: { me: Me }) {
           <option value="1">Normal</option>
           <option value="0">Low</option>
         </select>
-        {project && <Chip label={`Project: ${projectOptions.find((p) => p.id === project)?.title ?? "—"}`}
+        {project && <Chip label={`${w.Project}: ${projectOptions.find((p) => p.id === project)?.title ?? "—"}`}
           onClear={() => setProject("")} />}
         {assignee && <Chip label={`Assignee: ${peopleOptions.find((p) => p.id === assignee)?.name ?? "—"}`}
           onClear={() => setAssignee("")} />}
@@ -196,7 +198,7 @@ export function Tasks({ me }: { me: Me }) {
             ? <>Nothing matches these filters. <button className="link"
                 onClick={() => { chooseCompany(""); setStatus(""); setPriority("");
                                  setSearch(""); }}>Clear them</button> to see everything.</>
-            : "No tasks yet. Add the first one from the button above."}
+            : `No ${w.tasks} yet. Add the first one from the button above.`}
         </div>
       ) : view === "board" ? (
         <div className="board" aria-label="Board">
@@ -262,6 +264,7 @@ export function Tasks({ me }: { me: Me }) {
  * applies with `askForLine={false}`.
  */
 function useBoardDrag({ isTenant, tasks }: { isTenant: boolean; tasks: Task[] }) {
+  const w = useWords();
   const qc = useQueryClient();
   const [dragging, setDragging] = useState<Task | null>(null);
   const [hovering, setHovering] = useState<WorkStatus | null>(null);
@@ -306,7 +309,7 @@ function useBoardDrag({ isTenant, tasks }: { isTenant: boolean; tasks: Task[] })
       clear();
       if (!task || task.status === status) return;   // A drop back home is a no-op.
       if (task.may_edit === false) {
-        setError("That task is not yours to change.");
+        setError(`That ${w.task} is not yours to change.`);
         return;
       }
       if (!isTenant) { save.mutate({ task, to: status, line: "" }); return; }
@@ -334,6 +337,7 @@ function useBoardDrag({ isTenant, tasks }: { isTenant: boolean; tasks: Task[] })
  * stays the link, for the keyboard and for opening in a new tab.
  */
 function TaskCard({ task, board }: { task: Task; board: ReturnType<typeof useBoardDrag> }) {
+  const w = useWords();
   const navigate = useNavigate();
   const overdue = !!task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
     && task.status !== "done" && task.status !== "cancelled";
@@ -341,7 +345,7 @@ function TaskCard({ task, board }: { task: Task; board: ReturnType<typeof useBoa
     // The title link, and anything else on the card that acts, does its own thing.
     if ((event.target as HTMLElement).closest("a, button, input, select, textarea")) return;
     if (!task.id) {
-      toast("This task could not be opened: it came back without an id.", "bad");
+      toast(`This ${w.task} could not be opened: it came back without an id.`, "bad");
       return;
     }
     navigate(`/tasks/${task.id}`);
@@ -382,6 +386,7 @@ function TaskCard({ task, board }: { task: Task; board: ReturnType<typeof useBoa
  *  the sort control chose; a click on Task or Status sorts by that instead,
  *  and a second click goes back. */
 function ListView({ rows }: { rows: Task[] }) {
+  const w = useWords();
   const rowLink = useRowLink();
   const [sort, setSort] = useState<"" | "title" | "status">("");
   const groups = new Map<string, Task[]>();
@@ -408,7 +413,7 @@ function ListView({ rows }: { rows: Task[] }) {
           <table>
             <thead>
               <tr>
-                {header("Task", "title")}
+                {header(w.Task, "title")}
                 {header("Status", "status")}
                 <th>Assignee</th>
                 <th>Due</th>

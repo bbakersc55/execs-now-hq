@@ -229,6 +229,12 @@ def _portal(request, membership) -> dict | None:
     return client_scope(request).describe()
 
 
+def _words(membership):
+    from apps.tenancy import words
+
+    return words.of(membership.tenant if membership else None).as_dict()
+
+
 def me(request):
     from apps.tenancy import modules as practice_modules
 
@@ -244,6 +250,9 @@ def me(request):
         # P7 phase 4: what a client user may do, so the portal offers only
         # that. The server refuses the rest on its own.
         "portal": _portal(request, membership),
+        # What this practice calls its goals, projects, tasks and steps; the
+        # defaults on the platform owner's pages (2026-10-15).
+        "words": _words(membership),
         # P2: the Practices area switch. `area` is "platform" only for the
         # platform owner after switching; then no practice is bound.
         "is_platform_owner": request.user.is_platform_owner,

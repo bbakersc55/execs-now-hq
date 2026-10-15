@@ -19,6 +19,7 @@ from __future__ import annotations
 from django.db import transaction
 from django.utils import timezone
 
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import AuditEvent
 from apps.work.models import CompanyGoalOrder, Goal, GoalOrderProposal, GoalResolution
 
@@ -87,12 +88,13 @@ def _checked(company, order) -> list:
     this company exactly once and nothing else. A list built from a page that
     has since gone stale is refused rather than half-applied."""
     current = {str(g.pk): g for g in current_goals(company)}
+    w = practice_words.of(company.tenant)
     if not isinstance(order, list) or not all(isinstance(x, str) for x in order):
-        raise OrderRefused("Send the order as a list of goal ids.")
+        raise OrderRefused(f"Send the order as a list of {w.goal} ids.")
     if len(set(order)) != len(order):
-        raise OrderRefused("A goal is in that order twice.")
+        raise OrderRefused(f"{w.a_goal[:1].upper()}{w.a_goal[1:]} is in that order twice.")
     if set(order) != set(current):
-        raise OrderRefused("The goals have changed since this page was opened. "
+        raise OrderRefused(f"The {w.goals} have changed since this page was opened. "
                            "Reload it and order them again.")
     return [current[x] for x in order]
 
@@ -130,7 +132,8 @@ def propose(company, order, *, actor, note=""):
     still waiting is superseded, and kept."""
     goals = _checked(company, order)
     if [g.pk for g in goals] == [g.pk for g in current_goals(company)]:
-        raise OrderRefused("That is the order the goals are already in.")
+        raise OrderRefused("That is the order the "
+                           f"{practice_words.of(company.tenant).goals} are already in.")
     GoalOrderProposal.all_objects.filter(
         tenant_id=company.tenant_id, client_company=company, state=State.PENDING,
     ).update(state=State.SUPERSEDED, updated_at=timezone.now())

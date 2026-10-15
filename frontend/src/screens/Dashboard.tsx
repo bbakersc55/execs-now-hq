@@ -12,6 +12,7 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { Dashboard as Board, Me, Pipeline, aiPausedMessage, api } from "../lib/api";
 import { useRemembered } from "../lib/remembered";
+import { Words, useWords } from "../lib/words";
 
 type Move = Board["pipeline"][number];
 
@@ -35,10 +36,10 @@ const DEFAULT_LAYOUT: Layout = {
   bottom: PANELS.map((id) => `panel:${id}` as BlockKey),
 };
 
-const TILE_NAMES: Record<TileId, string> = {
-  tasks: "Tasks due", digests: "Digests waiting", pipeline: "Pipeline moves",
-  goals: "Open goals", waiting: "Waiting on others",
-};
+const tileNames = (w: Words): Record<TileId, string> => ({
+  tasks: `${w.Tasks} due`, digests: "Digests waiting", pipeline: "Pipeline moves",
+  goals: `Open ${w.goals}`, waiting: "Waiting on others",
+});
 const PANEL_NAMES: Record<PanelId, string> = {
   due: "Due by day", approval: "Waiting for approval", pipeline: "Pipeline",
   finances: "Practice finances", clients: "Clients",
@@ -73,6 +74,7 @@ export function Dashboard({ me }: { me: Me }) {
   const [saved, remember] = useRemembered<Layout | LegacyLayout>(
     `dashboard-layout:${me.email || "anon"}`, DEFAULT_LAYOUT);
   const [arranging, setArranging] = useState(false);
+  const w = useWords();
 
   if (board.isLoading) return <p className="muted">Loading…</p>;
   if (!board.data) return null;
@@ -86,7 +88,7 @@ export function Dashboard({ me }: { me: Me }) {
 
   const tile: Record<TileId, ReactNode> = {
     tasks: (
-      <Tile label="Tasks due" value={tiles.tasks_due} icon={CheckSquare}
+      <Tile label={`${w.Tasks} due`} value={tiles.tasks_due} icon={CheckSquare}
         to="/tasks"
         // Folded into the total and named on its own: a number that hides
         // how much of it is late is a number you stop reading.
@@ -103,7 +105,7 @@ export function Dashboard({ me }: { me: Me }) {
         to="/pipeline" note="in the last week" />
     ),
     goals: (
-      <Tile label="Open goals" value={tiles.goals_open} icon={Target}
+      <Tile label={`Open ${w.goals}`} value={tiles.goals_open} icon={Target}
         to="/work" note="across every client" />
     ),
     // Commitments by people outside the practice (2026-09-28), overdue named.
@@ -244,8 +246,7 @@ export function Dashboard({ me }: { me: Me }) {
                 to={`/companies/${client.id}`}>
                 <strong>{client.name}</strong>
                 <span className="small muted">
-                  {client.open_tasks} open · {client.open_goals} goal
-                  {client.open_goals === 1 ? "" : "s"}
+                  {client.open_tasks} open · {w.count(client.open_goals, "goal")}
                 </span>
                 {client.overdue > 0 && <Pill kind="bad">{client.overdue} overdue</Pill>}
               </Link>
@@ -345,8 +346,8 @@ function PipelineColumn({ title, moves }: { title: string; moves: Move[] }) {
   );
 }
 
-function nameOf(key: BlockKey): string {
-  return key.startsWith("tile:") ? TILE_NAMES[key.slice(5) as TileId]
+function nameOf(key: BlockKey, w: Words): string {
+  return key.startsWith("tile:") ? tileNames(w)[key.slice(5) as TileId]
     : PANEL_NAMES[key.slice(6) as PanelId];
 }
 
@@ -365,6 +366,7 @@ function ArrangeRows({ arranging, layout, hidden, onChange, render }: {
   arranging: boolean; layout: Layout; hidden: (key: BlockKey) => boolean;
   onChange: (layout: Layout) => void; render: (key: BlockKey) => ReactNode;
 }) {
+  const w = useWords();
   const [dragging, setDragging] = useState<BlockKey | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const visible = { top: layout.top.filter((k) => !hidden(k)),
@@ -401,7 +403,7 @@ function ArrangeRows({ arranging, layout, hidden, onChange, render }: {
             if (!arranging) {
               return <div key={key} className={classes}>{render(key)}</div>;
             }
-            const name = nameOf(key);
+            const name = nameOf(key, w);
             return (
               <div key={key} className={classes} data-testid={`slot-${id}`} data-key={key}
                 draggable

@@ -21,6 +21,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from apps.crm.services import email_layout
+from apps.tenancy import words as practice_words
 from apps.work import narratives as narrative_service
 from apps.work import value_report
 from apps.work.models import GoalReportExport
@@ -75,6 +76,7 @@ def context_for(request, *, company, goal=None) -> dict:
         "timeline": report["timeline"] if goal is None else None,
         "blocks": blocks,
         "is_single_goal": goal is not None,
+        "words": practice_words.of(request.tenant),
     }
 
 

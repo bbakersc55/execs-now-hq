@@ -44,6 +44,16 @@ MAY_CREATE_LABEL = {
 }
 
 
+def may_create_label(code: str, w=None) -> str:
+    """MAY_CREATE_LABEL in the practice's own words (`apps.tenancy.words`);
+    with the defaults it is MAY_CREATE_LABEL's text exactly."""
+    if w is None:
+        return MAY_CREATE_LABEL.get(code, code)
+    return {"nothing": "Nothing", "tasks": f"{w.Tasks} only",
+            "projects": f"{w.Projects} and {w.tasks}",
+            "goals": f"{w.Goals} too"}.get(code, code)
+
+
 def level_label(role: str | None, levels=(), leads_all_teams: bool = False) -> str:
     """What a client user is called where they are listed: "Client owner", or
     the highest level they hold on any team."""

@@ -18,6 +18,7 @@ import {
 } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
 import { useRemembered } from "../lib/remembered";
+import { useWords } from "../lib/words";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -29,6 +30,7 @@ const TENANT = ["FF", "CF", "VA"];
  *  goals asks them to remember which client each one belongs to (FR-3.39a). */
 export function Work({ me }: { me: Me }) {
   const rowLink = useRowLink();
+  const w = useWords();
   const isTenant = !!me.role && TENANT.includes(me.role);
   const { clients, company, choose } = useCompanyFilter(me, "work-company");
   // P7: with one client chosen, the work can be narrowed to one of its teams.
@@ -84,8 +86,8 @@ export function Work({ me }: { me: Me }) {
     <>
       <PageHead title={isTenant ? "Work" : "Our work"}
         sub={isTenant
-          ? "A goal's status is derived from the work underneath it unless someone sets it."
-          : "Goals hold projects, projects hold tasks — and a task can stand on its own."} />
+          ? `${w.AGoal}'s status is derived from the work underneath it unless someone sets it.`
+          : `${w.Goals} hold ${w.projects}, ${w.projects} hold ${w.tasks} — and ${w.aTask} can stand on its own.`} />
       {/* The practice needs the vocabulary; a client already lives in their
           own company's work and is never offered a goal to create. */}
       {isTenant && <HierarchyNote />}
@@ -115,32 +117,32 @@ export function Work({ me }: { me: Me }) {
 
       {(proposals.data ?? []).filter((p) => !company || p.company === company).map((p) => (
         <Banner key={p.id} kind="info">
-          {p.proposed_by || "A client"} proposed a new order for {p.company_name}'s goals.{" "}
+          {p.proposed_by || "A client"} proposed a new order for {p.company_name}'s {w.goals}.{" "}
           <Link to={`/report?company=${p.company}`}>Review it on the Value report</Link>
         </Banner>
       ))}
 
       {(proposedGoals.data ?? []).filter((p) => !company || p.company === company).map((p) => (
         <Banner key={p.id} kind="info">
-          {p.proposed_by || "A client"} proposed a goal for {p.company_name}: “{p.title}”.{" "}
+          {p.proposed_by || "A client"} proposed {w.aGoal} for {p.company_name}: “{p.title}”.{" "}
           <Link to={`/report?company=${p.company}`}>Review it on the Value report</Link>
         </Banner>
       ))}
 
       {/* In each company's order of priority (the server's): current goals
           numbered, the ones behind us after them. */}
-      <Card title="Goals">
+      <Card title={w.Goals}>
         {/* Where a client would look for "New goal": whose goals are, and
             where a client owner proposes one. */}
         {!isTenant && !me.portal?.may_create.goal && (
           <p className="small muted" style={{ marginTop: 0 }}>
-            Goals are set together with {practice}.
+            {w.Goals} are set together with {practice}.
             {(me.portal ? me.portal.may_propose_goal : me.role === "FCC")
-              && <> <Link to="/report">Propose a goal</Link></>}
+              && <> <Link to="/report">Propose {w.aGoal}</Link></>}
           </p>
         )}
         <Grouped rows={mine(goals.data ?? [])} headings={isTenant} cards
-          empty={company ? "No goals for this client yet." : "No goals yet."}
+          empty={company ? `No ${w.goals} for this client yet.` : `No ${w.goals} yet.`}
           render={(g) => (
             <GoalBranch key={g.id} goal={g}
               projects={onTeam(projects.data ?? []).filter((p) => p.goal === g.id)}
@@ -153,7 +155,7 @@ export function Work({ me }: { me: Me }) {
 
       {/* Unfiled work groups the same way — it is where work that belongs to
           nothing lives, and it belongs to a client all the same. */}
-      <Card title="Projects with no goal">
+      <Card title={`${w.Projects} with no ${w.goal}`}>
         <Grouped rows={mine(orphanProjects)} headings={isTenant} empty="None."
           render={(p) => (
             <li key={p.id} {...rowLink(`/work/projects/${p.id}`)}>
@@ -165,7 +167,7 @@ export function Work({ me }: { me: Me }) {
           )} />
       </Card>
 
-      <Card title="Tasks filed under nothing">
+      <Card title={`${w.Tasks} filed under nothing`}>
         <Grouped rows={mine(onTeam(unfiled.data ?? []))} headings={isTenant} empty="None."
           render={(t) => (
             <li key={t.id} {...rowLink(`/tasks/${t.id}`)}>
@@ -236,6 +238,7 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
   collapsed: boolean; onToggle: () => void;
 }) {
   const rowLink = useRowLink();
+  const w = useWords();
   const count = projects.length + tasks.length;
   const own = allTasks.filter((t) => t.goal === goal.id
     || projects.some((p) => p.id === t.project));
@@ -297,7 +300,7 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
               <div className="progress tiny muted">
                 <span>{done} of {own.length} done</span>
                 <span className="meter" role="img"
-                      aria-label={`${done} of ${own.length} tasks done`}>
+                      aria-label={`${done} of ${own.length} ${w.tasks} done`}>
                   <span style={{ width: `${Math.round(100 * done / own.length)}%` }} />
                 </span>
               </div>
@@ -307,7 +310,7 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
 
         {!collapsed && (count === 0 ? (
           <p className="empty-state">
-            Nothing under this goal yet — add a project or a task to start it moving.
+            Nothing under this {w.goal} yet — add {w.aProject} or {w.aTask} to start it moving.
           </p>
         ) : (
           <div style={{ marginTop: "var(--s3)" }}>

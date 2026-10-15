@@ -69,6 +69,8 @@ export const api = {
 
 export interface Me {
   authenticated: boolean;
+  /** What this practice calls its goals, projects, tasks and steps (lib/words). */
+  words?: import("./words").WordPairs;
   email: string;
   full_name: string;
   role: "FF" | "CF" | "VA" | "FCC" | "ECC" | null;

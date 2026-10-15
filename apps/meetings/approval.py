@@ -27,6 +27,7 @@ from apps.meetings import practice
 from apps.meetings.models import (
     Meeting, MeetingParticipant, MeetingProposal, ProposalItem,
 )
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import AuditEvent
 from apps.work import services as work_services
 
@@ -341,8 +342,8 @@ def approve_action_item(item, *, actor, role, choice: dict, request=None):
         if seat is None:
             # Bounded to a real seat: without one there is nobody to hold it.
             raise ApprovalRefused(
-                f"{name} has no portal seat, so the task cannot be theirs in the portal. "
-                "Follow up, or record it.")
+                f"{name} has no portal seat, so the {practice_words.of(item.tenant).task} "
+                "cannot be theirs in the portal. Follow up, or record it.")
         task = _file_for_client(
             item, actor=actor, role=role, choice=choice, seat=seat, contact=contact,
             title=text[:255], due=due)
@@ -411,6 +412,7 @@ def _file_for_client(item, *, actor, role, choice, seat, contact, title, due):
     from apps.work.models import Goal, Project
 
     tenant, company = item.tenant, seat.client_company
+    w = practice_words.of(tenant)
     assignee = seat.user
     if choice.get("assignee_id"):
         chosen = _uuid(choice["assignee_id"])
@@ -444,28 +446,28 @@ def _file_for_client(item, *, actor, role, choice, seat, contact, title, due):
     if place.get("goal") == "new":
         goal = Goal.objects.create(
             tenant=tenant, owner=actor, client_company=company,
-            title=named("goal_title", "goal"), client_owner_contact=contact)
+            title=named("goal_title", w.goal), client_owner_contact=contact)
     elif place.get("goal"):
-        goal = one(Goal, place["goal"], "goal")
+        goal = one(Goal, place["goal"], w.goal)
     if place.get("project") == "new":
         project = Project.objects.create(
             tenant=tenant, owner=actor, client_company=company, goal=goal,
-            title=named("project_title", "project"), client_owner_contact=contact)
+            title=named("project_title", w.project), client_owner_contact=contact)
     elif place.get("project"):
-        project = one(Project, place["project"], "project")
+        project = one(Project, place["project"], w.project)
         if goal is not None and project.goal_id != goal.pk:
-            raise ApprovalRefused("That project is not under the goal you chose.")
+            raise ApprovalRefused(f"That {w.project} is not under the {w.goal} you chose.")
 
     if place.get("task") and place["task"] != "new":
         # An existing task: it becomes theirs. Nothing else about it changes.
-        task = one(Task, place["task"], "task")
+        task = one(Task, place["task"], w.task)
         if not task.is_client_visible:
-            raise ApprovalRefused("That task is not one the client can see.")
+            raise ApprovalRefused(f"That {w.task} is not one the client can see.")
         if project is not None and task.project_id != project.pk:
-            raise ApprovalRefused("That task is not in the project you chose.")
+            raise ApprovalRefused(f"That {w.task} is not in the {w.project} you chose.")
         if project is None and goal is not None and task.goal_id != goal.pk and (
                 task.project is None or task.project.goal_id != goal.pk):
-            raise ApprovalRefused("That task is not under the goal you chose.")
+            raise ApprovalRefused(f"That {w.task} is not under the {w.goal} you chose.")
         work_services.apply_task_changes(task, actor=actor, role=role,
                                          changes={"assignee": assignee})
         return task
@@ -503,7 +505,8 @@ def _attach_practice_stakeholder(task, actor):
     me = next((m for m in practice.staff(task.tenant) if m.user_id == str(actor.pk)), None)
     if me is None or me.contact is None:
         raise ApprovalRefused("You have no contact row to be notified through; attach "
-                              "yourself from the task instead.")
+                              f"yourself from the {practice_words.of(task.tenant).task} "
+                              "instead.")
     Stakeholder.objects.get_or_create(tenant=task.tenant, contact=me.contact, task=task,
                                       defaults={"cadence": Cadence.EVERY_UPDATE})
 

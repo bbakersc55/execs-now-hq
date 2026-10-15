@@ -184,6 +184,10 @@ class Tenant(UUIDModel):
     brand_footer_text = models.TextField(blank=True, default="", db_default="")
     branding_updated_at = models.DateTimeField(null=True, blank=True)
     audio_retention_days = models.PositiveIntegerField(default=30)  # F7
+    # What this practice calls a goal, a project, a task and a step (Melissa's
+    # feedback, 2026-10-15): {"task": ["action", "actions"], ...}. A word left
+    # out is the default. Read through apps/tenancy/words.py, never directly.
+    work_words = models.JSONField(default=dict, blank=True, db_default={})
 
     referral_blurb = models.TextField(blank=True, default="")  # FR-1.21a
     referral_blurb_updated_at = models.DateTimeField(null=True, blank=True)

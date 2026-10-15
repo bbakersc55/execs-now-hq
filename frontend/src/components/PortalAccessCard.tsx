@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Company, Me, PortalAccess, PortalCandidates, api } from "../lib/api";
 import { LEVEL_LABEL, PORTAL_ROLE_CODES, roleLabel } from "../lib/roles";
+import { useWords } from "../lib/words";
 import { ActAsButton } from "./ActAs";
 import { PlacementFields, Placement, START, placementBody } from "./ClientTeams";
 import { Banner, Card, Empty, Field, when } from "./ui";
@@ -62,6 +63,7 @@ export function usePortalAccess(me: Me, company: Company) {
  */
 export function PortalAccessCard({ me, company }: { me: Me; company: Company }) {
   const qc = useQueryClient();
+  const w = useWords();
   const [term, setTerm] = useState("");
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [placed, setPlaced] = useState<Record<string, Placement>>({});
@@ -124,7 +126,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
     mutationFn: (id: string) => api.del<{ sessions_ended: number }>(`/api/portal-access/${id}/`),
     onSuccess: (r) => {
       setMessage({ kind: "ok", text: `Access revoked; ${r.sessions_ended} session(s) ended. `
-        + "Their contact, comments and tasks are untouched." });
+        + `Their contact, comments and ${w.tasks} are untouched.` });
       refresh();
     },
     onError: (e: Error) => setMessage({ kind: "bad", text: e.message }),
@@ -188,7 +190,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                   </button>
                   <button className="ghost small" onClick={() => {
                     if (confirm(`Revoke access for ${p.name}? They keep their contact record, `
-                                + "comments and tasks, and any digests they are a stakeholder for.")) {
+                                + `comments and ${w.tasks}, and any digests they are a stakeholder for.`)) {
                       revoke.mutate(p.id);
                     }
                   }}>Revoke</button>
@@ -242,7 +244,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
       )}
       <p className="small muted">
         The company's primary contact is offered as its client owner and everyone else as a
-        client team member, starting as a Member who may create projects and tasks; choose
+        client team member, starting as a Member who may create {w.projects} and {w.tasks}; choose
         otherwise before granting, or change it afterwards on the Teams card.
       </p>
     </Card>

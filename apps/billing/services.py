@@ -182,6 +182,7 @@ def update_settings(tenant, changes: dict, *, actor=None) -> InvoiceSettings:
 # ------------------------------------------------------------------- drafts
 
 def _clean_lines(tenant, lines) -> list[dict]:
+    from apps.tenancy import words as practice_words
     from apps.work.models import Goal, Project
 
     if not isinstance(lines, list):
@@ -206,11 +207,15 @@ def _clean_lines(tenant, lines) -> list[dict]:
         if raw.get("project"):
             project = Project.all_objects.filter(tenant=tenant, pk=raw["project"]).first()
             if project is None:
-                raise BillingError("That project is not in this practice.", status=404)
+                raise BillingError(
+                    f"That {practice_words.of(tenant).project} is not in this practice.",
+                    status=404)
         if raw.get("goal"):
             goal = Goal.all_objects.filter(tenant=tenant, pk=raw["goal"]).first()
             if goal is None:
-                raise BillingError("That goal is not in this practice.", status=404)
+                raise BillingError(
+                    f"That {practice_words.of(tenant).goal} is not in this practice.",
+                    status=404)
         out.append({"description": description, "quantity": quantity,
                     "unit_price_cents": price,
                     "amount_cents": money.line_amount(quantity, price),

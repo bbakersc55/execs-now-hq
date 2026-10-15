@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Company, Contact, Task, api } from "../lib/api";
+import { useWords } from "../lib/words";
 
 export interface Links {
   contact: string | null; contactName?: string;
@@ -18,6 +19,7 @@ export function LinkPicker({ value, onChange }: { value: Links; onChange: (v: Li
   const initialMode = value.contact ? "contact" : value.company ? "company" : "none";
   const [mode, setMode] = useState<"none" | "contact" | "company">(initialMode);
   const [term, setTerm] = useState("");
+  const w = useWords();
 
   const companies = useQuery<Company[]>({
     queryKey: ["companies"], queryFn: () => api.get<Company[]>("/api/companies/"),
@@ -88,10 +90,10 @@ export function LinkPicker({ value, onChange }: { value: Links; onChange: (v: Li
         </>
       )}
 
-      <label htmlFor="link-task" style={{ marginTop: ".6rem" }}>Task (optional, and separate from the above)</label>
+      <label htmlFor="link-task" style={{ marginTop: ".6rem" }}>{w.Task} (optional, and separate from the above)</label>
       <select id="link-task" value={value.task ?? ""}
         onChange={(e) => onChange({ ...value, task: e.target.value || null })}>
-        <option value="">No task</option>
+        <option value="">No {w.task}</option>
         {(tasks.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
       </select>
     </div>

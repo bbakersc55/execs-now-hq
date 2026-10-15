@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { Banner, Card, Empty, Field, Pill, countdown, when } from "../components/ui";
 import { Contact, DigestRow, Me, TickStatus, UpcomingDigest, api } from "../lib/api";
 import { DigestSchedule, DigestSchedulePrompt, useDigestSchedule } from "./DigestSettings";
+import { Words, useWords } from "../lib/words";
 
 const CAN_APPROVE = ["FF", "CF"];
 
@@ -30,6 +31,7 @@ function useNow(everyMs = 30_000) {
 export function Digests({ me }: { me: Me }) {
   const qc = useQueryClient();
   const [note, setNote] = useState("");
+  const w = useWords();
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
@@ -115,7 +117,7 @@ export function Digests({ me }: { me: Me }) {
           <ul className="timeline">
             {upcoming.data!.map((u) => (
               <li key={u.contact.id}>
-                <div>{comingUpLine(u)}</div>
+                <div>{comingUpLine(u, w)}</div>
                 <div className="when">
                   {u.update_count} update{u.update_count === 1 ? "" : "s"} waiting
                   {u.tasks.length > 1 && ` on ${u.tasks.join(", ")}`} · last change {when(u.last_change_at)}
@@ -236,8 +238,8 @@ export function Digests({ me }: { me: Me }) {
                   <textarea aria-label="Digest text" rows={12} value={draft}
                     onChange={(e) => setDraft(e.target.value)} />
                   <p className="small muted">
-                    Edited wording is sent as written, in plain paragraphs — without the task
-                    grouping and status chips. Update this draft to get those back.
+                    Edited wording is sent as written, in plain paragraphs — without
+                    the {w.task} grouping and status chips. Update this draft to get those back.
                   </p>
                   <div className="row">
                     <button className="primary"
@@ -483,9 +485,9 @@ function GenerateNow({ onDone }: { onDone: (message: string) => void }) {
 
 
 /** FR-3.29a — "Bryan Baker · every update · generates at 11:49 AM unless the task changes again". */
-function comingUpLine(u: UpcomingDigest) {
+function comingUpLine(u: UpcomingDigest, w: Words) {
   if (u.due) return `${u.contact.name} · every update · generates on the next tick`;
   const time = new Date(u.generates_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const which = u.tasks.length > 1 ? `any of these ${u.tasks.length} tasks changes` : "the task changes";
+  const which = u.tasks.length > 1 ? `any of these ${u.tasks.length} ${w.tasks} changes` : `the ${w.task} changes`;
   return `${u.contact.name} · every update · generates at ${time} unless ${which} again`;
 }

@@ -9,6 +9,7 @@ import { GrantPortalAccess } from "../components/GrantPortalAccess";
 import { Banner, Card, Empty, Field, PageLinks, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
 import { Contact, Me, OutboxMessage, api } from "../lib/api";
+import { useWords } from "../lib/words";
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 interface Duplicate { contact: Contact; match_reason: string; rank: number; }
@@ -17,6 +18,7 @@ export function ContactDetail({ me }: { me: Me }) {
   const { id } = useParams();
   const [params] = useSearchParams();
   const qc = useQueryClient();
+  const w = useWords();
   const [note, setNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [lookingForDupes, setLookingForDupes] = useState(false);
@@ -103,7 +105,7 @@ export function ContactDetail({ me }: { me: Me }) {
 
       {params.get("merged") === "1" && (
         <Banner kind="ok">
-          Merged. Everything from the other record — notes, tasks, emails, stage history,
+          Merged. Everything from the other record — notes, {w.tasks}, emails, stage history,
           types, categories — now appears on this contact's timeline below.
         </Banner>
       )}

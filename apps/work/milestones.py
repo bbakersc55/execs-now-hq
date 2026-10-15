@@ -21,6 +21,7 @@ Two rules do all the work here:
 from __future__ import annotations
 
 from apps.crm.models import Task
+from apps.tenancy import words as practice_words
 from apps.work.models import GoalMilestone, TaskUpdate
 
 
@@ -39,13 +40,15 @@ def in_goal_tree(task, goal) -> bool:
 
 def check_eligible(task, goal) -> None:
     """Ruling E, stated in the words the refusal is read in."""
+    w = practice_words.of(goal.tenant)
     if not in_goal_tree(task, goal):
         raise MilestoneRefused(
-            "That task is not under this goal. A goal's timeline is that goal's "
-            "own — a task from elsewhere cannot be a beat on it.")
+            f"That {w.task} is not under this {w.goal}. {w.a_goal[:1].upper()}"
+            f"{w.a_goal[1:]}'s timeline is that {w.goal}'s "
+            f"own — {w.a_task} from elsewhere cannot be a beat on it.")
     if not task.is_client_visible:
         raise MilestoneRefused(
-            "That task is hidden from the client, so it cannot be a milestone. A "
+            f"That {w.task} is hidden from the client, so it cannot be a milestone. A "
             "milestone is a beat on the client's timeline, and the title alone "
             "would show them work they are not meant to see.")
 

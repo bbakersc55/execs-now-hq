@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import CLIENT_ROLES, Role
 from apps.work.models import ClientTeam, ClientTeamMember
 
@@ -284,6 +285,7 @@ def practice_name(tenant) -> str:
 def check_client_owner(owner, person, *, may_create=None) -> None:
     """Raises TeamRefused for what a client owner may not change on `person`."""
     from apps.tenancy.models import MayCreate
+    from apps.tenancy.roles import may_create_label
 
     if person.role == Role.FCC:
         raise TeamRefused(f"A client owner's settings are set by {practice_name(owner.tenant)}.")
@@ -291,7 +293,7 @@ def check_client_owner(owner, person, *, may_create=None) -> None:
     if may_create in order and order.index(may_create) > order.index(owner.may_create):
         raise TeamRefused(
             "You can give someone at most what you may create yourself "
-            f"({MayCreate(owner.may_create).label.lower()}). "
+            f"({may_create_label(owner.may_create, practice_words.of(owner.tenant)).lower()}). "
             f"{practice_name(owner.tenant)} can change that.")
 
 

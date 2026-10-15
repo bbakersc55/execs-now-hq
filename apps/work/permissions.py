@@ -39,6 +39,7 @@ from __future__ import annotations
 from django.db.models import Exists, OuterRef, Q
 
 from apps.crm import permissions as crm_perms
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import CLIENT_ROLES, MayCreate, Membership, Role
 
 
@@ -559,7 +560,8 @@ def client_team_for_new(request, *, project=None, wanted=None):
     if project is not None:
         team_id = scope.team_of(project)
         if not (scope.works_in(team_id) or scope.project_is_theirs(project)):
-            raise NotTheirTeam("That project is another team's. You can add work on "
+            w = practice_words.for_request(request)
+            raise NotTheirTeam(f"That {w.project} is another team's. You can add work on "
                                "your own team.")
         return team_id
     live = ClientTeam.all_objects.filter(
@@ -581,9 +583,19 @@ def client_team_for_new(request, *, project=None, wanted=None):
 # Said once, at the top of a sheet a person may see and not change (§4.3),
 # and as the refusal when they try. One sentence for both.
 
-PRACTICES_TASK = ("This task is the practice's to change. Add a comment and they will "
-                  "see it.")
-PRACTICES_PROJECT = "This project belongs to the practice."
+def practices_task(w) -> str:
+    """`w` is the practice's `Words`."""
+    return (f"This {w.task} is the practice's to change. Add a comment and they will "
+            "see it.")
+
+
+def practices_project(w) -> str:
+    return f"This {w.project} belongs to the practice."
+
+
+#: The default wording, for callers with no practice to hand.
+PRACTICES_TASK = practices_task(practice_words.DEFAULT)
+PRACTICES_PROJECT = practices_project(practice_words.DEFAULT)
 
 
 def viewer_line(scope) -> str:
@@ -614,12 +626,13 @@ def why_not_task(request, task) -> str:
     scope = client_scope(request)
     if scope is not None and scope.only_looks:
         return viewer_line(scope)
+    w = practice_words.for_request(request)
     if scope is None or not task.is_client_visible:
-        return PRACTICES_TASK
+        return practices_task(w)
     if task.created_by_client or is_client_side_user(
             task.tenant_id, task.assignee_id, scope.company_id):
         return team_line(_team_name(scope, task))
-    return PRACTICES_TASK
+    return practices_task(w)
 
 
 def why_not_project(request, project) -> str:
@@ -627,7 +640,7 @@ def why_not_project(request, project) -> str:
     if scope is not None and scope.only_looks:
         return viewer_line(scope)
     if scope is None or not project.created_by_client:
-        return PRACTICES_PROJECT
+        return practices_project(practice_words.for_request(request))
     return team_line(_team_name(scope, project))
 
 

@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { Banner, Card, Pill, positionsLabel } from "../components/ui";
 import { api, Contact } from "../lib/api";
+import { useWords } from "../lib/words";
 
 /** Fields the reviewer resolves by hand. Everything else — emails, phones,
  *  types, categories, notes, tasks, stage history, email history — moves to the
@@ -25,6 +26,7 @@ function value(c: Contact | undefined, key: keyof Contact): string {
 
 export function Merge() {
   const { aId, bId } = useParams();
+  const w = useWords();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -83,7 +85,7 @@ export function Merge() {
     <>
       <h2>Merge two contacts</h2>
       <p className="sub">
-        All history — notes, tasks, emails, stage changes, types, categories —
+        All history — notes, {w.tasks}, emails, stage changes, types, categories —
         moves to the survivor. The other record is kept, marked merged, and its
         link still resolves here.
       </p>
@@ -187,7 +189,7 @@ export function Merge() {
       <Card title="3. What will happen">
         <ul className="small" style={{ margin: 0, paddingLeft: "1.1rem" }}>
           <li>
-            <strong>{absorbed.first_name} {absorbed.last_name}</strong>'s notes, tasks,
+            <strong>{absorbed.first_name} {absorbed.last_name}</strong>'s notes, {w.tasks},
             emails, stage history, contact types, and service categories move to{" "}
             <strong>{survivor.first_name} {survivor.last_name}</strong>.
           </li>

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Company, Me, api } from "../lib/api";
+import { useWords } from "../lib/words";
 import { Banner, Card } from "./ui";
 
 /** How a company becomes a client, in the one wording used wherever only
@@ -24,6 +25,7 @@ interface Status { id: string; is_client_company: boolean; undo_blockers: string
  */
 export function ClientStatus({ me, company }: { me: Me; company: Company }) {
   const qc = useQueryClient();
+  const w = useWords();
   const owner = me.role === "FF";
   const [asking, setAsking] = useState<"mark" | "unmark" | null>(null);
   const [problem, setProblem] = useState("");
@@ -59,12 +61,12 @@ export function ClientStatus({ me, company }: { me: Me; company: Company }) {
       {problem && <Banner kind="bad">{problem}</Banner>}
       {isClient ? (
         <p className="small" style={{ marginTop: 0 }}>
-          This company can be chosen for goals, projects and tasks, and its people can be
+          This company can be chosen for {w.goals}, {w.projects} and {w.tasks}, and its people can be
           given portal access.
         </p>
       ) : (
         <p className="small" style={{ marginTop: 0 }}>
-          Goals, projects, tasks and portal access are for client companies only, so this
+          {w.Goals}, {w.projects}, {w.tasks} and portal access are for client companies only, so this
           company is not offered for them yet. {HOW_A_COMPANY_BECOMES_A_CLIENT}{" "}
           <Link to="/pipeline">Open the Pipeline</Link>
         </p>
@@ -78,11 +80,11 @@ export function ClientStatus({ me, company }: { me: Me; company: Company }) {
           <p className="small"><strong>Mark {company.name} as a client?</strong></p>
           <ul className="small">
             <li><strong>It sets one thing:</strong> {company.name} becomes a client company,
-              so it can be chosen for goals, projects and tasks and its people can be given
+              so it can be chosen for {w.goals}, {w.projects} and {w.tasks} and its people can be given
               portal access.</li>
             <li><strong>Unlike reaching Closed Won, it does not</strong> move anyone on the
-              Pipeline, give any contact the client type, or run any stage automation: no
-              task is created and no email is drafted.</li>
+              Pipeline, give any contact the client type, or run any stage automation:
+              no {w.task} is created and no email is drafted.</li>
             <li>It is recorded, with your name, in the audit trail.</li>
           </ul>
           <div className="row tight">
@@ -106,7 +108,7 @@ export function ClientStatus({ me, company }: { me: Me; company: Company }) {
           ) : asking === "unmark" ? (
             <>
               <p>
-                {company.name} will stop being offered for goals, projects, tasks and portal
+                {company.name} will stop being offered for {w.goals}, {w.projects}, {w.tasks} and portal
                 access. Nothing is deleted, and it is recorded in the audit trail.
               </p>
               <div className="row tight">

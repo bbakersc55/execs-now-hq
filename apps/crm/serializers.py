@@ -494,7 +494,10 @@ class StageAutomationSerializer(serializers.ModelSerializer):
             )
             seen = ("the client can see it" if obj.task_client_visible
                     else "internal, hidden from the client")
-            return f"{trigger}, create task '{obj.task_title_template}'{due} ({seen})."
+            from apps.tenancy import words
+
+            task = words.of(obj.tenant).task
+            return f"{trigger}, create {task} '{obj.task_title_template}'{due} ({seen})."
         return (
             f"{trigger}, draft an email into the Outbox for approval "
             f"(expires after {obj.send_by_offset_days} days)."

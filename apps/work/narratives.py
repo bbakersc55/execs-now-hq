@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from apps.crm.models import Task
 from apps.notes.models import Note
+from apps.tenancy import words as practice_words
 from apps.work import milestones as milestone_service
 from apps.work import value_report
 from apps.work.models import (
@@ -59,6 +60,20 @@ Never lead with a count of tasks completed. A third of the tasks is not a third 
 of an outcome, and the reader will know it.
 
 Reply with the narrative text only."""
+
+
+def system(w=practice_words.DEFAULT) -> str:
+    """SYSTEM, told the practice's own words when they are not the defaults,
+    so the narrative says what the practice says. With the defaults it is
+    SYSTEM byte for byte."""
+    if w == practice_words.DEFAULT:
+        return SYSTEM
+    names = "; ".join(
+        f'a {kind} is "{w.of(kind)}" (plural "{w.of(kind, plural=True)}")'
+        for kind in practice_words.KINDS
+        if (w.of(kind), w.of(kind, plural=True)) != practice_words.DEFAULTS[kind])
+    return (SYSTEM + "\n\nThis practice uses its own words for the levels of its "
+            f"work: {names}. Use those words in your prose, never the defaults.")
 
 
 def _line(label, value):
@@ -160,7 +175,8 @@ def draft(goal, *, trigger="button"):
                              "state": GoalNarrative.State.DRAFTING})
     try:
         text, call = claude.complete_with_call(
-            tenant=goal.tenant, purpose=NARRATIVE_PURPOSE, system=SYSTEM,
+            tenant=goal.tenant, purpose=NARRATIVE_PURPOSE,
+            system=system(practice_words.of(goal.tenant)),
             user_text=drafting_input(goal), target_type="goal", target_id=goal.pk,
             trigger=trigger, max_tokens=1500,
         )

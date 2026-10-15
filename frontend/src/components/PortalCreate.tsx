@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { ClientTeamName, Me, PortalPerson, Task, WorkParent, api } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
+import { useWords } from "../lib/words";
 import { Banner, Card, Field } from "./ui";
 
 type Outcome = { kind: string; text: string; link: string };
@@ -26,6 +27,7 @@ type Kind = "task" | "project" | "goal";
 export function PortalCreate({ me, offer = ["task", "project"] }: {
   me: Me; offer?: Kind[];
 }) {
+  const w = useWords();
   const [open, setOpen] = useState<Kind | null>(null);
   const [done, setDone] = useState<Outcome | null>(null);
   const close = (outcome: Outcome | null) => {
@@ -43,14 +45,14 @@ export function PortalCreate({ me, offer = ["task", "project"] }: {
       <div className="row" style={{ marginBottom: ".8rem" }}>
         {offer.includes("task") && (
           <button className="primary" onClick={() => { setOpen("task"); setDone(null); }}>
-            New task
+            New {w.task}
           </button>
         )}
         {offer.includes("project") && (
-          <button onClick={() => { setOpen("project"); setDone(null); }}>New project</button>
+          <button onClick={() => { setOpen("project"); setDone(null); }}>New {w.project}</button>
         )}
         {offer.includes("goal") && (
-          <button onClick={() => { setOpen("goal"); setDone(null); }}>New goal</button>
+          <button onClick={() => { setOpen("goal"); setDone(null); }}>New {w.goal}</button>
         )}
       </div>
       {done && (
@@ -97,6 +99,7 @@ export function usePeopleFor(team: string | null | undefined, enabled = true) {
 }
 
 function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => void }) {
+  const w = useWords();
   const qc = useQueryClient();
   const practice = usePracticeName();
   const { teams, home } = useTeams(me);
@@ -146,8 +149,8 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
       onClose(failed.length === 0
         ? { kind: "ok", text: `“${task.title}” created.`, link }
         : { kind: "bad", link,
-            text: `“${task.title}” was created, but ${failed.length} step(s) were not added: `
-              + `${failed.join("; ")}. Add them on the task.` });
+            text: `“${task.title}” was created, but ${w.counted(failed.length, "step")} ${w.were(failed.length, "step")} not added: `
+              + `${failed.join("; ")}. Add them on the ${w.task}.` });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -159,55 +162,56 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
   };
 
   return (
-    <Card title="New task" actions={<button onClick={() => onClose(null)}>Cancel</button>}>
+    <Card title={`New ${w.task}`} actions={<button onClick={() => onClose(null)}>Cancel</button>}>
       {error && <Banner kind="bad">{error}</Banner>}
       <form onSubmit={(e) => { e.preventDefault(); setError(""); create.mutate(); }}>
         <Field label="Title">
-          <input aria-label="New task title" value={form.title}
+          <input aria-label={`New ${w.task} title`} value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </Field>
         <div className="row">
-          <Field label="Project">
-            <select aria-label="Project for the new task" value={form.project}
+          <Field label={w.Project}>
+            <select aria-label={`${w.Project} for the new ${w.task}`} value={form.project}
               onChange={(e) => setForm({ ...form, project: e.target.value, assignee: "" })}>
-              <option value="">No project</option>
+              <option value="">No {w.project}</option>
               {ourProjects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
           </Field>
           {!form.project && (
-            <TeamPicker teams={teams} value={form.team} label="Team for the new task"
+            <TeamPicker teams={teams} value={form.team} label={`Team for the new ${w.task}`}
               onChange={(next) => setForm({ ...form, team: next, assignee: "" })} />
           )}
           <Field label="Assign to">
-            <select aria-label="Assign the new task to" value={form.assignee}
+            <select aria-label={`Assign the new ${w.task} to`} value={form.assignee}
               onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
               <option value="">Unassigned</option>
               {colleagues.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
           <Field label="Due">
-            <input aria-label="Due date for the new task" type="date" value={form.due_date}
+            <input aria-label={`Due date for the new ${w.task}`} type="date" value={form.due_date}
               onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
           </Field>
         </div>
 
-        <Field label="Steps">
+        <Field label={w.Steps}>
           {steps.length > 0 && (
             <ul className="small" style={{ paddingLeft: "1.1rem" }}>
               {steps.map((s, i) => (
                 <li key={`${i}-${s}`}>
                   {s}{" "}
-                  <button type="button" className="ghost small" aria-label={`Remove step ${s}`}
+                  <button type="button" className="ghost small" aria-label={`Remove ${w.step} ${s}`}
                     onClick={() => setSteps(steps.filter((_, j) => j !== i))}>Remove</button>
                 </li>
               ))}
             </ul>
           )}
           <div className="row">
-            <input aria-label="Add a step to the new task" value={step} placeholder="Add a step…"
+            <input aria-label={`Add ${w.aStep} to the new ${w.task}`} value={step}
+              placeholder={`Add ${w.aStep}…`}
               onChange={(e) => setStep(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addStep(); } }} />
-            <button type="button" disabled={!step.trim()} onClick={addStep}>Add step</button>
+            <button type="button" disabled={!step.trim()} onClick={addStep}>Add {w.step}</button>
           </div>
         </Field>
 
@@ -215,7 +219,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
           You can assign it to anyone on its team. It is shown to {practice} straight away.
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
-          {create.isPending ? "Creating…" : "Create task"}
+          {create.isPending ? "Creating…" : `Create ${w.task}`}
         </button>
       </form>
     </Card>
@@ -223,6 +227,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
 }
 
 function NewProjectForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => void }) {
+  const w = useWords();
   const qc = useQueryClient();
   const practice = usePracticeName();
   const { teams, home } = useTeams(me);
@@ -245,32 +250,32 @@ function NewProjectForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) 
   });
 
   return (
-    <Card title="New project" actions={<button onClick={() => onClose(null)}>Cancel</button>}>
+    <Card title={`New ${w.project}`} actions={<button onClick={() => onClose(null)}>Cancel</button>}>
       {error && <Banner kind="bad">{error}</Banner>}
       <form onSubmit={(e) => { e.preventDefault(); setError(""); create.mutate(); }}>
         <Field label="Title">
-          <input aria-label="New project title" value={form.title}
+          <input aria-label={`New ${w.project} title`} value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </Field>
         <Field label="Description">
-          <textarea aria-label="New project description" rows={2} value={form.description}
+          <textarea aria-label={`New ${w.project} description`} rows={2} value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
         <div className="row">
           <Field label="Target date">
-            <input aria-label="Target date for the new project" type="date"
+            <input aria-label={`Target date for the new ${w.project}`} type="date"
               value={form.target_date}
               onChange={(e) => setForm({ ...form, target_date: e.target.value })} />
           </Field>
-          <TeamPicker teams={teams} value={form.team} label="Team for the new project"
+          <TeamPicker teams={teams} value={form.team} label={`Team for the new ${w.project}`}
             onChange={(next) => setForm({ ...form, team: next })} />
         </div>
         <p className="small muted">
-          A project groups your company's own tasks. Goals are set with {practice}, so a
-          project you add stands on its own rather than under a goal.
+          {w.AProject} groups your company's own {w.tasks}. {w.Goals} are set with {practice}, so{" "}
+          {w.aProject} you add stands on its own rather than under {w.aGoal}.
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
-          {create.isPending ? "Creating…" : "Create project"}
+          {create.isPending ? "Creating…" : `Create ${w.project}`}
         </button>
       </form>
     </Card>
@@ -282,6 +287,7 @@ function NewProjectForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) 
  *  live at once, marked as theirs, and the practice is told. Its measure and
  *  its outcome stay the practice's to set. */
 function NewGoalForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
+  const w = useWords();
   const qc = useQueryClient();
   const practice = usePracticeName();
   const [form, setForm] = useState({ title: "", description: "", target_date: "" });
@@ -301,27 +307,27 @@ function NewGoalForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
   });
 
   return (
-    <Card title="New goal" actions={<button onClick={() => onClose(null)}>Cancel</button>}>
+    <Card title={`New ${w.goal}`} actions={<button onClick={() => onClose(null)}>Cancel</button>}>
       {error && <Banner kind="bad">{error}</Banner>}
       <form onSubmit={(e) => { e.preventDefault(); setError(""); create.mutate(); }}>
         <Field label="Title">
-          <input aria-label="New goal title" value={form.title}
+          <input aria-label={`New ${w.goal} title`} value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </Field>
         <Field label="Description">
-          <textarea aria-label="New goal description" rows={2} value={form.description}
+          <textarea aria-label={`New ${w.goal} description`} rows={2} value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
         <Field label="Target date">
-          <input aria-label="Target date for the new goal" type="date" value={form.target_date}
+          <input aria-label={`Target date for the new ${w.goal}`} type="date" value={form.target_date}
             onChange={(e) => setForm({ ...form, target_date: e.target.value })} />
         </Field>
         <p className="small muted">
-          It is your company's goal straight away, marked as added by you, and {practice} is
+          It is your company's {w.goal} straight away, marked as added by you, and {practice} is
           told. How it is measured is set with {practice}.
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
-          {create.isPending ? "Adding…" : "Add the goal"}
+          {create.isPending ? "Adding…" : `Add the ${w.goal}`}
         </button>
       </form>
     </Card>

@@ -16,6 +16,7 @@ import { SignedOut } from "./components/SignedOut";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
+import { makeWords, Words, WordsProvider } from "./lib/words";
 import { api, Me, SIGNED_OUT_EVENT } from "./lib/api";
 import { PRODUCT_FAVICON, setFavicon, useBranding } from "./lib/branding";
 import { applyPortalTokens } from "./lib/palette";
@@ -73,6 +74,7 @@ import { Digests } from "./screens/Digests";
 import { Report } from "./screens/Report";
 import { Tasks } from "./screens/Tasks";
 import { Work } from "./screens/Work";
+import { WordsSettings } from "./screens/WordsSettings";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
 
 
@@ -100,7 +102,8 @@ const CLIENT = ["FCC", "ECC"];
  *  seventeen links is a list nobody reads; the groups say what each part of the
  *  product is for, and they are the same words the modules use. */
 type NavItem = {
-  to: string; label: string; roles?: string[]; group?: string;
+  /** A function where the label is one of the practice's words (lib/words). */
+  to: string; label: string | ((w: Words) => string); roles?: string[]; group?: string;
   /** Every nav item has one (design brief, Tier 1). */
   icon: typeof Mail;
 };
@@ -122,7 +125,7 @@ const NAV: NavItem[] = [
   { to: "/notes", label: "Notes", roles: TENANT , icon: FileText },
   // Module 3. The client portal's own navigation arrives with done-item 10.
   { to: "/work", label: "Work", roles: TENANT , group: "The work" , icon: Target },
-  { to: "/tasks", label: "Tasks", roles: TENANT , icon: CheckSquare },
+  { to: "/tasks", label: (w) => w.Tasks, roles: TENANT , icon: CheckSquare },
   { to: "/waiting", label: "Waiting on others", roles: TENANT , icon: Hourglass },
   { to: "/digests", label: "Digests", roles: TENANT , icon: Mail },
   // Module 4. A VA sets a session up and sends the form; the call itself is the
@@ -145,7 +148,7 @@ const NAV: NavItem[] = [
   { to: "/finance", label: "Finance", roles: ["FF"], icon: Landmark },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
-  { to: "/tasks", label: "Tasks", roles: CLIENT , icon: CheckSquare },
+  { to: "/tasks", label: (w) => w.Tasks, roles: CLIENT , icon: CheckSquare },
   // Module 4B — replaces FR-3.38's progress report. A place they can go,
   // not a document somebody remembered to send.
   { to: "/report", label: "Where we are", roles: CLIENT , icon: BarChart3 },
@@ -261,10 +264,13 @@ export function App() {
   // else; the server refuses every other call until then.
   if (me.agreement_required) return <AgreementGate />;
 
+  // The platform owner's pages keep the default words (2026-10-15).
+  const words = makeWords(platform ? null : me.words);
   const visible = platform ? PLATFORM_NAV
     : NAV.filter((n) => !n.roles || (me.role && n.roles.includes(me.role)));
 
   return (
+    <WordsProvider pairs={platform ? null : me.words}>
     <div className={collapsed ? "layout collapsed" : "layout"}>
       <aside className="sidebar">
         <div className="brand">
@@ -278,7 +284,8 @@ export function App() {
         <AreaSwitch me={me} />
         {me.role && TENANT.includes(me.role) && <NoteCapture defaults={captureDefaults(location.pathname)} />}
         <nav>
-          {visible.map((n) => (
+          {visible.map((n) => ({ ...n, label: typeof n.label === "string" ? n.label
+            : n.label(words) })).map((n) => (
             <Fragment key={`${n.to}-${n.label}`}>
               {n.group && <div className="nav-group">{n.group}</div>}
               <NavLink to={n.to} end={n.to === "/work" || n.to === "/report"}
@@ -340,6 +347,7 @@ export function App() {
             <Route path="/settings/email"
               element={<Settings me={me}><EmailSettings me={me} /></Settings>} />
             <Route path="/settings/branding" element={<Settings me={me}><Branding /></Settings>} />
+            <Route path="/settings/words" element={<Settings me={me}><WordsSettings /></Settings>} />
             <Route path="/referrals" element={<Settings me={me}><ReferralSettings /></Settings>} />
             <Route path="/rules" element={<Settings me={me}><StageRules /></Settings>} />
             <Route path="/staff" element={<Settings me={me}><Staff me={me} /></Settings>} />
@@ -404,5 +412,6 @@ export function App() {
       </main>
       </div>
     </div>
+    </WordsProvider>
   );
 }

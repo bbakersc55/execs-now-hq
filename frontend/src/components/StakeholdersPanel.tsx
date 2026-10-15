@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Me, Stakeholder, StakeholderCandidates, api } from "../lib/api";
+import { useWords } from "../lib/words";
 import { Banner, Card, Empty, Field, Flash, useFlash, when } from "./ui";
 
 const TENANT = ["FF", "CF", "VA"];
@@ -28,6 +29,7 @@ export function StakeholdersPanel({ me, target, id }: {
   me: Me; target: "task" | "project" | "goal"; id: string;
 }) {
   const qc = useQueryClient();
+  const w = useWords();
   const [term, setTerm] = useState("");
   const [outside, setOutside] = useState(false);
   const [message, setMessage] = useState("");
@@ -105,7 +107,7 @@ export function StakeholdersPanel({ me, target, id }: {
                   ) : CADENCE_LABELS[row.cadence]}
                 </td>
                 <td className="small muted">
-                  {row.level}
+                  {w.of(row.level)}
                   {target === "task" && row.level !== "task" && " (inherited)"}
                 </td>
                 <td className="small muted">

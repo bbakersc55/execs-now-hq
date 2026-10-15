@@ -120,9 +120,12 @@ def unenroll(contact, program, *, actor, reason=Enrollment.EndReason.UNENROLLED)
 
 
 def _stakeholder_label(row) -> str:
+    from apps.tenancy import words
+
     target = row.task or row.project or row.goal
     kind = "task" if row.task_id else "project" if row.project_id else "goal"
-    return f"Progress digest — {kind} “{getattr(target, 'title', '')}”"
+    word = words.of(row.tenant).of(kind)
+    return f"Progress digest — {word} “{getattr(target, 'title', '')}”"
 
 
 def enrollments_for(contact) -> list[dict]:

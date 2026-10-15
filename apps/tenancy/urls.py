@@ -13,6 +13,7 @@ router.register("act-as", views_acting.ActAsViewSet, basename="act-as")
 
 urlpatterns = router.urls + [
     path("settings/branding", views.BrandingSettingsView.as_view(), name="branding-settings"),
+    path("settings/words", views.WordsSettingsView.as_view(), name="words-settings"),
     path("getting-started", views.GettingStartedView.as_view(), name="getting-started"),
     path("getting-started/card", views.GettingStartedCardView.as_view(),
          name="getting-started-card"),

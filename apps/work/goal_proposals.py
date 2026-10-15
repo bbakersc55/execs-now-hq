@@ -10,6 +10,7 @@ from __future__ import annotations
 from django.db import transaction
 from django.utils import timezone
 
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import AuditEvent
 from apps.work.models import Goal, GoalProposal
 
@@ -25,23 +26,26 @@ class ProposalRefused(ValueError):
     """Said to the person in its own words."""
 
 
-def _title(value) -> str:
+def _title(value, w=practice_words.DEFAULT) -> str:
+    """`w` is the practice's words."""
     title = " ".join((value or "").split()) if isinstance(value, str) else ""
     if not title:
-        raise ProposalRefused("Say what the goal is.")
+        raise ProposalRefused(f"Say what the {w.goal} is.")
     if len(title) > TITLE_MAX:
-        raise ProposalRefused(f"A goal is at most {TITLE_MAX} characters.")
+        raise ProposalRefused(f"{w.a_goal[:1].upper()}{w.a_goal[1:]} is at most "
+                              f"{TITLE_MAX} characters.")
     return title
 
 
 @transaction.atomic
 def propose(company, *, title, why="", actor):
-    title = _title(title)
+    w = practice_words.of(company.tenant)
+    title = _title(title, w)
     waiting = GoalProposal.all_objects.filter(
         tenant_id=company.tenant_id, client_company=company, state=State.PENDING).count()
     if waiting >= MAX_PENDING:
         raise ProposalRefused(
-            f"{waiting} proposed goals are already waiting for an answer. "
+            f"{waiting} proposed {w.goals} are already waiting for an answer. "
             "Give the practice a chance to answer those first.")
     proposal = GoalProposal.all_objects.create(
         tenant_id=company.tenant_id, client_company=company, proposed_by=actor,
@@ -67,7 +71,8 @@ def accept(proposal, *, actor, title=None, note=""):
     """It becomes a goal: the practice's to own, word and measure from here.
     `title` is the practice's wording if they changed it; the proposal keeps
     the client's."""
-    wording = _title(title) if title is not None else proposal.title
+    wording = (_title(title, practice_words.of(proposal.tenant)) if title is not None
+               else proposal.title)
     _decide(proposal, State.ACCEPTED, actor=actor, note=note)
     goal = Goal.all_objects.create(
         tenant_id=proposal.tenant_id, client_company=proposal.client_company,

@@ -5,6 +5,7 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import { api } from "../lib/api";
 import { HEX, check, textOn } from "../lib/contrast";
+import { useWords } from "../lib/words";
 
 /** GET /api/settings/branding (apps/tenancy/branding.py `current`). */
 export interface BrandingSettings {
@@ -254,6 +255,7 @@ function ImagePicker({ kind, label, hint, present, busy, onPick, onClear }: {
 function Preview({ form, practiceName, hasLogo, version }: {
   form: Form; practiceName: string; hasLogo: boolean; version: number;
 }) {
+  const w = useWords();
   const primary = HEX.test(form.primary_color) ? form.primary_color : "#1F2933";
   const accent = HEX.test(form.accent_color) ? form.accent_color : "#7B8794";
   const name = form.display_name.trim() || practiceName;
@@ -280,11 +282,11 @@ function Preview({ form, practiceName, hasLogo, version }: {
             : <strong>{name}</strong>}
           <div style={{ marginTop: "0.75rem", borderLeft: `3px solid ${accent}`,
             paddingLeft: "0.5rem" }}>Our work</div>
-          <div style={{ marginTop: "0.4rem", paddingLeft: "0.65rem", opacity: 0.8 }}>Tasks</div>
+          <div style={{ marginTop: "0.4rem", paddingLeft: "0.65rem", opacity: 0.8 }}>{w.Tasks}</div>
         </div>
         <div style={{ flex: 1, padding: "0.75rem", background: "#F5F7FA" }}>
           <span style={{ display: "inline-block", background: accent, color: textOn(accent),
-            borderRadius: 6, padding: "0.3rem 0.7rem", fontSize: "0.85rem" }}>New task</span>
+            borderRadius: 6, padding: "0.3rem 0.7rem", fontSize: "0.85rem" }}>New {w.task}</span>
         </div>
       </div>
 

@@ -14,6 +14,7 @@ import { Banner, Card, Empty, Field, Flash, toast, useFlash, when } from "../com
 import {
   ChecklistItem, Me, Note, Task, TaskUpdateRow, WorkParent, WorkStatus, api,
 } from "../lib/api";
+import { Words, useWords } from "../lib/words";
 import { NoteRow } from "./Notes";
 
 const TENANT = ["FF", "CF", "VA"];
@@ -30,6 +31,7 @@ function EditTask({ me, task, saving, onSave }: {
    *  form open with what was typed, and the error above it. */
   onSave: (patch: Record<string, unknown>, done: () => void) => void;
 }) {
+  const w = useWords();
   const [open, setOpen] = useState(false);
   const initial = {
     title: task.title, description: task.description,
@@ -56,7 +58,7 @@ function EditTask({ me, task, saving, onSave }: {
 
   if (!open) {
     return (
-      <p><button onClick={() => { setForm(initial); setOpen(true); }}>Edit task</button></p>
+      <p><button onClick={() => { setForm(initial); setOpen(true); }}>Edit {w.task}</button></p>
     );
   }
 
@@ -67,7 +69,7 @@ function EditTask({ me, task, saving, onSave }: {
   if (form.assignee !== initial.assignee) patch.assignee = form.assignee || null;
 
   return (
-    <Card title="Edit task" actions={<button onClick={() => setOpen(false)}>Cancel</button>}>
+    <Card title={`Edit ${w.task}`} actions={<button onClick={() => setOpen(false)}>Cancel</button>}>
       <form onSubmit={(e) => { e.preventDefault(); onSave(patch, () => setOpen(false)); }}>
         <Field label="Title">
           <input aria-label="Title" value={form.title}
@@ -78,12 +80,12 @@ function EditTask({ me, task, saving, onSave }: {
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
         <div className="row">
-          <Field label="Project">
-            <select aria-label="Project" value={form.project}
+          <Field label={w.Project}>
+            <select aria-label={w.Project} value={form.project}
               onChange={(e) => setForm({ ...form, project: e.target.value })}>
-              <option value="">No project</option>
+              <option value="">No {w.project}</option>
               {initial.project && !projectChoices.some((p) => p.id === initial.project) && (
-                <option value={initial.project}>{task.project_title || "Current project"}</option>
+                <option value={initial.project}>{task.project_title || `Current ${w.project}`}</option>
               )}
               {projectChoices.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
@@ -111,11 +113,11 @@ function EditTask({ me, task, saving, onSave }: {
   );
 }
 
-const KIND_LABELS: Record<string, string> = {
+const kindLabels = (w: Words): Record<string, string> => ({
   created: "created", status_changed: "status", assignee_changed: "assignee",
-  due_changed: "due date", comment_added: "comment", checklist_completed: "step done",
+  due_changed: "due date", comment_added: "comment", checklist_completed: `${w.step} done`,
   completed: "completed", narrative: "note for the client",
-};
+});
 
 /**
  * The task editor. It opens as a **focused panel over the board** rather than a
@@ -173,6 +175,7 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
   /** After a delete. Without it, the board. */
   onDeleted?: () => void;
 }) {
+  const w = useWords();
   const routeId = useParams().id;
   const id = taskId ?? routeId;
   const qc = useQueryClient();
@@ -218,7 +221,7 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
     mutationFn: (text: string) => api.post(`/api/tasks/${id}/checklist/`, { text }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist", id] });
-      flashStep("Step added");
+      flashStep(`${w.Step} added`);
     },
   });
   const toggleStep = useMutation({
@@ -248,8 +251,8 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
     return (
       <Banner kind="bad">
         {status === 404 || status === 403
-          ? "That task is not available to you."
-          : `This task could not be opened: ${task.error.message}`}
+          ? `That ${w.task} is not available to you.`
+          : `This ${w.task} could not be opened: ${task.error.message}`}
       </Banner>
     );
   }
@@ -285,7 +288,8 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
       {!t.may_edit && (
         <Banner kind="info">
           {t.read_only_line
-            || "This task is the practice's to change. Add a comment below and they will see it."}
+            || `This ${w.task} is the practice's to change. Add a comment below and they will `
+              + "see it."}
         </Banner>
       )}
 
@@ -318,7 +322,7 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
         </div>
         <p className="small muted">
           {t.client_team_name && <>Team: {t.client_team_name}
-            {t.project ? " (the project's)" : ""} · </>}
+            {t.project ? ` (the ${w.project}'s)` : ""} · </>}
           Assignee: {t.assignee.name || "unassigned"} · Owner: {t.owner.name || "—"} ·
           Client owner: {t.client_owner_contact.name || "—"} · updated {when(t.updated_at)}
         </p>
@@ -361,8 +365,8 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
         </Card>
       )}
 
-      <Card title="Steps" actions={<Flash text={stepSaved} />}>
-        {(checklist.data ?? []).length === 0 ? <Empty>No steps.</Empty> : (
+      <Card title={w.Steps} actions={<Flash text={stepSaved} />}>
+        {(checklist.data ?? []).length === 0 ? <Empty>No {w.steps}.</Empty> : (
           <ul style={{ listStyle: "none", paddingLeft: 0 }}>
             {checklist.data!.map((item) => (
               <li key={item.id}>
@@ -380,15 +384,15 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
         )}
         {t.may_edit && (
           <div className="row">
-            <input aria-label="New step" value={step} placeholder="Add a step…"
+            <input aria-label={`New ${w.step}`} value={step} placeholder={`Add ${w.aStep}…`}
               onChange={(e) => setStep(e.target.value)} />
             <button disabled={!step.trim()}
-              onClick={() => { addStep.mutate(step.trim()); setStep(""); }}>Add step</button>
+              onClick={() => { addStep.mutate(step.trim()); setStep(""); }}>Add {w.step}</button>
           </div>
         )}
         <p className="small muted">
-          Steps are a flat list on purpose: a task cannot hold another task, which is what
-          keeps three levels from becoming unlimited.
+          {w.Steps} are a flat list on purpose: {w.aTask} cannot hold another {w.task}, which
+          is what keeps three levels from becoming unlimited.
         </p>
       </Card>
 
@@ -402,7 +406,7 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
             {updates.data!.map((u) => (
               <li key={u.id}>
                 <div>
-                  <strong>{KIND_LABELS[u.kind] ?? u.kind}</strong>
+                  <strong>{kindLabels(w)[u.kind] ?? u.kind}</strong>
                   {u.from_value && u.to_value && <> — {u.from_value} → {u.to_value}</>}
                   {!u.from_value && u.to_value && u.kind !== "comment_added" && <> — {u.to_value}</>}
                 </div>
@@ -424,8 +428,8 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
       </Card>
 
       {isTenant && (
-        <Card title="Notes on this task">
-          {(notes.data ?? []).length === 0 ? <Empty>No notes linked to this task.</Empty> : (
+        <Card title={`Notes on this ${w.task}`}>
+          {(notes.data ?? []).length === 0 ? <Empty>No notes linked to this {w.task}.</Empty> : (
             <ul className="timeline">{notes.data!.map((n) => <NoteRow key={n.id} note={n} />)}</ul>
           )}
         </Card>
@@ -438,7 +442,7 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
             qc.invalidateQueries({ queryKey: ["tasks"] });
             if (onDeleted) onDeleted();
             else { toast("Deleted"); navigate("/tasks"); }
-          }}>Delete this task</button>
+          }}>Delete this {w.task}</button>
         </Card>
       )}
     </>

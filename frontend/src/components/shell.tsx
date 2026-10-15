@@ -2,6 +2,8 @@ import { MouseEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { useWords } from "../lib/words";
+
 /**
  * The pieces every screen is built from, per `docs/design_brief.md` Tier 1.
  *
@@ -84,9 +86,11 @@ export function FilterBar({ children, onClearAll }: {
  * The focused panel the brief asks for: a right-side sheet, elevated, closed by
  * Escape or the button, with the page behind it left where it was.
  */
-export function Sheet({ title, onClose, children, label = "Task" }: {
+export function Sheet({ title, onClose, children, label }: {
   title: ReactNode; onClose: () => void; children: ReactNode; label?: string;
 }) {
+  // A sheet is a task's unless the caller names it otherwise.
+  const w = useWords();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -96,7 +100,7 @@ export function Sheet({ title, onClose, children, label = "Task" }: {
   return (
     <>
       <div className="sheet-backdrop" onClick={onClose} aria-hidden="true" />
-      <aside className="sheet" role="dialog" aria-modal="true" aria-label={label}>
+      <aside className="sheet" role="dialog" aria-modal="true" aria-label={label ?? w.Task}>
         <div className="sheet-head">
           <div style={{ minWidth: 0 }}>{title}</div>
           <button className="icon-button" aria-label="Close" onClick={onClose}>

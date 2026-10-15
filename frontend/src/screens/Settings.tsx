@@ -21,6 +21,8 @@ type Role = NonNullable<Me["role"]>;
 export const SETTINGS: { to: string; label: string; roles: Role[] }[] = [
   { to: "/settings/email", label: "Email", roles: ["FF", "CF"] },
   { to: "/settings/branding", label: "Branding", roles: ["FF"] },
+  // What the practice calls goals, projects, tasks and steps (2026-10-15).
+  { to: "/settings/words", label: "Words", roles: ["FF"] },
   // "Team", not "Staff", which a new owner read as his client's staff (beta
   // feedback, 2026-10-05). The address stays /staff so links keep working.
   { to: "/staff", label: "Team", roles: ["FF"] },

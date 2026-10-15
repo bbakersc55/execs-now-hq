@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.crm.permissions import IsFF, IsTenantStaff
-from apps.tenancy import branding, services
+from apps.tenancy import branding, services, words
 from apps.tenancy.models import AiCall, Membership
 from apps.tenancy.roles import role_label
 
@@ -276,6 +276,29 @@ class BrandingSettingsView(APIView):
         except branding.BrandingInvalid as exc:
             return Response({"detail": str(exc), "errors": exc.errors}, status=400)
         return Response(branding.current(request.tenant))
+
+
+class WordsSettingsView(APIView):
+    """Settings → Words (2026-10-15): what this practice calls a goal, a
+    project, a task and a step. Read by all its staff; changed by the
+    practice owner only. Changing them moves no data and re-sends nothing."""
+
+    permission_classes = [IsTenantStaff]
+
+    def get(self, request):
+        return Response({"words": words.of(request.tenant).as_dict(),
+                         "defaults": words.DEFAULT.as_dict()})
+
+    def put(self, request):
+        if not IsFF().has_permission(request, self):
+            return Response({"detail": "Only the practice owner changes the words."},
+                            status=403)
+        try:
+            saved = words.save(request.tenant, actor=request.user,
+                               data=request.data.get("words") or {})
+        except words.WordsInvalid as exc:
+            return Response({"detail": str(exc), "errors": exc.errors}, status=400)
+        return Response({"words": saved.as_dict(), "defaults": words.DEFAULT.as_dict()})
 
 
 class BrandingImageView(APIView):

@@ -124,8 +124,11 @@ def delete_refusal(session: StrategySession) -> str:
         return "Archive the session first. Permanent delete is only from Archived."
     if (session.state == StrategySession.State.CONVERTED or session.converted_at
             or _linked_work(session)):
-        return ("This session was converted to work, and its goals, projects and "
-                "tasks link back to its strategy map. It can be archived, not deleted.")
+        from apps.tenancy import words as practice_words
+
+        w = practice_words.of(session.tenant)
+        return (f"This session was converted to work, and its {w.goals}, {w.projects} and "
+                f"{w.tasks} link back to its strategy map. It can be archived, not deleted.")
     return ""
 
 

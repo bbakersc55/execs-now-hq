@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill } from "../components/ui";
 import { DuplicateGroup, DuplicateMember, api } from "../lib/api";
+import { Words, useWords } from "../lib/words";
 
 /**
  * Merge duplicates (owner, 2026-09-29): likely duplicate groups across the
@@ -70,6 +71,7 @@ function Group({ group, setNote, setProblem, onDismissed }: {
   onDismissed: (ids: string[], name: string) => void;
 }) {
   const qc = useQueryClient();
+  const w = useWords();
   const [survivor, setSurvivor] = useState(group.suggested_survivor);
   const keep = group.contacts.find((c) => c.id === survivor)!;
   const others = group.contacts.filter((c) => c.id !== survivor);
@@ -101,7 +103,7 @@ function Group({ group, setNote, setProblem, onDismissed }: {
     onError: (e: Error) => setProblem(e.message),
   });
   const nameOf = (id: string) => group.contacts.find((c) => c.id === id)?.name ?? "";
-  const shortOf = (id: string) => summary(group.contacts.find((c) => c.id === id)!)
+  const shortOf = (id: string) => summary(group.contacts.find((c) => c.id === id)!, w)
     .split(" · ").slice(0, 2).join(", ");
 
   return (
@@ -122,7 +124,7 @@ function Group({ group, setNote, setProblem, onDismissed }: {
               onChange={() => setSurvivor(c.id)} />
             <span>
               <Link to={`/contacts/${c.id}`}>{c.name}</Link>
-              <span className="small muted"> · {summary(c)}</span>
+              <span className="small muted"> · {summary(c, w)}</span>
             </span>
           </label>
         ))}
@@ -148,12 +150,12 @@ function Group({ group, setNote, setProblem, onDismissed }: {
   );
 }
 
-function summary(c: DuplicateMember): string {
+function summary(c: DuplicateMember, w: Words): string {
   return [
     c.company || "no company",
     c.emails[0] || "no email",
     c.last_meeting ? `last met ${c.last_meeting}` : "no meetings",
-    `${c.tasks} task${c.tasks === 1 ? "" : "s"}, ${c.notes} note${c.notes === 1 ? "" : "s"}`,
+    `${w.count(c.tasks, "task")}, ${c.notes} note${c.notes === 1 ? "" : "s"}`,
     `added ${c.created_at.slice(0, 10)}`,
   ].join(" · ");
 }

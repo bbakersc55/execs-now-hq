@@ -22,6 +22,7 @@ anything to make itself possible.
 from __future__ import annotations
 
 from apps.crm.models import Pipeline, StageChange, StageSemantic, Task
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import AuditEvent, ClientAssignment, Membership
 from apps.work.models import Goal, GoalReportExport, Project
 
@@ -61,13 +62,14 @@ def blockers(company) -> list[str]:
         found.append(f"{_count(users, 'person has', 'people have')} portal access. "
                      "Remove their access first.")
 
+    w = practice_words.of(company.tenant)
     work = [
         (Goal.all_objects.filter(tenant_id=tenant_id, client_company=company,
-                                 deleted_at__isnull=True).count(), "goal", "goals"),
+                                 deleted_at__isnull=True).count(), w.goal, w.goals),
         (Project.all_objects.filter(tenant_id=tenant_id, client_company=company,
-                                    deleted_at__isnull=True).count(), "project", "projects"),
+                                    deleted_at__isnull=True).count(), w.project, w.projects),
         (Task.all_objects.filter(tenant_id=tenant_id, client_company=company,
-                                 deleted_at__isnull=True).count(), "task", "tasks"),
+                                 deleted_at__isnull=True).count(), w.task, w.tasks),
     ]
     filed = [_count(n, one, many) for n, one, many in work if n]
     if filed:

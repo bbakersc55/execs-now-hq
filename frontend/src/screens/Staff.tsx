@@ -5,9 +5,11 @@ import { useState } from "react";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { api, Me, StaffMember } from "../lib/api";
 import { STAFF_ROLES, roleLabel } from "../lib/roles";
+import { useWords } from "../lib/words";
 
 export function Staff({ me }: { me: Me }) {
   const qc = useQueryClient();
+  const w = useWords();
   // The example address is at the inviter's own domain: Google sign-in is
   // restricted to it (banner below). Never another practice's domain.
   const domain = me.email.split("@")[1] || "example.com";
@@ -115,7 +117,7 @@ export function Staff({ me }: { me: Me }) {
         )}
         <p className="muted small" style={{ marginBottom: 0 }}>
           Removing someone ends their sessions, closes their client assignments, and
-          disconnects their Gmail. Their contacts, tasks, notes, and sent mail remain.
+          disconnects their Gmail. Their contacts, {w.tasks}, notes, and sent mail remain.
         </p>
       </Card>
     </>

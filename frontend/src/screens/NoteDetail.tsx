@@ -8,12 +8,14 @@ import { clock } from "../components/Recorder";
 import { Banner, Card, Pill, when } from "../components/ui";
 import { Me, Note, NoteFolder, NoteFull, NoteStub, NotesSettings, api } from "../lib/api";
 import { retry as retryUpload } from "../lib/pendingUploads";
+import { useWords } from "../lib/words";
 
 export function LinkChips({ note }: { note: NoteStub | NoteFull }) {
+  const w = useWords();
   const chips = [
     note.contact && <Link key="c" to={`/contacts/${note.contact}`}>{note.contact_name || "Contact"}</Link>,
     note.company && <Link key="co" to={`/companies/${note.company}`}>{note.company_name || "Company"}</Link>,
-    note.task && <Link key="t" to={`/tasks/${note.task}`}>Task: {note.task_title}</Link>,
+    note.task && <Link key="t" to={`/tasks/${note.task}`}>{w.Task}: {note.task_title}</Link>,
   ].filter(Boolean);
   return chips.length
     ? <span className="small">{chips.map((c, i) => <span key={i}>{i > 0 && " · "}{c}</span>)}</span>

@@ -13,6 +13,7 @@ import {
   SessionPrep, StrategyQuestion, StrategySessionRow, StrategyTemplateRow, activeTemplates,
   api, asksToConfirm,
 } from "../lib/api";
+import { useWords } from "../lib/words";
 
 import { DiagnosticTrayV3, RatingScale } from "./SessionV3";
 
@@ -1157,6 +1158,7 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
   id: string; path: string; data: StrategySessionRow; onChanged: () => void;
   setNote: (text: string) => void;
 }) {
+  const w = useWords();
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const preview = useQuery<{ rows: ConversionRow[] }>({
     queryKey: ["conversion-preview", id],
@@ -1167,7 +1169,8 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
       `${path}convert/`, { choices }),
     onSuccess: (result) => {
       setNote(`Created ${result.created.length} — ${result.created
-        .map((c) => `${c.title} (${c.as})`).join(", ")}.`);
+        .map((c) => `${c.title} (${c.as === "goal" || c.as === "project" ? w.of(c.as) : c.as})`)
+        .join(", ")}.`);
       onChanged();
     },
     onError: (e: Error) => setNote(e.message),
@@ -1177,7 +1180,7 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
     return (
       <Card title="Converted">
         <p className="small muted">
-          Converted {when(data.converted_at)}. The goals and projects are on the Work
+          Converted {when(data.converted_at)}. The {w.goals} and {w.projects} are on the Work
           screen, each linking back to the row it came from.
         </p>
       </Card>
@@ -1209,7 +1212,7 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
       ) : (
         <>
           <p className="small muted">
-            Nothing is created until you confirm. A goal carrying a measurable needs a
+            Nothing is created until you confirm. {w.AGoal} carrying a measurable needs a
             baseline, or an explicit "not measured yet" — without a starting reading
             there is nothing to report against later.
           </p>
@@ -1236,8 +1239,8 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
                 <div className="row">
                   <select aria-label={`Convert ${row.title} as`} value={as}
                     onChange={(e) => set(row, { as: e.target.value })}>
-                    <option value="goal">A goal</option>
-                    <option value="project">A project</option>
+                    <option value="goal">{w.AGoal}</option>
+                    <option value="project">{w.AProject}</option>
                     <option value="skip">Leave it out</option>
                   </select>
                   {as === "goal" && row.needs_baseline && (
@@ -1275,8 +1278,8 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
           <p className="small muted" style={{ marginTop: ".4rem" }}>
             {making === 0
               ? "Every row is left out — there is nothing to create."
-              : `Creates ${counts.goal ?? 0} goal${counts.goal === 1 ? "" : "s"} and `
-                + `${counts.project ?? 0} project${counts.project === 1 ? "" : "s"}`
+              : `Creates ${w.count(counts.goal ?? 0, "goal")} and `
+                + `${w.count(counts.project ?? 0, "project")}`
                 + `${counts.skip ? `, leaving ${counts.skip} out` : ""}.`}
           </p>
         </>

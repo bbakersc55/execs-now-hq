@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from apps.crm.models import EmailMessage, OutboxMessage, StageChange, Task
 from apps.notes.models import Note
+from apps.tenancy import words as practice_words
 
 
 def _entry(kind, when, text, **extra):
@@ -50,9 +51,10 @@ def for_contact(contact, limit=100, *, money=False):
     for note in Note.objects.filter(contact=contact, deleted_at__isnull=True):
         entries.append(_note_entry(note))
 
+    w = practice_words.of(contact.tenant)
     for task in Task.objects.filter(contact=contact, deleted_at__isnull=True):
         due = f", due {task.due_date}" if task.due_date else ""
-        entries.append(_entry("task", task.created_at, f"Task: {task.title}{due}"))
+        entries.append(_entry("task", task.created_at, f"{w.Task}: {task.title}{due}"))
 
     sent = OutboxMessage.objects.filter(to_contact=contact)
     replies = EmailMessage.objects.filter(contact=contact, direction="inbound")

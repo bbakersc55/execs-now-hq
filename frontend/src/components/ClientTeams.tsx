@@ -5,12 +5,25 @@ import {
   ClientTeamArchivePreview, ClientTeamName, ClientTeams, Company, Me, api,
 } from "../lib/api";
 import {
-  LEVEL_CODES, LEVEL_LABEL, MAY_CREATE_CODES, MAY_CREATE_LABEL, roleLabel,
+  LEVEL_CODES, LEVEL_LABEL, MAY_CREATE_CODES, roleLabel,
 } from "../lib/roles";
 import { usePracticeName } from "../lib/branding";
+import { Words, useWords } from "../lib/words";
 import { Banner, Card, Field } from "./ui";
 
 const MANAGES = ["FF", "CF"];
+
+/** What a person may create, in the practice's words: lib/roles.ts's
+ *  MAY_CREATE_LABEL, composed from the terms rather than fixed. */
+export function mayCreateLabel(code: string, w: Words): string {
+  const labels: Record<string, string> = {
+    nothing: "Nothing",
+    tasks: `${w.Tasks} only`,
+    projects: `${w.Projects} and ${w.tasks}`,
+    goals: `${w.Goals} too`,
+  };
+  return labels[code] ?? code;
+}
 
 /** A client company's teams, for a picker. Asked only once a company is
  *  chosen: the practice's own work is on no team. */
@@ -86,6 +99,7 @@ export function PlacementFields({ company, name, value, onChange }: {
   company: string; name: string; value: Placement; onChange: (next: Placement) => void;
 }) {
   const teams = useTeamNames(company);
+  const w = useWords();
   const rows = teams.data ?? [];
   return (
     <>
@@ -103,7 +117,7 @@ export function PlacementFields({ company, name, value, onChange }: {
       <select aria-label={`What ${name} may create`} value={value.may_create}
         onChange={(e) => onChange({ ...value, may_create: e.target.value })}>
         {MAY_CREATE_CODES.map((code) => (
-          <option key={code} value={code}>May create: {MAY_CREATE_LABEL[code].toLowerCase()}</option>
+          <option key={code} value={code}>May create: {mayCreateLabel(code, w).toLowerCase()}</option>
         ))}
       </select>
     </>
@@ -140,6 +154,7 @@ export function ClientTeamsCard({ me, company }: {
   me: Me; company: Pick<Company, "id" | "is_client_company">;
 }) {
   const qc = useQueryClient();
+  const w = useWords();
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
@@ -180,7 +195,7 @@ export function ClientTeamsCard({ me, company }: {
     onSuccess: (data) => {
       const moved = data.archived;
       took(data, moved
-        ? `Archived. ${moved.projects} project(s), ${moved.tasks} task(s) and `
+        ? `Archived. ${w.counted(moved.projects, "project")}, ${w.counted(moved.tasks, "task")} and `
           + `${moved.people_moved} person(s) moved to ${moved.moved_to}. Nothing was deleted.`
         : "Archived.");
       qc.invalidateQueries({ queryKey: ["projects"] });
@@ -219,8 +234,8 @@ export function ClientTeamsCard({ me, company }: {
         ? ` ${p.people_left_on_no_team} of its ${p.people} people are on no other team and `
           + `join ${p.moves_to} at the level they hold now.`
         : "";
-      if (confirm(`Archive ${team.name}? Its ${p.projects} project(s) and ${p.tasks} task(s) `
-                  + `in no project move to ${p.moves_to}.${people} Nothing is deleted, and `
+      if (confirm(`Archive ${team.name}? Its ${w.counted(p.projects, "project")} and ${w.counted(p.tasks, "task")} `
+                  + `in no ${w.project} move to ${p.moves_to}.${people} Nothing is deleted, and `
                   + "everyone keeps their sign-in.")) {
         archive.mutate(team.id);
       }
@@ -234,7 +249,7 @@ export function ClientTeamsCard({ me, company }: {
       {message && <Banner kind={message.kind}>{message.text}</Banner>}
       <p className="small muted" style={{ marginTop: 0 }}>
         A member sees their own work; a manager, their team's and the other teams' read-only;
-        senior leadership edits goals too; a viewer looks and changes nothing. A change here
+        senior leadership edits {w.goals} too; a viewer looks and changes nothing. A change here
         takes effect at once.{" "}
         {portal
           ? <>To check what someone sees, use “Act as a colleague” in your account menu.
@@ -260,8 +275,8 @@ export function ClientTeamsCard({ me, company }: {
                   <>{team.name}{team.is_default && <span className="muted"> · the default</span>}</>
                 )}
               </td>
-              <td className="small">{team.projects} project{team.projects === 1 ? "" : "s"},{" "}
-                {team.open_tasks} open task{team.open_tasks === 1 ? "" : "s"}</td>
+              <td className="small">{w.count(team.projects, "project")},{" "}
+                {team.open_tasks} open {team.open_tasks === 1 ? w.task : w.tasks}</td>
               <td className="small">{team.people.length}</td>
               <td>
                 <button className="ghost small" aria-label={`Rename ${team.name}`}
@@ -335,7 +350,7 @@ export function ClientTeamsCard({ me, company }: {
                   )}
                   <td>
                     {portal && owner ? (
-                      <span className="small">{MAY_CREATE_LABEL[p.may_create]}
+                      <span className="small">{mayCreateLabel(p.may_create, w)}
                         <span className="muted"> · set by <PracticeName /></span></span>
                     ) : (
                       <select aria-label={`What ${p.name} may create`} value={p.may_create}
@@ -345,7 +360,7 @@ export function ClientTeamsCard({ me, company }: {
                         {MAY_CREATE_CODES.map((code, i) => (
                           <option key={code} value={code}
                             disabled={i > ceiling && code !== p.may_create}>
-                            {MAY_CREATE_LABEL[code]}</option>
+                            {mayCreateLabel(code, w)}</option>
                         ))}
                       </select>
                     )}

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import { Pipeline, Stage, api } from "../lib/api";
+import { useWords } from "../lib/words";
 
 interface Rule {
   id: string; pipeline: string; from_stage: string | null; to_stage: string; action_type: string;
@@ -26,6 +27,7 @@ function visibleByDefault(stage: Stage | undefined, pipeline: Pipeline | undefin
 
 export function StageRules() {
   const qc = useQueryClient();
+  const w = useWords();
   const [note, setNote] = useState("");
   const [pipelineId, setPipelineId] = useState("");
   const [newTemplate, setNewTemplate] = useState({ name: "", subject: "", body: "" });
@@ -86,7 +88,7 @@ export function StageRules() {
     mutationFn: ({ id, visible }: { id: string; visible: boolean }) =>
       api.patch(`/api/stage-automations/${id}/`, { task_client_visible: visible }),
     onSuccess: () => {
-      setNote("Rule saved. Tasks it has already made keep their own setting.");
+      setNote(`Rule saved. ${w.Tasks} it has already made keep their own setting.`);
       qc.invalidateQueries({ queryKey: ["rules"] });
     },
     onError: (e: Error) => setNote(e.message),
@@ -100,7 +102,7 @@ export function StageRules() {
   return (
     <>
       <PageHead title="Stage automations"
-        sub={<>What happens when a contact changes stage. A task is created immediately;
+        sub={<>What happens when a contact changes stage. {w.ATask} is created immediately;
         an email is only ever <strong>drafted into the Outbox</strong> for approval.</>} />
 
       <p className="sub">
@@ -168,13 +170,13 @@ export function StageRules() {
           <Field label="Then">
             <select value={draft.action_type}
               onChange={(e) => setDraft({ ...draft, action_type: e.target.value })}>
-              <option value="create_task">Create a task</option>
+              <option value="create_task">Create {w.aTask}</option>
               <option value="draft_email">Draft an email for approval</option>
             </select>
           </Field>
           {draft.action_type === "create_task" ? (
             <>
-              <Field label="Task title">
+              <Field label={`${w.Task} title`}>
                 <input value={draft.task_title_template}
                   placeholder="Book strategy session"
                   onChange={(e) => setDraft({ ...draft, task_title_template: e.target.value })} />
@@ -188,7 +190,7 @@ export function StageRules() {
                   <input type="checkbox" style={{ width: "auto" }}
                     checked={draft.task_client_visible}
                     onChange={(e) => setDraft({ ...draft, task_client_visible: e.target.checked })} />
-                  Client can see this task
+                  Client can see this {w.task}
                 </label>
               </Field>
             </>
@@ -220,9 +222,9 @@ export function StageRules() {
         </div>
         {draft.action_type === "create_task" && (
           <p className="muted small" style={{ marginBottom: 0 }}>
-            The task is filed under the contact's company when that company is a client.
+            The {w.task} is filed under the contact's company when that company is a client.
             Unticked, it stays internal: the client never sees it in the portal or in a
-            digest. A won stage starts ticked, because that task is for the new client.
+            digest. A won stage starts ticked, because that {w.task} is for the new client.
           </p>
         )}
       </Card>
@@ -230,7 +232,7 @@ export function StageRules() {
       <Card title="Active rules">
         {(rules.data ?? []).length === 0 ? <Empty>No rules yet.</Empty> : (
           <table>
-            <thead><tr><th>Rule</th><th>Type</th><th>Client can see the task</th><th></th></tr></thead>
+            <thead><tr><th>Rule</th><th>Type</th><th>Client can see the {w.task}</th><th></th></tr></thead>
             <tbody>
               {rules.data!.map((r) => (
                 <tr key={r.id}>
@@ -241,7 +243,7 @@ export function StageRules() {
                   <td>
                     {r.action_type === "create_task" && (
                       <input type="checkbox" style={{ width: "auto" }}
-                        aria-label={`Client can see the task: ${r.summary}`}
+                        aria-label={`Client can see the ${w.task}: ${r.summary}`}
                         checked={r.task_client_visible} disabled={setVisible.isPending}
                         onChange={(e) => setVisible.mutate({ id: r.id, visible: e.target.checked })} />
                     )}

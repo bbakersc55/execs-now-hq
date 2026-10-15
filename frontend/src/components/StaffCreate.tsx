@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Company, Contact, Me, PortalPerson, Task, WorkParent, api } from "../lib/api";
+import { useWords } from "../lib/words";
 import { HOW_A_COMPANY_BECOMES_A_CLIENT } from "./ClientStatus";
 import { TeamField } from "./ClientTeams";
 import { Banner, Card, Field } from "./ui";
@@ -29,12 +30,16 @@ type Outcome = { kind: string; text: string; link: string };
  * than in documentation nobody opens.
  */
 export function HierarchyNote() {
+  const w = useWords();
+  // "A " / "an " before each bolded word: the article follows the word.
+  const article = (withArticle: string, word: string) => withArticle.slice(0, -word.length);
   return (
     <p className="sub">
-      A <strong>goal</strong> is a client outcome you are accountable for — a Strategy Map
-      row becomes one; a <strong>project</strong> is a body of work toward it; a{" "}
-      <strong>task</strong> is a single item. A task can sit under a project, straight
-      under a goal, or on its own.
+      {article(w.AGoal, w.goal)}<strong>{w.goal}</strong> is a client outcome you are
+      accountable for — a Strategy Map row becomes one; {article(w.aProject, w.project)}
+      <strong>{w.project}</strong> is a body of work toward it; {article(w.aTask, w.task)}
+      <strong>{w.task}</strong> is a single item. {w.ATask} can sit under {w.aProject}, straight
+      under {w.aGoal}, or on its own.
     </p>
   );
 }
@@ -59,6 +64,7 @@ export function HierarchyNote() {
 export function StaffCreate({ me, offer = ["task", "project", "goal"] }: {
   me: Me; offer?: Kind[];
 }) {
+  const w = useWords();
   const [open, setOpen] = useState<Kind | null>(null);
   const [done, setDone] = useState<Outcome | null>(null);
 
@@ -74,13 +80,13 @@ export function StaffCreate({ me, offer = ["task", "project", "goal"] }: {
     <>
       <div className="row" style={{ marginBottom: ".8rem" }}>
         {offer.includes("task") && (
-          <button className="primary" onClick={() => start("task")}>New task</button>
+          <button className="primary" onClick={() => start("task")}>New {w.task}</button>
         )}
         {offer.includes("project") && (
-          <button onClick={() => start("project")}>New project</button>
+          <button onClick={() => start("project")}>New {w.project}</button>
         )}
         {offer.includes("goal") && (
-          <button onClick={() => start("goal")}>New goal</button>
+          <button onClick={() => start("goal")}>New {w.goal}</button>
         )}
       </div>
       {done && (
@@ -167,6 +173,7 @@ function ClientOwnerField({ value, onChange, contacts, company }: {
 }
 
 function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
+  const w = useWords();
   const qc = useQueryClient();
   const [form, setForm] = useState({
     title: "", description: "", company: "", goal: "", project: "",
@@ -238,8 +245,8 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
       onClose(failed.length === 0
         ? { kind: "ok", text: `“${task.title}” created.`, link }
         : { kind: "bad", link,
-            text: `“${task.title}” was created, but ${failed.length} step(s) were not added: `
-              + `${failed.join("; ")}. Add them on the task.` });
+            text: `“${task.title}” was created, but ${w.counted(failed.length, "step")} ${w.were(failed.length, "step")} not added: `
+              + `${failed.join("; ")}. Add them on the ${w.task}.` });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -251,15 +258,15 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
   };
 
   return (
-    <Card title="New task" actions={<button onClick={() => onClose(null)}>Cancel</button>}>
+    <Card title={`New ${w.task}`} actions={<button onClick={() => onClose(null)}>Cancel</button>}>
       {error && <Banner kind="bad">{error}</Banner>}
       <form onSubmit={(e) => { e.preventDefault(); setError(""); create.mutate(); }}>
         <Field label="Title">
-          <input aria-label="New task title" value={form.title}
+          <input aria-label={`New ${w.task} title`} value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </Field>
         <Field label="Description">
-          <textarea aria-label="New task description" rows={2} value={form.description}
+          <textarea aria-label={`New ${w.task} description`} rows={2} value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
 
@@ -268,30 +275,32 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
           <CompanyField value={form.company} onChange={setCompany}
             companies={lists.clientCompanies}
             others={lists.otherCompanies} />
-          <Field label="Goal">
+          <Field label={w.Goal}>
             {chosenProject ? (
               <p className="small muted" style={{ margin: ".35rem 0" }}>
                 {projectGoal
-                  ? `${projectGoal.title} — the project's goal.`
-                  : "That project isn't under a goal."}
+                  ? `${projectGoal.title} — the ${w.project}'s ${w.goal}.`
+                  : `That ${w.project} isn't under ${w.aGoal}.`}
               </p>
             ) : (
-              <select aria-label="Goal for the new task" value={form.goal}
+              <select aria-label={`${w.Goal} for the new ${w.task}`} value={form.goal}
                 onChange={(e) => setForm({ ...form, goal: e.target.value, project: "" })}>
-                <option value="">No goal</option>
+                <option value="">No {w.goal}</option>
                 {lists.goals.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
               </select>
             )}
           </Field>
-          <Field label="Project">
+          <Field label={w.Project}>
             {goalHasNoProjects ? (
               <p className="small muted" style={{ margin: ".35rem 0" }}>
-                No projects under this goal yet — this task will file directly on the goal.
+                No {w.projects} under this {w.goal} yet — this {w.task} will file directly on the {w.goal}.
               </p>
             ) : (
-              <select aria-label="Project for the new task" value={form.project}
+              <select aria-label={`${w.Project} for the new ${w.task}`} value={form.project}
                 onChange={(e) => setForm({ ...form, project: e.target.value })}>
-                <option value="">{form.goal ? "No project — file on the goal" : "No project"}</option>
+                <option value="">
+                  {form.goal ? `No ${w.project} — file on the ${w.goal}` : `No ${w.project}`}
+                </option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
               </select>
             )}
@@ -300,19 +309,19 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
             chosenProject.client_team_name && (
               <Field label="Team">
                 <p className="small muted" style={{ margin: ".35rem 0" }}>
-                  {chosenProject.client_team_name}, the project's team.
+                  {chosenProject.client_team_name}, the {w.project}'s team.
                 </p>
               </Field>
             )
           ) : (
-            <TeamField company={form.company} value={form.team} label="Team for the new task"
+            <TeamField company={form.company} value={form.team} label={`Team for the new ${w.task}`}
               onChange={(team) => setForm({ ...form, team })} />
           )}
         </div>
 
         <div className="row">
           <Field label="Assign to">
-            <select aria-label="Assign the new task to" value={form.assignee}
+            <select aria-label={`Assign the new ${w.task} to`} value={form.assignee}
               onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
               <option value="">Unassigned</option>
               <optgroup label="The practice">
@@ -329,54 +338,55 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
             contacts={lists.theirContacts}
             onChange={(v) => setForm({ ...form, client_owner_contact: v })} />
           <Field label="Due">
-            <input aria-label="Due date for the new task" type="date" value={form.due_date}
+            <input aria-label={`Due date for the new ${w.task}`} type="date" value={form.due_date}
               onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
           </Field>
           <Field label="Priority">
-            <select aria-label="Priority for the new task" value={form.priority}
+            <select aria-label={`Priority for the new ${w.task}`} value={form.priority}
               onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}>
               {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </Field>
         </div>
 
-        <Field label="Steps">
+        <Field label={w.Steps}>
           {steps.length > 0 && (
             <ul className="small" style={{ paddingLeft: "1.1rem" }}>
               {steps.map((s, i) => (
                 <li key={`${i}-${s}`}>
                   {s}{" "}
-                  <button type="button" className="ghost small" aria-label={`Remove step ${s}`}
+                  <button type="button" className="ghost small" aria-label={`Remove ${w.step} ${s}`}
                     onClick={() => setSteps(steps.filter((_, j) => j !== i))}>Remove</button>
                 </li>
               ))}
             </ul>
           )}
           <div className="row">
-            <input aria-label="Add a step to the new task" value={step} placeholder="Add a step…"
+            <input aria-label={`Add ${w.aStep} to the new ${w.task}`} value={step}
+              placeholder={`Add ${w.aStep}…`}
               onChange={(e) => setStep(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addStep(); } }} />
-            <button type="button" disabled={!step.trim()} onClick={addStep}>Add step</button>
+            <button type="button" disabled={!step.trim()} onClick={addStep}>Add {w.step}</button>
           </div>
         </Field>
 
         <p className="small">
           <label style={{ display: "inline-flex", gap: ".45rem", alignItems: "center" }}>
-            <input type="checkbox" aria-label="Show this task to the client"
+            <input type="checkbox" aria-label={`Show this ${w.task} to the client`}
               style={{ width: "auto" }} checked={!!form.company && visible}
               disabled={!form.company} onChange={(e) => setVisible(e.target.checked)} />
-            Show this task to the client
+            Show this {w.task} to the client
           </label>
         </p>
         <p className="small muted">
           {form.company
-            ? "A task for a client company is shown to them unless you untick that."
-            : "An internal task is the practice's own: no client sees it, and only the "
+            ? `${w.ATask} for a client company is shown to them unless you untick that.`
+            : `An internal ${w.task} is the practice's own: no client sees it, and only the `
               + "practice's people can be assigned."}
         </p>
 
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
-          {create.isPending ? "Creating…" : "Create task"}
+          {create.isPending ? "Creating…" : `Create ${w.task}`}
         </button>
       </form>
     </Card>
@@ -388,6 +398,7 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
 function NewParentForm({ kind, onClose }: {
   kind: "goal" | "project"; onClose: (o: Outcome | null) => void;
 }) {
+  const w = useWords();
   const qc = useQueryClient();
   const [form, setForm] = useState({
     title: "", description: "", company: "", goal: "", client_owner_contact: "",
@@ -421,7 +432,7 @@ function NewParentForm({ kind, onClose }: {
     onError: (e: Error) => setError(e.message),
   });
 
-  const label = kind === "goal" ? "goal" : "project";
+  const label = w.of(kind);
 
   return (
     <Card title={`New ${label}`}
@@ -441,10 +452,10 @@ function NewParentForm({ kind, onClose }: {
             companies={lists.clientCompanies}
             others={lists.otherCompanies} />
           {kind === "project" && (
-            <Field label="Goal">
-              <select aria-label="Goal for the new project" value={form.goal}
+            <Field label={w.Goal}>
+              <select aria-label={`${w.Goal} for the new ${w.project}`} value={form.goal}
                 onChange={(e) => setForm({ ...form, goal: e.target.value })}>
-                <option value="">No goal</option>
+                <option value="">No {w.goal}</option>
                 {lists.goals.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
               </select>
             </Field>
@@ -454,12 +465,12 @@ function NewParentForm({ kind, onClose }: {
             onChange={(v) => setForm({ ...form, client_owner_contact: v })} />
           {kind === "project" && (
             <TeamField company={form.company} value={form.team}
-              label="Team for the new project"
+              label={`Team for the new ${w.project}`}
               onChange={(team) => setForm({ ...form, team })} />
           )}
           {kind === "project" && (
             <Field label="Start">
-              <input aria-label="Start date for the new project" type="date"
+              <input aria-label={`Start date for the new ${w.project}`} type="date"
                 value={form.start_date}
                 onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
             </Field>
@@ -472,9 +483,9 @@ function NewParentForm({ kind, onClose }: {
         </div>
         <p className="small muted">
           {kind === "goal"
-            ? "A goal holds projects and tasks. Its status is worked out from them unless "
-              + "someone sets it by hand."
-            : "A project groups tasks, under a goal or on its own."}
+            ? `${w.AGoal} holds ${w.projects} and ${w.tasks}. Its status is worked out from them `
+              + "unless someone sets it by hand."
+            : `${w.AProject} groups ${w.tasks}, under ${w.aGoal} or on its own.`}
         </p>
         <button className="primary" type="submit" disabled={!form.title.trim() || create.isPending}>
           {create.isPending ? "Creating…" : `Create ${label}`}

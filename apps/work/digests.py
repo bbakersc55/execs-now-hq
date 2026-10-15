@@ -30,6 +30,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.crm.models import OutboxMessage, Task
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import AuditEvent
 from apps.work import stakeholders as stakeholder_service
 from apps.work import updates as update_service
@@ -408,7 +409,7 @@ def _goal_line(goal) -> str:
     return f"{goal.title} — {outcome}" if outcome else goal.title
 
 
-def _describe(update) -> str:
+def _describe(update, w=practice_words.DEFAULT) -> str:
     task = update.task
     what = task.title if task else "work"
     if update.kind == K.STATUS_CHANGED:
@@ -425,7 +426,7 @@ def _describe(update) -> str:
     if update.kind == K.ASSIGNEE_CHANGED:
         return f"{what}: now with {update.to_value or 'nobody'}"
     if update.kind == K.CHECKLIST_COMPLETED:
-        return f"{what}: step done — {update.to_value}"
+        return f"{what}: {w.step} done — {update.to_value}"
     if update.kind == K.COMMENT_ADDED:
         return f"{what}: comment"
     if update.kind == K.NARRATIVE:
@@ -433,18 +434,18 @@ def _describe(update) -> str:
     return f"{what}: {update.get_kind_display().lower()}"
 
 
-def deterministic_body(owed) -> str:
+def deterministic_body(owed, w=practice_words.DEFAULT) -> str:
     """FR-3.24 with AI prose OFF: transitions and human text, nothing else."""
     lines = []
     for update, _row in owed:
-        entry = f"- {_describe(update)}"
+        entry = f"- {_describe(update, w)}"
         if update.client_facing_line:
             entry += f"\n  {update.client_facing_line}"
         lines.append(entry)
     return "\n".join(lines)
 
 
-def ai_input(owed) -> str:
+def ai_input(owed, w=practice_words.DEFAULT) -> str:
     """The transitions, the lines a person wrote, and the goal each piece of
     work serves (FR-3.24a). Grouped by goal so the prose can say what the work
     is for; chronological within each goal, so nothing about order is lost.
@@ -458,7 +459,7 @@ def ai_input(owed) -> str:
         if key not in buckets:
             buckets[key] = {"goal": goal, "lines": []}
             order.append(key)
-        buckets[key]["lines"].append(_describe(update))
+        buckets[key]["lines"].append(_describe(update, w))
         if update.client_facing_line:
             buckets[key]["lines"].append(
                 f'  line written for the client: "{update.client_facing_line}"')
@@ -471,6 +472,20 @@ def ai_input(owed) -> str:
     return "\n".join(parts)
 
 
+def ai_system(w=practice_words.DEFAULT) -> str:
+    """AI_SYSTEM, told the practice's own words when they are not the defaults,
+    so the prose says what the practice says. With the defaults it is AI_SYSTEM
+    byte for byte."""
+    if w == practice_words.DEFAULT:
+        return AI_SYSTEM
+    names = "; ".join(
+        f'a {kind} is "{w.of(kind)}" (plural "{w.of(kind, plural=True)}")'
+        for kind in practice_words.KINDS
+        if (w.of(kind), w.of(kind, plural=True)) != practice_words.DEFAULTS[kind])
+    return (AI_SYSTEM + "\n\nThis practice uses its own words for the levels of its "
+            f"work: {names}. Use those words in your prose, never the defaults.")
+
+
 def narrative_for(tenant, owed, *, contact):
     """Claude's connective prose, or '' if it cannot be produced.
 
@@ -479,10 +494,11 @@ def narrative_for(tenant, owed, *, contact):
     """
     from apps.tenancy import claude
 
+    w = practice_words.of(tenant)
     try:
         return claude.complete(
-            tenant=tenant, purpose="digest_prose", system=AI_SYSTEM,
-            user_text=ai_input(owed), target_type="contact", target_id=contact.pk,
+            tenant=tenant, purpose="digest_prose", system=ai_system(w),
+            user_text=ai_input(owed, w), target_type="contact", target_id=contact.pk,
             trigger="auto", max_tokens=2000,
         )
     except (claude.ClaudeUnavailable, claude.ClaudeRefused):
@@ -512,7 +528,7 @@ def _chip(value):
     return {"label": _status_label(value), "fg": fg, "bg": bg}
 
 
-def _item(update):
+def _item(update, w=practice_words.DEFAULT):
     """The status change and the human sentence, kept apart: the change is a
     small grey line with a chip; the line the fractional wrote is the sentence."""
     kind, chip, line = update.kind, None, ""
@@ -530,7 +546,7 @@ def _item(update):
     elif kind == K.ASSIGNEE_CHANGED:
         line = f"Now with {update.to_value}" if update.to_value else "Now unassigned"
     elif kind == K.CHECKLIST_COMPLETED:
-        line = f"Step done: {update.to_value}"
+        line = f"{w.Step} done: {update.to_value}"
     elif kind == K.COMMENT_ADDED:
         line = "New comment"
     elif kind != K.NARRATIVE:
@@ -538,7 +554,7 @@ def _item(update):
     return {"line": line, "chip": chip, "sentence": update.client_facing_line or ""}
 
 
-def _groups(owed):
+def _groups(owed, w=practice_words.DEFAULT):
     """Updates grouped by task, and those task groups grouped under the goal the
     work serves (FR-3.24a) — because a client reads what the work was FOR before
     they read what moved.
@@ -569,7 +585,7 @@ def _groups(owed):
     for key in order:
         group = groups[key]
         # "Moved to Done" already says it; a separate "Completed" row repeats it.
-        items = [_item(u) for u in group["updates"]
+        items = [_item(u, w) for u in group["updates"]
                  if not (u.kind == K.COMPLETED and group["done"])]
         items = [i for i in items if i["line"] or i["sentence"]]
         if not items:
@@ -624,9 +640,10 @@ def render(digest, owed, *, narrative=""):
 
     from apps.crm.services import email_layout
 
-    sections = _groups(owed)
+    w = practice_words.of(digest.tenant)
+    sections = _groups(owed, w)
     html = render_to_string("email/digest_content.html", email_layout.template_context(
-        digest.tenant, narrative=narrative, sections=sections))
+        digest.tenant, narrative=narrative, sections=sections, words=w))
     return digest_text(narrative, sections), html
 
 
@@ -809,7 +826,8 @@ def flag_stale_for(update: TaskUpdate):
         tenant_id=update.tenant_id, state__in=UNSENT_DRAFTS,
         contact_id__in=list(contacts),
     )
-    reason = f"{_describe(update)} landed after this draft was written."
+    reason = (f"{_describe(update, practice_words.of(update.tenant))} landed after "
+              "this draft was written.")
     return pending.update(is_stale=True, stale_reason=reason,
                           updated_at=timezone.now())
 
@@ -1270,5 +1288,5 @@ def report_for(tenant, *, contact, since, until=None):
     task_ids = [task_id for task_id, (task, _row) in reach.items() if task.is_client_visible]
     rows = list(qualifying_updates(task_ids, contact.pk, since=since, until=until))
     owed = [(row, None) for row in rows]
-    return {"body_text": deterministic_body(owed), "updates": rows,
+    return {"body_text": deterministic_body(owed, practice_words.of(tenant)), "updates": rows,
             "since": since, "until": until}

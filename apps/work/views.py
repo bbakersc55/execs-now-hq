@@ -22,6 +22,7 @@ from rest_framework.response import Response
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Task
 from apps.crm.services import search as crm_search
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import CLIENT_ROLES, AuditEvent, Role
 from apps.work import permissions as work_perms
 from apps.work import serializers as work_serializers
@@ -48,6 +49,15 @@ LIST_LIMIT = 500
 # practice's own work has no company id to be filtered by, so the screens send
 # this word in place of one (FR-3.39/3.39a).
 INTERNAL = "internal"
+
+
+def _cap(phrase: str) -> str:
+    """"a goal" → "A goal", for the start of a sentence."""
+    return phrase[:1].upper() + phrase[1:]
+
+
+def _practices_task_short(request) -> str:
+    return f"This {practice_words.for_request(request).task} is the practice's to change."
 
 
 def _is_uuid(value) -> bool:
@@ -191,7 +201,8 @@ class GoalViewSet(WorkViewSet):
 
     def _staff_only(self, request):
         if crm_perms.role_of(request) in CLIENT_ROLES:
-            return Response({"detail": "Goals are set by the practice."}, status=403)
+            return Response({"detail": f"{practice_words.for_request(request).Goals} are set "
+                             "by the practice."}, status=403)
         return None
 
     def _client_fields_only(self, request):
@@ -200,8 +211,9 @@ class GoalViewSet(WorkViewSet):
         others = sorted(set(request.data) - set(work_perms.CLIENT_GOAL_FIELDS)
                         - {"client_company"})
         if others:
-            return Response({"detail": "A goal's title, description and target date are "
-                             "yours to set; the rest is set by "
+            w = practice_words.for_request(request)
+            return Response({"detail": f"{_cap(w.a_goal)}'s title, description and target "
+                             "date are yours to set; the rest is set by "
                              f"{teams.practice_name(request.tenant)}."}, status=403)
         return None
 
@@ -209,7 +221,8 @@ class GoalViewSet(WorkViewSet):
         if not work_perms.client_may_create(request, "goal"):
             who = (teams.practice_name(request.tenant)
                    if crm_perms.role_of(request) == Role.FCC else "Your client owner")
-            return Response({"detail": "You have not been set up to add goals. "
+            w = practice_words.for_request(request)
+            return Response({"detail": f"You have not been set up to add {w.goals}. "
                              f"{who} can change that."}, status=403)
         if (refused := self._client_fields_only(request)) is not None:
             return refused
@@ -284,7 +297,8 @@ class GoalViewSet(WorkViewSet):
         entity = self.load(pk)
         if self.kind == "goal" and work_perms.is_client(request):
             if not work_perms.client_may_edit_goal(request, entity):
-                return Response({"detail": "Goals are changed by "
+                w = practice_words.for_request(request)
+                return Response({"detail": f"{w.Goals} are changed by "
                                  f"{teams.practice_name(request.tenant)} and your senior "
                                  "leadership."}, status=403)
             if (refused := self._client_fields_only(request)) is not None:
@@ -302,9 +316,10 @@ class GoalViewSet(WorkViewSet):
         entity = self.load(pk)
         if self.kind == "goal" and work_perms.is_client(request):
             if not work_perms.client_may_delete_goal(request, entity):
-                return Response({"detail": "Only the person who added this goal, or your "
-                                 "client owner, can delete it." if entity.created_by_client
-                                 else "Goals are set by the practice."}, status=403)
+                w = practice_words.for_request(request)
+                return Response({"detail": f"Only the person who added this {w.goal}, or "
+                                 "your client owner, can delete it." if entity.created_by_client
+                                 else f"{w.Goals} are set by the practice."}, status=403)
         elif (refused := self._staff_only(request)) is not None:
             return refused
         detached = services.soft_delete(entity, actor=request.user,
@@ -420,11 +435,12 @@ class ProjectViewSet(GoalViewSet):
         if work_perms.is_client(request) \
                 and not work_perms.client_may_delete_project(request, project):
             if not project.created_by_client:
-                return Response({"detail": "This project belongs to the practice."},
-                                status=403)
+                return Response({"detail": work_perms.practices_project(
+                    practice_words.for_request(request))}, status=403)
             # P7-13: its maker or the client owner deletes; anyone else who
             # may change it cancels it.
-            return Response({"detail": "Only the person who made this project, or your "
+            w = practice_words.for_request(request)
+            return Response({"detail": f"Only the person who made this {w.project}, or your "
                                        "client owner, can delete it. You can set it to "
                                        "cancelled."}, status=403)
         detached = services.soft_delete(project, actor=request.user, verb="project.deleted")
@@ -529,7 +545,8 @@ class TaskViewSet(WorkViewSet):
         role = crm_perms.role_of(request)
         allowed = (role not in CLIENT_ROLES) or work_perms.client_may_delete(request, task)
         if not allowed:
-            return Response({"detail": "Only the person who made this task, or your "
+            w = practice_words.for_request(request)
+            return Response({"detail": f"Only the person who made this {w.task}, or your "
                                        "client owner, can delete it."}, status=403)
         task.deleted_at = timezone.now()
         task.save(update_fields=["deleted_at", "updated_at"])
@@ -571,13 +588,13 @@ class TaskViewSet(WorkViewSet):
         task = self.load(pk)
         if request.method == "POST":
             if not work_perms.may_write(request, task):
-                return Response({"detail": "This task is the practice's to change."},
-                                status=403)
+                return Response({"detail": _practices_task_short(request)}, status=403)
             serializer = work_serializers.ChecklistItemSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             text = (serializer.validated_data.get("text") or "").strip()
             if not text:
-                return Response({"detail": "The step needs text."}, status=400)
+                return Response({"detail": f"The {practice_words.for_request(request).step} "
+                                           "needs text."}, status=400)
             last = task.checklist.order_by("-position").first()
             item = TaskChecklistItem.objects.create(
                 tenant=task.tenant, task=task, text=text,
@@ -603,7 +620,7 @@ class ChecklistItemViewSet(WorkViewSet):
     def partial_update(self, request, pk=None):
         item = self.load(pk)
         if not work_perms.may_write(request, item.task):
-            return Response({"detail": "This task is the practice's to change."}, status=403)
+            return Response({"detail": _practices_task_short(request)}, status=403)
         serializer = work_serializers.ChecklistItemSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -620,7 +637,7 @@ class ChecklistItemViewSet(WorkViewSet):
     def destroy(self, request, pk=None):
         item = self.load(pk)
         if not work_perms.may_write(request, item.task):
-            return Response({"detail": "This task is the practice's to change."}, status=403)
+            return Response({"detail": _practices_task_short(request)}, status=403)
         item.delete()
         return Response(status=204)
 
@@ -661,7 +678,9 @@ class CommentViewSet(WorkViewSet):
                  for field in ("task", "project", "goal")
                  if request.query_params.get(field)}
         if len(asked) != 1:
-            return Response({"detail": "Ask for one task, project or goal."}, status=400)
+            w = practice_words.for_request(request)
+            return Response({"detail": f"Ask for one {w.task}, {w.project} or {w.goal}."},
+                            status=400)
         field, value = next(iter(asked.items()))
         if not _is_uuid(value):
             return Response({"detail": f"{field} must be an id."}, status=400)
@@ -783,7 +802,9 @@ class StakeholderViewSet(WorkViewSet):
                     raise Http404
                 break
         if entity is None:
-            return Response({"detail": "Name the task, project or goal."}, status=400)
+            w = practice_words.for_request(request)
+            return Response({"detail": f"Name the {w.task}, {w.project} or {w.goal}."},
+                            status=400)
 
         company = entity.client_company
         outside = request.query_params.get("outside") == "1"
@@ -1776,7 +1797,9 @@ class ValueReportViewSet(ValueReportBase):
         narrative = narrative_service.draft(goal, trigger="button")
         if narrative is None:
             return Response({"detail": "Claude could not be reached. The call is "
-                                       "recorded on AI usage; the goal is unchanged."},
+                                       "recorded on AI usage; the "
+                                       f"{practice_words.for_request(request).goal} is "
+                                       "unchanged."},
                             status=502)
         return Response(value_report.narrative_for(goal, for_client=False))
 
@@ -1896,8 +1919,8 @@ class GoalOrderViewSet(ValueReportBase):
         if work_perms.may_judge(request, company.pk):
             return None
         return Response(
-            {"detail": "The order of the goals is the practice owner's or the "
-                       "assigned associate's call."}, status=403)
+            {"detail": f"The order of the {practice_words.for_request(request).goals} is the "
+                       "practice owner's or the assigned associate's call."}, status=403)
 
     def _proposal_or_404(self, request, pk):
         from apps.work.models import GoalOrderProposal
@@ -1968,11 +1991,13 @@ class GoalProposalViewSet(ValueReportBase):
     def create(self, request):
         role = crm_perms.role_of(request)
         if role == Role.ECC:
-            return Response({"detail": "Proposing a goal is your company owner's to do."},
+            w = practice_words.for_request(request)
+            return Response({"detail": f"Proposing {w.a_goal} is your company owner's to do."},
                             status=403)
         if role != Role.FCC:
+            w = practice_words.for_request(request)
             return Response({"detail": "A proposal is the client's. The practice "
-                                       "creates a goal directly, on Work."}, status=403)
+                                       f"creates {w.a_goal} directly, on Work."}, status=403)
         company = self.company_or_404(request)
         try:
             proposal = goal_proposals.propose(
@@ -1988,7 +2013,8 @@ class GoalProposalViewSet(ValueReportBase):
         proposal = self.in_scope_or_404(request, GoalProposal, pk)
         if not work_perms.may_judge(request, proposal.client_company_id):
             return Response(
-                {"detail": "Accepting or declining a proposed goal is the practice "
+                {"detail": "Accepting or declining a proposed "
+                           f"{practice_words.for_request(request).goal} is the practice "
                            "owner's or the assigned associate's call."}, status=403)
         try:
             decide(proposal)
@@ -2145,7 +2171,8 @@ class GoalMilestoneViewSet(ValueReportBase):
     def create(self, request):
         goal = self.goal_or_404(request, request.data.get("goal"))
         if (refused := self.staff_or_403(
-                request, "The goal's timeline is the practice's to compose.")) is not None:
+                request, f"The {practice_words.for_request(request).goal}'s timeline is the "
+                         "practice's to compose.")) is not None:
             return refused
         serializer = work_serializers.GoalMilestoneSerializer(
             data=request.data, context={"request": request})
@@ -2158,8 +2185,8 @@ class GoalMilestoneViewSet(ValueReportBase):
             except milestone_service.MilestoneRefused as exc:
                 return Response({"detail": str(exc)}, status=exc.status)
             if GoalMilestone.objects.filter(source_task=task).exists():
-                return Response({"detail": "That task is already a milestone."},
-                                status=409)
+                return Response({"detail": f"That {practice_words.for_request(request).task} "
+                                           "is already a milestone."}, status=409)
             # The date is derived from the task's completion, every time it is
             # read (FR-4B.25). Storing it would need a sync path, and a sync
             # path is a thing that drifts.
@@ -2173,13 +2200,15 @@ class GoalMilestoneViewSet(ValueReportBase):
     def partial_update(self, request, pk=None):
         row = self._row_or_404(request, pk)
         if (refused := self.staff_or_403(
-                request, "The goal's timeline is the practice's.")) is not None:
+                request, f"The {practice_words.for_request(request).goal}'s timeline is the "
+                         "practice's.")) is not None:
             return refused
         if row.source_task_id is not None:
+            w = practice_words.for_request(request)
             return Response(
-                {"detail": "This milestone is a task. Its title and its dates belong "
-                           "to the task, so that the same fact is not kept in two "
-                           "places — edit the task."},
+                {"detail": f"This milestone is {w.a_task}. Its title and its dates belong "
+                           f"to the {w.task}, so that the same fact is not kept in two "
+                           f"places — edit the {w.task}."},
                 status=409)
         serializer = work_serializers.GoalMilestoneSerializer(
             instance=row, data=request.data, partial=True, context={"request": request})
@@ -2194,7 +2223,8 @@ class GoalMilestoneViewSet(ValueReportBase):
     def destroy(self, request, pk=None):
         row = self._row_or_404(request, pk)
         if (refused := self.staff_or_403(
-                request, "The goal's timeline is the practice's.")) is not None:
+                request, f"The {practice_words.for_request(request).goal}'s timeline is the "
+                         "practice's.")) is not None:
             return refused
         row.delete()
         return Response(status=204)

@@ -9,6 +9,7 @@ import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import { Contact, Me, Task, WorkParent, api } from "../lib/api";
+import { WordKind, useWords } from "../lib/words";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -20,6 +21,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
   const qc = useQueryClient();
   const navigate = useNavigate();
   const rowLink = useRowLink();
+  const w = useWords();
   const [message, setMessage] = useState("");
   const [newTask, setNewTask] = useState("");
   const [editing, setEditing] = useState(false);
@@ -61,7 +63,9 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
   const remove = useMutation({
     mutationFn: () => api.del<{ detached: Record<string, number> }>(`/api/${plural}/${id}/`),
     onSuccess: (r) => {
-      const counts = Object.entries(r.detached).map(([k, v]) => `${v} ${k}`).join(", ");
+      // The server counts by "projects" / "tasks"; the practice's words name them.
+      const counts = Object.entries(r.detached)
+        .map(([k, v]) => w.count(v, k.replace(/s$/, "") as WordKind)).join(", ");
       qc.invalidateQueries({ queryKey: [plural] });
       navigate("/work", { state: { detached: counts } });
     },
@@ -77,7 +81,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
       <p className="small"><Link to="/work">← Work</Link></p>
       <h2>{e.title}</h2>
       <p className="sub">
-        {kind === "goal" ? "Goal" : "Project"} ·{" "}
+        {w.of(kind, { capital: true })} ·{" "}
         {e.client_company_name
           ? <Link to={`/companies/${e.client_company}`}>{e.client_company_name}</Link>
           : "internal"}
@@ -149,8 +153,8 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
         ))}
 
       {kind === "goal" && (
-        <Card title="Projects">
-          {(children.data?.projects ?? []).length === 0 ? <Empty>No projects yet.</Empty> : (
+        <Card title={w.Projects}>
+          {(children.data?.projects ?? []).length === 0 ? <Empty>No {w.projects} yet.</Empty> : (
             <ul className="timeline">
               {children.data!.projects.map((p) => (
                 <li key={p.id} {...rowLink(`/work/projects/${p.id}`)}>
@@ -163,8 +167,8 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
         </Card>
       )}
 
-      <Card title={kind === "goal" ? "Tasks filed straight on this goal" : "Tasks"}>
-        {(children.data?.tasks ?? []).length === 0 ? <Empty>No tasks yet.</Empty> : (
+      <Card title={kind === "goal" ? `${w.Tasks} filed straight on this ${w.goal}` : w.Tasks}>
+        {(children.data?.tasks ?? []).length === 0 ? <Empty>No {w.tasks} yet.</Empty> : (
           <ul className="timeline">
             {children.data!.tasks.map((t) => (
               <li key={t.id} {...rowLink(`/tasks/${t.id}`)}>
@@ -181,12 +185,12 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
         {(isTenant || (me.portal?.may_create.task ?? true)
           && (kind === "goal" || e.may_edit !== false)) && (
         <div className="row">
-          <Field label="Add a task here">
-            <input aria-label="New task title" value={newTask}
+          <Field label={`Add ${w.aTask} here`}>
+            <input aria-label={`New ${w.task} title`} value={newTask}
               onChange={(ev) => setNewTask(ev.target.value)} />
           </Field>
           <button className="primary" disabled={!newTask.trim() || addTask.isPending}
-            onClick={() => addTask.mutate()}>Add task</button>
+            onClick={() => addTask.mutate()}>Add {w.task}</button>
         </div>
         )}
       </Card>
@@ -198,10 +202,10 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
       {(isTenant || e.may_delete) && (
         <Card title="Delete">
           <p className="small">
-            Deleting a {kind} does not delete its work: the projects and tasks under it are
+            Deleting {kind === "goal" ? w.aGoal : w.aProject} does not delete its work: the {w.projects} and {w.tasks} under it are
             detached and reported, and stay where you can find them.
           </p>
-          <button className="danger" onClick={() => remove.mutate()}>Delete this {kind}</button>
+          <button className="danger" onClick={() => remove.mutate()}>Delete this {w.of(kind)}</button>
         </Card>
       )}
     </div>
@@ -221,6 +225,7 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
 function EditDetails({ entity, kind, onClose, onSaved }: {
   entity: WorkParent; kind: "goal" | "project"; onClose: () => void; onSaved: () => void;
 }) {
+  const w = useWords();
   const plural = kind === "goal" ? "goals" : "projects";
   const [form, setForm] = useState({
     title: entity.title,
@@ -258,11 +263,11 @@ function EditDetails({ entity, kind, onClose, onSaved }: {
       {error && <Banner kind="bad">{error}</Banner>}
       <form onSubmit={(ev) => { ev.preventDefault(); setError(""); save.mutate(); }}>
         <Field label="Title">
-          <input aria-label={`${kind === "goal" ? "Goal" : "Project"} title`} value={form.title}
+          <input aria-label={`${w.of(kind, { capital: true })} title`} value={form.title}
             onChange={(ev) => setForm({ ...form, title: ev.target.value })} />
         </Field>
         <Field label="Description">
-          <textarea aria-label={`${kind === "goal" ? "Goal" : "Project"} description`} rows={3}
+          <textarea aria-label={`${w.of(kind, { capital: true })} description`} rows={3}
             value={form.description}
             onChange={(ev) => setForm({ ...form, description: ev.target.value })} />
         </Field>
@@ -308,6 +313,7 @@ function EditDetails({ entity, kind, onClose, onSaved }: {
 function ClientDetails({ entity, kind, onClose, onSaved }: {
   entity: WorkParent; kind: "goal" | "project"; onClose: () => void; onSaved: () => void;
 }) {
+  const w = useWords();
   const plural = kind === "goal" ? "goals" : "projects";
   const [form, setForm] = useState({
     title: entity.title, description: entity.description ?? "",
@@ -322,7 +328,7 @@ function ClientDetails({ entity, kind, onClose, onSaved }: {
     onSuccess: onSaved,
     onError: (e: Error) => setError(e.message),
   });
-  const what = kind === "goal" ? "Goal" : "Project";
+  const what = w.of(kind, { capital: true });
   return (
     <Card title="Details" actions={<button onClick={onClose}>Cancel</button>}>
       {error && <Banner kind="bad">{error}</Banner>}

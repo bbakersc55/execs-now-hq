@@ -25,6 +25,7 @@ from django.utils import timezone
 from apps.crm.models import Contact, Pipeline, PipelineStage, StageSemantic
 from apps.strategy.models import StrategyMapRow, StrategySession
 from apps.strategy.services import SessionError
+from apps.tenancy import words as practice_words
 from apps.work.models import Goal, Project
 
 GOAL = StrategyMapRow.ConvertedTo.GOAL
@@ -161,9 +162,10 @@ def convert(session, *, choices, actor=None, role=None):
         raise ConversionRefused(_refusal_sentence(refusals),
                                 rows=[row.pk for row, _ in refusals])
     if not plan:
+        w = practice_words.of(session.tenant)
         raise ConversionRefused(
-            "Every row is left out, so there is nothing to create. Choose a goal or "
-            "a project for at least one of them.", status=400)
+            f"Every row is left out, so there is nothing to create. Choose {w.a_goal} or "
+            f"{w.a_project} for at least one of them.", status=400)
 
     made = []
     for row, as_what, choice in plan:

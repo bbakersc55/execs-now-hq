@@ -15,6 +15,7 @@ from rest_framework import serializers
 
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Company, Contact, Task
+from apps.tenancy import words as practice_words
 from apps.tenancy.models import CLIENT_ROLES
 from apps.work import permissions as work_perms
 from apps.work import portal
@@ -23,6 +24,16 @@ from apps.work.models import (
     Cadence, Comment, Goal, GoalResolution, Priority, Project, TaskChecklistItem,
     TaskUpdate,
 )
+
+
+def _words(serializer):
+    """The practice's words for a sentence this serializer says."""
+    return practice_words.for_request(serializer.context.get("request"))
+
+
+def _a(phrase: str) -> str:
+    """"a task" → "A task", for the start of a sentence."""
+    return phrase[:1].upper() + phrase[1:]
 
 
 def _person(user):
@@ -269,8 +280,10 @@ class ScopedFieldsMixin:
         found = qs.first()
         if found is None:
             # Said in words: this reaches a client as the whole explanation.
+            name = model._meta.model_name
             raise serializers.ValidationError(
-                f"That {model._meta.verbose_name} is not available to you.")
+                f"That {_words(self).of(name) if name in practice_words.KINDS else model._meta.verbose_name}"
+                " is not available to you.")
         return found
 
     def validate_client_company(self, value):
@@ -325,7 +338,8 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
 
     def validate(self, attrs):
         if self.instance is None and not (attrs.get("title") or "").strip():
-            raise serializers.ValidationError({"title": "A goal needs a title."})
+            raise serializers.ValidationError(
+                {"title": f"{_a(_words(self).a_goal)} needs a title."})
         # Ruling H — the outcome statement is the sentence that goes out under
         # the fractional's name. A VA may record a reading and may not write it.
         request = self.context["request"]
@@ -336,8 +350,8 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
                 raise serializers.ValidationError({
                     "outcome_statement":
                         "The outcome statement is the practice owner's or the assigned "
-                        "associate's sentence about what this goal is for. Recording a reading is yours; this "
-                        "is not."})
+                        f"associate's sentence about what this {_words(self).goal} is for. "
+                        "Recording a reading is yours; this is not."})
         # Ruling 2 — direction is required on a numeric measurable and never
         # inferred, because inference is silently wrong when baseline and target
         # are equal and has nothing to work from before a target is set.
@@ -348,7 +362,8 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
             raise serializers.ValidationError({
                 "direction": "A number needs a direction: say whether up is good or "
                              "down is good. It is never inferred from the baseline "
-                             "and the target — a goal can be to hold a number steady."})
+                             f"and the target — {_words(self).a_goal} can be to hold a "
+                             "number steady."})
         return attrs
 
 
@@ -366,7 +381,8 @@ class ProjectSerializer(GoalSerializer):
 
     def validate(self, attrs):
         if self.instance is None and not (attrs.get("title") or "").strip():
-            raise serializers.ValidationError({"title": "A project needs a title."})
+            raise serializers.ValidationError(
+                {"title": f"{_a(_words(self).a_project)} needs a title."})
         company = attrs["client_company"] if "client_company" in attrs \
             else getattr(self.instance, "client_company", None)
         _staff_team(self, attrs, company)
@@ -422,12 +438,17 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
             raise serializers.ValidationError("Only the practice sets client visibility.")
         return value
 
-    ONE_PARENT = ("File a task under a project or directly on a goal, not both — "
-                  "a project already belongs to its goal.")
+    @staticmethod
+    def one_parent(w) -> str:
+        return (f"File {w.a_task} under {w.a_project} or directly on {w.a_goal}, not both — "
+                f"{w.a_project} already belongs to its {w.goal}.")
+
+    ONE_PARENT = one_parent(practice_words.DEFAULT)
 
     def validate(self, attrs):
         if self.instance is None and not (attrs.get("title") or "").strip():
-            raise serializers.ValidationError({"title": "A task needs a title."})
+            raise serializers.ValidationError(
+                {"title": f"{_a(_words(self).a_task)} needs a title."})
         # Checked against what the task WILL hold, not just what was sent, so a
         # PATCH naming one parent cannot join it to the one already stored. The
         # database carries the same rule (task_one_parent_not_both); this is the
@@ -436,7 +457,7 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
         project = (attrs["project"] if "project" in attrs
                    else getattr(self.instance, "project", None))
         if goal is not None and project is not None:
-            raise serializers.ValidationError({"project": self.ONE_PARENT})
+            raise serializers.ValidationError({"project": self.one_parent(_words(self))})
         company = attrs["client_company"] if "client_company" in attrs \
             else getattr(self.instance, "client_company", None)
         _staff_team(self, attrs, company, follows_project=project is not None)
@@ -469,8 +490,9 @@ class CommentSerializer(serializers.Serializer):
     def validate(self, attrs):
         targets = [attrs.get(k) for k in ("task", "project", "goal")]
         if sum(1 for t in targets if t) != 1:
+            w = _words(self)
             raise serializers.ValidationError(
-                "A comment belongs to exactly one task, project or goal."
+                f"A comment belongs to exactly one {w.task}, {w.project} or {w.goal}."
             )
         if not attrs["body"].strip():
             raise serializers.ValidationError({"body": "Write something first."})
@@ -595,8 +617,9 @@ class StakeholderSerializer(ScopedFieldsMixin, serializers.Serializer):
                 raise serializers.ValidationError({"contact": "Who is being told?"})
             levels = [attrs.get(k) for k in ("task", "project", "goal")]
             if sum(1 for level in levels if level) != 1:
+                w = _words(self)
                 raise serializers.ValidationError(
-                    "Attach a stakeholder to exactly one task, project or goal."
+                    f"Attach a stakeholder to exactly one {w.task}, {w.project} or {w.goal}."
                 )
             contact = attrs["contact"]
             if not contact.primary_email:
@@ -708,7 +731,8 @@ class GoalMilestoneSerializer(ScopedFieldsMixin, serializers.Serializer):
         if self.instance is None and not attrs.get("source_task") and not (
                 attrs.get("title") or "").strip():
             raise serializers.ValidationError(
-                {"title": "A milestone needs a title, or a task to take one from."})
+                {"title": f"A milestone needs a title, or {_words(self).a_task} to take "
+                          "one from."})
         return attrs
 
 
