@@ -14,12 +14,16 @@ from __future__ import annotations
 def items(tenant) -> list[dict]:
     from apps.crm.models import Company, Contact, GmailConnection, ImportBatch
     from apps.strategy.models import StrategyTemplate
+    from apps.tenancy import words
     from apps.tenancy.models import Membership, TenantSecret
 
     t = tenant.pk
     return [
         {"key": "branding", "label": "Set your branding", "to": "/settings/branding",
          "done": tenant.branding_updated_at is not None},
+        # W2 (2026-10-15): done once any of the four words is not the default.
+        {"key": "words", "label": "Choose your words for goals, projects, tasks and steps",
+         "to": "/settings/words", "done": words.of(tenant) != words.DEFAULT},
         {"key": "gmail", "label": "Choose your practice address and connect Gmail",
          "to": "/settings/email",
          "done": GmailConnection.all_objects.filter(

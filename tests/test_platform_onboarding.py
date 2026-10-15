@@ -173,8 +173,8 @@ def test_a_new_practice_starts_with_everything_open(api, blue_sky_owner):
                                            user=blue_sky_owner.user, version="v1",
                                            text_sha256=agreement.current()["sha256"])
     items = api.as_(blue_sky_owner).get("/api/getting-started").json()
-    assert [i["key"] for i in items] == ["branding", "gmail", "anthropic", "contacts",
-                                         "staff", "client", "template"]
+    assert [i["key"] for i in items] == ["branding", "words", "gmail", "anthropic",
+                                         "contacts", "staff", "client", "template"]
     assert not any(i["done"] for i in items)
 
 
@@ -204,6 +204,17 @@ def test_each_item_ticks_from_the_practices_own_data(api, blue_sky_owner, seeded
     StrategyTemplateFactory(tenant=tenant)
     assert done() == {"branding", "gmail", "anthropic", "contacts", "staff", "client",
                       "template"}
+    # Words: the defaults saved again tick nothing; one word changed does.
+    from apps.tenancy import words
+
+    words.save(tenant, actor=blue_sky_owner.user, data=words.DEFAULT.as_dict())
+    assert "words" not in done()
+    words.save(tenant, actor=blue_sky_owner.user,
+               data={"step": {"singular": "checkpoint", "plural": "checkpoints"}})
+    assert "words" in done()
+    item = next(i for i in api.as_(blue_sky_owner).get("/api/getting-started").json()
+                if i["key"] == "words")
+    assert item["to"] == "/settings/words"
 
 
 @pytest.mark.django_db

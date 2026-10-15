@@ -28,7 +28,7 @@ is built unless its row says so. Pricing heard on the same call is in
 | # | Item | Status |
 |---|---|---|
 | W1 | **Beta access to the demo.** A private copy of Summit per visitor, invited by email, sign-in by link, their demo mail to their own address, 30 days extendable, suspend and revoke, a "Reset my demo" button, and a hard stop on AI spend on the demo. | this week |
-| W2 | **Practice-specific words for goals, projects, tasks and steps.** Set under Settings and on the Getting started list; used everywhere, the portal and the PDF included. | done 2026-10-15 (`3cd0deb`): Settings → Words, everywhere the practice and its portal read them. **Not done: the Getting started item** (Bryan's 10/15 decisions did not name it) |
+| W2 | **Practice-specific words for goals, projects, tasks and steps.** Set under Settings and on the Getting started list; used everywhere, the portal and the PDF included. | done 2026-10-15 (`3cd0deb`): Settings → Words, everywhere the practice and its portal read them. The Getting started item ("Choose your words…", to Settings → Words, done once any word differs from the default) added the same day |
 | W3 | **The strategy map as a Word document.** | done 2026-10-15: "Download as Word" beside the PDF, staff only, as the PDF is |
 | W4 | **Notion and ClickUp import** of goals, projects and tasks, from CSV templates matched to each tool's export. Melissa is sending samples. | this week |
 

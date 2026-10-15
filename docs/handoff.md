@@ -51,8 +51,8 @@ covers what they don't, and what changed since 9/30.
   Not on the platform owner's pages, the API's fields or stored data. **A new
   readable string with one of the four words must use them**; five test files
   (`tests/test_practice_words*.py`, `frontend/src/test/words_*.test.tsx`)
-  hold it for what exists. Not done: W2's Getting started item. Not seen in a
-  browser.
+  hold it for what exists. W2's Getting started item was added after Release
+  14 ("Choose your words…", done once any word differs from the default).
 - **Job 3, W3: the strategy map as Word.** "Download as Word" beside the
   map's PDF (`/api/strategy-sessions/<id>/docx/`, `apps/strategy/docx_export.py`):
   the PDF's sections and headings from the same filtered content, so the
