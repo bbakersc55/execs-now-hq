@@ -301,6 +301,14 @@ class ClientScope:
                 .values_list("pk", "name", "is_default")]
 
     @property
+    def only_looks(self) -> bool:
+        """A viewer and nothing more (§2.4a): they see the whole company and
+        change nothing, so that is why anything is read-only to them."""
+        from apps.work.teams import Level
+
+        return not self.acts and Level.VIEWER in self.levels.values()
+
+    @property
     def level_label(self) -> str:
         """What they are called where they are listed (P7-10)."""
         from apps.tenancy.roles import level_label
@@ -319,6 +327,8 @@ class ClientScope:
             # The client owner's "Propose a goal" stays while they may not
             # make one (P7-7, Bryan's note).
             "may_propose_goal": self.is_owner and not self.may_make("goal"),
+            # A viewer does not comment (§2.4a): a comment is something made.
+            "may_comment": self.acts,
         }
 
 
@@ -576,6 +586,14 @@ PRACTICES_TASK = ("This task is the practice's to change. Add a comment and they
 PRACTICES_PROJECT = "This project belongs to the practice."
 
 
+def viewer_line(scope) -> str:
+    from apps.crm.models import Company
+
+    name = Company.all_objects.filter(pk=scope.company_id).values_list(
+        "name", flat=True).first() or "your company"
+    return f"You can look at everything at {name} and change nothing."
+
+
 def team_line(team_name: str) -> str:
     return (f"Only {team_name}'s manager can change this." if team_name
             else "Only this team's manager can change this.")
@@ -591,8 +609,11 @@ def _team_name(scope, entity) -> str:
 
 def why_not_task(request, task) -> str:
     """Why a task cannot be changed: it is the practice's (FR-3.9a), or it is
-    on a team this person does not run (P7)."""
+    on a team this person does not run (P7). The reason nearest the person
+    wins: a viewer is told they change nothing, whoever's the task is."""
     scope = client_scope(request)
+    if scope is not None and scope.only_looks:
+        return viewer_line(scope)
     if scope is None or not task.is_client_visible:
         return PRACTICES_TASK
     if task.created_by_client or is_client_side_user(
@@ -603,6 +624,8 @@ def why_not_task(request, task) -> str:
 
 def why_not_project(request, project) -> str:
     scope = client_scope(request)
+    if scope is not None and scope.only_looks:
+        return viewer_line(scope)
     if scope is None or not project.created_by_client:
         return PRACTICES_PROJECT
     return team_line(_team_name(scope, project))

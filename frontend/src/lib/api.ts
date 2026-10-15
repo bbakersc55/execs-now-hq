@@ -115,6 +115,8 @@ export interface PortalRights {
   /** The teams they may put new work on. */
   teams: ClientTeamName[];
   may_propose_goal: boolean;
+  /** False for a viewer (§2.4a): they read comments and add none. */
+  may_comment?: boolean;
 }
 
 /** GET /api/act-as/candidates/ — who the real person may act as. */

@@ -319,3 +319,46 @@ def test_senior_leadership_of_every_team_is_what_a_viewer_is_then_called(world):
 
     assert post(practice, "/api/act-as/", {"membership": str(viewer.pk)}).status_code in (200, 201)
     assert me(practice)["acting"]["as_label"] == "Senior leadership"
+
+
+@pytest.mark.django_db
+def test_the_reason_nearest_the_person_is_the_read_only_line(world):
+    """Bryan, 2026-10-15: a viewer is told they change nothing, whoever's the
+    work is; a manager on another team's work is told whose manager can; on
+    the practice's own work, the practice's line."""
+    from apps.work.permissions import PRACTICES_PROJECT, PRACTICES_TASK
+
+    who, api, t, p = world["who"], world["api"], world["tasks"], world["projects"]
+    viewer, manager = api.as_(who["viewer"]), api.as_(who["manager"])
+
+    def line(client, kind, pk):
+        response = client.get(f"/api/{kind}/{pk}/")
+        assert response.status_code == 200, response.content
+        assert response.json()["may_edit"] is False
+        return response.json()["read_only_line"]
+
+    looks = "You can look at everything at Northwind Foods and change nothing."
+    for pk in (t["sales"], t["of the practice"], t["ops, of a colleague"]):
+        assert line(viewer, "tasks", pk) == looks
+    for pk in (p["sales"], p["of the practice"]):
+        assert line(viewer, "projects", pk) == looks
+
+    assert line(manager, "tasks", t["sales"]) == "Only Sales's manager can change this."
+    assert line(manager, "projects", p["sales"]) == "Only Sales's manager can change this."
+    assert line(manager, "tasks", t["of the practice"]) == PRACTICES_TASK
+    assert line(manager, "projects", p["of the practice"]) == PRACTICES_PROJECT
+
+    # The same sentence is the refusal when they try.
+    refused = patch(viewer, f"/api/tasks/{t['of the practice']}/", {"title": "x"})
+    assert (refused.status_code, refused.json()["detail"]) == (403, looks)
+
+
+@pytest.mark.django_db
+def test_a_viewer_reads_comments_and_adds_none(world):
+    who, api, t = world["who"], world["api"], world["tasks"]
+    viewer = api.as_(who["viewer"])
+    assert me(viewer)["portal"]["may_comment"] is False
+    assert me(api.as_(who["member"]))["portal"]["may_comment"] is True
+    assert viewer.get(f"/api/comments/?task={t['sales']}").status_code == 200
+    refused = post(viewer, "/api/comments/", {"task": t["sales"], "body": "Looks good"})
+    assert refused.status_code == 403

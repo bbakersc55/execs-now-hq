@@ -221,7 +221,12 @@ main :is(textarea, select, input:not([type="checkbox"], [type="radio"], [type="r
    pair sits at the left instead of stretching apart. */
 .record-cols { display: grid; gap: var(--s4) var(--s6); align-items: start;
                grid-template-columns: minmax(0, 720px) minmax(0, 560px); }
-@media (max-width: 1100px) { .record-cols { grid-template-columns: 1fr; } }
+/* A pair that spans the page, as wide as a full-width card beneath it. */
+.record-cols.span { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+@media (max-width: 1100px) { .record-cols, .record-cols.span { grid-template-columns: 1fr; } }
+/* A row's buttons wrap inside their cell rather than leave the card. */
+.row-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.table-fit { overflow-x: auto; }
 
 /* A list of cards goes to two or three columns when there is room, and the
    cards get larger type and padding with it rather than wider boxes. The one

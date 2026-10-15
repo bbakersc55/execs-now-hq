@@ -104,7 +104,8 @@ export function CompanyDetail({ me }: { me: Me }) {
           Invoices for this client</Link></p>
       )}
 
-      <div className="record-cols">
+      {/* As wide together as the Teams card below them (Bryan, 2026-10-15). */}
+      <div className="record-cols span">
         <Card title={`People (${theirs.length})`}>
           {theirs.length === 0 ? <Empty>No contacts at this company.</Empty> : (
             <table>

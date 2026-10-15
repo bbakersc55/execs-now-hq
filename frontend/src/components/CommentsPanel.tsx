@@ -23,6 +23,8 @@ export function CommentsPanel({ me, target, id }: {
   const [shared, setShared] = useState(false);
   const [posted, flashPosted] = useFlash();
   const isTenant = !!me.role && TENANT.includes(me.role);
+  // A viewer reads the thread and adds nothing to it (P7 §2.4a).
+  const mayPost = isTenant || me.portal?.may_comment !== false;
 
   const comments = useQuery<WorkComment[]>({
     queryKey: ["comments", target, id],
@@ -59,6 +61,7 @@ export function CommentsPanel({ me, target, id }: {
         </div>
       )}
 
+      {mayPost && <>
       <textarea aria-label="Add a comment" rows={3} value={body}
         placeholder="Add a comment…" onChange={(e) => setBody(e.target.value)} />
       {isTenant ? (
@@ -81,6 +84,7 @@ export function CommentsPanel({ me, target, id }: {
         onClick={() => post.mutate()}>
         {shared && isTenant ? "Post shared comment" : "Post comment"}
       </button>
+      </>}
     </Card>
   );
 }

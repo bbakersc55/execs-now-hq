@@ -161,7 +161,12 @@ look.
   adds sight.
 - **As built, and Bryan's to overrule:** a viewer does not comment (a comment
   is something created), and a task cannot be assigned to someone who is
-  only a viewer.
+  only a viewer. The portal shows them the comments and no box to add one.
+- **Their read-only line** (Bryan, 2026-10-15) is the reason nearest them, on
+  every task and project, the practice's included: "You can look at
+  everything at <company> and change nothing." A member or manager on another
+  team's work is told "Only <team>'s manager can change this", and anyone
+  else on the practice's own work gets the practice's line.
 
 ### 2.5 What no client level changes
 

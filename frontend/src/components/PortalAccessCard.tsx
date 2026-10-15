@@ -147,7 +147,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
           && " Free one, or raise the seat count, before granting another."}
       </p>
       {a.people.length === 0 ? <Empty>Nobody from this company can sign in yet.</Empty> : (
-        <table>
+        <div className="table-fit"><table>
           <thead><tr><th>Person</th><th>Role</th><th></th></tr></thead>
           <tbody>
             {a.people.map((p) => (
@@ -178,25 +178,25 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                     ))}
                   </select>
                 </td>
-                <td>
+                <td><div className="row-actions">
                   {/* FR-3.42 — see exactly what they see; no email while acting. */}
-                  {!me.acting && <><ActAsButton membership={p.id} name={p.name} />{" "}</>}
+                  {!me.acting && <ActAsButton membership={p.id} name={p.name} />}
                   {/* A fresh link for the same access: nobody is revoked to get one. */}
                   <button className="ghost small" disabled={resend.isPending}
                     onClick={() => resend.mutate({ id: p.id, email: p.email })}>
                     Resend invitation
-                  </button>{" "}
+                  </button>
                   <button className="ghost small" onClick={() => {
                     if (confirm(`Revoke access for ${p.name}? They keep their contact record, `
                                 + "comments and tasks, and any digests they are a stakeholder for.")) {
                       revoke.mutate(p.id);
                     }
                   }}>Revoke</button>
-                </td>
+                </div></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       <Field label="Give someone access">
         <input aria-label="Narrow this company's people" placeholder="Narrow by name or email…"
