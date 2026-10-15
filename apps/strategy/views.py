@@ -735,6 +735,19 @@ class SessionViewSet(StrategyViewSet):
         return HttpResponse(pdf_service.render_pdf(session),
                             content_type="application/pdf")
 
+    @action(detail=True, methods=["get"], url_path="docx")
+    def docx(self, request, pk=None):
+        """The same document as the PDF, as an editable Word file (2026-10-15).
+        Who may download it is who may download the PDF."""
+        from apps.strategy import docx_export
+
+        session = self.load(pk)
+        response = HttpResponse(docx_export.render_docx(session),
+                                content_type=docx_export.CONTENT_TYPE)
+        response["Content-Disposition"] = (
+            f'attachment; filename="{docx_export.filename(session)}"')
+        return response
+
     @action(detail=True, methods=["post"], url_path="send-pdf")
     def send_pdf(self, request, pk=None):
         session = self.load(pk)

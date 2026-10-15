@@ -991,6 +991,8 @@ function PdfCard({ data, path, onChanged, setNote }: {
         <a className="btn ghost" href={`${path}pdf/`} target="_blank" rel="noreferrer">
           Download the file
         </a>
+        {/* The same document, editable (2026-10-15). */}
+        <a className="btn ghost" href={`${path}docx/`} download>Download as Word</a>
         <button onClick={() => setShowEmail(!showEmail)}>
           {showEmail ? "Hide the email" : "Read the email it goes in"}
         </button>

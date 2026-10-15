@@ -26,7 +26,29 @@ covers what they don't, and what changed since 9/30.
   open as a modal** over a grayed-out page (`Modal` in `shell.tsx`): Esc, the
   close button, Cancel or a click on the gray close it with nothing saved.
   "New invoice"'s button is now "Save the draft" (it starts the draft and
-  opens it). A sent invoice's page is unchanged.
+  opens it). A sent invoice's page is unchanged. `e9e068c`.
+- **Job 2, W2: each practice names its goals, projects, tasks and steps**
+  (`3cd0deb`). Settings → Words (practice owner); `tenant.work_words`
+  (migration **tenancy 0015, additive, on the laptop; production needs it at
+  the next release**). `apps/tenancy/words.py` and `frontend/src/lib/words.ts`
+  (`useWords()`: `w.task`, `w.Tasks`, `w.aTask`, `w.count`, `w.counted`).
+  Shown in the sidebar, screens, portal, read-only lines and refusals,
+  Activity, digests (and the AI prompt, only when the words differ), the value
+  report PDF, the meeting queue, stage automations and the map's conversion.
+  Not on the platform owner's pages, the API's fields or stored data. **A new
+  readable string with one of the four words must use them**; five test files
+  (`tests/test_practice_words*.py`, `frontend/src/test/words_*.test.tsx`)
+  hold it for what exists. Not done: W2's Getting started item. Not seen in a
+  browser.
+- **Job 3, W3: the strategy map as Word.** "Download as Word" beside the
+  map's PDF (`/api/strategy-sessions/<id>/docx/`, `apps/strategy/docx_export.py`):
+  the PDF's sections and headings from the same filtered content, so the
+  private-note flags hold; the practice's logo or name, header colour, accent
+  on the lowest score, and footer. Text the PDF shortens is whole. New
+  dependency **python-docx 1.1.2** (with lxml 6.1.3). Clients have no strategy
+  screens, so there is no portal link. Looked at through LibreOffice; not yet
+  opened in Word itself, and the logo path was not exercised (the sample
+  practice had none).
 
 ## 2026-10-14: Release 12 is out
 

@@ -238,6 +238,15 @@ describe("the live session view", () => {
     expect(screen.getByText(/Generating is not sending/)).toBeInTheDocument();
   });
 
+  it("offers the same document as a Word file beside the PDF (2026-10-15)", async () => {
+    showSession();
+    const word = await screen.findByRole("link", { name: "Download as Word" });
+    expect(word.getAttribute("href")).toMatch(/\/docx\/$/);
+    expect(word).toHaveAttribute("download");
+    expect(screen.getByRole("link", { name: "Download the file" }).getAttribute("href"))
+      .toMatch(/\/pdf\/$/);
+  });
+
   it("matrix §10 — a VA reads the session and cannot run it", async () => {
     showSession(aSession(), aMe({ role: "VA" }));
     expect(await screen.findByText(/Running the call, drafting, sending/))
