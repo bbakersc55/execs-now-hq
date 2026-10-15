@@ -1,4 +1,4 @@
-import { MouseEvent, ReactNode, useEffect, useState } from "react";
+import { MouseEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -105,6 +105,44 @@ export function Sheet({ title, onClose, children, label = "Task" }: {
         </div>
         {children}
       </aside>
+    </>
+  );
+}
+
+/**
+ * A form over a grayed-out page (backlog U1, Bryan 2026-10-14): centred, closed
+ * by Escape, the close button, Cancel or a click on the gray. Nothing in it is
+ * saved until its own Save; closing it any other way discards what was typed.
+ * The first field takes the focus when it opens.
+ */
+export function Modal({ title, onClose, children, label, wide = false }: {
+  title: ReactNode; onClose: () => void; children: ReactNode; label: string;
+  wide?: boolean;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>(
+      "input:not([type=checkbox]), select, textarea")?.focus();
+  }, []);
+
+  return (
+    <>
+      <div className="sheet-backdrop" onClick={onClose} aria-hidden="true" />
+      <div ref={box} className={wide ? "modal wide" : "modal"} role="dialog"
+        aria-modal="true" aria-label={label}>
+        <div className="sheet-head">
+          <h3 style={{ margin: 0 }}>{title}</h3>
+          <button className="icon-button" aria-label="Close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
     </>
   );
 }

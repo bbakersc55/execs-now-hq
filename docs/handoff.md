@@ -1,13 +1,32 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-14**, after Release 12. **The next session starts at "2026-10-14"
+2026-10-15**, after Release 13. **The next session starts at "2026-10-15"
 just below.** Then "Release 12: the plan as it was" and "2026-10-13", which
 is the day in order. Everything from "Next" down was last brought up to
 date on 10/5; where it and a newer section disagree, the newer holds. Upload
 this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
+
+## 2026-10-15: Release 13, then three jobs
+
+- **Release 13 is live: `f91c08c`,** no migration: P7 phases 3 and 4 (the
+  client owner's Your team page; what each level sees and may do), team
+  changes on Activity, the Senior leadership labels, the Viewer's line and
+  no comment box for a Viewer, and the company page's layout. Pushed 15:29:02
+  UTC, new bundle served 15:32:33 (3 min 31 s), `/healthz` 200 on all 38
+  samples. **Not yet confirmed:** the worker's "migrations current" line
+  (asked of Bryan), and the run-now backup Bryan started (his gcloud sign-in
+  had expired).
+- **Layout is now looked at before it is committed,** in headless Chrome
+  with a throwaway harness (the real app, canned API answers, a button
+  clicked by name), at 1920 and 1366. The harness is not committed.
+- **Job 1, U1: "New invoice", "New recurring invoice" and a schedule's "Edit"
+  open as a modal** over a grayed-out page (`Modal` in `shell.tsx`): Esc, the
+  close button, Cancel or a click on the gray close it with nothing saved.
+  "New invoice"'s button is now "Save the draft" (it starts the draft and
+  opens it). A sent invoice's page is unchanged.
 
 ## 2026-10-14: Release 12 is out
 

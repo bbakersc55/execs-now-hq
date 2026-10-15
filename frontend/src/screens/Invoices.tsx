@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { InvoiceLines, cleanLines } from "../components/InvoiceLines";
 import { IncomeCategoryPicker } from "../components/IncomeCategoryPicker";
 import { TermsPicker } from "../components/PaymentTerms";
-import { PageHead, useRowLink } from "../components/shell";
+import { Modal, PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
   Company, Contact, Invoice, InvoiceLine, InvoiceList, InvoiceRow, InvoiceSchedule,
@@ -197,7 +197,7 @@ function NewInvoice({ clients, owner, preset, onClose }: {
   });
   const choices = toContact ? (found.data?.contacts ?? []) : people;
   return (
-    <Card title="New invoice">
+    <Modal title="New invoice" label="New invoice" onClose={onClose}>
       {create.isError && <Banner kind="bad">{(create.error as Error).message}</Banner>}
       {owner && (
         <label className="small" style={{ display: "flex", gap: ".4rem" }}>
@@ -232,16 +232,20 @@ function NewInvoice({ clients, owner, preset, onClose }: {
             {choices.map((c) => <option key={c.id} value={c.id}>{name(c)}</option>)}
           </select>
         </Field>
-        <button className="primary" disabled={!contact || create.isPending}
-          onClick={() => create.mutate()}>
-          {create.isPending ? "Starting…" : "Start the draft"}</button>
-        <button className="ghost" onClick={onClose}>Cancel</button>
       </div>
       {!toContact && company && people.length === 0 && (
         <p className="small muted">That company has no contacts yet. Add the person the
           invoice goes to on the company's page first.</p>
       )}
-    </Card>
+      <p className="small muted">Saving starts a draft and opens it, to add its lines.
+        Nothing is numbered or sent.</p>
+      <div className="row tight">
+        <button className="primary" disabled={!contact || create.isPending}
+          onClick={() => create.mutate()}>
+          {create.isPending ? "Saving…" : "Save the draft"}</button>
+        <button className="ghost" onClick={onClose}>Cancel</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -314,8 +318,9 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
        ...people.map((c) => ({ id: c.id, label: name(c) }))]
     : people.map((c) => ({ id: c.id, label: name(c) }));
   return (
-    <div className="card" role="group"
-      aria-label={editing ? `Editing ${what}` : "The new recurring invoice"}>
+    <Modal wide onClose={onCancel}
+      title={editing ? `Edit ${what}` : "New recurring invoice"}
+      label={editing ? `Editing ${what}` : "The new recurring invoice"}>
       {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
       {editing && (
         <p className="small muted" style={{ marginTop: 0 }}>
@@ -381,7 +386,7 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
           {editing ? "Save the changes" : "Save the recurring invoice"}</button>
         <button className="ghost" onClick={onCancel}>Cancel</button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -139,7 +139,7 @@ describe("the invoices list", () => {
     const fetchMock = show(aMe(), "/", LIST, {
       "POST /api/invoices/": () => ({ status: 201, body: invoice({ status: "draft" }) }) });
     await userEvent.click(await screen.findByRole("button", { name: "New invoice" }));
-    const start = screen.getByRole("button", { name: "Start the draft" });
+    const start = screen.getByRole("button", { name: "Save the draft" });
     expect(start).toBeDisabled();
     await userEvent.selectOptions(screen.getByLabelText("Client company to invoice"), "co1");
     const people = await screen.findByLabelText("Addressed to");
@@ -150,6 +150,17 @@ describe("the invoices list", () => {
     await waitFor(() => expect(sent(fetchMock, "/api/invoices/")).toEqual([
       { client_company: "co1", contact: "c1", lines: [] }]));
   });
+
+  it("opens New invoice over a grayed page; a click on the gray closes it unsaved (U1)",
+    async () => {
+      const fetchMock = show(aMe());
+      await userEvent.click(await screen.findByRole("button", { name: "New invoice" }));
+      expect(screen.getByRole("dialog", { name: "New invoice" }))
+        .toHaveAttribute("aria-modal", "true");
+      await userEvent.click(document.querySelector(".sheet-backdrop") as HTMLElement);
+      expect(screen.queryByRole("dialog", { name: "New invoice" })).toBeNull();
+      expect(fetchMock.calls.filter((c) => c.method !== "GET")).toEqual([]);
+    });
 
   it("lets only the practice owner invoice someone who is not a client", async () => {
     show(aMe({ role: "CF" }));
@@ -220,7 +231,7 @@ describe("editing a recurring invoice", () => {
       show();
       await userEvent.click(await screen.findByRole("button", {
         name: "Edit the recurring invoice for Acme Facilities" }));
-      const form = screen.getByRole("group", {
+      const form = screen.getByRole("dialog", {
         name: "Editing Acme Facilities's recurring invoice" });
       expect(form).toHaveTextContent(
         "Changes apply to the invoices it writes from now on. Invoices it has already "
@@ -247,15 +258,35 @@ describe("editing a recurring invoice", () => {
         name: "Edit the recurring invoice for Acme Facilities" })).toBeDisabled();
       expect(screen.queryByRole("button", { name: "New recurring invoice" })).toBeNull();
       await userEvent.click(within(form).getByRole("button", { name: "Cancel" }));
-      expect(screen.queryByRole("group", { name: /Editing/ })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: /Editing/ })).toBeNull();
     });
+
+  it("opens over a grayed page, and Escape closes it with nothing saved (U1)", async () => {
+    const fetchMock = show();
+    await userEvent.click(await screen.findByRole("button", {
+      name: "Edit the recurring invoice for Acme Facilities" }));
+    const form = screen.getByRole("dialog", { name: /Editing/ });
+    expect(form).toHaveAttribute("aria-modal", "true");
+    expect(document.querySelector(".sheet-backdrop")).not.toBeNull();
+    await userEvent.clear(within(form).getByLabelText("Day of the month"));
+    await userEvent.type(within(form).getByLabelText("Day of the month"), "9");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: /Editing/ })).toBeNull();
+    expect(document.querySelector(".sheet-backdrop")).toBeNull();
+    expect(fetchMock.calls.filter((c) => c.method !== "GET")).toEqual([]);
+    // Opened again, it holds what is saved, not what was typed.
+    await userEvent.click(screen.getByRole("button", {
+      name: "Edit the recurring invoice for Acme Facilities" }));
+    expect(within(screen.getByRole("dialog", { name: /Editing/ }))
+      .getByLabelText("Day of the month")).toHaveValue(5);
+  });
 
   it("saves the client, the amount, the day, the terms, how to pay and the email",
     async () => {
       const fetchMock = show();
       await userEvent.click(await screen.findByRole("button", {
         name: "Edit the recurring invoice for Acme Facilities" }));
-      const form = screen.getByRole("group", { name: /Editing/ });
+      const form = screen.getByRole("dialog", { name: /Editing/ });
       const save = within(form).getByRole("button", { name: "Save the changes" });
       // Another client: someone there has to be chosen before it can be saved.
       await userEvent.selectOptions(
@@ -283,7 +314,7 @@ describe("editing a recurring invoice", () => {
         lines: [{ description: "Monthly retainer", quantity: "1", unit_price_cents: 650000 }],
         terms_days: 30, pay_instructions: "By check.", email_subject: "Your retainer",
         email_body: "", income_category: "" });
-      await waitFor(() => expect(screen.queryByRole("group", { name: /Editing/ })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: /Editing/ })).toBeNull());
     });
 
   it("shows the server's refusal and keeps the form open", async () => {
@@ -291,7 +322,7 @@ describe("editing a recurring invoice", () => {
       status: 400, body: { detail: "The day of the month is from 1 to 28." } }) });
     await userEvent.click(await screen.findByRole("button", {
       name: "Edit the recurring invoice for Acme Facilities" }));
-    const form = screen.getByRole("group", { name: /Editing/ });
+    const form = screen.getByRole("dialog", { name: /Editing/ });
     await userEvent.click(within(form).getByRole("button", { name: "Save the changes" }));
     expect(await within(form).findByText("The day of the month is from 1 to 28."))
       .toBeInTheDocument();
@@ -301,7 +332,7 @@ describe("editing a recurring invoice", () => {
     const fetchMock = show(aMe({ role: "CF" }));
     await userEvent.click(await screen.findByRole("button", {
       name: "Edit the recurring invoice for Acme Facilities" }));
-    const form = screen.getByRole("group", { name: /Editing/ });
+    const form = screen.getByRole("dialog", { name: /Editing/ });
     expect(within(form).queryByLabelText(/Income category/)).toBeNull();
     await userEvent.click(within(form).getByRole("button", { name: "Save the changes" }));
     await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/s1/")).toHaveLength(1));
@@ -312,7 +343,7 @@ describe("editing a recurring invoice", () => {
   it("a new one names only what was chosen: the rest is the practice's", async () => {
     const fetchMock = show();
     await userEvent.click(await screen.findByRole("button", { name: "New recurring invoice" }));
-    const form = screen.getByRole("group", { name: "The new recurring invoice" });
+    const form = screen.getByRole("dialog", { name: "The new recurring invoice" });
     await userEvent.selectOptions(
       within(form).getByLabelText("Client company for the recurring invoice"), "co1");
     await userEvent.selectOptions(

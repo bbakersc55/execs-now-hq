@@ -757,6 +757,20 @@ main:has(.pipeline-board) .sub { max-width: 80ch; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 
+/* A form over a grayed-out page (`Modal`, backlog U1). */
+.modal {
+  position: fixed; top: 8vh; left: 50%; transform: translateX(-50%); z-index: 41;
+  width: min(720px, calc(100vw - 2 * var(--s4))); max-height: 84vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: var(--s6);
+}
+.modal.wide { width: min(980px, calc(100vw - 2 * var(--s4))); }
+.modal .sheet-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--s3); margin-bottom: var(--s4);
+}
+.modal :is(input, select, textarea) { max-width: none; }
+
 /* ------------------------------------------------------ the right-side sheet */
 
 .sheet-backdrop {

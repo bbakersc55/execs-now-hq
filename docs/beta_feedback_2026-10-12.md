@@ -56,4 +56,4 @@ is built unless its row says so. Pricing heard on the same call is in
 
 | # | Item | Status |
 |---|---|---|
-| U1 | **"New invoice" and a recurring invoice's "Edit" open as a modal** over a grayed-out page, not as a drop-down in the list. Drilling into a sent invoice stays as it is. Asked 2026-10-14. | later |
+| U1 | **"New invoice" and a recurring invoice's "Edit" open as a modal** over a grayed-out page, not as a drop-down in the list. Drilling into a sent invoice stays as it is. Asked 2026-10-14. | done 2026-10-15 (`Modal`; "New recurring invoice" too) |
