@@ -48,7 +48,7 @@ describe("Your team, the client owner's page", () => {
     await screen.findByRole("table", { name: "Teams" });
     expect(fetchMock.calls[0].url).toContain(`/api/client-teams/?company=${COMPANY_ID}`);
     expect(screen.getByText(/“Act as a colleague” in your account menu/)).toBeInTheDocument();
-    expect(screen.queryByText(/See the portal as/)).toBeNull();
+    expect(screen.queryByText(/View portal as/)).toBeNull();
     expect(await screen.findByText(/own settings are set by Executives Now/))
       .toBeInTheDocument();
   });

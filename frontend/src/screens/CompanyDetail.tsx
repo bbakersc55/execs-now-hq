@@ -122,7 +122,7 @@ export function CompanyDetail({ me }: { me: Me }) {
                     {maySetPrimary && (
                       <td>
                         {c.primary_contact !== p.id && (
-                          <button className="ghost small" disabled={setPrimary.isPending}
+                          <button className="ghost small wraps" disabled={setPrimary.isPending}
                             aria-label={`Set ${p.first_name} ${p.last_name} as primary contact`}
                             onClick={() => setPrimary.mutate(p.id)}>
                             Set as primary contact

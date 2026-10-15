@@ -223,9 +223,21 @@ main :is(textarea, select, input:not([type="checkbox"], [type="radio"], [type="r
                grid-template-columns: minmax(0, 720px) minmax(0, 560px); }
 /* A pair that spans the page, as wide as a full-width card beneath it. */
 .record-cols.span { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
-@media (max-width: 1100px) { .record-cols, .record-cols.span { grid-template-columns: 1fr; } }
-/* A row's buttons wrap inside their cell rather than leave the card. */
-.row-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+/* A button whose label may take two lines where its column is narrow
+   ("Set as primary contact" beside Portal access at 1366 wide). */
+button.wraps { white-space: normal; line-height: 1.2; padding-block: var(--s1); text-align: center; }
+@media (max-width: 1100px) { .record-cols { grid-template-columns: 1fr; } }
+/* Beside a 240px sidebar the pair needs about 1300px to sit side by side:
+   below that, one above the other (seen at 1150 wide, 2026-10-15). */
+@media (max-width: 1300px) { .record-cols.span { grid-template-columns: 1fr; } }
+/* Portal access's three buttons for a person: "View portal as…" on its own
+   line, "Resend invitation" and "Revoke" side by side under it. Each column
+   is as wide as its whole label, so the cell is too, and nothing overlaps.
+   (Not `.row-actions`: that is the list rows' fixed grid, further down; the
+   name clashed on 2026-10-15 and drew these on top of one another.) */
+.access-actions { display: grid; grid-template-columns: max-content max-content;
+                  gap: var(--s2); justify-content: start; }
+.access-actions > .access-act { grid-column: 1 / -1; }
 .table-fit { overflow-x: auto; }
 
 /* A list of cards goes to two or three columns when there is room, and the

@@ -239,7 +239,7 @@ export function ClientTeamsCard({ me, company }: {
         {portal
           ? <>To check what someone sees, use “Act as a colleague” in your account menu.
               A client owner’s own settings are set by <PracticeName />.</>
-          : <>To check what someone sees, use “See the portal as” beside their name above.</>}
+          : <>To check what someone sees, use “View portal as…” beside their name above.</>}
       </p>
       <table aria-label="Teams">
         <thead><tr><th>Team</th><th>Holds</th><th>People</th><th></th></tr></thead>

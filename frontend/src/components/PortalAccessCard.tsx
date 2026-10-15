@@ -178,9 +178,9 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                     ))}
                   </select>
                 </td>
-                <td><div className="row-actions">
+                <td><div className="access-actions">
                   {/* FR-3.42 — see exactly what they see; no email while acting. */}
-                  {!me.acting && <ActAsButton membership={p.id} name={p.name} />}
+                  {!me.acting && <div className="access-act"><ActAsButton membership={p.id} name={p.name} /></div>}
                   {/* A fresh link for the same access: nobody is revoked to get one. */}
                   <button className="ghost small" disabled={resend.isPending}
                     onClick={() => resend.mutate({ id: p.id, email: p.email })}>
