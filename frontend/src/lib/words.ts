@@ -3,7 +3,7 @@ import { createContext, createElement, ReactNode, useContext, useMemo } from "re
 /**
  * What this practice calls its goals, projects, tasks and steps (2026-10-15).
  *
- * Each practice names them in Settings → Words; the server sends them on
+ * Each practice names them in Settings → Branding → Wording; the server sends them on
  * `/api/me` as `words`. Screens read them with `useWords()` and never write
  * the four words as fixed text. Capitalization follows the place: `w.task` in
  * a sentence, `w.Task` at its start or on a button, `w.aTask` for "a task" /

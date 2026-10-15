@@ -35,7 +35,7 @@ describe("Settings", () => {
 
   it("lists every section for the practice owner", () => {
     expect(settingsFor(aMe({ role: "FF" })).map((s) => s.label)).toEqual([
-      "Email", "Branding", "Words", "Team", "Stage automations", "Referral settings", "Digests",
+      "Email", "Branding", "Team", "Stage automations", "Referral settings", "Digests",
       "Tags", "Notes", "Invoices", "Finance", "AI usage",
     ]);
   });
@@ -66,8 +66,6 @@ describe("Settings", () => {
       "/settings/invoices": ["FF"],
       // P5: the books are the practice owner's alone (13.7).
       "/settings/finance": ["FF"],
-      // New on 2026-10-15: what the practice calls its four levels of work.
-      "/settings/words": ["FF"],
       // New with the editable digest day (2026-10-05); its endpoint lets only
       // the practice owner change it.
       "/settings/digests": ["FF"],
@@ -91,7 +89,7 @@ describe("Settings", () => {
     await user.click(screen.getByRole("menuitem", { name: "Settings" }));
 
     // /settings opens the first section the person has.
-    await waitFor(() => expect(sections()).toHaveLength(12));
+    await waitFor(() => expect(sections()).toHaveLength(11));
     expect(screen.getByRole("link", { name: "Email" })).toHaveClass("on");
   });
 
@@ -114,7 +112,7 @@ describe("Settings", () => {
   it.each(["/settings/email", "/settings/branding", "/referrals", "/rules", "/staff",
            "/ai-usage"])("still opens %s at its old address, inside Settings", async (path) => {
     await showApp(aMe({ role: "FF" }), path);
-    await waitFor(() => expect(sections()).toHaveLength(12));
+    await waitFor(() => expect(sections()).toHaveLength(11));
     const here = SETTINGS.find((s) => s.to === path)!;
     expect(screen.getByRole("link", { name: here.label })).toHaveClass("on");
     expect(document.querySelector(".settings-body")).not.toBeEmptyDOMElement();

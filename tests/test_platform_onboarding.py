@@ -214,7 +214,7 @@ def test_each_item_ticks_from_the_practices_own_data(api, blue_sky_owner, seeded
     assert "words" in done()
     item = next(i for i in api.as_(blue_sky_owner).get("/api/getting-started").json()
                 if i["key"] == "words")
-    assert item["to"] == "/settings/words"
+    assert item["to"] == "/settings/branding#wording"
 
 
 @pytest.mark.django_db

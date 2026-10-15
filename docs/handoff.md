@@ -41,7 +41,8 @@ covers what they don't, and what changed since 9/30.
   "New invoice"'s button is now "Save the draft" (it starts the draft and
   opens it). A sent invoice's page is unchanged. `e9e068c`.
 - **Job 2, W2: each practice names its goals, projects, tasks and steps**
-  (`3cd0deb`). Settings → Words (practice owner); `tenant.work_words`
+  (`3cd0deb`). **Settings → Branding → Wording** (practice owner; renamed
+  from a "Words" page the same day); `tenant.work_words`
   (migration **tenancy 0015, additive, on the laptop; production needs it at
   the next release**). `apps/tenancy/words.py` and `frontend/src/lib/words.ts`
   (`useWords()`: `w.task`, `w.Tasks`, `w.aTask`, `w.count`, `w.counted`).
@@ -52,7 +53,8 @@ covers what they don't, and what changed since 9/30.
   readable string with one of the four words must use them**; five test files
   (`tests/test_practice_words*.py`, `frontend/src/test/words_*.test.tsx`)
   hold it for what exists. W2's Getting started item was added after Release
-  14 ("Choose your words…", done once any word differs from the default).
+  14 ("Choose your wording…", to Branding's Wording section, done once any
+  word differs from the default).
 - **Job 3, W3: the strategy map as Word.** "Download as Word" beside the
   map's PDF (`/api/strategy-sessions/<id>/docx/`, `apps/strategy/docx_export.py`):
   the PDF's sections and headings from the same filtered content, so the

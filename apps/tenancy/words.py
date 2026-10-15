@@ -109,7 +109,7 @@ def for_request(request) -> Words:
 
 
 def save(tenant, *, actor, data: dict) -> Words:
-    """Settings → Words. `data` is {kind: {"singular": .., "plural": ..}};
+    """Settings → Branding → Wording. `data` is {kind: {"singular": .., "plural": ..}};
     an empty pair is the default. Audited. Changes nothing but the words."""
     from .models import AuditEvent
 

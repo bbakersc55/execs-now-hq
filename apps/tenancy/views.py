@@ -279,7 +279,7 @@ class BrandingSettingsView(APIView):
 
 
 class WordsSettingsView(APIView):
-    """Settings → Words (2026-10-15): what this practice calls a goal, a
+    """Settings → Branding → Wording (2026-10-15): what this practice calls a goal, a
     project, a task and a step. Read by all its staff; changed by the
     practice owner only. Changing them moves no data and re-sends nothing."""
 

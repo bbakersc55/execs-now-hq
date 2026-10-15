@@ -5,6 +5,7 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import { api } from "../lib/api";
 import { HEX, check, textOn } from "../lib/contrast";
+import { WordingSection } from "./Wording";
 import { useWords } from "../lib/words";
 
 /** GET /api/settings/branding (apps/tenancy/branding.py `current`). */
@@ -200,6 +201,8 @@ export function Branding() {
               onPick={(file) => uploadImage.mutate({ kind: "mark", file })}
               onClear={() => clearImage.mutate("mark")} />
           </Card>
+
+          <WordingSection />
         </div>
 
         <div style={{ flex: "1 1 22rem", minWidth: 0 }}>

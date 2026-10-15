@@ -6,7 +6,7 @@ import {
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
   Receipt, Landmark, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { NavLink, Route, Routes, matchPath, useLocation } from "react-router-dom";
+import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 
 import { ActingBanner } from "./components/ActAs";
 import { useNarrowWindow, useRemembered } from "./components/shell";
@@ -74,7 +74,6 @@ import { Digests } from "./screens/Digests";
 import { Report } from "./screens/Report";
 import { Tasks } from "./screens/Tasks";
 import { Work } from "./screens/Work";
-import { WordsSettings } from "./screens/WordsSettings";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
 
 
@@ -347,7 +346,9 @@ export function App() {
             <Route path="/settings/email"
               element={<Settings me={me}><EmailSettings me={me} /></Settings>} />
             <Route path="/settings/branding" element={<Settings me={me}><Branding /></Settings>} />
-            <Route path="/settings/words" element={<Settings me={me}><WordsSettings /></Settings>} />
+            {/* Wording is a section of Branding now (2026-10-15); the old
+                address still lands on it. */}
+            <Route path="/settings/words" element={<Navigate to="/settings/branding#wording" replace />} />
             <Route path="/referrals" element={<Settings me={me}><ReferralSettings /></Settings>} />
             <Route path="/rules" element={<Settings me={me}><StageRules /></Settings>} />
             <Route path="/staff" element={<Settings me={me}><Staff me={me} /></Settings>} />
