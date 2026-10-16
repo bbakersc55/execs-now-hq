@@ -447,40 +447,39 @@ def test_two_pages_is_the_prospects_document_and_a_toggle_may_cost_a_third(
 
 
 @pytest.mark.django_db
-def test_the_document_has_margins_and_the_preview_looks_like_a_document(session):
-    """The browser preview ignores `@page`, so until the sheet wrapper existed
-    the preview ran its text to the window's edges while the PDF did not — the
-    preview was not showing what would be sent (owner, 2026-09-21)."""
+def test_the_document_is_two_letter_pages_and_the_preview_looks_like_one(session):
+    """The two-page design (2026-10-15): each sheet is a Letter page of 816 by
+    1056 CSS px with its own padding, and the page itself has no margin, so
+    the preview and the PDF put every line in the same place."""
     _a_full_session(session)
     html = pdf_service.render_html(session)
 
-    assert "@page { size: letter; margin: 16mm 16mm 17mm;" in html
-    # One sheet per page, and the break is a property of the content.
+    assert "@page { size: letter; margin: 0; }" in html
     assert html.count('<section class="sheet">') == 2
-    assert ".sheet + .sheet { break-before: page; }" in html
-    # On screen: page-sized, on a neutral background, with the same margins.
-    assert "@media screen" in html
-    assert "width: 8.5in; min-height: 11in" in html
-    assert "padding: 16mm 16mm 17mm;" in html
-    assert "background: #E9ECEF;" in html
-    # And the sheet's padding is screen-only: in the PDF the page margin does it,
-    # and doubling them would indent every page by an inch and a quarter.
+    assert "width: 816px; height: 1056px; box-sizing: border-box;" in html
+    assert "padding: 48px;" in html and "overflow: hidden; break-after: page;" in html
     screen_block = html[html.index("@media screen"):]
-    assert screen_block.index("padding: 16mm") < screen_block.index("}")  + 400
+    assert "background: #E9ECEF;" in screen_block[:200]
+    assert "Page 1 of 2" in html and "Page 2 of 2" in html
+    # The fonts are the bundled ones, read from disk, never fetched.
+    assert 'font-family: "Lora"' in html and 'src: url("Lora-SemiBold.ttf")' in html
+    assert "fonts.googleapis" not in html and "http" not in html.split("<body>")[0]
 
 
 @pytest.mark.django_db
-def test_the_six_key_components_render_as_a_chart_with_the_lowest_called_out(session):
+def test_the_components_are_cards_with_a_pill_from_their_rating(session):
+    """Strong from 7, Watch at 5 and 6, Fix at 4 and under; the tile counts
+    the fixes."""
     _a_full_session(session)
-    context = pdf_service.context_for(session)
-    chart = context["six_key"]["chart"]
-    assert [bar["rating"] for bar in chart["bars"]] == [10, 8, 6, 7, 4, 8]
-    # A bar's width is arithmetic on the rating, and the lowest is the one the
-    # accent colour is spent on.
-    assert chart["bars"][0]["width"] == chart["track"]
-    assert [bar["is_lowest"] for bar in chart["bars"]] == [False] * 4 + [True, False]
+    doc = pdf_service.context_for(session)["doc"]
+    assert [c["pill"] for c in doc["components"]] == [
+        "strong", "strong", "watch", "strong", "fix", "strong"]
+    assert [c["name"] for c in doc["components"]] == [
+        "Vision", "People", "Data", "Issues", "Process", "Traction"]
+    assert {"number": "6", "label": "components assessed, one to fix"} in doc["tiles"]
     html = pdf_service.render_html(session)
-    assert "<svg" in html and html.count("<rect") == 12      # track + bar, six times
+    assert html.count('<span class="pill fix">Fix</span>') == 1
+    assert html.count('<span class="pill strong">Strong</span>') == 4
 
 
 @pytest.mark.django_db
@@ -536,9 +535,14 @@ def test_the_decision_page_keeps_the_leaning_and_drops_what_they_said(session):
     _a_full_session(session)
     context = pdf_service.context_for(session)
     assert [path["leaning"] for path in context["path_pair"]] == ["Nope.", "Yes."]
-
+    # Two leanings recommend neither; the leaning on one path recommends it.
+    assert "Recommended</span>" not in pdf_service.render_html(session)
+    answer(session, "s8_path_a", {"reaction": "They have already tried it.",
+                                  "risk": "Know they need help.", "leaning": ""})
     html = pdf_service.render_html(session)
-    assert "Nope." in html and "Yes." in html
+    assert [p["recommended"] for p in pdf_service.context_for(session)["doc"]["paths"]] == [
+        False, True]
+    assert html.count("Recommended</span>") == 1
     for said in ("They have already tried it.", "Know they need help.",
                  "They like the idea.", "Need to get us up to speed."):
         assert said not in html, f"{said!r} is the fractional's record, not the PDF's"
@@ -703,9 +707,21 @@ def test_the_map_groups_by_horizon_with_three_cards_and_the_rest_named(session):
         f"Bottleneck {i} — decisions stall waiting on the founder"
         for i in (0, 3, 6, 9)]
 
+    # On the document a box holds four, and these fit: nothing is named below.
+    doc = pdf_service.context_for(session)["doc"]
+    assert [len(box["bullets"]) for box in doc["boxes"]] == [4, 4, 3]
+    assert doc["also"] == []
     html = pdf_service.render_html(session)
-    assert "Also noted — lower priority" in html
-    assert "Bottleneck 9" in html, "the eleventh row is named, not forgotten"
+    assert "Bottleneck 9" in html, "the eleventh row is on the document"
+
+
+@pytest.mark.django_db
+def test_a_fifth_row_in_a_horizon_is_named_under_the_boxes(session):
+    _a_full_session(session, rows=13)
+    doc = pdf_service.context_for(session)["doc"]
+    assert [len(box["bullets"]) for box in doc["boxes"]] == [4, 4, 4]
+    assert doc["also"] == ["Bottleneck 12 — decisions stall waiting on the founder"]
+    assert "Also on the map: Bottleneck 12" in pdf_service.render_html(session)
 
 
 @pytest.mark.django_db
@@ -941,9 +957,8 @@ def test_the_scale_line_is_on_the_form_and_the_pdf_names_the_component(session, 
     for key in RATING_LEAD_INS:
         answer(session, key, {"rating": 6})
     html = pdf_service.render_html(session)
-    assert rewording.RATING_SCALE_MEANING in html
-    # The chart is labelled with the component, never a line of question.
-    assert ">Vision</text>" in html
+    # The card is named for the component, never a line of question.
+    assert '<div class="name">Vision</div>' in html
     assert RATING_LEAD_INS["s2_vision"] not in html
 
 

@@ -37,7 +37,7 @@ is built unless its row says so. Pricing heard on the same call is in
 | # | Item | Status |
 |---|---|---|
 | S1 | **Client teams and permissions.** Client users belong to teams within a client company, with member, manager, senior leadership and client owner rights, and a per-user setting for what they may create. **Spec written 10/12: `docs/p7_client_teams_permissions.md`, decisions open.** | spec first |
-| S2 | **PDF redesign** in the style of the 5FT View weekly brief (cards, eyebrow labels, one or two lines per item), after a mock Bryan approves. | spec first |
+| S2 | **PDF redesign** in the style of the 5FT View weekly brief (cards, eyebrow labels, one or two lines per item), after a mock Bryan approves. | done 2026-10-15 on `dev`, from the approved mock: the two-page design for every practice, every line held to a length, "Change the words on the document" for all of it, Claude's draft, the Word file in the same order. As built: `docs/p3_strategy_templates_session_v3.md` §10. Not released |
 | S3 | **Pipeline stages editable on both pipelines,** with the automation per stage and an optional campaign per stage. The default is not to enroll; the stage move asks "Enroll in X?". | spec first |
 | S4 | **Email templates editable under Settings,** all of them except sign-in links and unsubscribe footers. | spec first |
 | S5 | **Desktop notifications** for tasks due, digests waiting, replies, meeting proposals and client proposals, each switchable. | spec first |

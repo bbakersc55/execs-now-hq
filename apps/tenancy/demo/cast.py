@@ -10,6 +10,11 @@ SLUG = "summit-demo"
 LEGAL_NAME = "Summit Operations Partners LLC"
 DOMAIN = "summitops.example"
 OWNER_NAME = "John Carter"
+#: On the strategy document's sign-off. The person signing in to the demo as
+#: John is whoever seeds it, so the address printed is John's own, fictional.
+OWNER_EMAIL = "john.carter@summitops.example"
+CLOSING = ("The map changes as the business does. Tell me what moved, and the next "
+           "version will show it.")
 FOOTER = "Summit Operations Partners · Denver, CO"
 PRIMARY = "#1F4E3D"          # deep green
 ACCENT = "#B98A2E"           # warm gold, dark enough to pass against white too

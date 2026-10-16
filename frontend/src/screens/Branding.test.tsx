@@ -8,6 +8,7 @@ import { Branding, BrandingSettings } from "./Branding";
 const UNSET: BrandingSettings = {
   display_name: "", practice_name: "Acme Advisory LLC",
   primary_color: "#1F2933", accent_color: "#7B8794", footer_text: "",
+  document_closing: "", document_email: "", document_website: "",
   has_logo: false, has_mark: false, branding_updated_at: null,
   defaults: { primary_color: "#1F2933", accent_color: "#7B8794" },
 };
@@ -59,8 +60,31 @@ describe("Settings → Branding (P1)", () => {
     expect(await screen.findByText(/Branding saved/)).toBeInTheDocument();
     const put = fetchMock.calls.find((c) => c.method === "PUT");
     expect(put?.body).toEqual({ display_name: "Executives Now", primary_color: "#0A3A65",
-      accent_color: "#F58220", footer_text: "" });
+      accent_color: "#F58220", footer_text: "", document_closing: "", document_email: "",
+      document_website: "" });
   });
+
+  it("saves the strategy document's sign-off, and holds the closing line to its length",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = show(UNSET, {
+        "PUT /api/settings/branding": (body: unknown) => ({ status: 200,
+          body: { ...UNSET, ...(body as object), branding_updated_at: "2026-10-15T12:00:00Z" } }),
+      });
+      const closing = await screen.findByLabelText("Closing line");
+      await user.type(closing, "x".repeat(101));
+      expect(screen.getByText(/101 of 100 characters/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+      await user.clear(closing);
+      await user.type(closing, "Tell me what moved.");
+      await user.type(screen.getByLabelText("Email on the document"), "jo@acme.example");
+      await user.type(screen.getByLabelText("Website on the document"), "acme.example");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(fetchMock.calls.some((c) => c.method === "PUT")).toBe(true));
+      const put = fetchMock.calls.find((c) => c.method === "PUT");
+      expect(put?.body).toMatchObject({ document_closing: "Tell me what moved.",
+        document_email: "jo@acme.example", document_website: "acme.example" });
+    });
 
   it("will not save a primary color white text cannot be read on", async () => {
     show();

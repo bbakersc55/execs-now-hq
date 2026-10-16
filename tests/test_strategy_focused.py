@@ -341,27 +341,36 @@ LONG = ("This is a long focus statement that must never be cut short, because a 
 
 
 @pytest.mark.django_db
-def test_three_rows_are_three_full_width_cards_with_nothing_truncated(session):
+def test_three_rows_are_the_30_60_90_boxes_in_order(session):
+    """The two-page design (2026-10-15) draws a focused map as it draws every
+    map: three boxes, each row a bullet under its horizon with its owner. A
+    long header is shortened at a word to fit its line, never past it."""
+    long_header = "A header far longer than any bullet on the map is allowed to run to, in full"
     for i, horizon in enumerate((90, 30, 60)):
         StrategyMapRow.objects.create(
             tenant=session.tenant, session=session, position=i, horizon=horizon,
-            bottleneck=f"Bottleneck {i}", header=f"Header {i}", statement=LONG,
-            state=StrategyMapRow.State.ACCEPTED)
+            bottleneck=f"Bottleneck {i}", header=long_header if i == 0 else f"Header {i}",
+            statement=LONG, owner_text="Dana", state=StrategyMapRow.State.ACCEPTED)
     session.mirror_goal = "Win two contracts. Stop working weekends."
     session.mirror_unlocks = "Supervisors who audit. A price book."
     session.save()
+    doc = pdf_service.context_for(session)["doc"]
+    assert [(box["days"], [b["text"] for b in box["bullets"]]) for box in doc["boxes"]] == [
+        ("30", ["Header 1"]), ("60", ["Header 2"]),
+        ("90", ["A header far longer than any bullet on the map is allowed to run to…"])]
+    assert all(len(b["text"]) <= 70 for box in doc["boxes"] for b in box["bullets"])
+    assert doc["mirror"]["headline"] == "Supervisors who audit."
+    assert doc["mirror"]["body"] == "Win two contracts. Stop working weekends. A price book."
     html = pdf_service.render_html(session)
-    assert html.count('class="fcard"') == 3
-    assert html.count(LONG.strip()) == 3, "every statement in full"
-    assert "…" not in html.split("The strategy map")[1].split("</section>")[0]
-    assert html.index("30 days") < html.index("60 days") < html.index("90 days")
-    assert "<li>Win two contracts.</li><li>Stop working weekends.</li>" in html
-    assert "<li>Supervisors who audit.</li><li>A price book.</li>" in html
+    assert html.index("Day 30") < html.index("Day 60") < html.index("Day 90")
+    assert "Header 1 <b>Dana</b>" in html
+    assert LONG.strip() not in html, "the focus statement is the map's, not the document's"
     assert pdf_service.render_pdf(session).startswith(b"%PDF"), "WeasyPrint renders it"
 
 
 @pytest.mark.django_db
-def test_a_classic_pdf_is_laid_out_as_before(seeded_tenant, classic, prospect, ff):
+def test_a_classic_session_prints_on_the_same_two_pages(seeded_tenant, classic, prospect,
+                                                         ff):
     old = services.start(tenant=seeded_tenant, contact=prospect, template=classic,
                          owner=ff.user)
     StrategyMapRow.objects.create(tenant=old.tenant, session=old, bottleneck="B",
@@ -369,8 +378,9 @@ def test_a_classic_pdf_is_laid_out_as_before(seeded_tenant, classic, prospect, f
     old.mirror_goal = "One. Two."
     old.save()
     html = pdf_service.render_html(old)
-    assert 'class="lanes"' in html and 'class="fcard"' not in html
-    assert '<p class="said">One. Two.</p>' in html
+    assert '<div class="day">Day 30</div>' in html and "<span>B</span>" in html
+    assert "<p>One. Two.</p>" in html
+    assert pdf_service.page_count(old) == 2
 
 
 # ============================================== learning from the practice's edits

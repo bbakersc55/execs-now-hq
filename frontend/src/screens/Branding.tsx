@@ -15,6 +15,9 @@ export interface BrandingSettings {
   primary_color: string;
   accent_color: string;
   footer_text: string;
+  document_closing: string;
+  document_email: string;
+  document_website: string;
   has_logo: boolean;
   has_mark: boolean;
   branding_updated_at: string | null;
@@ -26,7 +29,20 @@ interface Form {
   primary_color: string;
   accent_color: string;
   footer_text: string;
+  document_closing: string;
+  document_email: string;
+  document_website: string;
 }
+
+const formOf = (s: BrandingSettings): Form => ({
+  display_name: s.display_name, primary_color: s.primary_color,
+  accent_color: s.accent_color, footer_text: s.footer_text,
+  document_closing: s.document_closing ?? "", document_email: s.document_email ?? "",
+  document_website: s.document_website ?? "",
+});
+
+/** The strategy document's closing line, at most (apps/tenancy/branding.py). */
+const CLOSING_MAX = 100;
 
 const FOOTER_MAX_LINES = 6;
 const FOOTER_MAX_CHARS = 500;
@@ -51,9 +67,7 @@ export function Branding() {
   });
   useEffect(() => {
     if (settings.data && form === null) {
-      const s = settings.data;
-      setForm({ display_name: s.display_name, primary_color: s.primary_color,
-                accent_color: s.accent_color, footer_text: s.footer_text });
+      setForm(formOf(settings.data));
     }
   }, [settings.data, form]);
 
@@ -95,8 +109,7 @@ export function Branding() {
     mutationFn: () => api.post<BrandingSettings>("/api/settings/branding/reset"),
     onSuccess: (data) => {
       setVersion((v) => v + 1);
-      setForm({ display_name: data.display_name, primary_color: data.primary_color,
-                accent_color: data.accent_color, footer_text: data.footer_text });
+      setForm(formOf(data));
       refreshed(data, "Back to the defaults: your practice name over neutral grays.");
     },
     onError: failed,
@@ -111,6 +124,7 @@ export function Branding() {
   const blocked = checks.some((c) => c.blocks && !c.ok);
   const footerLines = form.footer_text.trim() ? form.footer_text.trim().split("\n").length : 0;
   const footerTooLong = footerLines > FOOTER_MAX_LINES || form.footer_text.length > FOOTER_MAX_CHARS;
+  const closingTooLong = form.document_closing.length > CLOSING_MAX;
   const set = (patch: Partial<Form>) => { setForm({ ...form, ...patch }); setNote(""); };
 
   return (
@@ -170,9 +184,34 @@ export function Branding() {
               {FOOTER_MAX_CHARS} characters. Shown under every client email, below your own
               sign-off on personal ones.
             </p>
+            <p className="small" style={{ margin: "0.75rem 0 0.25rem" }}>
+              <strong>The strategy document's sign-off</strong>
+            </p>
+            <Field label="Closing line">
+              <input aria-label="Closing line" value={form.document_closing}
+                placeholder="The map changes as the business does. Tell me what moved, and the next version will show it."
+                onChange={(e) => set({ document_closing: e.target.value })} />
+            </Field>
+            {closingTooLong && (
+              <p className="small" style={{ color: "var(--bad)" }}>
+                {form.document_closing.length} of {CLOSING_MAX} characters: shorten it to save.
+              </p>
+            )}
+            <div className="row">
+              <Field label="Email on the document">
+                <input aria-label="Email on the document" value={form.document_email}
+                  placeholder="The session owner's email"
+                  onChange={(e) => set({ document_email: e.target.value })} />
+              </Field>
+              <Field label="Website on the document">
+                <input aria-label="Website on the document" value={form.document_website}
+                  placeholder="The web address in your footer"
+                  onChange={(e) => set({ document_website: e.target.value })} />
+              </Field>
+            </div>
             <div className="row" style={{ gap: "0.5rem" }}>
               <button className="primary" disabled={!colorsValid || blocked || footerTooLong
-                || save.isPending} onClick={() => save.mutate(form)}>
+                || closingTooLong || save.isPending} onClick={() => save.mutate(form)}>
                 {save.isPending ? "Saving…" : "Save"}
               </button>
               <button className="ghost" disabled={reset.isPending} onClick={() => {

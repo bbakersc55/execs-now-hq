@@ -202,11 +202,11 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert StrategySection.objects.filter(kind="custom").count() == 1
         by_state = dict(StrategySession.objects.values_list("state")
                         .annotate(n=Count("id")))
-        assert by_state == {"draft": 1, "in_call": 1, "complete": 1, "converted": 1}
+        assert by_state == {"draft": 1, "in_call": 1, "complete": 2, "converted": 1}
         assert StrategySessionPrep.objects.get().state == "ready"
         live = StrategySession.objects.get(state="in_call")
         assert StrategyMapRow.objects.filter(session=live, state="proposed").count() >= 2
-        done = StrategySession.objects.get(state="complete")
+        done = StrategySession.objects.get(state="complete", company__name__startswith="Sheinhardt")
         assert done.pdf_file_id and StrategyCallNotes.objects.filter(session=done).exists()
         assert {"pro", "con"} == set(StrategyPathNote.objects.filter(session=done)
                                      .values_list("kind", flat=True))
@@ -217,6 +217,27 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         converted = StrategySession.objects.get(state="converted")
         made = Goal.objects.get(source_map_row__session=converted)
         assert made.measurements.exists() and made.projects.exists()
+        # Wayne Industries' session carries the approved mock's words, so the
+        # demo's PDF is the mock (2026-10-15): two pages, nothing past a foot.
+        from apps.strategy import pdf as strategy_pdf
+        from apps.tenancy.demo.sessions import WAYNE_WORDS
+
+        wayne = StrategySession.objects.get(company__name="Wayne Industries")
+        assert wayne.state == "complete" and not wayne.pdf_file_id
+        doc = strategy_pdf.context_for(wayne)["doc"]
+        assert doc["headline"] == WAYNE_WORDS["headline"]
+        assert [t["number"] for t in doc["tiles"]] == ["4", "6", "2"]
+        assert doc["tiles"][1]["label"] == "components assessed, two to fix"
+        assert [c["pill"] for c in doc["components"]] == [
+            "watch", "fix", "fix", "strong", "strong", "watch"]
+        assert [len(box["bullets"]) for box in doc["boxes"]] == [3, 3, 3]
+        assert [p["recommended"] for p in doc["paths"]] == [True, False]
+        assert len(doc["next_moves"]) == 4
+        assert strategy_pdf.page_count(wayne) == 2
+        assert strategy_pdf.overflowing_pages(wayne) == []
+        signoff = strategy_pdf.context_for(wayne)["signoff"]
+        assert signoff == ("John Carter, Summit Operations Partners · "
+                           "john.carter@summitops.example · summitops.example")
 
         # ----------------------------------- meetings, digests, email, notes
         proposals = dict(MeetingProposal.objects.values_list("state")

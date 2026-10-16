@@ -4,7 +4,9 @@
 - one **in the call**, part answered, with rows waiting in the tray;
 - one **complete**, with pros and cons, its call notes attached and its PDF
   sent;
-- one **converted**: its map became a client's goal and project.
+- one **converted**: its map became a client's goal and project;
+- Wayne Industries' review session, whose document carries the words of the
+  approved two-page mock (2026-10-15), so the demo's PDF is the mock.
 
 The templates are made by the builder's own functions; the sessions by
 `apps.strategy.services`. What Claude would have drafted (prep, tray rows,
@@ -43,6 +45,7 @@ def strategy(world) -> None:
     templates = _templates(world)
     world.extra["templates"] = templates
     _converted(world, templates[0])
+    _wayne(world, templates[0])
     _complete(world, templates[0])
     _in_call(world, templates[0])
     _draft(world, templates[1])
@@ -405,3 +408,118 @@ def _converted(world, template) -> None:
                                 "baseline_at": start},
             str(estimates.pk): {"as": "project"}})
     world.extra["converted_session"] = call.session
+
+
+#: The words of the approved mock (2026-10-15), as a person would have saved
+#: them in "Change the words on the document". The demo's PDF for this
+#: session is the mock, in Summit's colors.
+WAYNE_WORDS = {
+    "headline": "One operating rhythm across four sites.",
+    "tile": {"number": "4", "label": "sites on one scorecard by day 90"},
+    "mirror_headline": "Safety before the scorecard, and the overtime report will say why.",
+    "mirror_body": ("Arkham Road ran its first scorecard meeting. After last month's injury, "
+                    "Bruce wants the start-of-shift check in place before the scorecard work "
+                    "spreads. Lucius sends the overtime report for all four sites this week."),
+    "working": "Gotham Central runs the weekly meeting without us in the room.",
+    "not_yet": "Bludhaven and Metropolis still report on different forms.",
+    "components": [
+        ("Leadership rhythm", "A weekly meeting at two of four sites, with no shared agenda."),
+        ("Safety", "One recordable incident in September; the start-of-shift check is "
+                   "skipped on nights."),
+        ("Reporting", "Four sites, three formats; the month closes in 14 working days."),
+        ("People", "Site leads stay; turnover under 8% this year."),
+        ("Customers", "Two renewals signed; no open complaints."),
+        ("Cash", "Receivables stretched to 52 days at Bludhaven."),
+    ],
+    "boxes": {
+        "30": [("Start-of-shift safety check at all four sites.", "Alfred"),
+               ("One scorecard form, agreed by the site leads.", "Lucius"),
+               ("Arkham Road's weekly meeting, second run.", "Bruce")],
+        "60": [("Bludhaven and Metropolis on the same agenda.", "Lucius"),
+               ("Overtime report monthly, by site.", "Lucius"),
+               ("Close the books in nine working days.", "Alfred")],
+        "90": [("Every site on the weekly scorecard.", "Bruce"),
+               ("Close in five days.", "Alfred"),
+               ("Recordable incidents reviewed each quarter.", "Bruce")],
+    },
+    "paths": [
+        {"side": "a", "title": "Sites first",
+         "blurb": ("Each site lead runs their own weekly meeting on the shared scorecard; "
+                   "we coach them weekly for ninety days."),
+         "for": ["Leads own the numbers", "No new hire", "Sticks after we leave"],
+         "against": ["Slower first month", "Uneven until day 60"]},
+        {"side": "b", "title": "Center first",
+         "blurb": ("Hire a central operations lead who runs all four meetings; the sites "
+                   "report in to one person."),
+         "for": ["Consistent from week one", "One report to read"],
+         "against": ["A hire before the habit", "Site leads step back",
+                     "Adds about $9,000 a month"]},
+    ],
+    "recommended": "a",
+    "next_moves": [
+        ("Approve the scorecard form", "Lucius sends Friday."),
+        ("Name the night-shift lead", "at Arkham Road for the safety check."),
+        ("Pick the path", "by {pick} so the day-30 dates hold."),
+        ("Book the day-30 review", ": thirty minutes, all four site leads."),
+    ],
+    "closing": ("The map changes as the sites do. Tell me what moved, and the next "
+                "version will show it."),
+}
+
+
+def _wayne(world, template) -> None:
+    """Wayne Industries' review session, nine days ago: the ratings, the
+    mirror, three rows on the map and the two paths, and the document's words
+    as the mock has them. Complete; not sent and not converted, because the
+    company is already a client with these goals."""
+    from apps.strategy import document
+    from apps.strategy.models import StrategyMapRow, StrategySession
+
+    name = "Wayne Industries"
+    bruce, lucius = world.people[name][0], world.people[name][1]
+    day = world.today - timedelta(days=9)
+    began = moment(day, 10)
+    with at(moment(day - timedelta(days=4), 9)):
+        call = _start(world, bruce, template, began, visionary=bruce, integrator=lucius)
+    with at(began + timedelta(minutes=80)):
+        session = call.session
+        _state(session, StrategySession.State.IN_CALL, started_at=began)
+        call.ratings(6, 3, 4, 8, 9, 5)
+        session.mirror_goal = ("Every site on one weekly scorecard by the new year, with "
+                               "safety first.")
+        session.mirror_unlocks = ("The start-of-shift check at all four sites, then one "
+                                  "scorecard form.")
+        session.save(update_fields=["mirror_goal", "mirror_unlocks", "updated_at"])
+        accepted = StrategyMapRow.State.ACCEPTED
+        call.row(0, "Start-of-shift check at every site",
+                 "The check is skipped on nights, and September had a recordable incident.",
+                 "Alfred", 30, "Shifts started with the check", accepted)
+        call.row(1, "One scorecard form",
+                 "Four sites report on three forms, so no two numbers compare.",
+                 "Lucius", 60, "Sites reporting on the shared form", accepted)
+        call.row(2, "Every site on the weekly scorecard",
+                 "Two of four sites hold the weekly meeting.", "Bruce", 90,
+                 "Sites running the weekly scorecard meeting", accepted)
+        call.answer("paths", 0, {"reaction": "Wants the leads to own it.", "risk": "",
+                                 "leaning": "Leaning this way"})
+        call.answer("paths", 1, {"reaction": "Worried about a hire before the habit.",
+                                 "risk": "The cost.", "leaning": ""})
+        words = WAYNE_WORDS
+        pick = day + timedelta(days=14)
+        document.save(session, {
+            **{key: words[key] for key in ("headline", "tile", "mirror_headline",
+                                           "mirror_body", "working", "not_yet",
+                                           "recommended", "closing")},
+            "components": [{"key": key, "name": label, "pill": document.pill_for(rating),
+                            "line": line}
+                           for key, rating, (label, line) in zip(
+                               call.keys["ratings"], (6, 3, 4, 8, 9, 5),
+                               words["components"])],
+            "boxes": {h: [{"text": text, "owner": owner} for text, owner in bullets]
+                      for h, bullets in words["boxes"].items()},
+            "paths": words["paths"],
+            "next_moves": [{"lead": lead, "rest": rest.format(
+                pick=f"{pick:%B} {pick.day}")} for lead, rest in words["next_moves"]],
+        }, actor=world.owner)
+        _state(session, StrategySession.State.COMPLETE)
+    world.extra["wayne_session"] = session

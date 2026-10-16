@@ -91,7 +91,10 @@ def practice(*, ff_email, ff_name, oauth_client, today) -> World:
             modules.set_enabled(tenant, modules.PERSONAL, True, actor=owner)
             branding.save(tenant, actor=owner, display_name=cast.PRACTICE,
                           primary_color=cast.PRIMARY, accent_color=cast.ACCENT,
-                          footer_text=cast.FOOTER)
+                          footer_text=cast.FOOTER,
+                          document={"document_closing": cast.CLOSING,
+                                    "document_email": cast.OWNER_EMAIL,
+                                    "document_website": cast.DOMAIN})
             branding.set_image(tenant, actor=owner, kind="logo", content=logo_png())
             branding.set_image(tenant, actor=owner, kind="mark", content=mark_png())
     tenant.refresh_from_db()

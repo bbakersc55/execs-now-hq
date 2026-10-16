@@ -259,6 +259,13 @@ class StrategySession(TenantScopedModel):
     pdf_file = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="+")
     pdf_include_flags = models.JSONField(default=default_pdf_include_flags, blank=True)
+    # The words on the two-page document (2026-10-15): the headline, the
+    # mirror callout, the component lines, the 30/60/90 bullets, the paths and
+    # the next moves, as a person saved them. A part left out reads from the
+    # session itself. Claude's draft is held apart until a person uses it, as
+    # the mirror's is. apps/strategy/document.py.
+    document_words = models.JSONField(default=dict, blank=True, db_default={})
+    proposed_document_words = models.JSONField(default=dict, blank=True, db_default={})
     # FR-4.15 — pacing, and the whole of what is kept for it: which section the
     # call is on, and when it got there. Deliberately not a per-section ledger:
     # a strategy session is not a stopwatch, and a history of every section a

@@ -38,6 +38,9 @@ a text search of the bytes is what AC-4.9 checks.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -119,7 +122,7 @@ def context_for(session) -> dict:
         if isinstance(rating, int):
             # The chart names the component, not the lead-in: the question
             # was asked on the form, and a line of it will not fit a bar label.
-            ratings.append({"label": _rating_label(session, item),
+            ratings.append({"key": item["key"], "label": _rating_label(session, item),
                             "rating": rating,
                             "comment": (item["value"].get("comment") or "").strip(),
                             "percent": rating * 10,
@@ -199,7 +202,102 @@ def context_for(session) -> dict:
         from apps.strategy import v3
 
         context.update(v3.pdf_context(session, context, sections, merge))
+    context.update(_design(session, context))
     return context
+
+
+FONTS = Path(__file__).resolve().parent / "fonts"
+_BASE = FONTS.as_uri() + "/"
+#: The faces the document uses, bundled (both OFL; the licences sit beside
+#: them), so nothing is fetched when it renders.
+FACES = (("Lato", 400, "Lato-Regular.ttf"), ("Lato", 700, "Lato-Bold.ttf"),
+         ("Lora", 400, "Lora-Regular.ttf"), ("Lora", 500, "Lora-Medium.ttf"),
+         ("Lora", 600, "Lora-SemiBold.ttf"))
+
+
+def font_faces(*, embedded=False) -> str:
+    """The @font-face rules. The PDF reads the files from disk, by name against
+    `FONTS` as its base; the on-screen preview, which a browser draws, carries
+    them inline."""
+    import base64
+
+    rules = []
+    for family, weight, name in FACES:
+        path = FONTS / name
+        src = (f"data:font/ttf;base64,{base64.b64encode(path.read_bytes()).decode()}"
+               if embedded else name)
+        rules.append(f'@font-face {{ font-family: "{family}"; font-weight: {weight}; '
+                     f'font-style: normal; src: url("{src}") format("truetype"); }}')
+    return "\n".join(rules)
+
+
+_WEB = re.compile(r"(?:https?://)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?:/\S*)?", re.I)
+
+
+def _website(tenant) -> str:
+    """The sign-off's web address: Settings → Branding's, else the first one
+    in the footer text that is not part of an email address."""
+    if tenant.document_website:
+        return tenant.document_website
+    for line in (tenant.brand_footer_text or "").splitlines():
+        for word in line.split():
+            if "@" in word:
+                continue
+            found = _WEB.fullmatch(word.strip(" ,;·|()"))
+            if found and not found.group(1)[-1].isdigit():
+                return found.group(1).lower()
+    return ""
+
+
+def _image(stored) -> str:
+    """A stored image as a data URI, or "" when it cannot be read."""
+    import base64
+
+    from apps.tenancy import storage
+
+    if stored is None:
+        return ""
+    try:
+        content = storage.read(stored)
+    except storage.StorageError:
+        return ""
+    if not content:
+        return ""
+    return f"data:{stored.content_type or 'image/png'};base64,{base64.b64encode(content).decode()}"
+
+
+def _design(session, context) -> dict:
+    """What the two-page design (2026-10-15) adds to the context: its words,
+    the header and the sign-off, and how many pages it comes to."""
+    from apps.strategy import document
+
+    tenant = session.tenant
+    doc = document.for_pdf(session, context)
+    email = tenant.document_email or (session.owner.email if session.owner_id else "")
+    # A third page only for what the practice asked to print beyond the two:
+    # its own sections marked to print, the money with its flag on, and the
+    # notes from experience with theirs.
+    # The mechanics column has no place on the two pages; with its flag on,
+    # a classic session's notes print here, each under its row. A card map
+    # (focused or v3) never printed them, whatever the flag said, and still
+    # does not.
+    mechanics = [] if context.get("focused") else [
+        {"header": (row.get("header") or "").strip() or row["bottleneck"],
+         "note": row["mechanics_note"]}
+        for row in context.get("map_rows") or [] if row.get("mechanics_note")]
+    extra = bool(context.get("custom_sections") or context.get("money") or mechanics)
+    from apps.tenancy.contrast import text_on
+
+    return {
+        "doc": doc,
+        "on_accent": text_on(context["brand"].accent_color),
+        "signoff": " · ".join(x for x in (
+            ", ".join(x for x in (context["fractional"], context["practice"]) if x),
+            email, _website(tenant)) if x),
+        "mechanics_notes": mechanics,
+        "pages": 3 if extra else 2,
+        "has_extra_page": extra,
+    }
 
 
 def _rating_label(session, item) -> str:
@@ -392,12 +490,17 @@ def _step(item):
     }
 
 
-def render_html(session) -> str:
-    """The document, with the practice's logo resolved the way the email layout
-    resolves it — one brand system, not a second one for paper."""
-    html = render_to_string("strategy/pdf.html", context_for(session))
-    html, _ = email_layout.with_logo(html, session.tenant, as_data_uri=True)
-    return html
+def render_html(session, *, preview=False) -> str:
+    """The document. The header wears the practice's mark beside its name,
+    or its logo, or (with neither) the drawn mark in the practice's colors.
+    `preview` carries the fonts inline, for a browser."""
+    tenant = session.tenant
+    context = context_for(session)
+    context["mark_src"] = _image(tenant.email_mark) if tenant.email_mark_id else ""
+    context["logo_src"] = ("" if context["mark_src"] or not tenant.email_logo_id
+                           else _image(tenant.email_logo))
+    context["font_faces"] = font_faces(embedded=preview)
+    return render_to_string("strategy/pdf.html", context)
 
 
 def page_count(session) -> int:
@@ -405,14 +508,45 @@ def page_count(session) -> int:
     holds the design to it rather than trusting the eye."""
     from weasyprint import HTML
 
-    return len(HTML(string=render_html(session)).render().pages)
+    return len(HTML(string=render_html(session), base_url=_BASE).render().pages)
+
+
+def overflowing_pages(session) -> list[int]:
+    """The pages whose content runs into the footer or the sign-off band.
+    Each sheet hides what passes its edge, so this is how the document is
+    held to its two pages: by measuring the laid-out boxes, not by eye."""
+    from weasyprint import HTML
+
+    rendered = HTML(string=render_html(session), base_url=_BASE).render()
+    full = []
+    for number, page in enumerate(rendered.pages, start=1):
+        bottom, foot = 0.0, None
+        for sheet in page._page_box.descendants():
+            element = getattr(sheet, "element", None)
+            if (element is None or getattr(sheet, "element_tag", "") != "section"
+                    or "sheet" not in (element.get("class") or "").split()):
+                continue
+            for box in sheet.children:
+                classes = set(((getattr(box, "element", None) is not None
+                                and box.element.get("class")) or "").split())
+                if {"foot", "band"} & classes:
+                    foot = box.position_y if foot is None else min(foot, box.position_y)
+                elif hasattr(box, "margin_height"):
+                    bottom = max(bottom, box.position_y + box.margin_height())
+        if foot is not None and bottom > foot - FOOT_GAP:
+            full.append(number)
+    return full
+
+
+#: The least room left between the content and the footer, in CSS px.
+FOOT_GAP = 8
 
 
 def render_pdf(session) -> bytes:
     """The bytes. Nothing is stored here — generating is not sending."""
     from weasyprint import HTML
 
-    return HTML(string=render_html(session)).write_pdf()
+    return HTML(string=render_html(session), base_url=_BASE).write_pdf()
 
 
 def store_pdf(session):

@@ -1,7 +1,8 @@
 """The strategy session as an editable Word file (2026-10-15).
 
 Beside the PDF, not instead of it: the same sections, in the same order and
-under the same headings, built from the same `pdf.context_for(session)`, so
+under the same headings (the two-page design of 2026-10-15), built from the
+same `pdf.context_for(session)` and the same words, so
 **everything the PDF leaves out is left out here too** — the private notes,
 the observation never asked aloud and the money, each until its flag is on.
 What differs is only what paper forces: the PDF's chart is a table of ratings,
@@ -109,36 +110,40 @@ class _Writer:
 
     # ----------------------------------------------------------- the file
     def write(self) -> bytes:
-        c = self.c
+        """The two-page design's sections, in its order (2026-10-15): the
+        header and headline, the tiles, the mirror, the components; then the
+        30/60/90 map, the two paths, the next moves and the sign-off; then,
+        as on paper, anything the practice asked to print beyond the two."""
+        c, doc = self.c, self.c["doc"]
         self.logo()
-        self.doc.add_heading("Strategy session", level=0)
-        who = " · ".join(x for x in (c["company"], c["prospect"], c["session_date"]) if x)
-        if c["fractional"]:
-            who += f" · with {c['fractional']}"
-        self.para(who, muted=True)
-        chips = [item for item in (c["snapshot"] or [])[:4] if item.get("text")]
-        if chips:
-            self.table(["", ""], [[item["label"], item["text"]] for item in chips], [2.2, 4.3])
-
-        self.ratings()
+        self.para(f"Strategy session · {doc['long_date']}", muted=True, size=9)
+        eyebrow = " · ".join(x for x in (c["company"], f"Prepared for {c['prospect']}") if x)
+        self.para(eyebrow, bold=True, size=9).runs[0].font.color.rgb = self.accent
+        if doc["headline"]:
+            self.doc.add_heading(doc["headline"], level=0)
+        if doc["intro"]:
+            self.para(doc["intro"])
+        if doc["tiles"]:
+            table = self.table(["", ""], [[t["number"], t["label"]] for t in doc["tiles"]],
+                               [0.9, 5.6])
+            for row in table.rows:
+                for run in row.cells[0].paragraphs[0].runs:
+                    run.bold, run.font.size = True, Pt(16)
+                    run.font.color.rgb = self.header
         self.mirror()
+        self.components()
         self.map()
         self.paths()
-        if c["values"]:
-            rows = [[v["value"], v["why"]] for v in c["values"] if v["value"]]
-            if rows:
-                self.heading("What you told us matters")
-                self.table(["What matters", "Why"], rows, [2.6, 3.9])
+        self.next_moves()
+        self.signoff()
         for part in c.get("custom_sections") or []:
             self.heading(part["title"])
             self.table(["", ""], [[item["prompt"], self._custom_answer(item)]
                                   for item in part["answers"]], [2.6, 3.9])
-        steps = [s for s in c["next_steps"] if s.get("agreed") or s.get("detail")]
-        if steps:
-            self.heading("What happens next")
-            self.table(["", "Next", "When"],
-                       [["✓" if s.get("agreed") else "☐", s["label"], s.get("detail") or ""]
-                        for s in steps], [0.4, 3.6, 2.5])
+        if c.get("mechanics_notes"):
+            self.heading("Notes from experience")
+            self.table(["", ""], [[item["header"], item["note"]]
+                                  for item in c["mechanics_notes"]], [2.6, 3.9])
         if c["money"]:
             self.heading("Scope and investment")
             self.table(["", "", ""],
@@ -173,87 +178,84 @@ class _Writer:
                 pass
         self.para(self.c["practice"], bold=True, size=12)
 
-    def ratings(self):
-        six = self.c["six_key"]
-        if not six["ratings"]:
-            return
-        self.heading(self.c.get("ratings_title") or "The six key components")
-        table = self.table(["", "Score", "In their words"],
-                           [[r["label"], f"{r['rating']} of 10", r["comment"]]
-                            for r in six["ratings"]], [1.8, 0.8, 3.9])
-        for row, rating in zip(table.rows[1:], six["ratings"]):
-            if rating["is_lowest"]:
-                for run in row.cells[1].paragraphs[0].runs:
-                    run.bold = True
-                    run.font.color.rgb = self.accent
-        line = f"{six['scale']}."
-        if six["complete"]:
-            line += f" Average {six['average']} of 10."
-        self.para(line + " The lowest score is where we look first.", muted=True, size=9)
-
     def mirror(self):
-        c = self.c
-        if not (c["mirror_goal"] or c["mirror_unlocks"]):
+        mirror = self.c["doc"]["mirror"]
+        if not mirror:
             return
         self.heading("The mirror")
-        for label, whole, points in (
-                ("Where you said you want to go", c["mirror_goal"], c["mirror_goal_points"]),
-                ("What unlocks it", c["mirror_unlocks"], c["mirror_unlocks_points"])):
-            if not whole:
-                continue
-            self.para(label, bold=True)
-            if c["focused"]:
-                self.bullets(points)
-            else:
-                self.para(whole)
+        self.para("What we heard, in your words", muted=True, size=9)
+        if mirror["headline"]:
+            self.para(mirror["headline"], bold=True, size=13)
+        if mirror["body"]:
+            self.para(mirror["body"])
+        if mirror["working"] or mirror["not_yet"]:
+            self.table(["Working", "Not yet"], [[mirror["working"], mirror["not_yet"]]],
+                       [3.25, 3.25])
+
+    def components(self):
+        doc = self.c["doc"]
+        if not doc["components"]:
+            return
+        self.heading(f"The {doc['components_count']} components: where the company stands")
+        self.table(["", "", ""], [[c["pill_label"], c["name"], c.get("line") or ""]
+                                  for c in doc["components"]], [0.8, 1.7, 4.0])
+        if doc["also_rated"]:
+            self.para(f"Also rated: {'; '.join(doc['also_rated'])}.", muted=True, size=9)
 
     def map(self):
-        c = self.c
-        if not c["map_rows"]:
+        doc = self.c["doc"]
+        if not doc["boxes"]:
             return
-        self.heading("The strategy map — what we would change, and when")
-        if c["focused"]:
-            self.table(["When", "", ""],
-                       [[card["label"], card["header"], card.get("statement") or ""]
-                        for card in c["focused_cards"]], [0.9, 2.2, 3.4])
-            return
-        head = ["When", "Bottleneck", "The fix", "Owner", "Measurable"]
-        if c["show_mechanics"]:
-            head.append("Notes from experience")
-        rows, also = [], []
-        for bucket in c["horizons"]:
-            for row in bucket["cards"]:
-                line = [bucket["label"], row["bottleneck"], row["the_fix"], row["owner_text"],
-                        row["measurable"] or "measure to be agreed"]
-                if c["show_mechanics"]:
-                    line.append(row.get("mechanics_note") or "")
-                rows.append(line)
-            also += [[bucket["label"], row["bottleneck"]] for row in bucket.get("also") or []]
-        self.table(head, rows, [0.8, 1.5, 1.7, 1.0, 1.5] + ([1.5] if c["show_mechanics"] else []))
-        if also:
-            self.para("Also noted — lower priority", bold=True)
-            self.table(["When", "Bottleneck"], also, [0.8, 5.7])
+        self.heading("The next ninety days: the map")
+        head = [f"Day {box['days']} · {box['date']}" for box in doc["boxes"]]
+        table = self.table(head, [[""] * len(head)], [2.17] * len(head))
+        for cell, box in zip(table.rows[1].cells, doc["boxes"]):
+            cell.text = ""
+            for index, bullet in enumerate(box["bullets"]):
+                p = cell.paragraphs[0] if index == 0 else cell.add_paragraph()
+                p.add_run(f"• {bullet['text']}")
+                if bullet.get("owner"):
+                    p.add_run(f" {bullet['owner']}").bold = True
+        if doc["undated"]:
+            self.para(f"Not dated yet: {'; '.join(doc['undated'])}.", muted=True, size=9)
 
     def paths(self):
-        pair = self.c["path_pair"]
-        if not pair:
+        paths = self.c["doc"]["paths"]
+        if not paths:
             return
-        self.heading("Two ways forward")
-        for path in pair:
-            self.heading(f"{path['label']}: {path['title']}", level=2)
-            for move in path.get("moves") or []:
-                p = self.para(move["headline"], bold=True)
-                if move.get("detail"):
-                    p.add_run(f"\n{move['detail']}")
-            if path.get("pros"):
-                self.para("What is good about it", bold=True)
-                self.bullets(path["pros"])
-            if path.get("cons"):
-                self.para("What it costs you", bold=True)
-                self.bullets(path["cons"])
-            if path.get("leaning"):
-                p = self.para("Your leaning", bold=True)
-                p.add_run(f" · {path['leaning']}")
+        self.heading("Two paths: how to get there")
+        for path in paths:
+            heading = self.heading(path["title"], level=2)
+            if path.get("recommended"):
+                heading.add_run("  · Recommended")
+            if path.get("blurb"):
+                self.para(path["blurb"])
+            if path.get("for") or path.get("against"):
+                points = max(len(path.get("for") or []), len(path.get("against") or []))
+                rows = [[(path.get("for") or [])[i] if i < len(path.get("for") or []) else "",
+                         (path.get("against") or [])[i]
+                         if i < len(path.get("against") or []) else ""]
+                        for i in range(points)]
+                self.table(["For", "Against"], rows, [3.25, 3.25])
+
+    def next_moves(self):
+        moves = self.c["doc"]["next_moves"]
+        if not moves:
+            return
+        self.heading("Before we meet again: your next moves")
+        for move in moves:
+            p = self.doc.add_paragraph(style="List Bullet")
+            if move.get("lead"):
+                p.add_run(move["lead"]).bold = True
+            if move.get("rest"):
+                p.add_run(("" if move.get("tight") else " ") + move["rest"])
+
+    def signoff(self):
+        doc = self.c["doc"]
+        if doc["closing"]:
+            self.para(doc["closing"], italic=True, size=12)
+        if self.c.get("signoff"):
+            self.para(self.c["signoff"], muted=True, size=9)
 
     def footer(self):
         text = (getattr(self.c["session"].tenant, "brand_footer_text", "") or "").strip()

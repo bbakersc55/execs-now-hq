@@ -94,29 +94,27 @@ def test_the_v3_pdf_is_two_pages_with_the_templates_own_words(session, template)
                                    template=template, owner=session.owner)
     html = pdf_service.render_html(run(fresh_session))
     assert pdf_service.page_count(fresh_session) == 2
-    assert "<h2>Three things we rate</h2>" in html
-    assert "The six key components" not in html
-    assert "1 is not yet, 10 is every week." in html
+    # The two-page design (2026-10-15): the rated items are cards under their
+    # own labels, with a pill from the rating, never their wording.
+    doc = pdf_service.context_for(fresh_session)["doc"]
+    assert [c["name"] for c in doc["components"]] == ["Plan", "Team", "Numbers"]
+    assert "The three components" in html
     for label in ("Plan", "Team", "Numbers"):
-        assert f'fill="#4A5056">{label}</text>' in html, label
-    assert "Our plan is written down" not in html, "the chart names the item, not its wording"
-    # The header shows the one answer the template marked, under its label.
-    chips = html.split('<p class="chips">')[1].split("</p>")[0]
-    assert "Team <b>22 people." in chips and chips.count('class="chip"') == 1
-    assert "Sells" not in chips, "a label alone does not make a chip"
+        assert f'<div class="name">{label}</div>' in html, label
+    assert "Our plan is written down" not in html, "the card names the item, not its wording"
     # The two paths, in the template's words, with {Practice} filled.
     assert '<div class="name">Continue to run it yourself</div>' in html
     assert '<div class="name">Work with Tenant A</div>' in html
     assert "Use the map Tenant A handed you" in html
-    assert "Improve operations incrementally" not in html
     assert "{Practice}" not in html
-    assert '<span class="muted"></span>' not in html, "no empty second line under a point"
-    # The map as cards, in horizon order, and the mirror as bullets.
-    assert html.count('class="fcard"') == 3
+    # The leaning recommends path B.
+    assert [p["recommended"] for p in doc["paths"]] == [False, True]
+    # The map in its boxes, in horizon order, and the mirror.
     assert html.index("A Weekly Scorecard") < html.index("Scheduling In A System") \
         < html.index("A Price Book")
-    assert "<li>Two branches running.</li><li>Dana off the tools.</li>" in html
-    assert "Straight talk" in html and "Leaning this way" in html
+    assert "A Weekly Scorecard <b>Jen Park</b>" in html
+    assert "<p>Two branches running. Dana off the tools.</p>" in html
+    assert '<div class="said">Weekly numbers first.</div>' in html
     assert pdf_service.render_pdf(fresh_session).startswith(b"%PDF")
 
 
@@ -142,8 +140,8 @@ def test_the_pdf_keeps_every_private_thing_out_until_its_flag_is_on(session, ff,
 
     money = with_flag("investment")
     assert "MARKER-MONEY" in money and "MARKER-PRIVATE-NOTE" not in money, "one at a time"
-    # As on a focused map: a card is a header and a focus statement, so the
-    # mechanics note has nowhere to print whatever its flag says.
+    # As on a focused map: a card map never printed the mechanics note,
+    # whatever its flag says, and the two-page design keeps it that way.
     assert "MARKER-MECHANICS" not in with_flag("mechanics")
     # The reaction, the stated risk and an unaccepted line never print at all.
     everything = pdf_service.render_html(session)
@@ -178,10 +176,16 @@ def test_eight_rated_items_with_long_labels_still_fit(seeded_tenant, in_tenant_a
     add_rows(session, (("Fourth Card", "S.", "Fourth", "F", "", 30, ""),
                        ("Fifth Card", "S.", "Fifth", "F", "", 90, "")))
     html = pdf_service.render_html(session)
-    assert html.count("<rect") == 16, "eight bars, each with its track"
-    assert "A fairly long label f…" in html, "a long label is cut, not overflowed"
-    assert 'x="150"' in html, "and the bars start to the right of the widest label"
-    assert html.count('class="fcard"') == 5
+    doc = pdf_service.context_for(session)["doc"]
+    # Six cards fill the page; the seventh and eighth are named beneath them,
+    # and the tile counts all eight.
+    assert html.count('class="card component"') == 6
+    assert doc["also_rated"] == ["A fairly long label… (Watch)"] * 2
+    assert "Also rated: A fairly long label… (Watch);" in html
+    assert {"number": "8", "label": "components assessed, two to fix"} in doc["tiles"]
+    assert all(len(c["name"]) <= 24 for c in doc["words"]["components"]), \
+        "a long label is cut at a word, not overflowed"
+    assert sum(len(box["bullets"]) for box in doc["boxes"]) == 5
     assert pdf_service.page_count(session) == 2
 
 

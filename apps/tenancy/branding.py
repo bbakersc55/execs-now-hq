@@ -16,6 +16,8 @@ the tenant explicitly and touch nothing else.
 
 from __future__ import annotations
 
+import re
+
 from django.utils import timezone
 
 from apps.crm.services import email_layout
@@ -27,6 +29,8 @@ FOOTER_MAX_CHARS = 500
 FOOTER_MAX_LINES = 6
 IMAGE_MAX_BYTES = email_layout.LOGO_MAX_BYTES
 MARK_MIN = 64
+
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 KINDS = {"logo": "email_logo", "mark": "email_mark"}
 
@@ -47,6 +51,10 @@ def current(tenant) -> dict:
         "primary_color": brand.header_color,
         "accent_color": brand.accent_color,
         "footer_text": tenant.brand_footer_text,
+        # The strategy document's sign-off band (2026-10-15).
+        "document_closing": tenant.document_closing,
+        "document_email": tenant.document_email,
+        "document_website": tenant.document_website,
         "has_logo": tenant.email_logo_id is not None,
         "has_mark": tenant.email_mark_id is not None,
         "branding_updated_at": tenant.branding_updated_at,
@@ -57,8 +65,13 @@ def current(tenant) -> dict:
     }
 
 
+#: The sign-off band's three lines, and the most each may hold.
+DOCUMENT_FIELDS = {"document_closing": 100, "document_email": 254, "document_website": 120}
+
+
 def save(tenant, *, actor, display_name: str, primary_color: str, accent_color: str,
-         footer_text: str) -> None:
+         footer_text: str, document: dict | None = None) -> None:
+    """`document` holds any of DOCUMENT_FIELDS; one left out keeps its value."""
     display_name = (display_name or "").strip()
     primary = (primary_color or "").strip().upper()
     accent = (accent_color or "").strip().upper()
@@ -74,6 +87,16 @@ def save(tenant, *, actor, display_name: str, primary_color: str, accent_color: 
         errors["footer_text"] = f"The footer is at most {FOOTER_MAX_CHARS} characters."
     elif len(footer.splitlines()) > FOOTER_MAX_LINES:
         errors["footer_text"] = f"The footer is at most {FOOTER_MAX_LINES} lines."
+    signoff = {}
+    for field, most in DOCUMENT_FIELDS.items():
+        if document is None or field not in document:
+            continue
+        value = " ".join(str(document.get(field) or "").split())
+        if len(value) > most:
+            errors[field] = f"This is at most {most} characters; it is {len(value)}."
+        elif field == "document_email" and value and not _EMAIL.match(value):
+            errors[field] = "Use an email address, like you@yourpractice.com."
+        signoff[field] = value
     if "primary_color" not in errors and "accent_color" not in errors:
         for failure in contrast.blocking_failures(primary, accent):
             field = "primary_color" if failure.rule == "primary_on_white" else "accent_color"
@@ -86,9 +109,11 @@ def save(tenant, *, actor, display_name: str, primary_color: str, accent_color: 
     tenant.email_header_color = primary
     tenant.email_accent_color = accent
     tenant.brand_footer_text = footer
+    for field, value in signoff.items():
+        setattr(tenant, field, value)
     tenant.branding_updated_at = timezone.now()
     tenant.save(update_fields=["email_display_name", "email_header_color",
-                               "email_accent_color", "brand_footer_text",
+                               "email_accent_color", "brand_footer_text", *signoff,
                                "branding_updated_at", "updated_at"])
     _audit(tenant, actor, "branding.updated",
            {"display_name": display_name, "primary_color": primary,
@@ -162,6 +187,8 @@ def reset(tenant, *, actor) -> None:
     tenant.email_header_color = email_layout.DEFAULT_HEADER_COLOR
     tenant.email_accent_color = email_layout.DEFAULT_ACCENT_COLOR
     tenant.brand_footer_text = ""
+    for field in DOCUMENT_FIELDS:
+        setattr(tenant, field, "")
     for field in KINDS.values():
         setattr(tenant, field, None)
         setattr(tenant, f"{field}_width", 0)

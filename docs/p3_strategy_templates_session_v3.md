@@ -924,3 +924,103 @@ one table, `strategy_call_notes`.
 | E10 | Order of work against part two (custom sections, AI per section), which is approved and, past its phase 1, not built. | This first. It is three small phases, it is what Blue Sky is waiting on, and it touches none of part two's ground. Say if part two should go first. | **This first, as recommended**, and only on the words "build P3", after the owner's session on 2026-10-09. |
 | E11 | Who tells Shawn, and what happens to a template he has already started. | You tell him. Nothing of his changes; the new start is offered beside it. | **As recommended:** the owner tells Shawn; nothing of his changes. |
 
+
+## 10. The two-page document (2026-10-15)
+
+Beta feedback S2 ("PDF redesign like the 5FT View brief"), from the mock
+Bryan approved: two Letter pages of 816 by 1056 CSS px in the practice's two
+colors, for every practice and every format (classic, focused, v3).
+
+### As built
+
+- **Page 1:** the practice's mark beside its name (or its logo, or with
+  neither the mock's drawn mark in its colors), "Strategy session · date";
+  "Company · Prepared for" the session's contact; the headline; one intro
+  line; up to three stat tiles; the mirror as the dark callout (headline, up
+  to three sentences, Working / Not yet); the components as cards with a
+  Strong / Watch / Fix pill and one line; the footer and "Page 1 of N".
+- **Page 2:** Day 30 / 60 / 90 boxes (date from the session day) with up to
+  four bullets each, owner in bold; the two paths with For / Against and a
+  Recommended pill; "Before we meet again" with up to four next moves; the
+  sign-off band (closing line; name, practice, email, website; page number).
+- **Where each part comes from** (`apps/strategy/document.py`): what a person
+  saved (`strategy_session.document_words`), part by part; else the
+  session's own data; else a default. Defaults: the pill from the rating
+  (7–10 Strong, 5–6 Watch, 1–4 Fix, no rating Watch) and the line from the
+  rating's comment; the bullets from the accepted rows (header, else the
+  bottleneck; owner text) under their horizon; the mirror headline from the
+  first sentence of "what unlocks it", the body from the goal; the paths'
+  titles and first line from the template's path copy, For / Against from
+  the accepted pros and cons; Recommended on the path with the leaning when
+  exactly one has one; next moves from the agreed, non-money scope items.
+  **Tiles:** 1 is the first converted goal's target ("85%", "up from 48%:
+  …") once the map has goals, else the saved figure, else the count of rows
+  on the map; 2 is "N components assessed, X to fix"; 3 is "N paths, one
+  recommended" (or "to choose between").
+- **Lengths** (characters): headline 60, intro 140, mirror headline 80,
+  mirror body 280 (three sentences), component line 90, bullet 70, path
+  blurb 120, as Bryan set them; and, chosen here, tile figure 8 and label 40,
+  Working / Not yet 80 each, component name 20, owner 16, path title 40, For
+  / Against points 40 (three each), next move 70 (lead and detail together),
+  closing line 100. The session's own words are shortened at a word with an
+  ellipsis to fit; a person's are refused past the length.
+- **Lines that each fit can still fill a page together.** At every maximum at
+  once page 1 runs about 50 px into its footer at the mock's type sizes. So
+  the page is measured (WeasyPrint's laid-out boxes, `pdf.overflowing_pages`):
+  a save that would run a page into its foot is refused naming the page;
+  the editor warns when the session's own words do; and **Send refuses a
+  document that overruns** (409) rather than sending it clipped.
+- **"Change the words on the document"** now edits every line above, with a
+  count beside a line only when it is over, Save disabled until all fit,
+  "Draft the words with Claude", "Use Claude's draft", and "Back to the
+  session's own words". The mirror's goal and unlocks, the values and the
+  scope answers are edited where they were captured, as before.
+- **Claude's draft** (purpose `strategy_document`, the button only) is told
+  the shape and every length, is given the drafting input the map rows are
+  drafted from plus the mirror, the ratings, the accepted rows, the paths
+  and the agreed next steps (never a private note or the money), and lands
+  in `proposed_document_words`. Nothing on the document changes until a
+  person uses it and saves. The map-row prompt itself is unchanged: the rows
+  stay the map's substance and what conversion reads, and the box bullets
+  are the document's words about them.
+- **Sign-off:** Settings → Branding → "The strategy document's sign-off":
+  closing line, email and website (`tenant.document_*`). Blank: a standard
+  line, the session owner's email, the first web address in the footer.
+- **Fonts:** Lora and Lato (OFL; licences beside them) in
+  `apps/strategy/fonts/`, read from disk by WeasyPrint; the browser preview
+  carries them inline. Nothing is fetched at render time.
+- **The Word file** follows the same sections in the same order, from the
+  same words.
+- **A third page** only for what the practice asked to print beyond the two:
+  its own sections marked to print, Scope and investment with its flag on,
+  and (classic sessions only, as before) the notes from experience with
+  theirs.
+- **The demo:** Wayne Industries has a complete session dated nine days
+  before the seed, carrying the mock's words (`WAYNE_WORDS` in
+  `apps/tenancy/demo/sessions.py`); its PDF is the mock in Summit's colors.
+  Summit's sign-off is John Carter's fictional address and
+  `summitops.example`.
+- **Migrations:** `strategy 0019` (two jsonb columns, default `{}`) and
+  `tenancy 0016` (three varchar columns, default `''`); additive.
+- **Goldens:** only `pdf.html` and `pdf_all_three_flags_on.html` changed in
+  each set (v2 classic, v2 focused, v3), rewritten because this replaces the
+  PDF. Every payload, prompt, email and page count is byte for byte as
+  before, and every private marker is on the document in exactly the cases
+  it was before.
+
+### What the two pages no longer carry (for Bryan to keep or overrule)
+
+1. **The Snapshot chips and "What you told us matters"** are not in the
+   mock, so they no longer print, and the "On the prospect's map" tick for
+   those two parts has nothing left to take off.
+2. **The rating scale line, the bar chart and the average** give way to the
+   pills.
+3. **A path's leaning, reaction and risk:** the leaning now shows only as
+   the Recommended pill.
+4. **A row's fix, measurable and focus statement** are not on the document;
+   a bullet is the row's header and owner.
+5. **More than six rated items:** six cards, the rest named in a line
+   beneath ("Also rated: …"); a fifth row in a horizon is named under the
+   boxes ("Also on the map: …").
+6. **Recommended** comes from the leaning only when exactly one path has one;
+   otherwise it is the person's choice in the editor.

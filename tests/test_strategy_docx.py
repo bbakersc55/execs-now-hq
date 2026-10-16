@@ -42,18 +42,28 @@ def test_it_carries_the_pdfs_sections_and_words_whole(session):
     content = docx_export.render_docx(full)
     assert zipfile.is_zipfile(io.BytesIO(content))           # a real .docx
     text = text_of(content)
-    for heading in ("Strategy session", "The six key components", "The mirror",
-                    "The strategy map — what we would change, and when",
-                    "What you told us matters", "What happens next"):
-        assert heading in text, heading
-    assert "Acme Facilities" in text and "Dana Reyes" in text
-    assert "Where you said you want to go" in text and "Solid processes" in text
-    # Whole, where the PDF shortens text to fit a card.
-    assert "Publish an approval ladder to $5k and hold the line on it" in text
-    assert "Count of decisions escalated to Noble per week" in text
-    assert "Systems before they double." in text
-    assert "Next Tuesday" in text
-    # Headings are Word headings, and the map and ratings are Word tables.
+    # The two-page design's sections, in its order (2026-10-15).
+    headings = ("Strategy session", "The mirror",
+                "The six components: where the company stands",
+                "The next ninety days: the map", "Two paths: how to get there",
+                "Before we meet again: your next moves")
+    places = [text.index(heading) for heading in headings]
+    assert places == sorted(places), "the PDF's order"
+    assert "Acme Facilities · Prepared for Dana Reyes" in text
+    assert "Solid processes and accountability mechanisms." in text      # the mirror
+    assert "To grow, but do it more sustainably." in text
+    # The same words as the PDF, from the same place.
+    doc_words = pdf_service.context_for(full)["doc"]
+    for component in doc_words["components"]:
+        assert component["name"] in text
+    for box in doc_words["boxes"]:
+        assert f"Day {box['days']} · {box['date']}" in text
+        for bullet in box["bullets"]:
+            assert bullet["text"] in text
+    for move in doc_words["next_moves"]:
+        assert move["lead"] in text
+    assert doc_words["closing"] in text
+    # Headings are Word headings, and the tiles, components and map are tables.
     doc = Document(io.BytesIO(content))
     assert any(p.style.name.startswith("Heading") for p in doc.paragraphs)
     assert len(doc.tables) >= 3

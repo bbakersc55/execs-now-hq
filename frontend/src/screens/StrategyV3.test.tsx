@@ -1125,60 +1125,101 @@ describe("a v3 session in the live view", () => {
   });
 });
 
-// ============================== the words on the document (2026-10-12)
+// ============================== the words on the document (2026-10-15)
 
 describe("the words on the document can be changed where it is sent", () => {
-  const SESSION = `/api/strategy-sessions/${SESSION_ID}/`;
-  const withWords = () => {
-    const base = aV3Session();
-    return aV3Session({
-      mirror: { goal: "Two branches.", unlocks: "Weekly numbers." },
-      sections: [...(base.sections ?? []),
-        { code: "what_they_value", kind: "values", title: "What they value", position: 5,
-          time_budget_minutes: 5, questions: [
-            q("v1", "Value 1 — and why", { response_schema: "value_pair" })] },
-        { code: "scope_agreement", kind: "scope", title: "Scope", position: 6,
-          time_budget_minutes: 5, questions: [
-            q("s1", "Start date", { response_schema: "agreed_note" }),
-            q("s2", "Investment discussed", { response_schema: "agreed_note",
-                                             is_financial: true })] }],
-      answers: [
-        { question_key: "v1", value: { value: "Straight talk", why: "Oversold before" },
-          answered_by: "fractional", fractional_note: "", updated_at: "" },
-        { question_key: "s1", value: { agreed: true, notes: "November 3" },
-          answered_by: "fractional", fractional_note: "", updated_at: "" }],
-    } as Partial<StrategySessionRow>);
+  const WORDS_URL = `/api/strategy-sessions/${SESSION_ID}/document-words/`;
+  const LIMITS = { headline: 60, intro: 140, tile_number: 8, tile_label: 40,
+    mirror_headline: 80, mirror_body: 280, working: 80, not_yet: 80, component_name: 20,
+    component_line: 90, bullet: 70, owner: 16, path_title: 40, path_blurb: 120,
+    path_point: 40, next_move: 70, closing: 100 };
+  const words = {
+    headline: "One rhythm across four sites.", intro: "What we heard on October 6.",
+    tile: { number: "4", label: "sites on one scorecard by day 90" },
+    mirror_headline: "Safety before the scorecard.", mirror_body: "Arkham Road met.",
+    working: "", not_yet: "",
+    components: [{ key: "r1", name: "Safety", pill: "fix", line: "" }],
+    boxes: { 30: [{ text: "Start-of-shift check.", owner: "Alfred" }], 60: [], 90: [] },
+    paths: [{ side: "a", title: "Sites first", blurb: "", for: ["Leads own it"], against: [] },
+            { side: "b", title: "Center first", blurb: "", for: [], against: [] }],
+    recommended: "a",
+    next_moves: [{ lead: "Pick the path", rest: "by October 20." }],
+    closing: "Tell me what moved.",
   };
+  const payload = (more: Record<string, unknown> = {}) => ({
+    words, saved: {}, proposed: {}, limits: LIMITS,
+    most: { bullets: 4, path_points: 3, next_moves: 4, components: 6 }, hidden: [],
+    tiles: [{ number: "4", label: "sites on one scorecard by day 90" },
+            { number: "1", label: "components assessed, one to fix" }],
+    box_dates: { 30: "Nov 5", 60: "Dec 5", 90: "Jan 4" }, full_pages: [], ...more });
 
-  it("gathers the mirror, what they value and the next steps, and saves each where it lives",
+  it("shows every line, counts one over its length, and saves only when all fit",
     async () => {
       const user = userEvent.setup();
-      const fetchMock = showSession(withWords(), aMe(), {
-        [`PATCH ${SESSION}`]: () => ({ status: 200, body: withWords() }),
-        [`POST ${SESSION}answers/`]: () => ({ status: 200, body: withWords() }) });
+      const fetchMock = showSession(aV3Session(), aMe(), {
+        [`GET ${WORDS_URL}`]: payload(),
+        [`PATCH ${WORDS_URL}`]: (body: unknown) => ({ status: 200,
+          body: payload({ words: body, saved: body }) }) });
       await user.click(await screen.findByText("Change the words on the document"));
-      const goal = screen.getByLabelText("On the document: their goal");
-      expect(goal).toHaveValue("Two branches.");
-      expect(screen.getByLabelText("On the document: value 1")).toHaveValue("Straight talk");
-      expect(screen.getByLabelText("On the document: Start date")).toHaveValue("November 3");
-      // Money is not a next step, and is not offered here.
-      expect(screen.queryByLabelText("On the document: Investment discussed")).toBeNull();
+      const headline = screen.getByLabelText("On the document: Headline");
+      expect(headline).toHaveValue("One rhythm across four sites.");
+      expect(screen.getByLabelText("On the document: Day 30, bullet 1")).toHaveValue(
+        "Start-of-shift check.");
+      expect(screen.getByLabelText("On the document: Day 30, bullet 1: owner")).toHaveValue(
+        "Alfred");
+      expect(screen.getByLabelText("On the document: Safety pill")).toHaveValue("fix");
+      expect(screen.getByLabelText("Recommend path A")).toBeChecked();
+      expect(screen.getByText(/1 components assessed, one to fix/)).toBeInTheDocument();
       const save = screen.getByRole("button", { name: "Save these words" });
       expect(save).toBeDisabled();
 
-      await user.clear(goal);
-      await user.type(goal, "Two branches by spring.");
-      await user.clear(screen.getByLabelText("On the document: why value 1 matters"));
-      await user.type(screen.getByLabelText("On the document: why value 1 matters"), "Burned");
-      await user.clear(screen.getByLabelText("On the document: Start date"));
-      await user.type(screen.getByLabelText("On the document: Start date"), "November 10");
-      expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
-      await user.click(save);
+      await user.clear(headline);
+      await user.type(headline, "x".repeat(63));
+      expect(screen.getByLabelText("Headline is over its length")).toHaveTextContent(
+        "63 of 60: 3 over");
+      expect(save).toBeDisabled();
+      expect(screen.getByText("1 line is over its length.")).toBeInTheDocument();
 
-      await waitFor(() => expect(fetchMock.calls.filter((c) => c.method !== "GET"
-        && (c.url === SESSION || c.url.endsWith("answers/"))).map((c) => c.body)).toEqual([
-        { mirror_goal: "Two branches by spring.", mirror_unlocks: "Weekly numbers." },
-        { question_key: "v1", value: { value: "Straight talk", why: "Burned" } },
-        { question_key: "s1", value: { agreed: true, notes: "November 10" } }]));
+      await user.clear(headline);
+      await user.type(headline, "Safety first, then the scorecard.");
+      expect(screen.queryByLabelText("Headline is over its length")).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Add a bullet to day 60" }));
+      await user.type(screen.getByLabelText("On the document: Day 60, bullet 1"),
+        "One agenda.");
+      await user.click(save);
+      await waitFor(() => expect(fetchMock.calls.filter((c) => c.method === "PATCH"
+        && c.url === WORDS_URL)).toHaveLength(1));
+      const sent = fetchMock.calls.find((c) => c.method === "PATCH")!.body as typeof words;
+      expect(sent.headline).toBe("Safety first, then the scorecard.");
+      expect(sent.boxes[60]).toEqual([{ text: "One agenda.", owner: "" }]);
+      expect(await screen.findByText("Saved. The document has the new words."))
+        .toBeInTheDocument();
     });
+
+  it("puts Claude's draft in the boxes only when asked, and saves nothing by itself",
+    async () => {
+      const user = userEvent.setup();
+      const drafted = payload({ proposed: { headline: "Drafted headline.",
+        boxes: { 30: [{ text: "Drafted bullet.", owner: "Lucius" }], 60: [], 90: [] } } });
+      const fetchMock = showSession(aV3Session(), aMe(), {
+        [`GET ${WORDS_URL}`]: payload(),
+        [`POST /api/strategy-sessions/${SESSION_ID}/draft-document-words/`]: drafted });
+      await user.click(await screen.findByText("Change the words on the document"));
+      await user.click(screen.getByRole("button", { name: "Draft the words with Claude" }));
+      await user.click(await screen.findByRole("button", { name: "Use Claude's draft" }));
+      expect(screen.getByLabelText("On the document: Headline")).toHaveValue(
+        "Drafted headline.");
+      expect(screen.getByLabelText("On the document: Day 30, bullet 1")).toHaveValue(
+        "Drafted bullet.");
+      expect(screen.getByLabelText("On the document: Mirror headline")).toHaveValue(
+        "Safety before the scorecard.");
+      expect(fetchMock.calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+      expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+    });
+
+  it("says when a page runs past its foot", async () => {
+    showSession(aV3Session(), aMe(), { [`GET ${WORDS_URL}`]: payload({ full_pages: [2] }) });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Page 2 of the document runs past the foot");
+  });
 });

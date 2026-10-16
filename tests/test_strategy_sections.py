@@ -460,10 +460,11 @@ def test_a_custom_section_prints_only_when_marked_and_only_what_may_print(
     for private in ("CUSTOM-SAID", "CUSTOM-CAUSE", "CUSTOM-TRIED", "hiring stall",
                     "CUSTOM-PRIVATE-NOTE", "MARKER-MONEY", "MARKER-PRIVATE-NOTE"):
         assert private not in html, private
-    assert html.index("What you told us matters") < html.index("Leadership bench") < html.index(
-        "What happens next")
-    from weasyprint import HTML
-    assert len(HTML(string=html).render().pages) == 2
+    # The two-page design (2026-10-15) has no room for it: a section the
+    # practice marks to print is on a third page, after the next moves.
+    assert html.index("Your next moves") < html.index("Leadership bench")
+    assert "Page 3 of 3" in html
+    assert pdf.page_count(printing) == 3
     printing.pdf_include_flags = {"fractional_notes": True}
     printing.save()
     assert "CUSTOM-PRIVATE-NOTE" in pdf.render_html(printing)
@@ -480,7 +481,7 @@ def test_a_printing_section_with_no_answers_prints_nothing(seeded_tenant, templa
 
 
 @pytest.mark.django_db
-def test_two_full_printing_sections_still_fit_two_pages(seeded_tenant, template, prospect, ff):
+def test_two_full_printing_sections_fit_the_third_page(seeded_tenant, template, prospect, ff):
     for title in ("Leadership bench", "Your systems"):
         section = builder.add_section(template, title=title)
         for n in range(4):
@@ -497,8 +498,7 @@ def test_two_full_printing_sections_still_fit_two_pages(seeded_tenant, template,
                        {"text": "An answer of a sentence or so, as written on a call."})
     html = pdf.render_html(session)
     assert html.count("An answer of a sentence or so") == 8
-    from weasyprint import HTML
-    assert len(HTML(string=html).render().pages) == 2
+    assert pdf.page_count(session) == 3
 
 
 @pytest.mark.django_db
@@ -514,15 +514,16 @@ def test_a_template_with_a_custom_section_duplicates_with_it(template, with_cust
 # Owner, 2026-10-12: any section can be removed, the built-in ones included,
 # and each has a tick, "On the prospect's map".
 
-#: A part's code, and something only that part puts on the document.
+#: A part's code, and something only that part puts on the document. The
+#: two-page design (2026-10-15) prints neither the pre-call chips nor what
+#: they value, so those two parts' ticks have nothing left to take off.
 ON_THE_MAP = {
-    "snapshot": "22 people",
-    "six_key_components": "<svg",
+    "six_key_components": 'class="card component"',
     "mirror": "Two branches running",
-    "what_they_value": "Straight talk",
     "two_paths": "Someone owns the list",
     "scope_agreement": "November 3",
 }
+NOT_PRINTED = {"snapshot": "22 people", "what_they_value": "Straight talk"}
 
 
 def started(tenant, template, prospect, ff):
@@ -535,7 +536,9 @@ def test_nothing_is_off_the_map_until_it_is_taken_off(session, template):
     html = pdf.render_html(session)
     for code, marker in ON_THE_MAP.items():
         assert marker in html, code
-    assert "map-card" in html or "horizon" in html or "Strategy Map" in html
+    for code, marker in NOT_PRINTED.items():
+        assert marker not in html, code
+    assert "The next ninety days" in html
     # Said only when it is so: the snapshot and the builder's own view of a
     # template that takes nothing off are what they were before the tick.
     assert all("hide_from_pdf" not in s for s in builder.snapshot(template)["sections"])

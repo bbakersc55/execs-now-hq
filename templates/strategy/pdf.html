@@ -4,319 +4,314 @@
 <meta charset="utf-8">
 <title>Strategy session — {{ company|default:prospect }}</title>
 <style>
-  /* One brand system: the colors are the tenant's, exactly as the email
-     layout resolves them. Nothing here is a second palette. */
-  :root { --blue: {{ brand.header_color }}; --orange: {{ brand.accent_color }}; }
-  /* The document's margins live here, and the screen preview reproduces them
-     below rather than inventing its own — a preview whose text sits in a
-     different place from the PDF is not a preview. */
-  @page { size: letter; margin: 16mm 16mm 17mm;
-          @bottom-right { content: "Page " counter(page) " of " counter(pages);
-                          font: 8pt "Helvetica Neue", Helvetica, Arial, sans-serif;
-                          color: #939598; } }
-  body { font: 9.5pt/1.36 "Helvetica Neue", Helvetica, Arial, sans-serif; color: #2B2F33;
-         margin: 0; }
-  /* One `.sheet` per page, so the break is a property of the content rather
-     than an empty div, and the screen preview has something to draw a page
-     around. */
-  .sheet + .sheet { break-before: page; }
-
+  {{ font_faces|safe }}
+  /* The approved mock (2026-10-15): Letter pages of 816 by 1056 CSS px, in the
+     practice's two colors. Each `.sheet` is one page, its own size exactly,
+     and prints nothing past its edge: the words are held to their lengths in
+     apps/strategy/document.py so that nothing needs to. */
+  @page { size: letter; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Lato, "Helvetica Neue", Arial, sans-serif; font-size: 14px;
+         line-height: 1.45; color: #1B1F2A; background: #ffffff; }
+  /* Block flow, not a flex column: WeasyPrint stretches a grid inside a
+     flex column. The footer and the sign-off band are pinned to the foot. */
+  .sheet { position: relative; width: 816px; height: 1056px; box-sizing: border-box;
+           padding: 48px; background: #ffffff; overflow: hidden; break-after: page; }
+  .sheet > * + * { margin-top: 18px; }
+  .sheet:last-child { break-after: auto; }
   @media screen {
     body { background: #E9ECEF; padding: 28px 0; }
-    .sheet { width: 8.5in; min-height: 11in; box-sizing: border-box;
-             padding: 16mm 16mm 17mm; margin: 0 auto 28px; background: #fff;
-             box-shadow: 0 1px 3px rgba(16, 24, 32, .18),
-                         0 10px 24px rgba(16, 24, 32, .10); }
+    .sheet { margin: 0 auto 28px; box-shadow: 0 1px 3px rgba(16, 24, 32, .18),
+                                              0 10px 24px rgba(16, 24, 32, .10); }
   }
-  h1 { font-size: 19pt; color: {{ brand.header_color }}; margin: 0; letter-spacing: -0.2pt; }
-  h2 { font-size: 10.5pt; color: {{ brand.header_color }}; margin: 0 0 5pt;
-       text-transform: uppercase; letter-spacing: 0.7pt; }
-  .head { border-bottom: 2.5pt solid {{ brand.accent_color }}; padding-bottom: 6pt;
-          margin-bottom: 9pt; }
-  .head .who { color: #6D6E71; font-size: 9.5pt; margin: 2pt 0 0; }
-  .head .mark { float: right; text-align: right; color: #939598; font-size: 8.5pt; }
-  .chips { margin: 6pt 0 0; }
-  .chip { display: inline-block; background: #F3F6F9; border-radius: 3pt;
-          padding: 2pt 6pt; margin: 0 4pt 3pt 0; font-size: 8.5pt; color: #4A5056; }
-  .chip b { color: {{ brand.header_color }}; font-weight: 600; }
-  .block { margin: 0 0 7pt; }
-  .two { display: table; width: 100%; table-layout: fixed; border-spacing: 10pt 0; }
-  .two > div { display: table-cell; vertical-align: top; }
-  .mirror { background: #F3F6F9; border-left: 3pt solid {{ brand.accent_color }};
-            padding: 8pt 10pt; }
-  .mirror .label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.6pt;
-                   color: #6D6E71; }
-  .mirror .said { font-size: 12pt; line-height: 1.3; color: {{ brand.header_color }};
-                  margin: 1pt 0 6pt; }
-  .mirror .unlocks { font-size: 10pt; margin: 0; }
-  /* The map, in columns by horizon: three cards, then the rest by name. */
-  .lanes { display: table; width: 100%; table-layout: fixed; border-spacing: 6pt 0; }
-  .lane-col { display: table-cell; vertical-align: top; }
-  .when { background: {{ brand.header_color }}; color: #fff; font-size: 9pt;
-          padding: 3.5pt 7pt; border-radius: 3pt; font-weight: 600;
-          margin-bottom: 5pt; }
-  .card { border: 0.75pt solid #E4E8EB; border-left: 2.5pt solid {{ brand.accent_color }};
-          padding: 5pt 7pt; margin-bottom: 5pt; }
-  .card .bottleneck { font-weight: 600; font-size: 9pt; color: {{ brand.header_color }};
-                      margin: 0 0 3pt; }
-  .card .fix { font-size: 8.5pt; margin: 0 0 4pt; }
-  .card .meta { font-size: 7.5pt; color: #6D6E71; }
-  .card .mech { font-size: 7.5pt; color: #6D6E71; border-top: 0.5pt dotted #D8DDE1;
-                margin-top: 4pt; padding-top: 3pt; }
-  .also { margin-top: 2pt; }
-  .also-head { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.5pt;
-               color: #939598; margin-bottom: 2pt; }
-  .also-row { font-size: 8pt; color: #6D6E71; padding-left: 7pt;
-              border-left: 0.75pt solid #E4E8EB; margin-bottom: 1.5pt; }
-  /* The focused map (owner, 2026-09-29): one row of equal cards across the
-     full width, each growing with its text. No truncation anywhere. */
-  .fcards { display: table; width: 100%; table-layout: fixed; border-spacing: 6pt 0;
-            margin: 0 -6pt; }
-  .fcard { display: table-cell; vertical-align: top;
-           border: 0.75pt solid #E4E8EB; border-top: 0; }
-  .fcard .when { border-radius: 0; margin: 0; }
-  .fcard .head { font-weight: 700; font-size: 10.5pt; line-height: 1.25;
-                 color: {{ brand.header_color }}; margin: 7pt 9pt 4pt; }
-  .fcard .statement { font-size: 9.5pt; line-height: 1.4; margin: 0 9pt 9pt; }
-  .mirror ul { margin: 1pt 0 6pt; padding-left: 12pt; }
-  .mirror ul.said li { font-size: 11pt; line-height: 1.3; color: {{ brand.header_color }};
-                       margin-bottom: 2pt; }
-  .mirror ul.unlocks li { font-size: 10pt; margin-bottom: 2pt; }
-  /* The decision page: two boxes, written to the person deciding. */
-  .path { border: 0.75pt solid #E4E8EB; border-top: 3pt solid {{ brand.header_color }};
-          padding: 7pt 9pt; }
-  .path .label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.8pt;
-                 color: {{ brand.accent_color }}; font-weight: 600; }
-  .path .name { font-weight: 600; color: {{ brand.header_color }}; font-size: 12pt;
-                line-height: 1.25; margin: 1pt 0 6pt; }
-  .path .move { font-size: 9pt; margin: 0 0 4pt; }
-  .path .move b { color: #2B2F33; font-weight: 600; }
-  .path .move .muted { font-size: 8.5pt; }
-  .pc { margin-top: 5pt; }
-  .pc-head { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.6pt;
-             color: #939598; margin-bottom: 2pt; }
-  .pc-row { font-size: 9pt; margin-bottom: 1.5pt; padding-left: 11pt;
-            text-indent: -11pt; line-height: 1.3; }
-  .pc-row .tick { color: {{ brand.header_color }}; font-weight: 700;
-                  display: inline-block; width: 11pt; text-indent: 0; }
-  .pc-row .minus { color: {{ brand.accent_color }}; font-weight: 700;
-                   display: inline-block; width: 11pt; text-indent: 0; }
-  .path .leaning { font-size: 9pt; margin: 6pt 0 0; padding-top: 4pt;
-                   border-top: 0.75pt solid #EDF0F2; }
-  .path .leaning b { color: {{ brand.header_color }}; }
-  .values td { font-size: 9pt; padding: 2.5pt 6pt 2.5pt 0; vertical-align: top;
-               border-bottom: 0.5pt solid #EDF0F2; }
-  .values .v { font-weight: 600; color: {{ brand.header_color }}; width: 42%; }
-  /* The last thing he reads, and sized like it (owner, 2026-09-21). */
-  .steps { width: 100%; border-collapse: collapse; }
-  .steps td { font-size: 12pt; padding: 8pt 8pt 8pt 0; vertical-align: middle;
-              border-bottom: 0.75pt solid #E4E8EB; }
-  .steps .box { width: 26pt; color: {{ brand.accent_color }}; font-size: 17pt;
-                line-height: 1; }
-  .steps .step-when { text-align: right; white-space: nowrap;
-                      color: {{ brand.header_color }}; font-weight: 700; width: 26%;
-                      font-size: 12pt; }
-  h2.big { font-size: 13pt; letter-spacing: 0.5pt; }
-  .muted { color: #939598; }
-  .chart text { font: 8.5pt "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  .serif { font-family: Lora, Georgia, serif; }
+  .top { display: flex; justify-content: space-between; align-items: center; height: 36px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand img.mark { width: 30px; height: 30px; }
+  .brand img.logo { max-height: 34px; max-width: 260px; }
+  .practice { white-space: nowrap; font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+              text-transform: uppercase; color: {{ brand.header_color }}; }
+  .dateline { font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+              text-transform: uppercase; color: #5C6370; }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+             text-transform: uppercase; color: {{ brand.accent_color }}; }
+  .lead > * + * { margin-top: 8px; }
+  h1 { margin: 0; font-family: Lora, Georgia, serif; font-weight: 600; font-size: 36px;
+       line-height: 1.15; color: {{ brand.header_color }}; }
+  .intro { margin: 0; font-size: 16px; line-height: 1.5; color: #3A4150; max-width: 640px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .tiles { gap: 14px; }
+  .tile { border: 1px solid #DFE3E8; border-top: 4px solid {{ brand.header_color }};
+          border-radius: 10px; padding: 14px 16px; }
+  .tile .what { margin-top: 2px; }
+  .tile.alt { border-top-color: {{ brand.accent_color }}; }
+  .tile .n { font-family: Lora, Georgia, serif; font-size: 30px; line-height: 1;
+             color: {{ brand.header_color }}; }
+  .tile .what { font-size: 12px; color: #3A4150; }
+  .mirror { background: {{ brand.header_color }}; color: #ffffff; border-radius: 14px;
+            padding: 22px 24px; }
+  .mirror > * + * { margin-top: 10px; }
+  .mirror .tag { display: flex; align-items: center; gap: 10px; }
+  .mirror .tag span.pill { display: inline-block; background: {{ brand.accent_color }};
+                           color: {{ on_accent }}; font-size: 10px; font-weight: 700;
+                           letter-spacing: 0.12em; text-transform: uppercase;
+                           padding: 4px 8px; border-radius: 4px; }
+  .mirror .tag span.sub { font-size: 12px; color: rgba(255, 255, 255, .82); }
+  .mirror .said { font-family: Lora, Georgia, serif; font-weight: 500; font-size: 22px;
+                  line-height: 1.25; }
+  .mirror p { margin: 0; font-size: 13px; line-height: 1.5; color: rgba(255, 255, 255, .9);
+              max-width: 640px; }
+  .mirror .pair { gap: 12px; margin-top: 14px; }
+  .mirror .pair > div { background: #ffffff; color: #1B1F2A; border-radius: 8px;
+                        padding: 10px 12px; }
+  .mirror .pair .h { font-size: 12px; font-weight: 700; color: {{ brand.header_color }}; }
+  .mirror .pair .h.no { color: #9B2C1E; }
+  .mirror .pair .t { font-size: 12px; color: #3A4150; }
+  .part .title { margin-bottom: 10px; }
+  .part .title h2 { margin-top: 2px; }
+  h2 { margin: 0; font-family: Lora, Georgia, serif; font-weight: 600; font-size: 22px;
+       line-height: 1.2; color: {{ brand.header_color }}; }
+  .card { border: 1px solid #DFE3E8; border-radius: 10px; padding: 12px 14px; }
+  .card > * + * { margin-top: 6px; }
+  .component { min-height: 98px; }
+  .pill { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+          text-transform: uppercase; padding: 3px 7px; border-radius: 4px; }
+  .pill.strong { background: #E6F0EB; color: #1F4E3D; }
+  .pill.watch { background: #F6EEDC; color: #6E4F0E; }
+  .pill.fix { background: #FBE7E4; color: #8A2619; }
+  .component .name { font-size: 14px; font-weight: 700; }
+  .component .line { font-size: 12px; color: #3A4150; line-height: 1.4; }
+  .foot { position: absolute; left: 48px; right: 48px; bottom: 48px; display: flex; justify-content: space-between;
+          align-items: center; border-top: 1px solid #DFE3E8; padding-top: 10px;
+          font-size: 11px; color: #5C6370; }
+  .box > * + * { margin-top: 8px; }
+  .box .when { display: flex; align-items: baseline; gap: 8px; }
+  .box .day { font-family: Lora, Georgia, serif; font-size: 22px;
+              color: {{ brand.header_color }}; }
+  .box .date { font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+               text-transform: uppercase; color: #5C6370; }
+  .bullets { font-size: 12px; color: #3A4150; line-height: 1.4; }
+  .bullet + .bullet { margin-top: 6px; }
+  .bullet { display: flex; gap: 8px; }
+  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%;
+         background: {{ brand.accent_color }}; margin-top: 5px; }
+  .undated { font-size: 11px; color: #5C6370; margin: 8px 0 0; }
+  .path { border: 1px solid #DFE3E8; border-radius: 10px; padding: 14px 16px; }
+  .path > * + * { margin-top: 8px; }
+  .path.chosen { border: 2px solid {{ brand.header_color }}; }
+  .path .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .path .name { font-family: Lora, Georgia, serif; font-size: 18px;
+                color: {{ brand.header_color }}; line-height: 1.25; }
+  .path .rec { flex: none; background: {{ brand.header_color }}; color: #ffffff;
+               font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+               text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
+  .path .blurb { font-size: 12px; color: #3A4150; line-height: 1.4; }
+  .path .sides { gap: 10px; font-size: 12px; line-height: 1.4; }
+  .path .sides .h { font-weight: 700; color: {{ brand.header_color }}; margin-bottom: 2px; }
+  .path .sides .h.no { color: #8A2619; }
+  .path .sides .t { color: #3A4150; }
+  .moves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px;
+           font-size: 13px; color: #3A4150; line-height: 1.4; }
+  .move { display: flex; gap: 8px; align-items: flex-start; }
+  .move svg { flex: none; margin-top: 2px; }
+  .band { position: absolute; left: 48px; right: 48px; bottom: 48px; background: {{ brand.header_color }}; color: #ffffff;
+          border-radius: 14px; padding: 20px 24px; display: flex;
+          justify-content: space-between; align-items: flex-end; gap: 24px; }
+  .band .words { max-width: 520px; }
+  .band .who { margin-top: 6px; }
+  .band .closing { font-family: Lora, Georgia, serif; font-size: 18px; line-height: 1.3; }
+  .band .who, .band .page { font-size: 12px; color: rgba(255, 255, 255, .82); }
+  .band .page { font-size: 11px; white-space: nowrap; }
+  table.extra { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.extra td { padding: 6px 8px 6px 0; vertical-align: top; border-bottom: 1px solid #DFE3E8;
+                   color: #3A4150; }
+  table.extra td.q { font-weight: 700; color: #1B1F2A; width: 42%; }
 </style>
 </head>
 <body>
+{% with words=doc %}
 
-{# ------------------------------------------------- page one: where they are #}
+{# ------------------------------------------------------------- page one #}
 <section class="sheet">
-<div class="head">
-  <div class="mark">
-    <img data-enhq-logo src="cid:enhq-logo" alt="" style="max-height:34px">
+  <div class="top">
+    {% include "strategy/pdf_brand.html" %}
+    <div class="dateline">Strategy session · {{ doc.long_date }}</div>
   </div>
-  <h1>Strategy session</h1>
-  <p class="who">
-    {% if company %}{{ company }} · {% endif %}{{ prospect }} · {{ session_date }}
-    {% if fractional %} · with {{ fractional }}{% endif %}
-  </p>
-  {% if snapshot %}
-    <p class="chips">
-      {% for item in snapshot|slice:":4" %}{% if item.text %}
-        <span class="chip">{{ item.label|truncatechars:24 }} <b>{{ item.text|truncatechars:30 }}</b></span>
-      {% endif %}{% endfor %}
-    </p>
-  {% endif %}
-</div>
 
-<div class="two block">
-  <div>
-    {% if six_key.chart %}
-      <h2>{% if ratings_title %}{{ ratings_title }}{% else %}The six key components{% endif %}</h2>
-      <svg class="chart" width="{{ six_key.chart.width }}" height="{{ six_key.chart.height }}"
-           viewBox="0 0 {{ six_key.chart.width }} {{ six_key.chart.height }}">
-        {% for bar in six_key.chart.bars %}
-          <text x="0" y="{{ bar.text_y }}" fill="#4A5056">{{ bar.label }}</text>
-          <rect x="{{ six_key.chart.label_width }}" y="{{ bar.y }}"
-                width="{{ six_key.chart.track }}" height="{{ six_key.chart.bar_height }}"
-                fill="#EDF0F2" rx="2"/>
-          <rect x="{{ six_key.chart.label_width }}" y="{{ bar.y }}"
-                width="{{ bar.width }}" height="{{ six_key.chart.bar_height }}" rx="2"
-                fill="{% if bar.is_lowest %}{{ brand.accent_color }}{% else %}{{ brand.header_color }}{% endif %}"/>
-          <text x="{{ bar.value_x }}" y="{{ bar.text_y }}"
-                fill="{% if bar.is_lowest %}{{ brand.accent_color }}{% else %}{{ brand.header_color }}{% endif %}"
-                style="font-weight:600">{{ bar.rating }}</text>
-        {% endfor %}
-      </svg>
-      <p class="muted" style="font-size:8.5pt;margin:2pt 0 0">
-        {{ six_key.scale }}.
-        {% if six_key.complete %}Average {{ six_key.average }} of 10.{% endif %}
-        The lowest score is where we look first.
-      </p>
-    {% endif %}
+  <div class="lead">
+    <div class="eyebrow">{% if company %}{{ company }} · {% endif %}Prepared for {{ prospect }}</div>
+    {% if doc.headline %}<h1>{{ doc.headline }}</h1>{% endif %}
+    {% if doc.intro %}<p class="intro">{{ doc.intro }}</p>{% endif %}
   </div>
-  <div>
-    {% if mirror_goal or mirror_unlocks %}
-      <h2>The mirror</h2>
-      <div class="mirror">
-        {% if mirror_goal %}
-          <div class="label">Where you said you want to go</div>
-          {% if focused %}
-            <ul class="said">{% for point in mirror_goal_points %}<li>{{ point }}</li>{% endfor %}</ul>
-          {% else %}<p class="said">{{ mirror_goal }}</p>{% endif %}
-        {% endif %}
-        {% if mirror_unlocks %}
-          <div class="label">What unlocks it</div>
-          {% if focused %}
-            <ul class="unlocks">{% for point in mirror_unlocks_points %}<li>{{ point }}</li>{% endfor %}</ul>
-          {% else %}<p class="unlocks">{{ mirror_unlocks }}</p>{% endif %}
-        {% endif %}
-      </div>
-    {% endif %}
-  </div>
-</div>
 
-{% if map_rows and focused %}
-  <div class="block">
-    <h2>The strategy map — what we would change, and when</h2>
-    <div class="fcards">
-      {% for card in focused_cards %}
-        <div class="fcard">
-          <div class="when">{{ card.label }}</div>
-          <p class="head">{{ card.header }}</p>
-          {% if card.statement %}<p class="statement">{{ card.statement }}</p>{% endif %}
+  {% if doc.tiles %}
+    <div class="grid3 tiles">
+      {% for tile in doc.tiles %}
+        <div class="tile{% if forloop.counter == 2 %} alt{% endif %}">
+          <div class="n">{{ tile.number }}</div>
+          <div class="what">{{ tile.label }}</div>
         </div>
       {% endfor %}
     </div>
+  {% endif %}
+
+  {% if doc.mirror %}
+    <div class="mirror">
+      <div class="tag"><span class="pill">The mirror</span>
+        <span class="sub">What we heard, in your words</span></div>
+      {% if doc.mirror.headline %}<div class="said">{{ doc.mirror.headline }}</div>{% endif %}
+      {% if doc.mirror.body %}<p>{{ doc.mirror.body }}</p>{% endif %}
+      {% if doc.mirror.working or doc.mirror.not_yet %}
+        <div class="grid2 pair">
+          <div><div class="h">Working</div><div class="t">{{ doc.mirror.working|default:"—" }}</div></div>
+          <div><div class="h no">Not yet</div><div class="t">{{ doc.mirror.not_yet|default:"—" }}</div></div>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if doc.components %}
+    <div class="part">
+      <div class="title">
+        <div class="eyebrow">The {{ doc.components_count }} components</div>
+        <h2>Where the company stands</h2>
+      </div>
+      <div class="grid3">
+        {% for c in doc.components %}
+          <div class="card component">
+            <span class="pill {{ c.pill }}">{{ c.pill_label }}</span>
+            <div class="name">{{ c.name }}</div>
+            {% if c.line %}<div class="line">{{ c.line }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if doc.also_rated %}<p class="undated">Also rated: {{ doc.also_rated|join:"; " }}.</p>{% endif %}
+    </div>
+  {% endif %}
+
+  <div class="foot">
+    <div>Prepared by {% if fractional %}{{ fractional }} · {% endif %}{{ practice }}{% if company %} · Confidential to {{ company }}{% endif %}</div>
+    <div>Page 1 of {{ pages }}</div>
   </div>
-{% elif map_rows %}
-  <div class="block">
-    <h2>The strategy map — what we would change, and when</h2>
-    <div class="lanes">
-      {% for bucket in horizons %}
-        <div class="lane-col">
-          <div class="when">{{ bucket.label }}</div>
-          {% for row in bucket.cards %}
-            <div class="card">
-              <p class="bottleneck">{{ row.bottleneck|truncatechars:62 }}</p>
-              {% if row.the_fix %}<p class="fix">{{ row.the_fix|truncatechars:104 }}</p>{% endif %}
-              <div class="meta">
-                {% if row.owner_text %}{{ row.owner_text }} · {% endif %}
-                {{ row.measurable|default:"measure to be agreed"|truncatechars:58 }}
-              </div>
-              {% if row.mechanics_note %}<div class="mech">{{ row.mechanics_note }}</div>{% endif %}
-            </div>
-          {% endfor %}
-          {% if bucket.also %}
-            <div class="also">
-              <div class="also-head">Also noted — lower priority</div>
-              {% for row in bucket.also %}
-                <div class="also-row">{{ row.bottleneck|truncatechars:56 }}</div>
+</section>
+
+{# ------------------------------------------------------------- page two #}
+<section class="sheet">
+  <div class="top">
+    {% include "strategy/pdf_brand.html" %}
+    <div class="dateline">{% if company %}{{ company }} · {% endif %}Strategy map</div>
+  </div>
+
+  {% if doc.boxes %}
+    <div class="part">
+      <div class="title">
+        <div class="eyebrow">The next ninety days</div>
+        <h2>The map</h2>
+      </div>
+      <div class="grid3">
+        {% for box in doc.boxes %}
+          <div class="card box">
+            <div class="when"><div class="day">Day {{ box.days }}</div>
+              <div class="date">{{ box.date }}</div></div>
+            <div class="bullets">
+              {% for b in box.bullets %}
+                <div class="bullet"><span class="dot"></span><span>{{ b.text }}{% if b.owner %} <b>{{ b.owner }}</b>{% endif %}</span></div>
               {% endfor %}
             </div>
-          {% endif %}
-        </div>
-      {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if doc.also %}<p class="undated">Also on the map: {{ doc.also|join:"; " }}.</p>{% endif %}
+      {% if doc.undated %}<p class="undated">Not dated yet: {{ doc.undated|join:"; " }}.</p>{% endif %}
     </div>
-  </div>
-{% endif %}
+  {% endif %}
 
-</section>
-
-{# ------------------------------------------------ page two: what happens now #}
-<section class="sheet">
-
-{% if path_pair %}
-  <div class="block">
-    <h2>Two ways forward</h2>
-    <div class="two">
-      {% for path in path_pair %}
-        <div>
-          <div class="path">
-            <div class="label">{{ path.label }}</div>
-            <div class="name">{{ path.title }}</div>
-            {% for move in path.moves %}
-              <p class="move"><b>{{ move.headline }}</b>{% if move.detail %}<br>
-                <span class="muted">{{ move.detail }}</span>{% endif %}</p>
-            {% endfor %}
-            {% if path.pros %}
-              <div class="pc">
-                <div class="pc-head">What is good about it</div>
-                {% for pro in path.pros %}<div class="pc-row"><span class="tick">+</span>{{ pro }}</div>{% endfor %}
+  {% if doc.paths %}
+    <div class="part">
+      <div class="title">
+        <div class="eyebrow">Two paths</div>
+        <h2>How to get there</h2>
+      </div>
+      <div class="grid2">
+        {% for path in doc.paths %}
+          <div class="path{% if path.recommended %} chosen{% endif %}">
+            <div class="head"><div class="name">{{ path.title }}</div>
+              {% if path.recommended %}<span class="rec">Recommended</span>{% endif %}</div>
+            {% if path.blurb %}<div class="blurb">{{ path.blurb }}</div>{% endif %}
+            {% if path.for or path.against %}
+              <div class="grid2 sides">
+                <div><div class="h">For</div>{% for x in path.for %}<div class="t">{{ x }}</div>{% endfor %}</div>
+                <div><div class="h no">Against</div>{% for x in path.against %}<div class="t">{{ x }}</div>{% endfor %}</div>
               </div>
-            {% endif %}
-            {% if path.cons %}
-              <div class="pc">
-                <div class="pc-head">What it costs you</div>
-                {% for con in path.cons %}<div class="pc-row"><span class="minus">−</span>{{ con }}</div>{% endfor %}
-              </div>
-            {% endif %}
-            {% if path.leaning %}
-              <p class="leaning"><b>Your leaning</b> · {{ path.leaning }}</p>
             {% endif %}
           </div>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
     </div>
-  </div>
-{% endif %}
+  {% endif %}
 
-{% if values %}
-  <div class="block">
-    <h2>What you told us matters</h2>
-    <table class="values" style="width:100%;border-collapse:collapse">
-      {% for item in values %}{% if item.value %}
-        <tr><td class="v">{{ item.value }}</td><td>{{ item.why }}</td></tr>
-      {% endif %}{% endfor %}
-    </table>
-  </div>
-{% endif %}
+  {% if doc.next_moves %}
+    <div class="part">
+      <div class="title">
+        <div class="eyebrow">Before we meet again</div>
+        <h2>Your next moves</h2>
+      </div>
+      <div class="moves">
+        {% for m in doc.next_moves %}
+          <div class="move"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="8" fill="{{ brand.header_color }}"/><path d="M4.5 8.2 L7 10.6 L11.6 5.6" fill="none" stroke="#ffffff" stroke-width="1.8"/></svg><span>{% if m.lead %}<b>{{ m.lead }}</b>{% endif %}{% if m.rest %}{% if not m.tight %} {% endif %}{{ m.rest }}{% endif %}</span></div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 
-{% if custom_sections %}{% for part in custom_sections %}<div class="block"><h2>{{ part.title }}</h2><table class="values" style="width:100%;border-collapse:collapse">{% for item in part.answers %}<tr><td class="v">{{ item.prompt }}</td><td>{% if item.is_agreed_note and item.agreed %}&#10003; {% endif %}{{ item.text }}{% if item.note %}<br><i>{{ item.note }}</i>{% endif %}</td></tr>{% endfor %}</table></div>
-{% endfor %}{% endif %}{% if next_steps %}
-  <div class="block">
-    <h2 class="big">What happens next</h2>
-    <table class="steps">
-      {% for step in next_steps %}{% if step.agreed or step.detail %}
-        <tr>
-          <td class="box">{% if step.agreed %}&#10003;{% else %}&#9744;{% endif %}</td>
-          <td>{{ step.label }}</td>
-          <td class="step-when">{{ step.detail|default:"" }}</td>
-        </tr>
-      {% endif %}{% endfor %}
-    </table>
+  <div class="band">
+    <div class="words">
+      {% if doc.closing %}<div class="closing">{{ doc.closing }}</div>{% endif %}
+      <div class="who">{{ signoff }}</div>
+    </div>
+    <div class="page">Page 2 of {{ pages }}</div>
   </div>
-{% endif %}
-
-{% if money %}
-  <div class="block">
-    <h2>Scope and investment</h2>
-    <table class="steps">
-      {% for item in money %}
-        <tr>
-          <td class="box">{% if item.value|get:"agreed" %}&#10003;{% else %}&#9744;{% endif %}</td>
-          <td>{{ item.prompt }}</td>
-          <td class="step-when">{{ item.text }}</td>
-        </tr>
-      {% endfor %}
-    </table>
-  </div>
-{% endif %}
 </section>
 
+{% if has_extra_page %}
+{# ------------------------------------- page three: only what was asked for #}
+<section class="sheet">
+  <div class="top">
+    {% include "strategy/pdf_brand.html" %}
+    <div class="dateline">{% if company %}{{ company }} · {% endif %}Strategy session</div>
+  </div>
+  {% for part in custom_sections %}
+    <div class="part">
+      <div class="title"><div class="eyebrow">Also from the session</div><h2>{{ part.title }}</h2></div>
+      <table class="extra">
+        {% for item in part.answers %}<tr><td class="q">{{ item.prompt }}</td><td>{% if item.is_agreed_note and item.agreed %}&#10003; {% endif %}{{ item.text }}{% if item.note %}<br><i>{{ item.note }}</i>{% endif %}</td></tr>{% endfor %}
+      </table>
+    </div>
+  {% endfor %}
+  {% if mechanics_notes %}
+    <div class="part">
+      <div class="title"><div class="eyebrow">The map</div><h2>Notes from experience</h2></div>
+      <table class="extra">
+        {% for item in mechanics_notes %}<tr><td class="q">{{ item.header }}</td><td>{{ item.note }}</td></tr>{% endfor %}
+      </table>
+    </div>
+  {% endif %}
+  {% if money %}
+    <div class="part">
+      <div class="title"><div class="eyebrow">Scope</div><h2>Scope and investment</h2></div>
+      <table class="extra">
+        {% for item in money %}<tr><td class="q">{% if item.value|get:"agreed" %}&#10003; {% endif %}{{ item.prompt }}</td><td>{{ item.text }}</td></tr>{% endfor %}
+      </table>
+    </div>
+  {% endif %}
+  <div class="foot">
+    <div>Prepared by {% if fractional %}{{ fractional }} · {% endif %}{{ practice }}{% if company %} · Confidential to {{ company }}{% endif %}</div>
+    <div>Page 3 of {{ pages }}</div>
+  </div>
+</section>
+{% endif %}
+
+{% endwith %}
 </body>
 </html>

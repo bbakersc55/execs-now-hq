@@ -143,9 +143,8 @@ def test_a_hand_added_row_is_edited_removed_and_printed_like_any_row(session, ff
     assert edited.json()["added_by"], "still theirs after an edit"
     with tenant_context(session.tenant_id):
         html = pdf.render_html(type(session).objects.get(pk=session.pk))
+    # On the two-page document a row is a bullet: its header, and its owner.
     assert "Two People Can Schedule" in html
-    assert "The week&#x27;s rota is built by one person" in html or \
-        "The week's rota is built by one person" in html
     assert "added by" not in html.lower(), "who added it is not the prospect's business"
     assert post(api, ff, one + "remove/").json()["state"] == "discarded"
     with tenant_context(session.tenant_id):

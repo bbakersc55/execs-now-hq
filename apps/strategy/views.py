@@ -701,6 +701,45 @@ class SessionViewSet(StrategyViewSet):
         return Response({"proposed_mirror": {"goal": session.proposed_mirror_goal,
                                              "unlocks": session.proposed_mirror_unlocks}})
 
+    # ------------------------------------------- the document's words
+
+    @action(detail=True, methods=["get", "patch"], url_path="document-words")
+    def document_words(self, request, pk=None):
+        """The words on the two-page document (2026-10-15): what it says now,
+        what a person saved, Claude's draft, and each line's length. A save
+        past a line's length is refused, naming the line, rather than letting
+        the page overflow."""
+        from apps.strategy import document
+
+        session = self.load(pk)
+        if request.method == "PATCH":
+            if (refused := self._fractional_only("change the document's words")) is not None:
+                return refused
+            try:
+                document.save(session, request.data, actor=request.user)
+            except document.WordsInvalid as exc:
+                return Response({"detail": str(exc), "over": exc.over,
+                                 "errors": exc.errors}, status=400)
+        return Response(document.represent(session))
+
+    @action(detail=True, methods=["post"], url_path="draft-document-words")
+    def draft_document_words(self, request, pk=None):
+        """Claude drafts the document's words, held as a proposal: nothing on
+        the document changes until a person uses them and saves."""
+        from apps.strategy import document
+
+        session = self.load(pk)
+        if (refused := self._fractional_only("run a Claude draft")) is not None:
+            return refused
+        since = timezone.now()
+        drafted = document.draft(session)
+        if drafted is None:
+            return Response({"detail": "Claude did not draft the words this time. The "
+                                       "document keeps the ones it has."}, status=502)
+        session.refresh_from_db()
+        return Response({**document.represent(session),
+                         **self._cost(session, document.PURPOSE, since)})
+
     # --------------------------------------------------------------- the PDF
 
     @action(detail=True, methods=["patch"], url_path="pdf-flags")
@@ -730,7 +769,7 @@ class SessionViewSet(StrategyViewSet):
         """
         session = self.load(pk)
         if request.query_params.get("as") == "html":
-            return HttpResponse(pdf_service.render_html(session),
+            return HttpResponse(pdf_service.render_html(session, preview=True),
                                 content_type="text/html; charset=utf-8")
         return HttpResponse(pdf_service.render_pdf(session),
                             content_type="application/pdf")
@@ -753,6 +792,15 @@ class SessionViewSet(StrategyViewSet):
         session = self.load(pk)
         if (refused := self._fractional_only("send the map to a prospect")) is not None:
             return refused
+        # A page whose words run past its foot is clipped on paper: it is
+        # refused here rather than sent short (2026-10-15).
+        full = pdf_service.overflowing_pages(session)
+        if full:
+            pages = " and ".join(f"Page {n}" for n in full)
+            return Response({"detail": (
+                f"{pages} of the document {'runs' if len(full) == 1 else 'run'} past "
+                "the foot. Shorten its words under “Change the words on the document”, "
+                "then send."), "full_pages": full}, status=409)
         try:
             message = emails.send_strategy_pdf(
                 session, actor=request.user, role=self._role(),

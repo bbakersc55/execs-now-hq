@@ -183,6 +183,15 @@ class Tenant(UUIDModel):
     # "Set branding" checklist item still open. apps/tenancy/branding.py.
     brand_footer_text = models.TextField(blank=True, default="", db_default="")
     branding_updated_at = models.DateTimeField(null=True, blank=True)
+    # The strategy document's sign-off band (2026-10-15): the practice's
+    # closing line, and the email and website printed under it. Blank: a
+    # standard line, the session owner's email, and the first web address in
+    # the footer text.
+    document_closing = models.CharField(max_length=160, blank=True, default="",
+                                        db_default="")
+    document_email = models.CharField(max_length=254, blank=True, default="", db_default="")
+    document_website = models.CharField(max_length=120, blank=True, default="",
+                                        db_default="")
     audio_retention_days = models.PositiveIntegerField(default=30)  # F7
     # What this practice calls a goal, a project, a task and a step (Melissa's
     # feedback, 2026-10-15): {"task": ["action", "actions"], ...}. A word left

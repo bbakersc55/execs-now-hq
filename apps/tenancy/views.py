@@ -272,7 +272,9 @@ class BrandingSettingsView(APIView):
                           display_name=data.get("display_name", ""),
                           primary_color=data.get("primary_color", ""),
                           accent_color=data.get("accent_color", ""),
-                          footer_text=data.get("footer_text", ""))
+                          footer_text=data.get("footer_text", ""),
+                          document={field: data[field] for field in branding.DOCUMENT_FIELDS
+                                    if field in data})
         except branding.BrandingInvalid as exc:
             return Response({"detail": str(exc), "errors": exc.errors}, status=400)
         return Response(branding.current(request.tenant))
