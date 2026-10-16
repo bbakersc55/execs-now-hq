@@ -12,7 +12,9 @@
 
 from __future__ import annotations
 
+import itertools
 import json
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -801,8 +803,11 @@ def test_explain_sends_nothing_until_pressed_and_never_a_clients_name(
     assert lines_[2] == "Floor the owner wants to stay above: $2,000.00"
     assert lines_[3].startswith("Low point: ")
     weeks = lines_[lines_.index("WEEKS (start | cash at start | in | out | cash at end):") + 1:]
-    assert len([row for row in weeks if row.startswith(f"- {TODAY.year}") and
-                row.count("|") == 4]) == 13
+    # Thirteen weekly rows, up to the next heading, whatever year each starts
+    # in: from mid-October the last of them is in January.
+    weeks = list(itertools.takewhile(lambda row: row.startswith("- "), weeks))
+    assert len([row for row in weeks if re.match(r"- \d{4}-\d{2}-\d{2} \|", row)
+                and row.count("|") == 4]) == 13
     # An expense's payee and category go by name...
     assert f"| regular | out | $695.00 | {RENT} (Rent and coworking) | monthly" in text
     assert "LinkedIn Ads (Marketing and advertising: Advertising)" in text

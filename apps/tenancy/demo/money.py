@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from . import ahead, cast
+from . import ahead, cast, household
 from .clock import at, dice, moment, month_end, months, next_month
 
 RETAINER = "Fractional operations leadership, monthly retainer"
@@ -60,10 +60,14 @@ def history(world) -> None:
     card_owed = books["card"].opening_balance_cents
     previous = None
     for index, month in enumerate(months(first, world.today)):
+        if household.in_window(world, month) and "mixed" not in books:
+            household.begin(world, books)
         # Last month waits for the bank import, which still has lines to bring
         # into it; every month before that is reconciled and closed here, in
-        # the week after it ended.
+        # the week after it ended. The household's statements of the month
+        # (P6 M4) come in first, as they would.
         if previous is not None and month != _this_month(world):
+            household.month(world, books, previous)
             _reconcile_and_close(world, books, previous)
             if previous == _months_back(world, 4):
                 _late_refund(world, books, previous)
@@ -86,10 +90,14 @@ def history(world) -> None:
         _oddities(world, books, month)
     _bank_import(world, books, held_back, window_start)
     if _last_month(world) >= first:
+        household.month(world, books, _last_month(world), last=True)
         _reconcile_and_close(world, books, _last_month(world))
         _pdf_statement(world, books)
         _correcting_entry(world, books)
     _this_month_in_progress(world, books)
+    if "mixed" in books:
+        household.this_month(world, books)
+        household.finish(world, books)
     _reshape_the_chart(world, books)
     _year_end_facts(world)
     ahead.looking_ahead(world)
@@ -564,7 +572,11 @@ def _reconcile_and_close(world, books, month: date) -> None:
     reconcile, owner = _reconcile(), world.owner
     after = next_month(month)
     day = min(after + timedelta(days=5), world.today)
-    for key, minute in (("bank", 5), ("card", 40)):
+    keys = [("bank", 5), ("card", 40)]
+    if "mixed" in books and books["mixed"].opening_on <= month:
+        # P6 M4 decision 8: a Mixed card reconciles once, with the business month.
+        keys.append(("mixed", 50))
+    for key, minute in keys:
         when = moment(day, 16, minute)
         rec = _statement(world, books, key, month, when)
         with at(when + timedelta(minutes=25)):

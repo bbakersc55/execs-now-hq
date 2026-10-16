@@ -14,6 +14,7 @@ import {
 } from "../lib/api";
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
+import { personalOptions, usePersonalChart } from "../lib/personal";
 
 /**
  * Settings → Finance (P5; matrix 13.7): the practice owner's. The accounts
@@ -188,7 +189,7 @@ export function FinanceSettings() {
         )}
       </Card>
 
-      <Rules />
+      <Rules categories={categories.data ?? []} personal={personal} />
 
       <YearEndFacts />
 
@@ -213,35 +214,62 @@ export function FinanceSettings() {
   );
 }
 
-/** The rules remembered from your own choices in an import (§4.4). */
-function Rules() {
+/** The rules remembered from your own choices in an import (§4.4), and
+ *  (P6 M4 stop 1) added or edited here by hand: the text to look for, the
+ *  category, and with Personal finance the side: business, personal, or a
+ *  split with the percent that is business. */
+function Rules({ categories, personal }: { categories: FinanceCategory[]; personal: boolean }) {
   const qc = useQueryClient();
+  const [editing, setEditing] = useState<FinanceRule | "new" | null>(null);
+  const [said, setSaid] = useState("");
   const rules = useQuery<FinanceRule[]>({
     queryKey: ["finance-rules"], queryFn: () => api.get<FinanceRule[]>("/api/finance-rules/") });
-  const done = () => qc.invalidateQueries({ queryKey: ["finance-rules"] });
+  const done = () => { setSaid(""); qc.invalidateQueries({ queryKey: ["finance-rules"] }); };
+  const fail = (e: Error) => setSaid(e.message);
   const toggle = useMutation({
     mutationFn: (rule: FinanceRule) => api.patch<FinanceRule>(
       `/api/finance-rules/${rule.id}/`, { is_active: !rule.is_active }),
-    onSuccess: done });
+    onSuccess: done, onError: fail });
   const remove = useMutation({
     mutationFn: (rule: FinanceRule) => api.del<void>(`/api/finance-rules/${rule.id}/`),
-    onSuccess: done });
+    onSuccess: done, onError: fail });
+  const save = useMutation({
+    mutationFn: ({ rule, body }: { rule: FinanceRule | "new"; body: object }) =>
+      rule === "new" ? api.post<FinanceRule>("/api/finance-rules/", body)
+        : api.patch<FinanceRule>(`/api/finance-rules/${rule.id}/`, body),
+    onSuccess: () => { setEditing(null); done(); }, onError: fail });
   const list = rules.data ?? [];
-  const busy = toggle.isPending || remove.isPending;
+  const busy = toggle.isPending || remove.isPending || save.isPending;
   return (
-    <Card title="Import rules">
+    <Card title="Import rules"
+      actions={editing === null && (
+        <button className="small" onClick={() => { setSaid(""); setEditing("new"); }}>
+          Add rule</button>)}>
       <p className="small muted" style={{ marginTop: 0 }}>
-        Remembered from your own choices when you import: a line whose description
-        contains the text is given the category, marked as a transfer, or ignored. Each is
-        shown beside the line it decides, and you can change that line. Nothing here is
-        decided by AI.
+        A line whose description contains the text is given the category, marked as a
+        transfer, or ignored{personal && <>, and put on a side: business, personal, or split
+        between them</>}. Remembered from your own choices when you import, or added here.
+        Each is shown beside the line it decides, and you can change that line. Nothing here
+        is decided by AI.
       </p>
-      {list.length === 0 ? <p className="small muted">None yet. Tick "remember" beside a
-        line in an import and it appears here.</p> : (
+      {said && <Banner kind="bad">{said}</Banner>}
+      {editing === "new" && (
+        <RuleForm rule={null} categories={categories} personal={personal} busy={busy}
+          onSave={(body) => save.mutate({ rule: "new", body })}
+          onCancel={() => setEditing(null)} />
+      )}
+      {list.length === 0 ? <p className="small muted">None yet. Add one, or tick
+        "remember" beside a line in an import and it appears here.</p> : (
         <table>
           <thead><tr><th>A line containing</th><th>Is</th><th>In</th><th /></tr></thead>
           <tbody>
-            {list.map((rule) => (
+            {list.map((rule) => editing !== "new" && editing?.id === rule.id ? (
+              <tr key={rule.id}><td colSpan={4}>
+                <RuleForm rule={rule} categories={categories} personal={personal}
+                  busy={busy} onSave={(body) => save.mutate({ rule, body })}
+                  onCancel={() => setEditing(null)} />
+              </td></tr>
+            ) : (
               <tr key={rule.id}>
                 <td>“{rule.contains}”{!rule.is_active && <> <Pill>off</Pill></>}</td>
                 <td>{rule.treat_as === "ignore" ? "ignored"
@@ -250,9 +278,14 @@ function Rules() {
                       ? `personal${rule.personal_category ? `, ${rule.personal_category.name}` : ""}`
                       : rule.side === "split"
                         ? `${rule.split_percent}% ${rule.category?.name ?? ""}, the rest personal`
+                          + (rule.personal_category ? ` (${rule.personal_category.name})` : "")
                         : rule.category?.name}</td>
                 <td>{rule.account?.name ?? "any account"}</td>
                 <td className="money">
+                  {rule.treat_as === "category" && (
+                    <button className="ghost small" disabled={busy || editing !== null}
+                      aria-label={`Edit the rule for ${rule.contains}`}
+                      onClick={() => { setSaid(""); setEditing(rule); }}>Edit</button>)}{" "}
                   <button className="ghost small" disabled={busy}
                     aria-label={`Turn ${rule.is_active ? "off" : "on"} the rule for ${rule.contains}`}
                     onClick={() => toggle.mutate(rule)}>
@@ -267,6 +300,90 @@ function Rules() {
         </table>
       )}
     </Card>
+  );
+}
+
+/** One rule, typed: the text, the side, and its category or categories. */
+function RuleForm({ rule, categories, personal, busy, onSave, onCancel }: {
+  rule: FinanceRule | null; categories: FinanceCategory[]; personal: boolean; busy: boolean;
+  onSave: (body: object) => void; onCancel: () => void;
+}) {
+  const chart = usePersonalChart(personal);
+  const [form, setForm] = useState({
+    contains: rule?.contains ?? "",
+    side: (rule?.side || "business") as "business" | "personal" | "split",
+    category: rule?.category?.id ?? "",
+    personal_category: rule?.personal_category?.id ?? "",
+    percent: rule?.split_percent ? String(rule.split_percent) : "50",
+  });
+  const set = (more: Partial<typeof form>) => setForm({ ...form, ...more });
+  const earned = categories.filter((c) => !c.archived && (c.type === "income"
+                                                         || c.type === "expense"));
+  const own = personalOptions(chart.data?.categories ?? []);
+  const label = rule ? `the rule for ${rule.contains}` : "the new rule";
+  const ready = form.contains.trim().length >= 3
+    && (form.side === "personal" || form.category)
+    && (form.side !== "split" || (Number(form.percent) >= 1 && Number(form.percent) <= 99));
+  return (
+    <div role="group" aria-label={rule ? `Editing ${label}` : "A new rule"}
+      className="row" style={{ alignItems: "flex-end", margin: "var(--s2) 0" }}>
+      <Field label="A line containing">
+        <input aria-label={`Text of ${label}`} value={form.contains}
+          placeholder="ADOBE" onChange={(e) => set({ contains: e.target.value })} />
+      </Field>
+      {personal && (
+        <Field label="Side">
+          <select aria-label={`Side of ${label}`} value={form.side} style={{ width: "auto" }}
+            onChange={(e) => set({ side: e.target.value as typeof form.side })}>
+            <option value="business">Business</option>
+            <option value="personal">Personal</option>
+            <option value="split">Split</option>
+          </select>
+        </Field>
+      )}
+      {form.side !== "personal" && (
+        <Field label={form.side === "split" ? "Business category" : "Category"}>
+          <select aria-label={`Category of ${label}`} value={form.category}
+            style={{ width: "auto", maxWidth: "18rem" }}
+            onChange={(e) => set({ category: e.target.value })}>
+            <option value="">Choose a category</option>
+            {categoryOptions(earned, categories).map(
+              ([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        </Field>
+      )}
+      {form.side === "split" && (
+        <Field label="Percent business">
+          <input aria-label={`Percent business of ${label}`} inputMode="numeric"
+            value={form.percent} style={{ width: "5rem" }}
+            onChange={(e) => set({ percent: e.target.value })} />
+        </Field>
+      )}
+      {form.side !== "business" && (
+        <Field label="Personal category">
+          <select aria-label={`Personal category of ${label}`} value={form.personal_category}
+            style={{ width: "auto", maxWidth: "18rem" }}
+            onChange={(e) => set({ personal_category: e.target.value })}>
+            <option value="">None yet (To sort)</option>
+            {own.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        </Field>
+      )}
+      <div className="row tight">
+        <button className="primary small" disabled={!ready || busy}
+          onClick={() => onSave({
+            contains: form.contains.trim(), treat_as: "category",
+            category: form.side === "personal" ? null : form.category || null,
+            ...(personal ? {
+              side: form.side,
+              personal_category: form.side === "business" ? null
+                : form.personal_category || null,
+              split_percent: form.side === "split" ? Number(form.percent) : null,
+            } : {}),
+          })}>{rule ? "Save the rule" : "Add the rule"}</button>
+        <button className="ghost small" disabled={busy} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
   );
 }
 

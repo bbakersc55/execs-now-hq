@@ -1635,7 +1635,7 @@ export interface CategoryChange {
 export interface FinanceEntry {
   /** P6 M4: "" business, "personal" (an owner draw for personal spending),
    *  "to_sort" (a Mixed account's line waiting for a side). */
-  side?: "" | "personal" | "to_sort";
+  side?: "" | "personal" | "to_sort" | "paid_personally";
   id: string; kind: EntryKind; kind_label: string; direction: "in" | "out";
   on_date: string; amount_cents: number;
   category: { id: string; name: string } | null;
@@ -2001,6 +2001,9 @@ export interface PersonalAccount {
   id: string; name: string; kind: "bank" | "card" | "cash"; kind_label: string;
   last4: string; closed: boolean; side: "personal" | "mixed"; in_books: boolean;
   opening_balance_cents?: number; opening_on?: string;
+  /** A personal account: what it holds (a card: what is owed), and the last
+   *  statement reconciled. */
+  balance_cents?: number; reconciled_through?: string | null;
 }
 
 export interface PersonalLine {
@@ -2011,8 +2014,64 @@ export interface PersonalLine {
   category: { id: string; name: string; tax_group?: string } | null;
   account: { id: string; name: string } | null;
   from_books: boolean; source: string; to_sort: boolean;
+  /** Decision 3: the practice's, paid from this personal account. */
+  paid_for?: { entry: string; category: string } | null;
+  /** Decision 7: one side of a move between the household's own accounts. */
+  transfer?: boolean;
 }
 
 export interface PersonalLines {
   lines: PersonalLine[]; to_sort: number; threshold_cents: number;
+}
+
+export type PersonalSide = "personal" | "business" | "split" | "to_sort";
+
+export interface PersonalImportRow {
+  id: string; row_number: number; on_date: string | null; amount_cents: number | null;
+  direction: "in" | "out" | ""; description: string;
+  outcome: "new" | "duplicate" | "transfer_match" | "ignore" | "error";
+  outcome_label: string; side: PersonalSide;
+  category: { id: string; name: string } | null;
+  business_category: { id: string; name: string } | null;
+  split_business_cents: number | null;
+  matched: { id: string; on_date: string; description: string; account: string } | null;
+  rule: { id: string; contains: string } | null;
+  error: string; raw: Record<string, string> | null;
+}
+
+export interface PersonalImport {
+  id: string; account: { id: string; name: string }; filename: string;
+  status: "dry_run" | "committed" | "rolled_back"; status_label: string;
+  counts: Record<string, number>; created_at: string; committed_at: string | null;
+  source: "csv" | "ofx" | "pdf";
+  statement: Omit<StatementFacts, "pdf"> | null;
+  rows?: PersonalImportRow[];
+  rolled_back?: { removed: number;
+                  kept: { on_date: string; amount_cents: number; description: string }[] };
+}
+
+export interface PersonalReconciliation {
+  id: string; account: { id: string; name: string; kind: string };
+  statement_on: string; statement_balance_cents: number; state: "open" | "finished";
+  finished_at: string | null; starting_balance_cents: number; cleared_in_cents: number;
+  cleared_out_cents: number; difference_cents: number;
+  lines?: { id: string; on_date: string; amount_cents: number; direction: "in" | "out";
+            description: string; cleared: boolean }[];
+}
+
+/** "Sort these with Claude" (decision 6): the price before, the proposals after. */
+export interface SortWithClaudeStatus {
+  estimate_usd: string; used_today: number; cap: number; resets_at: string;
+  refused: string; disclaimer: string; lines: number; most: number;
+}
+
+export interface SortProposal {
+  kind: "line" | "entry"; id: string; description: string; amount_cents: number;
+  direction: "in" | "out"; side: "personal" | "business";
+  category: { id: string; name: string }; match: string; why: string;
+}
+
+export interface SortProposals {
+  proposals: SortProposal[]; cost_usd: string; used_today: number; cap: number;
+  disclaimer: string;
 }

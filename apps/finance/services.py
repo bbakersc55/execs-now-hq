@@ -447,7 +447,8 @@ def _shape(entry) -> None:
             raise FinanceError(f"“{category.name}” is not {_an(entry.kind)} category.")
     elif entry.kind in (K.OWNER, K.HELD):
         raise FinanceError("Choose a category.")
-    if entry.account_id is None and entry.source != FinanceEntry.Source.INVOICE:
+    if entry.account_id is None and entry.source != FinanceEntry.Source.INVOICE \
+            and entry.side != FinanceEntry.Side.PAID_PERSONALLY:
         raise FinanceError("Choose the account the money moved through.")
 
 
@@ -554,6 +555,12 @@ def _keep_side(entry) -> None:
     if entry.side == FinanceEntry.Side.TO_SORT and (
             entry.category_id is not None or entry.kind not in (K.INCOME, K.EXPENSE)):
         entry.side = FinanceEntry.Side.BUSINESS
+    elif entry.side == FinanceEntry.Side.PAID_PERSONALLY and (
+            entry.account_id is not None or entry.kind not in (K.INCOME, K.EXPENSE)):
+        # Placed in one of the practice's accounts: no longer paid personally,
+        # and the personal account's line waits to be sorted again.
+        entry.side = FinanceEntry.Side.BUSINESS
+        personal.paid_entry_left(entry)
     elif entry.side == FinanceEntry.Side.PERSONAL:
         if entry.kind != K.OWNER:
             entry.side = FinanceEntry.Side.BUSINESS

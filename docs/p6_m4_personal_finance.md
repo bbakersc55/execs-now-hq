@@ -1,6 +1,6 @@
 # P6 M4 — Personal finance
 
-**Spec · 2026-10-15 · stop 1 being built; stops 2–4 not built**
+**Spec · 2026-10-15 · stop 1 built (not released); stops 2–4 not built**
 
 Written from `docs/p6_m4_personal_finance_spec_draft.md` (Bryan's draft, saved
 verbatim; drafted 2026-10-15 by Claude in chat with Bryan's decisions of that
@@ -179,7 +179,9 @@ The brief (saved 2026-10-11) wins where the two differ, unless a recorded decisi
 - Where M3 sits now that M4 is high on the list.
 - Decided 10/15: where it lives (a toggle inside Finance), spouse sign-in (later), no month close, budget by arithmetic.
 
-## Stop 1 as built (first slice, 2026-10-15)
+## As built: stop 1 (2026-10-15)
+
+### The first slice (`0f324a8`)
 
 **Built and tested:**
 
@@ -220,7 +222,7 @@ The brief (saved 2026-10-11) wins where the two differ, unless a recorded decisi
   the personal disclaimer (decision 26), and three pages: Entries (with To
   sort), Accounts, Categories.
 
-**Choices made while building, for Bryan to keep or overrule:**
+**Choices made while building** (Bryan, 2026-10-15: **all five stand**):
 
 1. A **Mixed account lives in the practice's books**, not the ledger: its
    business lines are the practice's, it is reconciled with the business
@@ -230,16 +232,125 @@ The brief (saved 2026-10-11) wins where the two differ, unless a recorded decisi
 2. A line of a Mixed account that waits in To sort is in the books as an
    uncategorized expense or income until it is sorted (marked "to sort"),
    because the bank shows it and the card's balance must be right.
-3. The threshold applies only to **Mixed** accounts: a Business account's
-   line with no rule is the practice's, as before; a personal rule still
-   reaches it.
+3. The threshold applies only to **Mixed** accounts among the practice's: a
+   Business account's line with no rule is the practice's, as before; a
+   personal rule still reaches it. (On a household account the threshold
+   applies as decision 5 says; see below.)
 4. A split chosen by hand in the dry run is in dollars (the business part);
    a split rule is a percent.
 5. Whose ledger: the person who commits the import (Finance is the practice
    owner's alone).
 
-**Not built yet in stop 1** (the next slice): importing a statement into a
-**personal** account (with the business line paid personally), transfers
-between the household's own accounts, optional reconcile on personal
-accounts, and **Sort these with Claude**. The demo seed's personal side is a
-data step and waits for Bryan.
+### The rest of stop 1 (second slice)
+
+**Built and tested** (`tests/test_personal_accounts.py`, the demo seed test,
+`FinanceImport.test.tsx`, `PersonalFinance.test.tsx`; screens looked at in
+headless Chrome at 1366):
+
+- **Rules by hand.** Settings → Finance → Import rules has **Add rule** and
+  **Edit**: the text to look for, the category, and with Personal finance the
+  side (Business, Personal with a personal category, or Split with the
+  percent that is business and a personal category for the rest). Without
+  the module a rule has no side and the route refuses one. The dry run's
+  "remember" now works for a **split** chosen by hand, saved as the percent
+  that line's split works out to (a $50 business part of $200 is a 25% rule),
+  and the import's other lines take it at once. Rules learned on the
+  personal side (sorting a line, or a personal account's dry run) carry the
+  side and the personal category.
+- **Importing into a personal account** (decisions 2, 3, 5), Personal →
+  Import: CSV, OFX/QFX/QBO and PDF, the books' own reading and the same three
+  steps (dry run, commit, rollback), in the ledger's own tables
+  (`PersonalImport`, `PersonalImportRow`: the owner's, not the practice's).
+  With no rule a line is personal, under the threshold in Everything else,
+  at or over it To sort. A line that is the practice's (by a business rule,
+  or chosen) is **paid personally**: in the books an income or expense in
+  its category, side `paid_personally`, in **no account of the practice's**;
+  it is in the P&L, in its line of the CPA's worksheet, and named again
+  under the worksheet's Net as "Expenses paid from a personal account … an
+  owner contribution". The balance view and the forecast leave it out of the
+  practice's cash. In the ledger the line stays in its account, in the system
+  category **Paid for the practice** (not spending), so the account's balance
+  is the bank's. A split is both. The rollback takes all of it back (an
+  entry edited in the books since is kept and named, as the books' rollback
+  does). Moving a paid-personally entry into one of the practice's accounts
+  in the books, or removing it, sends its line back to To sort; sorting the
+  line to personal removes the entry.
+- **Transfers** (decision 7): a line that matches one already in the ledger
+  (the other way, the same amount, within five days, from another of the
+  household's accounts or the personal side of a Mixed card's line, not yet
+  sorted or already a transfer) is proposed in the dry run as **the other
+  side of a transfer**, and declinable. On commit the two are paired and both
+  are in Transfers, which is never spending. A card payment from joint
+  checking pairs with the Mixed card's payment line. The rollback unpairs and
+  puts the other line's category back.
+- **Reconcile, optional** (decision 8): Personal → Accounts shows each
+  household account's balance and "reconciled through", and a **Reconcile**
+  for each: the statement's date and balance, tick until the difference is
+  zero, Finish; Reopen the last one; throw away one in progress. No month
+  close, and nothing in the books is locked by it. A finished statement holds
+  its lines: an import under it cannot be rolled back until it is reopened.
+- **Sort these with Claude** (decision 6), on To sort: priced before it is
+  pressed, by the number of lines waiting (at most 80 a press); the button
+  says what is sent (each line's description as the bank printed it, its
+  amount and way, and the category names; never an account's name or number,
+  a balance, or the owner's name). One call proposes a side and a category per
+  line and the text to remember it by (a piece of the line's own
+  description; otherwise its first two words). Nothing is stored or changed
+  by the call. The owner unticks or edits, then **Accept all**: each goes
+  through the ordinary sort route and becomes a rule. It counts once a press
+  on Finance's shared 20 a day (`explain.PRESSED`) and stops at the monthly
+  AI budget. Its cost is the call's `ai_call`.
+- **The demo seed's personal side** (decision 27 with the brief), built inside
+  the books' month loop so each month's statements come in before that month
+  is reconciled and closed (`apps/tenancy/demo/household.py`): the module on;
+  John Carter and **Dana Carter** (spouse, a pediatric nurse: the spec's open
+  question, answered for the demo only); **Joint checking** and **Joint
+  savings**; a Mixed card, **Everyday Visa**, reconciled with each business
+  month; the owner's rules typed by hand (groceries, dining, fuel, Netflix
+  personal; home internet 40% and Amazon 25% business splits; printing and
+  Canva the practice's); **six months** of each account's statement
+  imported, the card through the books' import and the two household
+  accounts through the personal one, the odd line sorted by the owner each
+  month; spouse pay twice a month and pay from the practice the day after
+  each owner draw, with 28% of each draw moved to savings for tax; card
+  payments and savings moves paired as transfers; Canva from joint checking
+  paid personally; last month's savings statement reconciled; last month's
+  Costco, hardware and doctor lines and this month's card lines no rule
+  knows waiting in To sort. **Data only until stops 2–4 draw them**: the home
+  mortgage and the car loan with month-end balances, a Solo 401(k), Dana's
+  403(b), a Roth IRA and a joint brokerage with month-end balances, three
+  goals (emergency fund, car repairs, Christmas) and this year's tax
+  set-aside so far. The seed's summary counts all of it.
+
+**Models added** (`personal 0002`): `PersonalMember`, `PersonalImport`,
+`PersonalImportRow`, `PersonalReconciliation`, and for the later stops
+`PersonalDebt`, `PersonalHolding`, `PersonalBalance`, `PersonalGoal`,
+`PersonalSetAside`; on `PersonalAccount` whose and the remembered columns; on
+`PersonalLine` the paid-personally entry, the transfer's pair and the
+statement it was ticked on. `finance 0015`: the side `paid_personally`, and
+the side's shape allowing it. All in the isolation family.
+
+**Choices made in this slice, for Bryan to keep or overrule:**
+
+1. **Paid personally is one entry**, an income or expense in no account of
+   the practice's, marked `paid_personally`, not an expense plus a separate
+   owner-contribution entry. The P&L and worksheet count it; "an owner
+   contribution" is how the balance between them reads it, and the balance
+   sheet (M3) will read it from the mark.
+2. **The PDF of a personal statement is not kept**; its lines, period, two
+   balances and cost are. (The books keep theirs for the Reconcile screen.)
+3. **On a household account the threshold applies**: no rule and under $25
+   is Everything else; at or over, To sort (decision 5 as written).
+4. The practice's **transfer and ignore rules, and rules for one of its own
+   accounts, do not reach a household account's lines**; its category rules
+   (business, personal, split) do. Transfers between household accounts are
+   found by matching, not by rule.
+5. **Sort these with Claude proposes personal or business only**, never a
+   split; a split is the owner's to make.
+6. An in-progress personal reconciliation can be **thrown away** (its ticks
+   come off); a finished one is only reopened.
+
+**Not built in stop 1:** screens for debts, retirement and investments,
+goals, the household and the set-aside (their stops); a business line paid
+personally from cash; transfer rules for household accounts; removing a
+personal line by hand.

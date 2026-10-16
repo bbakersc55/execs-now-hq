@@ -34,7 +34,9 @@ PURPOSE = "finance_explain_step"
 #: (owner, 2026-10-11): this, and the forecast's "Explain" and "Review"
 #: (`forecast_ai.py`). They share one limit a day per practice. The worker's
 #: own daily cap is for what nobody asked for, and does not count these.
-PRESSED = (PURPOSE, "finance_explain_forecast", "finance_review_forecast")
+PRESSED = (PURPOSE, "finance_explain_forecast", "finance_review_forecast",
+           # P6 M4 decision 6, the brief winning: "Sort these with Claude".
+           "personal_sort_lines")
 DAILY_CAP = 20
 #: Only these steps send the unticked lines.
 WITH_LINES = (4, 5)

@@ -878,7 +878,8 @@ class RuleViewSet(FinanceViewSet):
     def _rules(self):
         from apps.finance.models import FinanceRule
 
-        return FinanceRule.objects.select_related("category", "other_account", "account")
+        return FinanceRule.objects.select_related("category", "other_account", "account",
+                                                  "personal_category")
 
     def list(self, request):
         return Response([self._represent(rule) for rule in self._rules()])
@@ -895,11 +896,45 @@ class RuleViewSet(FinanceViewSet):
                                       ("account", FinanceAccount, "account")):
                 if name in data:
                     fields[name] = self._one(model, data[name], what) if data[name] else None
+            fields.update(self._sides(request, data))
             saved = rules.save_rule(request.tenant, actor=request.user, rule=rule, **fields)
         except services.FinanceError as exc:
             return self._refusal(exc)
         return Response(self._represent(self._rules().get(pk=saved.pk)),
                         status=201 if rule is None else 200)
+
+    @staticmethod
+    def _sides(request, data) -> dict:
+        """P6 M4 decision 2, by hand: a rule's side (business, personal, or
+        split with a percent), and for a personal or split rule the owner's
+        own category. Only in a practice with Personal finance."""
+        if not any(name in data for name in ("side", "personal_category", "split_percent")):
+            return {}
+        from apps.personal import services as personal
+        from apps.tenancy import modules
+
+        if not modules.has(request.tenant, modules.PERSONAL):
+            raise services.FinanceError("Sides come with the Personal finance module.",
+                                        status=404)
+        fields = {}
+        if "side" in data:
+            fields["side"] = data["side"] or "business"
+        if "personal_category" in data:
+            fields["personal_category"] = None
+            if data["personal_category"]:
+                try:
+                    fields["personal_category"] = personal.personal_category(
+                        personal.ledger_for(request.user), data["personal_category"])
+                except personal.PersonalError as exc:
+                    raise services.FinanceError(str(exc), status=exc.status) from None
+        if "split_percent" in data:
+            value = data["split_percent"]
+            try:
+                fields["split_percent"] = int(value) if value not in (None, "") else None
+            except (TypeError, ValueError):
+                raise services.FinanceError("A split's percent is a whole number from 1 to "
+                                            "99.") from None
+        return fields
 
     def create(self, request):
         return self._save(request)

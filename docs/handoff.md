@@ -1,13 +1,36 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-15**, after Release 14. **The next session starts at "2026-10-15"
-just below.** Then "Release 12: the plan as it was" and "2026-10-13", which
+2026-10-15**, after M4 stop 1. **The next session starts at "2026-10-15,
+evening" just below.** Then "Release 12: the plan as it was" and "2026-10-13", which
 is the day in order. Everything from "Next" down was last brought up to
 date on 10/5; where it and a newer section disagree, the newer holds. Upload
 this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
+
+## 2026-10-15, evening: M4 stop 1 finished (not released)
+
+- **Bryan's rulings:** stop 1's five choices all stand; the demo seed's
+  personal side is not a migration data step, so it was built.
+- **Built:** rules by hand (Settings → Finance → Import rules: Add rule,
+  Edit, with a side); "remember" for a hand split saves its percent;
+  Personal → Import (CSV, OFX, PDF) with business lines **paid personally**
+  (in the P&L and the CPA's worksheet, in no practice account); transfers
+  between the household's accounts, paired on import; optional reconcile of
+  a personal account; **Sort these with Claude** on To sort (priced, costed,
+  on Finance's 20 a day and the monthly budget); the demo's personal side
+  (`apps/tenancy/demo/household.py`). Details and six new choices for Bryan
+  are in the spec's "As built: stop 1".
+- **Migrations:** `finance 0015_paid_personally` (a wider `side` column and
+  a looser check) and `personal 0002` (new tables, nullable columns), both
+  additive, applied on the laptop after a green suite. **The next release
+  carries five:** `finance 0013`, `0014`, `0015` and `personal 0001`, `0002`,
+  by the runbook.
+- **The demo seed takes longer:** about 50% more in the test (105 s to
+  155 s), so expect about 4–5 minutes on Railway rather than 3. The demo
+  must be **re-seeded** to show the personal side (pushing `dev` migrates it
+  but does not seed it).
 
 ## 2026-10-15, later: M4 spec, and stop 1's first slice
 
@@ -755,7 +778,8 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | "Staff" to "team" wording; flaky Strategy test fix | **On `dev` (`c075766`, `f9e8e04`), NOT released**; they go with the digest release |
 | **P6 M1** Bookkeeping: sub-categories, the CPA's chart, reconciliation, month close | **Released 10/10 Mountain (Release 10, `main` at `a4037fb`, nine migrations).** §5.6's move of old invoice income not built. See "Tonight's state" |
 | **P6 M2** cash forecast | **Both stops built on `dev` (`849f854`, `0abb177`), NOT released.** Stop 2 not yet looked at on the demo. See "Tonight's state" |
-| **P6 M3, M4** | Not specified. Source: `docs/p6_finance_expansion_brief.md` |
+| **P6 M3** | Not specified. Source: `docs/p6_finance_expansion_brief.md` |
+| **P6 M4** personal finance | **Spec** `docs/p6_m4_personal_finance.md`. **Stop 1 built on `dev`, NOT released** (needs `finance 0013–0015`, `personal 0001–0002`). Stops 2–4 not built |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
 | Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |

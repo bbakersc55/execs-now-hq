@@ -23,6 +23,13 @@ from . import registry_config  # noqa: F401
 OWNER = "owner@getexecutivesnow.invalid"
 
 
+def world_of(today):
+    """Enough of the seed's world for `household.in_window`."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(today=today)
+
+
 def _name():
     return settings.DATABASES["default"]["NAME"]
 
@@ -246,13 +253,15 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert invoices.order_by("issue_date").first().issue_date == date(2025, 1, 1)
         assert all(i.pdf_id for i in invoices.exclude(status="draft"))
         assert set(FinanceAccount.objects.values_list("kind", flat=True)) == {"bank", "card"}
-        assert all(a.opening_balance_cents for a in FinanceAccount.objects.all())
+        assert all(a.opening_balance_cents for a in FinanceAccount.objects.exclude(side="mixed"))
         income = expenses = 0
         for year in (2025, today.year):
             report = reports.pnl(tenant, year=year)
             income += report["income"]["total"]
             expenses += report["expenses"]["total"]
-            assert report["uncategorized"]["count"] == 0
+            # Only this month's Mixed card lines still waiting for a side (P6 M4).
+            assert report["uncategorized"]["count"] == FinanceEntry.objects.filter(
+                side="to_sort", removed_at__isnull=True, on_date__year=year).count()
         assert 0.55 <= (income - expenses) / income <= 0.60, "margin after contractors"
         entries = FinanceEntry.objects.filter(removed_at__isnull=True)
         assert entries.filter(kind="owner").count() >= 20
@@ -260,7 +269,7 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert entries.filter(kind="income", direction="out").count() == 1    # a refund
         # Another, entered late, and the correcting entry in the open month.
         assert entries.filter(kind="expense", direction="in").count() == 2
-        batch = FinanceImportBatch.objects.get(source="csv")
+        batch = FinanceImportBatch.objects.get(source="csv", account__side="business")
         assert batch.status == "committed"
         # One PDF statement, imported, so the PDF import and the statement on
         # Reconcile can be shown (owner, 2026-10-14). Written without Claude.
@@ -290,7 +299,10 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         # The newest figure the bank gave is still this month's file's.
         from apps.finance import importer
         assert importer.bank_said(pdf.tenant)[pdf.account_id]["on"] >= today.replace(day=1)
-        assert 1 <= FinanceRule.objects.count() <= 6
+        from apps.tenancy.demo import household
+
+        assert 1 <= FinanceRule.objects.exclude(
+            contains__in=[rule[0] for rule in household.RULES]).count() <= 6
         assert FinanceImportRow.objects.filter(batch=batch,
                                                outcome="invoice_payment").count() >= 1
         # P6 M1 §10: every month before this one reconciled, bank and card,
@@ -313,13 +325,16 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
             this_month - timedelta(days=1)
         assert not AuditEvent.objects.filter(verb="finance.settings_changed").exists()
         finished = FinanceReconciliation.objects.filter(state="finished")
-        assert finished.count() == 2 * len(whole)
-        for kind in ("bank", "card"):
-            mine = finished.filter(account__kind=kind).order_by("month")
-            assert [rec.month for rec in mine] == whole
+        mixed_months = [m for m in whole if household.in_window(world_of(today), m)]
+        assert len(mixed_months) == household.MONTHS
+        assert finished.count() == 2 * len(whole) + len(mixed_months)
+        for name, months_ in (("Front Range Bank checking", whole), ("Business Visa", whole),
+                              (household.CARD, mixed_months)):
+            mine = finished.filter(account__name=name).order_by("month")
+            assert [rec.month for rec in mine] == months_, name
             assert all(reconcile.totals(rec)["difference_cents"] == 0 for rec in mine)
         assert all(rec.statement_on.day == 25
-                   for rec in finished.filter(account__kind="card"))
+                   for rec in finished.filter(account__name="Business Visa"))
         # A few entries carry forward: the Chamber's check clears the month after.
         check = entries.filter(description__startswith="Quarterly sponsorship",
                                on_date__lt=this_month - timedelta(days=40)).first()
@@ -357,6 +372,64 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
                     if row["name"] == "Client fees")
         assert {c["name"]: c["total"] > 0 for c in fees["children"]}["Retainers"] is True
         assert not any(c.get("direct") for c in fees["children"])
+        # P6 M4 decision 27 and the brief: John Carter's personal side.
+        from apps.personal import models as personal_models
+        from apps.personal import reconcile as personal_reconcile
+        from apps.tenancy import modules
+
+        assert modules.has(tenant, modules.PERSONAL)
+        mine = {m.__name__: m.of(owner) for m in personal_models.OWNED}
+        assert sorted(mine["PersonalMember"].values_list("relation", flat=True)) == \
+            ["self", "spouse"]
+        assert sorted(mine["PersonalAccount"].values_list("name", flat=True)) == \
+            ["Joint checking", "Joint savings"]
+        card = FinanceAccount.objects.get(side="mixed")
+        assert (card.name, card.kind) == (household.CARD, "card")
+        lines = mine["PersonalLine"].filter(removed_at__isnull=True)
+        first_month = min(mixed_months)
+        assert lines.order_by("on_date").first().on_date < first_month + timedelta(days=10)
+        assert lines.count() > 200
+        # The card was split: personal lines are owner draws, the home
+        # internet both; and a business line from joint checking is paid
+        # personally, in the P&L and in no account of the practice's.
+        assert entries.filter(side="personal", account=card).count() > 50
+        internet = entries.filter(description="XFINITY INTERNET", account=card)
+        assert {e.kind for e in internet} == {"expense", "owner"}
+        canva = entries.filter(description="CANVA PRO")
+        assert canva.count() == household.MONTHS
+        assert all(e.side == "paid_personally" and e.account_id is None for e in canva)
+        # Spouse pay and pay from the practice come in; the mortgage and car
+        # go out; card payments and savings moves are paired transfers.
+        by_category = dict(lines.values_list("category__name").annotate(n=Count("pk")))
+        assert by_category["Spouse pay"] == 2 * household.MONTHS
+        assert by_category["Pay from the practice"] >= household.MONTHS
+        assert by_category["Rent or mortgage"] == household.MONTHS
+        paired = lines.filter(transfer_pair__isnull=False)
+        assert paired.count() >= 2 * (2 * household.MONTHS + household.MONTHS - 1)
+        assert all(line.category.type == "transfer" for line in paired)
+        # Waiting: last month's three checking lines, and this month's card
+        # lines no rule knows.
+        waiting = lines.filter(category__isnull=True)
+        assert waiting.count() >= 2 and {
+            line.description.split()[0] for line in waiting} <= {"COSTCO", "BELL", "CANYON"}
+        assert all(line.on_date >= last_month for line in waiting)
+        # Monthly statements came in through the personal import.
+        assert mine["PersonalImport"].filter(status="committed").count() == \
+            2 * household.MONTHS
+        # Data only for now: a mortgage and a car loan, retirement and
+        # investment balances month by month, three goals, the set-aside.
+        assert sorted(mine["PersonalDebt"].values_list("kind", flat=True)) == \
+            ["auto", "mortgage"]
+        assert set(mine["PersonalHolding"].values_list("kind", flat=True)) == \
+            {"retirement", "investment"}
+        assert mine["PersonalBalance"].count() == 6 * household.MONTHS
+        assert mine["PersonalGoal"].count() == 3
+        set_aside = mine["PersonalSetAside"].get()
+        assert set_aside.year == today.year and set_aside.saved_cents > 0
+        # Last month's savings statement reconciled; nothing to close.
+        [rec] = mine["PersonalReconciliation"]
+        assert rec.state == "finished" and personal_reconcile.totals(rec)[
+            "difference_cents"] == 0
         # P6 M2 §10: the cash forecast, switched on, with what the owner said.
         from apps.finance import forecast
         from apps.finance.models import (
@@ -364,7 +437,7 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         )
         from apps.tenancy import modules as practice_modules
 
-        assert practice_modules.enabled(tenant) == ["bookkeeping", "forecast"]
+        assert practice_modules.enabled(tenant) == ["bookkeeping", "forecast", "personal"]
         ahead = forecast.build(tenant, today, snapshot=False)
         assert ahead["ready"] and ahead["closed_months"] == len(whole)
         view = ahead["views"]["90"]
@@ -418,7 +491,7 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         from apps.finance.models import FinanceYearFacts
 
         lines = {name for name, _subs in the_chart.STARTING_CHART[1][1]}
-        used = set(entries.filter(kind="expense").values_list(
+        used = set(entries.filter(kind="expense", category__isnull=False).values_list(
             "category__parent__name", "category__name"))
         assert all((parent or name) in lines for parent, name in used), used
         assert len({parent or name for parent, name in used}) >= 12

@@ -423,6 +423,63 @@ describe("import rules in the settings", () => {
   });
 });
 
+describe("rules by hand (P6 M4 stop 1)", () => {
+  const PERSONAL = {
+    categories: [{ id: "p1", name: "Phone and internet", type: "expense", parent: null,
+                   position: 0, system: false, tax_group: "", tax_group_label: "",
+                   archived: false }],
+    tax_groups: [] };
+  const RULE: FinanceRule = {
+    id: "u1", contains: "VERIZON", treat_as: "category", category: { id: "c3", name: "Meals" },
+    other_account: null, account: null, is_active: true, side: "split", split_percent: 60,
+    personal_category: { id: "p1", name: "Phone and internet" } };
+
+  function settings(modules: string[]) {
+    const fetchMock = mockApi({
+      "POST /api/finance-rules/": () => ({ status: 201, body: RULE }),
+      "PATCH /api/finance-rules/u1/": () => ({ body: RULE }),
+      "GET /api/finance-rules/": [RULE], "GET /api/finance-accounts/": ACCOUNTS,
+      "GET /api/finance-categories/": CATEGORIES, "GET /api/me": aMe({ modules }),
+      "GET /api/personal/categories": PERSONAL,
+      "GET /api/finance-settings/": { locked_through: null, invoice_income_category: "c1" } });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<FinanceSettings />);
+    return fetchMock;
+  }
+
+  it("adds a rule with its side: split, with the percent that is business", async () => {
+    const fetchMock = settings(["personal"]);
+    const shown = (await screen.findByText("“VERIZON”")).closest("tr") as HTMLElement;
+    expect(shown).toHaveTextContent("60% Meals, the rest personal (Phone and internet)");
+    await userEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    await userEvent.type(screen.getByLabelText("Text of the new rule"), "COMCAST");
+    await userEvent.selectOptions(screen.getByLabelText("Side of the new rule"), "split");
+    await userEvent.selectOptions(screen.getByLabelText("Category of the new rule"), "c3");
+    await userEvent.clear(screen.getByLabelText("Percent business of the new rule"));
+    await userEvent.type(screen.getByLabelText("Percent business of the new rule"), "40");
+    await waitFor(() => expect(screen.getByLabelText("Personal category of the new rule"))
+      .toHaveTextContent("Phone and internet"));
+    await userEvent.selectOptions(screen.getByLabelText("Personal category of the new rule"),
+                                  "p1");
+    await userEvent.click(screen.getByRole("button", { name: "Add the rule" }));
+    await waitFor(() => expect(posts(fetchMock, "/api/finance-rules/")[0].body).toEqual({
+      contains: "COMCAST", treat_as: "category", category: "c3", side: "split",
+      personal_category: "p1", split_percent: 40 }));
+  });
+
+  it("edits one, and without Personal finance a rule has no side", async () => {
+    const fetchMock = settings([]);
+    await userEvent.click(await screen.findByRole("button",
+                                                  { name: "Edit the rule for VERIZON" }));
+    expect(screen.queryByLabelText("Side of the rule for VERIZON")).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText("Category of the rule for VERIZON"),
+                                  "c2");
+    await userEvent.click(screen.getByRole("button", { name: "Save the rule" }));
+    await waitFor(() => expect(posts(fetchMock, "/api/finance-rules/u1/")[0].body).toEqual({
+      contains: "VERIZON", treat_as: "category", category: "c2" }));
+  });
+});
+
 describe("sides in the dry run (P6 M4 decision 2)", () => {
   const MIXED: BankImportBatch = {
     ...BATCH, counts: { ...BATCH.counts, personal: 2, to_sort: 1 },
@@ -460,6 +517,29 @@ describe("sides in the dry run (P6 M4 decision 2)", () => {
     await userEvent.selectOptions(screen.getByLabelText("Side of line 3"), "personal");
     await waitFor(() => expect(posts(fetchMock, "/rows/m2/")[0].body)
       .toEqual({ decision: "entry", side: "personal", category: null }));
+  });
+
+  it("splits a line by hand, in dollars, and remembers it", async () => {
+    const fetchMock = await toTheDryRun({
+      "POST /api/finance-imports/dry-run/": () => ({ status: 201, body: MIXED }),
+      "GET /api/me": aMe({ modules: ["personal"] }),
+      "GET /api/personal/categories": PERSONAL,
+      "POST /api/finance-imports/b1/rows/m2/": () => ({ body: MIXED }) });
+    await userEvent.selectOptions(screen.getByLabelText("Side of line 3"), "split");
+    const editor = screen.getByRole("group", { name: "Split line 3" });
+    await userEvent.clear(within(editor).getByLabelText("Business part of line 3, in dollars"));
+    await userEvent.type(within(editor).getByLabelText("Business part of line 3, in dollars"),
+                         "100");
+    await userEvent.selectOptions(
+      within(editor).getByLabelText("Business category for the split of line 3"), "c2");
+    await userEvent.selectOptions(
+      within(editor).getByLabelText("Personal category for the split of line 3"), "p1");
+    expect(editor).toHaveTextContent("$212.40 personal");
+    await userEvent.click(screen.getByLabelText("Remember the side of line 3"));
+    await userEvent.click(within(editor).getByRole("button", { name: "Split it" }));
+    await waitFor(() => expect(posts(fetchMock, "/rows/m2/")[0].body).toEqual({
+      decision: "entry", side: "split", category: "c2", split_business_cents: 10000,
+      personal_category: "p1", remember: "COSTCO WHOLESALE" }));
   });
 
   it("offers no side to a practice without Personal finance", async () => {

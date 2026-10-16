@@ -123,6 +123,7 @@ def _unplaced(tenant, today: date) -> int:
     practice has, as the balance view counts it."""
     return FinanceEntry.all_objects.filter(
         tenant=tenant, removed_at__isnull=True, account__isnull=True, direction=D.IN,
+        source=FinanceEntry.Source.INVOICE,
         on_date__lte=today).aggregate(t=Sum("amount_cents"))["t"] or 0
 
 
@@ -1052,6 +1053,7 @@ def _actual(tenant, snapshot) -> dict:
               if account.closed_at is None or account.closed_at.date() > last)
     end += FinanceEntry.all_objects.filter(
         tenant=tenant, removed_at__isnull=True, account__isnull=True, direction=D.IN,
+        source=FinanceEntry.Source.INVOICE,
         on_date__lte=last).aggregate(t=Sum("amount_cents"))["t"] or 0
     by: dict = {}
     money_in = money_out = 0

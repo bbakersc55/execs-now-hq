@@ -87,6 +87,8 @@ def practice(*, ff_email, ff_name, oauth_client, today) -> World:
             modules.set_enabled(tenant, modules.BOOKKEEPING, True, actor=owner)
             # And the Cash forecast (P6 M2), which rests on it.
             modules.set_enabled(tenant, modules.FORECAST, True, actor=owner)
+            # And Personal finance (P6 M4 decision 27: on for the demo).
+            modules.set_enabled(tenant, modules.PERSONAL, True, actor=owner)
             branding.save(tenant, actor=owner, display_name=cast.PRACTICE,
                           primary_color=cast.PRIMARY, accent_color=cast.ACCENT,
                           footer_text=cast.FOOTER)
@@ -528,8 +530,43 @@ def counts(world: World) -> dict:
         "PDF statements imported": FinanceImportBatch.objects.filter(
             status="committed", statement_file__isnull=False).count(),
         "import rules": FinanceRule.objects.count(),
+        "personal side": _personal_counts(world),
         "stored files": StoredFile.objects.count(),
         "mail connection kept": bool(world.extra.get("mail_connection_kept")),
         "AI key kept": bool(world.extra.get("ai_key_kept")),
         "AI, automatic spend allowed a day (USD)": world.tenant.ai_unattended_daily_cap_usd,
+    }
+
+
+def _personal_counts(world) -> dict:
+    """John Carter's own ledger (P6 M4): counted from it, not remembered."""
+    from apps.finance.models import FinanceAccount, FinanceEntry
+    from apps.personal import models as personal
+
+    def of(model):
+        return model.of(world.owner)
+
+    lines = of(personal.PersonalLine).filter(removed_at__isnull=True)
+    return {
+        "household": list(of(personal.PersonalMember).values_list("name", flat=True)),
+        "personal accounts": of(personal.PersonalAccount).count(),
+        "mixed accounts": FinanceAccount.objects.filter(side="mixed").count(),
+        "lines": lines.count(),
+        "lines to sort": lines.filter(category__isnull=True).count()
+        + FinanceEntry.objects.filter(side="to_sort", removed_at__isnull=True).count(),
+        "owner draws for personal lines": FinanceEntry.objects.filter(
+            side="personal", removed_at__isnull=True).count(),
+        "paid personally": FinanceEntry.objects.filter(
+            side="paid_personally", removed_at__isnull=True).count(),
+        "transfers paired": lines.filter(transfer_pair__isnull=False).count() // 2,
+        "personal imports committed": of(personal.PersonalImport).filter(
+            status="committed").count(),
+        "personal reconciliations finished": of(personal.PersonalReconciliation).filter(
+            state="finished").count(),
+        "debts": of(personal.PersonalDebt).count(),
+        "retirement and investments": of(personal.PersonalHolding).count(),
+        "balances": of(personal.PersonalBalance).count(),
+        "goals": of(personal.PersonalGoal).count(),
+        "set-aside": of(personal.PersonalSetAside).values_list("saved_cents", flat=True)
+        .first(),
     }

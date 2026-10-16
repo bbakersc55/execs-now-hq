@@ -22,6 +22,9 @@ K, D = FinanceEntry.Kind, FinanceEntry.Direction
 EVERYTHING_ELSE = "everything_else"
 TRANSFERS = "transfers"
 PAY_FROM_PRACTICE = "pay_from_practice"
+#: A personal account's line that was the practice's (decision 3): not the
+#: household's spending, so a transfer-type category.
+FOR_THE_PRACTICE = "for_the_practice"
 G = PersonalCategory.TaxGroup
 
 #: Decision 4's starting chart, two levels. A sub-category may carry the
@@ -67,10 +70,12 @@ CHART = (
     )),
     ("transfer", (
         ("Transfers", ()),
+        ("Paid for the practice", ()),
     )),
 )
 SYSTEM = {"Everything else": EVERYTHING_ELSE, "Transfers": TRANSFERS,
-          "Pay from the practice": PAY_FROM_PRACTICE}
+          "Pay from the practice": PAY_FROM_PRACTICE,
+          "Paid for the practice": FOR_THE_PRACTICE}
 
 
 class PersonalError(Exception):
@@ -107,8 +112,16 @@ def _seed_chart(ledger) -> None:
 
 
 def system_category(ledger, code) -> PersonalCategory | None:
-    return PersonalCategory.objects.filter(ledger=ledger, system_code=code,
-                                           archived_at__isnull=True).first()
+    found = PersonalCategory.objects.filter(ledger=ledger, system_code=code,
+                                            archived_at__isnull=True).first()
+    if found is None and code == FOR_THE_PRACTICE:
+        # A ledger made before this category was in the starting chart.
+        name = next(name for name, value in SYSTEM.items() if value == code)
+        found = PersonalCategory.objects.create(
+            ledger=ledger, name=name, type=PersonalCategory.Type.TRANSFER,
+            system_code=code, position=PersonalCategory.objects.filter(
+                ledger=ledger, parent__isnull=True).count() + 1)
+    return found
 
 
 def personal_category(ledger, pk) -> PersonalCategory:
@@ -157,9 +170,122 @@ def line_for_entry(entry, *, ledger, category, description=None) -> PersonalLine
 
 
 def entry_removed(entry, reason: str) -> int:
-    """An entry left the books: its personal line leaves the ledger with it."""
+    """An entry left the books: its personal line leaves the ledger with it.
+    A line paid personally stays, because the bank shows it, and waits to be
+    sorted again."""
+    paid_entry_left(entry)
     return PersonalLine.objects.filter(finance_entry=entry, removed_at__isnull=True).update(
         removed_at=timezone.now(), remove_reason=reason, updated_at=timezone.now())
+
+
+def paid_entry_left(entry) -> int:
+    """The books no longer carry this as paid personally: the personal
+    account's line for it goes back to To sort."""
+    return PersonalLine.objects.filter(paid_entry=entry, removed_at__isnull=True).update(
+        paid_entry=None, category=None, updated_at=timezone.now())
+
+
+def paid_personally(tenant, *, actor, line, category, amount_cents=None) -> FinanceEntry:
+    """Decision 3: a line of a personal account that was the practice's. In
+    the books, an income or expense in its category and in none of the
+    practice's accounts (`Side.PAID_PERSONALLY`); in the ledger, the line
+    stays in its account, in "Paid for the practice", linked to it."""
+    if category is None or category.tenant_id != tenant.pk \
+            or category.archived_at is not None \
+            or category.type not in (FinanceCategory.Type.INCOME, FinanceCategory.Type.EXPENSE):
+        raise PersonalError("Choose the practice's income or expense category for it.")
+    from apps.finance.importer import _kind_for
+
+    books._unlocked(tenant, line.on_date)
+    entry = FinanceEntry.all_objects.create(
+        tenant=tenant, kind=_kind_for(category, line.direction), direction=line.direction,
+        on_date=line.on_date, amount_cents=amount_cents or line.amount_cents,
+        category=category, account=None, description=line.description,
+        source=FinanceEntry.Source.IMPORT if line.source == PersonalLine.Source.IMPORT
+        else FinanceEntry.Source.MANUAL,
+        side=FinanceEntry.Side.PAID_PERSONALLY, created_by=actor)
+    books.audit(tenant, "entry_added", actor, entry, after=books._state(entry),
+                paid_personally=True)
+    return entry
+
+
+@transaction.atomic
+def sort_line(line, *, tenant, actor, side, category=None, personal_category=None,
+              remember=None) -> PersonalLine:
+    """A personal account's line put on a side after it is in (decision 2):
+    personal, in `personal_category`; or the practice's, paid personally, in
+    the business `category`."""
+    line = PersonalLine.objects.select_for_update().get(pk=line.pk)
+    if line.removed_at is not None:
+        raise PersonalError("That line was removed.", status=409)
+    if line.finance_entry_id is not None:
+        return line             # the books' line: sorted through its entry
+    if line.account_id is None:
+        raise PersonalError("Only a line of one of your accounts can be put on a side.")
+    if line.paid_entry_id is not None and side == "business":
+        raise PersonalError("That line is already the practice's, paid personally.",
+                            status=409)
+    if side == "personal":
+        if line.paid_entry_id is not None:
+            books.remove_entry(line.paid_entry, actor=actor,
+                               reason="Sorted to the personal side.")
+            line.refresh_from_db()
+        line.category = personal_category
+    elif side == "business":
+        entry = paid_personally(tenant, actor=actor, line=line, category=category)
+        line.paid_entry = entry
+        line.category = system_category(line.ledger, FOR_THE_PRACTICE)
+    else:
+        raise PersonalError("side is business or personal.")
+    line.save()
+    if remember:
+        remember_rule(tenant, actor=actor, contains=remember, side=side,
+                      category=category, personal_category=personal_category)
+    return line
+
+
+# ------------------------------------------------- the household's transfers
+
+#: The two sides of a move rarely post on the same day (as the books').
+TRANSFER_DAYS = 5
+
+
+def transfer_candidates(ledger, *, account, on_date, amount_cents, direction):
+    """Lines already in the ledger that could be the other side of this one
+    (decision 7): another of the household's accounts (or the personal side
+    of a Mixed account's line), the other way, the same amount, within a few
+    days, not paired, and not yet sorted or already a transfer."""
+    from datetime import timedelta
+
+    from django.db.models import Q
+
+    other_way = "in" if direction == "out" else "out"
+    return (PersonalLine.objects.filter(
+        ledger=ledger, removed_at__isnull=True, transfer_pair__isnull=True,
+        paid_entry__isnull=True, direction=other_way, amount_cents=amount_cents,
+        on_date__gte=on_date - timedelta(days=TRANSFER_DAYS),
+        on_date__lte=on_date + timedelta(days=TRANSFER_DAYS))
+        .exclude(account=account)
+        .filter(Q(category__isnull=True) | Q(category__type=PersonalCategory.Type.TRANSFER))
+        .order_by("on_date", "created_at"))
+
+
+def pair(one, other) -> None:
+    """Two lines, one move: both in Transfers unless already a transfer."""
+    transfers = system_category(one.ledger, TRANSFERS)
+    for line, mate in ((one, other), (other, one)):
+        line.transfer_pair = mate
+        if line.category_id is None or line.category.type != PersonalCategory.Type.TRANSFER:
+            line.category = transfers
+        line.save(update_fields=["transfer_pair", "category", "updated_at"])
+
+
+def unpair(line) -> None:
+    PersonalLine.objects.filter(transfer_pair=line).update(transfer_pair=None,
+                                                          updated_at=timezone.now())
+    if line.transfer_pair_id:
+        line.transfer_pair = None
+        line.save(update_fields=["transfer_pair", "updated_at"])
 
 
 def entry_changed(entry) -> None:

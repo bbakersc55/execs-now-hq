@@ -220,8 +220,13 @@ class FinanceEntry(TenantScopedModel):
         PERSONAL = "personal", "Personal"
         #: A line of a Mixed account not yet sorted to a side (decision 5).
         TO_SORT = "to_sort", "To sort"
+        #: The practice's income or expense, through one of the owner's
+        #: personal accounts (decision 3): in the P&L and on the CPA's
+        #: worksheet, in no account of the practice's, and owner money (a
+        #: contribution, for an expense) in the balance between them.
+        PAID_PERSONALLY = "paid_personally", "Paid personally"
 
-    side = models.CharField(max_length=8, choices=Side.choices, blank=True, default="",
+    side = models.CharField(max_length=16, choices=Side.choices, blank=True, default="",
                             db_default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
@@ -251,10 +256,14 @@ class FinanceEntry(TenantScopedModel):
             models.CheckConstraint(condition=Q(direction__in=("in", "out")),
                                    name="finance_entry_direction_in_or_out"),
             # A personal line in the books is owner money; one waiting to be
-            # sorted is an uncategorized income or expense.
+            # sorted is an uncategorized income or expense; one paid
+            # personally is an income or expense in none of the practice's
+            # accounts.
             models.CheckConstraint(
                 condition=Q(side="") | Q(side="personal", kind="owner")
-                | Q(side="to_sort", kind__in=("income", "expense"), category__isnull=True),
+                | Q(side="to_sort", kind__in=("income", "expense"), category__isnull=True)
+                | Q(side="paid_personally", kind__in=("income", "expense"),
+                    account__isnull=True),
                 name="finance_entry_side_shape"),
             # One fee entry and at most one tax entry for an invoice payment.
             models.UniqueConstraint(fields=["tenant", "client_payment", "kind"],

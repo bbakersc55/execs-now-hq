@@ -97,6 +97,48 @@ def test_every_personal_model_is_owned_and_registered():
         assert issubclass(model, personal_models.OwnedModel)
 
 
+def make_owned(model, ledger):
+    """One row of `model` in this ledger: every owned model has a way here,
+    so a new one fails until it is given one."""
+    m = personal_models
+    today = timezone.localdate()
+
+    def account():
+        return m.PersonalAccount.objects.create(ledger=ledger, name="Joint checking",
+                                                opening_on=today)
+
+    def debt():
+        return m.PersonalDebt.objects.create(ledger=ledger, name="Mortgage", kind="mortgage")
+
+    def batch():
+        return m.PersonalImport.objects.create(ledger=ledger, account=account(),
+                                               filename="joint.csv")
+
+    ways = {
+        m.PersonalCategory: lambda: PersonalCategory.objects.filter(ledger=ledger).first(),
+        m.PersonalMember: lambda: m.PersonalMember.objects.create(ledger=ledger, name="Ann"),
+        m.PersonalAccount: account,
+        m.PersonalReconciliation: lambda: m.PersonalReconciliation.objects.create(
+            ledger=ledger, account=account(), statement_on=today,
+            statement_balance_cents=0, starting_balance_cents=0),
+        m.PersonalLine: lambda: m.PersonalLine.objects.create(
+            ledger=ledger, on_date=today, amount_cents=100, direction="out"),
+        m.PersonalImport: batch,
+        m.PersonalImportRow: lambda: m.PersonalImportRow.objects.create(
+            ledger=ledger, batch=batch(), row_number=2, outcome="new"),
+        m.PersonalDebt: debt,
+        m.PersonalHolding: lambda: m.PersonalHolding.objects.create(
+            ledger=ledger, name="401(k)", kind="retirement"),
+        m.PersonalBalance: lambda: m.PersonalBalance.objects.create(
+            ledger=ledger, debt=debt(), on_date=today, balance_cents=100),
+        m.PersonalGoal: lambda: m.PersonalGoal.objects.create(
+            ledger=ledger, name="Vacation", target_cents=100),
+        m.PersonalSetAside: lambda: m.PersonalSetAside.objects.create(
+            ledger=ledger, year=today.year),
+    }
+    return ways[model]()
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("model", personal_models.OWNED, ids=lambda m: m.__name__)
 def test_one_persons_rows_are_never_anothers(model, seeded_tenant, tenant_b):
@@ -108,14 +150,7 @@ def test_one_persons_rows_are_never_anothers(model, seeded_tenant, tenant_b):
         from apps.personal import services
 
         ledger = services.ledger_for(user)
-        if model is PersonalCategory:
-            made[user] = PersonalCategory.objects.filter(ledger=ledger).first()
-        elif model is personal_models.PersonalAccount:
-            made[user] = model.objects.create(ledger=ledger, name="Joint checking",
-                                              opening_on=timezone.localdate())
-        else:
-            made[user] = model.objects.create(ledger=ledger, on_date=timezone.localdate(),
-                                              amount_cents=100, direction="out")
+        made[user] = make_owned(model, ledger)
     assert set(model.of(a).values_list("pk", flat=True)) & {made[b].pk} == set()
     assert made[a].pk in set(model.of(a).values_list("pk", flat=True))
 

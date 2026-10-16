@@ -63,6 +63,7 @@ function useBooks() {
 
 const PERSONAL_TABS: [PersonalTab, string, string][] = [
   ["entries", "/finance/personal", "Entries"],
+  ["import", "/finance/personal/import", "Import"],
   ["accounts", "/finance/personal/accounts", "Accounts"],
   ["categories", "/finance/personal/categories", "Categories"],
 ];
@@ -272,7 +273,9 @@ function EntryForm({ start, entry, onDone, onCancel }: {
         <Field label={form.kind === "transfer" ? "From" : "Account"}>
           <select aria-label={`Account of ${label}`} value={form.account}
             onChange={(e) => set({ account: e.target.value })}>
-            <option value="">{fromInvoice ? "Not placed yet" : "Choose an account"}</option>
+            <option value="">{fromInvoice ? "Not placed yet"
+              : entry?.side === "paid_personally" ? "Paid personally, from your own account"
+                : "Choose an account"}</option>
             {open.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </Field>
@@ -536,7 +539,8 @@ function Entries() {
                         && <> <Pill>not in the P&amp;L</Pill></>}
                       {entry.estimated_tax && <> <Pill kind="ai">Estimated tax:{" "}
                         {entry.estimated_tax === "federal" ? "Federal" : "State"}</Pill></>}</td>
-                    <td>{entry.account?.name ?? <Pill kind="warn">not placed yet</Pill>}
+                    <td>{entry.account?.name ?? (entry.side === "paid_personally"
+                      ? <Pill>paid personally</Pill> : <Pill kind="warn">not placed yet</Pill>)}
                       {entry.to_account && <> → {entry.to_account.name}</>}</td>
                     <td className="money">{signed(entry)}</td>
                     <td className="money">

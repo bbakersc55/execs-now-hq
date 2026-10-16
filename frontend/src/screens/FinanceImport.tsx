@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
@@ -35,11 +35,8 @@ export function FinanceImport({ accounts, categories }: {
   accounts: FinanceAccount[]; categories: FinanceCategory[];
 }) {
   const qc = useQueryClient();
-  const [account, setAccount] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [detected, setDetected] = useState<ImportDetected | null>(null);
-  const [mapping, setMapping] = useState<ImportMapping | null>(null);
   const [batch, setBatch] = useState<BankImportBatch | null>(null);
+  const [round, setRound] = useState(0);
   const [said, setSaid] = useState("");
   const [done, setDone] = useState("");
   const history = useQuery<BankImportBatch[]>({
@@ -59,25 +56,7 @@ export function FinanceImport({ accounts, categories }: {
       qc.invalidateQueries({ queryKey: [key] });
     }
   };
-  const form = (extra: Record<string, string> = {}) => {
-    const body = new FormData();
-    body.append("file", file as File);
-    body.append("account", account);
-    for (const [key, value] of Object.entries(extra)) body.append(key, value);
-    return body;
-  };
   const fail = (e: Error) => setSaid(e.message);
-  const detect = useMutation({
-    mutationFn: () => api.post<ImportDetected>("/api/finance-imports/detect/", form()),
-    onSuccess: (found) => { setSaid(""); setDetected(found); setMapping(found.mapping); },
-    onError: fail,
-  });
-  const dryRun = useMutation({
-    mutationFn: () => api.post<BankImportBatch>("/api/finance-imports/dry-run/",
-                                            form({ mapping: JSON.stringify(mapping) })),
-    onSuccess: (made) => { setSaid(""); setBatch(made); },
-    onError: fail,
-  });
   const decide = useMutation({
     mutationFn: ({ row, body }: { row: BankImportRow; body: object }) => api.post<BankImportBatch>(
       `/api/finance-imports/${batch!.id}/rows/${row.id}/`, body),
@@ -89,7 +68,7 @@ export function FinanceImport({ accounts, categories }: {
     onSuccess: (made) => {
       setSaid("");
       setDone(`Imported ${made.filename} into ${made.account.name}.`);
-      setBatch(null); setDetected(null); setMapping(null); setFile(null);
+      setBatch(null); setRound(round + 1);
       refreshBooks();
     },
     onError: fail,
@@ -116,16 +95,100 @@ export function FinanceImport({ accounts, categories }: {
       {done && <Banner kind="ok">{done}</Banner>}
 
       {!batch && (
-        <Card title="1. The file, and which column is which">
+        <ImportFileStep key={round} accounts={open} pdfKept
+          detectUrl="/api/finance-imports/detect/" dryRunUrl="/api/finance-imports/dry-run/"
+          empty="Add the account this file is for first, in Accounts and categories."
+          onBatch={(made) => { setSaid(""); setBatch(made as BankImportBatch); }}
+          onError={(text) => setSaid(text)} />
+      )}
+
+      {batch && (
+        <DryRun personal={personal} batch={batch} accounts={open} categories={categories}
+          payees={(payees.data?.payees ?? []).filter((p) => p.is_payee)}
+          busy={decide.isPending || commit.isPending}
+          onDecide={(row, body) => decide.mutate({ row, body })}
+          onCommit={() => commit.mutate()}
+          onCancel={() => { setBatch(null); setSaid(""); }} />
+      )}
+
+      <Card title="Earlier imports">
+        {(history.data ?? []).filter((b) => b.status !== "dry_run").length === 0
+          ? <Empty>Nothing imported yet.</Empty> : (
+            <table>
+              <thead><tr><th>File</th><th>Account</th><th>When</th><th>Entries made</th>
+                <th /></tr></thead>
+              <tbody>
+                {(history.data ?? []).filter((b) => b.status !== "dry_run").map((b) => (
+                  <tr key={b.id}>
+                    <td>{b.filename}
+                      {b.statement && <> <a href={b.statement.pdf} target="_blank"
+                        rel="noreferrer" aria-label={`Open the statement ${b.filename}`}>
+                        PDF</a></>}</td><td>{b.account.name}</td>
+                    <td>{b.committed_at ? when(b.committed_at) : ""}</td>
+                    <td>{(b.counts.new ?? 0) + (b.counts.transfer ?? 0)}
+                      {b.status === "rolled_back" && <> <Pill>rolled back</Pill></>}</td>
+                    <td className="money">{b.status === "committed" && (
+                      <button className="ghost small" disabled={rollback.isPending}
+                        aria-label={`Roll back the import of ${b.filename}`}
+                        onClick={() => {
+                          if (confirm(`Roll back ${b.filename}? Every entry it made that you `
+                            + "have not edited since is removed, and its matches are undone.")) {
+                            rollback.mutate(b.id);
+                          }
+                        }}>Roll back</button>
+                    )}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      </Card>
+    </>
+  );
+}
+
+/** Step 1, for the books' import and the personal one alike: the account,
+ *  the file, and which column is which (a bank's own file and a PDF need no
+ *  choosing). A PDF is priced here and read only when its button is pressed. */
+export function ImportFileStep<B>({ accounts, detectUrl, dryRunUrl, empty, pdfKept,
+                                    onBatch, onError, title, intro }: {
+  accounts: { id: string; name: string }[]; detectUrl: string; dryRunUrl: string;
+  empty: string; pdfKept: boolean; onBatch: (batch: B) => void;
+  onError: (text: string) => void; title?: string; intro?: ReactNode;
+}) {
+  const [account, setAccount] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [detected, setDetected] = useState<ImportDetected | null>(null);
+  const [mapping, setMapping] = useState<ImportMapping | null>(null);
+  const open = accounts;
+  const form = (extra: Record<string, string> = {}) => {
+    const body = new FormData();
+    body.append("file", file as File);
+    body.append("account", account);
+    for (const [key, value] of Object.entries(extra)) body.append(key, value);
+    return body;
+  };
+  const fail = (e: Error) => onError(e.message);
+  const detect = useMutation({
+    mutationFn: () => api.post<ImportDetected>(detectUrl, form()),
+    onSuccess: (found) => { onError(""); setDetected(found); setMapping(found.mapping); },
+    onError: fail,
+  });
+  const dryRun = useMutation({
+    mutationFn: () => api.post<B>(dryRunUrl, form({ mapping: JSON.stringify(mapping) })),
+    onSuccess: (made) => onBatch(made),
+    onError: fail,
+  });
+  return (
+        <Card title={title ?? "1. The file, and which column is which"}>
           <p className="small muted" style={{ marginTop: 0 }}>
-            Download a file from your bank or card's website and choose the account it is
-            for: a CSV, or the bank's own OFX, QFX (Quicken) or QBO (QuickBooks) file. A PDF
-            statement works too: Claude reads it, which costs a little and is priced before
-            it is read. Downloading an overlapping range each month is fine: lines already
-            in the books are recognized and left out.
+            {intro ?? <>Download a file from your bank or card's website and choose the
+            account it is for: a CSV, or the bank's own OFX, QFX (Quicken) or QBO
+            (QuickBooks) file. A PDF statement works too: Claude reads it, which costs a
+            little and is priced before it is read. Downloading an overlapping range each
+            month is fine: lines already in the books are recognized and left out.</>}
           </p>
-          {open.length === 0 ? <Empty>Add the account this file is for first, in Accounts
-            and categories.</Empty> : (
+          {open.length === 0 ? <Empty>{empty}</Empty> : (
             <div className="row">
               <Field label="Account">
                 <select aria-label="Account to import into" value={account}
@@ -154,8 +217,9 @@ export function FinanceImport({ accounts, categories }: {
               <p className="small muted">
                 The statement is sent to Anthropic as it is, to be read. From it only the
                 lines, the period and the two balances are kept: never the account number,
-                a name or an address. The PDF itself is kept with the import and shown on
-                the Reconcile screen for its month.
+                a name or an address.{pdfKept ? " The PDF itself is kept with the import "
+                  + "and shown on the Reconcile screen for its month."
+                  : " The PDF itself is not kept."}
               </p>
               {detected.refused && <Banner kind="bad">{detected.refused}</Banner>}
               <p><button className="primary" disabled={dryRun.isPending || !!detected.refused}
@@ -219,50 +283,6 @@ export function FinanceImport({ accounts, categories }: {
             </>
           )}
         </Card>
-      )}
-
-      {batch && (
-        <DryRun personal={personal} batch={batch} accounts={open} categories={categories}
-          payees={(payees.data?.payees ?? []).filter((p) => p.is_payee)}
-          busy={decide.isPending || commit.isPending}
-          onDecide={(row, body) => decide.mutate({ row, body })}
-          onCommit={() => commit.mutate()}
-          onCancel={() => { setBatch(null); setSaid(""); }} />
-      )}
-
-      <Card title="Earlier imports">
-        {(history.data ?? []).filter((b) => b.status !== "dry_run").length === 0
-          ? <Empty>Nothing imported yet.</Empty> : (
-            <table>
-              <thead><tr><th>File</th><th>Account</th><th>When</th><th>Entries made</th>
-                <th /></tr></thead>
-              <tbody>
-                {(history.data ?? []).filter((b) => b.status !== "dry_run").map((b) => (
-                  <tr key={b.id}>
-                    <td>{b.filename}
-                      {b.statement && <> <a href={b.statement.pdf} target="_blank"
-                        rel="noreferrer" aria-label={`Open the statement ${b.filename}`}>
-                        PDF</a></>}</td><td>{b.account.name}</td>
-                    <td>{b.committed_at ? when(b.committed_at) : ""}</td>
-                    <td>{(b.counts.new ?? 0) + (b.counts.transfer ?? 0)}
-                      {b.status === "rolled_back" && <> <Pill>rolled back</Pill></>}</td>
-                    <td className="money">{b.status === "committed" && (
-                      <button className="ghost small" disabled={rollback.isPending}
-                        aria-label={`Roll back the import of ${b.filename}`}
-                        onClick={() => {
-                          if (confirm(`Roll back ${b.filename}? Every entry it made that you `
-                            + "have not edited since is removed, and its matches are undone.")) {
-                            rollback.mutate(b.id);
-                          }
-                        }}>Roll back</button>
-                    )}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-      </Card>
-    </>
   );
 }
 
@@ -270,7 +290,9 @@ export function FinanceImport({ accounts, categories }: {
  *  copied out, added up here, beside the ending balance the statement prints.
  *  A difference means a line was misread or missed, and is said before
  *  anything is written. */
-function StatementRead({ facts: s }: { facts: StatementFacts }) {
+export function StatementRead({ facts: s }: {
+  facts: Omit<StatementFacts, "pdf"> & { pdf?: string };
+}) {
   const sum = s.adds_up;
   return (
     <div role="group" aria-label="What was read from the statement" className="small">
@@ -283,7 +305,7 @@ function StatementRead({ facts: s }: { facts: StatementFacts }) {
           && <>Beginning balance {dollars(s.opening_balance_cents)}. </>}
         {s.closing_balance_cents !== null
           && <>Ending balance {dollars(s.closing_balance_cents)}. </>}
-        <a href={s.pdf} target="_blank" rel="noreferrer">Open the statement</a>
+        {s.pdf && <a href={s.pdf} target="_blank" rel="noreferrer">Open the statement</a>}
       </p>
       {sum === null && (
         <p className="muted">The statement printed no beginning or ending balance to check
@@ -344,7 +366,7 @@ function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit,
                 : `${row.direction === "out" ? "−" : "+"}${dollars(row.amount_cents)}`}</td>
               <td>
                 {personal && row.outcome === "new" && (
-                  <SideChoice row={row} personal={personal} busy={busy}
+                  <SideChoice row={row} personal={personal} busy={busy} categories={categories}
                     onDecide={(body) => onDecide(row, body)} />)}
                 {(!personal || row.outcome !== "new" || !row.side || row.side === "split") && (
                   <RowDecision row={row} others={others} categories={categories}
@@ -375,44 +397,118 @@ function DryRun({ batch, accounts, categories, payees, busy, onDecide, onCommit,
 /**
  * P6 M4 decision 2: which side a line is. Business keeps the choices below;
  * Personal is an owner draw in the books and the spend in the owner's ledger,
- * under a personal category; To sort leaves it for Personal → To sort. A split
- * comes from a rule and is shown as one.
+ * under a personal category; Split is both, the business part in dollars;
+ * To sort leaves it for Personal → To sort. "Remember" keeps a personal or
+ * split choice as a rule (a split by the percent it works out to).
  */
-function SideChoice({ row, personal, busy, onDecide }: {
-  row: BankImportRow; personal: PersonalCategory[]; busy: boolean;
-  onDecide: (body: object) => void;
+function SideChoice({ row, personal, categories, busy, onDecide }: {
+  row: BankImportRow; personal: PersonalCategory[]; categories: FinanceCategory[];
+  busy: boolean; onDecide: (body: object) => void;
 }) {
   const line = `line ${row.row_number}`;
   const side = row.side || "business";
+  const [splitting, setSplitting] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [text, setText] = useState(row.description.split(/\s+/).slice(0, 2).join(" "));
+  const memo = () => (remember && text.trim().length >= 3 ? { remember: text.trim() } : {});
   return (
     <span className="small" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap",
                                      marginRight: 6 }}>
-      <select aria-label={`Side of ${line}`} value={side} disabled={busy}
-        style={{ width: "auto" }}
-        onChange={(e) => onDecide({ decision: "entry", side: e.target.value,
-                                    category: null })}>
+      <select aria-label={`Side of ${line}`} value={splitting ? "split" : side}
+        disabled={busy} style={{ width: "auto" }}
+        onChange={(e) => {
+          if (e.target.value === "split") { setSplitting(true); return; }
+          setSplitting(false);
+          onDecide({ decision: "entry", side: e.target.value, category: null });
+        }}>
         <option value="business">Business</option>
         <option value="personal">Personal</option>
+        <option value="split">Split</option>
         <option value="to_sort">To sort later</option>
-        {side === "split" && <option value="split">Split</option>}
       </select>
-      {side === "personal" && (
+      {side === "personal" && !splitting && (
         <select aria-label={`Personal category for ${line}`} disabled={busy}
           value={row.personal_category?.id ?? ""} style={{ width: "auto", maxWidth: "16rem" }}
           onChange={(e) => onDecide({ decision: "entry", side: "personal",
-                                      personal_category: e.target.value || null })}>
+                                      personal_category: e.target.value || null,
+                                      ...(e.target.value ? memo() : {}) })}>
           <option value="">No category yet (To sort)</option>
           {personalOptions(personal, row.direction === "out" ? "expense" : undefined).map(
             ([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
       )}
-      {side === "split" && row.split_business_cents != null && row.amount_cents != null && (
-        <Pill>{dollars(row.split_business_cents)} business,{" "}
-          {dollars(row.amount_cents - row.split_business_cents)} personal
-          {row.personal_category ? ` (${row.personal_category.name})` : ""}</Pill>
+      {side === "split" && !splitting && row.split_business_cents != null
+        && row.amount_cents != null && (
+        <>
+          <Pill>{dollars(row.split_business_cents)} business,{" "}
+            {dollars(row.amount_cents - row.split_business_cents)} personal
+            {row.personal_category ? ` (${row.personal_category.name})` : ""}</Pill>
+          <button className="link" disabled={busy} aria-label={`Change the split of ${line}`}
+            onClick={() => setSplitting(true)}>Change</button>
+        </>
       )}
-      {side === "to_sort" && <Pill>waits in Personal → To sort</Pill>}
-      {side === "personal" && row.rule && <Pill>your rule: contains “{row.rule.contains}”</Pill>}
+      {splitting && row.amount_cents != null && (
+        <SplitEditor row={row} line={line} personal={personal} categories={categories}
+          busy={busy} onCancel={() => setSplitting(false)}
+          onSplit={(body) => { setSplitting(false); onDecide({ ...body, ...memo() }); }} />
+      )}
+      {side === "to_sort" && !splitting && <Pill>waits in Personal → To sort</Pill>}
+      {(side === "personal" || side === "split") && row.rule
+        ? <Pill>your rule: contains “{row.rule.contains}”</Pill>
+        : (side === "personal" || splitting) && (
+          <label className="tiny" style={{ display: "inline-flex", gap: 4 }}>
+            <input type="checkbox" checked={remember} aria-label={`Remember the side of ${line}`}
+              onChange={(e) => setRemember(e.target.checked)} />
+            remember for lines containing
+            {remember && <input aria-label={`Text to remember the side of ${line} by`}
+              value={text} style={{ width: "10rem" }} onChange={(e) => setText(e.target.value)} />}
+          </label>
+        )}
+    </span>
+  );
+}
+
+/** A split typed by hand (choice 4 of stop 1): the business part in dollars,
+ *  its category, and the personal category for the rest. */
+function SplitEditor({ row, line, personal, categories, busy, onSplit, onCancel }: {
+  row: BankImportRow; line: string; personal: PersonalCategory[];
+  categories: FinanceCategory[]; busy: boolean;
+  onSplit: (body: object) => void; onCancel: () => void;
+}) {
+  const whole = row.amount_cents ?? 0;
+  const [business, setBusiness] = useState(
+    row.split_business_cents != null ? (row.split_business_cents / 100).toFixed(2)
+      : (whole / 200).toFixed(2));
+  const [category, setCategory] = useState(row.category?.id ?? "");
+  const [own, setOwn] = useState(row.personal_category?.id ?? "");
+  const cents = Math.round(Number(business) * 100);
+  const fits = Number.isFinite(cents) && cents > 0 && cents < whole;
+  const earned = categories.filter((c) => !c.archived
+    && c.type === (row.direction === "out" ? "expense" : "income"));
+  return (
+    <span role="group" aria-label={`Split ${line}`}
+      style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      <input aria-label={`Business part of ${line}, in dollars`} inputMode="decimal"
+        value={business} style={{ width: "6rem" }} onChange={(e) => setBusiness(e.target.value)} />
+      <span>business, in</span>
+      <select aria-label={`Business category for the split of ${line}`} value={category}
+        style={{ width: "auto", maxWidth: "14rem" }} onChange={(e) => setCategory(e.target.value)}>
+        <option value="">Choose a category</option>
+        {categoryOptions(earned, categories).map(
+          ([id, name]) => <option key={id} value={id}>{name}</option>)}
+      </select>
+      <span>; {fits ? dollars(whole - cents) : "the rest"} personal, in</span>
+      <select aria-label={`Personal category for the split of ${line}`} value={own}
+        style={{ width: "auto", maxWidth: "14rem" }} onChange={(e) => setOwn(e.target.value)}>
+        <option value="">No category yet</option>
+        {personalOptions(personal, row.direction === "out" ? "expense" : undefined).map(
+          ([id, name]) => <option key={id} value={id}>{name}</option>)}
+      </select>
+      <button className="small primary" disabled={busy || !fits || !category}
+        onClick={() => onSplit({ decision: "entry", side: "split", category,
+                                 split_business_cents: cents,
+                                 personal_category: own || null })}>Split it</button>
+      <button className="link" disabled={busy} onClick={onCancel}>Cancel</button>
     </span>
   );
 }

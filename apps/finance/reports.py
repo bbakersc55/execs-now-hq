@@ -184,7 +184,8 @@ def balance(tenant, *, as_of: date) -> dict:
             "bank_said": _bank_said(tenant, account, said.get(account.pk))})
 
     # Invoice payments not yet placed in an account: shown once, never lost.
-    loose = entries.filter(account__isnull=True, direction=D.IN)
+    loose = entries.filter(account__isnull=True, direction=D.IN).exclude(
+        side=FinanceEntry.Side.PAID_PERSONALLY)
     unplaced = loose.aggregate(total=Sum("amount_cents"))["total"] or 0
     held = entries.filter(kind=K.HELD)
     tax_held = ((held.filter(direction=D.IN).aggregate(t=Sum("amount_cents"))["t"] or 0)
@@ -371,6 +372,19 @@ def export_worksheet(tenant, *, year: int) -> str:
             totals[kind] += loose
         writer.writerow([f"Total {title.lower()}", plain(totals[kind]), ""])
     writer.writerow(["Net", plain(totals[T.INCOME] - totals[T.EXPENSE]), ""])
+    # P6 M4 decision 3: counted above in their categories, and named here,
+    # because no account of the practice's shows them.
+    paid = earned.filter(side=FinanceEntry.Side.PAID_PERSONALLY)
+    if paid.exists():
+        writer.writerow([])
+        writer.writerow(["Paid personally (in the figures above)", "Amount", "Note"])
+        for kind, title in ((T.EXPENSE, "Expenses paid from a personal account"),
+                            (T.INCOME, "Income received into a personal account")):
+            amount = paid.filter(kind=kind).aggregate(total=Sum(SIGNED))["total"] or 0
+            if amount:
+                writer.writerow([title, plain(amount),
+                                 "An owner contribution" if kind == T.EXPENSE
+                                 else "An owner draw"])
 
     # Not an expense: the owner's own money, paid to the government on account.
     writer.writerow([])
