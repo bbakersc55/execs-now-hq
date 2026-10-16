@@ -268,6 +268,30 @@ def test_the_ways_a_bank_writes_dates_and_amounts(books, ff, api, text, mapping,
 
 
 @pytest.mark.django_db
+def test_a_date_that_reads_one_way_needs_no_format_and_one_that_reads_two_ways_asks(
+        books, ff, api):
+    text = ("Date,Description,Amount\n2026-10-03,A,-1\n\"Oct 4, 2026\",B,-1\n"
+            "13/10/2026,C,-1\n10/05/2026,D,-1\n01/02/2026,E,-1\n10/06/26,F,-1\n"
+            "07/07/2026,G,-1\n")
+    rows = dry(api, ff, books, text, mapping={**SIGNED, "balance": "",
+                                              "date_format": "%b %d, %Y"})["rows"]
+    assert [r.get("on_date") for r in rows[:4]] == [
+        "2026-10-03", "2026-10-04", "2026-10-13", None]
+    assert [r["outcome"] for r in rows] == ["new"] * 3 + ["error"] * 3 + ["new"]
+    assert rows[3]["error"] == ("“10/05/2026” could be May 10 or October 5, 2026. "
+                                "Choose the date format.")
+    assert "January 2 or February 1, 2026" in rows[4]["error"]
+    assert "June 10 or October 6, 2026" in rows[5]["error"]
+    assert rows[6]["on_date"] == "2026-07-07"
+    # The saved format still decides a date that reads two ways.
+    rows = dry(api, ff, books, text, mapping={**SIGNED, "balance": ""})["rows"]
+    assert [r.get("on_date") for r in rows] == [
+        "2026-10-03", "2026-10-04", "2026-10-13", "2026-10-05", "2026-01-02", None,
+        "2026-07-07"]
+    assert "June 10 or October 6, 2026" in rows[5]["error"]
+
+
+@pytest.mark.django_db
 def test_a_file_saved_by_excel_reads_and_a_file_that_is_not_a_statement_is_refused(
         books, ff, api):
     excel = "Date,Description,Amount\n10/01/2026,CAF\xc9 R\xd6STI,-5.00\n".encode("cp1252")

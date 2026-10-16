@@ -135,9 +135,40 @@ def parse_amount(text: str) -> int | None:
 
 def parse_date(text: str, fmt: str) -> date | None:
     try:
-        return datetime.strptime((text or "").strip(), fmt).date()
+        on = datetime.strptime((text or "").strip(), fmt).date()
     except ValueError:
         return None
+    # "%Y" takes "26" as the year 26; a two-figure year is "%y"'s to read.
+    return on if on.year >= 1900 else None
+
+
+#: Formats whose order of day and month cannot be misread.
+FIXED_ORDER = ("%Y-%m-%d", "%b %d, %Y")
+
+
+def read_date(text: str, fmt: str) -> tuple[date | None, str]:
+    """The date in the saved format, or in whichever format reads it beyond
+    doubt: 2026-10-03, Oct 3, 2026, or 10/13/2026 (no month 13). Only a date
+    that reads two ways, such as 01/02/2026, needs the format to be chosen.
+    Returns the date, or None and why."""
+    on = parse_date(text, fmt)
+    if on is not None:
+        return on, ""
+    for other in FIXED_ORDER:
+        on = parse_date(text, other)
+        if on is not None:
+            return on, ""
+    found = {parse_date(text, other) for other, _label in DATE_FORMATS} - {None}
+    if len(found) == 1:
+        on = found.pop()
+        if on.day > 12 or on.day == on.month:
+            return on, ""
+        found = {on, on.replace(month=on.day, day=on.month)}
+    if len(found) > 1:
+        first, second = sorted(found)
+        return None, (f"“{text.strip()}” could be {first:%B} {first.day} or {second:%B} "
+                      f"{second.day}, {second.year}. Choose the date format.")
+    return None, f"“{text}” is not a date this import reads."
 
 
 def detect_date_format(values: list[str]) -> str:
@@ -207,10 +238,9 @@ def _same(text: str) -> str:
 
 def _read_row(raw: dict, mapping: dict) -> dict:
     """One line as date, amount and direction, or why it cannot be read."""
-    on = parse_date(raw.get(mapping["date"], ""), mapping["date_format"])
+    on, why = read_date(raw.get(mapping["date"], ""), mapping["date_format"])
     if on is None:
-        return {"error": f"“{raw.get(mapping['date'], '')}” is not a date this import "
-                         "reads."}
+        return {"error": why}
     if mapping["amount"]:
         typed = raw.get(mapping["amount"], "")
         signed = parse_amount(typed)

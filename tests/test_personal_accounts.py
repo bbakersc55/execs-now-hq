@@ -296,6 +296,15 @@ def test_lines_already_in_are_not_brought_in_twice(household, ff, api):
 
 
 @pytest.mark.django_db
+def test_a_personal_dry_run_reads_a_plain_date_whatever_the_saved_format(household, ff, api):
+    text = "Date,Description,Amount\n2026-10-03,COFFEE BAR,-5.00\n01/02/2026,X,-1\n"
+    rows = pdry(api, ff, household["joint"], text,
+                mapping={**SIGNED, "date_format": "%b %d, %Y"})["rows"]
+    assert rows[0]["on_date"] == "2026-10-03" and rows[0]["outcome"] != "error"
+    assert "January 2 or February 1, 2026" in rows[1]["error"]
+
+
+@pytest.mark.django_db
 def test_an_ofx_file_and_a_pdf_statement_go_through_the_same_dry_run(
         household, ff, api, fake_claude, statement_pdf_bytes):
     ofx = (b"OFXHEADER:100\nDATA:OFXSGML\n\n<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>"
