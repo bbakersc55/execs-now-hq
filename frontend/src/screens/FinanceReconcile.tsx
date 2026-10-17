@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import { FINANCE_DISCLAIMER, GUIDE_STEPS, categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
+import { AiGate } from "../components/DemoVisitor";
 
 /**
  * Finance → Reconcile (P6 M1 §1–§4; matrix 13.15, 13.12, 13.14): the practice
@@ -834,12 +835,12 @@ function Guide({ step, onStep, recId }: {
                 <div>
                   <p className="small" style={{ margin: "var(--s1) 0" }}>{text}</p>
                   {price?.refused ? <p className="small muted">{price.refused}</p> : (
-                    <button className="ghost small"
+                    <AiGate><button className="ghost small"
                       disabled={ask.isPending || !price || !!answer}
                       onClick={() => ask.mutate()}>
                       {ask.isPending ? "Asking Claude…" : answer ? "Explained below"
                         : `Explain this step (about $${Number(price?.estimate_usd ?? 0)
-                          .toFixed(2)})`}</button>
+                          .toFixed(2)})`}</button></AiGate>
                   )}
                   {error && <Banner kind="bad">{error}</Banner>}
                   {answer && (

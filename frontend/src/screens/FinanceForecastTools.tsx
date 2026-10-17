@@ -11,6 +11,7 @@ import {
 import { FINANCE_DISCLAIMER } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import type { Try } from "./FinanceForecast";
+import { AiGate } from "../components/DemoVisitor";
 
 /**
  * What the practice owner says to the forecast (P6 M2, stop 2): planned
@@ -502,6 +503,7 @@ export function AskClaude({ view, includeNames, ready, busy, send }: {
       {error && <Banner kind="bad">{error}</Banner>}
       {s?.refused ? <p className="small muted">{s.refused}</p> : (
         <div className="row tight">
+          <AiGate>
           <button className="small" disabled={waiting || !s} onClick={() => explain.mutate()}>
             {explain.isPending ? "Asking Claude…"
               : `Explain this forecast (${price(s?.estimate_usd)})`}</button>
@@ -509,6 +511,7 @@ export function AskClaude({ view, includeNames, ready, busy, send }: {
             onClick={() => ask.mutate()}>
             {ask.isPending ? "Asking Claude…"
               : `Review with Claude (${price(s?.review_estimate_usd)})`}</button>
+          </AiGate>
           {s && <span className="small muted">{s.used_today} of {s.cap} used today.</span>}
         </div>
       )}

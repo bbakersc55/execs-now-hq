@@ -107,30 +107,48 @@ def ensure_site() -> None:
     Site.objects.clear_cache()
 
 
-def build(*, ff_email: str, ff_name: str = "", oauth_client: str = "internal",
-          mail_connection=None, ai_key=None, today=None) -> dict:
-    """The whole practice. Returns the practice and what was made, in counts."""
+def build(*, ff_email: str = "", ff_name: str = "", oauth_client: str = "internal",
+          mail_connection=None, ai_key=None, today=None, visitor=None) -> dict:
+    """The whole practice. Returns the practice and what was made, in counts.
+
+    With `visitor` (a `DemoVisitor`), the same practice inside that visitor's
+    own copy, its fictional addresses tagged with the copy's tag, and neither
+    the demo's mail connection nor its key: a copy sends through the demo's
+    connection and spends the platform's key (`apps/tenancy/demo/visitors.py`)."""
     from django.utils import timezone
 
-    from apps.tenancy.context import tenant_context
     from config import environment
 
-    from . import comms, foundation, money, sessions, work
+    from . import foundation
 
     today = today or timezone.localdate()
     ensure_site()
-    with environment.quiet_mail():
-        world = foundation.practice(ff_email=ff_email, ff_name=ff_name,
-                                    oauth_client=oauth_client, today=today)
-        with tenant_context(world.tenant.pk):
-            foundation.people(world)
-            money.history(world)
-            sessions.strategy(world)
-            work.engagements(world)
-            comms.everything(world)
-            foundation.restore_mail_connection(world, mail_connection)
-            # Last, so nothing the seed itself does can spend on it: the
-            # demo's own content is written without Claude.
-            foundation.restore_ai_key(world, ai_key)
-            counts = foundation.counts(world)
+    tag = foundation.TAG.set(visitor.tag if visitor is not None else "")
+    try:
+        with environment.quiet_mail():
+            return _build(ff_email=ff_email, ff_name=ff_name, oauth_client=oauth_client,
+                          mail_connection=mail_connection, ai_key=ai_key, today=today,
+                          visitor=visitor)
+    finally:
+        foundation.TAG.reset(tag)
+
+
+def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, visitor):
+    from apps.tenancy.context import tenant_context
+
+    from . import comms, foundation, money, sessions, work
+
+    world = foundation.practice(ff_email=ff_email, ff_name=ff_name,
+                                oauth_client=oauth_client, today=today, visitor=visitor)
+    with tenant_context(world.tenant.pk):
+        foundation.people(world)
+        money.history(world)
+        sessions.strategy(world)
+        work.engagements(world)
+        comms.everything(world)
+        foundation.restore_mail_connection(world, mail_connection)
+        # Last, so nothing the seed itself does can spend on it: the
+        # demo's own content is written without Claude.
+        foundation.restore_ai_key(world, ai_key)
+        counts = foundation.counts(world)
     return {"tenant": world.tenant, "counts": counts}

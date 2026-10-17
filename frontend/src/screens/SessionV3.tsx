@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Banner, Pill } from "../components/ui";
 import { StrategySessionRow, api } from "../lib/api";
+import { AiGate } from "../components/DemoVisitor";
 
 /**
  * What the live view shows only for a session started from a builder template
@@ -71,6 +72,7 @@ export function DiagnosticTrayV3({ sessionPath, data, mayRun, onChanged }: {
   return (
     <div style={{ marginBottom: ".75rem" }}>
       <div className="row">
+        <AiGate>
         <button disabled={busy || full} onClick={() => propose.mutate(false)}>
           {propose.isPending ? "Proposing…"
             : all.length ? "Propose more" : "Propose questions from the pre-call answers"}
@@ -80,6 +82,7 @@ export function DiagnosticTrayV3({ sessionPath, data, mayRun, onChanged }: {
           onClick={() => propose.mutate(true)}>
           Propose from the ratings
         </button>
+        </AiGate>
         <span className="small muted">
           {inSession.length > 0
             ? `${inSession.length} in the session (this template starts with ${size}; `

@@ -34,10 +34,17 @@ export const SETTINGS: { to: string; label: string; roles: Role[] }[] = [
   { to: "/ai-usage", label: "AI usage", roles: ["FF"] },
 ];
 
+/** A demo visitor's own copy has one more (2026-10-17). */
+export const DEMO_SETTINGS = { to: "/settings/demo", label: "Your demo", roles: ["FF"] as Role[] };
+
 export function settingsFor(me: Me) {
   // The Practices area binds no practice, so it has no practice settings.
   if (me.area === "platform" || !me.role) return [];
-  return SETTINGS.filter((section) => section.roles.includes(me.role as Role));
+  // Its AI runs on the demo's key, shown under Your demo: no key of its own.
+  const all = me.demo_visitor
+    ? [DEMO_SETTINGS, ...SETTINGS.filter((section) => section.to !== "/ai-usage")]
+    : SETTINGS;
+  return all.filter((section) => section.roles.includes(me.role as Role));
 }
 
 /**

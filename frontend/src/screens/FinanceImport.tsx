@@ -9,6 +9,7 @@ import {
 import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import { hasPersonal, personalOptions, usePersonalChart } from "../lib/personal";
+import { AiGate } from "../components/DemoVisitor";
 
 /**
  * Importing a bank or card export (P5 §4; matrix 13.8), in the contact
@@ -222,11 +223,12 @@ export function ImportFileStep<B>({ accounts, detectUrl, dryRunUrl, empty, pdfKe
                   : " The PDF itself is not kept."}
               </p>
               {detected.refused && <Banner kind="bad">{detected.refused}</Banner>}
-              <p><button className="primary" disabled={dryRun.isPending || !!detected.refused}
+              <p><AiGate><button className="primary"
+                disabled={dryRun.isPending || !!detected.refused}
                 onClick={() => dryRun.mutate()}>
                 {dryRun.isPending ? "Claude is reading the statement…"
                   : `Read it with Claude, about $${Number(detected.estimate_usd).toFixed(2)}`}
-              </button></p>
+              </button></AiGate></p>
             </div>
           )}
           {detected && mapping && detected.kind !== "pdf" && (

@@ -11,6 +11,7 @@ import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import { PERSONAL_DISCLAIMER, personalOptions, usePersonalChart } from "../lib/personal";
 import { ImportFileStep, StatementRead } from "./FinanceImport";
+import { AiGate } from "../components/DemoVisitor";
 
 /**
  * Personal finance (P6 M4 stop 1, `docs/p6_m4_personal_finance.md`): the
@@ -500,10 +501,11 @@ function SortWithClaude({ personal, business, onDone, onError }: {
             Today: {s.used_today} of {s.cap} Finance AI presses.
           </p>
           {s.refused && <Banner kind="bad">{s.refused}</Banner>}
-          <button className="primary small" disabled={!!s.refused || ask.isPending}
+          <AiGate><button className="primary small" disabled={!!s.refused || ask.isPending}
             onClick={() => ask.mutate()}>
             {ask.isPending ? "Claude is sorting…"
               : `Sort these with Claude, about $${Number(s.estimate_usd).toFixed(2)}`}</button>
+          </AiGate>
         </>
       )}
       {answer && (

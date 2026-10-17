@@ -235,7 +235,23 @@ def sending_connection_for(tenant, from_address=""):
     unverified or unknown address — goes through the FF's connection as the alias.
     """
     from apps.crm.models import GmailConnection
+    from apps.tenancy.demo import visitors
     from apps.tenancy.models import Membership, Role
+
+    if visitors.is_copy(tenant):
+        # A demo visitor's copy connects nothing of its own (2026-10-17): it
+        # sends through the demo's one send-only connection, from its address.
+        from config import environment
+
+        connection = (GmailConnection.all_objects
+                      .filter(send_as_address__iexact=environment.demo_sender(),
+                              send_as_verified_at__isnull=False, secret__isnull=False)
+                      .order_by("-send_as_verified_at").first())
+        if connection is None:
+            raise TransportUnavailable(
+                f"The demo has no Gmail connection sending as {environment.demo_sender()}, "
+                "so its visitors' copies send nothing.")
+        return connection
 
     if from_address:
         senders = Membership.all_objects.filter(
@@ -282,7 +298,7 @@ class GmailTransport:
             # The second lock on the demo's promise, below the Outbox's own:
             # whatever asked for this send, nothing leaves the demo for any
             # address but its redirect, or from any address but its own.
-            redirect = environment.demo_redirect()
+            redirect = environment.demo_redirect(tenant)
             if not redirect or (to_address or "").strip().lower() != redirect:
                 raise TransportUnavailable(
                     "The demo sends only to its redirect address. This message was "

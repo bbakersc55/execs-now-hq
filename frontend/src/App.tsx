@@ -57,6 +57,7 @@ import { InvoiceSettings } from "./screens/InvoiceSettings";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
+import { DemoEmailSettings, DemoSettingUp, DemoSettings } from "./components/DemoVisitor";
 import { PlatformFeedback } from "./screens/PlatformFeedback";
 import { Dashboard } from "./screens/Dashboard";
 import { Meetings } from "./screens/Meetings";
@@ -205,6 +206,9 @@ export function App() {
     queryKey: ["me"],
     queryFn: () => api.get<Me>("/api/me"),
     retry: false,
+    // A demo visitor's copy asks again now and then, so an AI allowance used
+    // up, or the day it ends, shows without a reload (2026-10-17).
+    refetchInterval: (query) => (query.state.data?.demo_visitor ? 30000 : false),
   });
 
   // White-label: every client-facing surface wears the practice's name, colours
@@ -263,6 +267,9 @@ export function App() {
   // else; the server refuses every other call until then.
   if (me.agreement_required) return <AgreementGate />;
 
+  // A demo visitor's copy that is not ready yet shows only that (2026-10-17).
+  if (me.demo_visitor && me.demo_visitor.state !== "ready") return <DemoSettingUp me={me} />;
+
   // The platform owner's pages keep the default words (2026-10-15).
   const words = makeWords(platform ? null : me.words);
   const visible = platform ? PLATFORM_NAV
@@ -315,7 +322,7 @@ export function App() {
             <Routes>
               <Route path="/feedback" element={<PlatformFeedback />} />
               <Route path="/profile" element={<Profile />} />
-              <Route path="*" element={<Practices />} />
+              <Route path="*" element={<Practices me={me} />} />
             </Routes>
           ) : (
           <Routes>
@@ -344,7 +351,10 @@ export function App() {
             {/* Settings: one page, the same addresses as before (UI 3, D4). */}
             <Route path="/settings" element={<Settings me={me} />} />
             <Route path="/settings/email"
-              element={<Settings me={me}><EmailSettings me={me} /></Settings>} />
+              element={<Settings me={me}>{me.demo_visitor ? <DemoEmailSettings me={me} />
+                : <EmailSettings me={me} />}</Settings>} />
+            <Route path="/settings/demo"
+              element={<Settings me={me}><DemoSettings me={me} /></Settings>} />
             <Route path="/settings/branding" element={<Settings me={me}><Branding /></Settings>} />
             {/* Wording is a section of Branding now (2026-10-15); the old
                 address still lands on it. */}

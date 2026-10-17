@@ -31,7 +31,9 @@ def practice_rows() -> list[dict]:
     from apps.tenancy import modules
     from apps.tenancy.models import AiCall, Membership, Tenant
 
-    tenants = list(Tenant.objects.order_by("name"))
+    # Demo visitors' copies have their own list (2026-10-17): each is a copy of
+    # the demo practice, under its name, and would read here as one more.
+    tenants = list(Tenant.objects.filter(demo_visitor__isnull=True).order_by("name"))
     ids = [t.pk for t in tenants]
     staff = dict(Membership.all_objects.filter(tenant_id__in=ids, role__in=STAFF_ROLES,
                                                revoked_at__isnull=True)

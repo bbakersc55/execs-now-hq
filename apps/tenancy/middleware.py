@@ -96,3 +96,43 @@ class TenantMiddleware:
             .exclude(tenant__status="archived")
             .first()
         )
+
+
+#: What a visitor's copy answers while it is being set up, or once it has
+#: ended: who is signed in, and how the page looks.
+DEMO_OPEN = ("/api/me", "/api/branding", "/api/agreement")
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+class DemoVisitorGate:
+    """A demo visitor's copy (2026-10-17): nothing but `/api/me` while it is
+    being set up, and nothing that writes once it has ended (read-only for a
+    week, then deleted). On the demo, any request may also start the hourly
+    sweep that deletes ended copies, there being no worker to schedule it."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from config import environment
+
+        if not environment.is_demo():
+            return self.get_response(request)
+        from .demo import visitors
+
+        visitors.maybe_sweep()
+        tenant = getattr(request, "tenant", None)
+        visitor = visitors.of(tenant)
+        path = request.path
+        if visitor is not None and path.startswith("/api/") and not path.startswith(DEMO_OPEN):
+            from django.http import JsonResponse
+
+            state = visitors.shown_state(visitor)
+            if state != "ready":
+                return JsonResponse({"detail": "Your demo is being set up." if state ==
+                                     "setting_up" else visitors.FAILED_MESSAGE,
+                                     "demo_setting_up": True}, status=409)
+            if visitors.ended(visitor) and request.method not in SAFE_METHODS:
+                return JsonResponse({"detail": visitors.read_only_message(visitor),
+                                     "demo_read_only": True}, status=403)
+        return self.get_response(request)

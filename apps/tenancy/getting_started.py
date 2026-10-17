@@ -12,12 +12,20 @@ from __future__ import annotations
 
 
 def items(tenant) -> list[dict]:
+    from apps.tenancy.demo import visitors
+
+    t = tenant.pk
+    # A demo visitor's copy connects no Gmail and takes no key (2026-10-17).
+    skip = {"gmail", "anthropic"} if visitors.is_copy(tenant) else set()
+    return [item for item in _all(tenant, t) if item["key"] not in skip]
+
+
+def _all(tenant, t) -> list[dict]:
     from apps.crm.models import Company, Contact, GmailConnection, ImportBatch
     from apps.strategy.models import StrategyTemplate
     from apps.tenancy import words
     from apps.tenancy.models import Membership, TenantSecret
 
-    t = tenant.pk
     return [
         {"key": "branding", "label": "Set your branding", "to": "/settings/branding",
          "done": tenant.branding_updated_at is not None},

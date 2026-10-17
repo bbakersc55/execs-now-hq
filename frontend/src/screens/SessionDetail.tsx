@@ -17,6 +17,7 @@ import { useWords } from "../lib/words";
 
 import { DocumentWords } from "./DocumentWords";
 import { DiagnosticTrayV3, RatingScale } from "./SessionV3";
+import { AiGate } from "../components/DemoVisitor";
 
 const CAN_RUN = ["FF", "CF"];
 
@@ -298,11 +299,11 @@ export function SessionDetail({ me }: { me: Me }) {
           {section.code === "strategy_map" && ask && (
             <Banner kind="warn">
               {ask.detail}{" "}
-              <button className="small" disabled={act.isPending}
+              <AiGate><button className="small" disabled={act.isPending}
                 onClick={() => act.mutate({ suffix: ask.suffix,
                                             body: { confirm_over_balance: true } })}>
                 Consolidate anyway
-              </button>{" "}
+              </button></AiGate>{" "}
               <button className="small" onClick={() => setAsk(null)}>Not now</button>
             </Banner>
           )}
@@ -524,7 +525,7 @@ function Mirror({ data, mayRun, onDraft, onAccept }: {
           <button className="primary" onClick={() => onAccept(goal, unlocks)}>
             Save the mirror
           </button>
-          <button onClick={onDraft}>Draft it with Claude</button>
+          <AiGate><button onClick={onDraft}>Draft it with Claude</button></AiGate>
         </div>
       )}
     </>
@@ -652,12 +653,14 @@ function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate
     <>
       {mayRun && (
         <div className="row">
-          <button onClick={onDraft} disabled={busy}>Draft rows with Claude</button>
+          <AiGate><button onClick={onDraft} disabled={busy}>Draft rows with Claude</button>
+          </AiGate>
           {/* Dry run 2: 45 candidates, many on one theme. Consolidate proposes
               3–5 main targets that each say what they merge; nothing on the
               map changes until you accept one and prune the originals. */}
-          <button onClick={onConsolidate} disabled={busy || tray.length + map.length < 2}>
-            Consolidate with Claude</button>
+          <AiGate><button onClick={onConsolidate}
+            disabled={busy || tray.length + map.length < 2}>
+            Consolidate with Claude</button></AiGate>
           <span className="small muted">
             Drafts land in the tray below, five at most a run. Nothing reaches the map
             until you accept it.
@@ -1262,7 +1265,7 @@ function PathsSection({ sessionId, notes, mayRun, onDraft, onChanged }: {
     <>
       {mayRun && (
         <div className="row">
-          <button onClick={onDraft}>Draft pros and cons with Claude</button>
+          <AiGate><button onClick={onDraft}>Draft pros and cons with Claude</button></AiGate>
           <span className="small muted">
             Drafted from this session only. Nothing reaches the PDF until you accept it.
           </span>
@@ -1497,10 +1500,10 @@ function PrepCard({ id, path, data, onChanged, setNote }: {
               onChange={(e) => setNotes(e.target.value)} />
           </Field>
           <div className="row tight">
-            <button className="primary" disabled={run.isPending}
+            <AiGate><button className="primary" disabled={run.isPending}
               onClick={() => run.mutate()}>
               {run.isPending ? "Reading their site…" : "Prepare"}
-            </button>
+            </button></AiGate>
             {prep && <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>}
           </div>
           <p className="small muted" style={{ marginTop: "var(--s2)" }}>
@@ -1987,9 +1990,9 @@ function DiagnosticTray({ sessionPath, data, mayRun, onChanged }: {
   return (
     <div style={{ marginBottom: ".75rem" }}>
       <div className="row">
-        <button disabled={propose.isPending} onClick={() => propose.mutate()}>
+        <AiGate><button disabled={propose.isPending} onClick={() => propose.mutate()}>
           {propose.isPending ? "Proposing…" : "Propose questions from the pre-call form"}
-        </button>
+        </button></AiGate>
         <span className="small muted">
           {accepted > 0
             ? `${accepted} of 5 accepted — they are the section.`

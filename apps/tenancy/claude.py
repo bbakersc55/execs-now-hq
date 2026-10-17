@@ -92,8 +92,31 @@ def current_job() -> str | None:
     return _UNATTENDED.get()
 
 
+class ClaudeStopped(ClaudeUnavailable):
+    """A demo visitor's copy at its AI allowance (`demo/visitors.ai_stop`).
+    Nothing was sent and nothing billed."""
+
+
+def _demo_key() -> str:
+    """The platform's demo key, for visitors' copies (2026-10-17):
+    `DEMO_ANTHROPIC_API_KEY` when set, else the key the demo practice itself
+    holds (entered under AI usage in Summit, and kept across its reseeds)."""
+    from apps.tenancy.demo import cast
+    from apps.tenancy.models import Tenant
+
+    if settings.DEMO_ANTHROPIC_API_KEY:
+        return settings.DEMO_ANTHROPIC_API_KEY
+    summit = Tenant.objects.filter(slug=cast.SLUG).first()
+    return _tenant_key(summit) if summit is not None else ""
+
+
 def key_source(tenant) -> str | None:
-    """'tenant', 'env' (local fallback), or None. Never the key itself."""
+    """'tenant', 'demo' (a visitor's copy), 'env' (local fallback), or None.
+    Never the key itself."""
+    from apps.tenancy.demo import visitors
+
+    if visitors.is_copy(tenant):
+        return "demo" if _demo_key() else None
     if _tenant_key(tenant):
         return "tenant"
     if settings.IS_LOCAL and settings.ANTHROPIC_API_KEY:
@@ -116,6 +139,13 @@ def _tenant_key(tenant) -> str:
 
 
 def _resolve_key(tenant) -> str:
+    from apps.tenancy.demo import visitors
+
+    if visitors.is_copy(tenant):
+        key = _demo_key()
+        if key:
+            return key
+        raise ClaudeUnavailable("The demo has no AI key set, so its AI is off.")
     key = _tenant_key(tenant)
     if key:
         return key
@@ -163,6 +193,12 @@ def save_key(*, tenant, key: str, actor) -> None:
     from apps.crm.services.secrets import write_secret
     from apps.tenancy.models import AuditEvent, SecretKind
 
+    from apps.tenancy.demo import visitors
+
+    if visitors.is_copy(tenant):
+        # Its AI is the demo's own key, with its allowance (2026-10-17).
+        raise ClaudeUnavailable("Your demo's AI runs on the demo's own key, so it takes "
+                                "none of its own.")
     key = (key or "").strip()
     validate_key(key)
     had_key = _tenant_secret(tenant) is not None
@@ -225,7 +261,13 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
     """
     import anthropic
 
+    from apps.tenancy.demo import visitors
     from apps.tenancy.models import AiCall
+
+    # A demo visitor's copy stops hard at its allowance, whoever asks.
+    stop = visitors.ai_stop(tenant)
+    if stop:
+        raise ClaudeStopped(stop)
 
     job = current_job()
     input_hash = ""

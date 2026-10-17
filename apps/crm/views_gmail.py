@@ -124,8 +124,11 @@ def _status_payload(request, *, send_as=None, send_as_error=""):
 def _demo_connect_refusal(request) -> str:
     """Why the demo will not start a Gmail consent, or "" when it will: one
     address, the practice owner, sending only."""
+    from apps.tenancy.demo import visitors
     from config import environment
 
+    if visitors.is_copy(request.tenant):
+        return visitors.NO_CONNECTIONS
     if not environment.demo_redirect():
         return environment.DEMO_REFUSAL
     if request.tenant.from_address.lower() != environment.demo_sender():

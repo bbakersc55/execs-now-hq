@@ -53,10 +53,18 @@ def mail_is_quiet() -> bool:
     return _quiet.get()
 
 
-def demo_redirect() -> str:
-    """The one address the demo may send to, or "" when it sends nothing."""
+def demo_redirect(tenant=None) -> str:
+    """The one address the demo may send to, or "" when it sends nothing. For
+    a demo visitor's copy (2026-10-17), that visitor's own address: they see
+    what their copy sends, and nobody else does."""
     if not is_demo() or mail_is_quiet():
         return ""
+    if tenant is not None:
+        from apps.tenancy.demo import visitors
+
+        visitor = visitors.of(tenant)
+        if visitor is not None:
+            return visitor.email.strip().lower()
     return settings.DEMO_MAIL_REDIRECT
 
 

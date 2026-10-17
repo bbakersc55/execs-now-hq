@@ -3,7 +3,8 @@ import { useState } from "react";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { api } from "../lib/api";
+import { api, Me } from "../lib/api";
+import { DemoVisitors } from "./DemoVisitors";
 
 /** GET /api/platform/practices — numbers and dates only (apps/platform/stats.py). */
 export interface PracticeRow {
@@ -32,7 +33,7 @@ const STATUS_KIND: Record<string, string> = { active: "ok", invited: "warn", arc
  * notes, email, meetings or sessions. The server enforces that; this screen
  * only ever receives the numbers.
  */
-export function Practices() {
+export function Practices({ me }: { me?: Me }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY);
   const [note, setNote] = useState("");
@@ -187,6 +188,9 @@ export function Practices() {
           </div>
         )}
       </Card>
+
+      {/* Only the demo has visitors' copies (2026-10-17). */}
+      {me?.environment === "demo" && <DemoVisitors />}
 
       <Card title="Add a practice">
         <p className="muted small" style={{ marginTop: 0 }}>

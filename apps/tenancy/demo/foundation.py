@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import re
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -43,13 +44,32 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
+#: A visitor's copy (2026-10-17) adds its tag to every fictional address it
+#: makes, `ellen.ripley+k3x9q2@summitops.example`: a sign-in address is the
+#: whole database's, so the copy's people must not meet Summit's. Empty for
+#: Summit, whose addresses are as they always were.
+TAG: ContextVar[str] = ContextVar("demo_address_tag", default="")
+
+
+def tagged(address: str) -> str:
+    tag = TAG.get()
+    if not tag:
+        return address
+    local, _, domain = address.partition("@")
+    return f"{local}+{tag}@{domain}"
+
+
 def address_for(first: str, last: str, company: str) -> str:
-    return f"{slug(first)}.{slug(last)}@{slug(company)}.example"
+    return tagged(f"{slug(first)}.{slug(last)}@{slug(company)}.example")
 
 
 # ------------------------------------------------------------ the practice
 
-def practice(*, ff_email, ff_name, oauth_client, today) -> World:
+def practice(*, ff_email, ff_name, oauth_client, today, visitor=None) -> World:
+    """Summit, made new; or, given a visitor's copy (`DemoVisitor`), the same
+    practice made inside the copy's own practice row, with the visitor as its
+    owner. A copy's owner is not the platform owner, and is not shown the
+    beta agreement as accepted: they never accepted it."""
     from django.conf import settings
 
     from apps.accounts.models import User
@@ -61,27 +81,40 @@ def practice(*, ff_email, ff_name, oauth_client, today) -> World:
     from apps.tenancy.models import Membership, Role, Tenant
 
     opened = month_start(2025, 1) - timedelta(days=20)
+    fields = dict(
+        name=cast.PRACTICE, legal_name=cast.LEGAL_NAME,
+        domain=cast.DOMAIN, timezone="America/Denver", oauth_client=oauth_client,
+        # The one address the demo sends from (config/environment.py).
+        from_address=settings.DEMO_MAIL_FROM, hold_all_digests=True,
+        # No Claude in the demo's own content: its prose is deterministic.
+        digest_ai_prose_default=False, ai_unattended_daily_cap_usd=Decimal("0"),
+        email_display_name=cast.PRACTICE)
     with at(opened):
-        tenant = Tenant.objects.create(
-            name=cast.PRACTICE, slug=cast.SLUG, legal_name=cast.LEGAL_NAME,
-            domain=cast.DOMAIN, timezone="America/Denver", oauth_client=oauth_client,
-            # The one address the demo sends from (config/environment.py).
-            from_address=settings.DEMO_MAIL_FROM, hold_all_digests=True,
-            # No Claude in the demo's own content: its prose is deterministic.
-            digest_ai_prose_default=False, ai_unattended_daily_cap_usd=Decimal("0"),
-            email_display_name=cast.PRACTICE)
-        # Also the platform owner there, so the demo has a Practices area to
-        # show. It holds the one practice.
-        owner = User.objects.create(email=ff_email.strip().lower(),
-                                    full_name=ff_name or cast.OWNER_NAME,
-                                    is_platform_owner=True)
+        if visitor is None:
+            tenant = Tenant.objects.create(slug=cast.SLUG, **fields)
+            # Also the platform owner there, so the demo has a Practices area
+            # to show.
+            owner = User.objects.create(email=ff_email.strip().lower(),
+                                        full_name=ff_name or cast.OWNER_NAME,
+                                        is_platform_owner=True)
+        else:
+            tenant = visitor.tenant
+            Tenant.objects.filter(pk=tenant.pk).update(
+                status=Tenant.Status.ACTIVE, created_at=moment(opened), **fields)
+            tenant.refresh_from_db()
+            # The visitor plays John Carter, as the platform owner does in
+            # Summit: the practice's story is his.
+            owner = User.objects.get(email__iexact=visitor.email)
+            User.objects.filter(pk=owner.pk).update(full_name=ff_name or cast.OWNER_NAME)
+            owner.refresh_from_db()
         with tenant_context(tenant.pk):
             seed_crm(tenant)
             Membership.objects.create(tenant=tenant, user=owner, role=Role.FF)
-            terms = agreement.current()
-            AgreementAcceptance.all_objects.create(
-                tenant=tenant, user=owner, version=terms["version"],
-                text_sha256=terms["sha256"])
+            if visitor is None:
+                terms = agreement.current()
+                AgreementAcceptance.all_objects.create(
+                    tenant=tenant, user=owner, version=terms["version"],
+                    text_sha256=terms["sha256"])
             # It has the Bookkeeping module, as every practice that existed
             # when the module arrived does.
             modules.set_enabled(tenant, modules.BOOKKEEPING, True, actor=owner)
@@ -184,6 +217,7 @@ def _staff(world: World) -> None:
                                (cast.ASSISTANTS, Role.VA, "Assistant, on contract at "
                                 "${n} an hour.")):
         for key, name, email, (year, month), number in group:
+            email = tagged(email)
             joined = month_start(year, month)
             with at(joined):
                 user = User.objects.create(email=email, full_name=name)

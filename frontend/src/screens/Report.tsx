@@ -13,6 +13,7 @@ import {
 } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
 import { useWords } from "../lib/words";
+import { AiGate } from "../components/DemoVisitor";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -666,8 +667,9 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle, position, onM
                       onClick={() => record.mutate()}>Record it</button>
             </>
           )}
-          <button className="ghost" disabled={draft.isPending}
+          <AiGate><button className="ghost" disabled={draft.isPending}
                   onClick={() => draft.mutate()}>Draft the narrative with Claude</button>
+          </AiGate>
         </div>
       )}
 

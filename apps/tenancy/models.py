@@ -234,6 +234,44 @@ class PracticeModule(UUIDModel):
                                                name="practice_module_one_per_module")]
 
 
+class DemoVisitor(UUIDModel):
+    """A visitor's private copy of the demo practice (Melissa's feedback W1,
+    2026-10-17): the practice is an ordinary one, seeded as Summit is, and
+    this row is the platform's record of who it is for and how long it lives.
+    Like `PracticeModule`, the platform's record, not the practice's data:
+    the platform owner reads it, and it says nothing about what is inside.
+    Only on the demo (`apps/tenancy/demo/visitors.py`)."""
+
+    class State(models.TextChoices):
+        SETTING_UP = "setting_up", "Being set up"
+        READY = "ready", "Ready"
+        FAILED = "failed", "Setup did not finish"
+
+    tenant = models.OneToOneField(Tenant, on_delete=models.CASCADE,
+                                  related_name="demo_visitor")
+    name = models.CharField(max_length=200)
+    email = models.EmailField()
+    note = models.TextField(blank=True, default="", db_default="")
+    #: Added to the copy's fictional addresses (`ellen.ripley+<tag>@…`), so its
+    #: sign-ins never meet Summit's or another copy's.
+    tag = models.CharField(max_length=12, unique=True)
+    invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    expires_at = models.DateTimeField()
+    state = models.CharField(max_length=12, choices=State.choices,
+                             default=State.SETTING_UP, db_default=State.SETTING_UP)
+    state_error = models.TextField(blank=True, default="", db_default="")
+    setup_started_at = models.DateTimeField(null=True, blank=True)
+    setup_finished_at = models.DateTimeField(null=True, blank=True)
+    #: When the invitation went out: once, after the first setup finishes.
+    invited_at = models.DateTimeField(null=True, blank=True)
+    reset_count = models.PositiveIntegerField(default=0, db_default=0)
+    last_reset_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "demo_visitor"
+
+
 class Role(models.TextChoices):
     # Labels: apps/tenancy/roles.py, the one place a role's name is set.
     FF = "FF", ROLE_LABEL["FF"]

@@ -122,10 +122,14 @@ def status(tenant, *, financial: bool, now=None) -> dict:
     queue that is empty and a queue that is paused look the same otherwise."""
     from apps.tenancy.models import AuditEvent
 
+    from apps.tenancy.demo import visitors
+
     today, start, end = _day(tenant, now)
     skips = AuditEvent.all_objects.filter(
         tenant=tenant, verb=SKIPPED_VERB, created_at__gte=start, created_at__lt=end)
-    paused = cap_reached(tenant, now)
+    # A demo visitor's copy runs nothing unattended (the demo has no worker);
+    # its own allowance is what it is told about (2026-10-17).
+    paused = cap_reached(tenant, now) and not visitors.is_copy(tenant)
     out = {
         "paused": paused,
         "resumes_at": end.isoformat() if paused else None,

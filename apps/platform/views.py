@@ -235,3 +235,79 @@ class PlatformFeedbackView(APIView):
             return Response({"detail": "New, seen or closed."}, status=400)
         Feedback.all_objects.filter(pk=row.pk).update(status=status)
         return Response({"id": str(row.pk), "status": status})
+
+
+class DemoVisitorsView(APIView):
+    """GET: every demo visitor's copy, with its visitor, dates and AI spend.
+    POST {name, email, days, note}: invite one, which makes their copy and
+    sets it up; the invitation goes once it is ready (apps/tenancy/demo/
+    visitors.py). The demo only."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def get(self, request):
+        from apps.tenancy.demo import visitors
+
+        visitors.maybe_sweep()
+        return Response(visitors.rows())
+
+    def post(self, request):
+        from apps.tenancy.demo import visitors
+
+        data = request.data
+        try:
+            visitor = visitors.invite(name=data.get("name", ""), email=data.get("email", ""),
+                                      days=data.get("days", visitors.DEFAULT_DAYS),
+                                      note=data.get("note", ""), actor=request.user)
+        except visitors.VisitorRefused as exc:
+            return Response({"detail": str(exc), "errors": exc.errors}, status=400)
+        return Response(_visitor_row(visitor.pk), status=201)
+
+
+class DemoVisitorView(APIView):
+    """POST `extend` {days} or `reset`; DELETE: the copy, its files and its
+    people, at once."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def _visitor(self, pk):
+        from apps.tenancy.demo import visitors
+
+        return visitors.get(pk)
+
+    def post(self, request, pk, action=None):
+        from apps.tenancy.demo import visitors
+
+        visitor = self._visitor(pk)
+        if visitor is None:
+            return Response({"detail": "No such demo visitor."}, status=404)
+        try:
+            if action == "extend":
+                visitors.extend(visitor, days=request.data.get("days", visitors.DEFAULT_DAYS),
+                                actor=request.user)
+            elif action == "reset":
+                visitors.reset(visitor, actor=request.user)
+            elif action == "invite":
+                why = visitors.send_invitation(visitor)
+                if why:
+                    return Response({"detail": why}, status=409)
+            else:
+                return Response({"detail": "Extend, reset or invite."}, status=405)
+        except visitors.VisitorRefused as exc:
+            return Response({"detail": str(exc), "errors": exc.errors}, status=409)
+        return Response(_visitor_row(visitor.pk))
+
+    def delete(self, request, pk):
+        from apps.tenancy.demo import visitors
+
+        visitor = self._visitor(pk)
+        if visitor is None:
+            return Response({"detail": "No such demo visitor."}, status=404)
+        visitors.delete(visitor, actor=request.user)
+        return Response(status=204)
+
+
+def _visitor_row(pk):
+    from apps.tenancy.demo import visitors
+
+    return next(r for r in visitors.rows() if r["id"] == str(pk))

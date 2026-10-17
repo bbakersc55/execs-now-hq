@@ -15,6 +15,7 @@ import {
 } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
 import { useWords } from "../lib/words";
+import { AiGate } from "../components/DemoVisitor";
 
 /**
  * Module 5 — the review queue (PRD §7).
@@ -1043,10 +1044,10 @@ function ProposalDetail({ id, onChanged, setNote, me }: {
           saveSummary.mutate({ summary_discarded: !proposal.summary_discarded })}>
           {proposal.summary_discarded ? "Keep a summary after all" : "Discard the summary"}
         </button>
-        <button className="small" disabled={reparse.isPending}
+        <AiGate><button className="small" disabled={reparse.isPending}
           onClick={() => reparse.mutate()}>
           <RefreshCw size={14} /> Read it again
-        </button>
+        </button></AiGate>
         {!dismissing && (
           <button className="small" onClick={() => setDismissing(true)}>
             <X size={14} /> Dismiss

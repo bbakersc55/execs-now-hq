@@ -83,6 +83,8 @@ MIDDLEWARE = [
     # acting-as session can say who was acting as whom.
     "apps.accounts.middleware.StaffIdleSignOut",
     "apps.platform.middleware.AgreementGate",
+    # A demo visitor's copy: being set up, or ended and read-only (2026-10-17).
+    "apps.tenancy.middleware.DemoVisitorGate",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -265,6 +267,9 @@ if IS_DEMO:
 # out from DEMO_MAIL_FROM. Empty, the demo sends nothing at all.
 DEMO_MAIL_REDIRECT = env("DEMO_MAIL_REDIRECT", default="").strip().lower()
 DEMO_MAIL_FROM = env("DEMO_MAIL_FROM", default="demo@getexecutivesnow.com").strip().lower()
+# The platform's key for demo visitors' copies (2026-10-17). Unset, they use
+# the key the demo practice holds itself (apps/tenancy/claude.py `_demo_key`).
+DEMO_ANTHROPIC_API_KEY = env("DEMO_ANTHROPIC_API_KEY", default="").strip()
 if DEMO_MAIL_REDIRECT and not IS_DEMO:
     raise RuntimeError("DEMO_MAIL_REDIRECT sends every message to one address. It is a "
                        "demo-only mechanism and must not exist anywhere else. Remove it "

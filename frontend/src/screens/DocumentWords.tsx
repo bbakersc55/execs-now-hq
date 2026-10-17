@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 
 import { Field } from "../components/ui";
 import { api } from "../lib/api";
+import { AiGate } from "../components/DemoVisitor";
 
 /** GET/PATCH {session}/document-words/ (apps/strategy/document.py `represent`). */
 export interface Bullet { text: string; owner: string }
@@ -217,9 +218,10 @@ export function DocumentWords({ path, setNote, onChanged }: {
         A line over its length shows a count; shorten it to save.
       </p>
       <div className="row tight">
-        <button className="small" disabled={draft.isPending} onClick={() => draft.mutate()}>
+        <AiGate><button className="small" disabled={draft.isPending}
+          onClick={() => draft.mutate()}>
           {draft.isPending ? "Drafting…" : "Draft the words with Claude"}
-        </button>
+        </button></AiGate>
         {hasDraft && (
           <button className="small" onClick={() => set(withDraft(form, proposed))}>
             Use Claude's draft

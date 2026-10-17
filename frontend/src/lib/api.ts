@@ -38,7 +38,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (response.status === 204) return undefined as T;
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
-  if (response.status === 401 && path !== "/api/me") {
+  // A demo visitor's copy that started being set up again (a reset) answers
+  // so: asking who we are again shows its setup page (2026-10-17).
+  if ((response.status === 401 && path !== "/api/me") || data?.demo_setting_up) {
     window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   }
   if (!response.ok) {
@@ -97,6 +99,23 @@ export interface Me {
   acting?: Acting | null;
   /** P7 phase 4: a client user's rights. Null for the practice. */
   portal?: PortalRights | null;
+  /** A demo visitor's own copy (2026-10-17); null everywhere else. */
+  demo_visitor?: DemoVisitorInfo | null;
+}
+
+/** apps/tenancy/demo/visitors.py `describe`. */
+export interface DemoVisitorInfo {
+  state: "setting_up" | "ready" | "failed";
+  expires_at: string;
+  deletes_on: string;
+  read_only: boolean;
+  /** Why its AI is off, or "" when it is on. Every AI control shows this. */
+  ai_stop: string;
+  ai_spent_today_usd: string;
+  ai_spent_total_usd: string;
+  ai_per_day_usd: string;
+  ai_in_all_usd: string;
+  reset_count: number;
 }
 
 export interface Acting {

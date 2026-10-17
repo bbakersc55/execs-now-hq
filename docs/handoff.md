@@ -1,13 +1,60 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-15**, after the strategy document redesign. **The next session
-starts at "2026-10-15, night" just below, then "2026-10-15, evening".** Then "Release 12: the plan as it was" and "2026-10-13", which
+2026-10-17**, after demo visitors. **The next session starts at
+"2026-10-17" just below, then "2026-10-15, night" and "2026-10-15, evening".** Then "Release 12: the plan as it was" and "2026-10-13", which
 is the day in order. Everything from "Next" down was last brought up to
 date on 10/5; where it and a newer section disagree, the newer holds. Upload
 this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
+
+## 2026-10-17: the sign-off fix, Release 15, and demo visitors (not released)
+
+- **The sign-off fix** (`00d5bac`): a strategy document shows Settings →
+  Branding's closing line, email and website as they are now, unless the
+  document has its own, written in "Change the words on the document"
+  (marked "From Branding" until then). Pre-fix saved closings are Branding's
+  copies and are not read. The "On the prospect's map" tick is gone for the
+  pre-call and What they value.
+- **Release 15**, the same day: `dev` → `main` at `00d5bac`, seven
+  migrations by the runbook (`finance 0013–0015`, `personal 0001–0002`,
+  `strategy 0019`, `tenancy 0016`), all OK; backup of 17:20 UTC; push to web
+  live 3 min 11 s; `/healthz` 200 throughout, the old web serving meanwhile.
+- **Demo visitors (W1)**, built on `dev`, not released (it is demo-only; the
+  demo deploys from `dev`). Bryan's eight decisions as given, built as:
+  - A visitor's copy is an ordinary practice made by the demo seed
+    (`demo.build(visitor=…)`), the visitor its owner playing John Carter as
+    the platform owner does in Summit. `demo_visitor` (migration
+    `tenancy 0017`, a new table) is the platform's record of it.
+  - **Setup runs as a process of its own**, `manage.py demo_visitors setup
+    <id>`, started from the web request (`visitors.launch`), not in the
+    request and not on a worker: Summit's seed took 185 s on Railway, the
+    seed moves the process's clock (`clock.at`, a global mock), and the demo
+    has no worker. The visitor sees "Your demo is being set up"; a setup
+    killed part-way (a redeploy) rolls back whole and reads "did not finish"
+    after 20 minutes; Reset tries again.
+  - Each copy's fictional addresses carry its tag (`ellen.ripley+k3x9q2@…`),
+    because a sign-in address is the whole database's.
+  - Mail: a copy sends through the demo's own send-only Gmail connection
+    (Summit's), from `DEMO_MAIL_FROM`, to the visitor's address only. **The
+    invitation is sent only if that connection works;** otherwise the list
+    says why and offers "Send the invitation".
+  - AI: `DEMO_ANTHROPIC_API_KEY` if set, else the key Summit holds; hard stop
+    at $2 a day and $10 in all (spend survives a reset), checked in
+    `claude.complete_with_call`; every AI button shows the reason instead
+    (`AiGate`).
+  - Life: ends after its days, read-only a week, then deleted with its files
+    and people by an hourly sweep that any demo request may start (no
+    worker). Extend, Reset, Delete, and Send the invitation in Practices.
+  - Not on the Practices list; no beta agreement, Gmail, Drive, Anthropic
+    key or "Getting started" items for those.
+- **Open for Bryan:** (1) **re-seeding Summit (`seed_demo`) still empties the
+  whole demo database, every visitor's copy included**, as decision 8 asked
+  it to stay; say if it should keep them. (2) An address that already signs
+  in to a practice on the demo cannot be a visitor (one practice per
+  sign-in): use a plus address. (3) Visitors are not shown the beta
+  agreement. (4) A visitor plays John Carter.
 
 ## 2026-10-15, night: the strategy document redesigned (not released)
 

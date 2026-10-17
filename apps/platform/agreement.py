@@ -35,6 +35,10 @@ def required(request) -> bool:
         return False                   # the real person is staff acting as someone
     if request.user.is_platform_owner:
         return False
+    from apps.tenancy.demo import visitors
+
+    if visitors.is_copy(membership.tenant):
+        return False                   # a demo visitor's fictional practice (2026-10-17)
     return not AgreementAcceptance.all_objects.filter(
         user=request.user, version=VERSION).exists()
 

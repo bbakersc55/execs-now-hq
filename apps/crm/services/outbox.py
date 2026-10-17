@@ -297,7 +297,7 @@ def _demo_recipient(tenant) -> str:
     from apps.crm.services.transport import TransportUnavailable, sending_connection_for
     from config import environment
 
-    redirect = environment.demo_redirect()
+    redirect = environment.demo_redirect(tenant)
     if not redirect:
         return ""
     try:
@@ -408,7 +408,10 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     html_part, inline_images = email_layout.with_logo(html_part, message.tenant)
     from_address = message.from_address
     if demo_to:
-        html_part, text_part = _with_demo_banner(message, html_part, text_part)
+        # Mail already for the one person it goes to (a visitor's own sign-in
+        # link) needs no banner saying who it was for.
+        if demo_to != (message.to_address or "").strip().lower():
+            html_part, text_part = _with_demo_banner(message, html_part, text_part)
         from_address = environment.demo_sender()
     result = transport.send(
         tenant=message.tenant,

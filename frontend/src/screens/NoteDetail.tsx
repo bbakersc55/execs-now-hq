@@ -9,6 +9,7 @@ import { Banner, Card, Pill, when } from "../components/ui";
 import { Me, Note, NoteFolder, NoteFull, NoteStub, NotesSettings, api } from "../lib/api";
 import { retry as retryUpload } from "../lib/pendingUploads";
 import { useWords } from "../lib/words";
+import { AiGate } from "../components/DemoVisitor";
 
 export function LinkChips({ note }: { note: NoteStub | NoteFull }) {
   const w = useWords();
@@ -347,7 +348,8 @@ function SummaryCard({ note, act }: {
                     : "Summary discarded. The transcript is kept."}
                 </p>
                 {note.can_review_summary && (
-                  <button onClick={() => act({ path: "summary/redraft/" })}>Draft another summary</button>
+                  <AiGate><button onClick={() => act({ path: "summary/redraft/" })}>
+                    Draft another summary</button></AiGate>
                 )}
               </>
             )}

@@ -279,7 +279,18 @@ def me(request):
         # FR-3.42 — while acting as, everything above describes the acted-as
         # user; this names both people, for the banner that never goes away.
         "acting": _acting(request),
+        # A demo visitor's own copy (2026-10-17): its state, its end, and why
+        # its AI is off, if it is. Null everywhere else.
+        "demo_visitor": _demo_visitor(membership),
     })
+
+
+def _demo_visitor(membership):
+    if membership is None or membership.role not in ("FF", "CF", "VA"):
+        return None
+    from apps.tenancy.demo import visitors
+
+    return visitors.describe(membership.tenant)
 
 
 @csrf_protect
@@ -438,11 +449,17 @@ def magic_link_email(tenant, *, url):
     never holds the link (assumption C3)."""
     from apps.crm.services import email_layout
 
+    from apps.tenancy.demo import visitors
+
     name = email_layout.branding(tenant).display_name
+    # A demo visitor is the owner of their copy, not a client (2026-10-17).
+    said = (f"Use the button below to sign in to your demo of {name}."
+            if visitors.is_copy(tenant) else
+            f"Use the button below to sign in to {name}. You'll see your company's work, "
+            "and nothing else.")
     return email_layout.action_link_email(
         tenant, subject=magic_link_subject(tenant), heading=magic_link_subject(tenant),
-        paragraphs=[f"Use the button below to sign in to {name}. You'll see "
-                    "your company's work, and nothing else."],
+        paragraphs=[said],
         button_label="Sign in", url=url,
         expiry="This link expires in 20 minutes and can be used once.",
         closing="If you didn't ask to sign in, you can ignore this email.",
@@ -492,7 +509,49 @@ def invitation_email(tenant, *, url):
     )
 
 
-def _send_magic_link(membership, raw_token, *, invitation=False) -> bool:
+def visitor_invitation_subject(tenant):
+    from config.branding import PRODUCT_NAME
+
+    return f"Your own demo of {PRODUCT_NAME}"
+
+
+def visitor_invitation_email(tenant, *, url, visitor):
+    """`(html, text)` for a demo visitor's invitation (2026-10-17): what the
+    copy is, how long it is theirs, and the sign-in link."""
+    from apps.crm.services import email_layout
+    from config.branding import PRODUCT_NAME
+
+    name = email_layout.branding(tenant).display_name
+    ends = timezone.localtime(visitor.expires_at).date()
+    first = visitor.name.split()[0] if visitor.name.split() else ""
+    return email_layout.action_link_email(
+        tenant, subject=visitor_invitation_subject(tenant),
+        heading=visitor_invitation_subject(tenant),
+        paragraphs=[
+            f"{first + ', h' if first else 'H'}ere is your own private copy of the "
+            f"{PRODUCT_NAME} demo: {name}, a fictional operations practice with its clients, "
+            "their goals and tasks, strategy sessions, invoices and books, as of today. "
+            "You are its practice owner.",
+            f"It is yours until {ends:%B} {ends.day}, {ends.year}. Change anything you like; "
+            "Settings has “Reset my demo” to start it fresh. Everything it sends "
+            "comes to this address only: nobody in it is real.",
+        ],
+        button_label="Sign in", url=url,
+        expiry="This link is valid for 7 days and can be used once.",
+        closing=f"After that, or to sign in again later, go to the sign-in page, enter "
+                f"this email address and choose “{SIGN_IN_BUTTON}”.",
+        help_label="Sign-in page", help_url=sign_in_page_url(),
+        redacted_note=MAGIC_LINK_REDACTED,
+    )
+
+
+def send_visitor_invitation(membership, raw_token, *, visitor) -> bool:
+    """As `_send_magic_link`, with the visitor's own words."""
+    return _send_magic_link(membership, raw_token, invitation=True, visitor=visitor)
+
+
+def _send_magic_link(membership, raw_token, *, invitation=False,
+                     visitor=None) -> bool:
     """Sent synchronously, not queued (assumption A2a).
 
     With one ORM-backed queue and no priority lanes, an enqueued magic link
@@ -519,6 +578,10 @@ def _send_magic_link(membership, raw_token, *, invitation=False) -> bool:
     url = f"{settings.PUBLIC_BASE_URL}/auth/magic/{raw_token}"
     compose = invitation_email if invitation else magic_link_email
     subject = (invitation_subject if invitation else magic_link_subject)(membership.tenant)
+    if visitor is not None:
+        def compose(tenant, *, url):
+            return visitor_invitation_email(tenant, url=url, visitor=visitor)
+        subject = visitor_invitation_subject(membership.tenant)
     stored_html, stored_text = compose(membership.tenant, url=None)
     html, text = compose(membership.tenant, url=url)
 
