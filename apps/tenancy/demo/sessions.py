@@ -509,7 +509,10 @@ def _wayne(world, template) -> None:
         document.save(session, {
             **{key: words[key] for key in ("headline", "tile", "mirror_headline",
                                            "mirror_body", "working", "not_yet",
-                                           "recommended", "closing")},
+                                           "recommended")},
+            # Wayne's closing line is the document's own; the email and
+            # website are Summit's, from Branding.
+            "signoff": {"closing": words["closing"]},
             "components": [{"key": key, "name": label, "pill": document.pill_for(rating),
                             "line": line}
                            for key, rating, (label, line) in zip(

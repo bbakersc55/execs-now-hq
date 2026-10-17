@@ -269,7 +269,10 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert by_status.get("paid", 0) > 150 and by_status["partially_paid"] == 1
         assert by_status["void"] == 1 and invoices.get(status="void").void_reason
         # Two clients a month behind, and (P6 M2) one old enough not to be counted.
-        assert invoices.filter(status="sent", due_date__lt=today).count() == 3
+        # Their invoices go out on the 1st at net 15, so from the 17th this
+        # month's are past due as well as last month's.
+        behind = 2 * (2 if today.day > 16 else 1) + 1
+        assert invoices.filter(status="sent", due_date__lt=today).count() == behind
         assert invoices.filter(kind="contact", client_company__isnull=True).count() == 2
         assert invoices.order_by("issue_date").first().issue_date == date(2025, 1, 1)
         assert all(i.pdf_id for i in invoices.exclude(status="draft"))

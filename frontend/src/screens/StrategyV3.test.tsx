@@ -215,28 +215,38 @@ describe("the template builder", () => {
     expect(sent(fetchMock, "include/")).toEqual([{ kind: "map", included: false }]);
   });
 
-  it("has the tick, On the prospect's map, on every section (2026-10-12)", async () => {
+  it("has the tick, On the prospect's map, on every section the document prints "
+     + "(2026-10-12, 2026-10-17)", async () => {
     const template = aBuilder();
-    const sections = template.sections.map((s) => s.kind === "values"
+    const sections = template.sections.map((s) => s.kind === "paths"
       ? { ...s, off_map: true } : s);
     const fetchMock = showBuilder({ ...template, sections }, aMe(), {
       [`POST ${ROOT}section/`]: () => ({ status: 200, body: template }) });
     await screen.findByLabelText("On the prospect's map: Strategy Map");
+    // The two-page document prints neither the pre-call nor What they value,
+    // so they have no tick.
+    const unprinted = template.sections.filter((s) => ["precall", "values"]
+      .includes(s.kind));
+    expect(unprinted.map((s) => s.kind).sort()).toEqual(["precall", "values"]);
     expect(screen.getAllByLabelText(/^On the prospect's map: /))
-      .toHaveLength(template.sections.length);
+      .toHaveLength(template.sections.length - 2);
+    for (const s of unprinted) {
+      expect(screen.queryByLabelText(`On the prospect's map: ${s.title}`)).toBeNull();
+    }
     // On unless it was taken off; the diagnostic prints nothing, so its tick
     // is off and cannot be changed.
     expect(screen.getByLabelText("On the prospect's map: Strategy Map")).toBeChecked();
-    expect(screen.getByLabelText("On the prospect's map: What they value")).not.toBeChecked();
+    const paths = sections.find((s) => s.kind === "paths")!;
+    expect(screen.getByLabelText(`On the prospect's map: ${paths.title}`)).not.toBeChecked();
     const diagnostic = screen.getByLabelText("On the prospect's map: Diagnostic");
     expect(diagnostic).not.toBeChecked();
     expect(diagnostic).toBeDisabled();
     expect(screen.getByText(/nothing from this section goes on it/)).toBeInTheDocument();
     await userEvent.click(screen.getByLabelText("On the prospect's map: Strategy Map"));
-    await userEvent.click(screen.getByLabelText("On the prospect's map: What they value"));
+    await userEvent.click(screen.getByLabelText(`On the prospect's map: ${paths.title}`));
     await waitFor(() => expect(sent(fetchMock, "section/")).toEqual([
       { code: "strategy_map", show_in_pdf: false },
-      { code: "what_they_value", show_in_pdf: true }]));
+      { code: paths.code, show_in_pdf: true }]));
   });
 
   it("shows a part that is out, with the way back", async () => {
@@ -1132,7 +1142,7 @@ describe("the words on the document can be changed where it is sent", () => {
   const LIMITS = { headline: 60, intro: 140, tile_number: 8, tile_label: 40,
     mirror_headline: 80, mirror_body: 280, working: 80, not_yet: 80, component_name: 20,
     component_line: 90, bullet: 70, owner: 16, path_title: 40, path_blurb: 120,
-    path_point: 40, next_move: 70, closing: 100 };
+    path_point: 40, next_move: 70, closing: 100, email: 254, website: 120 };
   const words = {
     headline: "One rhythm across four sites.", intro: "What we heard on October 6.",
     tile: { number: "4", label: "sites on one scorecard by day 90" },
@@ -1144,10 +1154,12 @@ describe("the words on the document can be changed where it is sent", () => {
             { side: "b", title: "Center first", blurb: "", for: [], against: [] }],
     recommended: "a",
     next_moves: [{ lead: "Pick the path", rest: "by October 20." }],
-    closing: "Tell me what moved.",
+    closing: "Tell me what moved.", email: "jo@acme.example", website: "acme.example",
   };
+  const branding = { closing: "Tell me what moved.", email: "jo@acme.example",
+                     website: "acme.example" };
   const payload = (more: Record<string, unknown> = {}) => ({
-    words, saved: {}, proposed: {}, limits: LIMITS,
+    words, saved: {}, proposed: {}, limits: LIMITS, signoff: { branding, own: {} },
     most: { bullets: 4, path_points: 3, next_moves: 4, components: 6 }, hidden: [],
     tiles: [{ number: "4", label: "sites on one scorecard by day 90" },
             { number: "1", label: "components assessed, one to fix" }],
@@ -1216,6 +1228,62 @@ describe("the words on the document can be changed where it is sent", () => {
       expect(fetchMock.calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
       expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
     });
+
+  it("shows the sign-off as Branding's until it is rewritten, and saves only what was "
+     + "rewritten (2026-10-17)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = showSession(aV3Session(), aMe(), {
+      [`GET ${WORDS_URL}`]: payload(),
+      [`PATCH ${WORDS_URL}`]: () => ({ status: 200, body: payload() }) });
+    await user.click(await screen.findByText("Change the words on the document"));
+    const closing = screen.getByLabelText("On the document: Closing line");
+    expect(closing).toHaveValue("Tell me what moved.");
+    for (const label of ["Closing line", "Email under it", "Website under it"]) {
+      expect(screen.getByLabelText(`${label} is from Branding`)).toHaveTextContent(
+        "From Branding");
+    }
+    const save = screen.getByRole("button", { name: "Save these words" });
+
+    // Another line saved: the sign-off is not sent as the document's own.
+    await user.type(screen.getByLabelText("On the document: Headline"), "!");
+    await user.click(save);
+    await waitFor(() => expect(fetchMock.calls.filter((c) => c.method === "PATCH"))
+      .toHaveLength(1));
+    let sent = fetchMock.calls.filter((c) => c.method === "PATCH")[0].body as
+      Record<string, unknown>;
+    expect(sent.signoff).toEqual({});
+    expect(sent).not.toHaveProperty("closing");
+    expect(sent).not.toHaveProperty("email");
+
+    // Rewritten here: the document's own, with the way back to Branding's.
+    await user.clear(closing);
+    await user.type(closing, "Written for Acme alone.");
+    expect(screen.queryByLabelText("Closing line is from Branding")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Use Branding's closing line" }));
+    expect(closing).toHaveValue("Tell me what moved.");
+    expect(screen.getByLabelText("Closing line is from Branding")).toBeInTheDocument();
+    await user.clear(closing);
+    await user.type(closing, "Written for Acme alone.");
+    await user.click(save);
+    await waitFor(() => expect(fetchMock.calls.filter((c) => c.method === "PATCH"))
+      .toHaveLength(2));
+    sent = fetchMock.calls.filter((c) => c.method === "PATCH")[1].body as
+      Record<string, unknown>;
+    expect(sent.signoff).toEqual({ closing: "Written for Acme alone." });
+  });
+
+  it("shows a sign-off line the document has of its own as its own", async () => {
+    showSession(aV3Session(), aMe(), { [`GET ${WORDS_URL}`]: payload({
+      words: { ...words, website: "acme.example/acme" },
+      signoff: { branding, own: { website: "acme.example/acme" } } }) });
+    await userEvent.click(await screen.findByText("Change the words on the document"));
+    expect(screen.getByLabelText("On the document: Website under it")).toHaveValue(
+      "acme.example/acme");
+    expect(screen.queryByLabelText("Website under it is from Branding")).toBeNull();
+    expect(screen.getByRole("button", { name: "Use Branding's website under it" }))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText("Closing line is from Branding")).toBeInTheDocument();
+  });
 
   it("says when a page runs past its foot", async () => {
     showSession(aV3Session(), aMe(), { [`GET ${WORDS_URL}`]: payload({ full_pages: [2] }) });

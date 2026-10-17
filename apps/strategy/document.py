@@ -19,6 +19,14 @@ Where the words come from, for each part of the document:
    map rows and path notes, the agreed next steps, a converted goal;
 3. otherwise, a plain default, or nothing (an empty part is not drawn).
 
+**The sign-off belongs to the practice** (owner, 2026-10-17). The closing
+line, the email and the website are Settings → Branding's as they are now,
+unless this document has its own, written in the words editor and held under
+`document_words["signoff"]`. "Back to the session's own words" clears it. A
+closing line saved before then (`document_words["closing"]`) is not the
+document's own: the editor sent Branding's line, as it was then, with every
+save, and which line that was is not kept.
+
 Claude's draft (`proposed_document_words`) is a proposal: it reaches the
 document only when a person uses it and saves, as the mirror's draft does.
 
@@ -58,7 +66,12 @@ LIMITS = {
     "path_point": 40,
     "next_move": 70,
     "closing": 100,
+    "email": 254,
+    "website": 120,
 }
+#: The sign-off band's lines: Branding's, unless the document has its own.
+SIGNOFF = ("closing", "email", "website")
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 #: How many of each a part holds.
 MOST = {"bullets": 4, "path_points": 3, "next_moves": 4, "components": 6,
         "mirror_sentences": 3}
@@ -230,8 +243,30 @@ def defaults(session, context: dict) -> dict:
         "paths": paths,
         "recommended": leaning[0] if len(leaning) == 1 else "",
         "next_moves": moves,
-        "closing": fit(session.tenant.document_closing or DEFAULT_CLOSING, L["closing"]),
+        **branding_signoff(session),
     }
+
+
+def branding_signoff(session) -> dict:
+    """The sign-off as Settings → Branding has it now: its closing line, else
+    the standard one; its email, else the session owner's; its website, else
+    the first web address in the footer."""
+    from apps.strategy import pdf as pdf_service
+
+    tenant = session.tenant
+    return {"closing": fit(tenant.document_closing or DEFAULT_CLOSING, LIMITS["closing"]),
+            "email": tenant.document_email or (session.owner.email if session.owner_id
+                                               else ""),
+            "website": pdf_service.website_of(tenant)}
+
+
+def signoff_overrides(session) -> dict:
+    """The sign-off lines this document has of its own. A closing line saved
+    before 2026-10-17, at `document_words["closing"]`, is Branding's copy and
+    is not read."""
+    saved = session.document_words or {}
+    own = saved.get("signoff") if isinstance(saved.get("signoff"), dict) else {}
+    return {key: own[key] for key in SIGNOFF if _plain(own.get(key))}
 
 
 def goal_tile(session) -> dict | None:
@@ -268,9 +303,10 @@ def merged(session, context: dict) -> dict:
     saved = session.document_words or {}
     out = dict(base)
     for key in ("headline", "intro", "mirror_headline", "mirror_body", "working", "not_yet",
-                "recommended", "closing"):
+                "recommended"):
         if key in saved:
             out[key] = saved[key]
+    out.update(signoff_overrides(session))
     if isinstance(saved.get("tile"), dict):
         out["tile"] = {"number": saved["tile"].get("number", ""),
                        "label": saved["tile"].get("label", "")}
@@ -308,9 +344,20 @@ def clean(payload) -> dict:
     errors: dict = {}
     out: dict = {}
     for key in ("headline", "intro", "mirror_headline", "mirror_body", "working",
-                "not_yet", "closing"):
+                "not_yet"):
         if key in payload:
             out[key] = _line(payload[key], key, key, over)
+    # The sign-off the document has of its own: a line left out, or empty,
+    # is Branding's. The editor sends all of it, so it replaces what was kept.
+    if "signoff" in payload:
+        own = payload["signoff"] if isinstance(payload["signoff"], dict) else {}
+        out["signoff"] = {}
+        for key in SIGNOFF:
+            value = _line(own.get(key), key, f"signoff.{key}", over)
+            if key == "email" and value and not _EMAIL.match(value):
+                errors["signoff.email"] = "Use an email address, like you@yourpractice.com."
+            if value:
+                out["signoff"][key] = value
     if "mirror_body" in out and len(sentences(out["mirror_body"])) > MOST["mirror_sentences"]:
         errors["mirror_body"] = "The mirror is three sentences at most."
     if "tile" in payload:
@@ -398,7 +445,17 @@ def save(session, payload, *, actor) -> dict:
         session.document_words = {}
     else:
         before = session.document_words
-        session.document_words = {**(before or {}), **clean(payload)}
+        words = {**(before or {}), **clean(payload)}
+        words.pop("closing", None)          # Branding's copy, from before 2026-10-17
+        if "signoff" in payload:
+            # A line the same as Branding's now is Branding's, so it follows
+            # Branding when Branding changes.
+            branding = branding_signoff(session)
+            words["signoff"] = {key: value for key, value in words["signoff"].items()
+                                if value != branding[key]}
+            if not words["signoff"]:
+                del words["signoff"]
+        session.document_words = words
         # Every line within its length can still, all together, fill a page:
         # the page is measured, and a save that would run it into its footer
         # is refused, naming the page, before anything is kept.
@@ -429,6 +486,8 @@ def represent(session) -> dict:
     page = for_pdf(session, context)
     return {"words": merged(session, context), "saved": session.document_words or {},
             "proposed": session.proposed_document_words or {},
+            "signoff": {"branding": branding_signoff(session),
+                        "own": signoff_overrides(session)},
             "limits": LIMITS, "most": MOST, "hidden": sorted(hidden_parts(session)),
             "tiles": page["tiles"], "box_dates": page["box_dates"],
             # The session's own words are fitted line by line but never saved,
@@ -510,6 +569,8 @@ def for_pdf(session, context: dict) -> dict:
         "paths": paths,
         "next_moves": next_moves,
         "closing": words["closing"],
+        "email": words["email"],
+        "website": words["website"],
         "long_date": long_date(day),
     }
 

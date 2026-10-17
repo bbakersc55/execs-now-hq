@@ -518,7 +518,10 @@ def test_making_ready_sends_nothing_and_the_owners_send_does(acme, ff, api, dev_
         assert message.to_address == "dana@acme.invalid"
         assert message.subject == "Invoice INV-0001 from Tenant A"
         assert "Hi Dana," in message.body_text and "$6,800.00" in message.body_text
-        assert "October" in message.body_text and "{" not in message.body_text
+        # The due date in words, whatever month the suite runs in.
+        due = invoice.due_date
+        assert f"due {due:%B} {due.day}, {due.year}." in message.body_text
+        assert "{" not in message.body_text
         # The PDF attached is the PDF stored, with real bytes in it.
         attached = message.attachments.get()
         assert attached.stored_file_id == invoice.pdf_id

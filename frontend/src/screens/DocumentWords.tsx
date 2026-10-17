@@ -20,12 +20,17 @@ export interface Words {
   paths: DocPath[];
   recommended: "" | "a" | "b";
   next_moves: Move[];
-  closing: string;
+  closing: string; email: string; website: string;
 }
+/** The sign-off band's lines: Settings → Branding's, unless the document has
+ * its own (2026-10-17). */
+export type SignKey = "closing" | "email" | "website";
+export type SignOff = Record<SignKey, string>;
 export interface DocumentWordsData {
   words: Words;
   saved: Partial<Words>;
   proposed: Partial<Words>;
+  signoff: { branding: SignOff; own: Partial<SignOff> };
   limits: Record<string, number>;
   most: Record<string, number>;
   hidden: string[];
@@ -35,6 +40,18 @@ export interface DocumentWordsData {
 }
 
 const HORIZONS = ["30", "60", "90"] as const;
+const SIGN_KEYS: SignKey[] = ["closing", "email", "website"];
+const SIGN_LABEL: Record<SignKey, string> = {
+  closing: "Closing line", email: "Email under it", website: "Website under it",
+};
+
+/** null: the line is Branding's. A string, even empty, is being rewritten here. */
+type Own = Record<SignKey, string | null>;
+function ownOf(data: DocumentWordsData): Own {
+  const own = data.signoff?.own ?? {};
+  return { closing: own.closing ?? null, email: own.email ?? null,
+           website: own.website ?? null };
+}
 
 /** Claude's draft over the words as they stand: only the parts it wrote. */
 function withDraft(words: Words, draft: Partial<Words>): Words {
@@ -108,14 +125,19 @@ export function DocumentWords({ path, setNote, onChanged }: {
   const data = useQuery<DocumentWordsData>({ queryKey: ["document-words", path],
                                              queryFn: () => api.get(url) });
   const [form, setForm] = useState<Words | null>(null);
+  const [own, setOwn] = useState<Own | null>(null);
   const [dirty, setDirty] = useState(false);
   useEffect(() => {
-    if (data.data && (form === null || !dirty)) setForm(data.data.words);
+    if (data.data && (form === null || !dirty)) {
+      setForm(data.data.words);
+      setOwn(ownOf(data.data));
+    }
   }, [data.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const done = (fresh: DocumentWordsData, text: string) => {
     qc.setQueryData(["document-words", path], fresh);
     setForm(fresh.words);
+    setOwn(ownOf(fresh));
     setDirty(false);
     setNote(text);
     onChanged();
@@ -136,8 +158,22 @@ export function DocumentWords({ path, setNote, onChanged }: {
     onError: (e: Error) => setNote(e.message),
   });
 
-  if (!data.data || !form) return null;
+  if (!data.data || !form || !own) return null;
   const { limits: L, most, hidden, proposed } = data.data;
+  const fromBranding = data.data.signoff?.branding
+    ?? { closing: form.closing, email: form.email, website: form.website };
+  const setSign = (key: SignKey, value: string | null) => {
+    setOwn({ ...own, [key]: value });
+    setDirty(true);
+  };
+  /** What the editor saves: every line but the sign-off's, and of the
+   * sign-off only the lines rewritten here. */
+  const body = () => {
+    const { closing: _c, email: _e, website: _w, ...rest } = form;
+    void _c; void _e; void _w;
+    return { ...rest, signoff: Object.fromEntries(
+      SIGN_KEYS.filter((k) => own[k] !== null).map((k) => [k, own[k]])) };
+  };
   const show = (part: string) => !hidden.includes(part);
   const set = (patch: Partial<Words>) => { setForm({ ...form, ...patch }); setDirty(true); };
   const hasDraft = Object.keys(proposed ?? {}).length > 0;
@@ -147,7 +183,8 @@ export function DocumentWords({ path, setNote, onChanged }: {
     form.tile.number.length > L.tile_number, form.tile.label.length > L.tile_label,
     form.mirror_headline.length > L.mirror_headline,
     form.mirror_body.length > L.mirror_body, form.working.length > L.working,
-    form.not_yet.length > L.not_yet, form.closing.length > L.closing,
+    form.not_yet.length > L.not_yet,
+    ...SIGN_KEYS.map((k) => (own[k] ?? "").length > L[k]),
     ...form.components.flatMap((c) => [c.name.length > L.component_name,
                                        c.line.length > L.component_line]),
     ...HORIZONS.flatMap((h) => form.boxes[h].flatMap((b) => [
@@ -363,12 +400,19 @@ export function DocumentWords({ path, setNote, onChanged }: {
           Add a next move
         </button>
       )}
-      <Line label="Closing line" value={form.closing} most={L.closing}
-        onChange={(v) => set({ closing: v })} />
+      <p className="small" style={{ margin: ".75rem 0 0" }}><strong>The sign-off</strong></p>
+      <p className="tiny muted" style={{ margin: 0 }}>
+        The practice's, from Settings → Branding, unless you rewrite a line for this
+        document here.
+      </p>
+      {SIGN_KEYS.map((k) => (
+        <SignLine key={k} label={SIGN_LABEL[k]} most={L[k]} own={own[k]}
+          branding={fromBranding[k]} onChange={(v) => setSign(k, v)} />
+      ))}
 
       <div className="row tight" style={{ marginTop: ".5rem" }}>
         <button className="primary small" disabled={!dirty || over > 0 || save.isPending}
-          onClick={() => save.mutate(form)}>Save these words</button>
+          onClick={() => save.mutate(body())}>Save these words</button>
         {over > 0 && <span className="small" style={{ color: "var(--bad)" }}>
           {over} line{over === 1 ? " is" : "s are"} over {over === 1 ? "its" : "their"} length.</span>}
         {dirty && over === 0 && <span className="small muted">Not saved yet: the document
@@ -376,6 +420,31 @@ export function DocumentWords({ path, setNote, onChanged }: {
       </div>
     </details>
     </>
+  );
+}
+
+/** A sign-off line: Branding's, marked so, until it is rewritten here. */
+function SignLine({ label, most, own, branding, onChange }: {
+  label: string; most: number; own: string | null; branding: string;
+  onChange: (v: string | null) => void;
+}) {
+  const value = own ?? branding;
+  return (
+    <Field label={label}>
+      <input aria-label={`On the document: ${label}`} value={value}
+        onChange={(e) => onChange(e.target.value)} />
+      {own === null ? (
+        <span className="tiny muted" aria-label={`${label} is from Branding`}>
+          From Branding</span>
+      ) : (
+        <span className="tiny">
+          {own === "" && <span className="muted">Empty: Branding's prints. </span>}
+          <button className="link small" aria-label={`Use Branding's ${label.toLowerCase()}`}
+            onClick={() => onChange(null)}>Use Branding's</button>
+        </span>
+      )}
+      <Over text={own ?? ""} most={most} label={label} />
+    </Field>
   );
 }
 

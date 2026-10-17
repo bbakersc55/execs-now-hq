@@ -71,6 +71,9 @@ const ANSWER_KINDS: Record<string, string> = {
   agreed_note: "Agreed, with a note",
 };
 const CUSTOM_MOST = 8;
+/** Parts the two-page strategy document does not print, so they have no
+ * "On the prospect's map" tick (owner, 2026-10-17). */
+const UNPRINTED: string[] = ["precall", "values"];
 
 type Problem = { where: string; text: string } | null;
 
@@ -335,7 +338,10 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
       {/* Every section has the tick (owner, 2026-10-12). One of the eight
           parts is on the map unless it is taken off; a section of the
           practice's own is off until it is put on; the diagnostic's answers
-          never print, so its tick is off and cannot be changed. */}
+          never print, so its tick is off and cannot be changed. The pre-call
+          and What they value have none: the two-page document (2026-10-15)
+          prints neither (owner, 2026-10-17). */}
+      {!UNPRINTED.includes(section.kind) && (
       <label className="small" style={{ display: "flex", gap: ".4rem", margin: ".5rem 0" }}
         title={section.custom && section.questions.length > 4
           ? "The document has room for four questions from a section." : ""}>
@@ -351,6 +357,7 @@ function Part({ section, template, mayEdit, busy, chips, suggested, problem, cha
           + "four questions fit)"}
         {section.kind === "diagnostic" && " (nothing from this section goes on it)"}
       </label>
+      )}
       {section.kind === "ratings" && (
         <Saved label="Scale line (shown above the ratings and under the chart)"
           ariaLabel="Rating scale line" value={s.rating_scale} disabled={off} maxLength={160}

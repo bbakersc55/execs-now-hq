@@ -7,7 +7,8 @@
 3. Claude's draft is a proposal; nothing on the document changes until a
    person saves.
 4. Practice isolation and role boundaries on the two new routes.
-5. The sign-off's closing line, email and website from Settings → Branding.
+5. The sign-off's closing line, email and website from Settings → Branding,
+   as Branding has them now, unless the document has its own (2026-10-17).
 """
 
 from __future__ import annotations
@@ -67,7 +68,7 @@ def longest(session) -> dict:
         "recommended": "a",
         "next_moves": [{"lead": text(24, "Approve the form "), "rest": text(L["next_move"] - 25)}
                        for _ in range(M["next_moves"])],
-        "closing": text(L["closing"]),
+        "signoff": {"closing": text(L["closing"])},
     }
 
 
@@ -180,7 +181,8 @@ def test_words_at_the_mocks_own_lengths_fit_both_pages(session, ff, api):
     words = WAYNE_WORDS
     saved = patch(api, ff, session, {
         **{key: words[key] for key in ("headline", "tile", "mirror_headline", "mirror_body",
-                                       "working", "not_yet", "recommended", "closing")},
+                                       "working", "not_yet", "recommended")},
+        "signoff": {"closing": words["closing"]},
         "components": [{"key": key, "name": name, "pill": "watch", "line": line}
                        for key, (name, line) in zip(keys, words["components"])],
         "boxes": {h: [{"text": t, "owner": o} for t, o in b] for h, b in words["boxes"].items()},
@@ -349,6 +351,108 @@ def test_the_sign_off_comes_from_branding_with_sensible_fallbacks(session, ff, a
         "document_closing": text(121)}), content_type="application/json")
     assert bad.status_code == 400
     assert set(bad.json()["errors"]) >= {"document_email", "document_closing"}
+
+
+def branding(api, ff, **signoff):
+    saved = api.as_(ff).put("/api/settings/branding", json.dumps({
+        "display_name": "", "primary_color": "#0A3A65", "accent_color": "#F58220",
+        "footer_text": "", **signoff}), content_type="application/json")
+    assert saved.status_code == 200, saved.json()
+
+
+@pytest.mark.django_db
+def test_a_document_with_no_sign_off_of_its_own_follows_branding_as_it_changes(
+        session, ff, api):
+    """The owner's finding (2026-10-17): "Back to the session's own words",
+    then Save, then a new closing line in Branding. The document has the new
+    line, because the editor saves no sign-off it was not given."""
+    _a_full_session(session)
+    branding(api, ff, document_closing="Tell me what moved.")
+    assert patch(api, ff, session, {"reset": True}).status_code == 200
+    shown = api.as_(ff).get(url(session)).json()
+    body = {k: v for k, v in shown["words"].items()
+            if k not in ("closing", "email", "website")}
+    saved = patch(api, ff, session, {**body, "signoff": {}})
+    assert saved.status_code == 200, saved.json()
+    assert saved.json()["signoff"]["own"] == {}
+    assert "signoff" not in saved.json()["saved"]
+
+    branding(api, ff, document_closing="The map moves with you.",
+             document_email="jo@acme.example", document_website="acme.example")
+    session.refresh_from_db()
+    html = pdf_service.render_html(session)
+    assert "The map moves with you." in html and "Tell me what moved." not in html
+    assert "jo@acme.example · acme.example" in html
+    words = api.as_(ff).get(url(session)).json()
+    assert words["words"]["closing"] == "The map moves with you."
+    assert words["signoff"]["branding"]["closing"] == "The map moves with you."
+
+
+@pytest.mark.django_db
+def test_a_closing_line_saved_before_the_fix_is_branding_s_and_follows_it(session, ff,
+                                                                          api):
+    """Before 2026-10-17 the editor saved Branding's closing line, as it was
+    then, with every save: the standard line, or the practice's own. Neither
+    is the document's own, so the document has Branding's line as it is now,
+    and the next save drops the copy."""
+    _a_full_session(session)
+    for copied in (document.DEFAULT_CLOSING, "Tell me what moved."):
+        branding(api, ff, document_closing="" if copied == document.DEFAULT_CLOSING
+                 else copied)
+        session.document_words = {"headline": "Kept", "closing": copied}
+        session.save()
+        branding(api, ff, document_closing="The map moves with you.")
+        session.refresh_from_db()
+        assert document.signoff_overrides(session) == {}
+        html = pdf_service.render_html(session)
+        assert "The map moves with you." in html and "Kept" in html
+        assert copied not in html
+        shown = api.as_(ff).get(url(session)).json()
+        assert shown["signoff"]["own"] == {}
+        assert shown["words"]["closing"] == "The map moves with you."
+
+    saved = patch(api, ff, session, {"headline": "Kept again"})
+    assert saved.status_code == 200, saved.json()
+    assert saved.json()["saved"] == {"headline": "Kept again"}
+
+
+@pytest.mark.django_db
+def test_a_sign_off_of_the_documents_own_wins_until_it_is_cleared(session, ff, api):
+    _a_full_session(session)
+    branding(api, ff, document_closing="Tell me what moved.",
+             document_email="jo@acme.example", document_website="acme.example")
+    saved = patch(api, ff, session, {"signoff": {
+        "closing": "Written for Acme alone.", "email": "sam@acme.example",
+        "website": "acme.example/acme"}})
+    assert saved.status_code == 200, saved.json()
+    assert saved.json()["signoff"]["own"] == {
+        "closing": "Written for Acme alone.", "email": "sam@acme.example",
+        "website": "acme.example/acme"}
+
+    branding(api, ff, document_closing="The map moves with you.",
+             document_email="kim@acme.example", document_website="acme.example/new")
+    session.refresh_from_db()
+    html = pdf_service.render_html(session)
+    assert "Written for Acme alone." in html and "The map moves with you." not in html
+    assert "sam@acme.example · acme.example/acme" in html
+
+    # One line back to Branding's, by sending it empty or as Branding has it.
+    saved = patch(api, ff, session, {"signoff": {
+        "closing": "", "email": "kim@acme.example", "website": "acme.example/acme"}})
+    assert saved.json()["signoff"]["own"] == {"website": "acme.example/acme"}
+    assert saved.json()["words"]["closing"] == "The map moves with you."
+    assert saved.json()["words"]["email"] == "kim@acme.example"
+
+    # "Back to the session's own words" clears the rest.
+    cleared = patch(api, ff, session, {"reset": True}).json()
+    assert cleared["signoff"]["own"] == {} and cleared["saved"] == {}
+    session.refresh_from_db()
+    assert "kim@acme.example · acme.example/new" in pdf_service.render_html(session)
+
+    bad = patch(api, ff, session, {"signoff": {"email": "not an email",
+                                               "closing": text(101)}})
+    assert bad.status_code == 400
+    assert "signoff.email" in bad.json()["errors"] and "signoff.closing" in bad.json()["over"]
 
 
 @pytest.mark.django_db

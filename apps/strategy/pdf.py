@@ -234,7 +234,7 @@ def font_faces(*, embedded=False) -> str:
 _WEB = re.compile(r"(?:https?://)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?:/\S*)?", re.I)
 
 
-def _website(tenant) -> str:
+def website_of(tenant) -> str:
     """The sign-off's web address: Settings → Branding's, else the first one
     in the footer text that is not part of an email address."""
     if tenant.document_website:
@@ -271,9 +271,7 @@ def _design(session, context) -> dict:
     the header and the sign-off, and how many pages it comes to."""
     from apps.strategy import document
 
-    tenant = session.tenant
     doc = document.for_pdf(session, context)
-    email = tenant.document_email or (session.owner.email if session.owner_id else "")
     # A third page only for what the practice asked to print beyond the two:
     # its own sections marked to print, the money with its flag on, and the
     # notes from experience with theirs.
@@ -293,7 +291,7 @@ def _design(session, context) -> dict:
         "on_accent": text_on(context["brand"].accent_color),
         "signoff": " · ".join(x for x in (
             ", ".join(x for x in (context["fractional"], context["practice"]) if x),
-            email, _website(tenant)) if x),
+            doc["email"], doc["website"]) if x),
         "mechanics_notes": mechanics,
         "pages": 3 if extra else 2,
         "has_extra_page": extra,
