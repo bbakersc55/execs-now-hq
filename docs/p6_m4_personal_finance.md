@@ -354,3 +354,95 @@ the side's shape allowing it. All in the isolation family.
 goals, the household and the set-aside (their stops); a business line paid
 personally from cash; transfer rules for household accounts; removing a
 personal line by hand.
+
+## As built: stop 2 (2026-10-17)
+
+Decisions 9–14 as written, the brief's Cash flow table, and "Explain this
+budget". The open questions taken as recommended (Bryan, 2026-10-17): the
+$25 threshold; everyday envelopes reset and saving-up ones roll; Snowball
+the default, 6% the assumed return, tax inputs either way and state as a
+flat rate, all later.
+
+**Built and tested** (`tests/test_personal_budget.py`, the isolation family
+in `tests/test_personal_sides.py`, the demo seed test,
+`PersonalBudget.test.tsx`; the Overview, the questions and a goal looked at
+in headless Chrome at 1366):
+
+- **The proposal** (9, `apps/personal/budget.py`): once the lines cover three
+  complete months, each personal category's monthly totals over the last
+  six complete months (fewer if that is all), a month with nothing counted
+  as nothing, the median to the nearest $10, "From your history". Income the
+  same way. Transfers never. Shown as a table with the months; nothing is set
+  until **Use this budget**.
+- **Envelopes** (10): Planned, Spent (the month's lines in the category, less
+  money back in it) and Left. Overspent: red, and **Take it from** another
+  envelope's Left (an `PersonalEnvelopeMove`, at most what it has), or **Let
+  it stand** (remembered for the month). Nothing moves by itself. Spending in
+  a category with no envelope is named under the table.
+- **Rollover by kind** (11): everyday resets, saving-up (goals, yearly bills,
+  Taxes) rolls; a switch on each, the default by kind.
+- **Unassigned** (12): planned income minus every envelope. Above zero, "Where
+  does the rest go?", put toward a goal (its monthly amount goes up). Below
+  zero, the envelopes over the income, largest first.
+- **The questions** (13, `apps/personal/questions.py`, no AI): after the
+  proposal, keep-or-target for the two largest everyday envelopes that varied,
+  which-is-normal where a category's months fell into a high and a low group,
+  a yearly bill for each one found, and "Anything coming?" (a goal, or a cost
+  on a date: a `PersonalPlanned`). One screen each, skippable, each with a key
+  so never asked twice. Again, keep-or-target, when an everyday envelope has
+  been 25% or more off its plan in each of the last two complete months.
+  "Something coming that your history doesn't show?" asks the last one again.
+- **Goals** (14): name, target, date or none, saved already, the account. The
+  monthly amount is what is still to save over the months left, up to the
+  next $10; with no date, the owner's amount or a year's worth. An envelope
+  that rolls, and with a date a planned line on that day for the target. An
+  emergency fund is a number of months of the everyday envelopes. Progress is
+  what was saved plus what its envelope has set aside. Put away: its envelope
+  and planned line go.
+- **Yearly bills** found in history (a single payment of $250 or more in a
+  category with nothing in the other months) are asked about and, if spread,
+  become a rolling envelope at a twelfth.
+- **The Cash flow table** by month on the Overview: in and out by category,
+  the last six complete months and this one so far, with In, Out and Net.
+- **Explain this budget** (`budget_ai.py`): priced before it is pressed, on
+  Finance's shared 20 a day and the monthly budget. Sends the envelopes,
+  goals, yearly bills and six months of totals by category; never the
+  owner's name, an account's name or number, or a merchant.
+- **The Personal side** now opens on **Overview**, then Goals, Entries
+  (moved to `/finance/personal/entries`), Import, Accounts, Categories.
+- **The demo:** John Carter's budget proposed from the six seeded months and
+  used; the three goals live with their envelopes, two of them dated with a
+  planned line; a home policy of $1,380 in the window's second month spread
+  (its question answered); a family dinner and a Costco run this month so
+  Dining and Groceries are over; the other questions waiting.
+
+**Models** (`personal 0003`, additive): `PersonalEnvelope`,
+`PersonalEnvelopeMove`, `PersonalPlanned`, `PersonalQuestion`; on
+`PersonalGoal` the months of envelopes and a chosen monthly amount. All in the
+isolation family.
+
+**Choices made in stop 2, for Bryan to keep or overrule:**
+
+1. **A bill the same amount every month is proposed up to the next $10**, not
+   to the nearest. At the nearest, a $22.99 subscription gets $20 and reads as
+   overspent every month; the demo showed four envelopes over for that alone.
+   Everything else is the nearest $10 as decision 9 says.
+2. **Unassigned uses planned income**, not what has come in so far, so it does
+   not swing through the month; "in so far" is shown beside it.
+3. **A goal's progress** is what was saved when it was made (or updated) plus
+   what its envelope has set aside since. Moving money to savings is a
+   transfer, so the app does not count it toward a goal by itself.
+4. **One envelope per category.** Spreading a yearly bill turns that
+   category's envelope into a saving-up one.
+5. **A yearly bill** is found by a single payment of $250 or more with nothing
+   else in that category over the months covered. Six months of history
+   cannot tell yearly from twice a year (the demo's car insurance is asked
+   about too), which is why it is a question, never applied.
+6. **The demo's Unassigned is large** ($17,660 on the day it was looked at):
+   pay from the practice is planned at the median of the draws, and the 28%
+   moved to savings for tax is a transfer, not an envelope. The Tax envelope
+   (stop 4) is where that will show.
+
+**Not built in stop 2:** the personal forecast that will read the planned
+lines (stop 3); a debt as a place for Unassigned (stop 3); the Tax envelope
+(stop 4); removing a planned line from the Overview.

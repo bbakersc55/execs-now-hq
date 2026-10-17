@@ -65,6 +65,7 @@ RULES = [
     ("ST JOHNS GIVING", "personal", None, "Church", None),
     ("VANGUARD ROTH", "personal", None, "Savings and retirement", None),
     ("GEICO", "personal", None, "Car insurance", None),
+    ("ALLSTATE HOME", "personal", None, "Home insurance", None),
     (SPOUSE_PAY, "personal", None, "Spouse pay", None),
     (DRAW_TEXT, "personal", None, "Pay from the practice", None),
     ("INTEREST PAYMENT", "personal", None, "Other income", None),
@@ -193,6 +194,10 @@ def _joint_lines(world, month: date, card_paid: int) -> list[dict]:
     ]
     if month.month in (1, 7):
         lines.append(_line(day(24), "GEICO AUTO INSURANCE", -68_400))
+    # The home policy, once a year, in the second month of the window: the
+    # yearly bill the budget finds and spreads (stop 2).
+    if month == next_month(_window(world)):
+        lines.append(_line(day(14), "ALLSTATE HOME POLICY", -138_000))
     for entry in _draws(world, month):
         on = entry.on_date + timedelta(days=1)
         lines.append(_line(on, DRAW_TEXT, entry.amount_cents))
@@ -324,7 +329,7 @@ def finish(world, books) -> None:
     from apps.finance.models import FinanceEntry
     from apps.personal import reconcile
     from apps.personal.models import (
-        PersonalBalance, PersonalDebt, PersonalGoal, PersonalHolding, PersonalLine,
+        PersonalBalance, PersonalDebt, PersonalHolding, PersonalLine,
         PersonalSetAside,
     )
 
@@ -367,13 +372,16 @@ def finish(world, books) -> None:
                     + (50_000 * n if "Roth" in holding.name else 0))
         christmas = date(today.year, 12, 1) if today < date(today.year, 11, 15) \
             else date(today.year + 1, 12, 1)
-        for position, (name, target, on, saved) in enumerate((
+        for name, target, on, saved in (
                 ("Emergency fund", 3_000_000, None, 1_840_000),
                 ("Car repairs", 250_000, today + timedelta(days=150), 90_000),
-                ("Christmas", 180_000, christmas, 60_000))):
-            PersonalGoal.objects.create(ledger=ledger, name=name, target_cents=target,
-                                        target_on=on, saved_cents=saved,
-                                        account=house["savings"], position=position)
+                ("Christmas", 180_000, christmas, 60_000)):
+            # Through the app's own goal (stop 2): a dated goal's target is a
+            # planned line; the envelopes come when the budget is used.
+            from apps.personal import budget
+
+            budget.save_goal(ledger, name=name, target_cents=target, target_on=on,
+                             saved_cents=saved, account=house["savings"])
         # The set-aside so far: each draw's share, to savings, since the last
         # estimated payment the practice made.
         paid = FinanceEntry.all_objects.filter(
@@ -395,3 +403,33 @@ def finish(world, books) -> None:
             reconcile.tick(rec, line_ids=[line.pk for line in reconcile.lines(rec)],
                            cleared=True)
             reconcile.finish(rec)
+    _budget(world)
+
+
+def _budget(world) -> None:
+    """Stop 2: John's budget, proposed from the six months and used; the
+    home policy spread as a yearly bill (its question answered), the other
+    questions waiting; and two envelopes over this month, so the Overview
+    asks where to take it from."""
+    from apps.personal import budget, questions
+    from apps.personal.models import PersonalLine, PersonalQuestion
+
+    house = world.extra["household"]
+    ledger, today = house["ledger"], world.today
+    with at(moment(today, 7, 45)):
+        budget.accept(ledger)
+        policy = PersonalQuestion.objects.filter(ledger=ledger, kind="yearly",
+                                                 category__name="Home insurance").first()
+        if policy is not None:
+            questions.answer(policy, {"spread": True})
+        view = {row["name"]: row for row in budget.month_view(ledger)["envelopes"]}
+        # A big shop and a family dinner this month: over, by a little.
+        for name, text, over in (("Groceries", "COSTCO WHSE #0661", 6_400),
+                                 ("Dining", "TRAILHEAD GRILL", 3_150)):
+            row = view.get(name)
+            if row is None:
+                continue
+            PersonalLine.objects.create(
+                ledger=ledger, account=house["joint"], category_id=row["category"],
+                on_date=today, amount_cents=max(0, row["left_cents"]) + over,
+                direction="out", description=text, source="manual")

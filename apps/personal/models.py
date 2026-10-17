@@ -417,10 +417,17 @@ class PersonalBalance(OwnedModel):
 
 class PersonalGoal(OwnedModel):
     """Decision 14: a name, a target, a date or none, what is saved already,
-    and the account that holds it."""
+    and the account that holds it. Its envelope (`PersonalEnvelope.goal`)
+    rolls, and its target is a planned line (`PersonalPlanned.goal`)."""
 
     name = models.CharField(max_length=120)
     target_cents = models.BigIntegerField()
+    #: An emergency fund: the target is this many months of the everyday
+    #: envelopes, worked out again whenever they change.
+    months_of_envelopes = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: With no date, the monthly amount the owner chose; with a date it is
+    #: worked out, and this is empty.
+    monthly_cents = models.BigIntegerField(null=True, blank=True)
     target_on = models.DateField(null=True, blank=True)
     saved_cents = models.BigIntegerField(default=0, db_default=0)
     account = models.ForeignKey(PersonalAccount, null=True, blank=True,
@@ -452,8 +459,152 @@ class PersonalSetAside(OwnedModel):
         ]
 
 
+# -------------------------------------------- the budget (P6 M4 stop 2)
+
+class PersonalEnvelope(OwnedModel):
+    """Decision 10: a category with a monthly amount; or a goal's (decision
+    14). Each month shows Planned, Spent and Left (`apps/personal/budget.py`
+    works them out; nothing about a month is stored but moves and "let it
+    stand"). Income categories have one too: what is planned to come in."""
+
+    class Kind(models.TextChoices):
+        EVERYDAY = "everyday", "Everyday"
+        #: Goals, yearly bills, the tax envelope: Left rolls forward.
+        SAVINGS = "savings", "Saving up"
+        INCOME = "income", "Income"
+
+    class Source(models.TextChoices):
+        HISTORY = "history", "From your history"
+        TYPED = "typed", "Set by you"
+        GOAL = "goal", "For a goal"
+        YEARLY = "yearly", "A yearly bill, spread"
+
+    category = models.ForeignKey(PersonalCategory, null=True, blank=True,
+                                 on_delete=models.PROTECT, related_name="envelopes")
+    goal = models.OneToOneField(PersonalGoal, null=True, blank=True, on_delete=models.CASCADE,
+                                related_name="envelope")
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.EVERYDAY)
+    #: Decision 11: Left carries into next month. The default follows the kind.
+    rolls = models.BooleanField(default=False)
+    planned_cents = models.BigIntegerField(default=0)
+    #: What history proposed when it was made, kept beside what is planned.
+    history_cents = models.BigIntegerField(null=True, blank=True)
+    source = models.CharField(max_length=8, choices=Source.choices, default=Source.HISTORY)
+    #: A yearly bill spread monthly: the bill, and the month it falls in.
+    yearly_cents = models.BigIntegerField(null=True, blank=True)
+    yearly_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: The first month it counts in.
+    start_month = models.DateField()
+    #: Months an overspend was let stand ("YYYY-MM"): not asked about again.
+    stood_months = models.JSONField(default=list, blank=True, db_default=[])
+    position = models.PositiveSmallIntegerField(default=0)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "personal_envelope"
+        ordering = ["kind", "position", "created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["ledger", "category"],
+                                    condition=Q(archived_at__isnull=True,
+                                                category__isnull=False),
+                                    name="personal_envelope_one_per_category"),
+            models.CheckConstraint(
+                condition=Q(category__isnull=False) | Q(goal__isnull=False),
+                name="personal_envelope_of_a_category_or_goal"),
+        ]
+
+
+class PersonalEnvelopeMove(OwnedModel):
+    """Decision 10: an overspend covered from another envelope's Left, in one
+    month. Made only when the owner chooses it."""
+
+    month = models.DateField()
+    from_envelope = models.ForeignKey(PersonalEnvelope, on_delete=models.CASCADE,
+                                      related_name="moves_out")
+    to_envelope = models.ForeignKey(PersonalEnvelope, on_delete=models.CASCADE,
+                                    related_name="moves_in")
+    amount_cents = models.BigIntegerField()
+
+    class Meta:
+        db_table = "personal_envelope_move"
+        ordering = ["month", "created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount_cents__gt=0),
+                                   name="personal_envelope_move_positive"),
+        ]
+
+
+class PersonalPlanned(OwnedModel):
+    """Something coming that history does not show (decision 13's last
+    question), or a goal's target on its date (decision 14): a planned line,
+    for the personal forecast (stop 3) and the Overview's "Coming up"."""
+
+    class Direction(models.TextChoices):
+        IN = "in", "In"
+        OUT = "out", "Out"
+
+    name = models.CharField(max_length=120)
+    on_date = models.DateField()
+    amount_cents = models.BigIntegerField()
+    direction = models.CharField(max_length=3, choices=Direction.choices, default=Direction.OUT)
+    goal = models.OneToOneField(PersonalGoal, null=True, blank=True, on_delete=models.CASCADE,
+                                related_name="planned")
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "personal_planned"
+        ordering = ["on_date", "name"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount_cents__gt=0),
+                                   name="personal_planned_amount_positive"),
+        ]
+
+
+class PersonalQuestion(OwnedModel):
+    """Decision 13: one of the app's own questions about the budget, one
+    screen each, any of them skippable. Asked after the proposal, and again
+    when a category drifts 25% from plan for two months. `key` says what it
+    is about, so the same question is never asked twice."""
+
+    class Kind(models.TextChoices):
+        KEEP_OR_TARGET = "keep", "Keep that, or set a target?"
+        WHICH_NORMAL = "normal", "Which is normal?"
+        YEARLY = "yearly", "A yearly bill?"
+        COMING = "coming", "Anything coming?"
+
+    class State(models.TextChoices):
+        OPEN = "open", "Waiting"
+        ANSWERED = "answered", "Answered"
+        SKIPPED = "skipped", "Skipped"
+
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    #: "proposal" or "drift".
+    run = models.CharField(max_length=8, default="proposal")
+    key = models.CharField(max_length=120)
+    envelope = models.ForeignKey(PersonalEnvelope, null=True, blank=True,
+                                 on_delete=models.CASCADE, related_name="+")
+    category = models.ForeignKey(PersonalCategory, null=True, blank=True,
+                                 on_delete=models.CASCADE, related_name="+")
+    #: The question's words and its figures, as asked.
+    text = models.CharField(max_length=300)
+    detail = models.JSONField(default=dict, blank=True)
+    state = models.CharField(max_length=8, choices=State.choices, default=State.OPEN)
+    answer = models.JSONField(default=dict, blank=True)
+    answered_at = models.DateTimeField(null=True, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "personal_question"
+        ordering = ["created_at", "position"]
+        constraints = [
+            models.UniqueConstraint(fields=["ledger", "key"],
+                                    name="personal_question_once"),
+        ]
+
+
 #: Every model here, for the isolation family. A new model goes in here or
 #: `tests/test_personal_sides.py` fails.
 OWNED = (PersonalCategory, PersonalMember, PersonalAccount, PersonalReconciliation,
          PersonalLine, PersonalImport, PersonalImportRow, PersonalDebt, PersonalHolding,
-         PersonalBalance, PersonalGoal, PersonalSetAside)
+         PersonalBalance, PersonalGoal, PersonalSetAside, PersonalEnvelope,
+         PersonalEnvelopeMove, PersonalPlanned, PersonalQuestion)

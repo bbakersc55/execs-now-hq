@@ -1,9 +1,21 @@
 from django.urls import path
 
-from apps.personal import views
+from apps.personal import views, views_budget as vb
 
 urlpatterns = [
     path("personal/ledger", views.LedgerView.as_view()),
+    # Stop 2: the budget.
+    path("personal/budget", vb.BudgetView.as_view()),
+    path("personal/budget/accept", vb.BudgetAcceptView.as_view()),
+    path("personal/budget/assign", vb.AssignView.as_view()),
+    path("personal/budget/explain", vb.ExplainBudgetView.as_view()),
+    path("personal/envelopes", vb.EnvelopeListView.as_view()),
+    path("personal/envelopes/<uuid:pk>", vb.EnvelopeView.as_view()),
+    path("personal/envelopes/<uuid:pk>/cover", vb.EnvelopeView.as_view()),
+    path("personal/questions", vb.QuestionListView.as_view()),
+    path("personal/questions/<uuid:pk>", vb.QuestionView.as_view()),
+    path("personal/goals", vb.GoalListView.as_view()),
+    path("personal/goals/<uuid:pk>", vb.GoalView.as_view()),
     path("personal/categories", views.CategoryListView.as_view()),
     path("personal/categories/<uuid:pk>", views.CategoryView.as_view()),
     path("personal/accounts", views.AccountListView.as_view()),

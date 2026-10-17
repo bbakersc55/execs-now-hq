@@ -125,7 +125,8 @@ describe("the line every Finance screen carries", () => {
     expect(routes.map((r) => r[1]).sort()).toEqual([
       "/finance", "/finance/1099", "/finance/balance", "/finance/export",
       "/finance/forecast", "/finance/import", "/finance/personal", "/finance/personal/accounts",
-      "/finance/personal/categories", "/finance/personal/import", "/finance/pnl", "/finance/reconcile",
+      "/finance/personal/categories", "/finance/personal/entries", "/finance/personal/goals",
+      "/finance/personal/import", "/finance/pnl", "/finance/reconcile",
       "/settings/finance"]);
     // The personal routes carry the personal disclaimer (PersonalFinance.test.tsx).
     // Each is one of the two screens tested above; a new one has to be added there.

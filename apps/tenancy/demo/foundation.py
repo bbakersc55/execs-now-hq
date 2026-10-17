@@ -607,4 +607,23 @@ def _personal_counts(world) -> dict:
         "goals": of(personal.PersonalGoal).count(),
         "set-aside": of(personal.PersonalSetAside).values_list("saved_cents", flat=True)
         .first(),
+        "budget": _budget_counts(world),
+    }
+
+
+def _budget_counts(world) -> dict:
+    """Stop 2: John's budget, counted from it."""
+    from apps.personal import budget, services
+    from apps.personal.models import PersonalQuestion
+
+    ledger = services.ledger_for(world.owner)
+    view = budget.month_view(ledger, world.today.replace(day=1))
+    return {
+        "envelopes": len(view["envelopes"]), "income envelopes": len(view["income"]),
+        "goals with an envelope": sum(1 for row in view["envelopes"] if row["goal"]),
+        "yearly bills spread": sum(1 for row in view["envelopes"] if row["yearly_cents"]),
+        "over this month": sorted(row["name"] for row in view["envelopes"] if row["over"]),
+        "unassigned (USD)": view["unassigned_cents"] / 100,
+        "questions waiting": PersonalQuestion.objects.filter(ledger=ledger,
+                                                             state="open").count(),
     }

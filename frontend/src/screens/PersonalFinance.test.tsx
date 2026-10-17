@@ -36,7 +36,8 @@ const LINES = {
 };
 const WITH_PERSONAL = aMe({ modules: ["bookkeeping", "personal"] });
 
-function show(tab: "entries" | "import" | "accounts" | "categories", me = WITH_PERSONAL,
+function show(tab: "overview" | "goals" | "entries" | "import" | "accounts" | "categories",
+              me = WITH_PERSONAL,
               extra: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
     "GET /api/me": me,
@@ -79,6 +80,24 @@ describe("the personal side", () => {
       "Budgeting, forecasting and tax estimates only, not tax, legal or financial advice. "
       + "Confirm with your CPA.");
   });
+
+  it("opens on its Overview, and Overview and Goals carry the disclaimer (stop 2)",
+    async () => {
+      const BUDGET = { has_budget: false, month: null, goals: [], coming_up: [],
+        questions_waiting: 0, proposal: { ready: false, least_months: 3, months: [],
+                                          envelopes: [] },
+        cash_flow: { months: [], labels: [], so_far: "", rows: [], in_cents: [],
+                     out_cents: [], net_cents: [] } };
+      for (const tab of ["overview", "goals"] as const) {
+        const { unmount } = { unmount: () => document.body.replaceChildren() };
+        show(tab, WITH_PERSONAL, { "GET /api/personal/budget": BUDGET });
+        const nav = await screen.findByRole("navigation", { name: "Personal finance" });
+        expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(
+          ["Overview", "Goals", "Entries", "Import", "Accounts", "Categories"]);
+        expect(screen.getByRole("note")).toHaveTextContent("Confirm with your CPA.");
+        unmount();
+      }
+    });
 
   it("is not there for a practice without the module", async () => {
     show("entries", aMe({ modules: ["bookkeeping"] }));

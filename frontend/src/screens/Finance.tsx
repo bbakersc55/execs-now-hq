@@ -62,7 +62,9 @@ function useBooks() {
 }
 
 const PERSONAL_TABS: [PersonalTab, string, string][] = [
-  ["entries", "/finance/personal", "Entries"],
+  ["overview", "/finance/personal", "Overview"],
+  ["goals", "/finance/personal/goals", "Goals"],
+  ["entries", "/finance/personal/entries", "Entries"],
   ["import", "/finance/personal/import", "Import"],
   ["accounts", "/finance/personal/accounts", "Accounts"],
   ["categories", "/finance/personal/categories", "Categories"],

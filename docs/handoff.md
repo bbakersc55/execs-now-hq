@@ -1,13 +1,28 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-17**, after demo visitors. **The next session starts at
-"2026-10-17" just below, then "2026-10-15, night" and "2026-10-15, evening".** Then "Release 12: the plan as it was" and "2026-10-13", which
+2026-10-17**, after M4 stop 2. **The next session starts at "2026-10-17,
+evening: M4 stop 2" just below, then "2026-10-17", "2026-10-15, night" and
+"2026-10-15, evening".** Then "Release 12: the plan as it was" and "2026-10-13", which
 is the day in order. Everything from "Next" down was last brought up to
 date on 10/5; where it and a newer section disagree, the newer holds. Upload
 this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
+
+## 2026-10-17, evening: M4 stop 2, the budget (not released)
+
+- **Release 16** went out first, the same evening: demo visitors with Bryan's
+  two changes (`0c1fd61`, `tenancy 0017–0018`), by the runbook, all OK.
+- **Stop 2 built on `dev`:** decisions 9–14, the Cash flow table, Explain
+  this budget; the Personal side opens on its Overview. As built and six
+  choices for Bryan: `docs/p6_m4_personal_finance.md`, "As built: stop 2".
+- **Migration `personal 0003`**, additive (four tables, two nullable goal
+  columns), applied on the laptop after a green suite. **The next release
+  carries it.**
+- **The demo** has to be **re-seeded** to show the budget (pushing `dev`
+  migrates it, and the reseed now leaves visitors' copies alone). A visitor's
+  copy made before then has no budget until it is reset.
 
 ## 2026-10-17: the sign-off fix, Release 15, and demo visitors (not released)
 

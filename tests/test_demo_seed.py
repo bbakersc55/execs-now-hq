@@ -450,6 +450,22 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert mine["PersonalGoal"].count() == 3
         set_aside = mine["PersonalSetAside"].get()
         assert set_aside.year == today.year and set_aside.saved_cents > 0
+        # Stop 2: the budget, proposed from the six months and used; three
+        # goals live, the home policy spread, two envelopes over this month.
+        from apps.personal import budget as personal_budget
+
+        view = personal_budget.month_view(owner.personal_ledger)
+        named = {row["name"]: row for row in view["envelopes"]}
+        assert {"Groceries", "Dining", "Rent or mortgage"} <= set(named)
+        assert named["Groceries"]["source"] == "history"
+        assert {"Emergency fund", "Car repairs", "Christmas"} <= set(named)
+        assert all(named[g]["rolls"] for g in ("Emergency fund", "Car repairs", "Christmas"))
+        assert named["Home insurance"]["yearly_cents"] == 138_000
+        assert sorted(row["name"] for row in view["envelopes"] if row["over"]) == \
+            ["Dining", "Groceries"]
+        assert view["income"] and view["income_planned_cents"] > 0
+        assert mine["PersonalQuestion"].filter(state="open").exists()
+        assert mine["PersonalPlanned"].filter(goal__isnull=False).count() == 2
         # Last month's savings statement reconciled; nothing to close.
         [rec] = mine["PersonalReconciliation"]
         assert rec.state == "finished" and personal_reconcile.totals(rec)[

@@ -36,7 +36,9 @@ PURPOSE = "finance_explain_step"
 #: own daily cap is for what nobody asked for, and does not count these.
 PRESSED = (PURPOSE, "finance_explain_forecast", "finance_review_forecast",
            # P6 M4 decision 6, the brief winning: "Sort these with Claude".
-           "personal_sort_lines")
+           "personal_sort_lines",
+           # P6 M4 decision 25: "Explain this budget".
+           "personal_explain_budget")
 DAILY_CAP = 20
 #: Only these steps send the unticked lines.
 WITH_LINES = (4, 5)

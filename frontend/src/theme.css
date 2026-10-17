@@ -1327,3 +1327,12 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
   background: var(--hover);
   padding: var(--s3);
 }
+
+/* P6 M4 stop 2: the personal budget. */
+table.data td.num, table.data th.num { text-align: right; white-space: nowrap; }
+table.envelopes tr.over td { background: var(--bad-bg); }
+table.envelopes tr.over-ask td { background: var(--bad-bg); padding-top: 0; }
+table.cash-flow tr.total td { border-top: 1px solid var(--line); background: var(--bg); }
+table.cash-flow td:first-child { white-space: nowrap; }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li { padding: var(--s1) 0; }

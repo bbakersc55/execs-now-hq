@@ -417,7 +417,11 @@ export function App() {
                 <Route path="/finance/balance" element={<Finance tab="balance" />} />
                 <Route path="/finance/export" element={<Finance tab="export" />} />
                 {/* P6 M4: the personal side. */}
-                <Route path="/finance/personal" element={<Finance personalTab="entries" />} />
+                <Route path="/finance/personal" element={<Finance personalTab="overview" />} />
+                <Route path="/finance/personal/goals"
+                  element={<Finance personalTab="goals" />} />
+                <Route path="/finance/personal/entries"
+                  element={<Finance personalTab="entries" />} />
                 <Route path="/finance/personal/import"
                   element={<Finance personalTab="import" />} />
                 <Route path="/finance/personal/accounts"

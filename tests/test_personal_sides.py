@@ -110,6 +110,11 @@ def make_owned(model, ledger):
     def debt():
         return m.PersonalDebt.objects.create(ledger=ledger, name="Mortgage", kind="mortgage")
 
+    def goal_envelope():
+        goal = m.PersonalGoal.objects.create(ledger=ledger, name="Trip", target_cents=100)
+        return m.PersonalEnvelope.objects.create(ledger=ledger, goal=goal,
+                                                 start_month=today.replace(day=1))
+
     def batch():
         return m.PersonalImport.objects.create(ledger=ledger, account=account(),
                                                filename="joint.csv")
@@ -135,6 +140,17 @@ def make_owned(model, ledger):
             ledger=ledger, name="Vacation", target_cents=100),
         m.PersonalSetAside: lambda: m.PersonalSetAside.objects.create(
             ledger=ledger, year=today.year),
+        # Stop 2: the budget.
+        m.PersonalEnvelope: lambda: m.PersonalEnvelope.objects.create(
+            ledger=ledger, category=PersonalCategory.objects.filter(
+                ledger=ledger, name="Groceries").first(), start_month=today.replace(day=1)),
+        m.PersonalEnvelopeMove: lambda: m.PersonalEnvelopeMove.objects.create(
+            ledger=ledger, month=today.replace(day=1), amount_cents=100,
+            from_envelope=goal_envelope(), to_envelope=goal_envelope()),
+        m.PersonalPlanned: lambda: m.PersonalPlanned.objects.create(
+            ledger=ledger, name="Roof", on_date=today, amount_cents=100),
+        m.PersonalQuestion: lambda: m.PersonalQuestion.objects.create(
+            ledger=ledger, kind="coming", key=f"coming:{today}", text="Anything coming?"),
     }
     return ways[model]()
 

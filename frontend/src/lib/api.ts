@@ -2099,3 +2099,61 @@ export interface SortProposals {
   proposals: SortProposal[]; cost_usd: string; used_today: number; cap: number;
   disclaimer: string;
 }
+
+// ------------------------------------------- P6 M4 stop 2: the budget
+
+/** apps/personal/budget.py `month_view`, one envelope. */
+export interface Envelope {
+  id: string; name: string; kind: "everyday" | "savings" | "income"; kind_label: string;
+  rolls: boolean; category: string | null; goal: string | null;
+  source: "history" | "typed" | "goal" | "yearly"; source_label: string;
+  planned_cents: number; history_cents: number | null; carried_cents: number;
+  moved_in_cents: number; moved_out_cents: number; spent_cents: number; left_cents: number;
+  yearly_cents: number | null; yearly_month: number | null; over: boolean; stood: boolean;
+}
+
+export interface BudgetMonth {
+  month: string; month_label: string; envelopes: Envelope[]; income: Envelope[];
+  income_planned_cents: number; income_received_cents: number;
+  planned_cents: number; spent_cents: number; unassigned_cents: number;
+  over_income: { id: string; name: string; planned_cents: number }[];
+  unbudgeted: { category: string; name: string; spent_cents: number }[];
+}
+
+export interface PersonalGoal {
+  id: string; name: string; target_cents: number; target_on: string | null;
+  saved_cents: number; set_aside_cents: number; progress_cents: number; percent: number;
+  monthly_cents: number; monthly_chosen: boolean; months_of_envelopes: number | null;
+  account: { id: string; name: string } | null; envelope: string | null;
+  planned: { id: string; on_date: string; amount_cents: number } | null;
+}
+
+export interface CashFlow {
+  months: string[]; labels: string[]; so_far: string;
+  rows: { type: "income" | "expense"; name: string; cents: number[];
+          children: { name: string; cents: number[] }[] }[];
+  in_cents: number[]; out_cents: number[]; net_cents: number[];
+}
+
+export interface Budget {
+  has_budget: boolean;
+  proposal: null | {
+    ready: boolean; least_months: number; months: string[];
+    envelopes: { category: PersonalCategory; kind: string; amounts: number[];
+                 proposed_cents: number }[];
+  };
+  month: BudgetMonth | null;
+  goals: PersonalGoal[];
+  coming_up: { id: string; name: string; on_date: string; amount_cents: number;
+               direction: "in" | "out"; goal: string | null }[];
+  cash_flow: CashFlow;
+  questions_waiting: number;
+}
+
+/** apps/personal/questions.py `represent`. */
+export interface BudgetQuestion {
+  id: string; kind: "keep" | "normal" | "yearly" | "coming"; run: string; text: string;
+  detail: { proposed_cents?: number; suggested_cents?: number; choices?: number[];
+            cents?: number; month?: number; monthly_cents?: number };
+  state: string; envelope: string | null; category: string | null;
+}

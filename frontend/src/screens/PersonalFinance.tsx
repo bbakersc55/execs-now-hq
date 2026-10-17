@@ -12,6 +12,7 @@ import { dollars, longDate } from "../lib/money";
 import { PERSONAL_DISCLAIMER, personalOptions, usePersonalChart } from "../lib/personal";
 import { ImportFileStep, StatementRead } from "./FinanceImport";
 import { AiGate } from "../components/DemoVisitor";
+import { PersonalGoals, PersonalOverview } from "./PersonalBudget";
 
 /**
  * Personal finance (P6 M4 stop 1, `docs/p6_m4_personal_finance.md`): the
@@ -22,11 +23,15 @@ import { AiGate } from "../components/DemoVisitor";
  * Import, Accounts (with an optional reconcile) and Categories. The budget,
  * goals, forecast, debts and taxes come in the later stops.
  */
-export type PersonalTab = "entries" | "import" | "accounts" | "categories";
+export type PersonalTab = "overview" | "goals" | "entries" | "import" | "accounts"
+  | "categories";
 
 export function PersonalFinance({ tab }: { tab: PersonalTab }) {
   return (
     <div className="personal-side">
+      {/* Stop 2: the Overview is the first page of the Personal side. */}
+      {tab === "overview" && <PersonalOverview />}
+      {tab === "goals" && <PersonalGoals />}
       {tab === "entries" && <PersonalEntries />}
       {tab === "import" && <PersonalImports />}
       {tab === "accounts" && <PersonalAccounts />}
