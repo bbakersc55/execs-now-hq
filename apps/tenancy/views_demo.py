@@ -8,6 +8,26 @@ from rest_framework.views import APIView
 from apps.crm.permissions import IsFF, IsTenantStaff
 
 
+class DemoAgreeView(APIView):
+    """POST {version}: the visitor's tick on their first sign-in. The copy's
+    practice owner only, and only in a visitor's copy."""
+
+    permission_classes = [IsTenantStaff, IsFF]
+
+    def post(self, request):
+        from apps.tenancy.demo import visitors
+
+        visitor = visitors.of(request.tenant)
+        if visitor is None:
+            return Response({"detail": "Only a demo visitor's copy asks for this."}, status=404)
+        try:
+            visitors.agree(visitor, version=str(request.data.get("version", "")),
+                           actor=request.user)
+        except visitors.VisitorRefused as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response({"demo_visitor": visitors.describe(request.tenant)})
+
+
 class DemoResetView(APIView):
     """POST: empty this copy and seed it again. The copy's practice owner
     only, and only in a visitor's copy."""

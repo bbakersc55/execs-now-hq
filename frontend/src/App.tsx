@@ -57,7 +57,9 @@ import { InvoiceSettings } from "./screens/InvoiceSettings";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
-import { DemoEmailSettings, DemoSettingUp, DemoSettings } from "./components/DemoVisitor";
+import {
+  DemoAgreement, DemoEmailSettings, DemoSettingUp, DemoSettings,
+} from "./components/DemoVisitor";
 import { PlatformFeedback } from "./screens/PlatformFeedback";
 import { Dashboard } from "./screens/Dashboard";
 import { Meetings } from "./screens/Meetings";
@@ -267,7 +269,9 @@ export function App() {
   // else; the server refuses every other call until then.
   if (me.agreement_required) return <AgreementGate />;
 
-  // A demo visitor's copy that is not ready yet shows only that (2026-10-17).
+  // A demo visitor's copy: first their one tick, then, until it is ready,
+  // only that it is being set up (2026-10-17).
+  if (me.demo_visitor?.agreement_required) return <DemoAgreement me={me} />;
   if (me.demo_visitor && me.demo_visitor.state !== "ready") return <DemoSettingUp me={me} />;
 
   // The platform owner's pages keep the default words (2026-10-15).

@@ -78,7 +78,8 @@ def _ready(visitor):
     user = User.objects.get(email=visitor.email)
     member = Membership.all_objects.create(tenant=visitor.tenant, user=user, role="FF")
     DemoVisitor.objects.filter(pk=visitor.pk).update(state="ready",
-                                                     setup_finished_at=timezone.now())
+                                                     setup_finished_at=timezone.now(),
+                                                     agreed_at=timezone.now())
     visitor.refresh_from_db()
     return member
 
@@ -473,3 +474,56 @@ def test_a_copy_is_not_asked_for_gmail_or_a_key_nor_told_its_unattended_ai_is_pa
     copy.tenant.ai_unattended_daily_cap_usd = Decimal("0")
     copy.tenant.save()
     assert ai_guard.status(copy.tenant, financial=True)["paused"] is False
+
+
+# ===================================================== the visitor's one tick
+
+@pytest.mark.django_db
+def test_nothing_else_until_the_visitor_ticks_and_a_reset_does_not_ask_again(
+        copy, api, launched, django_capture_on_commit_callbacks):
+    from apps.platform import agreement
+    from apps.tenancy.demo import visitors
+    from apps.tenancy.models import AuditEvent, DemoVisitor
+
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(agreed_at=None)
+    client = api.as_(copy.owner)
+    me = client.get("/api/me").json()["demo_visitor"]
+    assert me["agreement_required"] and me["days"] == 30
+    refused = client.get("/api/contacts/")
+    assert refused.status_code == 403 and refused.json()["demo_agreement_required"]
+    assert client.post("/api/demo/reset").status_code == 403
+    # The agreement itself can be read before ticking.
+    assert client.get("/api/agreement").status_code == 200
+    stale = client.post("/api/demo/agree", json.dumps({"version": "v0"}),
+                        content_type="application/json")
+    assert stale.status_code == 409
+    before = timezone.now()
+    ticked = client.post("/api/demo/agree", json.dumps({"version": agreement.VERSION}),
+                         content_type="application/json")
+    assert ticked.status_code == 200
+    assert ticked.json()["demo_visitor"]["agreement_required"] is False
+    copy.visitor.refresh_from_db()
+    assert copy.visitor.agreed_at >= before and copy.visitor.agreed_version == agreement.VERSION
+    assert AuditEvent.all_objects.filter(verb="demo_visitor.agreed").count() == 1
+    assert client.get("/api/contacts/").status_code == 200
+    # A reset empties the copy, not its record: no second question.
+    with django_capture_on_commit_callbacks(execute=True):
+        assert client.post("/api/demo/reset").status_code == 200
+    agreed = copy.visitor.agreed_at
+    visitors.empty_practice(copy.tenant, keep_user_email=copy.visitor.email, keep_ai_calls=True)
+    copy.visitor.refresh_from_db()
+    assert copy.visitor.agreed_at == agreed
+
+
+@pytest.mark.django_db
+def test_only_the_visitor_ticks_and_only_in_a_copy(copy, api, ff):
+    from apps.platform import agreement
+    from apps.tenancy.models import DemoVisitor
+
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(agreed_at=None)
+    body = json.dumps({"version": agreement.VERSION})
+    assert api.as_(ff).post("/api/demo/agree", body,
+                            content_type="application/json").status_code == 404
+    assistant = _member(copy.tenant, "VA")
+    assert api.as_(assistant).post("/api/demo/agree", body,
+                                   content_type="application/json").status_code == 403

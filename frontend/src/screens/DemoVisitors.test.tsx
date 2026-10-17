@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  AiGate, DemoEmailSettings, DemoSettingUp, DemoSettings, DemoVisitorBanner,
+  AiGate, DemoAgreement, DemoEmailSettings, DemoSettingUp, DemoSettings, DemoVisitorBanner,
 } from "../components/DemoVisitor";
 import { DemoVisitorInfo, Me } from "../lib/api";
 import { aMe } from "../test/fixtures";
@@ -25,6 +25,7 @@ const VERA: DemoVisitorRow = {
 };
 
 const DEMO: DemoVisitorInfo = {
+  agreement_required: false, agreement_version: "v1", days: 30,
   state: "ready", expires_at: "2026-11-16T16:00:00Z", deletes_on: "2026-11-23T16:00:00Z",
   read_only: false, ai_stop: "", ai_spent_today_usd: "0.40", ai_spent_total_usd: "1.10",
   ai_per_day_usd: "2.00", ai_in_all_usd: "10.00", reset_count: 0,
@@ -183,5 +184,42 @@ describe("a visitor's own copy", () => {
     withMe(visitor(), <DemoEmailSettings me={visitor()} />);
     expect(screen.getByText(/connects no Gmail\s+or Drive/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Connect/ })).toBeNull();
+  });
+});
+
+describe("a visitor's first sign-in (2026-10-17)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("is one short line, the agreement to read, and one box that records the tick",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = mockApi({
+        "GET /api/agreement": { version: "v1", text: "# Beta agreement\n\nClause one.",
+                                sha256: "x", required: false },
+        "POST /api/demo/agree": { demo_visitor: DEMO },
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const me = visitor({ agreement_required: true });
+      withMe(me, <DemoAgreement me={me} />);
+      expect(screen.getByText(/yours for 30 days/)).toHaveTextContent(
+        /Everything in it is fictional, and it comes as it is, with\s+no warranty/);
+      expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+      await user.click(screen.getByRole("button", { name: "beta agreement" }));
+      expect(await screen.findByText("Clause one.")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Close" }));
+      expect(fetchMock.calls.some((c) => c.method === "POST")).toBe(false);
+      await user.click(screen.getByRole("checkbox"));
+      await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+        .toEqual({ version: "v1" }));
+    });
+
+  it("shows the date the visitor agreed on the platform's list", async () => {
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/platform/practices": [],
+      "GET /api/platform/demo-visitors": [{ ...VERA, agreed_at: null }],
+    }));
+    renderRoute(<Practices me={aMe({ environment: "demo" })} />);
+    const card = await screen.findByRole("article", { name: "Demo of Vera Visitor" });
+    expect(within(card).getByText("Not yet")).toBeInTheDocument();
   });
 });

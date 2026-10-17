@@ -100,7 +100,7 @@ class TenantMiddleware:
 
 #: What a visitor's copy answers while it is being set up, or once it has
 #: ended: who is signed in, and how the page looks.
-DEMO_OPEN = ("/api/me", "/api/branding", "/api/agreement")
+DEMO_OPEN = ("/api/me", "/api/branding", "/api/agreement", "/api/demo/agree")
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
@@ -127,6 +127,10 @@ class DemoVisitorGate:
         if visitor is not None and path.startswith("/api/") and not path.startswith(DEMO_OPEN):
             from django.http import JsonResponse
 
+            # First, the visitor's one tick: nothing else until it is given.
+            if visitor.agreed_at is None:
+                return JsonResponse({"detail": "Tick the box on the first screen first.",
+                                     "demo_agreement_required": True}, status=403)
             state = visitors.shown_state(visitor)
             if state != "ready":
                 return JsonResponse({"detail": "Your demo is being set up." if state ==

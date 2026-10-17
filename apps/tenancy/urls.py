@@ -13,6 +13,7 @@ router.register("act-as", views_acting.ActAsViewSet, basename="act-as")
 
 urlpatterns = router.urls + [
     path("demo/reset", views_demo.DemoResetView.as_view(), name="demo-reset"),
+    path("demo/agree", views_demo.DemoAgreeView.as_view(), name="demo-agree"),
     path("settings/branding", views.BrandingSettingsView.as_view(), name="branding-settings"),
     path("settings/words", views.WordsSettingsView.as_view(), name="words-settings"),
     path("getting-started", views.GettingStartedView.as_view(), name="getting-started"),

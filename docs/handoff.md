@@ -49,12 +49,19 @@ covers what they don't, and what changed since 9/30.
     worker). Extend, Reset, Delete, and Send the invitation in Practices.
   - Not on the Practices list; no beta agreement, Gmail, Drive, Anthropic
     key or "Getting started" items for those.
-- **Open for Bryan:** (1) **re-seeding Summit (`seed_demo`) still empties the
-  whole demo database, every visitor's copy included**, as decision 8 asked
-  it to stay; say if it should keep them. (2) An address that already signs
-  in to a practice on the demo cannot be a visitor (one practice per
-  sign-in): use a plus address. (3) Visitors are not shown the beta
-  agreement. (4) A visitor plays John Carter.
+- **Bryan's two changes, the same evening:** (1) `seed_demo` now empties and
+  refills **Summit's own practice only** (`demo.reset_summit`); visitors'
+  copies keep their sign-ins, data and end dates (tested in
+  `test_demo_visitors_seed.py`). The old empty-every-table path is
+  `--whole-database`, refused anywhere but a localhost build. (2) A visitor's
+  first sign-in shows one screen: fictional data, the days it lasts, no
+  warranty, a link to the beta agreement, one box; nothing else answers
+  until it is ticked (`DemoVisitorGate`), recorded with its time and the
+  agreement's version on `demo_visitor` (migration `tenancy 0018`), so a
+  reset never asks again. The platform list shows when each visitor agreed.
+- **Still open for Bryan:** an address that already signs in to a practice
+  on the demo cannot be a visitor (use a plus address); a visitor plays John
+  Carter.
 
 ## 2026-10-15, night: the strategy document redesigned (not released)
 

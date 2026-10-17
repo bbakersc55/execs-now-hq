@@ -93,10 +93,11 @@ def practice(*, ff_email, ff_name, oauth_client, today, visitor=None) -> World:
         if visitor is None:
             tenant = Tenant.objects.create(slug=cast.SLUG, **fields)
             # Also the platform owner there, so the demo has a Practices area
-            # to show.
-            owner = User.objects.create(email=ff_email.strip().lower(),
-                                        full_name=ff_name or cast.OWNER_NAME,
-                                        is_platform_owner=True)
+            # to show. A reseed that leaves visitors' copies keeps this sign-in
+            # (`reset_summit`), and the new Summit takes it over.
+            owner, _ = User.objects.update_or_create(
+                email=ff_email.strip().lower(),
+                defaults={"full_name": ff_name or cast.OWNER_NAME, "is_platform_owner": True})
         else:
             tenant = visitor.tenant
             Tenant.objects.filter(pk=tenant.pk).update(

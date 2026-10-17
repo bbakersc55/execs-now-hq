@@ -94,6 +94,47 @@ def test_a_copy_is_built_beside_summit_kept_apart_reset_and_deleted(settings, mo
         assert str(row.pk) not in seen_by_summit
     assert visitor.tag not in seen_by_summit
 
+    # ------------------------------- Summit reseeded: the copy is untouched
+    from datetime import timedelta
+
+    from apps.tenancy.demo import money
+
+    DemoVisitor.objects.filter(pk=visitor.pk).update(agreed_at=timezone.now())
+    visitor.refresh_from_db()
+    agreed = visitor.agreed_at
+    before = {
+        "contacts": set(Contact.all_objects.filter(tenant=copy).values_list("pk", flat=True)),
+        "files": set(StoredFile.all_objects.filter(tenant=copy).values_list("pk", flat=True)),
+        "people": set(Membership.all_objects.filter(tenant=copy)
+                      .values_list("user_id", flat=True)),
+    }
+    old_summit = summit.pk
+    first = timezone.localdate().replace(day=1)
+    monkeypatch.setattr(money, "FIRST", (first - timedelta(days=120)).replace(day=1))
+    call_command("seed_demo", database=_name(), ff_email=OWNER)
+    summit = Tenant.objects.get(slug=cast.SLUG)
+    assert summit.pk != old_summit                       # Summit is new
+    assert Tenant.objects.filter(pk=copy.pk).exists()    # the copy is not
+    visitor.refresh_from_db()
+    assert visitor.expires_at == expires and visitor.agreed_at == agreed
+    assert visitor.state == DemoVisitor.State.READY
+    assert User.objects.get(email=VISITOR).pk == me.pk
+    assert set(Contact.all_objects.filter(tenant=copy).values_list("pk", flat=True)) == \
+        before["contacts"]
+    assert set(StoredFile.all_objects.filter(tenant=copy).values_list("pk", flat=True)) == \
+        before["files"]
+    assert set(Membership.all_objects.filter(tenant=copy).values_list("user_id", flat=True)) \
+        == before["people"]
+    # And the visitor still signs in to it, and sees it.
+    assert _signed_in(me).get("/api/contacts/").status_code == 200
+    owner = User.objects.get(email=OWNER)
+    assert owner.is_platform_owner
+    assert Membership.all_objects.get(user=owner).tenant_id == summit.pk
+    # Only the laptop may empty every table.
+    from django.core.management import CommandError
+    with pytest.raises(CommandError, match="laptop only"):
+        call_command("seed_demo", database=_name(), ff_email=OWNER, whole_database=True)
+
     # ------------------------------------------------------------- reset
     AiCall.all_objects.create(tenant=copy, purpose="test", model="m", cost_usd="1.25",
                               succeeded=True)
@@ -105,6 +146,7 @@ def test_a_copy_is_built_beside_summit_kept_apart_reset_and_deleted(settings, mo
     visitor.refresh_from_db()
     assert visitor.state == DemoVisitor.State.READY and visitor.reset_count == 1
     assert visitor.expires_at == expires                     # its dates survive
+    assert visitor.agreed_at == agreed                       # and it is not asked again
     assert User.objects.get(email=VISITOR).pk == me.pk       # and the sign-in
     assert Membership.all_objects.get(user=me).tenant_id == copy.pk
     new_contacts = set(Contact.all_objects.filter(tenant=copy).values_list("pk", flat=True))

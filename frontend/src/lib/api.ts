@@ -105,6 +105,11 @@ export interface Me {
 
 /** apps/tenancy/demo/visitors.py `describe`. */
 export interface DemoVisitorInfo {
+  /** The visitor's one tick on first sign-in is still to give. */
+  agreement_required: boolean;
+  agreement_version: string;
+  /** The days the copy was given. */
+  days: number;
   state: "setting_up" | "ready" | "failed";
   expires_at: string;
   deletes_on: string;

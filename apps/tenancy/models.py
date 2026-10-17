@@ -267,6 +267,11 @@ class DemoVisitor(UUIDModel):
     invited_at = models.DateTimeField(null=True, blank=True)
     reset_count = models.PositiveIntegerField(default=0, db_default=0)
     last_reset_at = models.DateTimeField(null=True, blank=True)
+    #: The visitor's tick on their first sign-in (2026-10-17): fictional data,
+    #: the days it lasts, no warranty, under the beta agreement of this
+    #: version. On this row, so a reset never asks again.
+    agreed_at = models.DateTimeField(null=True, blank=True)
+    agreed_version = models.CharField(max_length=32, blank=True, default="", db_default="")
 
     class Meta:
         db_table = "demo_visitor"

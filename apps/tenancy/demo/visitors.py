@@ -170,13 +170,42 @@ def ai_stop(tenant) -> str:
     return ""
 
 
+def days_of(visitor) -> int:
+    """How many days the copy was given, as the visitor reads it."""
+    return max(1, round((visitor.expires_at - visitor.created_at).total_seconds() / 86400))
+
+
+def agree(visitor, *, version: str, actor) -> None:
+    """The visitor's tick (2026-10-17), with the time, against the beta
+    agreement's current version. Once: a second tick changes nothing."""
+    from apps.platform import agreement
+    from apps.tenancy.models import AuditEvent, DemoVisitor
+
+    if visitor.agreed_at is not None:
+        return
+    current = agreement.VERSION
+    if version != current:
+        raise VisitorRefused({"version": "The beta agreement changed. Reload the page."})
+    now = timezone.now()
+    DemoVisitor.objects.filter(pk=visitor.pk).update(agreed_at=now, agreed_version=current)
+    visitor.agreed_at, visitor.agreed_version = now, current
+    AuditEvent.all_objects.create(
+        tenant=visitor.tenant, actor=actor, verb="demo_visitor.agreed", target_type="tenant",
+        target_id=visitor.tenant_id, payload={"version": current})
+
+
 def describe(tenant) -> dict | None:
     """What the copy's own screens are told about it (`/api/me`)."""
+    from apps.platform import agreement
+
     visitor = of(tenant)
     if visitor is None:
         return None
     spent = spend(tenant)
     return {
+        "agreement_required": visitor.agreed_at is None,
+        "agreement_version": agreement.VERSION,
+        "days": days_of(visitor),
         "state": shown_state(visitor),
         "expires_at": visitor.expires_at.isoformat(),
         "deletes_on": deletes_on(visitor).isoformat(),
@@ -210,6 +239,7 @@ def rows() -> list[dict]:
             "deletes_on": deletes_on(visitor).isoformat(),
             "ended": ended(visitor),
             "invited_at": visitor.invited_at.isoformat() if visitor.invited_at else None,
+            "agreed_at": visitor.agreed_at.isoformat() if visitor.agreed_at else None,
             "last_activity_at": seen.isoformat() if seen else None,
             "ai_spent_today_usd": str(spent["today"]),
             "ai_spent_total_usd": str(spent["total"]),
@@ -514,13 +544,20 @@ def empty_practice(tenant, *, keep_user_email: str, keep_ai_calls: bool) -> list
     return files
 
 
-def _remove_files(files) -> None:
+def remove_files(files) -> int:
+    """Take these out of the demo's bucket; how many went."""
     from apps.tenancy import storage
 
+    removed = 0
     for bucket, key in files:
         if bucket != settings.GCS_BUCKET_MEDIA:
             continue                    # only ever the demo's own configured bucket
         try:
             storage.delete_object(bucket, key)
+            removed += 1
         except storage.StorageError:    # an orphan in the demo bucket costs nothing
             pass
+    return removed
+
+
+_remove_files = remove_files

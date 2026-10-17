@@ -3,14 +3,21 @@
 
     python manage.py seed_demo --database <name> --ff-email you@getexecutivesnow.com
 
-**Every run starts by emptying the whole database** — that is what makes it a
-reset. So it refuses before touching anything unless:
+**Every run starts by emptying Summit's own practice** — that is what makes it
+a reset — and nothing else: demo visitors' copies (2026-10-17), with their
+sign-ins, data and end dates, are left as they are. `--whole-database` empties
+every table instead, as the command always did before; it is for the laptop
+only and is refused anywhere that is not a localhost build. Either way it
+refuses before touching anything unless:
 
 1. `APP_ENVIRONMENT` is `demo`;
 2. the database is not `execsnowhq_dev` (the laptop's production database
    until cutover, its fallback after), whatever else is true;
 3. the operator types the database's name (`--database`), matching the one
    configured.
+
+Summit's own people go with it, but never the platform owner's sign-in, which
+the new Summit takes over.
 
 `--ff-email` is the Google account that signs in to the demo as its practice
 owner. Inside the demo that person is shown as John Carter (`--ff-name`): the
@@ -45,6 +52,9 @@ class Command(BaseCommand):
         parser.add_argument("--ff-name", default="",
                             help="How that person is shown in the demo. John Carter "
                                  "unless given.")
+        parser.add_argument("--whole-database", action="store_true",
+                            help="Laptop only: empty every table, visitors' copies "
+                                 "included, rather than Summit alone.")
         parser.add_argument("--oauth-client", default="internal",
                             choices=("internal", "external"),
                             help="Which Google OAuth client the demo practice signs in "
@@ -61,30 +71,31 @@ class Command(BaseCommand):
             raise CommandError(f"You typed {options['database']!r}, but the configured "
                                f"database is {name!r}. Refusing.")
 
-        from apps.tenancy import demo, storage
+        whole = options["whole_database"]
+        if whole and not settings.IS_LOCAL:
+            raise CommandError("--whole-database empties every visitor's copy too. It is for "
+                               "the laptop only. Refusing.")
+
+        from apps.tenancy import demo
+        from apps.tenancy.demo import visitors
 
         began = time.monotonic()
         with transaction.atomic():
             kept = demo.kept_mail_connection()
             ai_key = demo.kept_ai_key()
-            old_files = demo.stored_objects()
-            emptied = demo.reset_database()
+            if whole:
+                old_files = [(f.bucket, f.object_key) for f in demo.stored_objects()]
+                emptied = f"Emptied {demo.reset_database()} tables in {name}"
+            else:
+                old_files = demo.reset_summit()
+                emptied = f"Emptied {demo.PRACTICE} in {name}"
             made = demo.build(ff_email=options["ff_email"], ff_name=options["ff_name"],
                               oauth_client=options["oauth_client"], mail_connection=kept,
                               ai_key=ai_key)
         # Only once the new demo is committed: a failed seed rolls back to the
         # old one, which still needs its files.
-        removed = 0
-        for stored in old_files:
-            if stored.bucket != settings.GCS_BUCKET_MEDIA:
-                continue                # only ever the demo's own configured bucket
-            try:
-                storage.delete_object(stored.bucket, stored.object_key)
-                removed += 1
-            except storage.StorageError:    # an orphan in the demo bucket costs nothing
-                pass
-        self.stdout.write(f"Emptied {emptied} tables in {name}, removed {removed} of "
-                          f"{len(old_files)} old files, then seeded "
-                          f"{made['tenant'].name} in {time.monotonic() - began:.0f}s:")
+        removed = visitors.remove_files(old_files)
+        self.stdout.write(f"{emptied}, removed {removed} of {len(old_files)} old files, then "
+                          f"seeded {made['tenant'].name} in {time.monotonic() - began:.0f}s:")
         self.stdout.write(json.dumps(made["counts"], indent=2, default=str))
         self.stdout.write(f"Sign in as {options['ff_email']} with Google.")

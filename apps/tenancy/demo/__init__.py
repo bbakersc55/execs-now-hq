@@ -28,14 +28,23 @@ from django.db import connection
 from .cast import PRACTICE, SLUG  # noqa: F401  (what the command and tests name)
 
 
+def summit():
+    """Summit's practice row, or None before the first seed."""
+    from apps.tenancy.models import Tenant
+
+    return Tenant.objects.filter(slug=SLUG).first()
+
+
 def kept_mail_connection():
     """The demo's own send-only Gmail connection, lifted out before the reset
     so that re-seeding does not mean connecting Gmail again. Returned as plain
-    values; `foundation.restore_mail_connection` puts it back."""
+    values; `foundation.restore_mail_connection` puts it back. Summit's only:
+    visitors' copies hold none."""
     from apps.crm.models import GmailConnection
 
     row = (GmailConnection.all_objects.select_related("user", "secret", "tenant")
-           .filter(send_as_verified_at__isnull=False, secret__isnull=False)
+           .filter(tenant__slug=SLUG, send_as_verified_at__isnull=False,
+                   secret__isnull=False)
            .order_by("-send_as_verified_at").first())
     if row is None:
         return None
@@ -54,7 +63,7 @@ def kept_ai_key():
     from apps.tenancy.models import Membership, SecretKind, TenantSecret
 
     row = (TenantSecret.all_objects.filter(kind=SecretKind.ANTHROPIC_API_KEY,
-                                           user__isnull=True)
+                                           user__isnull=True, tenant__slug=SLUG)
            .order_by("-verified_at", "-created_at").first())
     if row is None:
         return None
@@ -79,6 +88,23 @@ def stored_objects():
 #: and permissions made after each migrate. Emptying them broke the demo's
 #: sign-in on 2026-10-08 (`Site.DoesNotExist`), so the reset leaves them.
 DJANGOS_OWN = ("django_migrations", "django_site", "django_content_type", "auth_permission")
+
+
+def reset_summit() -> list:
+    """Empty Summit's own practice and take its row away, leaving every other
+    practice (visitors' copies) as it is (2026-10-17). Its people go with it,
+    but never the platform owner's sign-in, which the new Summit takes over.
+    Returns its stored files, to take out of the bucket once committed."""
+    from apps.tenancy.models import Tenant
+
+    from . import visitors
+
+    tenant = summit()
+    if tenant is None:
+        return []
+    files = visitors.empty_practice(tenant, keep_user_email="", keep_ai_calls=False)
+    Tenant.objects.filter(pk=tenant.pk).delete()
+    return files
 
 
 def reset_database() -> int:

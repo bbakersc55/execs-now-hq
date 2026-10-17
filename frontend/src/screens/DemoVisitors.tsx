@@ -18,6 +18,7 @@ export interface DemoVisitorRow {
   deletes_on: string;
   ended: boolean;
   invited_at: string | null;
+  agreed_at?: string | null;
   last_activity_at: string | null;
   ai_spent_today_usd: string;
   ai_spent_total_usd: string;
@@ -144,6 +145,8 @@ export function DemoVisitors() {
                       ? `; deleted ${day(v.deletes_on)}` : ` (${countdown(v.expires_at)})`}</dd>
                     <dt>Last activity</dt>
                     <dd>{v.last_activity_at ? when(v.last_activity_at) : "Never signed in"}</dd>
+                    <dt>Agreed</dt>
+                    <dd>{v.agreed_at ? when(v.agreed_at) : "Not yet"}</dd>
                     <dt>AI spend</dt>
                     <dd>${v.ai_spent_today_usd} today, ${v.ai_spent_total_usd} in all</dd>
                     {v.reset_count > 0 && <><dt>Resets</dt><dd>{v.reset_count}</dd></>}

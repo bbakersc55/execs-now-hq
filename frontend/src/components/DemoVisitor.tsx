@@ -12,6 +12,53 @@ import { Banner, Card } from "./ui";
  * shows instead of itself. apps/tenancy/demo/visitors.py is the server's side.
  */
 
+/**
+ * The first screen of a visitor's copy, and the only one until it is ticked
+ * (2026-10-17): one short line, the beta agreement to read, one box. The tick
+ * is recorded with its time, on the copy's record, so a reset never asks again.
+ */
+export function DemoAgreement({ me }: { me: Me }) {
+  const qc = useQueryClient();
+  const demo = me.demo_visitor!;
+  const [reading, setReading] = useState(false);
+  const terms = useQuery<{ version: string; text: string }>({
+    queryKey: ["agreement"], queryFn: () => api.get("/api/agreement"), enabled: reading,
+  });
+  const agree = useMutation({
+    mutationFn: () => api.post("/api/demo/agree", { version: demo.agreement_version }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+  const [title, ...rest] = (terms.data?.text ?? "").split("\n");
+  return (
+    <main style={{ maxWidth: "36rem", margin: "4rem auto", padding: "0 1rem" }}>
+      <Card title="Before you start">
+        <p style={{ marginTop: 0 }}>This demo is yours for {demo.days} days, until{" "}
+          {day(demo.expires_at)}. Everything in it is fictional, and it comes as it is, with
+          no warranty, under the{" "}
+          <button className="link" onClick={() => setReading(true)}>beta agreement</button>.</p>
+        {agree.isError && <Banner kind="bad">{(agree.error as Error).message}</Banner>}
+        <label className="check">
+          <input type="checkbox" checked={agree.isPending || agree.isSuccess}
+            disabled={agree.isPending} onChange={(e) => e.target.checked && agree.mutate()} />
+          {" "}I understand, and agree to the beta agreement.
+        </label>
+      </Card>
+      {reading && (
+        <Modal title={title.replace(/^#\s*/, "") || "Beta agreement"} label="Beta agreement"
+          wide onClose={() => setReading(false)}>
+          {terms.isError ? <Banner kind="bad">{(terms.error as Error).message}</Banner>
+            : !terms.data ? <p>Loading…</p> : (
+            <article aria-label="Beta agreement text">
+              {rest.join("\n").split(/\n\s*\n/).filter((p) => p.trim()).map((p, i) => (
+                <p key={i}>{p.trim()}</p>))}
+            </article>
+          )}
+        </Modal>
+      )}
+    </main>
+  );
+}
+
 /** "October 17, 2026", in the reader's own time. */
 export function day(iso: string) {
   return new Date(iso).toLocaleDateString(undefined,
