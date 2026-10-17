@@ -47,7 +47,7 @@ const GOAL: PersonalGoal = {
 
 function budget(over: Partial<Budget> = {}): Budget {
   return { has_budget: true, proposal: null, month: MONTH, goals: [GOAL], coming_up: [],
-           cash_flow: FLOW, questions_waiting: 0, ...over };
+           cash_flow: FLOW, questions_waiting: 0, debts: 0, ...over };
 }
 
 const EXPLAIN = { estimate_usd: "0.0123", used_today: 2, cap: 20, refused: "" };

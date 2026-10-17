@@ -17,8 +17,15 @@
 - **A spouse with pay** (Dana Carter, a pediatric nurse; the spec's open
   question, answered for the demo), **a mortgage and a car loan**,
   **retirement and investment balances** month by month, **three goals** and
-  **this year's tax set-aside in progress**. Debts, balances, goals and the
-  set-aside are data only until stops 2–4 draw them.
+  **this year's tax set-aside in progress**. The set-aside is data only until
+  stop 4 draws it.
+- **Stop 3:** the debts' payment categories and a payoff plan (Snowball, $200
+  a month extra); contributions to the Roth IRA recognized from its
+  transfers, the others typed, a target on two accounts (one on track, one
+  behind); Dana's pay as hers, with her expected withholding; the home and
+  the car with values, against their loans; a floor, a summer trip and a
+  what-if on the forecast; and the forecast as he saw it on the third of each
+  month, so "How good it has been" has months to show.
 
 All of it is built inside the books' own month loop (`money.history`), so
 each month's statements are in before that month is reconciled and closed,
@@ -298,6 +305,15 @@ def month(world, books, month_: date, *, last: bool = False) -> None:
                                 file_bytes=_csv(savings_lines), mapping=MAPPING)
         imports.commit(batch, tenant=tenant, actor=owner)
 
+    # Stop 3: he looks at the personal forecast once the statements are in,
+    # and what he saw for the new month is kept ("How good it has been").
+    # Not this month's: that is kept the first time it is opened.
+    if after < world.today.replace(day=1):
+        from apps.personal import forecast
+
+        with at(_when(world, after + timedelta(days=2), 9, 0)):
+            forecast.build(house["ledger"])
+
 
 def this_month(world, books) -> None:
     """This month's card lines so far, downloaded mid-cycle: the ones no rule
@@ -329,7 +345,7 @@ def finish(world, books) -> None:
     from apps.finance.models import FinanceEntry
     from apps.personal import reconcile
     from apps.personal.models import (
-        PersonalBalance, PersonalDebt, PersonalHolding, PersonalLine,
+        PersonalAsset, PersonalBalance, PersonalDebt, PersonalHolding, PersonalLine,
         PersonalSetAside,
     )
 
@@ -337,25 +353,34 @@ def finish(world, books) -> None:
     ledger, you, dana = house["ledger"], house["you"], house["dana"]
     today, first = world.today, _window(world)
     ends = [month_end(m) for m in months(first, today) if month_end(m) < today]
+    mine = house["mine"]
     with at(moment(today - timedelta(days=1), 20, 30)):
         mortgage = PersonalDebt.objects.create(
             ledger=ledger, name="Home mortgage", kind="mortgage", rate_percent=Decimal("6.125"),
             minimum_cents=284_000, due_day=1, original_cents=36_000_000,
-            opened_on=date(2019, 6, 14))
+            opened_on=date(2019, 6, 14), category=mine["Rent or mortgage"])
         car = PersonalDebt.objects.create(
             ledger=ledger, name="Subaru Outback loan", kind="auto", whose=dana,
             rate_percent=Decimal("5.900"), minimum_cents=51_200, due_day=10,
-            original_cents=3_200_000, opened_on=date(2023, 5, 2))
+            original_cents=3_200_000, opened_on=date(2023, 5, 2), category=mine["Car payment"])
+        # Stop 3: what goes into each. The Roth's are seen in joint checking;
+        # the Solo 401(k) is paid from the practice and Dana's 403(b) from her
+        # pay, so those are typed. A target on two: one on track, one behind.
         holdings = [
             (PersonalHolding.objects.create(ledger=ledger, name="Solo 401(k)",
                                             kind="retirement", whose=you,
-                                            target_cents=150_000_000, target_year=2045),
+                                            target_cents=150_000_000, target_year=2045,
+                                            monthly_cents=200_000),
              18_640_000, 0.006),
             (PersonalHolding.objects.create(ledger=ledger, name="Dana's 403(b)",
-                                            kind="retirement", whose=dana),
+                                            kind="retirement", whose=dana,
+                                            monthly_cents=45_000),
              7_420_000, 0.005),
             (PersonalHolding.objects.create(ledger=ledger, name="John's Roth IRA",
-                                            kind="retirement", whose=you), 4_180_000, 0.005),
+                                            kind="retirement", whose=you,
+                                            target_cents=30_000_000, target_year=2045,
+                                            contribution_text="VANGUARD ROTH"),
+             4_180_000, 0.005),
             (PersonalHolding.objects.create(ledger=ledger, name="Joint brokerage",
                                             kind="investment"), 5_230_000, 0.004),
         ]
@@ -370,6 +395,25 @@ def finish(world, books) -> None:
                     ledger=ledger, holding=holding, on_date=end,
                     balance_cents=int(start * (1 + growth + wobble) ** n)
                     + (50_000 * n if "Roth" in holding.name else 0))
+        # The home and the car, valued by hand, against their loans: equity.
+        home = PersonalAsset.objects.create(ledger=ledger, name="The house on Aspen Court",
+                                            kind="home", debt=mortgage)
+        subaru = PersonalAsset.objects.create(ledger=ledger, name="Subaru Outback",
+                                              kind="vehicle", whose=dana, debt=car)
+        if ends:
+            for asset, then, now in ((home, 59_800_000, 61_200_000),
+                                     (subaru, 2_900_000, 2_750_000)):
+                PersonalBalance.objects.create(ledger=ledger, asset=asset, on_date=first,
+                                               balance_cents=then)
+                PersonalBalance.objects.create(ledger=ledger, asset=asset, on_date=ends[-1],
+                                               balance_cents=now)
+        # Whose income is whose, and Dana's withholding kept for stop 4.
+        mine["Spouse pay"].whose = dana
+        mine["Spouse pay"].save(update_fields=["whose", "updated_at"])
+        mine["Pay from the practice"].whose = you
+        mine["Pay from the practice"].save(update_fields=["whose", "updated_at"])
+        dana.expected_withholding_cents = 840_000
+        dana.save(update_fields=["expected_withholding_cents", "updated_at"])
         christmas = date(today.year, 12, 1) if today < date(today.year, 11, 15) \
             else date(today.year + 1, 12, 1)
         for name, target, on, saved in (
@@ -433,3 +477,23 @@ def _budget(world) -> None:
                 ledger=ledger, account=house["joint"], category_id=row["category"],
                 on_date=today, amount_cents=max(0, row["left_cents"]) + over,
                 direction="out", description=text, source="manual")
+    _forecast(world)
+
+
+def _forecast(world) -> None:
+    """Stop 3: the payoff plan (Snowball, the default, with $200 a month
+    extra, which is an envelope), a floor, a summer trip planned and a new
+    roof as a what-if."""
+    from apps.personal import debts
+    from apps.personal import forecast as personal_forecast
+
+    house = world.extra["household"]
+    ledger, today = house["ledger"], world.today
+    with at(moment(today, 7, 50)):
+        debts.set_plan(ledger, order="snowball", extra=20_000)
+        personal_forecast.set_floor(ledger, 800_000)
+        personal_forecast.save_planned(ledger, name="Summer trip to the lake",
+                                       amount_cents=320_000,
+                                       on_date=today + timedelta(days=75))
+        personal_forecast.save_planned(ledger, name="New roof", amount_cents=1_450_000,
+                                       on_date=today + timedelta(days=120), is_what_if=True)

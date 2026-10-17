@@ -446,7 +446,8 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
             ["auto", "mortgage"]
         assert set(mine["PersonalHolding"].values_list("kind", flat=True)) == \
             {"retirement", "investment"}
-        assert mine["PersonalBalance"].count() == 6 * household.MONTHS
+        assert mine["PersonalBalance"].filter(asset__isnull=True).count() == \
+            6 * household.MONTHS
         assert mine["PersonalGoal"].count() == 3
         set_aside = mine["PersonalSetAside"].get()
         assert set_aside.year == today.year and set_aside.saved_cents > 0
@@ -466,6 +467,45 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert view["income"] and view["income_planned_cents"] > 0
         assert mine["PersonalQuestion"].filter(state="open").exists()
         assert mine["PersonalPlanned"].filter(goal__isnull=False).count() == 2
+        # Stop 3: the forecast, with the goals' dates and the trip on it and
+        # the roof as a what-if; months kept for "How good it has been"; the
+        # payoff plan (Snowball, $200 extra, an envelope); Dana's pay as hers;
+        # one retirement account on track and one behind; net worth with the
+        # home's equity.
+        from apps.personal import debts as personal_debts
+        from apps.personal import forecast as personal_forecast
+        from apps.personal import networth, retirement
+
+        ledger = owner.personal_ledger
+        mine_ahead = personal_forecast.build(ledger, today, snapshot=False)
+        assert mine_ahead["ready"] and mine_ahead["floor_cents"] == 800_000
+        planned = {row["label"]: row for row in mine_ahead["lines"] if row["kind"] == "planned"}
+        assert {"Car repairs", "Christmas", "Summer trip to the lake", "New roof"} <= set(planned)
+        assert planned["New roof"]["counted"] is False and planned["Car repairs"]["counted"]
+        assert [g["name"] for g in mine_ahead["goals_not_drawn"]] == ["Emergency fund"]
+        known = {row["group"].split(":")[0] for row in mine_ahead["lines"]
+                 if row["kind"] == "known"}
+        assert {"pay", "debt", "yearly"} <= known
+        dana = [row for row in mine_ahead["lines"] if row["category"] == "Income: Spouse pay"]
+        assert dana and dana[0]["cadence"] == "2 a month"
+        assert len(mine_ahead["history"]) >= 3
+        plan = personal_debts.represent(ledger, today)
+        assert (plan["order"], plan["extra_cents"]) == ("snowball", 20_000)
+        assert [d["name"] for d in sorted(plan["debts"], key=lambda d: d["plan_position"])] \
+            == ["Subaru Outback loan", "Home mortgage"]
+        assert plan["extra_saves"]["months"] > 0
+        assert named["Debt payments"]["planned_cents"] == 20_000
+        assert named["Debt payments"]["source"] == "debt"
+        held = {row["name"]: row for row in retirement.summary(ledger, today)["holdings"]}
+        assert held["Solo 401(k)"]["status"]["on_track"] is False
+        assert held["John's Roth IRA"]["status"]["on_track"] is True
+        assert held["John's Roth IRA"]["contributions"]["recognized"] is True
+        worth = networth.summary(ledger, today)
+        assert worth["total_cents"] > 0 and len(worth["series"]) == household.MONTHS + 1
+        home = next(row for row in worth["equity"] if row["kind"] == "home")
+        assert home["equity_cents"] == home["value_cents"] - home["owed_cents"] > 0
+        assert mine["PersonalCategory"].get(name="Spouse pay").whose.name == household.SPOUSE
+        assert mine["PersonalMember"].get(relation="spouse").expected_withholding_cents
         # Last month's savings statement reconciled; nothing to close.
         [rec] = mine["PersonalReconciliation"]
         assert rec.state == "finished" and personal_reconcile.totals(rec)[

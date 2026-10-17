@@ -8,6 +8,7 @@ import {
   Budget, BudgetMonth, BudgetQuestion, CashFlow, Envelope, PersonalAccount, PersonalGoal, api,
 } from "../lib/api";
 import { dollars, longDate, toCents } from "../lib/money";
+import { NetWorthCard, SidesCard } from "./PersonalWorth";
 
 /**
  * The budget that builds itself (P6 M4 stop 2, decisions 9–14): the
@@ -72,10 +73,14 @@ export function PersonalOverview() {
               </span>
             </Banner>
           )}
-          <Unassigned month={data.month!} goals={data.goals} onSaid={setSaid} />
+          <Unassigned month={data.month!} goals={data.goals} debts={data.debts}
+            onSaid={setSaid} />
           <Envelopes month={data.month!} onSaid={setSaid} />
           <Income month={data.month!} />
           <GoalsSummary goals={data.goals} />
+          {/* Stop 3: both sides' cash in 90 days, and net worth. */}
+          <SidesCard />
+          <NetWorthCard />
           {data.coming_up.length > 0 && (
             <Card title="Coming up">
               <ul className="plain">
@@ -142,19 +147,26 @@ function Proposal({ data, onUse, busy }: { data: Budget; onUse: () => void; busy
   );
 }
 
-function Unassigned({ month, goals, onSaid }: {
-  month: BudgetMonth; goals: PersonalGoal[];
+function Unassigned({ month, goals, debts, onSaid }: {
+  month: BudgetMonth; goals: PersonalGoal[]; debts: number;
   onSaid: (s: { kind: string; text: string }) => void;
 }) {
   const refresh = useRefreshBudget();
+  const qc = useQueryClient();
   const left = month.unassigned_cents;
   const [goal, setGoal] = useState("");
   const [amount, setAmount] = useState("");
+  // Stop 3: a debt is a place for it too, as the payoff plan's extra.
   const assign = useMutation({
-    mutationFn: () => api.post("/api/personal/budget/assign",
-                               { goal, amount_cents: toCents(amount) }),
-    onSuccess: () => { setAmount(""); onSaid({ kind: "ok", text: "Put toward the goal." });
-                       refresh(); },
+    mutationFn: (cents: number | null) => api.post("/api/personal/budget/assign",
+      goal === "debts" ? { debts: true, amount_cents: cents } : { goal, amount_cents: cents }),
+    onSuccess: () => {
+      setAmount("");
+      onSaid({ kind: "ok", text: goal === "debts" ? "Put toward your debts: the payoff "
+        + "plan's extra went up by it." : "Put toward the goal." });
+      refresh();
+      qc.invalidateQueries({ queryKey: ["personal-debts"] });
+    },
     onError: (e: Error) => onSaid({ kind: "bad", text: e.message }),
   });
   return (
@@ -170,22 +182,25 @@ function Unassigned({ month, goals, onSaid }: {
         <div style={{ marginTop: "var(--s3)" }}>
           <p className="small" style={{ margin: "0 0 var(--s2)" }}>
             {money(left)} of this month's income has no job yet. Where does the rest go?</p>
-          {goals.length === 0 ? (
-            <p className="small muted">Add a goal under Goals, and it can go there.</p>
+          {goals.length === 0 && debts === 0 ? (
+            <p className="small muted">Add a goal under Goals, or a debt under Debts, and it
+              can go there.</p>
           ) : (
             <div className="row tight">
               <select aria-label="Put it toward" value={goal} style={{ width: "auto" }}
                 onChange={(e) => setGoal(e.target.value)}>
-                <option value="">A goal…</option>
+                <option value="">A goal or your debts…</option>
                 {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                {debts > 0 && <option value="debts">Your debts (the payoff plan's extra)
+                  </option>}
               </select>
               <input aria-label="How much a month" placeholder={plainDollars(left)}
                 value={amount} style={{ width: "7rem" }}
                 onChange={(e) => setAmount(e.target.value)} />
               <button disabled={!goal || toCents(amount || plainDollars(left)) === null
                 || assign.isPending}
-                onClick={() => { if (!amount) setAmount(plainDollars(left));
-                                 assign.mutate(); }}>Put it there</button>
+                onClick={() => assign.mutate(toCents(amount || plainDollars(left)))}>
+                Put it there</button>
             </div>
           )}
         </div>

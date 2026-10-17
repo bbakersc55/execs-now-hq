@@ -1,6 +1,6 @@
 # P6 M4 — Personal finance
 
-**Spec · 2026-10-15 · stop 1 built (not released); stops 2–4 not built**
+**Spec · 2026-10-15 · stops 1–3 built (stop 1 released); stop 4 not built**
 
 Written from `docs/p6_m4_personal_finance_spec_draft.md` (Bryan's draft, saved
 verbatim; drafted 2026-10-15 by Claude in chat with Bryan's decisions of that
@@ -446,3 +446,150 @@ isolation family.
 **Not built in stop 2:** the personal forecast that will read the planned
 lines (stop 3); a debt as a place for Unassigned (stop 3); the Tax envelope
 (stop 4); removing a planned line from the Overview.
+
+## As built: stop 3 (2026-10-17)
+
+Decisions 15–19 as written, "Explain this forecast" and "Review with Claude"
+on the personal forecast (M2's pattern), and Unassigned toward debts (stop 2's
+"not built"). Open questions as recommended (Bryan, 2026-10-17): Snowball the
+default, 6% the assumed return. Stop 2's six choices were kept.
+
+**The stop's proof** is tested: the car repair (a dated goal) is a Planned
+line on its date in the forecast, and a debt's payoff date moves when the
+extra changes (`tests/test_personal_forecast.py`, the first test of each).
+
+**Built and tested** (`tests/test_personal_forecast.py`, 35 tests; the
+isolation family in `tests/test_personal_sides.py` with the three new
+models; the demo seed test; `PersonalForecast.test.tsx`,
+`PersonalWorth.test.tsx`; the forecast, Debts, the Overview's net worth,
+Retirement and Household looked at in headless Chrome at 1366 on a freshly
+seeded scratch demo, no console errors):
+
+- **The personal forecast** (15, `apps/personal/forecast.py`, its own page
+  under Personal → Forecast). M2's table, spans, summaries, views (30, 90,
+  180 days, 12 months), floor and what-if, on the household's own accounts:
+  - **Cash** is the household's bank and cash accounts, from their lines.
+    A card is not cash: its payment out of checking is drawn, its charges
+    are not. A Mixed card's payment from joint checking is drawn the same way.
+  - **Known:** pay from the practice at the cadence it has been paid (as many
+    times a month as the last three complete months show, each on the median
+    day and amount); each debt's payment under the payoff plan on its due day
+    (this month's left out once a line in its category is in, drawn today if
+    its day has passed without one); each yearly bill the budget spreads, in
+    its month on the day it was last paid; estimated tax paid from a
+    household account, on the IRS dates.
+  - **Regular:** M2's rules on the complete months (monthly when seen in two
+    of the last three, quarterly when about three months apart), by category
+    and payee, but the Known categories. Moves between two of the household's
+    cash accounts are neither in nor out. Spouse pay is Regular.
+  - **Planned:** goals with a date (the target, spent that day), one-offs and
+    repeating lines, and what-ifs (drawn only while tried, never counted).
+  - **Adjustments:** a Regular line is "not regular", or another amount from a
+    date; undone, not deleted.
+  - **"How good it has been":** a snapshot the first time each month's
+    forecast is worked out, beside what happened.
+  - Two complete months are needed before anything is Regular; until then
+    it is only Known and Planned, and it says so.
+- **Debts** (16, `apps/personal/debts.py`, Personal → Debts): name, kind,
+  balance, rate, minimum, due day, whose, and the category its payments land
+  in. A card that is an imported household account takes its balance from its
+  lines. The plan, month by month from this one: interest at a twelfth of the
+  yearly rate, every minimum, then the extra plus each paid-off debt's minimum
+  to one debt at a time in the plan's order, set from today's balances.
+  Shown: each debt's payoff date and interest, the totals, what the other
+  order would cost or save (interest and months), and what the extra saves
+  against the minimums alone. Changing the order or the extra on the page is
+  a look; "Save the plan" saves. A balance-over-time chart per debt: what was
+  entered, then the plan's projection, dashed. A debt whose minimum never
+  covers its interest says so.
+- **The extra is an envelope** in "Debt payments": made, moved by the
+  difference, put away at nothing. Unassigned can go toward the debts; the
+  extra goes up by it.
+- **Retirement and investments** (17, `apps/personal/retirement.py`):
+  balances entered monthly or from a statement; contributions recognized from
+  lines out of the household's accounts that contain the account's text
+  ("VANGUARD ROTH"), averaged over six complete months, or typed where no
+  line shows them; a target by a year; on track or behind at the owner's
+  assumed return (6% unless changed, 0–20%), compounded monthly to the end of
+  the target year, with what a month would reach it; the estimate disclaimer
+  in bold; a chart per account with the target as a line.
+- **The household** (18, `apps/personal/household.py`, Personal → Household):
+  the owner (made the first time) and the people they add, labels only; each
+  income category, account, debt, retirement account and thing owned carries
+  whose (a person, or joint); Debts, Retirement and net worth show the
+  household or one person (theirs alone). A spouse's expected W-2
+  withholding is kept for stop 4. Taking someone out makes theirs joint.
+- **Net worth** (19, `apps/personal/networth.py`, on the Overview): the
+  household's bank and cash accounts, retirement and investments, and things
+  owned with a value entered by hand (a home, a vehicle; `PersonalAsset`),
+  less debts; month ends back to the first with a figure (at most twelve) and
+  today, as one line; a home or vehicle against the loan named on it as
+  equity.
+- **Both sides on the Overview** (15): the personal and the business
+  forecast's cash in 90 days, today's figure and the low point, as numbers
+  side by side, never one chart; "not switched on" for a practice without the
+  Cash forecast module.
+- **Explain this forecast and Review with Claude** (`forecast_ai.py`): priced
+  before they are pressed, one count each on Finance's shared 20 a day,
+  never past the monthly budget. Sent: amounts, dates and category names. A
+  line goes by its category, a debt by its kind ("Mortgage payment"); never a
+  merchant or lender, an account's name or number, a retirement balance, or
+  the owner's name. The review proposes one-offs among the Regular lines,
+  recurring lines not picked up, and up to six questions, each answered by the
+  owner through the ordinary routes (not regular; a planned line).
+- **The demo:** the mortgage and the car loan with their payment categories;
+  the payoff plan (Snowball, $200 extra, so the car loan goes first, by
+  October 2028); the Roth IRA's contributions recognized from its transfers,
+  the Solo 401(k)'s ($2,000) and Dana's 403(b)'s ($450) typed; a target on the
+  Solo 401(k) (behind) and the Roth (on track); Dana as a household member
+  with her pay and $8,400 expected withholding; the house ($612,000) against
+  the mortgage and the Subaru against its loan; a $8,000 floor, a summer trip
+  planned and a new roof as a what-if; and the forecast as he saw it on the
+  third of each month, so four months show in "How good it has been".
+
+**Models** (`personal 0004`): `PersonalAsset`, `PersonalForecastSnapshot`,
+`PersonalForecastAdjustment`; on the ledger the floor, the payoff order and
+extra, and the assumed return; on a member the expected withholding and a
+removed time; whose on a category; a payment category on a debt; the
+contribution text and a typed monthly amount on a holding; repeat and
+what-if on a planned line; an asset's value on `PersonalBalance` (its check
+constraint now allows one of three); the envelope source "debt". All in the
+isolation family.
+
+**Choices made in stop 3, for Bryan to keep or overrule:**
+
+1. **A card is paid as it has been paid.** The personal forecast draws a
+   card's monthly payment out of checking as a Regular line and does not draw
+   its charges, rather than M2's "what is owed today, then what is forecast
+   to be charged". It works the same for a household card and the Mixed card,
+   which lives in the practice's books.
+2. **A Regular line comes as often as it has come.** M2 adds a month's
+   occurrences into one line on the first day; here, pay twice a month is two
+   lines, so the weekly view is right. (M2's own forecast is unchanged.)
+3. **A debt's payments are Known only when the debt names its category.**
+   Otherwise its payments would be counted twice, as the plan's and as
+   everyday spending. The demo's two do.
+4. **A goal with no date is not a line.** An emergency fund is saved for and
+   never spent on a day; the forecast lists it under Planned with where its
+   money sits (savings, which is in the cash). The demo's car repairs and
+   Christmas are lines; the emergency fund is listed.
+5. **The extra is added to "Debt payments"' envelope** if the category
+   already has one, by the difference, rather than replacing it (one
+   envelope per category, stop 2's choice 4).
+6. **"How good it has been" is worked out from the lines each time**, not
+   stored at a month close: the personal side has none, and statements come
+   in days after a month ends. "What happened" is the month's lines that came
+   in after the snapshot was taken.
+7. **One person's view is theirs alone;** joint things are in the
+   household's. The forecast is the household's only: its accounts are joint.
+8. **Review with Claude reviews the forecast**, as M2's does and as Bryan's
+   brief for this stop says. Decision 25 also has it proposing changes to
+   envelopes, goals and the set-aside; that waits for stop 4, with the
+   set-aside.
+9. **A Mixed card is not in net worth:** it is the practice's account. Its
+   personal lines are, as they are paid from household accounts.
+
+**Not built in stop 3:** household sign-ins (a later stop); the Tax envelope,
+the set-aside and the pay-yourself loop (stop 4); a personal forecast for one
+person; an "until" on a repeating personal planned line; M2's "likely annual"
+on the personal side (yearly bills are the budget's questions instead).

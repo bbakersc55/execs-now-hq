@@ -1,14 +1,35 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-17**, after M4 stop 2. **The next session starts at "2026-10-17,
-evening: M4 stop 2" just below, then "2026-10-17", "2026-10-15, night" and
+2026-10-17**, after M4 stop 3. **The next session starts at "2026-10-17,
+night: M4 stop 3" just below, then "2026-10-17, evening: M4 stop 2",
+"2026-10-17", "2026-10-15, night" and
 "2026-10-15, evening".** Then "Release 12: the plan as it was" and "2026-10-13", which
 is the day in order. Everything from "Next" down was last brought up to
 date on 10/5; where it and a newer section disagree, the newer holds. Upload
 this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
+
+## 2026-10-17, night: M4 stop 3, the forecast and the rest (not released)
+
+- **Stop 2 accepted on the demo** by Bryan, all six choices kept; the demo
+  was reseeded first (Summit only).
+- **Stop 3 built on `dev`:** decisions 15–19, the personal forecast's
+  Explain and Review, Unassigned toward debts; open questions as recommended
+  (Snowball the default, 6% assumed). New pages Forecast, Debts, Retirement,
+  Household; the Overview gains both sides' cash in 90 days and net worth.
+  As built and the choices for Bryan: `docs/p6_m4_personal_finance.md`,
+  "As built: stop 3".
+- **Migration `personal 0004`**: three new tables (`personal_asset`,
+  `personal_forecast_snapshot`, `personal_forecast_adjustment`), nullable or
+  defaulted columns, and `personal_balance`'s one check constraint dropped
+  and put back to allow a third kind (an asset's value); no data step.
+  Applied on the laptop after a green suite. **The next release carries it.**
+- **The demo** must be **re-seeded** to show stop 3 (pushing `dev` migrates
+  it). Seeding locally took 73 s.
+- Gotcha: `pkill -f "runserver …"` in a command whose own text contains the
+  pattern kills the shell running it (exit 144). Kill by port or pid.
 
 ## 2026-10-17, evening: M4 stop 2, the budget (not released)
 

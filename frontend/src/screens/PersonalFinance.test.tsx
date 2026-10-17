@@ -93,7 +93,8 @@ describe("the personal side", () => {
         show(tab, WITH_PERSONAL, { "GET /api/personal/budget": BUDGET });
         const nav = await screen.findByRole("navigation", { name: "Personal finance" });
         expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(
-          ["Overview", "Goals", "Entries", "Import", "Accounts", "Categories"]);
+          ["Overview", "Forecast", "Goals", "Debts", "Retirement", "Household", "Entries",
+           "Import", "Accounts", "Categories"]);
         expect(screen.getByRole("note")).toHaveTextContent("Confirm with your CPA.");
         unmount();
       }

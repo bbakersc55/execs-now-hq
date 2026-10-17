@@ -151,6 +151,13 @@ def make_owned(model, ledger):
             ledger=ledger, name="Roof", on_date=today, amount_cents=100),
         m.PersonalQuestion: lambda: m.PersonalQuestion.objects.create(
             ledger=ledger, kind="coming", key=f"coming:{today}", text="Anything coming?"),
+        # Stop 3: things owned, and the forecast's snapshots and adjustments.
+        m.PersonalAsset: lambda: m.PersonalAsset.objects.create(
+            ledger=ledger, name="The house", kind="home"),
+        m.PersonalForecastSnapshot: lambda: m.PersonalForecastSnapshot.objects.create(
+            ledger=ledger, month=today.replace(day=1), taken_on=today),
+        m.PersonalForecastAdjustment: lambda: m.PersonalForecastAdjustment.objects.create(
+            ledger=ledger, line_key="pattern:x", label="X", kind="not_regular"),
     }
     return ways[model]()
 

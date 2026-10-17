@@ -288,7 +288,7 @@ function WhatIf({ data, attempt, whatIf, view, busy, onTry }: {
 
 // ----------------------------------------------------------------- the floor
 
-function Floor({ cents, busy, onSet }: {
+export function Floor({ cents, busy, onSet }: {
   cents: number | null; busy: boolean; onSet: (cents: number | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -436,7 +436,7 @@ function Lines({ title, lines, note, off, amounts, busy, onToggle, onAmount, sen
  * table under it, so the picture gates nothing, and the same readout is on
  * hover and on keyboard focus.
  */
-function CashChart({ rows, other, floor, months }: {
+export function CashChart({ rows, other, floor, months }: {
   rows: ForecastRow[]; other: ForecastRow[] | null; floor: number | null; months: boolean;
 }) {
   const [at, setAt] = useState<number | null>(null);
@@ -505,7 +505,10 @@ function CashChart({ rows, other, floor, months }: {
           <>
             <line x1={L} x2={W - R} y1={y(floor)} y2={y(floor)} stroke="var(--muted)"
               strokeDasharray="2 4" />
-            <text x={L + 4} y={y(floor) - 4} fontSize="11" fill="var(--muted)">
+            {/* Above its line, or below it when it would sit on "zero". */}
+            <text x={L + 4} fontSize="11" fill="var(--muted)"
+              y={Math.abs(y(floor) - y(0)) < 14 && y(floor) <= y(0) ? y(floor) - 16
+                : y(floor) - 4}>
               your floor, {short(floor)}</text>
           </>
         )}

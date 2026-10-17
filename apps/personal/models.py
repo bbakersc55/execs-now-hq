@@ -18,6 +18,8 @@ removed with a reason; account numbers are never stored, only a last four.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -33,9 +35,25 @@ class PersonalLedger(UUIDModel):
     #: Decision 5: a line with no rule under this goes to Everything else
     #: without asking; only lines at or over it wait in To sort.
     to_sort_threshold_cents = models.PositiveIntegerField(default=2500, db_default=2500)
+    #: Decision 15: "I want at least this much in the household's accounts."
+    forecast_floor_cents = models.BigIntegerField(null=True, blank=True)
+    #: Decision 16: the payoff plan. Snowball (smallest balance first) is
+    #: the default; Avalanche (highest rate first) a switch away.
+    payoff_order = models.CharField(max_length=10, default="snowball", db_default="snowball")
+    payoff_extra_cents = models.BigIntegerField(default=0, db_default=0)
+    #: Decision 17: the yearly return assumed for retirement and investments.
+    assumed_return_percent = models.DecimalField(max_digits=5, decimal_places=2,
+                                                 default=Decimal("6.00"),
+                                                 db_default=Decimal("6.00"))
 
     class Meta:
         db_table = "personal_ledger"
+        constraints = [
+            models.CheckConstraint(condition=Q(payoff_order__in=("snowball", "avalanche")),
+                                   name="personal_ledger_payoff_order"),
+            models.CheckConstraint(condition=Q(payoff_extra_cents__gte=0),
+                                   name="personal_ledger_payoff_extra_not_negative"),
+        ]
 
 
 class OwnedModel(UUIDModel):
@@ -86,6 +104,9 @@ class PersonalCategory(OwnedModel):
     archived_at = models.DateTimeField(null=True, blank=True)
     merged_into = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL,
                                     related_name="+")
+    #: Decision 18, for an income category: whose pay it is. Empty: joint.
+    whose = models.ForeignKey("PersonalMember", null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "personal_category"
@@ -112,6 +133,10 @@ class PersonalMember(OwnedModel):
     relation = models.CharField(max_length=8, choices=Relation.choices,
                                 default=Relation.SPOUSE)
     position = models.PositiveSmallIntegerField(default=0)
+    #: Decision 18: a spouse's expected W-2 withholding for the year, kept
+    #: for the tax estimate (stop 4). Nothing reads it before then.
+    expected_withholding_cents = models.BigIntegerField(null=True, blank=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "personal_member"
@@ -365,6 +390,10 @@ class PersonalDebt(OwnedModel):
     #: A card that is also an imported account takes its balance from there.
     account = models.ForeignKey(PersonalAccount, null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="+")
+    #: The category its payments land in (a mortgage in "Rent or mortgage"):
+    #: the forecast draws the payment as a Known line, not a Regular one.
+    category = models.ForeignKey(PersonalCategory, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="+")
     closed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -386,6 +415,13 @@ class PersonalHolding(OwnedModel):
                               on_delete=models.SET_NULL, related_name="+")
     target_cents = models.BigIntegerField(null=True, blank=True)
     target_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: Contributions recognized from transfers: a line out of a household
+    #: account whose description has this in it ("VANGUARD ROTH").
+    contribution_text = models.CharField(max_length=120, blank=True, default="",
+                                         db_default="")
+    #: What goes in a month where no line shows it (paid from the practice,
+    #: or from pay): typed by the owner.
+    monthly_cents = models.BigIntegerField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -393,14 +429,40 @@ class PersonalHolding(OwnedModel):
         ordering = ["kind", "name"]
 
 
+class PersonalAsset(OwnedModel):
+    """Decision 19: something owned with a value entered by hand (a home, a
+    vehicle), valued on a date; no valuations fetched. A home against its
+    mortgage is equity."""
+
+    class Kind(models.TextChoices):
+        HOME = "home", "Home"
+        VEHICLE = "vehicle", "Vehicle"
+        OTHER = "other", "Something else"
+
+    name = models.CharField(max_length=120)
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.HOME)
+    whose = models.ForeignKey(PersonalMember, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    #: The loan against it: its value less that balance is the equity.
+    debt = models.ForeignKey(PersonalDebt, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="+")
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "personal_asset"
+        ordering = ["kind", "name"]
+
+
 class PersonalBalance(OwnedModel):
-    """What a debt was owed, or a holding held, on a day: typed monthly or
-    taken from a statement."""
+    """What a debt was owed, a holding held, or a thing owned was worth, on a
+    day: typed monthly or taken from a statement."""
 
     debt = models.ForeignKey(PersonalDebt, null=True, blank=True, on_delete=models.CASCADE,
                              related_name="balances")
     holding = models.ForeignKey(PersonalHolding, null=True, blank=True,
                                 on_delete=models.CASCADE, related_name="balances")
+    asset = models.ForeignKey(PersonalAsset, null=True, blank=True, on_delete=models.CASCADE,
+                              related_name="balances")
     on_date = models.DateField()
     balance_cents = models.BigIntegerField()
 
@@ -409,8 +471,10 @@ class PersonalBalance(OwnedModel):
         ordering = ["on_date"]
         constraints = [
             models.CheckConstraint(
-                condition=(Q(debt__isnull=False) & Q(holding__isnull=True))
-                | (Q(debt__isnull=True) & Q(holding__isnull=False)),
+                condition=(Q(debt__isnull=False) & Q(holding__isnull=True)
+                           & Q(asset__isnull=True))
+                | (Q(debt__isnull=True) & Q(holding__isnull=False) & Q(asset__isnull=True))
+                | (Q(debt__isnull=True) & Q(holding__isnull=True) & Q(asset__isnull=False)),
                 name="personal_balance_of_one_thing"),
         ]
 
@@ -478,6 +542,8 @@ class PersonalEnvelope(OwnedModel):
         TYPED = "typed", "Set by you"
         GOAL = "goal", "For a goal"
         YEARLY = "yearly", "A yearly bill, spread"
+        #: Decision 16: the payoff plan's extra a month.
+        DEBT = "debt", "Extra toward debts"
 
     category = models.ForeignKey(PersonalCategory, null=True, blank=True,
                                  on_delete=models.PROTECT, related_name="envelopes")
@@ -549,6 +615,10 @@ class PersonalPlanned(OwnedModel):
     direction = models.CharField(max_length=3, choices=Direction.choices, default=Direction.OUT)
     goal = models.OneToOneField(PersonalGoal, null=True, blank=True, on_delete=models.CASCADE,
                                 related_name="planned")
+    #: Decision 15: monthly, quarterly, yearly, or once ("").
+    repeat = models.CharField(max_length=10, blank=True, default="", db_default="")
+    #: A what-if: drawn beside the forecast when tried, never counted in it.
+    is_what_if = models.BooleanField(default=False, db_default=False)
     archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -602,9 +672,58 @@ class PersonalQuestion(OwnedModel):
         ]
 
 
+# ------------------------------------- the personal forecast (stop 3)
+
+class PersonalForecastSnapshot(OwnedModel):
+    """Decision 15, "How good it has been": the forecast for a month as it
+    stood when it was first worked out in that month. Never changed after it
+    is taken. What happened is worked out from the lines each time it is
+    shown: there is no month close on this side, and a statement often comes
+    in days after its month ends."""
+
+    month = models.DateField()
+    taken_on = models.DateField()
+    forecast = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "personal_forecast_snapshot"
+        ordering = ["-month"]
+        constraints = [
+            models.UniqueConstraint(fields=["ledger", "month"],
+                                    name="personal_forecast_snapshot_one_a_month"),
+        ]
+
+
+class PersonalForecastAdjustment(OwnedModel):
+    """The owner's correction to a Regular line the forecast found: it is
+    not regular, or it is another amount from a date. Undone, not deleted."""
+
+    class Kind(models.TextChoices):
+        NOT_REGULAR = "not_regular", "Not regular"
+        AMOUNT = "amount", "Another amount"
+
+    line_key = models.CharField(max_length=400)
+    label = models.CharField(max_length=255)
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    amount_cents = models.BigIntegerField(null=True, blank=True)
+    from_date = models.DateField(null=True, blank=True)
+    #: "review" when it came from "Review with Claude", confirmed by the owner.
+    source = models.CharField(max_length=8, blank=True, default="", db_default="")
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "personal_forecast_adjustment"
+        ordering = ["created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(kind__in=("not_regular", "amount")),
+                                   name="personal_forecast_adjustment_kind"),
+        ]
+
+
 #: Every model here, for the isolation family. A new model goes in here or
 #: `tests/test_personal_sides.py` fails.
 OWNED = (PersonalCategory, PersonalMember, PersonalAccount, PersonalReconciliation,
          PersonalLine, PersonalImport, PersonalImportRow, PersonalDebt, PersonalHolding,
          PersonalBalance, PersonalGoal, PersonalSetAside, PersonalEnvelope,
-         PersonalEnvelopeMove, PersonalPlanned, PersonalQuestion)
+         PersonalEnvelopeMove, PersonalPlanned, PersonalQuestion, PersonalAsset,
+         PersonalForecastSnapshot, PersonalForecastAdjustment)

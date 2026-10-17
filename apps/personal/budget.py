@@ -368,6 +368,21 @@ def assign_to_goal(ledger, *, goal, amount_cents: int) -> PersonalGoal:
     return goal
 
 
+def assign_to_debts(ledger, *, amount_cents: int) -> None:
+    """Decision 12 with stop 3: some of what is unassigned toward the debts,
+    a month. The payoff plan's extra goes up by it (and so its envelope)."""
+    from apps.personal import debts
+
+    if amount_cents <= 0:
+        raise PersonalError("The amount is more than zero.")
+    left = month_view(ledger)["unassigned_cents"]
+    if amount_cents > left:
+        raise PersonalError(f"Only ${max(0, left) / 100:,.2f} is unassigned.", status=409)
+    if not debts.open_debts(ledger).exists():
+        raise PersonalError("There are no debts to put it toward.", status=409)
+    debts.set_plan(ledger, extra=ledger.payoff_extra_cents + amount_cents)
+
+
 # ------------------------------------------------------------------- goals
 
 def everyday_monthly(ledger) -> int:
@@ -587,5 +602,6 @@ def coming_up(ledger) -> list[dict]:
              "amount_cents": p.amount_cents, "direction": p.direction,
              "goal": str(p.goal_id) if p.goal_id else None}
             for p in PersonalPlanned.objects.filter(
-                ledger=ledger, archived_at__isnull=True, on_date__gte=today)
+                ledger=ledger, archived_at__isnull=True, on_date__gte=today,
+                is_what_if=False)
             .filter(Q(goal__isnull=True) | Q(goal__archived_at__isnull=True))[:12]]

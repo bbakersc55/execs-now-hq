@@ -37,8 +37,10 @@ PURPOSE = "finance_explain_step"
 PRESSED = (PURPOSE, "finance_explain_forecast", "finance_review_forecast",
            # P6 M4 decision 6, the brief winning: "Sort these with Claude".
            "personal_sort_lines",
-           # P6 M4 decision 25: "Explain this budget".
-           "personal_explain_budget")
+           # P6 M4 decision 25: "Explain this budget", and the personal
+           # forecast's "Explain this forecast" and "Review with Claude".
+           "personal_explain_budget", "personal_explain_forecast",
+           "personal_review_forecast")
 DAILY_CAP = 20
 #: Only these steps send the unticked lines.
 WITH_LINES = (4, 5)

@@ -134,15 +134,18 @@ export function LineActions({ line, tried, busy, trial, onToggle, onAmount, send
 
 // ------------------------------------------------------------ planned lines
 
-type Draft = { description: string; direction: "in" | "out"; amount_cents: number;
+export type Draft = { description: string; direction: "in" | "out"; amount_cents: number;
                on_date: string; repeat: PlannedLine["repeat"]; until: string;
                is_what_if: boolean };
 
 /** The form a planned line is typed in: also what a confirmed "likely
  *  annual" item and an answer in a review are. The amount is the owner's. */
-export function PlannedForm({ start, label, busy, save, onSave, onCancel }: {
+export function PlannedForm({ start, label, busy, save, onSave, onCancel, until = true,
+                             placeholder = "A hire, new equipment, a deposit" }: {
   start: Partial<Draft>; label: string; busy: boolean; save: string;
   onSave: (draft: Draft) => void; onCancel?: () => void;
+  /** The personal side's planned lines repeat with no end date. */
+  until?: boolean; placeholder?: string;
 }) {
   const [form, setForm] = useState<Draft>({
     description: "", direction: "out", amount_cents: 0, on_date: today(), repeat: "",
@@ -153,7 +156,7 @@ export function PlannedForm({ start, label, busy, save, onSave, onCancel }: {
       <div className="row">
         <Field label="What it is">
           <input aria-label={`${label}: what it is`} value={form.description}
-            maxLength={200} placeholder="A hire, new equipment, a deposit"
+            maxLength={200} placeholder={placeholder}
             onChange={(e) => set({ description: e.target.value })} />
         </Field>
         <Field label="Money">
@@ -181,7 +184,7 @@ export function PlannedForm({ start, label, busy, save, onSave, onCancel }: {
             <option value="yearly">Every year</option>
           </select>
         </Field>
-        {form.repeat && (
+        {form.repeat && until && (
           <Field label="Until (empty: until further notice)">
             <input type="date" aria-label={`${label}: until`} value={form.until}
               onChange={(e) => set({ until: e.target.value })} />
@@ -412,15 +415,16 @@ export function LikelyAnnual({ rows, busy, send }: {
 
 // ------------------------------------------------------ how good it has been
 
-export function HowGood({ history }: { history: ForecastHistory[] }) {
+export function HowGood({ history, note }: { history: ForecastHistory[]; note?: string }) {
   if (history.length === 0) return null;
   const gap = (cents: number) => `${cents > 0 ? "+" : cents < 0 ? "−" : ""}${
     dollars(Math.abs(cents))}`;
   return (
     <Card title="How good it has been">
       <p className="small muted" style={{ marginTop: 0 }}>
-        For each closed month: the forecast as it stood when the month began, beside what
-        happened. There is no score. The differences are the information.</p>
+        {note ?? "For each closed month: the forecast as it stood when the month began, "
+          + "beside what happened."} There is no score. The differences are the
+        information.</p>
       <div style={{ overflowX: "auto" }}>
         <table aria-label="How good it has been">
           <thead><tr><th>Month</th><th className="money">Cash at the end, forecast</th>

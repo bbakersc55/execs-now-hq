@@ -8,7 +8,7 @@ from datetime import date
 
 from rest_framework.response import Response
 
-from apps.personal import budget, questions
+from apps.personal import budget, debts, questions
 from apps.personal.models import PersonalAccount, PersonalGoal, PersonalQuestion
 from apps.personal.services import PersonalError
 from apps.personal.views import PersonalView, represent_category
@@ -69,6 +69,7 @@ class BudgetView(PersonalView):
             "coming_up": budget.coming_up(ledger),
             "cash_flow": budget.cash_flow(ledger),
             "questions_waiting": len(questions.waiting(ledger)) if have else 0,
+            "debts": debts.open_debts(ledger).count(),
         })
 
 
@@ -127,13 +128,17 @@ class EnvelopeView(PersonalView):
 
 
 class AssignView(PersonalView):
-    """POST {goal, amount_cents}: some of what is unassigned, toward a goal."""
+    """POST {goal, amount_cents}: some of what is unassigned, toward a goal;
+    or {debts: true, amount_cents}: toward the payoff plan's extra (stop 3)."""
 
     def post(self, request):
         try:
-            goal = self._goal(request.data.get("goal"))
-            budget.assign_to_goal(self.ledger, goal=goal, amount_cents=_cents(
-                request.data.get("amount_cents"), "The amount", allow_zero=False))
+            amount = _cents(request.data.get("amount_cents"), "The amount", allow_zero=False)
+            if request.data.get("debts"):
+                budget.assign_to_debts(self.ledger, amount_cents=amount)
+            else:
+                goal = self._goal(request.data.get("goal"))
+                budget.assign_to_goal(self.ledger, goal=goal, amount_cents=amount)
         except PersonalError as exc:
             return self.refusal(exc)
         return Response(budget.month_view(self.ledger))

@@ -608,6 +608,35 @@ def _personal_counts(world) -> dict:
         "set-aside": of(personal.PersonalSetAside).values_list("saved_cents", flat=True)
         .first(),
         "budget": _budget_counts(world),
+        "forecast, debts and net worth": _stop3_counts(world),
+    }
+
+
+def _stop3_counts(world) -> dict:
+    """Stop 3: the personal forecast, the payoff plan and net worth, counted
+    from them."""
+    from apps.personal import debts, networth, services
+    from apps.personal import forecast as personal_forecast
+    from apps.personal.models import PersonalForecastSnapshot
+
+    ledger = services.ledger_for(world.owner)
+    found = personal_forecast.build(ledger, world.today, snapshot=False)
+    plan = debts.represent(ledger, world.today)
+    worth = networth.summary(ledger, world.today)
+    return {
+        "forecast ready": found["ready"],
+        "forecast lines (12 months)": len(found["lines"]),
+        "known lines": sum(1 for row in found["lines"] if row["kind"] == "known"),
+        "planned lines": sorted({row["label"] for row in found["lines"]
+                                 if row["kind"] == "planned"}),
+        "months in how good it has been": len(found["history"]),
+        "snapshots kept": PersonalForecastSnapshot.objects.filter(ledger=ledger).count(),
+        "payoff order": plan["order"], "payoff extra (USD)": plan["extra_cents"] / 100,
+        "debt free on": plan["debt_free_on"],
+        "net worth (USD)": worth["total_cents"] / 100,
+        "net worth months": len(worth["series"]),
+        "home equity (USD)": next((row["equity_cents"] / 100 for row in worth["equity"]
+                                   if row["kind"] == "home"), None),
     }
 
 

@@ -2106,7 +2106,7 @@ export interface SortProposals {
 export interface Envelope {
   id: string; name: string; kind: "everyday" | "savings" | "income"; kind_label: string;
   rolls: boolean; category: string | null; goal: string | null;
-  source: "history" | "typed" | "goal" | "yearly"; source_label: string;
+  source: "history" | "typed" | "goal" | "yearly" | "debt"; source_label: string;
   planned_cents: number; history_cents: number | null; carried_cents: number;
   moved_in_cents: number; moved_out_cents: number; spent_cents: number; left_cents: number;
   yearly_cents: number | null; yearly_month: number | null; over: boolean; stood: boolean;
@@ -2148,6 +2148,8 @@ export interface Budget {
                direction: "in" | "out"; goal: string | null }[];
   cash_flow: CashFlow;
   questions_waiting: number;
+  /** Stop 3: open debts, so Unassigned can go toward them. */
+  debts: number;
 }
 
 /** apps/personal/questions.py `represent`. */
@@ -2156,4 +2158,124 @@ export interface BudgetQuestion {
   detail: { proposed_cents?: number; suggested_cents?: number; choices?: number[];
             cents?: number; month?: number; monthly_cents?: number };
   state: string; envelope: string | null; category: string | null;
+}
+
+// ------------------------------- P6 M4 stop 3: forecast, debts, the rest
+
+/** apps/personal/forecast.py `build`: M2's shape, on the household's money. */
+export interface PersonalForecastLine extends Omit<ForecastLine, "kind" | "cadence" |
+  "client" | "who" | "on_card"> {
+  kind: "known" | "regular" | "planned"; cadence: string; what_if: boolean;
+}
+
+export interface PersonalPlanned {
+  id: string; description: string; direction: "in" | "out"; amount_cents: number;
+  on_date: string; repeat: "" | "monthly" | "quarterly" | "yearly"; is_what_if: boolean;
+  state: "planned" | "what_if" | "lapsed"; goal: string | null; next_on: string | null;
+}
+
+export interface PersonalForecast {
+  as_of: string; ready: boolean; complete_months: number; note: string;
+  cash_today_cents: number; accounts: Forecast["accounts"]; floor_cents: number | null;
+  weeks: ForecastRow[]; months: ForecastRow[];
+  views: Record<ForecastView, ForecastSummary>; lines: PersonalForecastLine[];
+  planned: PersonalPlanned[];
+  goals_not_drawn: { id: string; name: string; monthly_cents: number;
+                     account: string | null }[];
+  adjustments: Omit<ForecastAdjustment, "by">[];
+  history: ForecastHistory[]; what_if: ForecastWhatIf | null; disclaimer: string;
+}
+
+export interface PersonalReviewItem {
+  group: string; label: string; category: string; direction: "in" | "out";
+  months: { month: string; amount_cents: number }[]; last_on: string;
+  last_amount_cents: number; why: string; amount_cents?: number; detail?: string;
+  cadence?: PersonalPlanned["repeat"]; next_on?: string;
+}
+
+export interface PersonalReview {
+  one_offs: PersonalReviewItem[]; missed: PersonalReviewItem[];
+  questions: { question: string }[];
+  cost_usd: string; disclaimer: string; used_today: number; cap: number;
+}
+
+export interface SideEnding {
+  ready: boolean; cash_today_cents: number; end_cents: number; low_cents: number;
+  low_start: string;
+}
+
+export interface Sides { days: number; personal: SideEnding; business: SideEnding | null }
+
+export interface Point { on_date: string; cents: number }
+
+export interface PersonalDebt {
+  id: string; name: string; kind: string; kind_label: string; whose: string | null;
+  whose_name: string; balance_cents: number; balance_on: string | null;
+  balance_source: "import" | "entered" | "none"; rate_percent: string | null;
+  minimum_cents: number | null; due_day: number | null;
+  account: { id: string; name: string } | null;
+  category: { id: string; name: string } | null;
+  plan_position: number | null; payoff_on: string | null; interest_cents: number | null;
+  never: boolean; history: Point[]; projected: Point[];
+}
+
+export interface Debts {
+  order: "snowball" | "avalanche"; other_order: "snowball" | "avalanche";
+  extra_cents: number; saved_extra_cents: number; saved_order: "snowball" | "avalanche";
+  total_cents: number; minimums_cents: number; debt_free_on: string | null;
+  interest_cents: number | null;
+  /** What the other order would cost (+) or save (-), in interest and months. */
+  other: { interest_cents: number | null; months: number | null;
+           debt_free_on: string | null };
+  extra_saves: { interest_cents: number | null; months: number | null;
+                 debt_free_on: string | null };
+  debts: PersonalDebt[];
+}
+
+export interface Holding {
+  id: string; name: string; kind: "retirement" | "investment"; kind_label: string;
+  whose: string | null; whose_name: string; balance_cents: number;
+  balance_on: string | null; target_cents: number | null; target_year: number | null;
+  contribution_text: string; typed_monthly_cents: number | null;
+  contributions: { monthly_cents: number; recognized: boolean;
+                   months: { month: string; cents: number }[] };
+  status: null | { on_track: boolean; projected_cents: number; months: number;
+                   short_cents: number; needed_monthly_cents: number;
+                   projection: Point[] };
+  history: Point[];
+}
+
+export interface Holdings {
+  assumed_return_percent: string; estimate: string; holdings: Holding[];
+  total_cents: number;
+}
+
+export interface Member {
+  id: string; name: string; relation: "self" | "spouse" | "partner" | "other";
+  relation_label: string; expected_withholding_cents: number | null; is_you: boolean;
+}
+
+export interface Household {
+  members: Member[];
+  things: { thing: "account" | "category" | "debt" | "holding" | "asset"; id: string;
+            name: string; what: string; label: string; whose: string | null }[];
+  income: { category: string; whose: string | null; whose_name: string;
+            monthly_cents: number }[];
+}
+
+export interface Asset {
+  id: string; name: string; kind: "home" | "vehicle" | "other"; kind_label: string;
+  whose: string | null; debt: { id: string; name: string } | null;
+  value_cents: number; value_on: string | null;
+}
+
+export interface NetWorth {
+  as_of: string; assets_cents: number; debts_cents: number; total_cents: number;
+  assets: { kind: string; name: string; cents: number }[];
+  debts: { kind: string; name: string; cents: number }[];
+  series: Point[]; change_cents: number | null; since: string | null;
+  equity: { id: string; name: string; kind: string; value_cents: number; value_on: string;
+            debt: string; owed_cents: number; owed_on: string | null;
+            equity_cents: number }[];
+  things: Asset[];
 }

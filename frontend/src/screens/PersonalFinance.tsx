@@ -13,6 +13,8 @@ import { PERSONAL_DISCLAIMER, personalOptions, usePersonalChart } from "../lib/p
 import { ImportFileStep, StatementRead } from "./FinanceImport";
 import { AiGate } from "../components/DemoVisitor";
 import { PersonalGoals, PersonalOverview } from "./PersonalBudget";
+import { PersonalForecastPage } from "./PersonalForecast";
+import { PersonalDebts, PersonalHousehold, PersonalRetirement } from "./PersonalWorth";
 
 /**
  * Personal finance (P6 M4 stop 1, `docs/p6_m4_personal_finance.md`): the
@@ -20,18 +22,23 @@ import { PersonalGoals, PersonalOverview } from "./PersonalBudget";
  * server answers nobody else, in this practice or any other.
  *
  * Stop 1 is sides: Entries (with To sort and Sort these with Claude),
- * Import, Accounts (with an optional reconcile) and Categories. The budget,
- * goals, forecast, debts and taxes come in the later stops.
+ * Import, Accounts (with an optional reconcile) and Categories. Stop 2 is the
+ * budget and goals (the Overview); stop 3 the forecast, debts, retirement,
+ * the household and net worth. Taxes come in stop 4.
  */
-export type PersonalTab = "overview" | "goals" | "entries" | "import" | "accounts"
-  | "categories";
+export type PersonalTab = "overview" | "forecast" | "goals" | "debts" | "retirement"
+  | "household" | "entries" | "import" | "accounts" | "categories";
 
 export function PersonalFinance({ tab }: { tab: PersonalTab }) {
   return (
     <div className="personal-side">
       {/* Stop 2: the Overview is the first page of the Personal side. */}
       {tab === "overview" && <PersonalOverview />}
+      {tab === "forecast" && <PersonalForecastPage />}
       {tab === "goals" && <PersonalGoals />}
+      {tab === "debts" && <PersonalDebts />}
+      {tab === "retirement" && <PersonalRetirement />}
+      {tab === "household" && <PersonalHousehold />}
       {tab === "entries" && <PersonalEntries />}
       {tab === "import" && <PersonalImports />}
       {tab === "accounts" && <PersonalAccounts />}

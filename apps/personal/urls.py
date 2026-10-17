@@ -1,6 +1,6 @@
 from django.urls import path
 
-from apps.personal import views, views_budget as vb
+from apps.personal import views, views_budget as vb, views_forecast as vf
 
 urlpatterns = [
     path("personal/ledger", views.LedgerView.as_view()),
@@ -16,6 +16,29 @@ urlpatterns = [
     path("personal/questions/<uuid:pk>", vb.QuestionView.as_view()),
     path("personal/goals", vb.GoalListView.as_view()),
     path("personal/goals/<uuid:pk>", vb.GoalView.as_view()),
+    # Stop 3: the forecast, debts, retirement, the household, net worth.
+    path("personal/forecast", vf.ForecastView.as_view()),
+    path("personal/forecast/what-if", vf.ForecastView.as_view()),
+    path("personal/forecast/floor", vf.ForecastFloorView.as_view()),
+    path("personal/forecast/planned", vf.ForecastPlannedView.as_view()),
+    path("personal/forecast/planned/<uuid:pk>", vf.ForecastPlannedView.as_view()),
+    path("personal/forecast/adjustments", vf.ForecastAdjustView.as_view()),
+    path("personal/forecast/adjustments/<uuid:pk>", vf.ForecastAdjustView.as_view()),
+    path("personal/forecast/ask", vf.ForecastAskView.as_view()),
+    path("personal/forecast/ask/<str:what>", vf.ForecastAskView.as_view()),
+    path("personal/sides", vf.SidesView.as_view()),
+    path("personal/debts", vf.DebtListView.as_view()),
+    path("personal/debts/plan", vf.DebtPlanView.as_view()),
+    path("personal/debts/<uuid:pk>", vf.DebtView.as_view()),
+    path("personal/debts/<uuid:pk>/balance", vf.DebtView.as_view()),
+    path("personal/holdings", vf.HoldingListView.as_view()),
+    path("personal/holdings/<uuid:pk>", vf.HoldingView.as_view()),
+    path("personal/holdings/<uuid:pk>/balance", vf.HoldingView.as_view()),
+    path("personal/household", vf.HouseholdView.as_view()),
+    path("personal/household/<str:what>", vf.HouseholdView.as_view()),
+    path("personal/members/<uuid:pk>", vf.MemberView.as_view()),
+    path("personal/net-worth", vf.NetWorthView.as_view()),
+    path("personal/assets/<uuid:pk>", vf.AssetView.as_view()),
     path("personal/categories", views.CategoryListView.as_view()),
     path("personal/categories/<uuid:pk>", views.CategoryView.as_view()),
     path("personal/accounts", views.AccountListView.as_view()),
