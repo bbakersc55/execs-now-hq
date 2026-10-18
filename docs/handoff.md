@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-17**, after M4 stop 3. **The next session starts at "2026-10-17,
-night: M4 stop 3" just below, then "2026-10-17, evening: M4 stop 2",
+2026-10-17**, after M4 stop 3. **The next session starts at "Where things
+stand" just below, then "2026-10-17, night: M4 stop 3", then "2026-10-17, evening: M4 stop 2",
 "2026-10-17", "2026-10-15, night" and
 "2026-10-15, evening".** Then "Release 12: the plan as it was" and "2026-10-13", which
 is the day in order. Everything from "Next" down was last brought up to
@@ -10,6 +10,20 @@ date on 10/5; where it and a newer section disagree, the newer holds. Upload
 this at the start of the next chat with: "Read this handoff, then pick up
 where it leaves off." The specs in `docs/` are the source of truth; this
 covers what they don't, and what changed since 9/30.
+
+## Where things stand (2026-10-17, late): stops 2 and 3 accepted
+
+- **`dev` is at `bac0e06`.** M4 stops 2 and 3 were **accepted on the demo**
+  by Bryan, every choice kept (stop 2's six, stop 3's nine). The demo was
+  reseeded at `bac0e06` (Summit only; 224 s on Railway).
+- **Release 17** carries `personal 0003` and `personal 0004`, both additive
+  with no data step (0004 drops and re-adds `personal_balance`'s one check
+  constraint, wider, which every row already meets). By the runbook, on
+  Bryan's "release".
+- **Next: M4 stop 4** (`docs/p6_m4_personal_finance.md`, decisions 20–23):
+  the pay-yourself loop, the quarterly tax set-aside with the Tax envelope,
+  For your CPA with both sides, and standard against itemized. **Then
+  Melissa's Notion/ClickUp import**, when her samples arrive.
 
 ## 2026-10-17, night: M4 stop 3, the forecast and the rest (not released)
 
