@@ -59,3 +59,4 @@ is built unless its row says so. Pricing heard on the same call is in
 |---|---|---|
 | U1 | **"New invoice" and a recurring invoice's "Edit" open as a modal** over a grayed-out page, not as a drop-down in the list. Drilling into a sent invoice stays as it is. Asked 2026-10-14. | done 2026-10-15 (`Modal`; "New recurring invoice" too) |
 | U2 | **One import door.** The sidebar's CSV import asks what the file holds (contacts, companies, bank or card lines, tasks) and routes to the right importer and mapping, instead of a separate entry per kind. Asked 2026-10-15. | later |
+| U3 | **Debts page: rename the payoff orders.** "Snowball" becomes "Smallest balance first" and "Avalanche" becomes "Highest rate first", on screen, in the spec's wording and in the AI prompts. Asked 2026-10-19. | later |
