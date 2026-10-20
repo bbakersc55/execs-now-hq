@@ -452,6 +452,19 @@ own deployment is SUCCESS on the new commit, R6 can be skipped. Done from
 Claude Code end to end: `railway logs`, `railway ssh … migrate` and
 `railway redeploy` against production were allowed this time.
 
+**Observed at Release 17 (2026-10-20 UTC, 5 migrations: P6 M4 stops 2–4 and
+the QBI choice, campaign follow-through, the editor's merge-field chips):**
+R1: the owner's run-now dump `execsnowhq_prod_20261020_033246.sql.gz`
+(3,570,167 bytes, 03:32:48), newer than the 08:00 run. `main`
+fast-forwarded from `0c1fd61` to `93bbd6a` and pushed 03:36:05; worker
+`WAITING` 03:36:59 listing exactly `crm.0037_campaign_follow_through` and
+`personal.0003`–`0006`; applied 03:37:14–21, each OK; `migrations current`
+03:37:32, `Q Cluster … running` 03:37:35. **New code serving between 03:37:30
+and 03:37:36, by itself** (as at Release 14), before the R6 redeploy sent at
+03:37:51, which was redundant: the deployment list was not checked first, as
+Release 14's note says to. **Push to new code: about 1 min 30 s.** `/healthz`
+200 on all 24 samples at 5 s from 03:35:54. **Worker paused about 36 s.**
+
 ---
 
 ## Part A — the owner's steps, in order

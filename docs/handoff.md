@@ -11,7 +11,19 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## Where things stand (2026-10-19, evening): stop 4 and C1 built, for acceptance
+## Where things stand (2026-10-20): Release 17 is live
+
+- **Release 17 is live** (2026-10-20 03:36–03:38 UTC): `main` at `93bbd6a`,
+  migrations `crm 0037` and `personal 0003–0006` applied by the runbook, all
+  OK; `/healthz` 200 throughout. Details: the runbook's "Observed at Release
+  17". Production now has M4 stops 2–4 (Personal finance is still off for
+  every practice: the privacy policy and beta agreement come first),
+  campaign follow-through and the editor's merge-field chips.
+- Bryan kept every choice of stop 4 and C1 (10/19) and asked for the QBI
+  choice (`9e3e703`) and the editor fix (`93bbd6a`), both in the release.
+- **The demo still needs its reseed** to show stop 4's seeded data.
+
+## 2026-10-19, evening: stop 4 and C1 built, then accepted
 
 - **M4 stop 4 is built on `dev`** (decisions 20–23, the review's envelope,
   goal and set-aside proposals, the payoff orders renamed). As built and ten
