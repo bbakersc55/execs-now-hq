@@ -11,6 +11,14 @@ The branded layout wraps the body, as it wraps every other email, unless the
 campaign is "send as-is": then the HTML goes out as written, marked as a
 finished document so the layout leaves it alone. Either way, as marketing, it
 carries the unsubscribe link (`unsubscribe.apply` puts it before `</body>`).
+
+**Follow-through** (owner, 2026-10-19). A campaign may carry up to three
+files, copied onto every draft it makes; and "when this campaign is sent" it
+may move each recipient to a stage and enrol them in referral touches at a
+cadence. Both happen per person, **when their draft is approved and sent**
+(`after_sent`, called by the Outbox): a draft refused, deleted, expired or
+suppressed does nothing, and so an unsubscribed recipient is never moved or
+enrolled. Each move and enrolment is on the contact's history and Activity.
 """
 
 from __future__ import annotations
@@ -22,7 +30,9 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.html import escape, strip_tags
 
-from apps.crm.models import CampaignRecipient, EmailSuppression, OutboxMessage
+from apps.crm.models import (
+    CampaignAttachment, CampaignRecipient, EmailSuppression, OutboxMessage,
+)
 from apps.tenancy.models import AuditEvent
 
 P = OutboxMessage.Producer
@@ -33,6 +43,8 @@ S = OutboxMessage.State
 SEND_BY_DAYS = 14
 
 MERGE_FIELDS = ("{FirstName}", "{Company}", "{FractionalName}")
+#: Files on a campaign (owner, 2026-10-19), each within the Outbox's limit.
+MOST_ATTACHMENTS = 3
 
 
 class CampaignRefused(Exception):
@@ -173,6 +185,11 @@ def queue(campaign, contacts, *, actor) -> dict:
                                        P.CAMPAIGN, override=campaign.sender)
     queued, skipped = [], []
     send_by = timezone.now() + timezone.timedelta(days=SEND_BY_DAYS)
+    # The campaign's own files, onto each draft: the same stored file, never
+    # copied bytes, so ten drafts do not store a flyer ten times.
+    files = [(row.stored_file, row.filename)
+             for row in CampaignAttachment.all_objects.filter(campaign=campaign)
+             .select_related("stored_file")]
     for contact in contacts:
         why = unsendable(contact, campaign)
         if why:
@@ -186,7 +203,7 @@ def queue(campaign, contacts, *, actor) -> dict:
             to_contact=contact, to_address=contact.primary_email,
             subject=subject, body_text=text, body_html=html, actor=actor,
             from_address=from_address, send_by=send_by,
-            source_type="campaign", source_id=campaign.pk)
+            source_type="campaign", source_id=campaign.pk, attachments=files)
         CampaignRecipient.all_objects.update_or_create(
             tenant_id=campaign.tenant_id, campaign=campaign, contact=contact,
             defaults={"outbox_message": message, "enrolled_by": actor,
@@ -258,3 +275,102 @@ def active_for(contact):
         tenant_id=contact.tenant_id, contact=contact,
         ended_at__isnull=True).select_related("campaign")
 
+
+
+# ------------------------------------------------------- the campaign's files
+
+def add_attachment(campaign, *, upload, actor) -> CampaignAttachment:
+    """One more file on the campaign, at most three, each within the Outbox's
+    own size limit. Drafts made from then on carry it."""
+    from apps.crm.views import MAX_ATTACHMENT_BYTES
+    from apps.tenancy import storage
+
+    if CampaignAttachment.all_objects.filter(campaign=campaign).count() >= MOST_ATTACHMENTS:
+        raise CampaignRefused(f"A campaign carries at most {MOST_ATTACHMENTS} files. "
+                              "Remove one first.")
+    if upload.size > MAX_ATTACHMENT_BYTES:
+        raise CampaignRefused(f"{upload.name} is {upload.size // 1024} KB. The limit is "
+                              f"{MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB per file.")
+    stored = storage.save(
+        tenant=campaign.tenant, content=upload.read(),
+        object_key=storage.object_key(f"campaigns/{campaign.tenant.slug}/{campaign.pk}",
+                                      upload.name),
+        content_type=upload.content_type or "application/octet-stream",
+        purpose="campaign_attachment")
+    row = CampaignAttachment.all_objects.create(tenant=campaign.tenant, campaign=campaign,
+                                                stored_file=stored,
+                                                filename=upload.name[:255])
+    AuditEvent.all_objects.create(
+        tenant_id=campaign.tenant_id, actor=actor, verb="campaign.file_added",
+        target_type="campaign", target_id=campaign.pk, payload={"file": row.filename})
+    return row
+
+
+def remove_attachment(row, *, actor) -> None:
+    """Off the campaign. Drafts already made keep their copy of it."""
+    AuditEvent.all_objects.create(
+        tenant_id=row.tenant_id, actor=actor, verb="campaign.file_removed",
+        target_type="campaign", target_id=row.campaign_id, payload={"file": row.filename})
+    row.delete()
+
+
+# ------------------------------------------------------ when it is sent
+
+def check_follow_through(campaign, *, stage) -> None:
+    """The stage must be one of this practice's."""
+    if stage is not None and stage.tenant_id != campaign.tenant_id:
+        raise CampaignRefused("That stage is not in this practice.", status=404)
+
+
+def after_sent(message, *, actor=None) -> dict:
+    """Owner, 2026-10-19: what the campaign says happens when it is sent, for
+    the one person this draft went to. Called by the Outbox only once the
+    draft is sent; anything else (refused, deleted, expired, suppressed) never
+    reaches here. Returns what was done, for the caller and the tests."""
+    from apps.crm.models import Enrollment
+    from apps.crm.services import enrollment, pipeline
+
+    done = {"moved": False, "enrolled": False, "skipped": ""}
+    if message.producer != P.CAMPAIGN or message.state != S.SENT \
+            or message.source_type != "campaign" or not message.to_contact_id:
+        return done
+    recipient = CampaignRecipient.all_objects.filter(
+        outbox_message=message, ended_at__isnull=True).select_related(
+        "campaign", "campaign__on_sent_stage", "contact").first()
+    if recipient is None:
+        return done
+    campaign, contact = recipient.campaign, recipient.contact
+    if contact.deleted_at is not None or _left_marketing(contact):
+        return done
+    reason = f"Campaign \u201c{campaign.name}\u201d was sent"
+    stage = campaign.on_sent_stage
+    if stage is not None and stage.tenant_id == contact.tenant_id:
+        done["moved"] = pipeline.change_stage(contact, stage, actor=actor,
+                                              reason=reason) is not None
+    cadence = campaign.on_sent_cadence
+    if cadence:
+        program = Enrollment.Program.REFERRAL_TOUCHES
+        if enrollment.is_enrolled(contact, program):
+            done["skipped"] = "already on referral touches"
+        elif not enrollment._is_partner(contact):
+            done["skipped"] = "not a referral partner"
+        else:
+            contact.referral_cadence = cadence
+            contact.save(update_fields=["referral_cadence", "updated_at"])
+            enrollment.enroll(contact, program, actor=actor,
+                              source=f"campaign \u201c{campaign.name}\u201d")
+            done["enrolled"] = True
+        if done["skipped"]:
+            AuditEvent.all_objects.create(
+                tenant_id=contact.tenant_id, actor=actor,
+                verb="campaign.enrolment_skipped", target_type="contact",
+                target_id=contact.pk,
+                payload={"campaign": str(campaign.pk), "campaign_name": campaign.name,
+                         "why": done["skipped"]})
+    return done
+
+
+def _left_marketing(contact) -> bool:
+    return EmailSuppression.all_objects.filter(
+        tenant_id=contact.tenant_id, contact=contact, category="marketing",
+        lifted_at__isnull=True).exists()

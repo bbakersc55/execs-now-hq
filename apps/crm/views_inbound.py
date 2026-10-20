@@ -258,3 +258,68 @@ def health(tenant) -> dict:
             state=UnmatchedInbound.State.PENDING).count(),
         "errors": threads.exclude(poll_error="").count(),
     }
+
+
+class LeaveRequestViewSet(viewsets.GenericViewSet):
+    """Replies that ask to leave (owner, 2026-10-19). GET the waiting ones;
+    POST .../unsubscribe/ does exactly what the email's link does; POST
+    .../keep/ says it was not a request. Staff see the replies they can see
+    (`visible_messages`); the practice owner or an associate clicks."""
+
+    permission_classes = [crm_perms.IsTenantStaff]
+
+    def get_queryset(self):
+        from apps.crm.services import leaving
+
+        return leaving.waiting(visible_messages(self.request))
+
+    def list(self, request):
+        from apps.crm.services import leaving
+
+        out = []
+        for message in self.get_queryset()[:200]:
+            source = leaving.answered(message)
+            contact = message.contact
+            out.append({
+                "id": str(message.pk), "subject": message.subject,
+                "from_address": message.from_address,
+                "received_at": message.received_at.isoformat()
+                if message.received_at else None,
+                "said": (message.body_stripped or message.body_text or "")[:400],
+                "contact": ({"id": str(contact.pk),
+                             "name": f"{contact.first_name} {contact.last_name}".strip()}
+                            if contact else None),
+                "answered": ({"subject": source.subject, "producer": source.producer,
+                              "sent_at": source.sent_at.isoformat()
+                              if source.sent_at else None} if source else None),
+            })
+        return Response(out)
+
+    def _act(self, request, pk, how):
+        from apps.crm.services import leaving
+
+        if crm_perms.role_of(request) not in (Role.FF, Role.CF):
+            return Response({"detail": "Only the practice owner or an associate can do "
+                                       "this."}, status=403)
+        if not _is_uuid(pk):
+            raise Http404
+        message = self.get_queryset().filter(pk=pk).first()
+        if message is None:
+            raise Http404
+        try:
+            how(message, actor=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response({"id": str(message.pk), "leave_request": message.leave_request})
+
+    @action(detail=True, methods=["post"])
+    def unsubscribe(self, request, pk=None):
+        from apps.crm.services import leaving
+
+        return self._act(request, pk, leaving.unsubscribe_them)
+
+    @action(detail=True, methods=["post"])
+    def keep(self, request, pk=None):
+        from apps.crm.services import leaving
+
+        return self._act(request, pk, leaving.keep)

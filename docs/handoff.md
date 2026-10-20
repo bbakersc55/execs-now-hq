@@ -11,7 +11,7 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## Where things stand (2026-10-19): M4 stop 4 built, for acceptance
+## Where things stand (2026-10-19, evening): stop 4 and C1 built, for acceptance
 
 - **M4 stop 4 is built on `dev`** (decisions 20–23, the review's envelope,
   goal and set-aside proposals, the payoff orders renamed). As built and ten
@@ -23,8 +23,35 @@ truth; this covers what they don't, and what changed since 9/30.
   runbook, on Bryan's "release".
 - **Backlog:** U3 (the payoff orders) done with stop 4; **D1, a module for
   your discipline**, added under "Spec first", status later.
-- **Next:** Bryan's acceptance of stop 4; then Melissa's Notion/ClickUp
-  import, when her samples arrive.
+- **Stop 4 is committed (`e03f884`) and pushed to `dev`**; the demo deployed
+  it. **The demo was not reseeded:** the permission check refused the
+  `railway ssh … seed_demo` call this time (classed as a production deploy).
+  Bryan runs it, or allows it (see below).
+- **Campaign follow-through (backlog C1) built on `dev`**, migration
+  **`crm 0037`** (additive: two campaign columns, `email_message.leave_request`,
+  a `campaign_attachment` table), applied on the laptop after a green suite.
+  The next release carries it with `personal 0003–0005`.
+- **Next:** Bryan's acceptance of stop 4 and C1 on the demo, after the
+  reseed; then Melissa's Notion/ClickUp import, when her samples arrive.
+
+## 2026-10-19, evening: campaign follow-through (C1, not released)
+
+- **Built:** a campaign's files (three at most, within the Outbox's 10 MB per
+  file, the same stored file on each draft); "When this campaign is sent", a
+  stage and a referral-touch cadence, run by `campaigns.after_sent` from
+  `outbox.approve` once the copy is sent (so a refused, deleted, expired or
+  suppressed copy does nothing, and an unsubscribed person never moves);
+  "Asked to leave" on Replies (`apps/crm/services/leaving.py`, flagged when a
+  reply is stored or filed, from what the person wrote with the quote taken
+  off); the audience count and "Select all shown".
+- **Choices for Bryan:** a stage move from a campaign runs that stage's own
+  rules, as a move by hand does; only referral partners are put on touches
+  (anyone else is left off and their history says so); someone already on
+  touches keeps their cadence; "Unsubscribe them" is for the practice owner
+  or an associate, an assistant sees the list; a reply is read as answering
+  the last email sent on its thread.
+- **The demo has no campaign with follow-through, and no "asked to leave"
+  reply,** until something is set up on it by hand: the seed is unchanged.
 
 ## 2026-10-19: M4 stop 4, taxes and the CPA (not released)
 

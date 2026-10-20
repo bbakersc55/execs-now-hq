@@ -14,7 +14,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.crm import permissions as crm_perms
-from apps.crm.models import Campaign, CampaignRecipient, Contact
+from apps.crm.models import (
+    Campaign, CampaignAttachment, CampaignRecipient, Contact, PipelineStage,
+)
 from apps.crm.services import campaigns, email_layout
 from apps.tenancy.models import AuditEvent
 
@@ -22,18 +24,49 @@ from apps.tenancy.models import AuditEvent
 class CampaignSerializer(serializers.ModelSerializer):
     stats = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
+    attachments = serializers.SerializerMethodField()
+    on_sent_pipeline = serializers.SerializerMethodField()
+    #: Owner, 2026-10-19: one of this practice's stages, or none.
+    on_sent_stage = serializers.UUIDField(source="on_sent_stage_id", allow_null=True,
+                                          required=False)
 
     class Meta:
         model = Campaign
         fields = ["id", "name", "subject", "sender", "body_mode", "body_html",
-                  "send_as_is", "created_at", "updated_at", "created_by_name", "stats"]
+                  "send_as_is", "created_at", "updated_at", "created_by_name", "stats",
+                  "attachments", "on_sent_stage", "on_sent_pipeline", "on_sent_cadence"]
         read_only_fields = ["created_at", "updated_at"]
+
+    def get_attachments(self, obj):
+        return [{"id": str(row.pk), "filename": row.filename,
+                 "byte_size": row.stored_file.byte_size}
+                for row in CampaignAttachment.objects.filter(campaign=obj)
+                .select_related("stored_file")]
+
+    def validate_on_sent_stage(self, value):
+        if value is not None and not PipelineStage.objects.filter(pk=value).exists():
+            raise serializers.ValidationError("That stage is not in this practice.")
+        return value
+
+    def get_on_sent_pipeline(self, obj):
+        stage = obj.on_sent_stage
+        return str(stage.pipeline_id) if stage else None
 
     def get_stats(self, obj):
         return campaigns.stats(obj)
 
     def get_created_by_name(self, obj):
         return (obj.created_by.full_name or obj.created_by.email) if obj.created_by_id else ""
+
+
+def _is_uuid(value) -> bool:
+    import uuid
+
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 class CampaignViewSet(viewsets.ModelViewSet):
@@ -123,6 +156,32 @@ class CampaignViewSet(viewsets.ModelViewSet):
             return Response({"detail": str(exc)}, status=exc.status)
         return Response({"to": message.to_address, "state": message.state},
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="attachments")
+    def add_attachment(self, request, pk=None):
+        """One more file on the campaign (at most three), copied onto every
+        draft it makes from now on."""
+        campaign = self.get_object()
+        upload = request.FILES.get("file")
+        if upload is None:
+            return Response({"detail": "No file supplied."}, status=400)
+        try:
+            campaigns.add_attachment(campaign, upload=upload, actor=request.user)
+        except campaigns.CampaignRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response(self.get_serializer(campaign).data, status=201)
+
+    @action(detail=True, methods=["delete"],
+            url_path="attachments/(?P<attachment_id>[^/.]+)")
+    def remove_attachment(self, request, pk=None, attachment_id=None):
+        campaign = self.get_object()
+        row = CampaignAttachment.objects.filter(campaign=campaign, pk=attachment_id).first() \
+            if _is_uuid(attachment_id) else None
+        if row is None:
+            return Response({"detail": "There is no such file on this campaign."},
+                            status=404)
+        campaigns.remove_attachment(row, actor=request.user)
+        return Response(self.get_serializer(campaign).data)
 
     @action(detail=True, methods=["get"])
     def recipients(self, request, pk=None):

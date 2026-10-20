@@ -292,6 +292,10 @@ def ingest_message(tenant, payload: dict, *, client=None) -> dict:
         thread.gmail_thread_id = payload["threadId"]
     thread.last_message_at = received
     thread.save(update_fields=["gmail_thread_id", "last_message_at", "updated_at"])
+    # A reply to a marketing email that asks to leave is marked; nothing more.
+    from apps.crm.services import leaving
+
+    leaving.flag(message)
     return {"outcome": "matched", "message": message, "matched_by": how}
 
 
@@ -407,4 +411,7 @@ def file_to_contact(row, *, contact, actor=None, thread=None, add_address=False)
     row.filed_at = timezone.now()
     row.save(update_fields=["state", "filed_contact", "filed_thread",
                             "filed_message", "filed_by", "filed_at", "updated_at"])
+    from apps.crm.services import leaving
+
+    leaving.flag(message)
     return message

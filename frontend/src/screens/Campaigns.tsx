@@ -210,8 +210,119 @@ export function CampaignDetail() {
         <Preview campaign={c} />
       </div>
 
+      <FollowThrough campaign={c} set={set} onNote={setNote} />
       <Recipients campaign={c} onChosen={setChosen} />
     </>
+  );
+}
+
+const CADENCES: [string, string][] = [
+  ["", "No"], ["monthly", "Monthly"], ["bimonthly", "Every other month"],
+  ["quarterly", "Quarterly"],
+];
+
+/**
+ * Owner, 2026-10-19: the campaign's files (up to three, copied onto every
+ * draft it makes), and what happens to each person when their copy is
+ * approved and sent: a stage to move them to, referral touches at a cadence.
+ * Nothing happens at enrolment, nor for a copy refused or deleted.
+ */
+function FollowThrough({ campaign, set, onNote }: {
+  campaign: Campaign; set: (patch: Partial<Campaign>) => void;
+  onNote: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const pipelines = useQuery<Pipeline[]>({
+    queryKey: ["pipelines"], queryFn: () => api.get<Pipeline[]>("/api/pipelines/"),
+  });
+  const [pipeline, setPipeline] = useState(campaign.on_sent_pipeline ?? "");
+  useEffect(() => { setPipeline(campaign.on_sent_pipeline ?? ""); },
+            [campaign.on_sent_pipeline]);
+  const files = campaign.attachments ?? [];
+  const path = `/api/campaigns/${campaign.id}/attachments/`;
+  const done = (saved: Campaign) => {
+    qc.setQueryData(["campaign", campaign.id],
+                    (now: Campaign | undefined) => ({ ...(now ?? saved), attachments: saved.attachments }));
+  };
+  const add = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return api.post<Campaign>(path, form);
+    },
+    onSuccess: done, onError: (e: Error) => onNote(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.del<Campaign>(`${path}${id}/`),
+    onSuccess: done, onError: (e: Error) => onNote(e.message),
+  });
+  const stages = (pipelines.data ?? []).find((p) => p.id === pipeline)?.stages ?? [];
+  return (
+    <Card title="Files and follow-through">
+      <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 18rem" }}>
+          <h4 style={{ marginTop: 0 }}>Files</h4>
+          <p className="small muted">Up to three, each up to 10 MB, on every copy queued
+            from now on. A copy already queued keeps what it had.</p>
+          {files.length === 0 ? <p className="small muted">No files.</p> : (
+            <ul className="plain" aria-label="Campaign files">
+              {files.map((f) => (
+                <li key={f.id} className="row tight">
+                  <span>{f.filename}</span>
+                  <span className="small muted">{Math.max(1, Math.round(f.byte_size / 1024))} KB</span>
+                  <button className="ghost small" aria-label={`Remove ${f.filename}`}
+                    disabled={remove.isPending} onClick={() => remove.mutate(f.id)}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {files.length < 3 && (
+            <input type="file" aria-label="Add a file" disabled={add.isPending}
+              onChange={(e) => { const file = e.target.files?.[0];
+                                 if (file) add.mutate(file); e.target.value = ""; }} />
+          )}
+        </div>
+        <div style={{ flex: "1 1 22rem" }}>
+          <h4 style={{ marginTop: 0 }}>When this campaign is sent</h4>
+          <p className="small muted">For each person, when their copy is approved and
+            sent. Nothing happens for a copy refused or deleted, or for anyone who has
+            unsubscribed. Save to keep a change.</p>
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Field label="Move them to">
+              <select aria-label="Pipeline to move them in" value={pipeline}
+                onChange={(e) => { setPipeline(e.target.value);
+                                   set({ on_sent_stage: null }); }}>
+                <option value="">No move</option>
+                {(pipelines.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>))}
+              </select>
+            </Field>
+            {pipeline && (
+              <Field label="Stage">
+                <select aria-label="Stage to move them to"
+                  value={campaign.on_sent_stage ?? ""}
+                  onChange={(e) => set({ on_sent_stage: e.target.value || null })}>
+                  <option value="">Choose a stage…</option>
+                  {stages.map((st) => <option key={st.id} value={st.id}>{st.label}</option>)}
+                </select>
+              </Field>
+            )}
+            <Field label="Put them on referral touches">
+              <select aria-label="Referral touches cadence"
+                value={campaign.on_sent_cadence ?? ""}
+                onChange={(e) => set({ on_sent_cadence: e.target.value as Campaign["on_sent_cadence"] })}>
+                {CADENCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </Field>
+          </div>
+          {campaign.on_sent_cadence && (
+            <p className="tiny muted">Only referral partners are put on referral touches;
+              anyone else is left off, and their history says so. Someone already on them
+              keeps their own cadence.</p>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -322,12 +433,15 @@ function Recipients({ campaign, onChosen }: {
           onClear={() => setFilter("enrolled", "")} />}
       </FilterBar>
 
-      <p className="small recipients-count">
-        <strong className="tabular">{chosen.length}</strong> of {sendable.length} chosen
+      <p className="small recipients-count" aria-label="How many">
+        <strong className="tabular">{rows.length}</strong>
+        {rows.length >= 1000 ? " shown (the first 1,000; narrow the filters)" : " shown"}
+        {" · "}<strong className="tabular">{chosen.length}</strong> of {sendable.length} chosen
         {rows.length > sendable.length && <> · {rows.length - sendable.length} cannot be sent to</>}
         {" · "}
-        <button className="link" onClick={() => setPicked(sendable.map((r) => r.id))}>
-          Select all {sendable.length}</button>
+        <button className="link" disabled={sendable.length === 0}
+          onClick={() => setPicked(sendable.map((r) => r.id))}>
+          Select all shown ({sendable.length})</button>
         {" · "}
         <button className="link" onClick={() => setPicked([])}>Select none</button>
       </p>

@@ -11,7 +11,7 @@ from apps.accounts.models import MagicLinkToken, User
 from apps.crm.models import (
     EmailAttachment, UnmatchedInbound, Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactPipelinePosition, ContactType, ContactTypeLink, ContactServiceCategory,
-    Campaign, CampaignRecipient, DevSendAllowlistEntry, EmailSuppression, Enrollment,
+    Campaign, CampaignAttachment, CampaignRecipient, DevSendAllowlistEntry, EmailSuppression, Enrollment,
     MailPreference, DuplicateDismissal,
     EmailMessage, EmailTemplate, EmailThread, GmailConnection, ImportBatch,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
@@ -232,6 +232,16 @@ class CampaignRecipientFactory(TenantScopedFactory):
     campaign = factory.SubFactory(CampaignFactory, tenant=factory.SelfAttribute("..tenant"))
     contact = factory.SubFactory("tests.factories.ContactFactory",
                                  tenant=factory.SelfAttribute("..tenant"))
+
+
+class CampaignAttachmentFactory(TenantScopedFactory):
+    class Meta:
+        model = CampaignAttachment
+
+    tenant = factory.SubFactory(TenantFactory)
+    campaign = factory.SubFactory(CampaignFactory, tenant=factory.SelfAttribute("..tenant"))
+    stored_file = factory.SubFactory(StoredFileFactory, tenant=factory.SelfAttribute("..tenant"))
+    filename = "flyer.pdf"
 
 
 class EmailSuppressionFactory(TenantScopedFactory):

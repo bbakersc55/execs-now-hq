@@ -68,6 +68,9 @@ AUDIT = {
     "referral.blurb_updated": ("pipeline", "updated the referral blurb"),
     "referral.onboarded": ("pipeline", "onboarded {target} as a referral partner"),
     "referral.touch_drafted": ("pipeline", "drafted a referral touch for {target}"),
+    # Campaign follow-through (owner, 2026-10-19), and enrolling by hand.
+    "enrollment.started": ("pipeline", "put {target} on referral touches"),
+    "campaign.enrolment_skipped": ("pipeline", "did not put {target} on referral touches"),
     "import.committed": ("import", "committed a CSV import"),
     "import.rolled_back": ("import", "rolled back a CSV import"),
     "portal.access_granted": ("portal", "gave {target} access to the portal"),
@@ -438,6 +441,13 @@ def _audit_entries(scope, since, until, actor):
                 else phrasing.format(target=target or "a record", **forms))
         if a.verb == "goal.added_by_client" and a.payload.get("title"):
             text += f": “{a.payload['title']}”"
+        if a.verb == "enrollment.started" and str(a.payload.get("source", "")).startswith(
+                "campaign"):
+            text += f", as {a.payload['source']} said when it was sent"
+        if a.verb == "campaign.enrolment_skipped":
+            name = a.payload.get("campaign_name")
+            which = f"“{name}”" if name else "a campaign"
+            text += f" when {which} was sent: {a.payload.get('why', '')}"
         if a.verb == "act_as.ended":
             text += f" ({a.payload.get('reason') or 'no longer permitted'})"
         out.append(_entry(f"a-{a.pk}", a.created_at, category, a.verb, text,

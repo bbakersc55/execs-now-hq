@@ -11,7 +11,7 @@ from apps.crm.models import (
     EmailAttachment, UnmatchedInbound, Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactServiceCategory, ContactType, ContactTypeLink, EmailMessage,
     ContactPipelinePosition, DevSendAllowlistEntry, EmailTemplate, EmailThread,
-    Campaign, CampaignRecipient, EmailSuppression, Enrollment, MailPreference,
+    Campaign, CampaignAttachment, CampaignRecipient, EmailSuppression, Enrollment, MailPreference,
     DuplicateDismissal,
     GmailConnection,
     ImportBatch, Pipeline,
@@ -69,6 +69,8 @@ register(EmailSuppression, factories.EmailSuppressionFactory, api_exposed=False)
 register(Campaign, factories.CampaignFactory, endpoints=("/api/campaigns/",))
 # Read through the campaign's own routes (`/recipients/`), never by id.
 register(CampaignRecipient, factories.CampaignRecipientFactory, api_exposed=False)
+# Read through the campaign's own routes (the campaign's `attachments`), never by id.
+register(CampaignAttachment, factories.CampaignAttachmentFactory, api_exposed=False)
 register(ContactEmail, factories.ContactEmailFactory)
 register(ContactPhone, factories.ContactPhoneFactory)
 register(ContactType, factories.ContactTypeFactory)

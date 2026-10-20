@@ -1508,6 +1508,13 @@ export interface Campaign {
   created_at: string;
   updated_at: string;
   created_by_name: string;
+  /** Owner, 2026-10-19: up to three files, copied onto every draft it makes. */
+  attachments?: { id: string; filename: string; byte_size: number }[];
+  /** "When this campaign is sent", per person: a stage to move them to, and a
+   *  referral-touch cadence to enrol them at. Empty: nothing. */
+  on_sent_stage?: string | null;
+  on_sent_pipeline?: string | null;
+  on_sent_cadence?: "" | "monthly" | "bimonthly" | "quarterly";
   stats: { recipients: number; queued: number; sent: number; unsubscribed: number;
            not_sent: number };
 }
@@ -2399,4 +2406,11 @@ export interface NetWorth {
             debt: string; owed_cents: number; owed_on: string | null;
             equity_cents: number }[];
   things: Asset[];
+}
+
+/** A reply to a marketing email that asks to leave (owner, 2026-10-19). */
+export interface LeaveRequest {
+  id: string; subject: string; from_address: string; received_at: string | null;
+  said: string; contact: { id: string; name: string } | null;
+  answered: { subject: string; producer: string; sent_at: string | null } | null;
 }

@@ -29,9 +29,11 @@ const CONTACTS = [{
 
 function show(extra: Record<string, unknown> = {}, me = aMe()) {
   const fetchMock = mockApi({
+    ...extra,
     "GET /api/unmatched-inbound/poll/": HEALTH,
     "GET /api/unmatched-inbound/": [WAITING],
     "GET /api/contacts/": CONTACTS,
+    "GET /api/leave-requests/": [],
     ...extra,
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -126,5 +128,41 @@ describe("the Replies screen says what it is (2026-10-12)", () => {
     expect(await screen.findByText(
       "Replies to mail the app sent, matched to your contacts; a reply that could not "
       + "be matched waits here to be filed.")).toHaveClass("sub");
+  });
+});
+
+const ASKED = [{
+  id: "r1", subject: "Re: Hello Dana", from_address: "dana@acme.invalid",
+  received_at: "2026-10-19T10:05:00Z", said: "STOP",
+  contact: { id: "c1", name: "Dana Reyes" },
+  answered: { subject: "Hello Dana", producer: "campaign", sent_at: "2026-10-01T09:00:00Z" },
+}];
+
+/** Owner, 2026-10-19: a reply that asks to leave is marked; one click acts. */
+describe("replies that ask to leave", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("marks them, and unsubscribes only on the click", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ "GET /api/leave-requests/": ASKED,
+                             "POST /api/leave-requests/r1/unsubscribe/": {
+                               id: "r1", leave_request: "unsubscribed" } });
+    const row = await screen.findByRole("group", { name: "Dana Reyes asked to leave" });
+    expect(row).toHaveTextContent("Asked to leave");
+    expect(row).toHaveTextContent("Re: Hello Dana");
+    expect(row).toHaveTextContent("STOP");
+    expect(fetchMock.calls.some((c) => c.method === "POST")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Unsubscribe them" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.url)
+      .toBe("/api/leave-requests/r1/unsubscribe/"));
+    expect(await screen.findByText(/as the link in the email would do/)).toBeInTheDocument();
+  });
+
+  it("lets an assistant see them but not act", async () => {
+    show({ "GET /api/leave-requests/": ASKED }, aMe({ role: "VA" }));
+    await screen.findByRole("group", { name: "Dana Reyes asked to leave" });
+    expect(screen.queryByRole("button", { name: "Unsubscribe them" })).toBeNull();
+    expect(screen.getByText(/practice owner or an associate can unsubscribe/))
+      .toBeInTheDocument();
   });
 });

@@ -727,6 +727,17 @@ class EmailMessage(TenantScopedModel):
     gmail_message_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
     gmail_thread_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
 
+    class Leave(models.TextChoices):
+        """A reply to a marketing email that asks to leave (owner, 2026-10-19).
+        Marked when it comes in; nothing happens until someone clicks."""
+        NONE = "", "Not a request to leave"
+        ASKED = "asked", "Asked to leave"
+        UNSUBSCRIBED = "unsubscribed", "Unsubscribed from the reply"
+        KEPT = "kept", "Not a request to leave, said a person"
+
+    leave_request = models.CharField(max_length=12, choices=Leave.choices, blank=True,
+                                     default="", db_default="")
+
     class Meta(TenantScopedModel.Meta):
         db_table = "email_message"
         constraints = [
@@ -1272,10 +1283,35 @@ class Campaign(TenantScopedModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     archived_at = models.DateTimeField(null=True, blank=True)
+    # "When this campaign is sent" (owner, 2026-10-19): per person, at the moment
+    # their draft is approved and sent; never at enrolment, never for a draft
+    # refused, deleted, expired or suppressed.
+    #: Move each recipient to this stage (of its pipeline). Empty: no move.
+    on_sent_stage = models.ForeignKey("crm.PipelineStage", null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    #: Enrol each recipient in referral touches at this cadence. Empty: none.
+    on_sent_cadence = models.CharField(max_length=10, choices=ReferralCadence.choices,
+                                       blank=True, default="", db_default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "campaign"
         ordering = ["-created_at"]
+
+
+class CampaignAttachment(TenantScopedModel):
+    """A file on the campaign itself (owner, 2026-10-19): at most three, each
+    within the Outbox's size limit, copied onto every draft the campaign makes
+    from then on. A draft already queued keeps what it was made with."""
+
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE,
+                                 related_name="attachments")
+    stored_file = models.ForeignKey("tenancy.StoredFile", on_delete=models.PROTECT,
+                                    related_name="+")
+    filename = models.CharField(max_length=255)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "campaign_attachment"
+        ordering = ["created_at"]
 
 
 class CampaignRecipient(TenantScopedModel):

@@ -72,6 +72,26 @@ def for_contact(contact, limit=100, *, money=False):
     for message in replies:
         entries.append(_entry("email", message.received_at, f"Reply received: {message.subject}"))
 
+    # Enrolments, and a campaign's follow-through it could not do (owner,
+    # 2026-10-19). A stage move from a campaign is a stage change above, its
+    # reason naming the campaign.
+    from apps.tenancy.models import AuditEvent
+
+    for event in AuditEvent.all_objects.filter(
+            tenant_id=contact.tenant_id, target_type="contact", target_id=contact.pk,
+            verb__in=("enrollment.started", "campaign.enrolment_skipped")):
+        payload = event.payload or {}
+        if event.verb == "enrollment.started":
+            source = str(payload.get("source") or "")
+            how = f", when {source} was sent" if source.startswith("campaign") else ""
+            text = (f"Enrolled in referral touches "
+                    f"({contact.get_referral_cadence_display().lower() or 'monthly'}){how}")
+        else:
+            text = (f"Not enrolled in referral touches when campaign "
+                    f"\u201c{payload.get('campaign_name', '')}\u201d was sent: "
+                    f"{payload.get('why', '')}")
+        entries.append(_entry("enrollment", event.created_at, text))
+
     entries.sort(key=lambda e: e["when"] or "", reverse=True)
     return entries[:limit]
 

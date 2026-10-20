@@ -229,6 +229,11 @@ def approve(message, *, actor, role):
         from apps.billing import services as billing
 
         billing.message_sent(message, actor=actor)
+    if message.producer == P.CAMPAIGN and message.state == S.SENT:
+        # "When this campaign is sent" (owner, 2026-10-19): only once it is.
+        from apps.crm.services import campaigns
+
+        campaigns.after_sent(message, actor=actor)
     return message
 
 

@@ -21,6 +21,9 @@ const CANDIDATES = [
     unsendable: "unsubscribed from marketing emails" },
 ];
 
+const PIPELINES = [{ id: "p1", name: "Referral", kind: "referral", stages: [
+  { id: "s1", label: "Contact", code: "contact" }, { id: "s2", label: "Engaged", code: "engaged" }] }];
+
 function show(extra: Record<string, unknown> = {}) {
   const fetchMock = mockApi({
     ...extra,
@@ -28,7 +31,7 @@ function show(extra: Record<string, unknown> = {}) {
     "GET /api/campaigns/k1/candidates/": CANDIDATES,
     "GET /api/campaigns/k1/": CAMPAIGN,
     "GET /api/contact-types/": [],
-    "GET /api/pipelines/": [],
+    "GET /api/pipelines/": PIPELINES,
   });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<CampaignDetail />, { path: "/campaigns/:id", route: "/campaigns/k1" });
@@ -49,7 +52,10 @@ describe("the campaign composer", () => {
     expect(screen.getByText("unsubscribed from marketing emails")).toBeInTheDocument();
     // Nobody is chosen until someone chooses.
     expect(screen.getByRole("button", { name: /Enroll and queue/ })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Select all 2" }));
+    // The count of everyone shown, and "select all shown" takes only the sendable.
+    expect(screen.getByLabelText("How many")).toHaveTextContent(
+      "3 shown · 0 of 2 chosen · 1 cannot be sent to");
+    await user.click(screen.getByRole("button", { name: "Select all shown (2)" }));
     await user.click(screen.getByLabelText("Include Priya Shah"));
     await user.click(screen.getByRole("button", { name: "Enroll and queue 1" }));
 
@@ -84,5 +90,48 @@ describe("the campaign composer", () => {
     show({ "POST /api/campaigns/k1/test-send/": { to: "bryan@x.test", state: "sent" } });
     await user.click(await screen.findByRole("button", { name: "Send me a test" }));
     expect(await screen.findByText(/Test sent to bryan@x.test/)).toBeInTheDocument();
+  });
+});
+
+/** Owner, 2026-10-19: the campaign's files, and what happens when it is sent. */
+describe("campaign follow-through", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("saves a stage to move them to and a referral-touch cadence", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ "PATCH /api/campaigns/k1/": { ...CAMPAIGN, on_sent_stage: "s2",
+                                                           on_sent_pipeline: "p1",
+                                                           on_sent_cadence: "quarterly" } });
+    await user.selectOptions(await screen.findByLabelText("Pipeline to move them in"), "p1");
+    await user.selectOptions(screen.getByLabelText("Stage to move them to"), "s2");
+    await user.selectOptions(screen.getByLabelText("Referral touches cadence"), "quarterly");
+    expect(screen.getByText(/Only referral partners are put on referral touches/))
+      .toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+      .toMatchObject({ on_sent_stage: "s2", on_sent_cadence: "quarterly" }));
+  });
+
+  it("adds a file, and offers no more than three", async () => {
+    const user = userEvent.setup();
+    const one = { ...CAMPAIGN, attachments: [{ id: "f1", filename: "flyer.pdf",
+                                               byte_size: 20480 }] };
+    const fetchMock = show({ "POST /api/campaigns/k1/attachments/": one });
+    await user.upload(await screen.findByLabelText("Add a file"),
+                      new File(["%PDF"], "flyer.pdf", { type: "application/pdf" }));
+    expect(await screen.findByText("flyer.pdf")).toBeInTheDocument();
+    expect(fetchMock.calls.find((c) => c.url.endsWith("/attachments/"))?.method).toBe("POST");
+  });
+
+  it("has no file box once there are three", async () => {
+    const three = { ...CAMPAIGN, attachments: ["a", "b", "c"].map((n) => (
+      { id: n, filename: `${n}.pdf`, byte_size: 1024 })) };
+    vi.stubGlobal("fetch", mockApi({
+      "POST /api/campaigns/k1/preview/": { subject: "", html: "" },
+      "GET /api/campaigns/k1/candidates/": [], "GET /api/campaigns/k1/": three,
+      "GET /api/contact-types/": [], "GET /api/pipelines/": PIPELINES }));
+    renderRoute(<CampaignDetail />, { path: "/campaigns/:id", route: "/campaigns/k1" });
+    expect(await screen.findAllByText(/^[abc]\.pdf$/)).toHaveLength(3);
+    expect(screen.queryByLabelText("Add a file")).toBeNull();
   });
 });

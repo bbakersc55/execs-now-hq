@@ -5,7 +5,7 @@ import { Inbox, Mail, Paperclip, RefreshCw } from "lucide-react";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { Contact, InboundHealth, Me, UnmatchedRow, api } from "../lib/api";
+import { Contact, InboundHealth, LeaveRequest, Me, UnmatchedRow, api } from "../lib/api";
 
 /**
  * Module 6 — replies coming back (PRD §8).
@@ -75,6 +75,8 @@ export function Replies({ me }: { me: Me }) {
           {health.data.errors > 0 && ` · ${health.data.errors} could not be read`}
         </p>
       )}
+
+      <AskedToLeave me={me} onNote={setNote} onProblem={setProblem} />
 
       {rows.length === 0 && (
         <Empty>
@@ -155,6 +157,70 @@ function Unfiled({ row, onFiled, setProblem }: {
           <Paperclip size={14} /> File it
         </button>
       </div>
+    </Card>
+  );
+}
+
+/**
+ * Replies to a marketing email that ask to leave (owner, 2026-10-19): marked
+ * when they come in, and nothing happens until someone clicks. "Unsubscribe
+ * them" does exactly what the link in the email does.
+ */
+function AskedToLeave({ me, onNote, onProblem }: {
+  me: Me; onNote: (text: string) => void; onProblem: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const asked = useQuery<LeaveRequest[]>({
+    queryKey: ["leave-requests"], queryFn: () => api.get<LeaveRequest[]>("/api/leave-requests/"),
+  });
+  const act = useMutation({
+    mutationFn: ({ id, how }: { id: string; how: "unsubscribe" | "keep"; name: string }) =>
+      api.post(`/api/leave-requests/${id}/${how}/`),
+    onSuccess: (_r, { how, name }) => {
+      onNote(how === "unsubscribe"
+        ? `${name} is unsubscribed from marketing emails, as the link in the email would do.`
+        : `Left as it is: ${name} stays subscribed.`);
+      qc.invalidateQueries({ queryKey: ["leave-requests"] });
+    },
+    onError: (e: Error) => onProblem(e.message),
+  });
+  const rows = asked.data ?? [];
+  if (rows.length === 0) return null;
+  const may = me.role === "FF" || me.role === "CF";
+  return (
+    <Card title={`Asked to leave (${rows.length})`}>
+      <p className="small muted" style={{ marginTop: 0 }}>Replies to a marketing email
+        that say unsubscribe, stop, remove me or opt out. Nobody is unsubscribed until
+        you say so.</p>
+      {rows.map((r) => {
+        const name = r.contact?.name || r.from_address;
+        return (
+          <div key={r.id} role="group" aria-label={`${name} asked to leave`}
+            style={{ borderTop: "1px solid var(--line)", padding: "var(--s3) 0" }}>
+            <div className="row tight">
+              <Pill kind="warn">Asked to leave</Pill>
+              <strong>{r.contact
+                ? <Link to={`/contacts/${r.contact.id}`}>{r.contact.name}</Link> : name}</strong>
+              <span className="small muted">{r.received_at ? when(r.received_at) : ""}</span>
+            </div>
+            <p className="small muted" style={{ margin: "var(--s1) 0" }}>
+              Re: {r.answered?.subject || r.subject}</p>
+            <blockquote style={{ whiteSpace: "pre-wrap", margin: "0 0 var(--s2)" }}>
+              {r.said}</blockquote>
+            {may ? (
+              <div className="row tight">
+                <button className="primary small" disabled={act.isPending}
+                  onClick={() => act.mutate({ id: r.id, how: "unsubscribe", name })}>
+                  Unsubscribe them</button>
+                <button className="ghost small" disabled={act.isPending}
+                  onClick={() => act.mutate({ id: r.id, how: "keep", name })}>
+                  Not a request to leave</button>
+              </div>
+            ) : <p className="tiny muted">The practice owner or an associate can unsubscribe
+              them.</p>}
+          </div>
+        );
+      })}
     </Card>
   );
 }
