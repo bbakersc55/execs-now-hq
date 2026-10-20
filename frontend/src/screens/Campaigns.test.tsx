@@ -52,11 +52,20 @@ describe("the campaign composer", () => {
     expect(screen.getByText("unsubscribed from marketing emails")).toBeInTheDocument();
     // Nobody is chosen until someone chooses.
     expect(screen.getByRole("button", { name: /Enroll and queue/ })).toBeDisabled();
-    // The count of everyone shown, and "select all shown" takes only the sendable.
+    // The count of everyone shown; the header's box takes only the sendable,
+    // clears them all again, and per-person ticks work under it.
     expect(screen.getByLabelText("How many")).toHaveTextContent(
       "3 shown · 0 of 2 chosen · 1 cannot be sent to");
-    await user.click(screen.getByRole("button", { name: "Select all shown (2)" }));
+    const all = screen.getByRole("checkbox", { name: "Select all 2" });
+    await user.click(all);
+    expect(all).toBeChecked();
+    expect(screen.getByLabelText("How many")).toHaveTextContent("2 of 2 chosen");
+    await user.click(all);
+    expect(screen.getByLabelText("How many")).toHaveTextContent("0 of 2 chosen");
+    await user.click(all);
     await user.click(screen.getByLabelText("Include Priya Shah"));
+    expect(all).not.toBeChecked();
+    expect((all as HTMLInputElement).indeterminate).toBe(true);
     await user.click(screen.getByRole("button", { name: "Enroll and queue 1" }));
 
     await waitFor(() => expect(posted(fetchMock, "/queue/")).toEqual([{ ids: ["c1"] }]));
@@ -176,7 +185,7 @@ describe("the test copy and the first-name fallback", () => {
                                  missing_first_names: [{ id: "c2", name: "Okafor" }],
                                  fallback: "there" } };
     } });
-    await user.click(await screen.findByRole("button", { name: "Select all shown (2)" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Select all 2" }));
     await user.click(screen.getByRole("button", { name: "Enroll and queue 2" }));
     expect(await screen.findByRole("alert", { name: "Recipients with no first name" }))
       .toHaveTextContent("1 of them has no first name, so {FirstName} will read “there”: Okafor.");

@@ -318,7 +318,7 @@ describe("importing a bank or card file", () => {
       const fetchMock = show("import", {
         "POST /api/finance-imports/b1/rollback/": () => ({ body: {
           ...done, status: "rolled_back", rolled_back: { removed: 4, unmatched: 1, kept: [
-            { on_date: "2026-10-01", amount_cents: 5999, description: "Adobe licence" }] } } }),
+            { on_date: "2026-10-01", amount_cents: 5999, description: "Adobe license" }] } } }),
         "GET /api/finance-imports/": [done, { ...BATCH, id: "b0" }] });
       const button = await screen.findByRole("button", {
         name: "Roll back the import of checking.csv" });
@@ -330,7 +330,7 @@ describe("importing a bank or card file", () => {
       await userEvent.click(button);
       expect(await screen.findByText(/4 entries removed, 1 invoice payments unplaced again/))
         .toBeInTheDocument();
-      expect(screen.getByText(/1 you had edited since was kept: Adobe licence \(\$59\.99\)/))
+      expect(screen.getByText(/1 you had edited since was kept: Adobe license \(\$59\.99\)/))
         .toBeInTheDocument();
     });
 });

@@ -49,7 +49,7 @@ You must not assert any fact, figure, name, date or cause that is not in that \
 input. Do not estimate, do not project, and do not describe a trend you were \
 given fewer than two readings for. If there are no readings, do not say the \
 goal has advanced, is on track, or is nearly met — describe what was done, not \
-how far it has got. If there are readings, you may state the distance travelled, \
+how far it has got. If there are readings, you may state the distance traveled, \
 because it is in front of you.
 
 You may refer to what the goal set out to change — the bottleneck, its root \

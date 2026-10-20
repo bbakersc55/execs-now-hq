@@ -1264,7 +1264,7 @@ class Campaign(TenantScopedModel):
     practice's branded layout wraps it unless `send_as_is`. Merge fields
     ({FirstName}, {Company}, {FractionalName}) are filled per recipient when
     the campaign is queued, so each recipient's Outbox row is exactly what
-    they will get. "Enrol and queue" makes one `pending_approval` row per
+    they will get. "Enroll and queue" makes one `pending_approval` row per
     recipient, category marketing: nothing leaves without approval.
     """
 

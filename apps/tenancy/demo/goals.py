@@ -319,7 +319,7 @@ GOALS = [
                  ("Start weekly cycle counts on the top fifth",
                   "Six weekly counts done. Accuracy on the top items is 96%."),
                  ("Fix the three causes the counts keep finding",
-                  "Two of the three causes are fixed: mislabelled bins and unrecorded samples."),
+                  "Two of the three causes are fixed: mislabeled bins and unrecorded samples."),
              ]),
              ("A place for everything", [
                  ("Label every bin and aisle", "Every bin has a label that matches the system."),

@@ -159,7 +159,7 @@ def _draft(world, template) -> None:
             notes=("From their website, pasted: Los Pollos Hermanos. Fourteen restaurants "
                    "across the Southwest, family recipes since 1989, and our own "
                    "distribution center serving every location daily. Now hiring general "
-                   "managers in Albuquerque, El Paso and Tucson. Franchise enquiries "
+                   "managers in Albuquerque, El Paso and Tucson. Franchise inquiries "
                    "welcome. Owner-operated: Gus still visits every store each month."),
             summary=("Fourteen owner-operated restaurants with their own distribution "
                      "center. Hiring general managers in three cities at once, and open to "

@@ -133,7 +133,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def queue(self, request, pk=None):
-        """"Enrol and queue": one pending Outbox row per chosen person."""
+        """"Enroll and queue": one pending Outbox row per chosen person."""
         campaign = self.get_object()
         ids = request.data.get("ids") or []
         if not isinstance(ids, list) or not ids:

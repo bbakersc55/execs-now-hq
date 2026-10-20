@@ -470,17 +470,31 @@ function Recipients({ campaign, onChosen }: {
         {rows.length >= 1000 ? " shown (the first 1,000; narrow the filters)" : " shown"}
         {" · "}<strong className="tabular">{chosen.length}</strong> of {sendable.length} chosen
         {rows.length > sendable.length && <> · {rows.length - sendable.length} cannot be sent to</>}
-        {" · "}
-        <button className="link" disabled={sendable.length === 0}
-          onClick={() => setPicked(sendable.map((r) => r.id))}>
-          Select all shown ({sendable.length})</button>
-        {" · "}
-        <button className="link" onClick={() => setPicked([])}>Select none</button>
       </p>
 
       {rows.length === 0 ? <Empty>No one matches these filters.</Empty> : (
         <table>
-          <thead><tr><th></th><th>Name</th><th>Email</th><th>Company</th><th></th></tr></thead>
+          <thead>
+            {/* Bryan ticked 75 people one by one (2026-10-20): the list's own
+                header selects or clears everyone the filters show. */}
+            <tr className="select-all-row">
+              <th colSpan={5}>
+                <label className="inline">
+                  <input type="checkbox" style={{ width: "auto" }}
+                    disabled={sendable.length === 0}
+                    checked={sendable.length > 0 && chosen.length === sendable.length}
+                    ref={(box) => {
+                      if (box) box.indeterminate = chosen.length > 0
+                        && chosen.length < sendable.length;
+                    }}
+                    onChange={(e) => setPicked(e.target.checked
+                      ? sendable.map((r) => r.id) : [])} />
+                  {" "}Select all {sendable.length}
+                </label>
+              </th>
+            </tr>
+            <tr><th></th><th>Name</th><th>Email</th><th>Company</th><th></th></tr>
+          </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className={r.unsendable ? "muted" : ""}>

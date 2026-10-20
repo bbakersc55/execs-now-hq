@@ -2,7 +2,7 @@
 2026-09-28).
 
 The composer writes a body — in the rich editor, or as raw HTML — with merge
-fields. Choosing recipients and pressing "Enrol and queue" makes **one Outbox
+fields. Choosing recipients and pressing "Enroll and queue" makes **one Outbox
 row per recipient**, `pending_approval`, category marketing, each already
 merged for its person, so what the queue shows is exactly what they get.
 Nothing here sends; approval does.
@@ -223,7 +223,7 @@ def unsendable(contact, campaign) -> str:
 
 @transaction.atomic
 def queue(campaign, contacts, *, actor) -> dict:
-    """"Enrol and queue": for each person, their enrolment in the campaign and
+    """"Enroll and queue": for each person, their enrolment in the campaign and
     their own Outbox row, pending approval. Skips — each named, with why —
     anyone with no address, anyone who left marketing, and anyone already in."""
     from apps.crm.services import outbox, sender

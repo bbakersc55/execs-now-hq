@@ -406,7 +406,7 @@ def _email(world) -> None:
     for index, (name, address, subject, body, why) in enumerate((
             ("Lucius Fox", "lfox.personal@foxmail.example", "Re: Weekly update from "
              "Summit Operations Partners",
-             "Sending from my own address as I am travelling. The overtime report is "
+             "Sending from my own address as I am traveling. The overtime report is "
              "attached. Arkham Road is the outlier, as you guessed.",
              "The sender's address is not on any contact."),
             ("Accounts Payable", "ap@sheinhardtwig.example", "Re: Your strategy map",

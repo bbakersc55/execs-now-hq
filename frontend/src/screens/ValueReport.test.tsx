@@ -647,7 +647,7 @@ describe("the goals are in order of priority (2026-10-07)", () => {
 
   const A = "Decisions stall waiting on the founder";
   const B = "Close the books in five days";
-  const C = "Last year's reorganisation";
+  const C = "Last year's reorganization";
   const B_ID = "33333333-3333-4333-8333-333333333333";
   const C_ID = "66666666-6666-4666-8666-666666666666";
   const report = () => aReport({
