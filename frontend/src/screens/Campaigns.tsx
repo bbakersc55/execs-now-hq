@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { Plus, Save, Search, Send, UserPlus } from "lucide-react";
 
-import { RichText } from "../components/RichText";
+import { RichText, insertMergeField } from "../components/RichText";
 import { Chip, FilterBar, PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import {
@@ -69,11 +69,6 @@ export function Campaigns() {
   );
 }
 
-/** Insert a merge field where the cursor is, in the editor or the HTML box. */
-function insertAtCursor(token: string) {
-  // Both the rich editor and a textarea take insertText at the caret.
-  document.execCommand("insertText", false, token);
-}
 
 export function CampaignDetail() {
   const { id } = useParams();
@@ -173,7 +168,7 @@ export function CampaignDetail() {
             <span className="small muted">Insert at the cursor:</span>
             {MERGE_FIELDS.map((field) => (
               <button key={field} type="button" className="small ghost"
-                onMouseDown={(e) => { e.preventDefault(); insertAtCursor(field); }}>
+                onMouseDown={(e) => { e.preventDefault(); insertMergeField(field); }}>
                 {field}
               </button>
             ))}

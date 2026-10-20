@@ -1336,3 +1336,8 @@ table.cash-flow tr.total td { border-top: 1px solid var(--line); background: var
 table.cash-flow td:first-child { white-space: nowrap; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: var(--s1) 0; }
+
+/* A merge field in the rich editor: one unit, the caret goes after it. */
+.richtext .merge-chip { display: inline-block; padding: 0 .35em; margin: 0 .05em;
+  border-radius: 4px; background: var(--surface-2, #EEF2F6); color: var(--navy, #0A3A65);
+  font-size: .92em; line-height: 1.5; white-space: nowrap; user-select: all; }
