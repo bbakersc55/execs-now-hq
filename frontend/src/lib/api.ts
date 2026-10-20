@@ -1515,6 +1515,8 @@ export interface Campaign {
   on_sent_stage?: string | null;
   on_sent_pipeline?: string | null;
   on_sent_cadence?: "" | "monthly" | "bimonthly" | "quarterly";
+  /** What {FirstName} becomes on the real send for someone with no first name. */
+  first_name_fallback?: string;
   stats: { recipients: number; queued: number; sent: number; unsubscribed: number;
            not_sent: number };
 }

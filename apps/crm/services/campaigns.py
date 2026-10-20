@@ -56,8 +56,9 @@ class CampaignRefused(Exception):
 # -------------------------------------------------------------- merge fields
 
 def merge_values(contact, sender_name) -> dict:
-    """What each field becomes for one person. A missing first name reads
-    "there" ("Hi there,"), because "Hi ," is worse than generic."""
+    """What each field becomes for one person. A missing first name reads as
+    the campaign's fallback ("Hi there,"), because "Hi ," is worse than
+    generic."""
     return {
         "{FirstName}": (contact.first_name or "").strip() if contact else "",
         "{Company}": (contact.company.name if contact and contact.company_id else ""),
@@ -65,13 +66,31 @@ def merge_values(contact, sender_name) -> dict:
     }
 
 
-def merge(value: str, values: dict, *, as_html: bool) -> str:
+#: What the preview and a test show for each field when no person is chosen
+#: (owner, 2026-10-20): a visible placeholder, not a nameless sample.
+PLACEHOLDERS = {"{FirstName}": "[First name]", "{Company}": "[Company]",
+                "{FractionalName}": "[Fractional's name]"}
+TEST_LINE = "Test copy. Bracketed words are filled in for each person on the real send."
+DEFAULT_FALLBACK = "there"
+
+
+def merge(value: str, values: dict, *, as_html: bool, fallback: str = DEFAULT_FALLBACK) -> str:
+    """Each field replaced. A missing first name reads as the campaign's
+    fallback ("there" unless the campaign says otherwise)."""
     out = value or ""
     for field, replacement in values.items():
         if field == "{FirstName}" and not replacement:
-            replacement = "there"
+            replacement = fallback
         out = out.replace(field, escape(replacement) if as_html else replacement)
     return out
+
+
+def fallback_of(campaign) -> str:
+    return (campaign.first_name_fallback or "").strip() or DEFAULT_FALLBACK
+
+
+def uses_first_name(campaign) -> bool:
+    return "{FirstName}" in (campaign.subject or "") or "{FirstName}" in (campaign.body_html or "")
 
 
 def sender_name(campaign, actor=None) -> str:
@@ -103,13 +122,45 @@ def text_of(markup: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def rendered_for(campaign, contact, *, actor=None) -> tuple[str, str, str]:
-    """`(subject, html, text)` for one person, merged."""
-    values = merge_values(contact, sender_name(campaign, actor))
-    subject = merge(campaign.subject, values, as_html=False)
-    body = merge(campaign.body_html, values, as_html=True)
+def rendered_for(campaign, contact, *, actor=None, test=False) -> tuple[str, str, str]:
+    """`(subject, html, text)` for one person, merged. With no person (the
+    preview, or a test with nobody chosen), each field is its bracketed
+    placeholder. `test` puts the test copy's line at the top."""
+    if contact is None:
+        values, fallback = dict(PLACEHOLDERS), PLACEHOLDERS["{FirstName}"]
+    else:
+        values = merge_values(contact, sender_name(campaign, actor))
+        fallback = fallback_of(campaign)
+    subject = merge(campaign.subject, values, as_html=False, fallback=fallback)
+    body = merge(campaign.body_html, values, as_html=True, fallback=fallback)
+    if test:
+        body = _with_test_line(body)
     html = as_is_document(body) if campaign.send_as_is else body
     return subject, html, text_of(body)
+
+
+def _with_test_line(body: str) -> str:
+    """The test copy's line, first thing in the body (after <body> for a
+    whole document)."""
+    line = (f'<p style="background:#FFF4CE;padding:8px 12px;margin:0 0 12px;">'
+            f"{escape(TEST_LINE)}</p>")
+    if re.search(r"<body\b[^>]*>", body, re.IGNORECASE):
+        return re.sub(r"(<body\b[^>]*>)", lambda m: m.group(1) + line, body, count=1,
+                      flags=re.IGNORECASE)
+    return line + body
+
+
+def missing_first_names(campaign, contacts) -> list:
+    """Who, of these, has no first name, when the email uses {FirstName}."""
+    if not uses_first_name(campaign):
+        return []
+    return [c for c in contacts if not (c.first_name or "").strip()]
+
+
+def _files(campaign) -> list:
+    return [(row.stored_file, row.filename)
+            for row in CampaignAttachment.all_objects.filter(campaign=campaign)
+            .select_related("stored_file")]
 
 
 def preview(campaign, contact=None, *, actor=None, to_address="") -> tuple[str, str]:
@@ -187,9 +238,7 @@ def queue(campaign, contacts, *, actor) -> dict:
     send_by = timezone.now() + timezone.timedelta(days=SEND_BY_DAYS)
     # The campaign's own files, onto each draft: the same stored file, never
     # copied bytes, so ten drafts do not store a flyer ten times.
-    files = [(row.stored_file, row.filename)
-             for row in CampaignAttachment.all_objects.filter(campaign=campaign)
-             .select_related("stored_file")]
+    files = _files(campaign)
     for contact in contacts:
         why = unsendable(contact, campaign)
         if why:
@@ -224,11 +273,12 @@ def test_send(campaign, *, actor, contact=None):
     address = (getattr(actor, "email", "") or "").strip()
     if not address:
         raise CampaignRefused("Your account has no email address to send a test to.")
-    subject, html, text = rendered_for(campaign, contact, actor=actor)
+    subject, html, text = rendered_for(campaign, contact, actor=actor, test=True)
+    # The campaign's files, as a queued copy carries them (owner, 2026-10-20).
     return outbox.create_message(
         tenant=campaign.tenant, producer=P.CAMPAIGN, category="marketing",
         to_address=address, subject=f"[Test] {subject}", body_text=text, body_html=html,
-        actor=actor, force_direct=True,
+        actor=actor, force_direct=True, attachments=_files(campaign),
         from_address=sender.resolve_from(campaign.tenant, campaign.created_by or actor,
                                          P.CAMPAIGN, override=campaign.sender),
         source_type="campaign_test", source_id=campaign.pk)

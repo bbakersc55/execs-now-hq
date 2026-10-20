@@ -34,7 +34,8 @@ class CampaignSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = ["id", "name", "subject", "sender", "body_mode", "body_html",
                   "send_as_is", "created_at", "updated_at", "created_by_name", "stats",
-                  "attachments", "on_sent_stage", "on_sent_pipeline", "on_sent_cadence"]
+                  "attachments", "on_sent_stage", "on_sent_pipeline", "on_sent_cadence",
+                  "first_name_fallback"]
         read_only_fields = ["created_at", "updated_at"]
 
     def get_attachments(self, obj):
@@ -101,15 +102,15 @@ class CampaignViewSet(viewsets.ModelViewSet):
         the unsubscribe link — including edits not yet saved, so the preview
         beside the editor follows what is being typed."""
         campaign = self.get_object()
-        for field in ("subject", "body_html", "body_mode", "send_as_is", "sender"):
+        for field in ("subject", "body_html", "body_mode", "send_as_is", "sender",
+                      "first_name_fallback"):
             if field in request.data:
                 setattr(campaign, field, request.data[field])
         contact = self._contact(request.data.get("contact"))
         html, text = campaigns.preview(campaign, contact, actor=request.user,
                                        to_address="" if contact else request.user.email)
         html, _ = email_layout.with_logo(html, campaign.tenant, as_data_uri=True)
-        subject = campaigns.merge(campaign.subject, campaigns.merge_values(
-            contact, campaigns.sender_name(campaign, request.user)), as_html=False)
+        subject = campaigns.rendered_for(campaign, contact, actor=request.user)[0]
         return Response({"subject": subject, "html": html, "text": text})
 
     @action(detail=True, methods=["get"])
@@ -138,6 +139,19 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if not isinstance(ids, list) or not ids:
             return Response({"detail": "Choose at least one recipient."}, status=400)
         chosen = self._contacts().filter(pk__in=ids, deleted_at__isnull=True)
+        # Owner, 2026-10-20: someone with no first name, in an email that
+        # uses {FirstName}, is named before anything is queued.
+        missing = campaigns.missing_first_names(campaign, chosen)
+        if missing and not request.data.get("confirm_missing_names"):
+            fallback = campaigns.fallback_of(campaign)
+            return Response({
+                "detail": f"{len(missing)} of them {'has' if len(missing) == 1 else 'have'} "
+                          f"no first name: {{FirstName}} will read \u201c{fallback}\u201d.",
+                "missing_first_names": [
+                    {"id": str(c.pk), "name": (f"{c.first_name} {c.last_name}".strip()
+                                               or c.primary_email or "(no name)")}
+                    for c in missing],
+                "fallback": fallback}, status=409)
         try:
             result = campaigns.queue(campaign, chosen, actor=request.user)
         except campaigns.CampaignRefused as exc:

@@ -1292,6 +1292,10 @@ class Campaign(TenantScopedModel):
     #: Enrol each recipient in referral touches at this cadence. Empty: none.
     on_sent_cadence = models.CharField(max_length=10, choices=ReferralCadence.choices,
                                        blank=True, default="", db_default="")
+    #: What {FirstName} becomes for someone with no first name (owner,
+    #: 2026-10-20), on the real send. "there" reads "Hi there,".
+    first_name_fallback = models.CharField(max_length=60, default="there",
+                                           db_default="there")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "campaign"

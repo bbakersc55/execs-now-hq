@@ -82,10 +82,14 @@ export function CampaignDetail() {
   // The recipients' choice lives here so "Enroll and queue" can be the page's
   // one primary action, top right, as the brief puts it.
   const [chosen, setChosen] = useState<string[]>([]);
+  // Owner, 2026-10-20: who has no first name, named before anything is queued.
+  const [unnamed, setUnnamed] = useState<{ names: string[]; fallback: string } | null>(null);
   const queue = useMutation({
-    mutationFn: () => api.post<{ queued_count: number; skipped: { name: string; detail: string }[] }>(
-      `${path}queue/`, { ids: chosen }),
+    mutationFn: (confirm: boolean) => api.post<{ queued_count: number;
+                                                 skipped: { name: string; detail: string }[] }>(
+      `${path}queue/`, { ids: chosen, ...(confirm ? { confirm_missing_names: true } : {}) }),
     onSuccess: (r) => {
+      setUnnamed(null);
       const skipped = r.skipped.length
         ? ` ${r.skipped.length} skipped: ${r.skipped.map((s) => `${s.name} (${s.detail})`).join(", ")}.`
         : "";
@@ -93,7 +97,16 @@ export function CampaignDetail() {
       qc.invalidateQueries({ queryKey: ["campaign", id] });
       qc.invalidateQueries({ queryKey: ["campaign-candidates", id] });
     },
-    onError: (e: Error) => setNote(e.message),
+    onError: (e: Error & { data?: { missing_first_names?: { name: string }[];
+                                      fallback?: string } }) => {
+      const missing = e.data?.missing_first_names;
+      if (missing?.length) {
+        setNote("");
+        setUnnamed({ names: missing.map((m) => m.name), fallback: e.data?.fallback ?? "there" });
+      } else {
+        setNote(e.message);
+      }
+    },
   });
   const c = campaign.data ? { ...campaign.data, ...draft } : null;
   const dirty = Object.keys(draft).length > 0;
@@ -130,12 +143,24 @@ export function CampaignDetail() {
               onClick={() => testSend.mutate()}><Send size={16} /> Send me a test</button>
             <button className="primary" disabled={!chosen.length || queue.isPending || dirty}
               title={dirty ? "Save the email first" : undefined}
-              onClick={() => queue.mutate()}>
+              onClick={() => queue.mutate(false)}>
               <UserPlus size={16} /> Enroll and queue {chosen.length || ""}
             </button>
           </span>
         } />
       {note && <Banner kind="info">{note}</Banner>}
+      {unnamed && (
+        <Banner kind="warn">
+          <span role="alert" aria-label="Recipients with no first name">
+            {unnamed.names.length} of them {unnamed.names.length === 1 ? "has" : "have"} no
+            first name, so {"{FirstName}"} will read &ldquo;{unnamed.fallback}&rdquo;:{" "}
+            {unnamed.names.join(", ")}.{" "}
+            <button className="small primary" disabled={queue.isPending}
+              onClick={() => queue.mutate(true)}>Queue anyway</button>{" "}
+            <button className="small ghost" onClick={() => setUnnamed(null)}>Not yet</button>
+          </span>
+        </Banner>
+      )}
 
       <div className="stat-row">
         {([["Recipients", c.stats.recipients], ["Queued", c.stats.queued],
@@ -172,6 +197,11 @@ export function CampaignDetail() {
                 {field}
               </button>
             ))}
+            <label className="inline small">If a first name is missing, use:
+              <input aria-label="If a first name is missing, use" style={{ width: "7rem" }}
+                value={c.first_name_fallback ?? "there"}
+                onChange={(e) => set({ first_name_fallback: e.target.value })} />
+            </label>
           </div>
           <div className="tabs" role="tablist" aria-label="How to write it">
             {(["rich", "html"] as const).map((mode) => (
@@ -344,10 +374,17 @@ function Preview({ campaign }: { campaign: Campaign }) {
 
   return (
     <Card title="Preview">
-      <p className="small muted">As it lands, for a sample person. Subject:{" "}
+      <p className="small muted">As it lands, with each merge field as its placeholder.
+        Subject:{" "}
         <strong>{shown?.subject || "—"}</strong></p>
       <iframe title="Email preview" className="email-preview" sandbox=""
         srcDoc={shown?.html ?? ""} />
+      <p className="tiny muted">Bracketed words are filled in for each person on the real
+        send.</p>
+      {(campaign.attachments ?? []).length > 0 && (
+        <p className="small" aria-label="Attached files">Attached:{" "}
+          {(campaign.attachments ?? []).map((f) => f.filename).join(", ")}</p>
+      )}
     </Card>
   );
 }

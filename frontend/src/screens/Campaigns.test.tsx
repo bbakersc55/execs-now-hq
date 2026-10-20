@@ -135,3 +135,54 @@ describe("campaign follow-through", () => {
     expect(screen.queryByLabelText("Add a file")).toBeNull();
   });
 });
+
+/** Owner, 2026-10-20: the test copy, the preview and the first-name fallback. */
+describe("the test copy and the first-name fallback", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("saves what a missing first name becomes, and lists the files under the preview",
+    async () => {
+      const user = userEvent.setup();
+      const withFile = { ...CAMPAIGN, first_name_fallback: "there",
+                         attachments: [{ id: "f1", filename: "flyer.pdf", byte_size: 2048 }] };
+      const fetchMock = mockApi({
+        "PATCH /api/campaigns/k1/": { ...withFile, first_name_fallback: "friend" },
+        "POST /api/campaigns/k1/preview/": { subject: "Hello [First name]",
+                                             html: "<p>Hi [First name]</p>" },
+        "GET /api/campaigns/k1/candidates/": CANDIDATES, "GET /api/campaigns/k1/": withFile,
+        "GET /api/contact-types/": [], "GET /api/pipelines/": PIPELINES });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<CampaignDetail />, { path: "/campaigns/:id", route: "/campaigns/k1" });
+      expect(await screen.findByLabelText("Attached files")).toHaveTextContent(
+        "Attached: flyer.pdf");
+      expect(await screen.findByText("Hello [First name]")).toBeInTheDocument();
+      const box = screen.getByLabelText("If a first name is missing, use");
+      expect(box).toHaveValue("there");
+      await user.clear(box);
+      await user.type(box, "friend");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+        .toMatchObject({ first_name_fallback: "friend" }));
+    });
+
+  it("names who has no first name before queueing, and queues on the yes", async () => {
+    const user = userEvent.setup();
+    let asked = 0;
+    const fetchMock = show({ "POST /api/campaigns/k1/queue/": (body: unknown) => {
+      asked += 1;
+      return (body as { confirm_missing_names?: boolean }).confirm_missing_names
+        ? { status: 201, body: { queued_count: 2, skipped: [] } }
+        : { status: 409, body: { detail: "1 of them has no first name.",
+                                 missing_first_names: [{ id: "c2", name: "Okafor" }],
+                                 fallback: "there" } };
+    } });
+    await user.click(await screen.findByRole("button", { name: "Select all shown (2)" }));
+    await user.click(screen.getByRole("button", { name: "Enroll and queue 2" }));
+    expect(await screen.findByRole("alert", { name: "Recipients with no first name" }))
+      .toHaveTextContent("1 of them has no first name, so {FirstName} will read “there”: Okafor.");
+    await user.click(screen.getByRole("button", { name: "Queue anyway" }));
+    expect(await screen.findByText(/2 queued in the sending queue/)).toBeInTheDocument();
+    expect(asked).toBe(2);
+    expect(posted(fetchMock, "/queue/").at(-1)).toMatchObject({ confirm_missing_names: true });
+  });
+});
