@@ -19,6 +19,7 @@ import { FinancePayees } from "./FinancePayees";
 import { PersonalFinance, PersonalTab } from "./PersonalFinance";
 import { FinanceSide, hasPersonal, rememberSide, rememberedSide } from "../lib/personal";
 import { FinanceReconcile } from "./FinanceReconcile";
+import { ForYourCpaBothSides } from "./PersonalTaxes";
 
 /**
  * The practice's books (P5; matrix 13.1, 13.6–13.10). The practice owner's
@@ -68,6 +69,9 @@ const PERSONAL_TABS: [PersonalTab, string, string][] = [
   ["debts", "/finance/personal/debts", "Debts"],
   ["retirement", "/finance/personal/retirement", "Retirement"],
   ["household", "/finance/personal/household", "Household"],
+  // Stop 4: the set-aside, and the one For your CPA page with both sides.
+  ["taxes", "/finance/personal/taxes", "Taxes"],
+  ["cpa", "/finance/export", "For your CPA"],
   ["entries", "/finance/personal/entries", "Entries"],
   ["import", "/finance/personal/import", "Import"],
   ["accounts", "/finance/personal/accounts", "Accounts"],
@@ -153,7 +157,8 @@ export function Finance({ tab = "entries", personalTab }: {
       {tab === "payees" && <FinancePayees />}
       {tab === "pnl" && <ProfitAndLoss />}
       {tab === "balance" && <Balance />}
-      {tab === "export" && <ForTheCpa />}
+      {tab === "export" && personal && <ForYourCpaBothSides />}
+      {tab === "export" && <ForTheCpa rangeOnly={personal} />}
       <FinanceDisclaimer />
     </>
   );
@@ -780,7 +785,9 @@ function Balance() {
 
 // -------------------------------------------------------------- the CPA export
 
-function ForTheCpa() {
+/** With Personal finance the worksheet is on the page above, both sides
+ *  (P6 M4 decision 22); the files for a range of dates stay here. */
+function ForTheCpa({ rangeOnly = false }: { rangeOnly?: boolean }) {
   const year = new Date().getFullYear();
   const [from, setFrom] = useState(`${year}-01-01`);
   const [to, setTo] = useState(today());
@@ -792,7 +799,7 @@ function ForTheCpa() {
   const bookkeeping = (me.data?.modules ?? []).includes("bookkeeping");
   return (
     <>
-      <Card title="Your CPA's worksheet">
+      {!rangeOnly && <Card title="Your CPA's worksheet">
         <p className="small muted" style={{ marginTop: 0 }}>
           One file for a calendar year, laid out as the Business Income &amp; Expense
           Worksheet: a line for each category in the worksheet's order, miscellaneous
@@ -810,8 +817,8 @@ function ForTheCpa() {
             href={`/api/finance-reports/export-worksheet/?year=${sheetYear}`}>
             Download the worksheet</a>
         </div>
-      </Card>
-      <Card title="For your CPA">
+      </Card>}
+      <Card title={rangeOnly ? "Business: every entry, for a range of dates" : "For your CPA"}>
         <p className="small muted" style={{ marginTop: 0 }}>
           Two files for a range of dates: every entry, and a summary by category with the
           CPA codes you set. Removed entries are left out. Each download is recorded.

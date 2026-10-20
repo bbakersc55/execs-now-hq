@@ -46,7 +46,7 @@ from apps.finance.forecast import (
     MONTHS, REPEAT_MONTHS, STALE_DAYS, TAX_DATES, VIEWS, _add_months, _long, _money,
     _months_between, _ordinal, _rows, _spans, _summary,
 )
-from apps.personal import budget, debts, reconcile
+from apps.personal import budget, debts, reconcile, services
 from apps.personal.models import (
     PersonalAccount, PersonalCategory, PersonalEnvelope, PersonalForecastAdjustment,
     PersonalForecastSnapshot, PersonalGoal, PersonalLine, PersonalPlanned,
@@ -265,12 +265,20 @@ def _regular(ledger, today: date, end: date, months: list[date]) -> list[dict]:
 
 # --------------------------------------------------------------- known lines
 
-def _pay(ledger, today: date, end: date, months: list[date]) -> list[dict]:
+def _pay(ledger, today: date, end: date, months: list[date], tenant=None) -> list[dict]:
     """Pay from the practice, at the cadence it has been paid: as many times
     a month as the last three complete months show (the median), each on
-    the median of its day, at the median of its amount."""
+    the median of its day, at the median of its amount. Decision 20: a draw
+    in the practice's books that no line of a household account was matched
+    to (its account is not imported) is pay too, on the day it was drawn."""
+    from apps.personal import paydays
+
     category = PersonalCategory.objects.filter(ledger=ledger,
                                                system_code=PAY_FROM_PRACTICE).first()
+    if tenant is not None and len(months) < 3:
+        # The books know the months even when no household account is in.
+        this_one = today.replace(day=1)
+        months = sorted(set(months) | {_add_months(this_one, -n, 1) for n in (1, 2, 3)})
     last3 = months[-3:]
     if category is None or not last3:
         return []
@@ -279,6 +287,14 @@ def _pay(ledger, today: date, end: date, months: list[date]) -> list[dict]:
         ledger=ledger, removed_at__isnull=True, category=category, direction="in",
         account_id__in=cash, on_date__gte=last3[0], on_date__lte=today)
         .order_by("on_date", "created_at"))
+    drawn = []
+    if tenant is not None:
+        matched = PersonalLine.objects.filter(removed_at__isnull=True,
+                                              draw_entry__isnull=False)\
+            .values_list("draw_entry_id", flat=True)
+        drawn = list(paydays.draws(tenant, start=last3[0], end=today)
+                     .exclude(pk__in=matched))
+    rows = sorted(rows + drawn, key=lambda row: row.on_date)
     by_month: dict = {}
     for line in rows:
         by_month.setdefault(line.on_date.replace(day=1), []).append(line)
@@ -502,7 +518,8 @@ def _gather(ledger, today: date, *, adjusted: dict | None = None) -> dict:
     ready = len(months) >= MONTHS_NEEDED
     _weeks, _months, end = _spans(today)
     adjusted = _adjustments(ledger) if adjusted is None else adjusted
-    known = (_pay(ledger, today, end, months) + _debt_payments(ledger, today, end)
+    tenant = services.practice_of(ledger)
+    known = (_pay(ledger, today, end, months, tenant) + _debt_payments(ledger, today, end)
              + _yearly(ledger, today, end) + _estimated_tax(ledger, today, end))
     regular = _apply(_regular(ledger, today, end, months), adjusted, today) if ready else []
     planned, listed = _planned(ledger, today, end)

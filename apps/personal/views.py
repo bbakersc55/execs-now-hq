@@ -103,6 +103,7 @@ class PersonalView(APIView):
     def ledger(self):
         if not hasattr(self, "_ledger"):
             self._ledger = services.ledger_for(self.request.user)
+            services.name_pay(self._ledger, getattr(self.request, "tenant", None))
         return self._ledger
 
     @staticmethod

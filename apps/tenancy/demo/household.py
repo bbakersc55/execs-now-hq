@@ -17,15 +17,24 @@
 - **A spouse with pay** (Dana Carter, a pediatric nurse; the spec's open
   question, answered for the demo), **a mortgage and a car loan**,
   **retirement and investment balances** month by month, **three goals** and
-  **this year's tax set-aside in progress**. The set-aside is data only until
-  stop 4 draws it.
-- **Stop 3:** the debts' payment categories and a payoff plan (Snowball, $200
+  **this year's tax set-aside in progress** ($5,320 on the day: 28% of the
+  last draw, since the last estimated payment).
+- **Stop 3:** the debts' payment categories and a payoff plan (smallest
+  balance first, $200
   a month extra); contributions to the Roth IRA recognized from its
   transfers, the others typed, a target on two accounts (one on track, one
   behind); Dana's pay as hers, with her expected withholding; the home and
   the car with values, against their loans; a floor, a summer trip and a
   what-if on the forecast; and the forecast as he saw it on the third of each
   month, so "How good it has been" has months to show.
+- **Stop 4:** each draw's pay in joint checking matched to its owner draw in
+  the books; "Pay from Summit Operations Partners"; John and Dana's tax
+  inputs (married filing jointly, Colorado at 4.4%, last year's return); this
+  year's last two state estimated payments made from joint savings (the
+  federal ones, and the earlier state ones, from the practice); the Tax
+  envelope at 28% of the average draw; and for the CPA the year's property
+  tax, the doctor's bills and church giving as lines, the mortgage interest
+  from the lender's statement and a non-cash donation to Goodwill.
 
 All of it is built inside the books' own month loop (`money.history`), so
 each month's statements are in before that month is reconciled and closed,
@@ -48,6 +57,14 @@ SPOUSE_PAY = "MAPLE HILL PEDIATRICS PAYROLL"
 CARD = "Everyday Visa"
 DRAW_TEXT = "SUMMIT OPS PARTNERS TRANSFER"
 TAX_SHARE = Decimal("0.28")
+STATE_TAX_TEXT = "COLO DEPT REV EST PMT"
+PROPERTY_TAX_TEXT = "EL PASO CNTY TREASURER"
+#: Stop 4: what John and Dana enter once a year, and last year's return.
+TAX_INPUTS = {"filing_status": "joint", "state": "CO",
+              "state_rate_percent": Decimal("4.40"),
+              "last_year_tax_cents": 6_184_000, "last_year_taxable_cents": 18_620_000,
+              "other_income_cents": 7_200_000, "medical_miles": 86,
+              "charitable_miles": 140}
 MAPPING = {"date": "Date", "description": "Description", "amount": "Amount",
            "date_format": "%m/%d/%Y", "sign": "negative_is_out", "balance": ""}
 
@@ -76,6 +93,9 @@ RULES = [
     (SPOUSE_PAY, "personal", None, "Spouse pay", None),
     (DRAW_TEXT, "personal", None, "Pay from the practice", None),
     ("INTEREST PAYMENT", "personal", None, "Other income", None),
+    # Stop 4: the state's estimated tax paid from savings, and property tax.
+    (STATE_TAX_TEXT, "personal", None, "State estimated tax", None),
+    (PROPERTY_TAX_TEXT, "personal", None, "Property taxes", None),
 ]
 
 
@@ -129,13 +149,28 @@ def begin(world, books) -> None:
                 personal_category=mine[own] if own else None, split_percent=percent)
     books["mixed"] = card
     world.extra["household"] = {"ledger": ledger, "you": you, "dana": dana, "joint": joint,
-                                "savings": savings, "mine": mine, "card_owed": 0}
+                                "savings": savings, "mine": mine, "card_owed": 0,
+                                "state_tax": {}}
 
 
 # ----------------------------------------------------------- the months
 
 def _line(on, text, cents):
     return {"on": on, "text": text, "signed": cents}
+
+
+def state_from_savings(world, on: date) -> bool:
+    """Stop 4: the last two state estimated payments before today were made
+    from joint savings, not the practice's account: estimated payments on
+    the personal side too (decision 21)."""
+    from .money import ESTIMATED_TAX_MONTHS
+
+    if "household" not in world.extra or not in_window(world, on.replace(day=1)):
+        return False
+    first = _window(world)
+    dates = [date(m.year, m.month, 15) for m in months(first, world.today)
+             if m.month in ESTIMATED_TAX_MONTHS and date(m.year, m.month, 15) < world.today]
+    return on in dates[-2:]
 
 
 def _draws(world, month: date) -> list:
@@ -205,6 +240,10 @@ def _joint_lines(world, month: date, card_paid: int) -> list[dict]:
     # yearly bill the budget finds and spreads (stop 2).
     if month == next_month(_window(world)):
         lines.append(_line(day(14), "ALLSTATE HOME POLICY", -138_000))
+    # Stop 4: the second half of the year's property tax, in the window's
+    # third month: a deductible line for the CPA's worksheet.
+    if month == next_month(next_month(_window(world))):
+        lines.append(_line(day(15), PROPERTY_TAX_TEXT, -214_000))
     for entry in _draws(world, month):
         on = entry.on_date + timedelta(days=1)
         lines.append(_line(on, DRAW_TEXT, entry.amount_cents))
@@ -297,7 +336,10 @@ def month(world, books, month_: date, *, last: bool = False) -> None:
     moves = [_line(x["on"], "TRANSFER FROM CHECKING 2210", -x["signed"])
              for x in joint_lines if x["text"].startswith("TRANSFER TO SAVINGS")]
     interest = _line(month_end(month_), "INTEREST PAYMENT", 1_400 + roll.randrange(0, 900))
-    savings_lines = sorted((x for x in moves + [interest] if x["on"] < world.today),
+    state_tax = [_line(on, STATE_TAX_TEXT, -cents)
+                 for on, cents in house["state_tax"].items()
+                 if month_ <= on <= month_end(month_)]
+    savings_lines = sorted((x for x in moves + [interest] + state_tax if x["on"] < world.today),
                            key=lambda x: x["on"])
     with at(_when(world, after + timedelta(days=2), 8, 5)):
         batch = imports.dry_run(tenant, ledger=house["ledger"], account=house["savings"],
@@ -481,9 +523,9 @@ def _budget(world) -> None:
 
 
 def _forecast(world) -> None:
-    """Stop 3: the payoff plan (Snowball, the default, with $200 a month
-    extra, which is an envelope), a floor, a summer trip planned and a new
-    roof as a what-if."""
+    """Stop 3: the payoff plan (smallest balance first, the default, with
+    $200 a month extra, which is an envelope), a floor, a summer trip planned
+    and a new roof as a what-if. Then stop 4's taxes."""
     from apps.personal import debts
     from apps.personal import forecast as personal_forecast
 
@@ -497,3 +539,36 @@ def _forecast(world) -> None:
                                        on_date=today + timedelta(days=75))
         personal_forecast.save_planned(ledger, name="New roof", amount_cents=1_450_000,
                                        on_date=today + timedelta(days=120), is_what_if=True)
+    _taxes(world)
+
+
+def _taxes(world) -> None:
+    """Stop 4: John and Dana's tax inputs for the year (married filing
+    jointly, Colorado's flat rate, last year's return), the Tax envelope at
+    what he sets aside a month (28% of the average draw), the pay category
+    named for the practice, and for the CPA a non-cash donation and the
+    mortgage interest from the lender's statement. The two state payments
+    from savings, the property tax, the doctor's bills and the church giving
+    are lines already."""
+    from apps.personal import budget, cpa, paydays, taxes
+    from apps.personal import services as personal
+
+    house = world.extra["household"]
+    ledger, today = house["ledger"], world.today
+    year = taxes.payment_year(today)
+    with at(moment(today, 7, 55)):
+        personal.name_pay(ledger, world.tenant)
+        taxes.save_inputs(ledger, year=year, **TAX_INPUTS)
+        drawn = paydays.paid_on_average(world.tenant, today)["drawn_cents"]
+        taxes.use_envelope(ledger, planned_cents=budget.to_ten(drawn * TAX_SHARE))
+        # About $1,601 of interest a month on the mortgage's balance.
+        last = month_end(budget.add_months(today.replace(day=1), -1))
+        through = last.month if last.year == today.year else 1
+        cpa.save_item(ledger, year=today.year, tax_group="interest",
+                      description=f"Front Range Mortgage: interest paid January to "
+                                  f"{last:%B}, from the lender's statement",
+                      amount_cents=160_100 * through, on_date=last)
+        cpa.save_item(ledger, year=today.year, tax_group="non_cash",
+                      charity="Goodwill of Colorado",
+                      description="Clothing and household goods, four bags",
+                      amount_cents=34_000, on_date=today - timedelta(days=40))

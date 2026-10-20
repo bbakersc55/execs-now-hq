@@ -364,6 +364,12 @@ def _expenses(world, books, month: date, index: int, invoiced: dict, card_owed: 
         for which, share, to in (("federal", 0.18, "IRS USATAXPYMT"),
                                  ("state", 0.04, "COLO DEPT REVENUE")):
             tax = int(draw * share) // 10_000 * 10_000
+            if which == "state" and household.state_from_savings(world, day(15)):
+                # P6 M4 stop 4: this year's last two state payments were made
+                # from joint savings, where the set-aside is kept.
+                world.extra["household"]["state_tax"][day(15)] = tax
+                draw -= tax
+                continue
             facts.append(_fact(day(15), "bank", tax, "Owner draw",
                                f"Estimated tax, {which}, paid {month:%B} {month.year}",
                                kind="owner", direction="out", who=to.title(),

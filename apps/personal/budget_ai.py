@@ -78,7 +78,9 @@ def explain_input(ledger) -> str:
     for row in flow["rows"]:
         parts.append(f"- {row['name']} ({'in' if row['type'] == 'income' else 'out'}): "
                      + ", ".join(_dollars(c) for c in row["cents"]))
-    return "\n".join(parts)
+    from apps.personal.services import for_claude
+
+    return for_claude(ledger, "\n".join(parts))
 
 
 def status(tenant) -> dict:

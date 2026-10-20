@@ -180,7 +180,7 @@ class DebtListView(WhoseView):
         try:
             order = request.query_params.get("order") or None
             if order and order not in debts.ORDERS:
-                raise PersonalError("order is snowball or avalanche.")
+                raise PersonalError(debts.BAD_ORDER)
             extra = request.query_params.get("extra")
             if extra not in (None, "") and not extra.isdigit():
                 raise PersonalError("extra is a whole number of cents.")

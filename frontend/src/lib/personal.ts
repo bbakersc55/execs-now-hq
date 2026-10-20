@@ -23,6 +23,12 @@ export function hasPersonal(me: Me | undefined) {
   return (me?.modules ?? []).includes("personal");
 }
 
+/** Decision 16's two payoff orders, by name (2026-10-19: no longer "Snowball"
+ *  and "Avalanche"). The codes stay in the data. */
+export const PAYOFF_ORDERS = {
+  snowball: "Smallest balance first", avalanche: "Highest rate first",
+} as const;
+
 /** Decision 26: on every personal screen. */
 export const PERSONAL_DISCLAIMER = "Budgeting, forecasting and tax estimates only, not tax, "
   + "legal or financial advice. Confirm with your CPA.";

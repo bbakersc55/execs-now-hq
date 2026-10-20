@@ -111,6 +111,53 @@ def _seed_chart(ledger) -> None:
                     position=sub_position, tax_group=mark, system_code=SYSTEM.get(sub, ""))
 
 
+#: The pay category's name in the starting chart, before it is named for the
+#: practice (decision 20: "Pay from <practice>").
+PAY_DEFAULT_NAME = "Pay from the practice"
+
+
+def name_pay(ledger, tenant) -> None:
+    """Decision 20: the starting chart's "Pay from the practice" becomes "Pay
+    from <the practice's name>", once. A name the owner gave it is kept."""
+    if tenant is None or not getattr(tenant, "name", ""):
+        return
+    pay = PersonalCategory.objects.filter(ledger=ledger, system_code=PAY_FROM_PRACTICE,
+                                          name=PAY_DEFAULT_NAME).first()
+    if pay is None:
+        return
+    name = f"Pay from {tenant.name}"[:120]
+    if not PersonalCategory.objects.filter(ledger=ledger, name=name,
+                                           archived_at__isnull=True).exists():
+        pay.name = name
+        pay.save(update_fields=["name", "updated_at"])
+
+
+def for_claude(ledger, text: str) -> str:
+    """What the personal side sends Claude, with the pay category under its
+    starting name: "Pay from <practice>" can be the owner's own name, which
+    is never sent (decision 25)."""
+    pay = PersonalCategory.objects.filter(ledger=ledger, system_code=PAY_FROM_PRACTICE)\
+        .values_list("name", flat=True).first()
+    if pay and pay != PAY_DEFAULT_NAME:
+        text = text.replace(pay, PAY_DEFAULT_NAME)
+    return text
+
+
+def practice_of(ledger):
+    """The practice whose books this ledger's owner pays themselves from:
+    the one they own with Personal finance on (the newest, should there be
+    more than one). None if there is none."""
+    from apps.tenancy import modules
+    from apps.tenancy.models import Membership, Role
+
+    for membership in Membership.all_objects.filter(
+            user=ledger.owner, role=Role.FF, revoked_at__isnull=True)\
+            .select_related("tenant").order_by("-created_at"):
+        if modules.has(membership.tenant, modules.PERSONAL):
+            return membership.tenant
+    return None
+
+
 def system_category(ledger, code) -> PersonalCategory | None:
     found = PersonalCategory.objects.filter(ledger=ledger, system_code=code,
                                             archived_at__isnull=True).first()
@@ -174,6 +221,9 @@ def entry_removed(entry, reason: str) -> int:
     A line paid personally stays, because the bank shows it, and waits to be
     sorted again."""
     paid_entry_left(entry)
+    # Decision 20: pay from the practice matched to it is still pay, unmatched.
+    PersonalLine.objects.filter(draw_entry=entry).update(draw_entry=None,
+                                                         updated_at=timezone.now())
     return PersonalLine.objects.filter(finance_entry=entry, removed_at__isnull=True).update(
         removed_at=timezone.now(), remove_reason=reason, updated_at=timezone.now())
 

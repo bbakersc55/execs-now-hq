@@ -140,4 +140,45 @@ describe("the personal forecast (P6 M4 stop 3)", () => {
       expect(fetchMock.calls.find((c) => c.url.endsWith("/ask/explain"))?.body)
         .toEqual({ view: "90" });
     });
+
+  it("reviews envelopes, goals and the set-aside with the app's amounts, changed only when "
+    + "pressed (stop 4)", async () => {
+    const user = userEvent.setup();
+    const review = {
+      one_offs: [], missed: [], questions: [], cost_usd: "0.0390", disclaimer: "D",
+      used_today: 2, cap: 20,
+      envelopes: [{ id: "e1", name: "Groceries", planned_cents: 60_000, kind: "everyday",
+                    proposed_cents: 120_000, why: "Spent twice the plan.",
+                    months: [{ month: "2026-09", amount_cents: 120_000 }] }],
+      goals: [{ id: "g1", name: "Christmas", target_cents: 180_000, progress_cents: 60_000,
+                monthly_cents: 40_000, target_on: "2026-12-01", why: "Close." }],
+      set_aside: [{ id: "set_aside", year: 2026, percent_now: "28", suggested_percent: 31,
+                    still_needed_cents: 1_000_000, saved_cents: 532_000,
+                    why: "A little low." }] };
+    const fetchMock = mockApi({
+      "GET /api/personal/forecast/ask": ASK,
+      "POST /api/personal/forecast/ask/review": review,
+      "PATCH /api/personal/envelopes/e1": {},
+      "POST /api/personal/taxes/set-aside": {},
+      "GET /api/personal/forecast": FORECAST });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<PersonalForecastPage />);
+    await user.click(await screen.findByRole("button",
+                                             { name: "Review with Claude (about $0.04)" }));
+    const groceries = await screen.findByRole("group", { name: "Review of Groceries" });
+    expect(groceries).toHaveTextContent("Spent twice the plan.");
+    expect(within(groceries).getByLabelText("New amount for Groceries")).toHaveValue("1200");
+    expect(fetchMock.calls.some((c) => c.method === "PATCH")).toBe(false);
+    await user.click(within(groceries).getByRole("button", { name: "Set it a month" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+      .toEqual({ planned_cents: 120_000 }));
+    expect(screen.getByRole("group", { name: "Review of Christmas" }))
+      .toHaveTextContent("Change it under Goals");
+    const aside = screen.getByRole("group", { name: "Review of the tax set-aside" });
+    expect(aside).toHaveTextContent("confirm with your CPA");
+    await user.click(within(aside).getByRole("button", { name: "Use 31%" }));
+    await waitFor(() => expect(fetchMock.calls.find(
+      (c) => c.url === "/api/personal/taxes/set-aside")?.body)
+      .toEqual({ year: 2026, percent_per_draw: "31" }));
+  });
 });

@@ -217,6 +217,12 @@ def month_view(ledger, month: date | None = None) -> dict:
             left = available - used
             if m < month:
                 carried = left if env.rolls else 0
+        if env.source == PersonalEnvelope.Source.TAX:
+            # Decision 21: the Tax envelope holds what is set aside so far
+            # (the Taxes page keeps it), not its months added up.
+            from apps.personal import taxes
+
+            carried, left = 0, taxes.saved_so_far(ledger, taxes.payment_year(month))
         row = {
             "id": str(env.pk), "name": envelope_name(env), "kind": env.kind,
             "kind_label": env.get_kind_display(), "rolls": env.rolls,

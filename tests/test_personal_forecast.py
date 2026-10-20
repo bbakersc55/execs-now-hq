@@ -662,7 +662,8 @@ def test_explain_this_forecast_is_priced_first_and_sends_no_merchant_or_account(
 def test_review_proposes_only_from_ids_it_was_given_and_changes_nothing(
         ledger, chart, house, ff, api, fake_claude):
     spend(ledger, house["joint"], chart["Gifts"], ago(2), 25_000, text="PINE STREET GOODS")
-    text, regular, missed = forecast_ai.review_input(ledger, TODAY)
+    text, regular, missed, _envelopes, _goals, _aside = forecast_ai.review_input(ledger,
+                                                                                 TODAY)
     assert "PINE STREET" not in text and "MOUNTAIN MARKET" not in text
     gifts = next(item for item in missed if item["category"] == "Gifts")
     groceries = next(item for item in regular if item["category"] == "Groceries")

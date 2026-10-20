@@ -1,29 +1,55 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-17**, after M4 stop 3. **The next session starts at "Where things
-stand" just below, then "2026-10-17, night: M4 stop 3", then "2026-10-17, evening: M4 stop 2",
-"2026-10-17", "2026-10-15, night" and
-"2026-10-15, evening".** Then "Release 12: the plan as it was" and "2026-10-13", which
-is the day in order. Everything from "Next" down was last brought up to
-date on 10/5; where it and a newer section disagree, the newer holds. Upload
-this at the start of the next chat with: "Read this handoff, then pick up
-where it leaves off." The specs in `docs/` are the source of truth; this
-covers what they don't, and what changed since 9/30.
+2026-10-19**, after M4 stop 4. **The next session starts at "Where things
+stand" just below, then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
+stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
+and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
+"2026-10-13", which is the day in order. Everything from "Next" down was last
+brought up to date on 10/5; where it and a newer section disagree, the newer
+holds. Upload this at the start of the next chat with: "Read this handoff,
+then pick up where it leaves off." The specs in `docs/` are the source of
+truth; this covers what they don't, and what changed since 9/30.
 
-## Where things stand (2026-10-17, late): stops 2 and 3 accepted
+## Where things stand (2026-10-19): M4 stop 4 built, for acceptance
 
-- **`dev` is at `bac0e06`.** M4 stops 2 and 3 were **accepted on the demo**
-  by Bryan, every choice kept (stop 2's six, stop 3's nine). The demo was
-  reseeded at `bac0e06` (Summit only; 224 s on Railway).
-- **Release 17** carries `personal 0003` and `personal 0004`, both additive
-  with no data step (0004 drops and re-adds `personal_balance`'s one check
-  constraint, wider, which every row already meets). By the runbook, on
-  Bryan's "release".
-- **Next: M4 stop 4** (`docs/p6_m4_personal_finance.md`, decisions 20–23):
-  the pay-yourself loop, the quarterly tax set-aside with the Tax envelope,
-  For your CPA with both sides, and standard against itemized. **Then
-  Melissa's Notion/ClickUp import**, when her samples arrive.
+- **M4 stop 4 is built on `dev`** (decisions 20–23, the review's envelope,
+  goal and set-aside proposals, the payoff orders renamed). As built and ten
+  choices for Bryan: `docs/p6_m4_personal_finance.md`, "As built: stop 4".
+  **Waiting on Bryan's acceptance on the demo**, after a reseed.
+- **Release 17** (not yet released) carries `personal 0003`, `0004` and now
+  **`0005`**: two new tables (`personal_tax_year`, `personal_tax_item`) and a
+  nullable `personal_line.draw_entry_id`; additive, no data step. By the
+  runbook, on Bryan's "release".
+- **Backlog:** U3 (the payoff orders) done with stop 4; **D1, a module for
+  your discipline**, added under "Spec first", status later.
+- **Next:** Bryan's acceptance of stop 4; then Melissa's Notion/ClickUp
+  import, when her samples arrive.
+
+## 2026-10-19: M4 stop 4, taxes and the CPA (not released)
+
+- **Built on `dev`:** the pay-yourself loop (draws matched to pay, "Pay from
+  <practice>", the Overview's card that sets the business forecast's line),
+  Personal → Taxes (the estimate, the four dates, the safe harbor, the
+  set-aside and the Tax envelope), For your CPA with both sections and one
+  PDF (the business CSV unchanged, checked line for line), standard against
+  itemized, the personal facts, Review with Claude on envelopes, goals and
+  the set-aside, and "Smallest balance first" / "Highest rate first".
+- **Migration `personal 0005`**, additive, applied on the laptop
+  (`execsnowhq_local`) after a green suite. **The next release carries it.**
+  Until it was applied, the dev server on 8100 errored on personal pages
+  (`runserver` reloads model edits before the migration exists).
+- **The demo** must be **re-seeded** to show stop 4 (pushing `dev` migrates
+  it). Seeding a scratch demo locally took 70 s. Things to look at are in the
+  report of 10/19 and in "As built: stop 4", "The demo".
+- **The demo's seed changed in the books too:** this year's last two state
+  estimated payments are no longer the practice's (they are paid from joint
+  savings), so the business worksheet for 2026 shows two fewer state lines.
+- Headless Chrome on a scratch demo: Django on 8199 with a scratch database
+  (`APP_ENVIRONMENT=demo`, `STORAGE_BACKEND=local`, a non-production
+  `GCS_BUCKET_MEDIA`), the frontend started through Vite's JS API on 5299
+  (a config file outside `frontend/` cannot resolve `react-refresh`), a
+  `force_login` session cookie, and a CDP script. None of it is in the repo.
 
 ## 2026-10-17, night: M4 stop 3, the forecast and the rest (not released)
 

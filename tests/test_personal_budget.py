@@ -215,7 +215,10 @@ def test_unassigned_is_income_less_every_envelope_and_can_go_to_a_goal(accepted,
                 {"goal": str(goal.pk), "amount_cents": 100_000_000}).status_code == 409
     # Below zero: which envelopes are over the income.
     budget.update(envelope_of(ledger, "Spouse pay"), planned_cents=0)
-    budget.update(envelope_of(ledger, "Pay from the practice"), planned_cents=100_000)
+    # Named for the practice once the API has opened the ledger (decision 20).
+    pay = services.system_category(ledger, services.PAY_FROM_PRACTICE)
+    assert pay.name.startswith("Pay from ") and pay.name != services.PAY_DEFAULT_NAME
+    budget.update(envelope_of(ledger, pay.name), planned_cents=100_000)
     view = budget.month_view(ledger)
     assert view["unassigned_cents"] < 0
     assert view["over_income"] and view["over_income"][-1]["planned_cents"] <= \

@@ -9,7 +9,7 @@ import {
   Asset, Debts, Holding, Holdings, Household, Member, NetWorth, PersonalDebt, Sides, api,
 } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
-import { usePersonalChart } from "../lib/personal";
+import { PAYOFF_ORDERS, usePersonalChart } from "../lib/personal";
 
 /**
  * P6 M4 stop 3, decisions 16–19: debts and the payoff plan, retirement and
@@ -142,8 +142,8 @@ export function PersonalDebts() {
         <Card title="The payoff plan">
           <p className="small muted" style={{ marginTop: 0 }}>
             Every minimum is paid. The extra a month, and each paid-off debt's minimum after
-            it, go to one debt at a time: <strong>Snowball</strong> takes the smallest
-            balance first, <strong>Avalanche</strong> the highest rate. Change either to see
+            it, go to one debt at a time, <strong>smallest balance first</strong> or{" "}
+            <strong>highest rate first</strong>. Change either to see
             what it would do; nothing is saved until you save the plan. The extra is an
             envelope in your budget (Debt payments), and the payments are on your forecast.
           </p>
@@ -153,7 +153,7 @@ export function PersonalDebts() {
                 <button key={o} aria-pressed={data.order === o}
                   className={data.order === o ? "small primary" : "small"}
                   onClick={() => setOrder(o)}>
-                  {o === "snowball" ? "Snowball" : "Avalanche"}</button>
+                  {PAYOFF_ORDERS[o]}</button>
               ))}
             </span>
             <Field label="Extra a month">
@@ -193,7 +193,7 @@ export function PersonalDebts() {
 }
 
 function Other(data: Debts) {
-  const name = data.other_order === "avalanche" ? "Avalanche" : "Snowball";
+  const name = PAYOFF_ORDERS[data.other_order];
   const cents = data.other.interest_cents;
   if (cents === null) return `${name} cannot be worked out at these payments.`;
   if (cents === 0) return `${name} would cost the same.`;

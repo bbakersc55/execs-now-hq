@@ -7,8 +7,9 @@
 - **The plan** is arithmetic, month by month from this one: interest at a
   twelfth of the yearly rate on what is owed, every minimum paid, and the
   extra a month (with each paid-off debt's minimum added to it) going to one
-  debt at a time in the plan's order. **Snowball** (the default) takes the
-  smallest balance first; **Avalanche** the highest rate. The order is set
+  debt at a time in the plan's order: **smallest balance first** (the
+  default) or **highest rate first** (`ORDER_NAMES`; renamed from Snowball
+  and Avalanche on 2026-10-19, the codes kept). The order is set
   from today's balances and kept. Each debt's payoff date and the interest
   paid on the way are worked out, and the same for the other order, so the
   screen can say what it would cost or save.
@@ -33,6 +34,11 @@ from apps.personal.models import (
 from apps.personal.services import PersonalError
 
 ORDERS = ("snowball", "avalanche")
+#: What people read, on screen and in what is sent to Claude (2026-10-19).
+#: The codes stay in the data.
+ORDER_NAMES = {"snowball": "Smallest balance first", "avalanche": "Highest rate first"}
+BAD_ORDER = ("The order is smallest balance first (\"snowball\") or highest rate first "
+             "(\"avalanche\").")
 #: The plan stops looking after this many months: a debt not paid off by
 #: then is "not at this payment".
 MOST_MONTHS = 600
@@ -248,6 +254,8 @@ def represent(ledger, today: date | None = None, *, whose="all", order=None,
     bare = found["without_extra"]
     return {
         "order": found["order"], "other_order": found["other_order"],
+        "order_label": ORDER_NAMES[found["order"]],
+        "other_order_label": ORDER_NAMES[found["other_order"]],
         "extra_cents": found["extra_cents"],
         "saved_extra_cents": ledger.payoff_extra_cents, "saved_order": ledger.payoff_order,
         "total_cents": sum(r["balance"] for r in found["rows"]),
@@ -391,7 +399,7 @@ def set_plan(ledger, *, order: str | None = None, extra: int | None = None) -> N
 
     if order is not None:
         if order not in ORDERS:
-            raise PersonalError("The order is snowball or avalanche.")
+            raise PersonalError(BAD_ORDER)
         ledger.payoff_order = order
     before = ledger.payoff_extra_cents
     if extra is not None:

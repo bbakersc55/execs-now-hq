@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { AiGate } from "../components/DemoVisitor";
 import { Modal } from "../components/shell";
@@ -9,6 +10,7 @@ import {
 } from "../lib/api";
 import { dollars, longDate, toCents } from "../lib/money";
 import { NetWorthCard, SidesCard } from "./PersonalWorth";
+import { PayYourselfCard } from "./PersonalTaxes";
 
 /**
  * The budget that builds itself (P6 M4 stop 2, decisions 9–14): the
@@ -78,6 +80,8 @@ export function PersonalOverview() {
           <Envelopes month={data.month!} onSaid={setSaid} />
           <Income month={data.month!} />
           <GoalsSummary goals={data.goals} />
+          {/* Stop 4: decision 20, the loop between the two sides. */}
+          <PayYourselfCard />
           {/* Stop 3: both sides' cash in 90 days, and net worth. */}
           <SidesCard />
           <NetWorthCard />
@@ -314,7 +318,10 @@ function EnvelopeRow({ e, editing, value, onEdit, onValue, onSave, onRolls, chil
           <strong>{e.name}</strong>
           <div className="tiny muted">{e.yearly_cents
             ? `A yearly bill of ${money(e.yearly_cents)}, spread`
-            : e.goal ? "For a goal" : e.source_label}</div>
+            : e.goal ? "For a goal"
+              : e.source === "tax" ? <>Set aside for tax: Left is what is set aside so
+                far (<Link to="/finance/personal/taxes">Taxes</Link>). An estimate.</>
+                : e.source_label}</div>
         </td>
         <td className="num">
           {editing ? (

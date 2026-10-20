@@ -317,7 +317,7 @@ def export_summary(tenant, *, start: date, end: date) -> str:
     return out.getvalue()
 
 
-def export_worksheet(tenant, *, year: int) -> str:
+def worksheet(tenant, *, year: int) -> dict:
     """The CPA's Business Income & Expense Worksheet, for a calendar year
     (owner, 2026-10-10): one line for each top-level category, in the chart's
     own order, which for the starting chart is the worksheet's. A category's
@@ -325,25 +325,23 @@ def export_worksheet(tenant, *, year: int) -> str:
     wants item by item ("Miscellaneous (itemized)") lists each sub-category
     on its own line. Then what the worksheet asks for beside the expenses:
     estimated tax payments by date, federal and state, and the year's miles
-    and square feet. Every category is listed, with 0.00 where nothing was
-    spent, so the lines match the worksheet's one for one."""
+    and square feet. Every category is listed, with 0 where nothing was
+    spent, so the lines match the worksheet's one for one.
+
+    As figures, for the CSV (`export_worksheet`), the For your CPA page and
+    its PDF (P6 M4 decision 22), so all three say the same."""
     from apps.finance import chart, services
     from apps.finance.disclaimer import DISCLAIMER
 
     start, end = date(year, 1, 1), date(year, 12, 31)
-    out = io.StringIO()
-    writer = csv.writer(out)
-    plain = lambda cents: f"{cents / 100:.2f}"  # noqa: E731
     everything = _in_range(tenant, start, end)
     earned = everything.filter(kind__in=FinanceEntry.EARNED)
     by_category = {row["category_id"]: row["total"] for row in
                    earned.order_by().values("category_id").annotate(total=Sum(SIGNED))}
-    writer.writerow([f"Business income and expense worksheet, {year}, cash basis"])
-    totals = {}
+    sections, totals = [], {}
     for kind, title in ((T.INCOME, "Income"), (T.EXPENSE, "Expenses")):
         totals[kind] = 0
-        writer.writerow([])
-        writer.writerow([title, "Amount", "Note"])
+        rows = []
         every = list(FinanceCategory.all_objects.filter(tenant=tenant, type=kind)
                      .order_by("position", "name"))
         for top in (c for c in every if c.parent_id is None):
@@ -356,56 +354,100 @@ def export_worksheet(tenant, *, year: int) -> str:
             note = "Not a line of the worksheet" if top.name == chart.NOT_ON_WORKSHEET else ""
             if kind == T.EXPENSE and top.name == chart.ITEMIZED:
                 # Item by item, as the worksheet asks.
-                writer.writerow([top.name, plain(whole), "Itemized below"])
+                rows.append({"name": top.name, "amount_cents": whole,
+                             "note": "Itemized below", "sub": False})
                 for sub in subs:
                     amount = by_category.get(sub.pk, 0)
                     if sub.archived_at is None or amount:
-                        writer.writerow([f"  {sub.name}", plain(amount), ""])
+                        rows.append({"name": sub.name, "amount_cents": amount, "note": "",
+                                     "sub": True})
                 if own:
-                    writer.writerow([f"  {top.name}, not itemized", plain(own), ""])
+                    rows.append({"name": f"{top.name}, not itemized", "amount_cents": own,
+                                 "note": "", "sub": True})
             else:
-                writer.writerow([top.name, plain(whole), note])
+                rows.append({"name": top.name, "amount_cents": whole, "note": note,
+                             "sub": False})
         loose = earned.filter(category__isnull=True, kind=kind).aggregate(
             total=Sum(SIGNED))["total"] or 0
         if loose:
-            writer.writerow(["(no category yet)", plain(loose), ""])
+            rows.append({"name": "(no category yet)", "amount_cents": loose, "note": "",
+                         "sub": False})
             totals[kind] += loose
-        writer.writerow([f"Total {title.lower()}", plain(totals[kind]), ""])
-    writer.writerow(["Net", plain(totals[T.INCOME] - totals[T.EXPENSE]), ""])
+        sections.append({"title": title, "rows": rows, "total_label": f"Total {title.lower()}",
+                         "total_cents": totals[kind]})
     # P6 M4 decision 3: counted above in their categories, and named here,
     # because no account of the practice's shows them.
+    paid_rows = []
     paid = earned.filter(side=FinanceEntry.Side.PAID_PERSONALLY)
     if paid.exists():
-        writer.writerow([])
-        writer.writerow(["Paid personally (in the figures above)", "Amount", "Note"])
         for kind, title in ((T.EXPENSE, "Expenses paid from a personal account"),
                             (T.INCOME, "Income received into a personal account")):
             amount = paid.filter(kind=kind).aggregate(total=Sum(SIGNED))["total"] or 0
             if amount:
-                writer.writerow([title, plain(amount),
-                                 "An owner contribution" if kind == T.EXPENSE
-                                 else "An owner draw"])
-
+                paid_rows.append({"name": title, "amount_cents": amount,
+                                  "note": "An owner contribution" if kind == T.EXPENSE
+                                  else "An owner draw"})
     # Not an expense: the owner's own money, paid to the government on account.
-    writer.writerow([])
-    writer.writerow(["Estimated tax payments", "Federal", "State"])
-    paid = {"federal": 0, "state": 0}
+    estimated, paid_tax = [], {"federal": 0, "state": 0}
     for entry in everything.filter(kind=K.OWNER, direction=D.OUT).exclude(
             estimated_tax="").order_by("on_date", "created_at"):
-        paid[entry.estimated_tax] += entry.amount_cents
-        writer.writerow([entry.on_date.isoformat(),
-                         plain(entry.amount_cents) if entry.estimated_tax == "federal" else "",
-                         plain(entry.amount_cents) if entry.estimated_tax == "state" else ""])
-    writer.writerow(["Total", plain(paid["federal"]), plain(paid["state"])])
-
+        paid_tax[entry.estimated_tax] += entry.amount_cents
+        estimated.append({"on_date": entry.on_date.isoformat(),
+                          "federal_cents": entry.amount_cents
+                          if entry.estimated_tax == "federal" else None,
+                          "state_cents": entry.amount_cents
+                          if entry.estimated_tax == "state" else None})
     facts = services.year_facts(tenant, year)
+    return {
+        "year": year, "title": f"Business income and expense worksheet, {year}, cash basis",
+        "sections": sections, "net_cents": totals[T.INCOME] - totals[T.EXPENSE],
+        "paid_personally": paid_rows, "has_paid_personally": paid.exists(),
+        "estimated": estimated, "estimated_federal_cents": paid_tax["federal"],
+        "estimated_state_cents": paid_tax["state"],
+        "facts": [{"name": "Total miles driven", "value": facts["total_miles"]},
+                  {"name": "Business miles", "value": facts["business_miles"]},
+                  {"name": "Home square footage", "value": facts["home_square_feet"]},
+                  {"name": "Office square footage", "value": facts["office_square_feet"]}],
+        "disclaimer": DISCLAIMER,
+    }
+
+
+def export_worksheet(tenant, *, year: int) -> str:
+    """The worksheet (`worksheet`) as the CSV the CPA gets: unchanged by P6
+    M4, line for line."""
+    sheet = worksheet(tenant, year=year)
+    out = io.StringIO()
+    writer = csv.writer(out)
+    plain = lambda cents: f"{cents / 100:.2f}"  # noqa: E731
+    writer.writerow([sheet["title"]])
+    for section in sheet["sections"]:
+        writer.writerow([])
+        writer.writerow([section["title"], "Amount", "Note"])
+        for row in section["rows"]:
+            writer.writerow([f"  {row['name']}" if row["sub"] else row["name"],
+                             plain(row["amount_cents"]), row["note"]])
+        writer.writerow([section["total_label"], plain(section["total_cents"]), ""])
+    writer.writerow(["Net", plain(sheet["net_cents"]), ""])
+    if sheet["has_paid_personally"]:
+        writer.writerow([])
+        writer.writerow(["Paid personally (in the figures above)", "Amount", "Note"])
+        for row in sheet["paid_personally"]:
+            writer.writerow([row["name"], plain(row["amount_cents"]), row["note"]])
+    writer.writerow([])
+    writer.writerow(["Estimated tax payments", "Federal", "State"])
+    for row in sheet["estimated"]:
+        writer.writerow([row["on_date"],
+                         plain(row["federal_cents"]) if row["federal_cents"] is not None
+                         else "",
+                         plain(row["state_cents"]) if row["state_cents"] is not None
+                         else ""])
+    writer.writerow(["Total", plain(sheet["estimated_federal_cents"]),
+                     plain(sheet["estimated_state_cents"])])
     said = lambda value: "" if value is None else str(value)  # noqa: E731
     writer.writerow([])
     writer.writerow(["Year-end facts", "", ""])
-    writer.writerow(["Total miles driven", said(facts["total_miles"]), ""])
-    writer.writerow(["Business miles", said(facts["business_miles"]), ""])
-    writer.writerow(["Home square footage", said(facts["home_square_feet"]), ""])
-    writer.writerow(["Office square footage", said(facts["office_square_feet"]), ""])
+    for fact in sheet["facts"]:
+        writer.writerow([fact["name"], said(fact["value"]), ""])
     writer.writerow([])
-    writer.writerow([DISCLAIMER])
+    writer.writerow([sheet["disclaimer"]])
     return out.getvalue()

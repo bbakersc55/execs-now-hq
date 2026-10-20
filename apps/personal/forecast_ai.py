@@ -29,12 +29,12 @@ from apps.finance.forecast import REPEAT_MONTHS, VIEWS, _add_months, _months_bet
 from apps.personal import forecast
 from apps.personal.budget_ai import DISCLAIMER
 from apps.personal.models import PersonalDebt
-from apps.personal.services import PersonalError
+from apps.personal.services import PersonalError, for_claude
 
 EXPLAIN = "personal_explain_forecast"
 REVIEW = "personal_review_forecast"
 EXPLAIN_TOKENS = (2200, 450)
-REVIEW_TOKENS = (4500, 1000)
+REVIEW_TOKENS = (6500, 1400)
 MAX_TOKENS = 16000
 MAX_LINES = 120
 
@@ -55,17 +55,26 @@ EXPLAIN_SYSTEM = (
 
 REVIEW_SYSTEM = (
     "You are reviewing how a household's own app has read its past months for a cash "
-    "forecast. The app found REGULAR lines (it forecasts these) and NOT PICKED UP lines "
-    "(it does not). Each has an id. Your job is to propose and to ask; the person decides. "
-    "Answer with one JSON object and nothing else:\n"
+    "forecast and a budget. The app found REGULAR lines (it forecasts these) and NOT "
+    "PICKED UP lines (it does not); it also lists ENVELOPES (monthly amounts the household "
+    "planned, beside what was spent), GOALS and the TAX SET-ASIDE. Each has an id. Your "
+    "job is to propose and to ask; the person decides, and the app supplies every "
+    "amount. Answer with one JSON object and nothing else:\n"
     "{\"one_offs\": [{\"id\": \"R3\", \"why\": \"…\"}],\n"
     " \"missed\": [{\"id\": \"N7\", \"cadence\": \"yearly\", \"why\": \"…\"}],\n"
+    " \"envelopes\": [{\"id\": \"E2\", \"why\": \"…\"}],\n"
+    " \"goals\": [{\"id\": \"G1\", \"why\": \"…\"}],\n"
+    " \"set_aside\": [{\"id\": \"S1\", \"why\": \"…\"}],\n"
     " \"questions\": [{\"question\": \"…\"}]}\n"
     "one_offs: REGULAR lines that look like one-off spending, not recurring. missed: NOT "
     "PICKED UP lines that look recurring, each with the cadence it looks to have: "
-    "monthly, quarterly or yearly. questions: up to six short questions about what the "
-    "past months cannot show in the next six (a trip, a large purchase, a change in pay, "
-    "a school or medical cost). Use only ids you were given. Each \"why\" and "
+    "monthly, quarterly or yearly. envelopes: ENVELOPES whose planned amount looks out of "
+    "line with what has been spent, to be set to the recent amount the app shows. goals: "
+    "GOALS that look out of reach at their monthly amount, or set aside for faster than "
+    "needed. set_aside: the TAX SET-ASIDE, if its percent of each draw looks out of line "
+    "with the app's suggested percent. questions: up to six short questions about what "
+    "the past months cannot show in the next six (a trip, a large purchase, a change in "
+    "pay, a school or medical cost). Use only ids you were given. Each \"why\" and "
     "\"question\" is one plain sentence of at most 200 characters, and names no amount of "
     "money. An empty list is a fine answer. KNOWN is already in the forecast: do not ask "
     "about it. " + NO_ADVICE)
@@ -121,7 +130,7 @@ def explain_input(ledger, view: str = "90", today: date | None = None) -> str:
                      + (f" | {row['cadence']}" if row["cadence"] else ""))
     if len(counted) > MAX_LINES:
         parts.append(f"(the first {MAX_LINES} of {len(counted)})")
-    return "\n".join(parts)
+    return for_claude(ledger, "\n".join(parts))
 
 
 def status(tenant) -> dict:
@@ -191,7 +200,7 @@ def _candidates(ledger, today: date) -> tuple[list[dict], list[dict], list[dict]
     return regular, missed, parts["known"]
 
 
-def review_input(ledger, today: date | None = None) -> tuple[str, list[dict], list[dict]]:
+def review_input(ledger, today: date | None = None) -> tuple:
     today = today or timezone.localdate()
     regular, missed, known = _candidates(ledger, today)
 
@@ -219,7 +228,94 @@ def review_input(ledger, today: date | None = None) -> tuple[str, list[dict], li
     for rows in groups.values():
         parts.append(f"- {_name(ledger, rows[0])} | {rows[0]['cadence'] or 'once'} | "
                      f"{_dollars(rows[0]['amount_cents'])}")
-    return "\n".join(parts), regular[:MAX_LINES], missed[:MAX_LINES]
+    budget_parts, envelopes, goals, aside = _budget_candidates(ledger, today)
+    parts += budget_parts
+    return (for_claude(ledger, "\n".join(parts)), regular[:MAX_LINES], missed[:MAX_LINES],
+            envelopes, goals, aside)
+
+
+def _budget_candidates(ledger, today: date):
+    """Decision 25: envelopes, goals and the set-aside, as the review sees
+    them, each with an id and the amount the app would propose. Claude picks
+    ids and says why; the amounts are the app's."""
+    from statistics import median
+
+    from apps.personal import budget, debts, taxes
+    from apps.personal.models import PersonalEnvelope
+
+    parts, envelopes, goals, aside = [], [], [], []
+    if budget.has_budget(ledger):
+        view = budget.month_view(ledger)
+        this = budget.month_of(today)
+        months = [budget.add_months(this, -n) for n in (3, 2, 1)]
+        totals = {str(pk): by for pk, by in budget.totals_by_month(ledger, months).items()}
+        for row in view["envelopes"]:
+            if row["goal"] or row["source"] in (PersonalEnvelope.Source.TAX,
+                                                PersonalEnvelope.Source.DEBT) \
+                    or not row["category"]:
+                continue
+            spent = [totals.get(row["category"], {}).get(m, 0) for m in months]
+            recent = budget.to_ten(median(spent)) if any(spent) else 0
+            envelopes.append({"id": row["id"], "name": row["name"],
+                              "planned_cents": row["planned_cents"], "kind": row["kind"],
+                              "months": [{"month": m.isoformat()[:7], "amount_cents": c}
+                                         for m, c in zip(months, spent)],
+                              "proposed_cents": recent})
+        for index, item in enumerate(envelopes, start=1):
+            item["ref"] = f"E{index}"
+        if envelopes:
+            parts.append(f"ENVELOPES ({len(envelopes)}) (id | name | planned a month | "
+                         "spent in the last three months | recent amount the app would "
+                         "propose):")
+            for item in envelopes:
+                spent = ", ".join(_dollars(m["amount_cents"]) for m in item["months"])
+                parts.append(f"- {item['ref']} | {item['name']} | "
+                             f"{_dollars(item['planned_cents'])} | {spent} | "
+                             f"{_dollars(item['proposed_cents'])}")
+        for goal in budget.PersonalGoal.of(ledger.owner).filter(archived_at__isnull=True):
+            shown = budget.represent_goal(goal, view)
+            goals.append({"id": str(goal.pk), "name": goal.name,
+                          "target_cents": shown["target_cents"],
+                          "progress_cents": shown.get("progress_cents", 0),
+                          "monthly_cents": shown.get("monthly_cents", 0),
+                          "target_on": goal.target_on.isoformat() if goal.target_on
+                          else None})
+        for index, item in enumerate(goals, start=1):
+            item["ref"] = f"G{index}"
+        if goals:
+            parts.append(f"GOALS ({len(goals)}) (id | name | target | saved so far | a "
+                         "month | by):")
+            for item in goals:
+                parts.append(f"- {item['ref']} | {item['name']} | "
+                             f"{_dollars(item['target_cents'])} | "
+                             f"{_dollars(item['progress_cents'])} | "
+                             f"{_dollars(item['monthly_cents'])} | "
+                             f"{item['target_on'] or 'no date'}")
+    found = taxes.estimate(ledger, services_practice(ledger), today=today)
+    suggested = (found.get("draws") or {}).get("suggested_percent")
+    # A share past every draw is not a percent to propose; the Taxes page says so.
+    if found.get("ready") and suggested is not None and suggested <= 100:
+        aside.append({"ref": "S1", "id": "set_aside", "year": found["year"],
+                      "percent_now": found["set_aside"]["percent_per_draw"],
+                      "suggested_percent": suggested,
+                      "still_needed_cents": found["still_needed_cents"],
+                      "saved_cents": found["set_aside"]["saved_cents"]})
+        parts.append("TAX SET-ASIDE (id | percent of each draw now | the app's suggested "
+                     "percent | still needed for the year | set aside so far): "
+                     f"S1 | {found['set_aside']['percent_per_draw'] or 'not set'}% | "
+                     f"{suggested}% | {_dollars(found['still_needed_cents'])} | "
+                     f"{_dollars(found['set_aside']['saved_cents'])} "
+                     "(an estimate; the person confirms it with their CPA)")
+    if debts.open_debts(ledger).exists():
+        parts.append(f"PAYOFF PLAN: {debts.ORDER_NAMES[ledger.payoff_order]}, "
+                     f"{_dollars(ledger.payoff_extra_cents)} extra a month (not for review)")
+    return parts, envelopes, goals, aside
+
+
+def services_practice(ledger):
+    from apps.personal import services
+
+    return services.practice_of(ledger)
 
 
 def _read(answer: str) -> dict:
@@ -274,7 +370,7 @@ def _pick(rows, by_ref: dict, today: date | None = None) -> list[dict]:
 
 def review(ledger, tenant) -> dict:
     today = timezone.localdate()
-    text, regular, missed = review_input(ledger, today)
+    text, regular, missed, envelopes, goals, aside = review_input(ledger, today)
     answer, call, used = _ask(tenant, purpose=REVIEW, system=REVIEW_SYSTEM, text=text)
     data = _read(answer)
     questions = []
@@ -284,6 +380,9 @@ def review(ledger, tenant) -> dict:
     return {
         "one_offs": _pick(data.get("one_offs"), {item["ref"]: item for item in regular}),
         "missed": _pick(data.get("missed"), {item["ref"]: item for item in missed}, today),
+        "envelopes": _pick(data.get("envelopes"), {item["ref"]: item for item in envelopes}),
+        "goals": _pick(data.get("goals"), {item["ref"]: item for item in goals}),
+        "set_aside": _pick(data.get("set_aside"), {item["ref"]: item for item in aside}),
         "questions": questions[:6],
         "cost_usd": str(call.cost_usd), "disclaimer": DISCLAIMER, "used_today": used,
         "cap": explain.DAILY_CAP}

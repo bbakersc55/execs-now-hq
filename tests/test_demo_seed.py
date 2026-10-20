@@ -426,7 +426,8 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         # go out; card payments and savings moves are paired transfers.
         by_category = dict(lines.values_list("category__name").annotate(n=Count("pk")))
         assert by_category["Spouse pay"] == 2 * household.MONTHS
-        assert by_category["Pay from the practice"] >= household.MONTHS
+        # Stop 4: named for the practice ("Pay from <practice>").
+        assert by_category[f"Pay from {tenant.name}"] >= household.MONTHS
         assert by_category["Rent or mortgage"] == household.MONTHS
         paired = lines.filter(transfer_pair__isnull=False)
         assert paired.count() >= 2 * (2 * household.MONTHS + household.MONTHS - 1)
@@ -469,7 +470,7 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert mine["PersonalPlanned"].filter(goal__isnull=False).count() == 2
         # Stop 3: the forecast, with the goals' dates and the trip on it and
         # the roof as a what-if; months kept for "How good it has been"; the
-        # payoff plan (Snowball, $200 extra, an envelope); Dana's pay as hers;
+        # payoff plan (smallest balance first, $200 extra, an envelope); Dana's pay as hers;
         # one retirement account on track and one behind; net worth with the
         # home's equity.
         from apps.personal import debts as personal_debts
@@ -506,6 +507,41 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert home["equity_cents"] == home["value_cents"] - home["owed_cents"] > 0
         assert mine["PersonalCategory"].get(name="Spouse pay").whose.name == household.SPOUSE
         assert mine["PersonalMember"].get(relation="spouse").expected_withholding_cents
+        # Stop 4: each draw's pay matched to its owner draw; the tax inputs; two
+        # estimated payments this year from joint savings, the rest from the
+        # practice; $5,320 set aside in the Tax envelope; and for the CPA the
+        # deductible lines, the mortgage interest and a non-cash donation.
+        from apps.personal import cpa, paydays, taxes
+
+        matched = lines.filter(draw_entry__isnull=False)
+        assert matched.count() >= household.MONTHS
+        assert all(line.amount_cents == line.draw_entry.amount_cents
+                   and 0 <= (line.on_date - line.draw_entry.on_date).days <= 1
+                   for line in matched)
+        year = taxes.payment_year(today)
+        estimate = taxes.estimate(ledger, tenant, year, today)
+        assert estimate["ready"] and estimate["inputs"]["filing_status"] == "joint"
+        assert estimate["inputs"]["state"] == "CO" and estimate["safe_harbor"]["percent"] == 110
+        household_paid = [p for p in estimate["payments"] if p["from"] == "household"]
+        assert len(household_paid) == 2 and {p["which"] for p in household_paid} == {"state"}
+        assert any(p["from"] == "practice" for p in estimate["payments"])
+        assert estimate["set_aside"] == {"percent_per_draw": "28", "saved_cents": 532_000}
+        assert estimate["by_next"]["on_date"] == f"{year + 1}-01-15" or \
+            today < date(year, 9, 16)
+        tax_env = next(row for row in personal_budget.month_view(ledger)["envelopes"]
+                       if row["source"] == "tax")
+        assert tax_env["left_cents"] == 532_000 and tax_env["planned_cents"] > 0
+        sheet = {g["group"]: g for g in cpa.groups(ledger, today.year)}
+        for group in ("medical", "interest", "property_tax", "charitable", "non_cash"):
+            assert sheet[group]["total_cents"] > 0, group
+        assert sheet["non_cash"]["rows"][0]["charity"] == "Goodwill of Colorado"
+        assert sheet["medical"]["miles"] == 86 and sheet["charitable"]["miles"] == 140
+        versus = cpa.standard_against_itemized(ledger, today.year)
+        assert versus["standard_cents"] == 3_220_000 or year != 2026
+        assert 0 < versus["itemized_cents"] < versus["standard_cents"]
+        loop = paydays.loop(ledger, tenant, today)
+        assert loop["needed_cents"] > 0 and loop["paid"]["average_cents"] > 0
+        assert loop["business_line"]["amount_cents"] > 0
         # Last month's savings statement reconciled; nothing to close.
         [rec] = mine["PersonalReconciliation"]
         assert rec.state == "finished" and personal_reconcile.totals(rec)[

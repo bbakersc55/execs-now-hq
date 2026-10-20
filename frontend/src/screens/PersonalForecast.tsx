@@ -10,7 +10,7 @@ import {
   PersonalForecast, PersonalForecastLine, PersonalPlanned, PersonalReview,
   PersonalReviewItem, api,
 } from "../lib/api";
-import { dollars, longDate } from "../lib/money";
+import { dollars, longDate, toCents } from "../lib/money";
 import { CashChart, Floor } from "./FinanceForecast";
 import { Draft, HowGood, PlannedForm } from "./FinanceForecastTools";
 
@@ -559,10 +559,29 @@ const seen = (item: PersonalReviewItem) => item.months.map(
 function Review({ review, busy, send, onClose }: {
   review: PersonalReview; busy: boolean; send: Send; onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const [done, setDone] = useState<Record<string, string>>({});
-  const answered = (key: string, text: string) => setDone({ ...done, [key]: text });
-  const nothing = review.one_offs.length + review.missed.length
-    + review.questions.length === 0;
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [failed, setFailed] = useState("");
+  const answered = (key: string, text: string) => setDone((now) => ({ ...now, [key]: text }));
+  // Stop 4 (decision 25): an envelope or the set-aside, changed through the
+  // ordinary routes with the app's amount, which the owner can edit first.
+  const change = useMutation({
+    mutationFn: ({ url, method, body }: { key: string; text: string; url: string;
+                                           method: "post" | "patch"; body: object }) =>
+      method === "post" ? api.post(url, body) : api.patch(url, body),
+    onSuccess: (_data, { key, text }) => {
+      setFailed(""); answered(key, text);
+      for (const k of ["personal-budget", "personal-taxes", "personal-pay-yourself"]) {
+        qc.invalidateQueries({ queryKey: [k] });
+      }
+    },
+    onError: (e: Error) => setFailed(e.message) });
+  const envelopes = review.envelopes ?? [];
+  const goals = review.goals ?? [];
+  const aside = review.set_aside ?? [];
+  const nothing = review.one_offs.length + review.missed.length + envelopes.length
+    + goals.length + aside.length + review.questions.length === 0;
   return (
     <section aria-label="The review" className="panel" style={{ marginTop: "var(--s3)" }}>
       <p className="small" style={{ marginTop: 0 }}>
@@ -616,6 +635,72 @@ function Review({ review, busy, send, onClose }: {
           )}
         </div>
       ))}
+      {failed && <Banner kind="bad">{failed}</Banner>}
+      {envelopes.length > 0 && <h4>Envelopes that look out of line</h4>}
+      {envelopes.map((item) => {
+        const key = `e:${item.id}`;
+        const text = amounts[key] ?? (item.proposed_cents / 100).toFixed(0);
+        const cents = toCents(text);
+        return (
+          <div key={key} role="group" aria-label={`Review of ${item.name}`}
+            style={{ marginBottom: "var(--s3)" }}>
+            <p className="small" style={{ margin: 0 }}><strong>{item.name}</strong>: {item.why}{" "}
+              <span className="muted">Planned {dollars(item.planned_cents)} a month; spent{" "}
+                {item.months.map((m) => `${m.month} ${dollars(m.amount_cents)}`).join(", ")}.
+              </span></p>
+            {done[key] ? <p className="small muted">{done[key]}</p> : (
+              <div className="row tight">
+                <input aria-label={`New amount for ${item.name}`} value={text}
+                  style={{ width: "6rem" }}
+                  onChange={(e) => setAmounts({ ...amounts, [key]: e.target.value })} />
+                <button className="small" disabled={busy || change.isPending || cents === null}
+                  onClick={() => change.mutate({
+                    key, text: `${item.name} is ${dollars(cents!)} a month now.`,
+                    url: `/api/personal/envelopes/${item.id}`, method: "patch",
+                    body: { planned_cents: cents } })}>Set it a month</button>
+                <button className="ghost small"
+                  onClick={() => answered(key, "Left as it is.")}>Leave it</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {goals.length > 0 && <h4>Goals</h4>}
+      {goals.map((item) => (
+        <div key={item.id} role="group" aria-label={`Review of ${item.name}`}
+          style={{ marginBottom: "var(--s3)" }}>
+          <p className="small" style={{ margin: 0 }}><strong>{item.name}</strong>: {item.why}{" "}
+            <span className="muted">{dollars(item.progress_cents)} of{" "}
+              {dollars(item.target_cents)}, {dollars(item.monthly_cents)} a month
+              {item.target_on ? `, by ${longDate(item.target_on)}` : ""}.</span>{" "}
+            <Link to="/finance/personal/goals">Change it under Goals</Link></p>
+        </div>
+      ))}
+      {aside.map((item) => {
+        const key = "s:set_aside";
+        return (
+          <div key={key} role="group" aria-label="Review of the tax set-aside"
+            style={{ marginBottom: "var(--s3)" }}>
+            <h4>The tax set-aside</h4>
+            <p className="small" style={{ margin: 0 }}>{item.why}{" "}
+              <span className="muted">Now {item.percent_now ?? "no"}% of each draw; the
+                estimate suggests {item.suggested_percent}%. An estimate: confirm with your
+                CPA.</span></p>
+            {done[key] ? <p className="small muted">{done[key]}</p> : (
+              <div className="row tight">
+                <button className="small" disabled={busy || change.isPending}
+                  onClick={() => change.mutate({
+                    key, text: `The set-aside is ${item.suggested_percent}% of each draw now.`,
+                    url: "/api/personal/taxes/set-aside", method: "post",
+                    body: { year: item.year, percent_per_draw: String(item.suggested_percent) } })}>
+                  Use {item.suggested_percent}%</button>
+                <button className="ghost small"
+                  onClick={() => answered(key, "Left as it is.")}>Leave it</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
       {review.questions.length > 0 && <h4>What your history cannot show</h4>}
       {review.questions.map((item, index) => {
         const key = `q${index}`;

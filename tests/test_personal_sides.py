@@ -158,6 +158,12 @@ def make_owned(model, ledger):
             ledger=ledger, month=today.replace(day=1), taken_on=today),
         m.PersonalForecastAdjustment: lambda: m.PersonalForecastAdjustment.objects.create(
             ledger=ledger, line_key="pattern:x", label="X", kind="not_regular"),
+        # Stop 4: the year's tax inputs, and a figure typed for the CPA.
+        m.PersonalTaxYear: lambda: m.PersonalTaxYear.objects.create(
+            ledger=ledger, year=today.year, filing_status="joint"),
+        m.PersonalTaxItem: lambda: m.PersonalTaxItem.objects.create(
+            ledger=ledger, year=today.year, tax_group="non_cash", charity="Goodwill",
+            description="Clothing", amount_cents=10_000),
     }
     return ways[model]()
 
@@ -433,7 +439,9 @@ def test_the_personal_chart_carries_the_cpas_six_groups(mixed, ff, api):
         assert chart[name]["tax_group"] == group, name
     for top in ("Housing", "Utilities", "Giving", "Transfers", "Everything else", "Income"):
         assert chart[top]["parent"] is None
-    assert chart["Pay from the practice"]["type"] == "income"
+    # Decision 20: "Pay from <practice>", named for the practice it is opened in.
+    pay = [row for row in chart.values() if row["system"] and row["type"] == "income"]
+    assert [row["name"] for row in pay] == [f"Pay from {ff.tenant.name}"]
     marked = patch(api, ff, f"/api/personal/categories/{chart['Pets']['id']}",
                    {"tax_group": "charitable"})
     assert marked.json()["tax_group_label"] == "Charitable contributions"

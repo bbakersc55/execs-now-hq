@@ -747,6 +747,10 @@ def commit(batch, *, actor=None) -> FinanceImportBatch:
     from apps.finance import reconcile
 
     reconcile.imported(batch)
+    # P6 M4 decision 20: a draw that came in is matched to the pay it was.
+    from apps.personal import paydays
+
+    paydays.match_for_practice(tenant)
     return batch
 
 

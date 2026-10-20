@@ -127,7 +127,8 @@ describe("the line every Finance screen carries", () => {
       "/finance/forecast", "/finance/import", "/finance/personal", "/finance/personal/accounts",
       "/finance/personal/categories", "/finance/personal/debts", "/finance/personal/entries",
       "/finance/personal/forecast", "/finance/personal/goals", "/finance/personal/household",
-      "/finance/personal/import", "/finance/personal/retirement", "/finance/pnl",
+      "/finance/personal/import", "/finance/personal/retirement", "/finance/personal/taxes",
+      "/finance/pnl",
       "/finance/reconcile",
       "/settings/finance"]);
     // The personal routes carry the personal disclaimer (PersonalFinance.test.tsx).

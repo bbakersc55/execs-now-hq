@@ -1,6 +1,6 @@
 # P6 M4 — Personal finance
 
-**Spec · 2026-10-15 · stops 1–3 built (stop 1 released); stop 4 not built**
+**Spec · 2026-10-15 · stops 1–4 built (stop 1 released)**
 
 Written from `docs/p6_m4_personal_finance_spec_draft.md` (Bryan's draft, saved
 verbatim; drafted 2026-10-15 by Claude in chat with Bryan's decisions of that
@@ -71,7 +71,7 @@ The envelope idea from YNAB and Ramsey, without the typing: history proposes the
 ## Decisions 15–19: forecast, debts, retirement, household, net worth
 
 15. **Personal cash forecast.** M2's engine on the personal accounts: cash today, Known lines (bills with due dates, debt minimums, estimated-tax dates), Regular lines from history, Planned lines (goals, one-offs), what-ifs, a floor, the 30/90/180-day and 12-month views, and "How good it has been". Pay from the practice is a Known line at the cadence it has been paid; spouse pay is Regular. Its own page under Personal; never drawn in the same chart as the business forecast. The Overview shows both sides' ending balances side by side. *Recommended: yes.*
-16. **Debts.** Name, kind (card, auto, mortgage, student, personal, medical, other), balance, rate, minimum payment, due day, whose. A credit card that is also an imported account takes its balance from the import; other debts take a balance entered monthly or from a statement. A payoff plan: **Snowball** (smallest balance first) or **Avalanche** (highest rate first), plus an extra monthly amount; shows each debt's payoff date, total interest, and what the other order would cost or save. The extra becomes an envelope; payments show on the forecast; each debt has a balance-over-time chart. *Recommended: yes, both orders offered, Snowball the default.*
+16. **Debts.** Name, kind (card, auto, mortgage, student, personal, medical, other), balance, rate, minimum payment, due day, whose. A credit card that is also an imported account takes its balance from the import; other debts take a balance entered monthly or from a statement. A payoff plan: **smallest balance first** or **highest rate first** (renamed from "Snowball" and "Avalanche" on 2026-10-19, on screen, here and in the AI prompts; the codes stay), plus an extra monthly amount; shows each debt's payoff date, total interest, and what the other order would cost or save. The extra becomes an envelope; payments show on the forecast; each debt has a balance-over-time chart. *Recommended: yes, both orders offered, smallest balance first the default.*
 17. **Retirement and investments.** Accounts with a balance history (entered monthly or from a statement; no live feeds), contributions recognized from transfers, a target (an amount by a year), and "on track / behind" from the contribution rate and an assumed yearly return the owner sets (default 6%), with the estimate disclaimer. A progress chart per account. *Recommended: yes, simple.*
 18. **Household.** The owner plus the people they add (a spouse or partner). A person is a label, not a sign-in. Income, accounts, debts and retirement each carry *whose*: owner, spouse or joint. Views: the household, or one person. The spouse's expected W-2 withholding feeds the tax estimate. *Recommended: yes.*
 19. **Net worth.** Assets (bank accounts, retirement and investments, plus items entered by hand such as a home or vehicle with a value and a date) minus debts, as one line over time on the Overview, with a home's value against its mortgage shown as equity. No valuations fetched. *Recommended: yes; it is almost free once 16 and 17 exist, and it is the number people check.*
@@ -170,7 +170,7 @@ The brief (saved 2026-10-11) wins where the two differ, unless a recorded decisi
 
 - The don't-ask threshold: $25, or another number?
 - Rollover defaults: everyday envelopes reset, savings-type roll. Keep?
-- Snowball as the default payoff order, with Avalanche a switch away?
+- Smallest balance first as the default payoff order, with highest rate first a switch away?
 - Assumed return for retirement projections: 6% default?
 - Tax inputs: will owners enter last year's total tax and taxable income, or should the first version take only a percent?
 - State tax as a flat rate the owner enters, or should the app know each state's brackets?
@@ -359,8 +359,8 @@ personal line by hand.
 
 Decisions 9–14 as written, the brief's Cash flow table, and "Explain this
 budget". The open questions taken as recommended (Bryan, 2026-10-17): the
-$25 threshold; everyday envelopes reset and saving-up ones roll; Snowball
-the default, 6% the assumed return, tax inputs either way and state as a
+$25 threshold; everyday envelopes reset and saving-up ones roll; smallest
+balance first the default, 6% the assumed return, tax inputs either way and state as a
 flat rate, all later.
 
 **Built and tested** (`tests/test_personal_budget.py`, the isolation family
@@ -451,8 +451,8 @@ lines (stop 3); a debt as a place for Unassigned (stop 3); the Tax envelope
 
 Decisions 15–19 as written, "Explain this forecast" and "Review with Claude"
 on the personal forecast (M2's pattern), and Unassigned toward debts (stop 2's
-"not built"). Open questions as recommended (Bryan, 2026-10-17): Snowball the
-default, 6% the assumed return. Stop 2's six choices were kept.
+"not built"). Open questions as recommended (Bryan, 2026-10-17): smallest balance
+first the default, 6% the assumed return. Stop 2's six choices were kept.
 
 **The stop's proof** is tested: the car repair (a dated goal) is a Planned
 line on its date in the forecast, and a debt's payoff date moves when the
@@ -538,7 +538,7 @@ seeded scratch demo, no console errors):
   recurring lines not picked up, and up to six questions, each answered by the
   owner through the ordinary routes (not regular; a planned line).
 - **The demo:** the mortgage and the car loan with their payment categories;
-  the payoff plan (Snowball, $200 extra, so the car loan goes first, by
+  the payoff plan (smallest balance first, $200 extra, so the car loan goes first, by
   October 2028); the Roth IRA's contributions recognized from its transfers,
   the Solo 401(k)'s ($2,000) and Dana's 403(b)'s ($450) typed; a target on the
   Solo 401(k) (behind) and the Roth (on track); Dana as a household member
@@ -593,3 +593,142 @@ isolation family.
 the set-aside and the pay-yourself loop (stop 4); a personal forecast for one
 person; an "until" on a repeating personal planned line; M2's "likely annual"
 on the personal side (yearly bills are the budget's questions instead).
+
+## As built: stop 4 (2026-10-19)
+
+Decisions 20–23 as written, decision 25's Review with Claude on envelopes,
+goals and the set-aside, and the payoff orders renamed (backlog U3).
+
+**The stop's proof** is tested: the quarterly number and the Jan 15 line
+(`tests/test_personal_taxes.py`,
+`test_the_four_dates_the_jan_15_line_and_the_safe_harbor`), and one CPA PDF
+with both sides (`test_one_page_and_one_pdf_with_both_sections_and_the_business_csv_unchanged`).
+
+**Built and tested** (`tests/test_personal_taxes.py`, 33 tests; the isolation
+family in `tests/test_personal_sides.py` with the two new models; the demo
+seed test; `PersonalTaxes.test.tsx`, the review in `PersonalForecast.test.tsx`,
+the names in `PersonalWorth.test.tsx`; the Taxes page, For your CPA (page and
+PDF) and the Overview's pay-yourself card looked at in headless Chrome at
+1366 on a freshly seeded scratch demo, no console errors, no sideways
+scroll):
+
+- **Paying yourself** (20, `apps/personal/paydays.py`). An owner draw out of
+  one of the practice's bank or cash accounts (not estimated tax, not
+  personal spending on a practice card) and money in to a household bank
+  account of the same amount, that day or the next, are **matched**: the
+  personal import's dry run proposes the line as pay, and the commit links
+  it (`PersonalLine.draw_entry`). Matching also runs when the books import or
+  a draw is typed. A line the owner placed in another category is left
+  alone; removing the draw unmatches the line, which stays pay. The starting
+  chart's "Pay from the practice" is named **"Pay from <practice>"** the
+  first time the ledger is opened from the practice (a name the owner gave it
+  is kept). With no household account imported, the books' unmatched draws
+  are the personal forecast's Known pay line, at their cadence. The
+  Overview's **Paying yourself** card: "Your envelopes need $X a month
+  (beyond other income); you have paid yourself $Y a month on average over
+  the last six months", and **Set it to $X a month** sets the business
+  forecast's pay-yourself line: an amount adjustment of its largest regular
+  owner-draw line (source "personal", undone there like any other), or, with
+  no draws found yet, a planned "Pay yourself" line monthly.
+- **The set-aside** (21, `apps/personal/taxes.py`, `tax_tables.py`, Personal
+  → Taxes). Inputs once a year (`PersonalTaxYear`): filing status, state and
+  its flat rate, last year's total tax and taxable income, or a federal rate
+  instead of the brackets, and other household income before withholding
+  (empty: the income lines at this year's pace). The estimate: business net
+  profit so far (cash basis) at this year's pace; self-employment tax; half
+  of it deducted; the standard deduction, or the itemized total if larger;
+  federal at the year's brackets (2025 and 2026, data with a year; a missing
+  year names the year used); state at the owner's rate on the same taxable
+  income; less the spouse's expected withholding. The four dates, a quarter
+  of the year's figure each; the next date's figure (all quarters through it,
+  less what is paid); the safe harbor beside it (100%, or 110% over $150,000);
+  payments from the practice's books (marked estimated tax) and the
+  household's Taxes categories, a January payment counting to the year
+  before. The set-aside: the percent and what is set aside so far (the
+  owner's), what that percent of the draws since the last payment comes to,
+  and the share of each draw from here that covers what is still needed.
+  **The Tax envelope** is an envelope in Taxes (source `tax`, saved up):
+  Planned is its monthly amount and counts against Unassigned; its Left is
+  what is set aside so far. "Use $X a month" sets it to what reaches the
+  rest by January 15. Bold "Estimate; confirm with your CPA." on every card,
+  the personal disclaimer in bold at the top.
+- **For your CPA with both sides** (22, `apps/personal/cpa.py`,
+  `/finance/export` with the module on, also a Personal tab). A year
+  selector; the business worksheet as data (`finance.reports.worksheet`),
+  shown on the page, in the PDF, and written as the same CSV as before
+  (checked line for line against the old function on the demo for 2024–2026);
+  then the personal worksheet by the six groups, every line listed with its
+  date, item and account, figures the owner adds for the CPA
+  (`PersonalTaxItem`: a non-cash donation, which must name its charity, or an
+  amount from a form such as the lender's 1098), medical and charitable miles
+  and the HSA as year-end facts; **standard against itemized** (23); the
+  **Personal facts** (estimated payments by quarter with where each was paid
+  from, health insurance premiums, retirement contributions by account, HSA,
+  childcare and education), each with "Ask your CPA." **One PDF** with both
+  sections (`/api/personal/cpa/pdf`); the range exports stay below.
+- **Review with Claude** now also lists the envelopes (planned against the
+  last three months), the goals and the set-aside, each with an id and the
+  app's own figure (the recent median; the estimate's percent). Claude picks
+  ids and says why; the owner presses "Set it a month" (editable) or "Use
+  N%" through the ordinary routes; a goal links to Goals. Priced higher
+  (6,500 in, 1,400 out). The pay category goes to Claude as "Pay from the
+  practice" in every personal prompt: the practice's name can be the owner's.
+- **The payoff orders by name** (U3): "Smallest balance first" and "Highest
+  rate first" on the Debts page, in this spec, in its refusals and in what the
+  review sends; the codes `snowball` and `avalanche` stay in the data.
+- **The demo:** each month's pay in joint checking matched to its draw;
+  "Pay from Summit Operations Partners"; John and Dana's inputs (married
+  filing jointly, CO at 4.4%, last year $61,840 tax on $186,200 taxable,
+  Dana's $72,000); this year's last two state estimated payments made from
+  joint savings ($700 each, June and September), the rest from the practice;
+  the $5,320 set aside (28% of the September 28 draw) as the Tax envelope's
+  Left, the envelope at 28% of the average draw ($5,710 a month); the
+  property tax ($2,140, June), the doctor's bills, the church giving, the
+  mortgage interest from the lender's statement ($14,409) and a Goodwill
+  donation ($340), 86 medical and 140 charitable miles.
+
+**Models** (`personal 0005`, additive): `PersonalTaxYear`, `PersonalTaxItem`;
+`PersonalLine.draw_entry`; the envelope source `tax` (no SQL). Both models in
+the isolation family.
+
+**Choices made in stop 4, for Bryan to keep or overrule:**
+
+1. **Self-employment tax stops its Social Security part at the year's wage
+   base** ($184,500 in 2026). Decision 21's "15.3% of 92.35%" as written would
+   overstate the demo's by about $11,000; the Medicare 2.9% goes on above it.
+   Not counted, and said under the figures: the 20% qualified business income
+   deduction, the 0.9% additional Medicare tax, credits. QBI is the big one for
+   most fractionals; it could be an input ("last year's QBI deduction") if
+   you want it.
+2. **The year's profit is the pace so far** (so far ÷ the share of the year
+   gone by), not the so-far figure, so October does not under-estimate.
+3. **The state rate applies to federal taxable income** (Colorado's base);
+   the screen says so.
+4. **The safe harbor's 110% test uses last year's taxable income** as a stand-in
+   for AGI. Over $150,000 taxable is over it on AGI too; under it, the screen
+   says 110% may still apply and to ask the CPA.
+5. **What is set aside so far is the owner's figure**, with "N% of the draws
+   since the last payment comes to $X" beside it as a check. The app cannot
+   tell which move to savings was for tax.
+6. **The Tax envelope's Left is what is set aside**, not its months added up,
+   so it says one number, the Taxes page's.
+7. **"Paid yourself" counts draws to your accounts plus personal spending on
+   the practice's accounts** (both owner draws); estimated tax paid from the
+   practice is named beside it, not in it.
+8. **A goal's change from the review is a link to Goals**, not a one-press
+   change: the goal route takes the whole goal, and a press with only part of
+   it would reset what is saved.
+9. **The demo shows John well behind on estimated tax** ($84,970 needed by
+   January 15 on the estimate, $45,430 on the safe harbor), because the books'
+   seed pays each quarter from one month's draw. That reads as the app catching
+   it; the books' seed could pay three months' worth instead, which would move
+   the $5,320.
+10. **"Two estimated payments made this year"** is read as two on the personal
+    side (June and September state, from joint savings), with the books' own
+    federal ones and April's state one still from the practice: 2026 has three
+    quarters paid, as the date says it should.
+
+**Not built in stop 4:** state brackets (a flat rate only); payments made in a
+later year for an earlier one beyond January; household sign-ins (a later
+stop); the privacy policy and beta agreement amendments (a condition on
+offering M4, not on building it).

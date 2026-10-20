@@ -98,7 +98,9 @@ def what_is_sent(ledger, tenant) -> tuple[str, dict, dict, dict]:
     parts.append("BUSINESS CATEGORIES:")
     parts += [f"- {ref} | {c.get_type_display().lower()} | {_name(c)}"
               for ref, c in business.items()]
-    return "\n".join(parts), by_ref, personal, business
+    from apps.personal.services import for_claude
+
+    return for_claude(ledger, "\n".join(parts)), by_ref, personal, business
 
 
 def _tokens(count: int) -> tuple[int, int]:

@@ -1,0 +1,161 @@
+{% load personal_extras %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>For your CPA, {{ page.year }} — {{ practice }}</title>
+<style>
+  @page { size: Letter; margin: 0.7in;
+          @bottom-right { content: "Page " counter(page) " of " counter(pages);
+                          font-size: 7.5pt; color: #939598; } }
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-size: 9.5pt;
+         color: #222; line-height: 1.35; margin: 0; }
+  h1 { font-size: 18pt; color: #0A3A65; margin: 0 0 2pt; }
+  h2 { font-size: 13pt; color: #0A3A65; margin: 18pt 0 4pt;
+       border-bottom: 2pt solid #F58220; padding-bottom: 3pt; }
+  h3 { font-size: 10.5pt; color: #0A3A65; margin: 12pt 0 3pt; }
+  .sub { color: #6D6E71; margin: 0 0 10pt; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 6pt; }
+  th { font-size: 7.5pt; letter-spacing: 0.5pt; text-transform: uppercase; color: #6D6E71;
+       text-align: left; border-bottom: 0.75pt solid #939598; padding: 3pt 5pt; }
+  td { padding: 3pt 5pt; border-bottom: 0.4pt solid #E2E4E6; vertical-align: top; }
+  .num { text-align: right; white-space: nowrap; }
+  .indent { padding-left: 16pt; }
+  .total td { font-weight: 700; border-top: 0.75pt solid #6D6E71; }
+  .muted { color: #6D6E71; }
+  .note { font-size: 8pt; color: #6D6E71; }
+  .personal h2 { border-bottom-color: #0A3A65; }
+  .band { background: #F3F6F9; border-left: 3pt solid #0A3A65; padding: 6pt 9pt;
+          margin: 8pt 0; }
+  .confirm { font-weight: 700; }
+  tr { page-break-inside: avoid; }
+  table.sheet { table-layout: fixed; }
+  table.sheet col.line { width: 62%; } table.sheet col.amount { width: 18%; }
+  table.sheet col.note { width: 20%; }
+  h2, h3 { page-break-after: avoid; }
+  .foot { margin-top: 14pt; font-size: 8pt; color: #6D6E71; }
+</style>
+</head>
+<body>
+<h1>For your CPA, {{ page.year }}</h1>
+<p class="sub">{{ practice }} and the owner's household · made {{ made_on }} · cash basis</p>
+
+<h2>Business: {{ business.title }}</h2>
+{% for section in business.sections %}
+<h3>{{ section.title }}</h3>
+<table class="sheet">
+  <colgroup><col class="line"><col class="amount"><col class="note"></colgroup>
+  <thead><tr><th>Line</th><th class="num">Amount</th><th>Note</th></tr></thead>
+  <tbody>
+  {% for row in section.rows %}
+    <tr><td{% if row.sub %} class="indent"{% endif %}>{{ row.name }}</td>
+      <td class="num">{{ row.amount_cents|money }}</td><td class="muted">{{ row.note }}</td></tr>
+  {% endfor %}
+    <tr class="total"><td>{{ section.total_label }}</td>
+      <td class="num">{{ section.total_cents|money }}</td><td></td></tr>
+  </tbody>
+</table>
+{% endfor %}
+<table class="sheet"><colgroup><col class="line"><col class="amount"><col class="note"></colgroup>
+<tbody><tr class="total"><td>Net</td><td class="num">{{ business.net_cents|money }}</td>
+  <td></td></tr></tbody></table>
+{% if business.has_paid_personally %}
+<h3>Paid personally (in the figures above)</h3>
+<table class="sheet"><colgroup><col class="line"><col class="amount"><col class="note"></colgroup><tbody>
+{% for row in business.paid_personally %}
+  <tr><td>{{ row.name }}</td><td class="num">{{ row.amount_cents|money }}</td>
+    <td class="muted">{{ row.note }}</td></tr>
+{% endfor %}
+</tbody></table>
+{% endif %}
+<h3>Estimated tax payments from the practice</h3>
+<table>
+  <thead><tr><th>Date</th><th class="num">Federal</th><th class="num">State</th></tr></thead>
+  <tbody>
+  {% for row in business.estimated %}
+    <tr><td>{{ row.on_date|long_date }}</td><td class="num">{{ row.federal_cents|money }}</td>
+      <td class="num">{{ row.state_cents|money }}</td></tr>
+  {% empty %}
+    <tr><td colspan="3" class="muted">None marked in the books.</td></tr>
+  {% endfor %}
+    <tr class="total"><td>Total</td><td class="num">{{ business.estimated_federal_cents|money }}</td>
+      <td class="num">{{ business.estimated_state_cents|money }}</td></tr>
+  </tbody>
+</table>
+<h3>Year-end facts</h3>
+<table><tbody>
+{% for fact in business.facts %}
+  <tr><td>{{ fact.name }}</td><td class="num">{% if fact.value is None %}<span class="muted">not entered</span>{% else %}{{ fact.value }}{% endif %}</td></tr>
+{% endfor %}
+</tbody></table>
+<p class="foot">{{ business_disclaimer }}</p>
+
+<div class="personal">
+<h2>Personal: itemized deduction worksheet, {{ page.year }}</h2>
+<p class="sub">From the household's lines in categories marked tax-deductible, and the
+figures entered for the CPA. Every line is listed.</p>
+{% for group in personal.groups %}
+<h3>{{ group.label }}</h3>
+<table>
+  <thead><tr><th>Date</th>{% if group.group == "non_cash" %}<th>Charity</th>{% endif %}<th>Item</th><th>Description</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for row in group.rows %}
+    <tr><td>{% if row.on_date %}{{ row.on_date|long_date }}{% else %}<span class="muted">the year</span>{% endif %}</td>
+      {% if group.group == "non_cash" %}<td>{{ row.charity }}</td>{% endif %}
+      <td>{{ row.item }}</td><td>{{ row.description }}</td>
+      <td class="num">{{ row.amount_cents|money }}</td></tr>
+  {% empty %}
+    <tr><td colspan="{% if group.group == 'non_cash' %}5{% else %}4{% endif %}" class="muted">Nothing this year.</td></tr>
+  {% endfor %}
+    <tr class="total"><td colspan="{% if group.group == 'non_cash' %}4{% else %}3{% endif %}">Total, {{ group.label|lower }}</td>
+      <td class="num">{{ group.total_cents|money }}</td></tr>
+  {% if group.miles_label %}
+    <tr><td colspan="{% if group.group == 'non_cash' %}4{% else %}3{% endif %}">{{ group.miles_label }} (a year-end fact)</td>
+      <td class="num">{% if group.miles is None %}<span class="muted">not entered</span>{% else %}{{ group.miles }}{% endif %}</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+{% endfor %}
+
+<div class="band">
+  <strong>Standard against itemized.</strong>
+  Itemized total {{ personal.standard.itemized_cents|money }}{% if personal.standard.standard_cents is not None %};
+  the standard deduction for {{ personal.standard.status_label|lower }} in {{ personal.standard.figures_year }} is {{ personal.standard.standard_cents|money }}{% else %}; the standard deduction shows once a filing status is entered{% endif %}.
+  {{ personal.standard.note }}{% if personal.standard.figures_note %} {{ personal.standard.figures_note }}{% endif %}
+</div>
+
+<h2>Personal facts</h2>
+{% for fact in personal.facts %}
+<h3>{{ fact.label }}</h3>
+{% if fact.key == "estimated" %}
+<table>
+  <thead><tr><th>Quarter</th><th>Due</th><th>Paid</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for q in fact.quarters %}
+    {% for p in q.payments %}
+    <tr><td>{% if forloop.first %}{{ q.label }}{% endif %}</td><td>{% if forloop.first %}{{ q.due_on|long_date }}{% endif %}</td>
+      <td>{{ p.on_date|long_date }}, {{ p.which }}, from the {% if p.from == "practice" %}practice's account{% else %}household's account{% endif %}</td>
+      <td class="num">{{ p.amount_cents|money }}</td></tr>
+    {% empty %}
+    <tr><td>{{ q.label }}</td><td>{{ q.due_on|long_date }}</td><td class="muted">none yet</td><td></td></tr>
+    {% endfor %}
+  {% endfor %}
+    <tr class="total"><td colspan="3">Total</td><td class="num">{{ fact.total_cents|money }}</td></tr>
+  </tbody>
+</table>
+{% elif fact.key == "retirement" %}
+<table><tbody>
+  {% for a in fact.accounts %}
+  <tr><td>{{ a.name }}</td><td class="muted">{{ a.detail }}</td><td class="num">{{ a.cents|money }}</td></tr>
+  {% empty %}
+  <tr><td class="muted">None found this year.</td></tr>
+  {% endfor %}
+</tbody></table>
+{% else %}
+<p>{% if fact.total_cents is None %}<span class="muted">Not entered.</span>{% else %}{{ fact.total_cents|money }}{% endif %}</p>
+{% endif %}
+<p class="note">{{ fact.note }}</p>
+{% endfor %}
+<p class="foot"><span class="confirm">{{ personal.confirm }}</span> {{ personal_disclaimer }}</p>
+</div>
+</body>
+</html>

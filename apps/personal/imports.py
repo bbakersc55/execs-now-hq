@@ -85,6 +85,8 @@ class _Ledger:
         for line in live.exclude(source=PersonalLine.Source.IMPORT):
             self._count(line.on_date, line.amount_cents, line.direction, line.description)
         self.taken: set = set()
+        #: The practice's draws already proposed as pay in this dry run.
+        self.draws: set = set()
 
     def _count(self, *key_parts):
         key = (key_parts[0], key_parts[1], key_parts[2], books_import._same(key_parts[3]))
@@ -147,6 +149,27 @@ def _by_threshold(row, ledger) -> None:
         row.category = services.system_category(ledger, services.EVERYTHING_ELSE)
     else:
         row.side, row.category = SIDE.TO_SORT, None
+
+
+def _a_draw(row, ledger, tenant, here) -> None:
+    """Decision 20: money in that no rule placed, the same amount as an owner
+    draw from the practice that day or the day before, is pay from the
+    practice. The commit links the two (`paydays.match`)."""
+    from apps.personal import paydays
+
+    if row.rule_id or row.outcome != O.NEW or row.direction != "in" \
+            or account_is_card(row.batch.account):
+        return
+    entry = paydays.draw_for(tenant, on_date=row.on_date, amount_cents=row.amount_cents,
+                             taken=here.draws)
+    if entry is not None:
+        here.draws.add(entry.pk)
+        row.side = SIDE.PERSONAL
+        row.category = services.system_category(ledger, services.PAY_FROM_PRACTICE)
+
+
+def account_is_card(account) -> bool:
+    return account.kind == PersonalAccount.Kind.CARD
 
 
 def counts(batch) -> dict:
@@ -237,6 +260,7 @@ def _dry_run(tenant, *, ledger, account, filename, mapping, parsed):
             else:
                 _apply_rule(row, rules)
                 _by_threshold(row, ledger)
+                _a_draw(row, ledger, tenant, here)
         row.save()
     if parsed["closing"] is not None:
         on, cents = parsed["closing"]
@@ -401,6 +425,10 @@ def commit(batch, *, tenant, actor) -> PersonalImport:
     batch.status, batch.committed_at = S.COMMITTED, timezone.now()
     batch.counts = counts(batch)
     batch.save()
+    # Decision 20: pay from the practice, matched to its draw in the books.
+    from apps.personal import paydays
+
+    paydays.match(ledger, tenant)
     return batch
 
 

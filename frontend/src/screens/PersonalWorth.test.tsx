@@ -60,11 +60,15 @@ describe("debts and the payoff plan (P6 M4 stop 3)", () => {
       expect(cards.map((h) => h.textContent)).toEqual(
         ["Personal: debts", "The payoff plan", "1. Subaru Outback loan", "2. Home mortgage"]);
       const plan = screen.getByRole("list", { name: "What the plan does" });
-      expect(plan).toHaveTextContent("Avalanche would save $28.83 in interest.");
+      expect(plan).toHaveTextContent("Highest rate first would save $28.83 in interest.");
       expect(plan).toHaveTextContent("The $200 extra saves $10,542.57 in interest and 10 "
         + "months against the minimums alone.");
       expect(screen.getByText("October 2028")).toBeInTheDocument();
       expect(screen.getByText("due on the 10th")).toBeInTheDocument();
+      // The orders by name (2026-10-19), never the old ones.
+      expect(screen.getByRole("button", { name: "Smallest balance first" }))
+        .toHaveAttribute("aria-pressed", "true");
+      expect(document.body.textContent).not.toMatch(/snowball|avalanche/i);
     });
 
   it("tries the other order as a look and saves only when asked", async () => {
@@ -78,8 +82,8 @@ describe("debts and the payoff plan (P6 M4 stop 3)", () => {
       "GET /api/personal/debts": DEBTS });
     vi.stubGlobal("fetch", fetchMock);
     renderRoute(<PersonalDebts />);
-    await user.click(await screen.findByRole("button", { name: "Avalanche" }));
-    expect(await screen.findByText("Snowball would cost $28.83 in interest."))
+    await user.click(await screen.findByRole("button", { name: "Highest rate first" }));
+    expect(await screen.findByText("Smallest balance first would cost $28.83 in interest."))
       .toBeInTheDocument();
     expect(screen.getByText("trying")).toBeInTheDocument();
     expect(fetchMock.calls.some((c) => c.method === "POST")).toBe(false);

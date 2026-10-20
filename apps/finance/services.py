@@ -514,6 +514,11 @@ def create_entry(tenant, *, actor, **changes) -> FinanceEntry:
     _unlocked(tenant, entry.on_date)
     entry.save()
     audit(tenant, "entry_added", actor, entry, after=_state(entry))
+    if entry.kind == K.OWNER and entry.direction == D.OUT:
+        # P6 M4 decision 20: a draw typed in is matched to the pay it was.
+        from apps.personal import paydays
+
+        paydays.match_for_practice(tenant)
     return entry
 
 

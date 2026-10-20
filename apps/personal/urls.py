@@ -1,6 +1,6 @@
 from django.urls import path
 
-from apps.personal import views, views_budget as vb, views_forecast as vf
+from apps.personal import views, views_budget as vb, views_forecast as vf, views_taxes as vt
 
 urlpatterns = [
     path("personal/ledger", views.LedgerView.as_view()),
@@ -39,6 +39,14 @@ urlpatterns = [
     path("personal/members/<uuid:pk>", vf.MemberView.as_view()),
     path("personal/net-worth", vf.NetWorthView.as_view()),
     path("personal/assets/<uuid:pk>", vf.AssetView.as_view()),
+    # Stop 4: paying yourself, the tax set-aside, For your CPA.
+    path("personal/taxes", vt.TaxesView.as_view()),
+    path("personal/taxes/<str:what>", vt.TaxesView.as_view()),
+    path("personal/pay-yourself", vt.PayYourselfView.as_view()),
+    path("personal/cpa", vt.CpaView.as_view()),
+    path("personal/cpa/items", vt.CpaItemView.as_view()),
+    path("personal/cpa/items/<uuid:pk>", vt.CpaItemView.as_view()),
+    path("personal/cpa/<str:what>", vt.CpaView.as_view()),
     path("personal/categories", views.CategoryListView.as_view()),
     path("personal/categories/<uuid:pk>", views.CategoryView.as_view()),
     path("personal/accounts", views.AccountListView.as_view()),

@@ -15,6 +15,7 @@ import { AiGate } from "../components/DemoVisitor";
 import { PersonalGoals, PersonalOverview } from "./PersonalBudget";
 import { PersonalForecastPage } from "./PersonalForecast";
 import { PersonalDebts, PersonalHousehold, PersonalRetirement } from "./PersonalWorth";
+import { PersonalTaxes } from "./PersonalTaxes";
 
 /**
  * Personal finance (P6 M4 stop 1, `docs/p6_m4_personal_finance.md`): the
@@ -24,10 +25,11 @@ import { PersonalDebts, PersonalHousehold, PersonalRetirement } from "./Personal
  * Stop 1 is sides: Entries (with To sort and Sort these with Claude),
  * Import, Accounts (with an optional reconcile) and Categories. Stop 2 is the
  * budget and goals (the Overview); stop 3 the forecast, debts, retirement,
- * the household and net worth. Taxes come in stop 4.
+ * the household and net worth; stop 4 Taxes, the pay-yourself loop on the
+ * Overview, and For your CPA with both sides (under /finance/export).
  */
 export type PersonalTab = "overview" | "forecast" | "goals" | "debts" | "retirement"
-  | "household" | "entries" | "import" | "accounts" | "categories";
+  | "household" | "taxes" | "cpa" | "entries" | "import" | "accounts" | "categories";
 
 export function PersonalFinance({ tab }: { tab: PersonalTab }) {
   return (
@@ -39,6 +41,7 @@ export function PersonalFinance({ tab }: { tab: PersonalTab }) {
       {tab === "debts" && <PersonalDebts />}
       {tab === "retirement" && <PersonalRetirement />}
       {tab === "household" && <PersonalHousehold />}
+      {tab === "taxes" && <PersonalTaxes />}
       {tab === "entries" && <PersonalEntries />}
       {tab === "import" && <PersonalImports />}
       {tab === "accounts" && <PersonalAccounts />}

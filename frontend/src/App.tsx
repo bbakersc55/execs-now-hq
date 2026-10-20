@@ -428,6 +428,8 @@ export function App() {
                   element={<Finance personalTab="retirement" />} />
                 <Route path="/finance/personal/household"
                   element={<Finance personalTab="household" />} />
+                <Route path="/finance/personal/taxes"
+                  element={<Finance personalTab="taxes" />} />
                 <Route path="/finance/personal/entries"
                   element={<Finance personalTab="entries" />} />
                 <Route path="/finance/personal/import"

@@ -2106,7 +2106,7 @@ export interface SortProposals {
 export interface Envelope {
   id: string; name: string; kind: "everyday" | "savings" | "income"; kind_label: string;
   rolls: boolean; category: string | null; goal: string | null;
-  source: "history" | "typed" | "goal" | "yearly" | "debt"; source_label: string;
+  source: "history" | "typed" | "goal" | "yearly" | "debt" | "tax"; source_label: string;
   planned_cents: number; history_cents: number | null; carried_cents: number;
   moved_in_cents: number; moved_out_cents: number; spent_cents: number; left_cents: number;
   yearly_cents: number | null; yearly_month: number | null; over: boolean; stood: boolean;
@@ -2195,8 +2195,128 @@ export interface PersonalReviewItem {
 
 export interface PersonalReview {
   one_offs: PersonalReviewItem[]; missed: PersonalReviewItem[];
+  /** Stop 4 (decision 25): changes to envelopes, goals and the set-aside. The
+   *  amounts are the app's; Claude says which and why. */
+  envelopes?: ReviewEnvelope[]; goals?: ReviewGoal[]; set_aside?: ReviewSetAside[];
   questions: { question: string }[];
   cost_usd: string; disclaimer: string; used_today: number; cap: number;
+}
+
+export interface ReviewEnvelope {
+  id: string; name: string; planned_cents: number; kind: string; proposed_cents: number;
+  months: { month: string; amount_cents: number }[]; why: string;
+}
+
+export interface ReviewGoal {
+  id: string; name: string; target_cents: number; progress_cents: number;
+  monthly_cents: number; target_on: string | null; why: string;
+}
+
+export interface ReviewSetAside {
+  id: string; year: number; percent_now: string | null; suggested_percent: number;
+  still_needed_cents: number; saved_cents: number; why: string;
+}
+
+// ------------------------------------------------ P6 M4 stop 4: taxes and the CPA
+
+export interface TaxInputs {
+  year: number; filing_status: string; state: string; state_rate_percent: string | null;
+  last_year_tax_cents: number | null; last_year_taxable_cents: number | null;
+  effective_rate_percent: string | null; other_income_cents: number | null;
+  medical_miles: number | null; charitable_miles: number | null; hsa_cents: number | null;
+}
+
+export interface TaxPayment {
+  id: string; on_date: string; amount_cents: number; which: "federal" | "state";
+  from: "practice" | "household"; link: string; quarter: number; quarter_label: string;
+}
+
+export interface TaxQuarter {
+  label: string; on_date: string; amount_cents: number; safe_harbor_cents: number | null;
+  paid_cents: number; next: boolean; past: boolean;
+}
+
+export interface TaxEstimate {
+  year: number; as_of: string; confirm: string; ready: boolean; missing: string[];
+  brackets_year: number; brackets_note: string; inputs: TaxInputs;
+  statuses: Record<string, string>;
+  profit: { so_far_cents: number; for_year_cents: number; through: string;
+            share_of_year: number };
+  other_income: { cents: number; from: "typed" | "lines"; so_far_cents: number | null };
+  withholding_cents: number; payments: TaxPayment[]; paid_cents: number;
+  set_aside: { percent_per_draw: string | null; saved_cents: number };
+  method?: "brackets" | "rate"; se_tax_cents?: number; se_half_cents?: number;
+  gross_cents?: number; adjusted_cents?: number;
+  deduction?: { cents: number; kind: "standard" | "itemized"; standard_cents: number;
+                itemized_cents: number };
+  taxable_cents?: number; federal_cents?: number; state_cents?: number;
+  state_rate_percent?: string | null; total_cents?: number; required_cents?: number;
+  still_needed_cents?: number;
+  safe_harbor?: { percent: number; last_year_tax_cents: number; target_cents: number;
+                  required_cents: number; why: string } | null;
+  quarters?: TaxQuarter[];
+  by_next?: { on_date: string; label: string; needed_cents: number;
+              safe_harbor_cents: number | null } | null;
+  draws?: { average_draw_cents: number; months_left: number; draws_ahead_cents: number;
+            to_cover_cents: number; suggested_percent: number | null;
+            since_last_payment_cents: { since: string; drawn_cents: number;
+                                        cents: number } | null };
+  envelope?: { id: string | null; planned_cents: number | null; saved_cents: number;
+               needed_by_next_cents: number | null; next_on: string | null;
+               short_cents: number | null; suggested_monthly_cents: number;
+               months_left: number };
+}
+
+export interface PayYourself {
+  needed_cents: number | null; envelopes_cents: number; other_income_cents: number;
+  paid: { months: number; average_cents: number | null; drawn_cents: number;
+          spent_cents: number; tax_cents: number; start: string | null; end: string | null };
+  difference_cents: number | null; pay_category: string; matched: number;
+  forecasting: boolean;
+  business_line: { group: string; amount_cents: number | null; cadence: string;
+                   adjusted: string; on_date: string | null } | null;
+}
+
+export interface WorksheetRow { name: string; amount_cents: number; note: string; sub: boolean }
+
+export interface BusinessWorksheet {
+  year: number; title: string;
+  sections: { title: string; rows: WorksheetRow[]; total_label: string;
+              total_cents: number }[];
+  net_cents: number; has_paid_personally: boolean;
+  paid_personally: { name: string; amount_cents: number; note: string }[];
+  estimated: { on_date: string; federal_cents: number | null; state_cents: number | null }[];
+  estimated_federal_cents: number; estimated_state_cents: number;
+  facts: { name: string; value: number | null }[]; disclaimer: string;
+}
+
+export interface CpaRow {
+  kind: "line" | "item"; id: string; on_date: string | null; item: string;
+  description: string; charity: string; account: string; amount_cents: number;
+}
+
+export interface CpaGroup {
+  group: string; label: string; rows: CpaRow[]; total_cents: number;
+  miles: number | null; miles_label: string;
+}
+
+export interface CpaFact {
+  key: string; label: string; total_cents: number | null; note: string;
+  quarters?: { label: string; due_on: string; total_cents: number;
+               payments: { on_date: string; which: string; from: string;
+                           amount_cents: number }[] }[];
+  accounts?: { name: string; cents: number; from: string; detail: string }[];
+  lines?: number;
+}
+
+export interface CpaPage {
+  year: number; business: BusinessWorksheet;
+  personal: {
+    year: number; groups: CpaGroup[]; facts: CpaFact[]; inputs: TaxInputs; confirm: string;
+    standard: { itemized_cents: number; standard_cents: number | null; status: string;
+                status_label: string; figures_year: number | null; note: string;
+                figures_note: string };
+  };
 }
 
 export interface SideEnding {
@@ -2221,6 +2341,7 @@ export interface PersonalDebt {
 
 export interface Debts {
   order: "snowball" | "avalanche"; other_order: "snowball" | "avalanche";
+  order_label?: string; other_order_label?: string;
   extra_cents: number; saved_extra_cents: number; saved_order: "snowball" | "avalanche";
   total_cents: number; minimums_cents: number; debt_free_on: string | null;
   interest_cents: number | null;

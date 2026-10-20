@@ -37,8 +37,9 @@ class PersonalLedger(UUIDModel):
     to_sort_threshold_cents = models.PositiveIntegerField(default=2500, db_default=2500)
     #: Decision 15: "I want at least this much in the household's accounts."
     forecast_floor_cents = models.BigIntegerField(null=True, blank=True)
-    #: Decision 16: the payoff plan. Snowball (smallest balance first) is
-    #: the default; Avalanche (highest rate first) a switch away.
+    #: Decision 16: the payoff plan. Smallest balance first (code
+    #: `snowball`) is the default; highest rate first (`avalanche`) a switch
+    #: away. The codes stay; the screens and prompts use the names.
     payoff_order = models.CharField(max_length=10, default="snowball", db_default="snowball")
     payoff_extra_cents = models.BigIntegerField(default=0, db_default=0)
     #: Decision 17: the yearly return assumed for retirement and investments.
@@ -248,6 +249,11 @@ class PersonalLine(OwnedModel):
     #: Ticked on this statement (decision 8).
     cleared_in = models.ForeignKey(PersonalReconciliation, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="cleared")
+    #: Decision 20: pay from the practice, matched to the owner draw in the
+    #: practice's books it came from (the same amount, the same or the next
+    #: day). A line of a household account, never a Mixed card's.
+    draw_entry = models.ForeignKey("finance.FinanceEntry", null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="pay_lines")
     removed_at = models.DateTimeField(null=True, blank=True)
     remove_reason = models.TextField(blank=True, default="", db_default="")
 
@@ -505,7 +511,8 @@ class PersonalGoal(OwnedModel):
 
 
 class PersonalSetAside(OwnedModel):
-    """Decision 21: the quarterly tax set-aside for a year, so far."""
+    """Decision 21: the quarterly tax set-aside for a year, so far. Its Tax
+    envelope is the `PersonalEnvelope` whose source is `tax`."""
 
     year = models.PositiveSmallIntegerField()
     #: Of each draw from the practice.
@@ -520,6 +527,77 @@ class PersonalSetAside(OwnedModel):
         constraints = [
             models.UniqueConstraint(fields=["ledger", "year"],
                                     name="personal_set_aside_one_a_year"),
+        ]
+
+
+class PersonalTaxYear(OwnedModel):
+    """Decision 21: what the owner enters once a year for the estimate, and
+    decision 22's year-end facts for the CPA (the miles, the HSA). One a year.
+    Every figure here is the owner's own; none is worked out."""
+
+    class Status(models.TextChoices):
+        SINGLE = "single", "Single"
+        JOINT = "joint", "Married filing jointly"
+        SEPARATE = "separate", "Married filing separately"
+        HEAD = "head", "Head of household"
+
+    year = models.PositiveSmallIntegerField()
+    filing_status = models.CharField(max_length=8, choices=Status.choices, blank=True,
+                                     default="", db_default="")
+    #: Two letters ("CO"), and the flat rate the owner gives for it.
+    state = models.CharField(max_length=2, blank=True, default="", db_default="")
+    state_rate_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True,
+                                             blank=True)
+    #: From last year's return: the total tax and the taxable income.
+    last_year_tax_cents = models.BigIntegerField(null=True, blank=True)
+    last_year_taxable_cents = models.BigIntegerField(null=True, blank=True)
+    #: Instead of the brackets: the federal income tax as a share of income.
+    effective_rate_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True,
+                                                 blank=True)
+    #: The household's income other than the practice for the year, before
+    #: withholding (a spouse's wages, interest). Empty: taken from the lines.
+    other_income_cents = models.BigIntegerField(null=True, blank=True)
+    #: Year-end facts, like M1's business miles.
+    medical_miles = models.PositiveIntegerField(null=True, blank=True)
+    charitable_miles = models.PositiveIntegerField(null=True, blank=True)
+    hsa_cents = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "personal_tax_year"
+        constraints = [
+            models.UniqueConstraint(fields=["ledger", "year"],
+                                    name="personal_tax_year_one_a_year"),
+            models.CheckConstraint(
+                condition=Q(filing_status__in=("", "single", "joint", "separate", "head")),
+                name="personal_tax_year_filing_status"),
+        ]
+
+
+class PersonalTaxItem(OwnedModel):
+    """Decision 22: a figure for the CPA's worksheet that is not a line of an
+    account: a non-cash donation, naming its charity, or an amount from a
+    form (mortgage interest from the lender's statement). Never money
+    moving: it is in no envelope, forecast or balance."""
+
+    year = models.PositiveSmallIntegerField()
+    tax_group = models.CharField(max_length=20, choices=PersonalCategory.TaxGroup.choices)
+    on_date = models.DateField(null=True, blank=True)
+    description = models.CharField(max_length=255)
+    #: A non-cash donation names its charity (decision 22).
+    charity = models.CharField(max_length=160, blank=True, default="", db_default="")
+    amount_cents = models.BigIntegerField()
+    removed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "personal_tax_item"
+        ordering = ["year", "tax_group", "on_date", "created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount_cents__gt=0),
+                                   name="personal_tax_item_amount_positive"),
+            models.CheckConstraint(condition=~Q(tax_group=""),
+                                   name="personal_tax_item_has_a_group"),
+            models.CheckConstraint(condition=~Q(tax_group="non_cash") | ~Q(charity=""),
+                                   name="personal_tax_item_non_cash_names_its_charity"),
         ]
 
 
@@ -544,6 +622,8 @@ class PersonalEnvelope(OwnedModel):
         YEARLY = "yearly", "A yearly bill, spread"
         #: Decision 16: the payoff plan's extra a month.
         DEBT = "debt", "Extra toward debts"
+        #: Decision 21: the Tax envelope, what to set aside a month.
+        TAX = "tax", "Set aside for tax"
 
     category = models.ForeignKey(PersonalCategory, null=True, blank=True,
                                  on_delete=models.PROTECT, related_name="envelopes")
@@ -726,4 +806,5 @@ OWNED = (PersonalCategory, PersonalMember, PersonalAccount, PersonalReconciliati
          PersonalLine, PersonalImport, PersonalImportRow, PersonalDebt, PersonalHolding,
          PersonalBalance, PersonalGoal, PersonalSetAside, PersonalEnvelope,
          PersonalEnvelopeMove, PersonalPlanned, PersonalQuestion, PersonalAsset,
-         PersonalForecastSnapshot, PersonalForecastAdjustment)
+         PersonalForecastSnapshot, PersonalForecastAdjustment, PersonalTaxYear,
+         PersonalTaxItem)
