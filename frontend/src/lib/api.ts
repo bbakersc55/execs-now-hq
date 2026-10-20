@@ -194,8 +194,36 @@ export interface Contact {
   referral_onboarded_at: string | null;
   /** On the touch cadence — only ever because someone enrolled them. */
   referral_enrolled?: boolean;
+  /** Who referred them into Sales; null when no one, or no one you may see. */
+  referred_by?: ReferredBy | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ReferredBy {
+  /** The referral's own id. */
+  id: string;
+  referrer: string;
+  referrer_name: string;
+  referred_on: string;
+  note: string;
+  outcome: "" | "won" | "lost";
+}
+
+/** Someone who sent the practice a prospect (owner, 2026-10-20). */
+export interface Referral {
+  id: string;
+  direction: "inbound" | "outbound";
+  referrer: { id: string; name: string };
+  prospect: { id: string; name: string; company: string };
+  pipeline: string;
+  /** Where the prospect stands now; null if they have left the pipeline. */
+  stage: { label: string; semantic: string } | null;
+  outcome: "" | "won" | "lost";
+  outcome_at: string | null;
+  referred_on: string;
+  note: string;
+  fee_terms: string;
 }
 
 export interface Company {
@@ -343,6 +371,10 @@ export interface ImportPreview {
   /** FR-1.6a — this row will also add the client type and flag the company. */
   fires_client_invariant: boolean;
   note: string;
+  /** The "Referred by" cell, whom it matched, or why it matched no one. */
+  referred_by?: string;
+  referrer_name?: string;
+  referrer_problem?: string;
 }
 
 export interface ImportRow {

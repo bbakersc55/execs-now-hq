@@ -16,6 +16,8 @@ const PRODUCERS: { key: string; label: string; hint: string }[] = [
     hint: "A partner asked for introductions should hear from a person." },
   { key: "referral_onboarding", label: "Referral onboarding",
     hint: "The first touch after meeting someone." },
+  { key: "referral_thanks", label: "Referral thank-yous",
+    hint: "Thanks to whoever referred a prospect." },
   { key: "stage_rule", label: "Stage-rule emails",
     hint: "Automated follow-ups triggered by a pipeline move." },
   { key: "manual", label: "One-off and bulk emails",

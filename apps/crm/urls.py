@@ -3,12 +3,14 @@ from rest_framework.routers import DefaultRouter
 from apps.crm import views, views_campaigns, views_queue
 from apps.crm import views_gmail
 from apps.crm import views_inbound
+from apps.crm import views_referrals
 
 router = DefaultRouter()
 router.register("contacts", views.ContactViewSet, basename="contact")
 router.register("campaigns", views_campaigns.CampaignViewSet, basename="campaign")
 router.register("leave-requests", views_inbound.LeaveRequestViewSet, basename="leave-request")
 router.register("sending-queue", views_queue.SendingQueueView, basename="sending-queue")
+router.register("referrals", views_referrals.ReferralViewSet, basename="referral")
 router.register("companies", views.CompanyViewSet, basename="company")
 router.register("pipelines", views.PipelineViewSet, basename="pipeline")
 router.register("pipeline-stages", views.PipelineStageViewSet, basename="pipeline-stage")

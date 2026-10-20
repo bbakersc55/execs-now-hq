@@ -16,7 +16,7 @@ from apps.crm.models import (
     GmailConnection,
     ImportBatch, Pipeline,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage,
-    PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
+    PipelineStage, Referral, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.notes.models import Note, NoteFolder, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
@@ -71,6 +71,7 @@ register(Campaign, factories.CampaignFactory, endpoints=("/api/campaigns/",))
 register(CampaignRecipient, factories.CampaignRecipientFactory, api_exposed=False)
 # Read through the campaign's own routes (the campaign's `attachments`), never by id.
 register(CampaignAttachment, factories.CampaignAttachmentFactory, api_exposed=False)
+register(Referral, factories.ReferralFactory, endpoints=("/api/referrals/",))
 register(ContactEmail, factories.ContactEmailFactory)
 register(ContactPhone, factories.ContactPhoneFactory)
 register(ContactType, factories.ContactTypeFactory)

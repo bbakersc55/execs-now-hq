@@ -5,6 +5,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { EnrolledIn } from "../components/EnrolledIn";
 import { ContactCommitments } from "../components/ContactCommitments";
+import { ReferralsCard, ReferredByRow } from "../components/Referrals";
 import { GrantPortalAccess } from "../components/GrantPortalAccess";
 import { Banner, Card, Empty, Field, PageLinks, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
@@ -157,6 +158,7 @@ export function ContactDetail({ me }: { me: Me }) {
                   {c.company ? <Link to={`/companies/${c.company}`}>Open company →</Link> : "—"}
                 </td></tr>
                 <tr><th>Source</th><td className="muted">{c.source || "—"}</td></tr>
+                <ReferredByRow contact={c} />
                 <tr><th>Tags</th><td>{c.tags.length ? c.tags.map((t) => <Pill key={t}>{t}</Pill>) : "—"}</td></tr>
               </tbody>
             </table>
@@ -282,6 +284,8 @@ export function ContactDetail({ me }: { me: Me }) {
               </>
             )}
           </Card>
+
+          <ReferralsCard contactId={c.id} partner={c.type_codes.includes("referral_partner")} />
         </div>
 
         <div>

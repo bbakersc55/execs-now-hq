@@ -20,7 +20,7 @@ const STEP_LABELS: Record<Step, string> = {
 
 const TARGETS = [
   "", "first_name", "last_name", "email", "phone", "company", "title",
-  "contact_type", "pipeline_stage", "tags", "notes", "background", "source",
+  "contact_type", "pipeline_stage", "tags", "notes", "background", "source", "referred_by",
 ];
 
 /** What each target is called on screen; the keys are the importer's. */
@@ -28,7 +28,7 @@ const TARGET_LABEL: Record<string, string> = {
   first_name: "First name", last_name: "Last name", email: "Email", phone: "Phone",
   company: "Company", title: "Title", contact_type: "Contact type",
   pipeline_stage: "Pipeline stage", tags: "Tags", notes: "Notes",
-  background: "Background", source: "Source",
+  background: "Background", source: "Source", referred_by: "Referred by",
 };
 
 /** The two columns that go through the value-mapping sub-step. */
@@ -42,6 +42,7 @@ const TARGET_HELP: Record<string, string> = {
   pipeline_stage: "you pick a pipeline, then map each value",
   tags: "comma or semicolon separated",
   notes: "becomes a real note, not a field",
+  referred_by: "an existing contact's email or full name; no thank-you is drafted",
 };
 
 interface DryRun { batch: ImportBatch; rows: ImportRow[]; errors: ImportRow[]; }
@@ -92,6 +93,8 @@ export function ImportWizard() {
       else if (norm.includes("company") || norm.includes("org")) guess[col] = "company";
       else if (norm.includes("title") || norm.includes("role")) guess[col] = "title";
       else if (norm.includes("tag")) guess[col] = "tags";
+      else if (norm.includes("referred") || norm.includes("referrer"))
+        guess[col] = "referred_by";
       // The owner's CRM has BOTH: a Status (type) column and a separate Stage
       // column. Guessing them apart is the whole point.
       else if (norm.includes("stage")) guess[col] = "pipeline_stage";
@@ -583,6 +586,12 @@ export function ImportWizard() {
                               </div>
                             ))
                           : "—"}
+                        {p?.referrer_name && (
+                          <div className="muted">via {p.referrer_name}</div>
+                        )}
+                        {p?.referrer_problem && (
+                          <div><Pill kind="warn">{p.referrer_problem}</Pill></div>
+                        )}
                       </td>
                       <td className="small">
                         {p && p.tags.length > 0

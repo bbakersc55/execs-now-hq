@@ -21,7 +21,7 @@ from apps.crm.models import (
     ServiceCategory, StageAutomation, StageChange, StageSemantic, Task,
 )
 from apps.crm.services import (
-    clients, importer, merge, outbox, pipeline, referral, search, timeline,
+    clients, importer, merge, outbox, pipeline, referral, referrals, search, timeline,
 )
 from apps.notes.serializers import represent_many as note_representations
 from apps.notes.views import search_notes
@@ -76,7 +76,8 @@ class ContactViewSet(TenantStaffViewSet):
         from apps.crm.models import Enrollment
 
         qs = Contact.objects.filter(deleted_at__isnull=True).prefetch_related(
-            "emails", "phones", "type_links__contact_type"
+            "emails", "phones", "type_links__contact_type",
+            "referrals_received__referrer", "referrals_received__pipeline",
         ).annotate(referral_enrolled_annotated=Exists(Enrollment.objects.filter(
             contact=OuterRef("pk"), program=Enrollment.Program.REFERRAL_TOUCHES,
             ended_at__isnull=True)))
@@ -495,7 +496,7 @@ class ContactViewSet(TenantStaffViewSet):
                     request, Contact.objects.filter(
                         pk__in=[c.pk for c in results["contacts"]]
                     )
-                ), many=True,
+                ), many=True, context={"request": request},
             ).data,
             "companies": crm_serializers.CompanySerializer(
                 crm_perms.company_queryset_for(
@@ -642,9 +643,11 @@ class PipelineViewSet(TenantStaffViewSet):
             ordered = matching.select_related("company").prefetch_related(
                 "emails", "phones", "type_links__contact_type",
                 "pipeline_positions__stage", "pipeline_positions__pipeline",
+                "referrals_received__referrer", "referrals_received__pipeline",
             ).order_by("last_name", "first_name", "pk")
             shown = list(ordered if str(stage.pk) in expand else ordered[:100])
-            cards = crm_serializers.ContactSerializer(shown, many=True).data
+            cards = crm_serializers.ContactSerializer(
+                shown, many=True, context={"request": request}).data
             # The card names the company; the contact payload only carries its
             # id. Added here, not on the serializer, so no other payload moves.
             for card, contact in zip(cards, shown):
@@ -1048,7 +1051,8 @@ class ImportViewSet(viewsets.ReadOnlyModelViewSet):
             )
             payload.append({
                 "row": crm_serializers.ImportRowSerializer(row).data,
-                "candidates": crm_serializers.ContactSerializer(candidates, many=True).data,
+                "candidates": crm_serializers.ContactSerializer(
+                    candidates, many=True, context={"request": request}).data,
             })
         return Response(payload)
 
@@ -1215,6 +1219,9 @@ class ReferralSettingsView(viewsets.ViewSet):
                 storage.present_or_unknown(tenant.marketing_flyer)
                 if tenant.marketing_flyer_id else False
             ),
+            # A thank-you to a referrer at each moment (owner, 2026-10-20).
+            "thanks": {moment: getattr(tenant, field)
+                       for moment, field in referrals.SETTING.items()},
         })
 
     def create(self, request):
@@ -1230,6 +1237,26 @@ class ReferralSettingsView(viewsets.ViewSet):
             tenant=tenant, actor=request.user, verb="referral.blurb_updated",
             target_type="tenant", target_id=tenant.pk, payload={},
         )
+        return self.list(request)
+
+    @action(detail=False, methods=["post"])
+    def thanks(self, request):
+        """{"recorded": bool, "won": bool, "lost": bool}, any of them."""
+        tenant = request.tenant
+        changed = {}
+        for moment, field in referrals.SETTING.items():
+            if moment in request.data:
+                value = request.data[moment]
+                if not isinstance(value, bool):
+                    raise ValidationError({moment: "On or off: true or false."})
+                setattr(tenant, field, value)
+                changed[moment] = value
+        if changed:
+            tenant.save(update_fields=[referrals.SETTING[m] for m in changed] + ["updated_at"])
+            AuditEvent.all_objects.create(
+                tenant=tenant, actor=request.user, verb="referral.thanks_settings",
+                target_type="tenant", target_id=tenant.pk, payload=changed,
+            )
         return self.list(request)
 
     @action(detail=False, methods=["post"])

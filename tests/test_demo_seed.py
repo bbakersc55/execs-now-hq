@@ -259,6 +259,20 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         touches = OutboxMessage.objects.filter(state="pending_approval",
                                                producer="referral_touch")
         assert touches.count() == 5
+        # Referrals (owner, 2026-10-20): five, as history, one thank-you waiting.
+        from apps.crm.models import Referral
+
+        credited = {(f"{r.prospect.first_name} {r.prospect.last_name}",
+                     f"{r.referrer.first_name} {r.referrer.last_name}", r.outcome)
+                    for r in Referral.objects.select_related("prospect", "referrer")}
+        assert credited == {("Wiley Coyote", "Ben Wyatt", "won"),
+                            ("Eldon Tyrell", "Ben Wyatt", "lost"),
+                            ("Selina Kyle", "Ben Wyatt", ""),
+                            ("Lucille Bluth", "Elle Woods", ""),
+                            ("Harvey Specter", "Jessica Pearson", "")}
+        [thanks] = OutboxMessage.objects.filter(producer="referral_thanks")
+        assert (thanks.state, thanks.to_contact.first_name) == ("pending_approval", "Ben")
+        assert "Selina Kyle" in thanks.body_text
         assert Note.objects.count() >= 12
         assert Note.objects.filter(pin_hash__isnull=False).count() == 1
         assert Note.objects.filter(source="recording", summary_state="accepted").count() == 1

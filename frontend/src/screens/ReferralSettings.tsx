@@ -16,7 +16,17 @@ interface Settings {
   marketing_flyer_bytes: number;
   /** null when storage could not be reached to check — not the same as missing. */
   marketing_flyer_present: boolean | null;
+  /** A thank-you draft to whoever referred a prospect, at each moment. */
+  thanks: Record<ThanksMoment, boolean>;
 }
+
+type ThanksMoment = "recorded" | "won" | "lost";
+
+const MOMENTS: { key: ThanksMoment; label: string }[] = [
+  { key: "recorded", label: "When a referral is recorded" },
+  { key: "won", label: "When the prospect is won" },
+  { key: "lost", label: "When the prospect is lost (it gives no reason)" },
+];
 
 export function ReferralSettings() {
   const rowLink = useRowLink();
@@ -87,6 +97,13 @@ export function ReferralSettings() {
       setPicked([]);
       qc.invalidateQueries({ queryKey: ["outbox"] });
     },
+    onError: (e: Error) => setNote(e.message),
+  });
+
+  const setThanks = useMutation({
+    mutationFn: (body: Partial<Record<ThanksMoment, boolean>>) =>
+      api.post("/api/referral-settings/thanks/", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["referral-settings"] }),
     onError: (e: Error) => setNote(e.message),
   });
 
@@ -167,6 +184,22 @@ export function ReferralSettings() {
         ) : <p className="muted small">No flyer uploaded.</p>}
         <input type="file" accept="application/pdf"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); }} />
+      </Card>
+
+      <Card title="Thank-you drafts">
+        <p className="muted small">
+          When someone refers a prospect, a short thank-you to them is drafted into the
+          Outbox at each moment ticked here. Each waits for approval; once sent, it counts
+          as that person's next touch.
+        </p>
+        {MOMENTS.map((m) => (
+          <label key={m.key} className="check-line">
+            <input type="checkbox" checked={s?.thanks?.[m.key] ?? true}
+              disabled={!s || setThanks.isPending}
+              onChange={(e) => setThanks.mutate({ [m.key]: e.target.checked })} />{" "}
+            {m.label}
+          </label>
+        ))}
       </Card>
 
       <Card title={`Referral partners (${partners.length})`}>

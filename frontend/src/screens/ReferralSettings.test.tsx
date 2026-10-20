@@ -53,3 +53,28 @@ describe("the partner table: enrolment", () => {
       .toEqual({ ids: ["p1"], program: "referral_touches", unenroll: true }));
   });
 });
+
+/** Owner, 2026-10-20 — a thank-you to a referrer at three moments, each a switch. */
+describe("thank-you drafts", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("turns one moment off and leaves the others", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "GET /api/referral-settings/": { referral_blurb: "", referral_blurb_updated_at: null,
+        blurb_age_days: null, marketing_flyer: null, marketing_flyer_name: "",
+        marketing_flyer_bytes: 0, marketing_flyer_present: null,
+        thanks: { recorded: true, won: true, lost: true } },
+      "GET /api/contacts/": [],
+      "POST /api/referral-settings/thanks/": {},
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ReferralSettings />);
+    const lost = await screen.findByLabelText(/When the prospect is lost/);
+    await waitFor(() => expect(lost).toBeChecked());
+    expect(screen.getByLabelText("When a referral is recorded")).toBeChecked();
+    await user.click(lost);
+    await waitFor(() => expect(fetchMock.calls.find((c) =>
+      c.url.endsWith("/api/referral-settings/thanks/"))?.body).toEqual({ lost: false }));
+  });
+});

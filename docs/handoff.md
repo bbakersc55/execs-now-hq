@@ -13,6 +13,25 @@ truth; this covers what they don't, and what changed since 9/30.
 
 ## Where things stand (2026-10-20): Release 19 is live
 
+- **Inbound referrals (10/20, on `dev`, not released; migrations `tenancy
+  0019` and `crm 0039`, both additive).** `apps/crm/services/referrals.py`:
+  one `referral` row per prospect per pipeline (Sales), first recorded has
+  the credit, changeable on the prospect's page ("Referred by", any contact,
+  referral partners first; it does not make them a partner). Recording puts
+  them in Sales at the first stage unless they are in it. `change_stage`
+  records the outcome the first time they are won or lost (lost can become
+  won; a late-recorded one is dated from the stage move). Thank-you drafts
+  (`referral_thanks`, correspondence, from the person) at recorded, won and
+  lost, each a switch in Referral settings (`tenant.referral_thanks_*`), once
+  per referrer and moment; the lost one gives no reason; an approved one
+  moves the referrer's next touch a cadence on (only if they have one). The
+  referrer's page has a Referrals card; the board card says "via". A CSV
+  "Referred by" column (email, then exact full name) records history without
+  thanks and rolls back. Merges carry referrals both ways. `direction` is
+  there for R3's outbound introductions; `fee_terms` copies the referrer's
+  terms on the day, for referral fees later. The demo seeds five (Ben Wyatt:
+  Wiley won, Eldon lost, Selina open with a thank-you waiting; Elle Woods:
+  Lucille; Jessica Pearson: Harvey).
 - **Meeting queue: a promise is a mark on a task (10/20, Release 19; migration `meetings 0008`, one added column).** The parse prompt
   asks for each thing once, a promise flagged `promised_to_client` on its
   action item; "What was promised" is gone for new proposals, and an older

@@ -200,6 +200,11 @@ class Tenant(UUIDModel):
 
     referral_blurb = models.TextField(blank=True, default="")  # FR-1.21a
     referral_blurb_updated_at = models.DateTimeField(null=True, blank=True)
+    # A thank-you draft to whoever referred a prospect, at each of three
+    # moments (owner, 2026-10-20). Each waits in the Outbox for approval.
+    referral_thanks_recorded = models.BooleanField(default=True, db_default=True)
+    referral_thanks_won = models.BooleanField(default=True, db_default=True)
+    referral_thanks_lost = models.BooleanField(default=True, db_default=True)
     marketing_flyer = models.ForeignKey(
         "tenancy.StoredFile", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="+",

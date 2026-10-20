@@ -1357,3 +1357,30 @@ ul.plain li { padding: var(--s1) 0; }
 /* Campaign recipients: the select-all box reads as a control, not a column name. */
 .select-all-row th { text-transform: none; letter-spacing: normal; font-size: var(--t-13);
   font-weight: 500; color: var(--text); }
+
+/* Referrals (owner, 2026-10-20): the "Referred by" picker and the list. */
+.referrer-picker { position: relative; width: 100%; max-width: 22rem; min-width: 0; }
+.referrer-picker input { width: 100%; box-sizing: border-box; }
+.referrer-choices {
+  list-style: none; margin: .25rem 0 0; padding: .25rem; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--surface); max-height: 18rem;
+  overflow-y: auto; overflow-x: hidden; box-sizing: border-box; width: 100%;
+}
+.referrer-choices li > button {
+  display: flex; gap: .5rem; align-items: center; justify-content: flex-start;
+  width: 100%; min-width: 0; text-align: left; white-space: nowrap;
+  border: 0; background: none; padding: .4rem .5rem; border-radius: 6px;
+}
+.referrer-choices li > button:hover, .referrer-choices li > button:focus-visible {
+  background: var(--hover);
+}
+.referrer-choices li > button > span:first-child { flex: 0 0 auto; }
+.referrer-choices li > button .pill { flex: 0 0 auto; }
+.referrer-choices li > button .muted {
+  margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.referrer-choices li.muted { padding: .4rem .5rem; }
+.referrer-picked, .row-inline { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.referrals-table td { vertical-align: top; }
+td:has(> .referrer-picker) { white-space: normal; width: 100%; }
+.check-line { display: flex; gap: .4rem; align-items: center; margin: .35rem 0; }

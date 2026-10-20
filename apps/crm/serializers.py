@@ -156,6 +156,37 @@ class ContactSerializer(serializers.ModelSerializer):
     linkedin_url = PageUrlField(network="LinkedIn", host="linkedin.com")
     alignable_url = PageUrlField(network="Alignable", host="alignable.com")
 
+    #: Who referred them into the sales pipeline (owner, 2026-10-20), and on
+    #: create, the contact to record as having referred them.
+    referred_by = serializers.SerializerMethodField()
+    referrer = serializers.UUIDField(required=False, allow_null=True, write_only=True)
+
+    def get_referred_by(self, obj):
+        from apps.crm.models import Pipeline, Referral
+
+        row = next((r for r in obj.referrals_received.all()
+                    if r.direction == Referral.Direction.INBOUND
+                    and r.pipeline.kind == Pipeline.Kind.SALES), None)
+        if row is None:
+            return None
+        # An associate sees only their own universe (FR-1.9c): a referrer
+        # outside it is not named.
+        from apps.crm import permissions as crm_perms
+
+        request = self.context.get("request")
+        if request is None:
+            return None  # fails closed: nobody to say who may see the name
+        if (crm_perms.role_of(request) == "CF"
+                and not crm_perms.contact_queryset_for(
+                request, Contact.objects.filter(pk=row.referrer_id,
+                                                deleted_at__isnull=True)).exists()):
+            return None
+        referrer = row.referrer
+        return {"id": str(row.pk), "referrer": str(referrer.pk),
+                "referrer_name": f"{referrer.first_name} {referrer.last_name}".strip(),
+                "referred_on": row.referred_on.isoformat(), "note": row.note,
+                "outcome": row.outcome}
+
     #: Whether a touch will ever be drafted for them (owner, 2026-09-28).
     #: Annotated on the list, looked up for a single contact.
     referral_enrolled = serializers.SerializerMethodField()
@@ -173,7 +204,7 @@ class ContactSerializer(serializers.ModelSerializer):
             "id", "first_name", "last_name", "title", "company", "owner",
             "source", "background", "tags", "linkedin_url", "alignable_url",
             "emails", "phones", "type_codes", "pipeline_positions",
-            "types", "company_name", "placement",
+            "types", "company_name", "placement", "referred_by", "referrer",
             "referral_fee_terms", "referral_cadence", "referral_touch_mode",
             "referral_next_touch_at", "referral_onboarded_at", "referral_enrolled",
             "merged_into", "created_at", "updated_at",
@@ -206,6 +237,7 @@ class ContactSerializer(serializers.ModelSerializer):
         type_codes = validated_data.pop("types", [])
         company_name = (validated_data.pop("company_name", "") or "").strip()
         placement = validated_data.pop("placement", None)
+        referrer_id = validated_data.pop("referrer", None)
         tenant = validated_data.get("tenant") or self.context["request"].tenant
 
         if validated_data.get("company") is None and company_name:
@@ -218,6 +250,8 @@ class ContactSerializer(serializers.ModelSerializer):
         contact = Contact.all_objects.create(**validated_data)
         _write_contact_children(tenant, contact, emails, phones, type_codes)
         _place(tenant, contact, placement, actor=self.context["request"].user)
+        if referrer_id:
+            _record_referral(contact, referrer_id, request=self.context["request"])
         return contact
 
     @transaction.atomic
@@ -227,6 +261,8 @@ class ContactSerializer(serializers.ModelSerializer):
         type_codes = validated_data.pop("types", None)
         company_name = (validated_data.pop("company_name", "") or "").strip()
         placement = validated_data.pop("placement", None)
+        # Changed on the contact page, through /api/referrals/.
+        validated_data.pop("referrer", None)
         tenant = instance.tenant
 
         if validated_data.get("company") is None and company_name:
@@ -261,6 +297,22 @@ class ContactSerializer(serializers.ModelSerializer):
                 obj.pipeline_positions.all(), key=lambda p: p.pipeline.position
             )
         ]
+
+
+def _record_referral(contact, referrer_id, *, request):
+    """The referrer chosen on the new-contact form, recorded in the same
+    request; one the person saving cannot see is refused, not guessed."""
+    from apps.crm import permissions as crm_perms
+    from apps.crm.services import referrals
+
+    referrer = crm_perms.contact_queryset_for(
+        request, Contact.objects.filter(pk=referrer_id, deleted_at__isnull=True)).first()
+    if referrer is None:
+        raise serializers.ValidationError({"referrer": "That contact is not available."})
+    try:
+        referrals.record(contact, referrer, actor=request.user)
+    except referrals.ReferralRefused as exc:
+        raise serializers.ValidationError({"referrer": str(exc)})
 
 
 class CompanySerializer(serializers.ModelSerializer):

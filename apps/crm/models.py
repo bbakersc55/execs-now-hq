@@ -476,6 +476,57 @@ class StageChange(TenantScopedModel):
         ordering = ["-created_at"]
 
 
+class Referral(TenantScopedModel):
+    """Someone who sent the practice a prospect (owner, 2026-10-20).
+
+    One row per prospect per pipeline: the first recorded gets the credit, and
+    the practice may change who. The outcome is written the first time the
+    prospect reaches a won or lost stage and stays when they move on, because a
+    referral fee is counted from that moment; a lost referral that comes back
+    and is won becomes won. `fee_terms` is the referrer's terms as they stood
+    on the day, so a later edit does not rewrite an old deal. Nothing here pays
+    a fee: that hangs off this row later.
+
+    `direction` is for R3: an introduction the practice makes for a partner is
+    outbound and will live here too. Only inbound rows are made today.
+    """
+
+    class Direction(models.TextChoices):
+        INBOUND = "inbound", "Referred to us"
+        OUTBOUND = "outbound", "Introduced by us"
+
+    class Outcome(models.TextChoices):
+        WON = "won", "Won"
+        LOST = "lost", "Lost"
+
+    direction = models.CharField(max_length=10, choices=Direction.choices,
+                                 default=Direction.INBOUND, db_default=Direction.INBOUND)
+    referrer = models.ForeignKey(Contact, on_delete=models.CASCADE,
+                                 related_name="referrals_made")
+    prospect = models.ForeignKey(Contact, on_delete=models.CASCADE,
+                                 related_name="referrals_received")
+    pipeline = models.ForeignKey(Pipeline, on_delete=models.PROTECT, related_name="referrals")
+    referred_on = models.DateField()
+    note = models.TextField(blank=True, default="")
+    outcome = models.CharField(max_length=8, choices=Outcome.choices, blank=True, default="")
+    outcome_at = models.DateTimeField(null=True, blank=True)
+    fee_terms = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "referral"
+        ordering = ["-referred_on", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "prospect", "pipeline"],
+                condition=models.Q(direction="inbound"),
+                name="referral_one_inbound_per_prospect",
+            ),
+        ]
+        indexes = [models.Index(fields=["tenant", "referrer"])]
+
+
 # --------------------------------------------------------- automations, mail
 
 class EmailTemplate(TenantScopedModel):
@@ -599,6 +650,7 @@ class MailPreference(TenantScopedModel):
     DEFAULTS = {
         "referral_touch": Sender.SELF,
         "referral_onboarding": Sender.SELF,
+        "referral_thanks": Sender.SELF,
         "stage_rule": Sender.ALIAS,
         "manual": Sender.ALIAS,
     }
@@ -775,6 +827,9 @@ class OutboxMessage(TenantScopedModel):
         STAGE_RULE = "stage_rule", "Stage rule"
         REFERRAL_TOUCH = "referral_touch", "Referral touch"
         REFERRAL_ONBOARDING = "referral_onboarding", "Referral onboarding"
+        # Thanks to whoever referred a prospect: when it is recorded, won or
+        # lost (owner, 2026-10-20). Approved, it counts as their next touch.
+        REFERRAL_THANKS = "referral_thanks", "Referral thank-you"
         DIGEST = "digest", "Progress digest"
         STRATEGY_PDF = "strategy_pdf", "Strategy session PDF"
         PRECALL_INVITE = "precall_invite", "Pre-call invite"

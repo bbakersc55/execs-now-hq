@@ -15,7 +15,7 @@ from apps.crm.models import (
     MailPreference, DuplicateDismissal,
     EmailMessage, EmailTemplate, EmailThread, GmailConnection, ImportBatch,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
-    PipelineStage, ServiceCategory, StageAutomation, StageChange, Task,
+    PipelineStage, Referral, ServiceCategory, StageAutomation, StageChange, Task,
 )
 from apps.meetings.models import (
     Commitment, DriveBackfill, DriveExclusion, DriveWatch, DriveWatchFolder, Meeting,
@@ -281,6 +281,18 @@ class ContactPipelinePositionFactory(TenantScopedFactory):
     contact = factory.SubFactory(ContactFactory)
     pipeline = factory.SubFactory(PipelineFactory)
     stage = factory.SubFactory(PipelineStageFactory)
+
+
+class ReferralFactory(TenantScopedFactory):
+    class Meta:
+        model = Referral
+
+    tenant = factory.SubFactory(TenantFactory)
+    referrer = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    prospect = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    pipeline = factory.SubFactory(PipelineFactory, tenant=factory.SelfAttribute("..tenant"),
+                                  kind="sales")
+    referred_on = factory.LazyFunction(timezone.localdate)
 
 
 class ContactEmailFactory(TenantScopedFactory):

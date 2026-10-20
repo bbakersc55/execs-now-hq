@@ -229,6 +229,11 @@ def approve(message, *, actor, role):
         from apps.billing import services as billing
 
         billing.message_sent(message, actor=actor)
+    if message.producer == P.REFERRAL_THANKS and message.state == S.SENT:
+        # Approved, a thank-you is the referrer's touch (owner, 2026-10-20).
+        from apps.crm.services import referrals
+
+        referrals.thanks_sent(message)
     if message.producer == P.CAMPAIGN and message.state == S.SENT:
         # "When this campaign is sent" (owner, 2026-10-19): only once it is.
         from apps.crm.services import campaigns

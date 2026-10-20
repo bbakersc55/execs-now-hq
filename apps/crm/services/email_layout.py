@@ -52,7 +52,8 @@ FAINT_COLOR = "#939598"
 LAYOUT_MARKER = "data-enhq-email"
 
 #: Sent from a person's own address: the light layout.
-PERSONAL_PRODUCERS = frozenset({"referral_touch", "referral_onboarding", "manual", "stage_rule"})
+PERSONAL_PRODUCERS = frozenset({"referral_touch", "referral_onboarding", "referral_thanks",
+                                "manual", "stage_rule"})
 
 #: The logo travels as an inline image part referenced by this Content-ID. Gmail
 #: blocks `data:` images, and a laptop URL is unreachable from Gmail's image

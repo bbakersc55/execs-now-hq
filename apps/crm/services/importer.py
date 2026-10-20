@@ -38,6 +38,10 @@ STAGE_TARGET = "pipeline_stage"
 #: The owner's real CRM has both: a Status (type) column AND a separate Stage
 #: column. They are mapped independently and both go through step 2b.
 VALUE_TARGETS = (TYPE_TARGET, STAGE_TARGET)
+#: Who referred them (owner, 2026-10-20): an existing contact's email or full
+#: name. Recorded as a referral without a thank-you, as history; a name that
+#: matches no one, or several, is said in the dry run and skipped, never guessed.
+REFERRER_TARGET = "referred_by"
 
 TAG_SEPARATORS = ",;"
 MAX_TAG_LENGTH = 64  # Contact.tags is varchar(64)[]
@@ -251,6 +255,32 @@ def _match(tenant, values):
     return O.CREATE, None, []
 
 
+def match_referrer(tenant, cell):
+    """(contact, problem) for a "Referred by" cell: an email first, then a
+    full name that only one contact has."""
+    cell = (cell or "").strip()
+    if not cell:
+        return None, ""
+    if "@" in cell:
+        hit = ContactEmail.all_objects.filter(
+            tenant=tenant, address__iexact=cell, contact__deleted_at__isnull=True,
+        ).select_related("contact").first()
+        if hit:
+            return hit.contact, ""
+        return None, f"no contact has the address {cell}"
+    from django.db.models import Value
+    from django.db.models.functions import Concat, Lower
+
+    wanted = " ".join(cell.lower().split())
+    matches = list(Contact.all_objects.filter(tenant=tenant, deleted_at__isnull=True).annotate(
+        _name=Lower(Concat("first_name", Value(" "), "last_name"))).filter(_name=wanted)[:2])
+    if len(matches) == 1:
+        return matches[0], ""
+    if matches:
+        return None, f"more than one contact is called {cell}"
+    return None, f"no contact is called {cell}"
+
+
 def _validate(resolved, *, tenant, value_mapping, known_types):
     values = resolved.values
     errors = []
@@ -343,7 +373,18 @@ def _preview_for(resolved, *, tenant, value_mapping, known_types):
         "value_ignored": ignored,
         "fires_client_invariant": any(p["fires_client_invariant"] for p in placements),
         "note": resolved.values.get("notes", ""),
+        **_referrer_preview(tenant, resolved.values.get(REFERRER_TARGET, "")),
     }
+
+
+def _referrer_preview(tenant, cell):
+    if not (cell or "").strip():
+        return {}
+    referrer, problem = match_referrer(tenant, cell)
+    return {"referred_by": cell,
+            "referrer_name": (f"{referrer.first_name} {referrer.last_name}".strip()
+                              if referrer else ""),
+            "referrer_problem": f"{problem}; no referral is recorded" if problem else ""}
 
 
 def _known_types(tenant):
@@ -531,6 +572,13 @@ def commit(batch, *, actor=None, mapping=None, value_mapping=None):
             if previous_position:
                 previous_related["positions"].append(previous_position)
 
+        referral_id, position_id = _record_referrer(tenant, contact,
+                                                    values.get(REFERRER_TARGET, ""), actor)
+        if referral_id:
+            created["referral_ids"] = [referral_id]
+        if position_id:
+            created["position_ids"].append(position_id)
+
         _maybe_create_note(tenant, contact, values, batch)
         row.created_related = created
         row.previous_related = previous_related
@@ -546,6 +594,24 @@ def commit(batch, *, actor=None, mapping=None, value_mapping=None):
         target_type="import_batch", target_id=batch.pk, payload=batch.counts,
     )
     return batch
+
+
+def _record_referrer(tenant, contact, cell, actor):
+    """(referral id, sales position id) this row made, each or None. A
+    prospect already credited to someone keeps that credit."""
+    from apps.crm.services import pipeline as pipeline_service
+    from apps.crm.services import referrals
+
+    referrer, _problem = match_referrer(tenant, cell)
+    if referrer is None or referrer.pk == contact.pk:
+        return None, None
+    if referrals.referral_for(contact) is not None:
+        return None, None
+    sales = pipeline_service.sales_pipeline(tenant)
+    had_position = sales is not None and pipeline_service.position_for(contact, sales)
+    referral = referrals.record(contact, referrer, actor=actor, from_import=True)
+    position = None if had_position else pipeline_service.position_for(contact, sales)
+    return str(referral.pk), (str(position.pk) if position else None)
 
 
 def _merge_tags(existing, incoming):
@@ -726,6 +792,10 @@ def _undo_related(row, contact):
 
     if created.get("phone_ids"):
         ContactPhone.all_objects.filter(pk__in=created["phone_ids"]).delete()
+    if created.get("referral_ids"):
+        from apps.crm.models import Referral
+
+        Referral.all_objects.filter(pk__in=created["referral_ids"]).delete()
     if created.get("type_link_ids"):
         ContactTypeLink.all_objects.filter(pk__in=created["type_link_ids"]).delete()
     # Positions the import CREATED are removed; positions it merely moved are

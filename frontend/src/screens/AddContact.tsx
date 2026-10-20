@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { ReferrerPicker } from "../components/Referrals";
 import { Banner, Card, Field } from "../components/ui";
 import { Company, Contact, ContactType, Me, Pipeline, api } from "../lib/api";
 
@@ -48,6 +49,7 @@ export function AddContact({ me, onDone, existing }: {
       : [{ ...blank(), is_primary: true }],
   );
   const [types, setTypes] = useState<string[]>(existing?.type_codes ?? []);
+  const [referrer, setReferrer] = useState<{ id: string; name: string } | null>(null);
   const [pipelineId, setPipelineId] = useState("");
   const [stageCode, setStageCode] = useState("");
 
@@ -89,6 +91,9 @@ export function AddContact({ me, onDone, existing }: {
       ...(pipelineId && stageCode
         ? { placement: { pipeline: pipelineId, stage: stageCode } }
         : {}),
+      // Recorded with the new contact; on an existing one it is changed from
+      // the contact page instead.
+      ...(!editing && referrer ? { referrer: referrer.id } : {}),
       // FR-1.1 — only an FF may reassign a contact's owner (matrix 4.11's
       // sibling: ownership drives a CF's whole visible universe).
       ...(editing && me.role === "FF" && form.owner ? { owner: form.owner } : {}),
@@ -246,6 +251,18 @@ export function AddContact({ me, onDone, existing }: {
               onChange={(e) => setForm({ ...form, tags: e.target.value })} />
           </Field>
         </div>
+
+        {!editing && (
+          <Field label="Referred by (optional)">
+            <ReferrerPicker value={referrer} onChange={setReferrer} />
+            {referrer && (
+              <p className="muted small">
+                Saving puts them in Sales at the first stage (or at the stage chosen below)
+                and drafts a thank-you to {referrer.name} in the Outbox. Nothing is sent.
+              </p>
+            )}
+          </Field>
+        )}
 
         <div className="row">
           <Field label="LinkedIn">

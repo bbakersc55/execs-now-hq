@@ -57,6 +57,21 @@ describe("AddContact", () => {
     });
   });
 
+  it("records who referred a new contact in the same request", async () => {
+    const user = userEvent.setup();
+    const { fetchMock, onDone } = setup({
+      "/api/contacts/": [aContact({ id: "mark", first_name: "Mark", last_name: "Ellis",
+        type_codes: ["referral_partner"] })],
+    });
+    await user.type(screen.getByLabelText("First name"), "Dana");
+    await user.type(screen.getByLabelText("Referred by"), "mark");
+    await user.click(await screen.findByRole("option", { name: /Mark Ellis/ }));
+    expect(screen.getByText(/drafts a thank-you to Mark Ellis/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save contact" }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(postedBody(fetchMock)).toMatchObject({ first_name: "Dana", referrer: "mark" });
+  });
+
   it("sends a second email with exactly one marked primary", async () => {
     const user = userEvent.setup();
     const { fetchMock } = setup();

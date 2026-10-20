@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Mail, MoreHorizontal, Phone } from "lucide-react";
+import { Building2, Handshake, Mail, MoreHorizontal, Phone } from "lucide-react";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -388,6 +388,10 @@ function ContactCard({ contact, alsoIn, dragging, onDragStart, onDragEnd, onMove
       )}
       {phone && (
         <div className="line"><Phone size={14} aria-hidden="true" /><span>{phone}</span></div>
+      )}
+      {contact.referred_by && (
+        <div className="line"><Handshake size={14} aria-hidden="true" />
+          <span>via {contact.referred_by.referrer_name}</span></div>
       )}
       {alsoIn.length > 0 && <Pill>also in {alsoIn.join(", ")}</Pill>}
     </div>

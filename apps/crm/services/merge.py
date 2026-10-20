@@ -124,6 +124,8 @@ HANDLED_RELATIONS = {
     # P5: who an expense was paid to, for 1099 totals.
     "finance_entry.payee_contact", "finance_rule.payee_contact",
     "finance_import_row.payee_contact",
+    # Who referred whom: `_merge_referrals`.
+    "referral.referrer", "referral.prospect",
 }
 
 
@@ -214,7 +216,32 @@ def _merge_later_tables(tenant, survivor, absorbed, *, actor=None) -> dict:
                      live={"state__in": [s for s in Digest.State.values
                                          if s not in ("expired", "skipped")]})
     move_unless_held(MeetingParticipant, ["meeting_id"], on_conflict="delete")
+    _merge_referrals(tenant, survivor, absorbed, note)
     return counts
+
+
+def _merge_referrals(tenant, survivor, absorbed, note):
+    """The referrals they made follow the person. One that brought them in
+    moves unless the survivor already has one for that pipeline, which stands
+    (the first recorded keeps the credit). A merge that makes someone their
+    own referrer removes that row: it records nothing."""
+    from apps.crm.models import Referral
+
+    note("referral", Referral.all_objects.filter(
+        tenant=tenant, referrer=absorbed).update(referrer=survivor))
+    for row in Referral.all_objects.filter(tenant=tenant, prospect=absorbed):
+        held = Referral.all_objects.filter(
+            tenant=tenant, prospect=survivor, pipeline_id=row.pipeline_id,
+            direction=row.direction).exists()
+        if not held:
+            Referral.all_objects.filter(pk=row.pk).update(prospect=survivor)
+            note("referral", 1)
+        else:
+            note("referral (kept on the merged record)", 1)
+    gone = Referral.all_objects.filter(tenant=tenant, prospect=survivor,
+                                       referrer=survivor)
+    note("referral (own referrer, removed)", gone.count())
+    gone.delete()
 
 
 def _merge_child_values(model, tenant, survivor, absorbed, *, value_field, key):

@@ -185,6 +185,7 @@ def people(world: World) -> None:
     _clients(world)
     _prospects(world)
     _partners(world)
+    _referrals(world)
     _vendors(world)
 
 
@@ -372,6 +373,43 @@ def _partners(world: World) -> None:
                 world.today + timedelta(days=4 + roll.randrange(60)), 8)
             row.save(update_fields=["referral_next_touch_at", "updated_at"])
         world.partners.append(row)
+
+
+#: Who referred whom (prospect, partner). Elle's introduction of Lucille is
+#: the one Bryan thanks her for in his touch; Ben's of Selina is two days old,
+#: so its thank-you is still waiting in the Outbox.
+REFERRALS = [
+    ("Wiley Coyote", "Ben Wyatt"),
+    ("Eldon Tyrell", "Ben Wyatt"),
+    ("Selina Kyle", "Ben Wyatt"),
+    ("Lucille Bluth", "Elle Woods"),
+    ("Harvey Specter", "Jessica Pearson"),
+]
+
+
+def _referrals(world: World) -> None:
+    """Recorded as history, as an import would: the outcome of a won or lost
+    prospect is taken from where they stand, and nothing is drafted, except
+    the one thank-you a fresh referral would still be waiting on."""
+    from django.utils import timezone
+
+    from apps.crm.services import referrals
+
+    partners = {f"{p.first_name} {p.last_name}": p for p in world.partners}
+    prospects = dict(world.prospects)
+    for name, rows in world.people.items():
+        prospects[f"{rows[0].first_name} {rows[0].last_name}"] = rows[0]
+    for prospect_name, partner_name in REFERRALS:
+        prospect, partner = prospects[prospect_name], partners[partner_name]
+        met = timezone.localtime(prospect.created_at)
+        if prospect_name == "Selina Kyle":
+            met = moment(world.today - timedelta(days=2), 16, 15)
+        with at(met):
+            referral = referrals.record(prospect, partner, actor=world.owner,
+                                        referred_on=met.date(), from_import=True)
+        if prospect_name == "Selina Kyle":
+            with at(moment(world.today - timedelta(days=2), 16, 20)):
+                referrals.draft_thanks(referral, referrals.RECORDED, actor=world.owner)
 
 
 def _vendors(world: World) -> None:

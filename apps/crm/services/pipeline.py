@@ -121,6 +121,11 @@ def change_stage(contact, to_stage, *, actor=None, reason="", run_automations=Tr
     )
 
     apply_client_invariant(contact, to_stage, actor=actor)
+    # A referred prospect won or lost: the outcome, and a thank-you draft to
+    # whoever referred them (none from an import, which is history).
+    from apps.crm.services import referrals
+
+    referrals.after_stage_change(contact, to_stage, actor=actor, quiet=not run_automations)
     if run_automations:
         run_stage_automations(contact, from_stage, to_stage, actor=actor)
     return change
