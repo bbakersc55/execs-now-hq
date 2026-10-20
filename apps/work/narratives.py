@@ -176,7 +176,7 @@ def draft(goal, *, trigger="button"):
     try:
         text, call = claude.complete_with_call(
             tenant=goal.tenant, purpose=NARRATIVE_PURPOSE,
-            system=system(practice_words.of(goal.tenant)),
+            system=claude.drafting(system(practice_words.of(goal.tenant))),
             user_text=drafting_input(goal), target_type="goal", target_id=goal.pk,
             trigger=trigger, max_tokens=1500,
         )

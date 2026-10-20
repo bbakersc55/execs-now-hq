@@ -497,7 +497,7 @@ def narrative_for(tenant, owed, *, contact):
     w = practice_words.of(tenant)
     try:
         return claude.complete(
-            tenant=tenant, purpose="digest_prose", system=ai_system(w),
+            tenant=tenant, purpose="digest_prose", system=claude.drafting(ai_system(w)),
             user_text=ai_input(owed, w), target_type="contact", target_id=contact.pk,
             trigger="auto", max_tokens=2000,
         )

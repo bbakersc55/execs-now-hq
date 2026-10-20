@@ -151,7 +151,7 @@ def propose(session, *, trigger="button") -> list:
         return []
     try:
         text, call = claude.complete_with_call(
-            tenant=session.tenant, purpose=PURPOSE, system=SYSTEM,
+            tenant=session.tenant, purpose=PURPOSE, system=claude.drafting(SYSTEM),
             user_text=model_input(session, planned), target_type="strategy_session",
             target_id=session.pk, trigger=trigger, max_tokens=4000, effort="low")
     except (claude.ClaudeUnavailable, claude.ClaudeRefused):

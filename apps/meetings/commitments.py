@@ -32,9 +32,11 @@ def scoped(request, qs=None):
 
 
 def settle_portal(qs):
-    """A commitment assigned in the portal is done when the client's task is:
-    read from the task, so the two never disagree."""
-    finished = qs.filter(state=Commitment.State.OPEN, outcome=Commitment.Outcome.PORTAL,
+    """A commitment assigned in the portal is done when the client's task is,
+    and one of ours when our task is: read from the task, so the two never
+    disagree."""
+    finished = qs.filter(state=Commitment.State.OPEN,
+                         outcome__in=(Commitment.Outcome.PORTAL, Commitment.Outcome.PROMISED),
                          task__status__in=DONE_TASK)
     finished.update(state=Commitment.State.DONE, done_at=timezone.now(),
                     updated_at=timezone.now())
@@ -50,7 +52,7 @@ def represent(row, today=None) -> dict:
     today = today or timezone.localdate()
     when = row.follow_up_date or row.due_date
     return {
-        "id": str(row.pk), "state": row.state, "outcome": row.outcome,
+        "id": str(row.pk), "state": row.state, "outcome": row.outcome, "side": row.side,
         "outcome_label": row.get_outcome_display(),
         "owner_name": row.owner_name, "owner_kind": row.owner_kind,
         "contact": str(row.contact_id) if row.contact_id else None,

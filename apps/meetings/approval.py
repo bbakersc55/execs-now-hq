@@ -265,6 +265,14 @@ def approve_task_item(item, *, actor, role, choice: dict):
         company = Company.objects.filter(pk=choice["client_company"]).first()
     elif owner is not None and owner.company_id:
         company = owner.company
+    # "Promised to <company>" (2026-10-20): ticked, the task is also the
+    # practice's commitment to the client, filed under them.
+    # A deliverable from before the change is a promise by definition.
+    promised = bool(choice.get("promised", payload.get("promised_to_client")
+                                if item.kind == ProposalItem.Kind.ACTION_ITEM else True))
+    promised_to = promise_company(item.proposal) if promised else None
+    if promised and company is None:
+        company = promised_to
 
     task = work_services.create_task(
         tenant=item.tenant, actor=actor, role=role,
@@ -292,8 +300,44 @@ def approve_task_item(item, *, actor, role, choice: dict):
             tenant=item.tenant, contact=contact, task=task,
             defaults={"cadence": row.get("cadence") or Cadence.WEEKLY})
 
+    if promised:
+        from apps.meetings.models import Commitment
+
+        due = task.due_date
+        Commitment.objects.create(
+            tenant=item.tenant, side=Commitment.Side.OURS,
+            outcome=Commitment.Outcome.PROMISED, task=task,
+            company=promised_to or company, owner_name=item.tenant.name, owner_kind="practice",
+            text=task.title, due_date=due, follow_up_date=due,
+            meeting=item.proposal.meeting, proposal_item=item,
+            source_excerpt=item.source_excerpt, created_by=actor)
+
     _mark(item, actor, "task", task.pk)
     return task
+
+
+def promise_company(proposal):
+    """The client a promise in this meeting is made to: the meeting's client
+    company once there is one, else the client company of a participant
+    approved or proposed, else None."""
+    if proposal.meeting_id and proposal.meeting.client_company_id:
+        return proposal.meeting.client_company
+    for row in ProposalItem.objects.filter(proposal=proposal,
+                                           kind=ProposalItem.Kind.PARTICIPANT):
+        body = row.payload or {}
+        if body.get("is_practice"):
+            continue
+        if row.created_record_type == "contact" and row.created_record_id:
+            contact = Contact.objects.filter(pk=row.created_record_id).select_related(
+                "company").first()
+            if contact and contact.company_id and contact.company.is_client_company:
+                return contact.company
+        for found in body.get("company_candidates") or []:
+            company = Company.objects.filter(pk=found.get("company_id"),
+                                             is_client_company=True).first()
+            if company is not None:
+                return company
+    return None
 
 
 # ------------------------------------------------------- someone else's item

@@ -17,8 +17,8 @@ from rest_framework.response import Response
 
 from apps.crm.services import gmail_oauth
 from apps.meetings import (
-    approval, backfill as backfill_service, dismissal, drive as drive_service, ingest,
-    parsing,
+    approval, backfill as backfill_service, dismissal, drive as drive_service, folding,
+    ingest, parsing,
 )
 from apps.meetings import permissions as meeting_perms
 from apps.meetings import serializers as meeting_serializers
@@ -518,6 +518,9 @@ class ProposalViewSet(MeetingViewSetBase):
     def list(self, request):
         state = request.query_params.get("state", "open")
         qs = self.proposals()
+        # One line per thing, before anything is shown (2026-10-20).
+        folding.fold_open(qs.filter(state__in=[MeetingProposal.State.PENDING,
+                                               MeetingProposal.State.PARTIALLY_ACTIONED]))
         if state == "open":
             qs = qs.filter(state__in=[MeetingProposal.State.PENDING,
                                       MeetingProposal.State.PARTIALLY_ACTIONED])
@@ -533,7 +536,9 @@ class ProposalViewSet(MeetingViewSetBase):
                          for p in qs.order_by("-created_at")[:200]])
 
     def retrieve(self, request, pk=None):
-        return Response(meeting_serializers.represent_proposal(self.load(pk), full=True))
+        proposal = self.load(pk)
+        folding.fold(proposal)
+        return Response(meeting_serializers.represent_proposal(proposal, full=True))
 
     def partial_update(self, request, pk=None):
         """The summary is reviewed with the proposal (R11a, FR-5.8b)."""
@@ -651,6 +656,10 @@ class ProposalItemViewSet(MeetingViewSetBase):
         proposal_id = request.query_params.get("proposal")
         if not _is_uuid(proposal_id or ""):
             return Response({"detail": "Ask for one proposal's items."}, status=400)
+        proposal = meeting_perms.proposals_for(request, MeetingProposal.objects).filter(
+            pk=proposal_id).first()
+        if proposal is not None:
+            folding.fold(proposal)
         items = meeting_perms.items_for(request).filter(proposal_id=proposal_id)
         return Response([meeting_serializers.represent_item(item) for item in items])
 

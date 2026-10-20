@@ -64,7 +64,7 @@ def draft(note) -> None:
     try:
         text = claude.complete(
             tenant=note.tenant, purpose="note_summary",
-            system=SYSTEM_PROMPT,
+            system=claude.drafting(SYSTEM_PROMPT),
             user_text=(
                 f"Transcript of a recorded call"
                 f"{f' ({minutes} minutes)' if minutes else ''}:\n\n"

@@ -25,12 +25,16 @@ class CommitmentViewSet(viewsets.ViewSet):
         return qs
 
     def list(self, request):
-        """`?state=open|done|all` (open), `?overdue=1`, `?contact=`, `?company=`,
-        `?q=` (person, company or what). Soonest to chase first."""
+        """`?state=open|done|all` (open), `?side=theirs|ours|all` (theirs: what
+        others owe, the "Waiting on others" list), `?overdue=1`, `?contact=`,
+        `?company=`, `?q=` (person, company or what). Soonest to chase first."""
         qs = self._qs(request)
         state = request.query_params.get("state", "open")
         if state != "all":
             qs = qs.filter(state=state)
+        side = request.query_params.get("side", Commitment.Side.THEIRS)
+        if side != "all":
+            qs = qs.filter(side=side)
         if request.query_params.get("overdue"):
             qs = qs.filter(commitments.overdue_filter())
         for field in ("contact", "company"):

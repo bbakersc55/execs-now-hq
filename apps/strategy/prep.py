@@ -151,7 +151,7 @@ def prepare(session, *, website_url="", notes="", actor=None):
 
     try:
         text, call = claude.complete_with_call(
-            tenant=session.tenant, purpose=PREP_PURPOSE, system=_system(session),
+            tenant=session.tenant, purpose=PREP_PURPOSE, system=claude.drafting(_system(session)),
             user_text=prep_input(session, website_url=prep.website_url, notes=prep.notes),
             target_type="strategy_session", target_id=session.pk, trigger="button",
             max_tokens=8000, tools=[claude.WEB_SEARCH_TOOL],

@@ -310,7 +310,7 @@ def propose(session, *, trigger="button", from_ratings=False) -> list:
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=diagnostic.PURPOSE,
-            system=system(DIAGNOSTIC_SYSTEM.format(gaps=gaps or "none"), session),
+            system=claude.drafting(system(DIAGNOSTIC_SYSTEM.format(gaps=gaps or "none"), session)),
             user_text=diagnostic_input(session, planned, gaps=gaps),
             target_type="strategy_session", target_id=session.pk, trigger=trigger,
             max_tokens=4000, effort="low")

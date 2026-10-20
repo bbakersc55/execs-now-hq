@@ -178,7 +178,7 @@ def explain(tenant, *, step, rec=None) -> dict:
         raise FinanceError(now["refused"], status=409)
     try:
         text, call = claude.complete_with_call(
-            tenant=tenant, purpose=PURPOSE, system=SYSTEM,
+            tenant=tenant, purpose=PURPOSE, system=claude.drafting(SYSTEM),
             user_text=what_is_sent(step, rec), trigger="button", max_tokens=MAX_TOKENS,
             target_type="finance_reconciliation" if rec is not None else "",
             target_id=rec.pk if rec is not None else None)

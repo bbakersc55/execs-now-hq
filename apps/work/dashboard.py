@@ -98,7 +98,7 @@ def _waiting(request):
     from apps.meetings.models import Commitment
 
     qs = commitments.scoped(request, Commitment.objects.filter(
-        state=Commitment.State.OPEN))
+        state=Commitment.State.OPEN, side=Commitment.Side.THEIRS))
     return {"open": qs.count(), "overdue": qs.filter(commitments.overdue_filter()).count()}
 
 

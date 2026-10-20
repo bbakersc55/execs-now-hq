@@ -19,3 +19,21 @@ export function ContactCommitments({ contactId }: { contactId: string }) {
     </Card>
   );
 }
+
+/** What a client is waiting on from the practice (2026-10-20): the tasks
+ *  ticked "Promised to <company>" in the meeting queue, done when the task is.
+ *  Shown only when there is something. */
+export function CompanyCommitments({ companyId }: { companyId: string }) {
+  const rows = useQuery<Commitment[]>({
+    queryKey: ["commitments", "company", companyId, "ours"],
+    queryFn: () => api.get<Commitment[]>(
+      `/api/commitments/?company=${companyId}&side=ours&state=all`),
+  });
+  const list = rows.data ?? [];
+  if (list.length === 0) return null;
+  return (
+    <Card title="Waiting on us">
+      <CommitmentList rows={list} showPerson={false} />
+    </Card>
+  );
+}

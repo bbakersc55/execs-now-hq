@@ -915,7 +915,7 @@ describe("an action item owned by someone else", () => {
     await user.selectOptions(who, "u2");
     await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
-      ?.body).toEqual({ owner_side: "practice", assignee_id: "u2" }));
+      ?.body).toEqual({ owner_side: "practice", promised: false, assignee_id: "u2" }));
   });
 
   it("lets the reviewer say it is ours after all", async () => {
@@ -923,7 +923,41 @@ describe("an action item owned by someone else", () => {
     await user.click(await screen.findByRole("radio", { name: /— make it a task/ }));
     await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
-      ?.body).toEqual({ owner_side: "practice" }));
+      ?.body).toEqual({ owner_side: "practice", promised: false }));
+  });
+});
+
+describe("a promise is a mark on a task (2026-10-20)", () => {
+  const promised = (extra: Record<string, unknown> = {}) => {
+    const base = aProposal();
+    const items = (base.items ?? []).map((i) => i.id === "i2" ? {
+      ...i, promised_to: { id: "co1", name: "Acme Facilities" },
+      payload: { ...i.payload, owner_side: "practice", promised_to_client: true, ...extra } }
+      : i);
+    return aProposal({ items: items as never });
+  };
+
+  it("pre-ticks “Promised to <company>” when Claude read a promise, and sends it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ [`GET /api/meeting-proposals/${ID}/`]: promised(),
+                             "POST /api/proposal-items/i2/approve/": {} });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    const tick = await screen.findByRole("checkbox", { name: "Promised to Acme Facilities" });
+    expect(tick).toBeChecked();
+    await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+      ?.body).toEqual({ owner_side: "practice", promised: true }));
+  });
+
+  it("can be unticked", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ [`GET /api/meeting-proposals/${ID}/`]: promised(),
+                             "POST /api/proposal-items/i2/approve/": {} });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Promised to Acme Facilities" }));
+    await user.click(screen.getByRole("button", { name: /Approve Send the Q3/ }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/i2/approve/"))
+      ?.body).toEqual({ owner_side: "practice", promised: false }));
   });
 });
 

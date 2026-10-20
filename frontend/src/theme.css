@@ -1353,3 +1353,7 @@ ul.plain li { padding: var(--s1) 0; }
   background: var(--hover); }
 .import-door strong { color: var(--navy); font-size: var(--t-16); }
 .import-door span { color: var(--muted); font-size: var(--t-14); }
+
+/* Campaign recipients: the select-all box reads as a control, not a column name. */
+.select-all-row th { text-transform: none; letter-spacing: normal; font-size: var(--t-13);
+  font-weight: 500; color: var(--text); }

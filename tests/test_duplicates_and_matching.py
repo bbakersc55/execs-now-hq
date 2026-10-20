@@ -277,7 +277,8 @@ def test_an_ambiguous_owner_lists_everyone_it_could_be(seeded_tenant, watch, fak
     a = person(seeded_tenant, "Dana", "Reyes", "dana@one.test")
     b = person(seeded_tenant, "Dana", "Reyes", "dana@two.test")
     _proposal(seeded_tenant, fake_claude)
-    item = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM)
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM,
+                                    payload__text="Send the Q3 margin breakdown")
     assert item.payload["proposed_owner_contact_id"] is None, "two Danas: not guessed"
     body = api.as_(ff).get(f"/api/meeting-proposals/{item.proposal_id}/").json()
     row = next(i for i in body["items"] if i["id"] == str(item.pk))
@@ -290,7 +291,8 @@ def test_the_owner_the_reviewer_picks_is_the_one_recorded(seeded_tenant, watch, 
     person(seeded_tenant, "Dana", "Reyes")
     b = person(seeded_tenant, "Dana", "Reyes")
     _proposal(seeded_tenant, fake_claude)
-    item = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM)
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM,
+                                    payload__text="Send the Q3 margin breakdown")
     response = api.as_(ff).post(f"/api/proposal-items/{item.pk}/approve/", {
         "owner_side": "other", "owner_kind": "client", "outcome": "record_only",
         "owner_contact_id": str(b.pk)}, content_type="application/json")
@@ -303,7 +305,8 @@ def test_not_one_of_these_keeps_the_name_only(seeded_tenant, watch, fake_claude,
     person(seeded_tenant, "Dana", "Reyes")
     person(seeded_tenant, "Dana", "Reyes")
     _proposal(seeded_tenant, fake_claude)
-    item = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM)
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM,
+                                    payload__text="Send the Q3 margin breakdown")
     response = api.as_(ff).post(f"/api/proposal-items/{item.pk}/approve/", {
         "owner_side": "other", "owner_kind": "client", "outcome": "record_only",
         "owner_contact_id": None}, content_type="application/json")

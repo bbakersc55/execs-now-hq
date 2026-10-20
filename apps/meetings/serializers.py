@@ -31,6 +31,9 @@ def represent_item(item) -> dict:
         # The owner's portal seat as it is now, not as it was when the notes
         # were read (2026-10-12): a seat given since then counts.
         "owner_seat": _owner_seat(item),
+        # Who a promise is to, for the "Promised to <company>" tick
+        # (2026-10-20). Only for a task line still waiting.
+        "promised_to": _promised_to(item),
     }
 
 
@@ -142,6 +145,15 @@ def represent_source_file(source_file) -> dict:
         "fetched_at": (source_file.fetched_at.isoformat()
                        if source_file.fetched_at else None),
     }
+
+
+def _promised_to(item):
+    if item.state != ProposalItem.State.PENDING or item.kind == ProposalItem.Kind.PARTICIPANT:
+        return None
+    from apps.meetings import approval
+
+    company = approval.promise_company(item.proposal)
+    return {"id": str(company.pk), "name": company.name} if company else None
 
 
 def represent_proposal(proposal, *, full=False) -> dict:

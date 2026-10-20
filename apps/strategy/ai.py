@@ -307,8 +307,8 @@ def draft_map_rows(session, *, trigger="button"):
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=ROWS_PURPOSE,
-            system=_system(ROWS_SYSTEM, session)
-            + (call_notes.ROWS_ADDENDUM if notes else ""),
+            system=claude.drafting(_system(ROWS_SYSTEM, session)
+                                   + (call_notes.ROWS_ADDENDUM if notes else "")),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger=trigger, max_tokens=4000,
         )
@@ -425,9 +425,9 @@ def consolidate_map_rows(session):
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=CONSOLIDATE_PURPOSE,
-            system=_system(
+            system=claude.drafting(_system(
                 CONSOLIDATE_SYSTEM.format(most={5: "five", 10: "ten"}.get(most, most)),
-                session) + (CONSOLIDATE_NOTES if notes else ""),
+                session) + (CONSOLIDATE_NOTES if notes else "")),
             user_text=consolidation_input(rows) + notes + style.prompt_block(
                 session.tenant, [style.K.MAP_HEADER, style.K.MAP_STATEMENT]),
             target_type="strategy_session",
@@ -487,7 +487,7 @@ def draft_mirror(session):
     try:
         text = claude.complete(
             tenant=session.tenant, purpose=MIRROR_PURPOSE,
-            system=_system(MIRROR_SYSTEM, session),
+            system=claude.drafting(_system(MIRROR_SYSTEM, session)),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger="button", max_tokens=1000,
         )
@@ -624,8 +624,8 @@ def draft_path_notes(session, *, trigger="button"):
     try:
         text, call = claude.complete_with_call(
             tenant=session.tenant, purpose=PATHS_PURPOSE,
-            system=_system(PATHS_SYSTEM.format(practice=practice), session)
-            + (call_notes.PATHS_ADDENDUM if notes else ""),
+            system=claude.drafting(_system(PATHS_SYSTEM.format(practice=practice), session)
+                                   + (call_notes.PATHS_ADDENDUM if notes else "")),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger=trigger, max_tokens=1500,
         )

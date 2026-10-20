@@ -1142,6 +1142,12 @@ function ItemRow({ item, onChanged, setNote }: {
   const inAWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const [followUp, setFollowUp] = useState(payload.proposed_due_date ?? inAWeek);
   const [notifyMe, setNotifyMe] = useState(true);
+  // "Promised to <company>" (2026-10-20): the task is also the practice's
+  // commitment to the client. Pre-ticked when Claude read it as a promise; an
+  // older "What was promised" line is one by definition.
+  const [promised, setPromised] = useState<boolean>(
+    item.kind === "deliverable" || !!payload.promised_to_client);
+  const promisedLabel = `Promised to ${item.promised_to?.name ?? "the client"}`;
   const ownerName = item.owner_contact_name || payload.proposed_owner_text || "";
   // Someone without a seat cannot be assigned in the portal: fall back to
   // what the owner's rule gives them, rather than send what will be refused.
@@ -1178,8 +1184,10 @@ function ItemRow({ item, onChanged, setNote }: {
               ? { create_company: { name: companyName,
                                     domain: companyDomain } }
               : { company_id: company }) }
+      : item.kind === "deliverable" ? { promised }
       : item.kind === "action_item"
         ? { owner_side: side,
+            ...(side === "practice" ? { promised } : {}),
             ...(side === "practice" && assignee ? { assignee_id: assignee } : {}),
             ...(side === "other" && outcome === "portal" ? filingBody(filing) : {}),
             ...(side === "other" && owners.length > 0
@@ -1249,6 +1257,13 @@ function ItemRow({ item, onChanged, setNote }: {
                   .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             )}
+            {side === "practice" && (
+              <label className="inline small">
+                <input type="checkbox" style={{ width: "auto" }} checked={promised}
+                  onChange={(e) => setPromised(e.target.checked)} />
+                {" "}{promisedLabel}
+              </label>
+            )}
             <label className="choice">
               <input type="radio" name={`side-${item.id}`} checked={side === "other"}
                 disabled={!ownerName} onChange={() => setSide("other")} />
@@ -1309,6 +1324,14 @@ function ItemRow({ item, onChanged, setNote }: {
             </fieldset>
           )}
         </div>
+      )}
+
+      {!decided && item.kind === "deliverable" && (
+        <label className="inline small" style={{ marginTop: "var(--s2)" }}>
+          <input type="checkbox" style={{ width: "auto" }} checked={promised}
+            onChange={(e) => setPromised(e.target.checked)} />
+          {" "}{promisedLabel}
+        </label>
       )}
 
       {!decided && !ours && item.kind === "participant" && (

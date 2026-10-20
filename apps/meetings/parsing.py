@@ -8,7 +8,9 @@ Two constraints the prompt is written around:
 
 1. **Assert nothing the notes do not carry** — the same rule the digest and the
    strategy map work under (AC-3.5). No invented owners, no invented dates.
-2. **Extract participants, action items and deliverables, and nothing else.**
+2. **Extract participants and action items, and nothing else.** A promise to
+   the client is an action item flagged `promised_to_client` (2026-10-20); the
+   separate "deliverables" list is gone for new proposals (`folding.py`).
    Decisions, risks and sentiment are out of scope for Beta and a model asked
    for them will happily supply them.
 """
@@ -57,8 +59,10 @@ name them and "due_date" only if the notes give one. For each, "owner_side": \
 "practice" when the owner is the fractional executive or someone on their team, \
 "other" when it is anyone else, "" when the notes name nobody; and when \
 "other", "owner_kind": one of client, prospect, vendor, third_party, from how \
-the notes describe them. And "deliverables": something promised TO the client \
-that somebody outside the room is waiting on.
+the notes describe them. "promised_to_client": true when it is something the \
+practice promised the client, which the client is now waiting on; false \
+otherwise. **Each thing appears once**: a promise is an action item with that \
+flag, never a second line.
 
 **Every item carries "excerpt": the sentence from the notes it came from**, \
 copied exactly, so the reviewer can check it. An item you cannot quote is an \
@@ -66,13 +70,15 @@ item you invented — leave it out.
 
 **Assert nothing the notes do not carry.** No owner nobody named, no date \
 nobody agreed, no company nobody mentioned. Do not extract decisions, risks or \
-sentiment: participants, action items and deliverables only.
+sentiment: participants and action items only.
 
 Reply with JSON only: {"title": "", "meeting_date": null, "summary": "", \
 "participants": [{"name": "", "email": "", "title": "", "company": "", \
 "contact_type": "", "excerpt": ""}], "action_items": [{"text": "", "owner": "", \
-"owner_side": "", "owner_kind": "", "due_date": null, "excerpt": ""}], "deliverables": [{"text": "", "owner": "", \
-"due_date": null, "excerpt": ""}]}. No prose around it, no markdown fence."""
+"owner_side": "", "owner_kind": "", "promised_to_client": false, "due_date": null, \
+"excerpt": ""}]}. No prose around it, no markdown fence.
+
+Use American spelling."""
 
 VALID_TYPES = {"prospect", "client", "referral_partner", "vendor", "coworker"}
 
@@ -190,38 +196,55 @@ def _build(source_file, payload, call) -> MeetingProposal:
                 "service_categories": [],
             })
 
-    for kind, key in ((ProposalItem.Kind.ACTION_ITEM, "action_items"),
-                      (ProposalItem.Kind.DELIVERABLE, "deliverables")):
-        for position, raw in enumerate(payload.get(key) or []):
-            if not isinstance(raw, dict) or not str(raw.get("text") or "").strip():
-                continue
-            owner = str(raw.get("owner") or "").strip()
-            body = {
-                "text": str(raw["text"]).strip(),
-                "proposed_owner_text": owner,
-                # Resolved to a contact where the name is unambiguous; left as
-                # text where it is not, exactly as a map row's owner is
-                # (FR-4.29a). Guessing an accountable person is worse than
-                # leaving the field.
-                "proposed_owner_contact_id": _owner_contact_id(tenant, owner),
-                "proposed_due_date": (_a_date(raw.get("due_date")).isoformat()
-                                      if _a_date(raw.get("due_date")) else None),
-            }
-            if kind == ProposalItem.Kind.DELIVERABLE:
-                body["proposed_stakeholders"] = []
-            else:
-                # Who owns it (owner, 2026-09-28): Claude's reading, checked
-                # against the staff roster and the owner's own record.
-                from apps.meetings import ownership
+    # Each thing once (2026-10-20). A "deliverables" list the model sends
+    # anyway is read as promised action items, folded into one it repeats.
+    from apps.meetings import folding
 
-                body.update(ownership.classify(
-                    tenant, owner_text=owner,
-                    owner_contact_id=body["proposed_owner_contact_id"],
-                    claude_side=str(raw.get("owner_side") or "").strip().lower(),
-                    claude_kind=str(raw.get("owner_kind") or "").strip().lower()))
-            ProposalItem.objects.create(
-                tenant=tenant, proposal=proposal, kind=kind, position=position,
-                source_excerpt=str(raw.get("excerpt") or "").strip(), payload=body)
+    made = []
+    raw_items = [(ProposalItem.Kind.ACTION_ITEM, raw, False)
+                 for raw in payload.get("action_items") or []]
+    raw_items += [(ProposalItem.Kind.ACTION_ITEM, raw, True)
+                  for raw in payload.get("deliverables") or []]
+    for position, (kind, raw, from_deliverables) in enumerate(raw_items):
+        if not isinstance(raw, dict) or not str(raw.get("text") or "").strip():
+            continue
+        if from_deliverables:
+            found = folding.twin(made, str(raw["text"]), str(raw.get("excerpt") or ""))
+            if found is not None:
+                folding.merge_into(found, {"proposed_due_date": (
+                    _a_date(raw.get("due_date")).isoformat()
+                    if _a_date(raw.get("due_date")) else None)})
+                continue
+            raw = {**raw, "owner_side": raw.get("owner_side") or "practice",
+                   "promised_to_client": True}
+        owner = str(raw.get("owner") or "").strip()
+        body = {
+            "text": str(raw["text"]).strip(),
+            "proposed_owner_text": owner,
+            # Resolved to a contact where the name is unambiguous; left as
+            # text where it is not, exactly as a map row's owner is
+            # (FR-4.29a). Guessing an accountable person is worse than
+            # leaving the field.
+            "proposed_owner_contact_id": _owner_contact_id(tenant, owner),
+            "proposed_due_date": (_a_date(raw.get("due_date")).isoformat()
+                                  if _a_date(raw.get("due_date")) else None),
+        }
+        body["promised_to_client"] = raw.get("promised_to_client") is True
+        if kind == ProposalItem.Kind.DELIVERABLE:
+            body["proposed_stakeholders"] = []
+        else:
+            # Who owns it (owner, 2026-09-28): Claude's reading, checked
+            # against the staff roster and the owner's own record.
+            from apps.meetings import ownership
+
+            body.update(ownership.classify(
+                tenant, owner_text=owner,
+                owner_contact_id=body["proposed_owner_contact_id"],
+                claude_side=str(raw.get("owner_side") or "").strip().lower(),
+                claude_kind=str(raw.get("owner_kind") or "").strip().lower()))
+        made.append(ProposalItem.objects.create(
+            tenant=tenant, proposal=proposal, kind=kind, position=position,
+            source_excerpt=str(raw.get("excerpt") or "").strip(), payload=body))
 
     source_file.state = MeetingSourceFile.State.PARSED
     source_file.error = ""

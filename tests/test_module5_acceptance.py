@@ -169,9 +169,9 @@ PARSED = json.dumps({
         {"text": "Send the Q3 margin breakdown", "owner": "Dana Reyes",
          "due_date": "2026-09-25",
          "excerpt": "Dana said she would send the Q3 margin breakdown by Friday."},
-    ],
-    "deliverables": [
+        # A promise is an action item flagged, not a second list (2026-10-20).
         {"text": "Rebuild the inspection checklist", "owner": "", "due_date": None,
+         "owner_side": "practice", "promised_to_client": True,
          "excerpt": "We promised to rebuild the inspection checklist for Acme."},
     ],
 })
@@ -363,13 +363,13 @@ def test_ac_5_8_approval_creates_records_and_authorises_no_send(
                         address="nina@acme.invalid", is_primary=True)
     fake_claude.reply = json.dumps({
         "title": "A meeting", "meeting_date": None, "summary": "", "participants": [],
-        "action_items": [],
-        "deliverables": [{"text": "Rebuild the inspection checklist", "owner": "",
+        "action_items": [{"text": "Rebuild the inspection checklist", "owner": "",
+                          "owner_side": "practice", "promised_to_client": True,
                           "due_date": None, "excerpt": "We promised to rebuild it."}],
     })
     ingest.poll(seeded_tenant, client=FakeDrive(pages=one_page([a_file("f1")]),
                                                 texts={"f1": NOTES}))
-    item = ProposalItem.objects.get(kind=ProposalItem.Kind.DELIVERABLE)
+    item = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM)
 
     made = api.as_(ff_user).post(f"/api/proposal-items/{item.pk}/approve/", {
         "client_company": str(company.pk),
@@ -693,7 +693,8 @@ def test_a_reparse_supersedes_and_leaves_approved_items_alone(
     ingest.poll(seeded_tenant, client=FakeDrive(pages=one_page([a_file("f1")]),
                                                 texts={"f1": NOTES}))
     proposal = MeetingProposal.objects.get()
-    approved = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM)
+    approved = ProposalItem.objects.get(kind=ProposalItem.Kind.ACTION_ITEM,
+                                        payload__text="Send the Q3 margin breakdown")
     api.as_(ff_user).post(f"/api/proposal-items/{approved.pk}/approve/", {},
                           content_type="application/json")
 

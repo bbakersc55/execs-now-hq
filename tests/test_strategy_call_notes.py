@@ -16,6 +16,7 @@ import pytest
 from apps.meetings import drive, ingest
 from apps.strategy import ai, call_notes, emails, pdf, services
 from apps.strategy.models import StrategyCallNotes, StrategyMapRow, StrategyPathNote
+from apps.tenancy import claude
 from apps.tenancy.context import tenant_context
 from apps.tenancy.models import AiCall, AuditEvent
 
@@ -483,7 +484,7 @@ def test_without_notes_the_drafts_are_exactly_as_they_were(session, ff, api, fak
     fake_claude.reply = row_reply(("Pricing Waits For Dana", "Quotes wait for Dana", PASSAGE))
     done = post(api, ff, base(session) + "draft-rows/").json()
     system, user = sent(fake_claude)
-    assert system == ai.ROWS_SYSTEM and "CALL NOTES" not in user
+    assert system == claude.drafting(ai.ROWS_SYSTEM) and "CALL NOTES" not in user
     assert set(done) == {"drafted"}, "no cost key without notes"
     assert "from_call_notes" not in done["drafted"][0], "a passage with no notes is nothing"
 

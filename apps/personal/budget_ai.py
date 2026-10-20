@@ -98,7 +98,7 @@ def explain_budget(ledger, tenant) -> dict:
         raise PersonalError(now["refused"], status=409)
     try:
         text, call = claude.complete_with_call(
-            tenant=tenant, purpose=PURPOSE, system=SYSTEM, user_text=explain_input(ledger),
+            tenant=tenant, purpose=PURPOSE, system=claude.drafting(SYSTEM), user_text=explain_input(ledger),
             trigger="button", max_tokens=MAX_TOKENS, effort="low")
     except claude.ClaudeRefused:
         raise PersonalError("Claude declined to answer that. Nothing was changed.",

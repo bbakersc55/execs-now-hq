@@ -132,7 +132,7 @@ def propose(ledger, tenant) -> dict:
     text, by_ref, personal, business = what_is_sent(ledger, tenant)
     try:
         answer, call = claude.complete_with_call(
-            tenant=tenant, purpose=PURPOSE, system=SYSTEM, user_text=text,
+            tenant=tenant, purpose=PURPOSE, system=claude.drafting(SYSTEM), user_text=text,
             trigger="button", max_tokens=MAX_TOKENS, effort="low")
     except claude.ClaudeRefused:
         raise PersonalError("Claude declined to sort these. Nothing was changed.",

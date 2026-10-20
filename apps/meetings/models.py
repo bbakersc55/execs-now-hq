@@ -415,19 +415,32 @@ class Commitment(TenantScopedModel):
       (`task`), and it shows as waiting on the client.
 
     Open commitments are the "Waiting on others" screen.
+
+    **Ours** (2026-10-20): a task the practice promised the client, ticked
+    "Promised to <company>" in the queue. `side` is `ours`, the outcome is
+    `promised`, `task` is the practice's own task, and `company` (with
+    `contact` when known) is who is waiting on it. It is done when the task is.
     """
+
+    class Side(models.TextChoices):
+        THEIRS = "theirs", "Someone else owes it"
+        OURS = "ours", "The practice owes it"
 
     class Outcome(models.TextChoices):
         FOLLOW_UP = "follow_up", "Follow up"
         RECORD_ONLY = "record_only", "Record only"
         PORTAL = "portal", "Assigned in the portal"
+        PROMISED = "promised", "Our task"
 
     class State(models.TextChoices):
         OPEN = "open", "Open"
         DONE = "done", "Done"
 
-    #: Who owes it. The contact when the name matched one; the name as the
-    #: notes gave it either way, so an unmatched third party still reads right.
+    side = models.CharField(max_length=6, choices=Side.choices, default=Side.THEIRS,
+                            db_default=Side.THEIRS)
+    #: Who owes it, for theirs; who is waiting on it, for ours. The contact when
+    #: the name matched one; the name as the notes gave it either way, so an
+    #: unmatched third party still reads right.
     contact = models.ForeignKey("crm.Contact", null=True, blank=True,
                                 on_delete=models.SET_NULL, related_name="commitments")
     owner_name = models.CharField(max_length=255, blank=True, default="")

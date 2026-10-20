@@ -9,6 +9,7 @@ import { Banner, Card, Empty, PageLinks, Pill, when, positionsLabel } from "../c
 import { AddCompany } from "./AddCompany";
 import { Company, Contact, Me, api } from "../lib/api";
 import { ClientTeamsCard } from "../components/ClientTeams";
+import { CompanyCommitments } from "../components/ContactCommitments";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
@@ -143,6 +144,9 @@ export function CompanyDetail({ me }: { me: Me }) {
       {/* A table with a column per team: it takes the page's width, below the
           pair above, rather than half of it (Bryan, 2026-10-14). */}
       <ClientTeamsCard me={me} company={c} />
+
+      {/* Promises made in meetings, open and done (2026-10-20). */}
+      <CompanyCommitments companyId={c.id} />
 
       <div className="record-cols">
         <CallNotes me={me} company={id!} />

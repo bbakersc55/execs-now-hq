@@ -147,7 +147,7 @@ def _ask(tenant, *, purpose, system, text, effort=None):
         raise PersonalError(now["refused"], status=409)
     try:
         answer, call = claude.complete_with_call(
-            tenant=tenant, purpose=purpose, system=system, user_text=text,
+            tenant=tenant, purpose=purpose, system=claude.drafting(system), user_text=text,
             trigger="button", max_tokens=MAX_TOKENS, effort=effort)
     except claude.ClaudeRefused:
         raise PersonalError("Claude declined to answer that. Nothing was changed.",

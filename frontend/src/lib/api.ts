@@ -1439,11 +1439,16 @@ export interface ProposalItem {
     owner_practice_name?: string;
     owner_has_seat?: boolean;
     proposed_outcome?: "follow_up" | "record_only" | "portal" | "";
+    /** Claude's reading (2026-10-20): something the practice promised the
+     *  client. Pre-ticks "Promised to <company>". */
+    promised_to_client?: boolean;
   };
   /** The owner's contact, by name, when the notes' owner matched one. */
   owner_contact_name?: string;
   /** The owner's portal seat as it is now, for a pending action item. */
   owner_seat?: PortalSeat | null;
+  /** The client a promise in this meeting is made to, for a pending line. */
+  promised_to?: { id: string; name: string } | null;
 }
 
 /** A client user's portal sign-in: who, and for which client company. */
@@ -1453,7 +1458,10 @@ export interface PortalSeat { user_id: string; company_id: string; company_name:
 export interface Commitment {
   id: string;
   state: "open" | "done";
-  outcome: "follow_up" | "record_only" | "portal";
+  outcome: "follow_up" | "record_only" | "portal" | "promised";
+  /** "theirs": someone else owes it. "ours" (2026-10-20): the practice
+   *  promised it to the client. */
+  side?: "theirs" | "ours";
   outcome_label: string;
   owner_name: string;
   owner_kind: string;

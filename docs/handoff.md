@@ -1,7 +1,7 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-20**, after U2's import door. **The next session starts at "Where things
+2026-10-20**, after promises in the meeting queue. **The next session starts at "Where things
 stand" just below, then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
 and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
@@ -13,6 +13,19 @@ truth; this covers what they don't, and what changed since 9/30.
 
 ## Where things stand (2026-10-20): Release 18 is live
 
+- **Meeting queue: a promise is a mark on a task (10/20, on `dev`, not
+  released; migration `meetings 0008`, one added column).** The parse prompt
+  asks for each thing once, a promise flagged `promised_to_client` on its
+  action item; "What was promised" is gone for new proposals, and an older
+  pending one folds a repeated line into its action item before it is shown
+  (`apps/meetings/folding.py`). A task line's "Promised to <company>" tick
+  (pre-ticked from Claude's flag) makes the task and a commitment with
+  `side = ours`, outcome "Our task", done when the task is. It shows as
+  "Waiting on us" on the company page, never on Waiting on others or its
+  dashboard count; the portal lists no commitments, so it shows there only
+  as the client-visible task. Every drafting prompt now ends "Use American
+  spelling." (`claude.drafting`); the strategy goldens moved by that line
+  only.
 - **U2, one import door (10/20, on `dev`, not released):** Import in the
   sidebar (was "CSV import") is now a page at `/import` asking "What are you
   importing?": contacts and companies (CSV, owner and assistant), a business

@@ -712,7 +712,7 @@ def draft(session, *, trigger="button") -> dict | None:
         return None
     try:
         text = claude.complete(
-            tenant=session.tenant, purpose=PURPOSE, system=ai._system(SYSTEM, session),
+            tenant=session.tenant, purpose=PURPOSE, system=claude.drafting(ai._system(SYSTEM, session)),
             user_text=user_text, target_type="strategy_session", target_id=session.pk,
             trigger=trigger, max_tokens=3000)
     except (claude.ClaudeUnavailable, claude.ClaudeRefused):

@@ -225,6 +225,16 @@ def cost_of(model: str, input_tokens: int, output_tokens: int) -> Decimal:
     return (per_in * input_tokens + per_out * output_tokens) / Decimal(1_000_000)
 
 
+#: Appended to every prompt where Claude drafts words a person reads (owner,
+#: 2026-10-20): the app reads in American English throughout.
+AMERICAN_SPELLING = "Use American spelling."
+
+
+def drafting(system: str) -> str:
+    """A drafting prompt, with the spelling line at its end."""
+    return f"{system.rstrip()}\n\n{AMERICAN_SPELLING}"
+
+
 def complete(*, tenant, **kwargs) -> str:
     """One request, one text answer. Raises rather than returning a partial."""
     return complete_with_call(tenant=tenant, **kwargs)[0]
