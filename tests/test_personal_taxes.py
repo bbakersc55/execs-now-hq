@@ -693,3 +693,35 @@ def test_tenant_isolation_another_owner_reaches_none_of_stop_4(
     line.refresh_from_db()
     assert line.draw_entry_id is None
     assert not FinanceEntry.all_objects.filter(tenant=seeded_tenant, amount_cents=777_700)
+
+
+# ================================================= the QBI deduction (10/19)
+
+@pytest.mark.django_db
+def test_the_qbi_deduction_is_off_by_default_and_lowers_federal_tax_only(
+        ledger, practice, seeded_tenant):
+    inputs(ledger)
+    off = taxes.estimate(ledger, seeded_tenant, YEAR, ON)
+    assert off["inputs"]["qbi"] == "" and off["qbi_cents"] == 0
+    assert off["federal_taxable_cents"] == off["taxable_cents"]
+    inputs(ledger, qbi="20")
+    on = taxes.estimate(ledger, seeded_tenant, YEAR, ON)
+    profit = on["profit"]["for_year_cents"]
+    assert on["qbi_cents"] == profit * 20 // 100
+    assert on["federal_taxable_cents"] == on["taxable_cents"] - on["qbi_cents"]
+    assert on["federal_cents"] == tax_tables.income_tax(
+        on["federal_taxable_cents"], tax_tables.YEARS[2026]["brackets"]["joint"])
+    assert on["federal_cents"] < off["federal_cents"]
+    # Self-employment tax and the state's figure do not move.
+    assert (on["se_tax_cents"], on["state_cents"], on["taxable_cents"]) == (
+        off["se_tax_cents"], off["state_cents"], off["taxable_cents"])
+    assert on["total_cents"] == off["total_cents"] - (off["federal_cents"]
+                                                      - on["federal_cents"])
+    # With a rate instead of the brackets, the rate applies after it too.
+    inputs(ledger, qbi="20", effective_rate_percent="18")
+    rated = taxes.estimate(ledger, seeded_tenant, YEAR, ON)
+    assert rated["federal_cents"] == round(rated["federal_taxable_cents"] * 0.18)
+    with pytest.raises(PersonalError):
+        taxes.save_inputs(ledger, year=YEAR, qbi="15")
+    inputs(ledger, qbi="", effective_rate_percent=None)
+    assert taxes.estimate(ledger, seeded_tenant, YEAR, ON)["qbi_cents"] == 0

@@ -118,6 +118,30 @@ describe("the Taxes page (P6 M4 stop 4, decision 21)", () => {
       .map((c) => c.url)).toContain("/api/personal/taxes/envelope"));
   });
 
+  it("offers the QBI deduction, off by default, with its note, and shows it when on",
+    async () => {
+      const user = userEvent.setup();
+      const on = { ...ESTIMATE, inputs: { ...INPUTS, qbi: "20" as const },
+                   qbi_cents: 5_957_454, federal_taxable_cents: 26_267_044 };
+      const fetchMock = mockApi({ "GET /api/personal/taxes": ESTIMATE,
+                                  "POST /api/personal/taxes/": on });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<PersonalTaxes />);
+      const qbi = await screen.findByLabelText("QBI deduction");
+      expect(qbi).toHaveValue("");
+      expect(within(qbi).getAllByRole("option").map((o) => o.textContent))
+        .toEqual(["None", "20% of net profit"]);
+      expect(screen.getByText(/Consulting is a specified service; the deduction phases out/))
+        .toBeInTheDocument();
+      expect(screen.queryByText(/Less the QBI deduction/)).toBeNull();
+      await user.selectOptions(qbi, "20");
+      await user.click(screen.getAllByRole("button", { name: "Save" })[0]);
+      await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+        .toMatchObject({ qbi: "20" }));
+      expect(await screen.findByText("Less the QBI deduction, for federal only"))
+        .toBeInTheDocument();
+    });
+
   it("asks for what is missing before it works anything out", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/personal/taxes": {
       ...ESTIMATE, ready: false, missing: ["your filing status"],

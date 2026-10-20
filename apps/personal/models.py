@@ -561,6 +561,9 @@ class PersonalTaxYear(OwnedModel):
     medical_miles = models.PositiveIntegerField(null=True, blank=True)
     charitable_miles = models.PositiveIntegerField(null=True, blank=True)
     hsa_cents = models.BigIntegerField(null=True, blank=True)
+    #: The qualified business income deduction (owner, 2026-10-19): "" none,
+    #: or "20" (20% of net profit). Off unless chosen; federal income tax only.
+    qbi = models.CharField(max_length=4, blank=True, default="", db_default="")
 
     class Meta:
         db_table = "personal_tax_year"

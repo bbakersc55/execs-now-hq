@@ -698,8 +698,11 @@ the isolation family.
    overstate the demo's by about $11,000; the Medicare 2.9% goes on above it.
    Not counted, and said under the figures: the 20% qualified business income
    deduction, the 0.9% additional Medicare tax, credits. QBI is the big one for
-   most fractionals; it could be an input ("last year's QBI deduction") if
-   you want it.
+   most fractionals. **Added 2026-10-19 (Bryan):** a QBI choice on the
+   Taxes page, off by default, "None" or "20% of net profit", with the note
+   that consulting is a specified service whose deduction phases out above an
+   income threshold; when on it lowers the federal income-tax part only
+   (`personal 0006`, additive). All stop 4 choices kept (Bryan, 2026-10-19).
 2. **The year's profit is the pace so far** (so far ÷ the share of the year
    gone by), not the so-far figure, so October does not under-estimate.
 3. **The state rate applies to federal taxable income** (Colorado's base);

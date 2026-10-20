@@ -56,7 +56,7 @@ DUE = ((4, 15, 0, "First quarter"), (6, 15, 0, "Second quarter"),
        (9, 15, 0, "Third quarter"), (1, 15, 1, "Fourth quarter"))
 INPUTS = ("filing_status", "state", "state_rate_percent", "last_year_tax_cents",
           "last_year_taxable_cents", "effective_rate_percent", "other_income_cents",
-          "medical_miles", "charitable_miles", "hsa_cents")
+          "medical_miles", "charitable_miles", "hsa_cents", "qbi")
 MONEY = ("last_year_tax_cents", "last_year_taxable_cents", "other_income_cents",
          "hsa_cents")
 RATES = ("state_rate_percent", "effective_rate_percent")
@@ -136,6 +136,10 @@ def save_inputs(ledger, *, year: int, **fields) -> PersonalTaxYear:
             value = value or ""
             if value and value not in tax_tables.STATUSES:
                 raise PersonalError("The filing status is single, joint, separate or head.")
+        elif name == "qbi":
+            value = value or ""
+            if value not in ("", "20"):
+                raise PersonalError("The QBI deduction is none (\"\") or 20% (\"20\").")
         elif name == "state":
             value = str(value or "").strip().upper()
             if value and (len(value) != 2 or not value.isalpha()):
@@ -345,11 +349,15 @@ def estimate(ledger, tenant, year: int | None = None, today: date | None = None)
     adjusted = max(0, gross - se // 2)
     deduction = _deduction(ledger, year, status, figures)
     taxable = max(0, adjusted - deduction["cents"])
+    # Owner, 2026-10-19: the QBI deduction, if chosen, lowers federal income
+    # tax only; self-employment tax and the state's figure are untouched.
+    qbi = profit_year * 20 // 100 if row.qbi == "20" else 0
+    federal_taxable = max(0, taxable - qbi)
     if row.effective_rate_percent is not None:
-        federal = int(round(taxable * float(row.effective_rate_percent) / 100))
+        federal = int(round(federal_taxable * float(row.effective_rate_percent) / 100))
         method = "rate"
     else:
-        federal = tax_tables.income_tax(taxable, figures["brackets"][status])
+        federal = tax_tables.income_tax(federal_taxable, figures["brackets"][status])
         method = "brackets"
     state = int(round(taxable * float(row.state_rate_percent or 0) / 100))
     total = se + federal + state
@@ -378,7 +386,8 @@ def estimate(ledger, tenant, year: int | None = None, today: date | None = None)
     result.update({
         "method": method, "se_tax_cents": se, "se_half_cents": se // 2,
         "gross_cents": gross, "adjusted_cents": adjusted, "deduction": deduction,
-        "taxable_cents": taxable, "federal_cents": federal, "state_cents": state,
+        "taxable_cents": taxable, "qbi_cents": qbi, "federal_taxable_cents": federal_taxable,
+        "federal_cents": federal, "state_cents": state,
         "state_rate_percent": _percent(row.state_rate_percent), "total_cents": total,
         "required_cents": required, "still_needed_cents": still,
         "safe_harbor": harbor, "quarters": quarters, "by_next": by_next,
@@ -503,7 +512,7 @@ def _inputs_out(row, year) -> dict:
         value = getattr(row, name) if row is not None else None
         if name in RATES:
             value = _percent(value)
-        elif name in ("filing_status", "state"):
+        elif name in ("filing_status", "state", "qbi"):
             value = value or ""
         out[name] = value
     return out

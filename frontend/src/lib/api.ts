@@ -2231,6 +2231,8 @@ export interface TaxInputs {
   last_year_tax_cents: number | null; last_year_taxable_cents: number | null;
   effective_rate_percent: string | null; other_income_cents: number | null;
   medical_miles: number | null; charitable_miles: number | null; hsa_cents: number | null;
+  /** The QBI deduction: "" none, "20" for 20% of net profit. */
+  qbi?: "" | "20";
 }
 
 export interface TaxPayment {
@@ -2256,7 +2258,8 @@ export interface TaxEstimate {
   gross_cents?: number; adjusted_cents?: number;
   deduction?: { cents: number; kind: "standard" | "itemized"; standard_cents: number;
                 itemized_cents: number };
-  taxable_cents?: number; federal_cents?: number; state_cents?: number;
+  taxable_cents?: number; qbi_cents?: number; federal_taxable_cents?: number;
+  federal_cents?: number; state_cents?: number;
   state_rate_percent?: string | null; total_cents?: number; required_cents?: number;
   still_needed_cents?: number;
   safe_harbor?: { percent: number; last_year_tax_cents: number; target_cents: number;

@@ -105,7 +105,7 @@ function TaxInputsCard({ data, busy, onSave }: {
     rate: i.effective_rate_percent ?? "",
     last_year_tax_cents: asText(i.last_year_tax_cents),
     last_year_taxable_cents: asText(i.last_year_taxable_cents),
-    other_income_cents: asText(i.other_income_cents),
+    other_income_cents: asText(i.other_income_cents), qbi: i.qbi ?? "",
   });
   const [draft, setDraft] = useState(start);
   useEffect(() => { setDraft(start()); }, [data.year]);  // eslint-disable-line
@@ -141,6 +141,15 @@ function TaxInputsCard({ data, busy, onSave }: {
           <input aria-label="State rate" value={draft.state_rate} style={{ width: "5rem" }}
             placeholder="4.4" onChange={(e) => set("state_rate", e.target.value)} />
         </Field>
+        <Field label="QBI deduction">
+          <select aria-label="QBI deduction" value={draft.qbi}
+            onChange={(e) => set("qbi", e.target.value)}>
+            <option value="">None</option>
+            <option value="20">20% of net profit</option>
+          </select>
+          <div className="tiny muted" style={{ maxWidth: "16rem" }}>Consulting is a specified
+            service; the deduction phases out above an income threshold. Ask your CPA.</div>
+        </Field>
         <Field label="Or a federal rate, %">
           <input aria-label="Effective federal rate" value={draft.rate}
             style={{ width: "5rem" }} placeholder="none"
@@ -164,7 +173,7 @@ function TaxInputsCard({ data, busy, onSave }: {
           effective_rate_percent: draft.rate.trim() || null,
           last_year_tax_cents: cents(draft.last_year_tax_cents),
           last_year_taxable_cents: cents(draft.last_year_taxable_cents),
-          other_income_cents: cents(draft.other_income_cents),
+          other_income_cents: cents(draft.other_income_cents), qbi: draft.qbi,
         })}>Save</button>
       {bad && <span className="small" style={{ color: "var(--bad)" }}> An amount is
         dollars and cents, like 61840.</span>}
@@ -208,6 +217,11 @@ function EstimateCard({ data }: { data: TaxEstimate }) {
               ? `Larger than the standard ${money(data.deduction.standard_cents)}`
               : `Your itemized total so far is ${money(data.deduction?.itemized_cents)}`} />
           <Line label="Taxable income" cents={data.taxable_cents} />
+          {!!data.qbi_cents && (
+            <Line label="Less the QBI deduction, for federal only" cents={-data.qbi_cents}
+              note="20% of net profit, as you chose. Consulting is a specified service; the
+                deduction phases out above an income threshold. Ask your CPA." />
+          )}
           <Line label="Federal income tax" cents={data.federal_cents}
             note={data.method === "rate" ? `At the rate you gave, ${
               data.inputs.effective_rate_percent}%`
