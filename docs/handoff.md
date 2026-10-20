@@ -11,7 +11,15 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## Where things stand (2026-10-20): Release 17 is live
+## Where things stand (2026-10-20): Release 18 is live
+
+- **Release 18** (04:30–04:32 UTC): `main` at `6af19f2`, `crm 0038` applied
+  by the runbook, OK; R6 skipped (web's own deployment SUCCESS). It carries
+  the campaign test copy (its files, bracketed placeholders, the test line)
+  and the first-name fallback.
+- **The demo still needs its reseed** to show stop 4's seeded data.
+
+## 2026-10-20, early: Release 17
 
 - **Release 17 is live** (2026-10-20 03:36–03:38 UTC): `main` at `93bbd6a`,
   migrations `crm 0037` and `personal 0003–0006` applied by the runbook, all

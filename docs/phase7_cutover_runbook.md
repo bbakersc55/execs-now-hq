@@ -465,6 +465,16 @@ and 03:37:36, by itself** (as at Release 14), before the R6 redeploy sent at
 Release 14's note says to. **Push to new code: about 1 min 30 s.** `/healthz`
 200 on all 24 samples at 5 s from 03:35:54. **Worker paused about 36 s.**
 
+**Observed at Release 18 (2026-10-20 UTC, 1 migration, `crm 0038`: the
+campaign test copy and the first-name fallback):** R1: the owner's run-now
+dump of 04:25:48 (3,577,692 bytes). `main` fast-forwarded from `93bbd6a` to
+`6af19f2` and pushed 04:30:43; worker `WAITING` 04:31:21 listing exactly
+`crm.0038_campaign_first_name_fallback`; applied 04:31:35–38, OK; `migrations
+current` 04:31:54, running 04:31:57. **R6 skipped, as Release 14's note
+allows:** `railway deployment list --service execs-now-hq` showed the push's
+own web deployment SUCCESS. `/healthz` 200 on all samples at 5 s. **Worker
+paused about 36 s.**
+
 ---
 
 ## Part A — the owner's steps, in order
