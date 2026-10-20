@@ -1,7 +1,7 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-19**, after M4 stop 4. **The next session starts at "Where things
+2026-10-20**, after the personal-finance legal texts. **The next session starts at "Where things
 stand" just below, then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
 and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
@@ -13,11 +13,21 @@ truth; this covers what they don't, and what changed since 9/30.
 
 ## Where things stand (2026-10-20): Release 18 is live
 
+- **Personal finance's legal texts (10/20, on `dev`, not released):** the
+  privacy policy draft (`docs/google_verification.md` §5) gains a "Personal
+  finance" paragraph, and the beta agreement is **v3**
+  (`docs/legal/beta_agreement_v3.md`: v1 plus clause 8, estimates not tax
+  advice, no real figures on a demo copy). v3, not v2: v2's card-on-file
+  costs clause still waits for subscriptions, which will ship as v4 (v3 with
+  v2's clause 3). Every practice owner and every demo visitor is asked once
+  more at their next sign-in; a visitor's tick now counts only for the
+  version ticked (`visitors.must_agree`). The privacy policy is published
+  on the website, not by the app: Bryan updates getexecutivesnow.com/hq/privacy.
 - **Release 18** (04:30–04:32 UTC): `main` at `6af19f2`, `crm 0038` applied
   by the runbook, OK; R6 skipped (web's own deployment SUCCESS). It carries
   the campaign test copy (its files, bracketed placeholders, the test line)
   and the first-name fallback.
-- **The demo still needs its reseed** to show stop 4's seeded data.
+- The demo was reseeded from the terminal on 10/19, after stop 4.
 
 ## 2026-10-20, early: Release 17
 

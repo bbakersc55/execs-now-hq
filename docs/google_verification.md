@@ -193,6 +193,20 @@ requires.
 > it if the practice turns reply collection on; recordings a user chooses to
 > make, and their transcripts; usage and cost totals needed to run the service.
 >
+> **Personal finance.** A practice owner can keep a personal side in the app for
+> their own household's money. It stores the names of household members and
+> their income; bank and card lines the user marks as personal; debts;
+> retirement and investment balances; and tax estimates, with the figures
+> entered for them. The personal ledger belongs to the signed-in user, not to
+> the practice: the practice's other users and its clients cannot see it. When
+> the user asks Claude to sort or explain personal lines, the lines'
+> descriptions, amounts and categories are sent to Anthropic under the
+> practice's own Anthropic key (on the demo, under the demo's key). The app
+> never asks for or stores bank sign-in details: personal lines come from files
+> the user uploads, and account numbers are not stored, only their last four
+> digits. When a demo copy is deleted, the personal data in it is deleted with
+> it.
+>
 > **Google user data.** With the user's permission, the app uses Google data
 > only to: sign the user in (name and email address); send the practice's email
 > from the user's Gmail address after a person approves each message, or when a

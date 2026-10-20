@@ -140,7 +140,7 @@ def test_a_practice_owner_can_use_nothing_until_they_accept(api, blue_sky_owner)
                      content_type="application/json")
     assert ok.status_code == 200
     row = AgreementAcceptance.all_objects.get(user=blue_sky_owner.user)
-    assert (row.version, row.text_sha256) == ("v1", terms["sha256"])
+    assert (row.version, row.text_sha256) == (agreement.VERSION, terms["sha256"])
     assert row.tenant_id == blue_sky_owner.tenant_id
     assert client.get("/api/contacts/").status_code == 200
     assert client.get("/api/me").json()["agreement_required"] is False
@@ -158,10 +158,10 @@ def test_the_platform_owner_and_staff_are_not_asked(api, platform_owner, blue_sk
 def test_a_new_version_asks_again(api, blue_sky_owner, monkeypatch):
     terms = agreement.current()
     AgreementAcceptance.all_objects.create(tenant=blue_sky_owner.tenant,
-                                           user=blue_sky_owner.user, version="v1",
+                                           user=blue_sky_owner.user, version=agreement.VERSION,
                                            text_sha256=terms["sha256"])
     assert api.as_(blue_sky_owner).get("/api/me").json()["agreement_required"] is False
-    monkeypatch.setattr(agreement, "VERSION", "v2")
+    monkeypatch.setattr(agreement, "VERSION", "v4")
     assert api.as_(blue_sky_owner).get("/api/me").json()["agreement_required"] is True
 
 
@@ -170,7 +170,7 @@ def test_a_new_version_asks_again(api, blue_sky_owner, monkeypatch):
 @pytest.mark.django_db
 def test_a_new_practice_starts_with_everything_open(api, blue_sky_owner):
     AgreementAcceptance.all_objects.create(tenant=blue_sky_owner.tenant,
-                                           user=blue_sky_owner.user, version="v1",
+                                           user=blue_sky_owner.user, version=agreement.VERSION,
                                            text_sha256=agreement.current()["sha256"])
     items = api.as_(blue_sky_owner).get("/api/getting-started").json()
     assert [i["key"] for i in items] == ["branding", "words", "gmail", "anthropic",
@@ -182,7 +182,7 @@ def test_a_new_practice_starts_with_everything_open(api, blue_sky_owner):
 def test_each_item_ticks_from_the_practices_own_data(api, blue_sky_owner, seeded_tenant):
     tenant = blue_sky_owner.tenant
     AgreementAcceptance.all_objects.create(tenant=tenant, user=blue_sky_owner.user,
-                                           version="v1",
+                                           version=agreement.VERSION,
                                            text_sha256=agreement.current()["sha256"])
     # Another practice's data never ticks anything here.
     ContactFactory(tenant=seeded_tenant)
@@ -247,7 +247,7 @@ def test_a_broken_sender_mailbox_is_said_plainly(api, platform_owner, blue_sky, 
 
 def _accepted(owner):
     AgreementAcceptance.all_objects.create(tenant=owner.tenant, user=owner.user,
-                                           version="v1",
+                                           version=agreement.VERSION,
                                            text_sha256=agreement.current()["sha256"])
 
 
@@ -327,7 +327,7 @@ def test_tenant_isolation_a_dismissal_in_one_practice_hides_nothing_in_another(
     _accepted(blue_sky_owner)
     other = _member(seeded_tenant, "FF")
     AgreementAcceptance.all_objects.create(
-        tenant=seeded_tenant, user=other.user, version="v1",
+        tenant=seeded_tenant, user=other.user, version=agreement.VERSION,
         text_sha256=agreement.current()["sha256"])
     assert _card(api, blue_sky_owner, "never").json()["hidden"] is True
     assert _card(api, other).json()["hidden"] is False

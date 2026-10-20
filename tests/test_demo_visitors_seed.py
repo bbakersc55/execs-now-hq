@@ -97,9 +97,11 @@ def test_a_copy_is_built_beside_summit_kept_apart_reset_and_deleted(settings, mo
     # ------------------------------- Summit reseeded: the copy is untouched
     from datetime import timedelta
 
+    from apps.platform import agreement
     from apps.tenancy.demo import money
 
-    DemoVisitor.objects.filter(pk=visitor.pk).update(agreed_at=timezone.now())
+    DemoVisitor.objects.filter(pk=visitor.pk).update(agreed_at=timezone.now(),
+                                                     agreed_version=agreement.VERSION)
     visitor.refresh_from_db()
     agreed = visitor.agreed_at
     before = {

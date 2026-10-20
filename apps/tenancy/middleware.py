@@ -128,7 +128,7 @@ class DemoVisitorGate:
             from django.http import JsonResponse
 
             # First, the visitor's one tick: nothing else until it is given.
-            if visitor.agreed_at is None:
+            if visitors.must_agree(visitor):
                 return JsonResponse({"detail": "Tick the box on the first screen first.",
                                      "demo_agreement_required": True}, status=403)
             state = visitors.shown_state(visitor)

@@ -3,6 +3,9 @@
 A practice owner accepts the current version before using the app; the
 acceptance records the SHA-256 of the exact text shown. A new version asks
 again (D3). The platform owner is exempt (their own practice).
+
+v3 (2026-10-20) is v1 with clause 8, personal finance and the demo. v2, the
+card-on-file costs clause, still waits for subscriptions (p4_billing N1).
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from functools import lru_cache
 
 from django.conf import settings
 
-VERSION = "v1"
+VERSION = "v3"
 PATH = settings.BASE_DIR / "docs" / "legal" / f"beta_agreement_{VERSION}.md"
 
 

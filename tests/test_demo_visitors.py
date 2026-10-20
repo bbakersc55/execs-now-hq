@@ -72,6 +72,7 @@ def _ready(visitor):
     its owner, ready."""
     from apps.accounts.models import User
     from apps.crm.seed import seed_tenant
+    from apps.platform import agreement
     from apps.tenancy.models import DemoVisitor, Membership
 
     seed_tenant(visitor.tenant)
@@ -79,7 +80,8 @@ def _ready(visitor):
     member = Membership.all_objects.create(tenant=visitor.tenant, user=user, role="FF")
     DemoVisitor.objects.filter(pk=visitor.pk).update(state="ready",
                                                      setup_finished_at=timezone.now(),
-                                                     agreed_at=timezone.now())
+                                                     agreed_at=timezone.now(),
+                                                     agreed_version=agreement.VERSION)
     visitor.refresh_from_db()
     return member
 
@@ -513,6 +515,29 @@ def test_nothing_else_until_the_visitor_ticks_and_a_reset_does_not_ask_again(
     visitors.empty_practice(copy.tenant, keep_user_email=copy.visitor.email, keep_ai_calls=True)
     copy.visitor.refresh_from_db()
     assert copy.visitor.agreed_at == agreed
+
+
+@pytest.mark.django_db
+def test_a_new_agreement_version_asks_a_visitor_once_more(copy, api, launched):
+    """v3 (2026-10-20): a tick against an older version is asked again at the
+    next request, once; ticking the current version lets the visitor in."""
+    from apps.platform import agreement
+    from apps.tenancy.models import AuditEvent, DemoVisitor
+
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(agreed_at=timezone.now(),
+                                                          agreed_version="v1")
+    client = api.as_(copy.owner)
+    assert client.get("/api/me").json()["demo_visitor"]["agreement_required"]
+    assert client.get("/api/contacts/").json()["demo_agreement_required"]
+    body = json.dumps({"version": agreement.VERSION})
+    assert client.post("/api/demo/agree", body,
+                       content_type="application/json").status_code == 200
+    copy.visitor.refresh_from_db()
+    assert copy.visitor.agreed_version == agreement.VERSION
+    assert client.get("/api/contacts/").status_code == 200
+    assert client.post("/api/demo/agree", body,
+                       content_type="application/json").status_code == 200
+    assert AuditEvent.all_objects.filter(verb="demo_visitor.agreed").count() == 1
 
 
 @pytest.mark.django_db

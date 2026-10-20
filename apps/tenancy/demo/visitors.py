@@ -177,21 +177,29 @@ def days_of(visitor) -> int:
 
 def agree(visitor, *, version: str, actor) -> None:
     """The visitor's tick (2026-10-17), with the time, against the beta
-    agreement's current version. Once: a second tick changes nothing."""
+    agreement's current version. Once per version: a second tick changes
+    nothing, and a new version asks again (2026-10-20)."""
     from apps.platform import agreement
     from apps.tenancy.models import AuditEvent, DemoVisitor
 
-    if visitor.agreed_at is not None:
-        return
     current = agreement.VERSION
     if version != current:
         raise VisitorRefused({"version": "The beta agreement changed. Reload the page."})
+    if not must_agree(visitor):
+        return
     now = timezone.now()
     DemoVisitor.objects.filter(pk=visitor.pk).update(agreed_at=now, agreed_version=current)
     visitor.agreed_at, visitor.agreed_version = now, current
     AuditEvent.all_objects.create(
         tenant=visitor.tenant, actor=actor, verb="demo_visitor.agreed", target_type="tenant",
         target_id=visitor.tenant_id, payload={"version": current})
+
+
+def must_agree(visitor) -> bool:
+    """Not yet ticked, or ticked against an older version of the agreement."""
+    from apps.platform import agreement
+
+    return visitor.agreed_at is None or visitor.agreed_version != agreement.VERSION
 
 
 def describe(tenant) -> dict | None:
@@ -203,7 +211,7 @@ def describe(tenant) -> dict | None:
         return None
     spent = spend(tenant)
     return {
-        "agreement_required": visitor.agreed_at is None,
+        "agreement_required": must_agree(visitor),
         "agreement_version": agreement.VERSION,
         "days": days_of(visitor),
         "state": shown_state(visitor),

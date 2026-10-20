@@ -733,5 +733,6 @@ the isolation family.
 
 **Not built in stop 4:** state brackets (a flat rate only); payments made in a
 later year for an earlier one beyond January; household sign-ins (a later
-stop); the privacy policy and beta agreement amendments (a condition on
-offering M4, not on building it).
+stop). The privacy policy and beta agreement amendments, the condition on
+offering M4, followed on 10/20: the policy draft's "Personal finance"
+paragraph and the beta agreement's v3, clause 8.

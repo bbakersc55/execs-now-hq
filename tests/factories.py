@@ -977,7 +977,7 @@ class AgreementAcceptanceFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     user = factory.SubFactory(UserFactory)
-    version = "v1"
+    version = "v3"
     text_sha256 = "0" * 64
 
 
