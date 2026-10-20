@@ -200,7 +200,8 @@ export function ImportWizard() {
 
   return (
     <>
-      <h2>CSV import</h2>
+      <p className="small"><Link to="/import">All imports</Link></p>
+      <h2>Import contacts and companies (CSV)</h2>
       <p className="sub">
         Upload, map columns, map the values in your status column, read the dry run, then
         commit. Nothing is written until you commit, and any commit can be rolled back.

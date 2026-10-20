@@ -102,6 +102,10 @@ export function Contacts({ me }: { me: Me }) {
             {(me.role === "FF" || me.role === "VA") && (
               <Link className="button" to="/contacts/duplicates">Merge duplicates</Link>
             )}
+            {/* The contacts import is FF and VA too; U2's Import door lists it as well. */}
+            {(me.role === "FF" || me.role === "VA") && (
+              <Link className="button" to="/import/contacts">Import</Link>
+            )}
             <button className="primary" onClick={() => { setAdding(true); setNote(""); }}>
               Add contact
             </button>

@@ -34,6 +34,7 @@ import { EmailSettings } from "./screens/EmailSettings";
 import { Contacts } from "./screens/Contacts";
 import { CompanyDetail } from "./screens/CompanyDetail";
 import { Companies } from "./screens/Companies";
+import { ImportDoor } from "./screens/ImportDoor";
 import { ImportWizard } from "./screens/ImportWizard";
 import { Merge } from "./screens/Merge";
 import { Duplicates } from "./screens/Duplicates";
@@ -161,7 +162,8 @@ const NAV: NavItem[] = [
   { to: "/sending-queue", label: "Sending queue", roles: TENANT , icon: Send },
   { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
   { to: "/outbox", label: "Outbox (send log)", roles: TENANT , icon: Inbox },
-  { to: "/import", label: "CSV import", roles: ["FF", "VA"] , icon: Upload },
+  // U2 (2026-10-20): one door for every importer; the contacts one is behind it.
+  { to: "/import", label: "Import", roles: ["FF", "VA"] , icon: Upload },
   // Settings left the sidebar for the profile menu (UI 3): screens/Settings.
 ];
 
@@ -349,7 +351,8 @@ export function App() {
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/outbox" element={<Outbox />} />
-            <Route path="/import" element={<ImportWizard />} />
+            <Route path="/import" element={<ImportDoor />} />
+            <Route path="/import/contacts" element={<ImportWizard />} />
             {/* Everyone signed in, client users included (UI 3 spec §5). */}
             <Route path="/profile" element={<Profile />} />
             {/* Settings: one page, the same addresses as before (UI 3, D4). */}

@@ -1341,3 +1341,15 @@ ul.plain li { padding: var(--s1) 0; }
 .richtext .merge-chip { display: inline-block; padding: 0 .35em; margin: 0 .05em;
   border-radius: 4px; background: var(--surface-2, #EEF2F6); color: var(--navy, #0A3A65);
   font-size: .92em; line-height: 1.5; white-space: nowrap; user-select: all; }
+
+/* U2: the Import door, one choice per importer. */
+.import-door { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); max-width: 60rem; }
+.import-door a { display: flex; flex-direction: column; gap: var(--s1); height: 100%;
+  box-sizing: border-box; padding: var(--s4); border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--surface); color: var(--text);
+  text-decoration: none; }
+.import-door a:hover, .import-door a:focus-visible { border-color: var(--navy-300);
+  background: var(--hover); }
+.import-door strong { color: var(--navy); font-size: var(--t-16); }
+.import-door span { color: var(--muted); font-size: var(--t-14); }

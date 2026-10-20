@@ -40,7 +40,9 @@ def _all(tenant, t) -> list[dict]:
          "done": TenantSecret.all_objects.filter(tenant_id=t,
                                                  kind="anthropic_api_key").exists()},
         # D5: a committed import, or any contact at all.
-        {"key": "contacts", "label": "Import your contacts", "to": "/import",
+        # U2: the label names the Import door, which takes every kind of file.
+        {"key": "contacts", "label": "Import your contacts (Import, in the sidebar, takes "
+         "bank statements too)", "to": "/import",
          "done": ImportBatch.all_objects.filter(tenant_id=t, status="committed").exists()
          or Contact.all_objects.filter(tenant_id=t).exists()},
         {"key": "staff", "label": "Invite your team", "to": "/staff",

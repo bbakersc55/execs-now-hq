@@ -1,7 +1,7 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-20**, after the personal-finance legal texts. **The next session starts at "Where things
+2026-10-20**, after U2's import door. **The next session starts at "Where things
 stand" just below, then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
 and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
@@ -13,6 +13,14 @@ truth; this covers what they don't, and what changed since 9/30.
 
 ## Where things stand (2026-10-20): Release 18 is live
 
+- **U2, one import door (10/20, on `dev`, not released):** Import in the
+  sidebar (was "CSV import") is now a page at `/import` asking "What are you
+  importing?": contacts and companies (CSV, owner and assistant), a business
+  statement and meeting notes from Drive (owner), and a personal statement
+  (owner, with Personal finance, not while acting). The contacts wizard moved
+  to `/import/contacts`; Contacts gained an Import button; the Finance and
+  Personal Import tabs are unchanged. Getting started's contacts line names
+  the door.
 - **Personal finance's legal texts (10/20, on `dev`, not released):** the
   privacy policy draft (`docs/google_verification.md` §5) gains a "Personal
   finance" paragraph, and the beta agreement is **v3**
