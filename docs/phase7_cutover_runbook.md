@@ -229,7 +229,7 @@ Anything destructive or data-rewriting has your explicit yes on the dry run
 | # | Step | Command | Gate |
 |---|---|---|---|
 | R1 | Confirm the backup | `gcloud storage ls -l "gs://execs-now-hq-db-backups/execsnowhq_prod_*" \| grep -v '^TOTAL' \| sort -k2 \| tail -1` (the `grep` drops the listing's closing `TOTAL:` line, which otherwise sorts last and is all `tail -1` shows; seen at Release 12) | The newest dump is from the most recent 08:00 UTC run (02:00 Mountain), under 24 hours old, and over the 1 KB floor. If not, stop: run the backup by hand first and check again. **Not `railway redeploy --service backup`**, which rebuilds the service and runs nothing (observed 2026-10-08). The cron's "run now" is `railway api 'mutation($id:String!){deploymentInstanceExecutionCreate(input:{serviceInstanceId:$id})}' --raw-var id=8653b0cf-2067-45ab-b09c-8303172165f2`; the dump landed three seconds after it. |
-| R2 | Release | merge `dev` → `main`, push | Railway builds web and qcluster |
+| R2 | Release | merge `dev` → `main`, push | Railway builds web and qcluster. If `railway deployment list --service qcluster` shows no new deployment within 2 minutes, deploy the commit by hand (`serviceInstanceDeployV2`, Release 19), worker first; never `railway redeploy` |
 | R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else |
 | R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report |
 | R5 | Worker resumes by itself | `railway logs --service qcluster` | `migrations current`, then `Q Cluster … starting`, within 30 s |
@@ -474,6 +474,25 @@ current` 04:31:54, running 04:31:57. **R6 skipped, as Release 14's note
 allows:** `railway deployment list --service execs-now-hq` showed the push's
 own web deployment SUCCESS. `/healthz` 200 on all samples at 5 s. **Worker
 paused about 36 s.**
+
+**Observed at Release 19 (2026-10-20 UTC, 1 migration, `meetings 0008`: a
+promise is a mark on a task; also the personal-finance legal texts, the
+Import door, American spelling, campaign select-all):** R1: the owner's
+run-now dump of 19:30:17 (3,722,135 bytes), read from `railway logs --service
+backup` because gcloud's sign-in had expired; the log names the uploaded
+object, which is as good as the listing. `main` fast-forwarded from `6af19f2`
+to `2b1c257` and pushed about 19:57. **Railway built nothing from the push:**
+ten minutes on, every service still ran `6af19f2` and `railway deployment
+list` showed no new deployment (Release 18's started within 40 s). Filled in
+by deploying the commit to each service by hand, worker first:
+`railway api 'mutation($s:String!,$e:String!){serviceInstanceDeployV2(serviceId:$s,environmentId:$e,commitSha:"<full sha>")}' --raw-var s=<service id> --raw-var e=f694d9b5-58fe-4e00-b8d1-a80f85465e52`
+(qcluster `6c85de85-20e8-40e3-9e96-9d63f3615f38`, web `execs-now-hq`
+`c832e0bf-8cef-4d1d-911a-10588e0f279f`). **Not `railway redeploy`**, which
+rebuilds the deployment's own commit, the old one. Worker deploy 20:18:16;
+`WAITING` 20:21:20 listing exactly `meetings.0008_commitment_side`; applied
+20:21:41–45, OK; running 20:21:57. Web deploy 20:23:20, SUCCESS; `/healthz`
+200 on all 6 samples at 5 s. **Worker paused about 37 s.** The backup cron
+stays on `6af19f2` until a push builds it; its files did not change.
 
 ---
 

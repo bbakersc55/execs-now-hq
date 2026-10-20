@@ -11,10 +11,9 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## Where things stand (2026-10-20): Release 18 is live
+## Where things stand (2026-10-20): Release 19 is live
 
-- **Meeting queue: a promise is a mark on a task (10/20, on `dev`, not
-  released; migration `meetings 0008`, one added column).** The parse prompt
+- **Meeting queue: a promise is a mark on a task (10/20, Release 19; migration `meetings 0008`, one added column).** The parse prompt
   asks for each thing once, a promise flagged `promised_to_client` on its
   action item; "What was promised" is gone for new proposals, and an older
   pending one folds a repeated line into its action item before it is shown
@@ -26,7 +25,7 @@ truth; this covers what they don't, and what changed since 9/30.
   as the client-visible task. Every drafting prompt now ends "Use American
   spelling." (`claude.drafting`); the strategy goldens moved by that line
   only.
-- **U2, one import door (10/20, on `dev`, not released):** Import in the
+- **U2, one import door (10/20, Release 19):** Import in the
   sidebar (was "CSV import") is now a page at `/import` asking "What are you
   importing?": contacts and companies (CSV, owner and assistant), a business
   statement and meeting notes from Drive (owner), and a personal statement
@@ -34,7 +33,7 @@ truth; this covers what they don't, and what changed since 9/30.
   to `/import/contacts`; Contacts gained an Import button; the Finance and
   Personal Import tabs are unchanged. Getting started's contacts line names
   the door.
-- **Personal finance's legal texts (10/20, on `dev`, not released):** the
+- **Personal finance's legal texts (10/20, Release 19):** the
   privacy policy draft (`docs/google_verification.md` §5) gains a "Personal
   finance" paragraph, and the beta agreement is **v3**
   (`docs/legal/beta_agreement_v3.md`: v1 plus clause 8, estimates not tax
@@ -44,6 +43,12 @@ truth; this covers what they don't, and what changed since 9/30.
   more at their next sign-in; a visitor's tick now counts only for the
   version ticked (`visitors.must_agree`). The privacy policy is published
   on the website, not by the app: Bryan updates getexecutivesnow.com/hq/privacy.
+- **Release 19** (19:57–20:23 UTC): `main` at `2b1c257`, `meetings 0008`
+  applied by the runbook, OK; `/healthz` 200. Railway built nothing from the
+  push, so the worker and web were deployed by commit by hand (runbook,
+  "Observed at Release 19"). Personal finance is still off for every
+  practice; with v3 live it can be offered, after Bryan updates the
+  website's privacy page.
 - **Release 18** (04:30–04:32 UTC): `main` at `6af19f2`, `crm 0038` applied
   by the runbook, OK; R6 skipped (web's own deployment SUCCESS). It carries
   the campaign test copy (its files, bracketed placeholders, the test line)
