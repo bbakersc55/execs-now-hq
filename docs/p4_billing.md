@@ -1,6 +1,6 @@
 # P4 — Billing on NMI: PRD section and data model
 
-**Practices beta program, phase 4 · spec only, no code · re-specified 2026-10-08**
+**Practices beta program, phase 4 · re-specified 2026-10-08, and for NMI's v5 API on 2026-10-21 · part 1 built**
 
 **This replaces the Stripe version of 2026-10-03** (in git history at
 `fa79a2a`). The owner decided D1–D10 on 2026-10-08 and changed the processor:
@@ -14,6 +14,19 @@ available. Phase 2 here then adds NMI to those invoices (connecting a
 practice's account, the pay link, paid by NMI) and makes no second invoice
 model: where §3 and §5.2 differ from that document, that document is the
 newer one.
+
+**2026-10-21: NMI's v5 REST API and the Payment Component.** Bryan set the
+requirements for the processor layer and answered five choices the same day
+(§10). Where this document and §10 differ, §10 holds; the sections below are
+brought up to date where they were wrong. In short: card fields are NMI's
+**Payment Component** (not Collect.js) and every call is **v5 REST** (not the
+classic `transact.php`, which does not accept the component's tokens); the
+platform's keys are `NMI_ENVIRONMENT`, `NMI_PUBLIC_TOKENIZATION_KEY` and
+`NMI_PRIVATE_API_KEY`; **no webhooks** (a daily read-back instead); the
+**app's own job** charges subscriptions; the pay link is **this app's own
+page** (N3 (b)); **auto-pay** with the client's consent replaces N4; and the
+build is five parts (§6). Phase 0's raw-card script is deleted: a charge on
+typed card numbers proves nothing about the token path.
 
 **Words used here.** *The platform* is Noble Rose LLC, doing business as
 Executives Now and Execs NOW HQ. *The platform account* is Noble Rose LLC's
@@ -34,71 +47,69 @@ invoices and mark them paid by hand; it cannot take a card payment in the app.
 
 ---
 
-## 0. What is assumed about NMI, and what has to be proved first
+## 0. What was proved about NMI, 2026-10-21
 
-**None of this has been run against NMI.** It is written from NMI's public
-documentation and support articles, read on 2026-10-08, and two of the points
-below had sources that disagreed. Phase 0 (§6) proves each one in NMI's
-sandbox before anything is built on it.
+Run against NMI's sandbox with the platform's sandbox keys, tokens made by
+the Payment Component in headless Chrome. Where NMI's documentation
+contradicted itself or the sandbox, **the sandbox is what the code follows**.
 
-| # | Assumed | Used for | Confidence |
-|---|---|---|---|
-| A1 | **Collect.js** puts NMI-hosted card fields on a page and returns a one-time `payment_token`. The card number never reaches this app's server. It needs the account's public tokenization key. | Card on file (§2), and the pay page if N3 is (b) | Documented; not run |
-| A2 | **Customer Vault** stores a card or bank account from a `payment_token` and returns a `customer_vault_id`, which a later sale or a subscription can charge. | Card on file | Documented; not run |
-| A3 | **Recurring** can run a subscription with its own amount and schedule (monthly, on a day of the month) against a vault record, without a shared plan, and its amount can be changed for the next charge. | Per-practice amounts and add-ons (§2.3) | **Creating: documented. Changing the amount of a live subscription: not confirmed.** |
-| A4 | **Invoicing** (`add_invoice`) creates an invoice at NMI with a hosted payment page, and NMI emails the customer a link to it. Required: amount and email. It returns an invoice id used to update, resend or close it. | Pay link for a client invoice (§3.4) | Documented. **Not confirmed: whether NMI's own email can be turned off, and whether the pay page's URL is returned to us.** |
-| A5 | **Webhooks** post transaction events (`transaction.sale.success`, `.failure`, refund, void) with an event id, signed with HMAC-SHA256 and a signing key from the account's settings. | Paid and failed (§4) | **Sources disagree on the header and on what is signed.** No source confirmed an event for a recurring charge or for a chargeback. |
-| A6 | The **Query API** returns transactions by id, by subscription and by date range, with their condition (complete, failed, pending settlement). | Polling and the daily reconciliation (§4) | Documented; not run |
-| A7 | Customer Vault, Recurring and Invoicing are **services switched on per merchant account**, sometimes at a monthly fee from the reseller. | Whether a practice's account can do §3 at all | Likely; to be checked on the platform account and stated to each practice |
-| A8 | One merchant account can post webhooks to **more than one URL**. | The platform account is also Executives Now's practice account (§1.2) | Not confirmed. §4 does not depend on it. |
-
-Because of A3, A4 and A5, **the design below never depends on a single NMI
-feature without a fallback**, and says which is which.
-
----
+| # | Proved | How |
+|---|---|---|
+| A1 | The **Payment Component** (`@nmipayments/nmi-pay` 1.1.1) shows NMI's own card fields (frames from `secure.nmi.com`) and hands the page a one-time `payment_token`. The public tokenization key selects sandbox or live; the component has no environment setting. | Four tokens made in headless Chrome |
+| A2 | **Customer Vault from a token:** `POST /api/v5/customers` with `billing: {first_name, last_name, payment_details: {payment_token}}`. The guides' `billing_address` form is refused. The answer has the record's id and the card masked (`411111******1111`, `card_exp` MMYY); no brand. A vault charge is `customer_vault: {id}` at the top of a sale; `payment_details.customer_vault_id` is refused. `DELETE /customers/{id}` answers 204. | Sandbox |
+| A3 | NMI's recurring subscriptions: **not used** (§10, choice 2). | — |
+| A4 | NMI's hosted invoice: **not used** (N3 is (b)). | — |
+| A5, A8 | Webhooks: **not used** (§10, choice 5). | — |
+| A6 | **Read back:** `GET /api/v5/payments/{id}` returns the transaction with `merchant_defined_fields`. 401 for a bad or a public key, 404 for an unknown id, so it is also the connection test. | Sandbox |
+| A9 | **Our reference:** `merchant_defined_fields: {"field_1": "<ours>"}` is accepted, returned on the sale, and carried onto its refunds. | Sandbox |
+| A10 | **Unknown fields are refused** (422, `extraParameters`). A decline is HTTP 200 with `response` "2" (`response_code` 200); validation errors are 422, not the documented 400. Amounts are dollars; a string `"12.34"` and a number both work. | Sandbox |
+| A11 | **Refunds:** `POST /api/v5/payments/{id}/refund` with `{"amount": "2.00"}` refunds part of a sale **that has not settled** (NMI's reference page says only settled ones; the sandbox did it). More than what is left is refused (400). No void is used. **Proved in the sandbox only**; a live account's behavior is checked at the first live refund. | Sandbox |
+| A7 | Vault and the v5 API on a **live** account: whether every practice's account has them switched on is still to be checked per account; the connection test proves the key, not the services. | Open |
 
 ## 1. The processor layer
 
 ### 1.1 One adapter
 
-`apps/billing/nmi.py` is the only module that talks to NMI. Everything else
-calls it with **an account** and never with a key:
+`apps/billing/gateway/` is the only code that talks to NMI (`nmi.py`, the v5
+client; `stub.py`, its stand-in). Everything else calls `gateway()` with an
+**account** and never with a key:
 
 | Call | What it does at NMI |
 |---|---|
-| `vault_add(account, payment_token, billing)` | Stores a card or bank account; returns the vault id, brand, last four and expiry |
-| `vault_update`, `vault_delete` | Replace or remove the stored method |
-| `sale(account, amount_cents, vault_id or payment_token, reference)` | One charge, carrying our reference |
-| `subscription_add / update / cancel(account, …)` | The recurring schedule (§2.3) |
-| `invoice_add / update / close(account, …)` | NMI's hosted invoice (§3.4, if N3 is (a)) |
-| `refund(account, transaction_id, amount_cents)` | Not called from any screen in the first build; refunds are done in NMI's own portal |
-| `query(account, …)` | Transactions by id, subscription or date |
-| `verify_webhook(account, headers, raw_body)` | True only for a body signed with that account's signing key |
+| `check_connection(account)` | One authenticated read; proves the private key |
+| `sale(account, amount_cents, reference, payment_token= or vault_id=)` | One charge, carrying our reference in `merchant_defined_fields.field_1` |
+| `refund(account, transaction_id, amount_cents)` | A whole or partial refund; no void. Not called from any screen in the first build |
+| `get_transaction(account, id)` | The transaction, for the daily read-back |
+| `vault_add(account, payment_token, billing)`, `vault_delete` | A card stored or removed; returns the vault id, last four and expiry |
 
-- **Every outgoing call carries our own reference** (the id of the
-  `practice_invoice` or `client_invoice` it is for) in NMI's order id field,
-  so a transaction read back later is matched by our reference, never by
-  amount, email or account.
-- **Money is integer cents** in this app and converted at the adapter's edge.
-- **A fake adapter** stands in for NMI in every test, as `fake_claude` does
-  for Claude. No test reaches the network.
-- **Which NMI API** (the form-posted Payment API or the newer REST API) is
-  chosen in Phase 0 and hidden behind this module.
+- **The guard.** Nothing reaches NMI unless `NMI_LIVE_CALLS` is on, and
+  never under the test runner, whatever the setting; otherwise `gateway()` is
+  the stub. No method has a card parameter, and a body carrying any card or
+  bank field name, at any depth, is refused before it is sent.
+- **Keys** go only in the `Authorization` header. An account does not print
+  them, and an error from NMI is scrubbed of them before anyone sees it. Log
+  lines carry the route shape, the status and NMI's `ref_id`, never a body.
+- **Money is integer cents** in this app and dollars only at NMI's edge.
+- **The only backend probe** is `manage.py nmi_check` (connectivity and the
+  private key). The token path is proved by `scripts/nmi_token_proof.py`:
+  headless Chrome types NMI's test card into NMI's own fields on a
+  laptop-and-sandbox-only page, and the server runs a sale, a partial refund,
+  the read-back, a vault record, a sale on it, its refund and the delete.
 
 ### 1.2 Two kinds of account, kept apart
 
 | | The platform account | A practice's account |
 |---|---|---|
 | Whose | Noble Rose LLC | The practice's own |
-| Keys kept in | Environment only: `NMI_PLATFORM_SECURITY_KEY`, `NMI_PLATFORM_TOKENIZATION_KEY`, `NMI_PLATFORM_WEBHOOK_KEY` | `tenant_secret`, encrypted, write-only (as the Anthropic key is) |
-| Entered by | The owner, in Railway | The practice owner, in Settings → Payments |
-| Used by | §2 only (`apps/platform/billing.py`) | §3 only, and only for that practice |
+| Keys kept in | Environment only: `NMI_ENVIRONMENT`, `NMI_PUBLIC_TOKENIZATION_KEY`, `NMI_PRIVATE_API_KEY` (live only in production; refused on localhost) | `tenant_secret` (`nmi_private_key`, `nmi_public_key`), both encrypted, write-only (as the Anthropic key is), with a sandbox/live switch on `payment_account` |
+| Entered by | The owner, in Railway | The practice owner, in Settings → Billing, tested with NMI before saving |
+| Used by | §2 only (`gateway.platform_account()`) | §3 only, and only for that practice (`payment_accounts.practice_account`) |
 | Statement descriptor | "Execs NOW HQ", set by the owner in NMI | The practice's, set by the practice in NMI |
 
 **The platform account is also the account Executives Now uses as a practice**
 (same legal entity). The code still treats them as two accounts: the platform
 side reads the environment and never a `tenant_secret`; the Executives Now
-practice enters the same keys in Settings → Payments like any other practice.
+practice enters the same keys in Settings → Billing like any other practice.
 A payment is told apart by **our reference on it**, never by which account it
 arrived on, so a client paying Executives Now can never be read as a practice
 paying its subscription, or the reverse. This has its own tests (§5).
@@ -160,7 +171,7 @@ looked at again before they are built.
   suspended until the invoice is paid", with Pay now). Its scheduled jobs and
   sends stop. Clients see nothing new. **No data is touched.**
 - **Lifting (D3)** is automatic when the overdue invoice is recorded as paid,
-  whether by Pay now, by a webhook or by the reconciliation.
+  whether by Pay now, by the monthly charge or by the daily read-back.
 - **Tax (D5).** None in Beta. Every invoice has a tax line that is zero. At
   release tax is on for every practice, the Beta ones included. NMI does not
   work out sales tax, so where the rates come from is N7.
@@ -172,19 +183,18 @@ looked at again before they are built.
 
 ### 2.3 How it maps to NMI
 
+**The app's own job charges each practice (§10, choice 2; N2's fallback).**
+On the 1st it makes the period's invoice, then one `sale` against the
+practice's vault record on the platform account, carrying the invoice's
+reference, and knows the result at once. NMI's recurring subscriptions are
+not used, so A3 never matters.
+
 | App | NMI, on the platform account |
 |---|---|
-| A practice | A Customer Vault record |
-| A practice's subscription | **One recurring subscription with its own amount** (A3), monthly, **on day 1**, starting on the first 1st after the card is put on file |
-| A change of amount | The subscription's amount is updated before the next charge. **If A3 fails in the sandbox:** cancel it and add a new one starting on the next period's date. |
-| A monthly charge | A transaction carrying the subscription's id; the app makes its invoice for the period and marks it from §4 |
+| A practice's card | A Customer Vault record (A2) |
+| A monthly charge | One `sale` on the vault record, by the app's job on the 1st, carrying the invoice's reference |
+| A change of amount | Nothing at NMI: the next invoice has the new amount |
 | Pay now | One `sale` against the vault, carrying the open invoice's reference |
-
-**The alternative, if Phase 0 shows NMI's recurring is too blunt** (N2): the
-app's own daily job charges each practice's vault on its day. The app then
-makes the invoice first and knows the result of every charge at once.
-
----
 
 ## 3. Client invoicing (a client pays its practice)
 
@@ -214,31 +224,39 @@ it is N4.
 
 ### 3.3 Connecting a practice's NMI account
 
-Settings → Payments, practice owner only: the account's security key, its
-public tokenization key and its webhook signing key, each stored encrypted and
-never shown again. **Test connection** makes one read-only query. The screen
-says which NMI services the practice's account needs (A7) and gives the
-webhook address to paste into NMI (§4).
+**Settings → Billing**, practice owner only (built in part 1). Two keys: the
+private API key and the public tokenization key, each stored encrypted and
+never shown again, and a **sandbox/live switch** (live accepted only on the
+production app). New keys, or a new environment, are tested with one
+authenticated read before anything is saved; on a refusal nothing changes.
+**Test connection** repeats it on the stored keys and records the result. The
+test proves the private key; the public key is proved the first time a card
+form loads with it. No webhook key (§4).
+
+The card's **pricing program** (interchange-plus or dual pricing) is set by
+the platform owner on the Practices screen when the practice is set up, and
+shown read-only here (§10, choice 1). Only the field exists: the display
+rules for dual pricing come later from the processor.
 
 **QuickBooks is not a processor (D6).** It is a later accounting connection
 for practices that keep books for their clients, and takes no payment.
 
-### 3.4 The pay link (N3)
+### 3.4 The pay link (N3: (b))
 
-Two ways to make "Pay now", and the choice is the owner's:
+**A pay page in this app with NMI's own card fields**, two ways in: **Pay**
+on the invoice in the portal (part 2), and a **signed link** in the invoice
+email and on its PDF for paying without signing in (part 3). The link's
+token is random and stored only as a hash; it stops working when the invoice
+is voided. The charge is made **with the practice's own key on the
+practice's own account**; the page never routes money through the platform.
+**Card payments are the full balance only** (§10, choice 4); a part payment
+is still recorded by hand.
 
-| | (a) NMI's hosted invoice | (b) A pay page in this app |
-|---|---|---|
-| The client lands on | A page at NMI | A page at `app.getexecutivesnow.com/pay/<token>`, with NMI's own card fields in it (A1) |
-| Card details reach this app | Never | Never (the fields are NMI's) |
-| Who emails the client | **NMI does, itself** (A4), unless that can be turned off | Only the practice, through the Outbox |
-| Branding | NMI's page, the practice's NMI settings | The practice's own |
-| Depends on | A4's two open points; the Invoicing service on every practice's account | Only Collect.js and a sale |
-| The money | To the practice's account | To the practice's account |
-
-Either way the charge is made **with the practice's own key on the practice's
-own account**. Option (b) does not route money through the platform: the app
-shows the page, NMI takes the card, and the practice's account is paid.
+**Auto-pay (part 4; replaces N4).** A signed-in client owner can save a card
+(the practice's vault) and consent to auto-pay; the consent's wording,
+version, time and person are kept, and the client can revoke it. The
+practice still approves every send. An invoice sent after consent is charged
+**on its due date** (§10, choice 3), until consent is revoked.
 
 ### 3.5 Paid, and who sees what
 
@@ -270,31 +288,13 @@ NMI keys or its clients' payments.
 
 ## 4. Learning that a charge was paid or failed
 
-Both are built; neither is trusted alone.
-
-- **Webhooks**, where the account has them set up:
-  - The platform account posts to `/api/nmi/webhook/platform`, verified with
-    the platform's signing key.
-  - A practice's account posts to `/api/nmi/webhook/<opaque address>`, an
-    address that names the practice without being guessable, verified with
-    **that practice's** signing key. The practice is taken from the address
-    and proved by the signature, never read from the body.
-  - A body that fails verification is refused (400) and recorded. An event is
-    processed once, by its event id.
-  - An event whose reference is not one of that account's own open invoices
-    is recorded and ignored. This is what keeps the shared account of §1.2
-    apart.
-- **Polling**, always: an hourly job asks NMI about every invoice that is open
-  and every subscription charge that is due, per account, and a daily job
-  reconciles the last several days. A practice that never sets up a webhook
-  still gets its invoices marked paid within the hour.
-- **Either source reaches the same function**, which marks the invoice from
-  what NMI says and is safe to run twice.
-- A chargeback or a refund found by the reconciliation is recorded on the
-  invoice and shown to the practice owner. No source confirmed NMI sends an
-  event for a chargeback (A5), so this may be found a day late.
-
----
+**No webhooks (§10, choice 5).** Every charge is made by this app, so the
+sale's own answer says paid or declined at once. A **daily read-back** per
+account (`get_transaction` on the last several days' charges, by our
+reference) finds what happened in NMI's portal since: a refund or a
+chargeback is recorded on the invoice and shown to the practice owner, a day
+late at most. A charge whose answer was lost (a timeout) is left "unknown"
+and settled by the same read-back, so nothing is recorded twice.
 
 ## 5. Data model
 
@@ -320,7 +320,8 @@ go through one module (`apps/platform/billing.py`), as `stats.py` does.
 
 | Table | Columns |
 |---|---|
-| `payment_account` | `id`, `tenant_id` (unique), `security_key_id`, `tokenization_key_id`, `webhook_key_id` → `tenant_secret`, `webhook_address` (unique, opaque), `is_ready`, `checked_at` |
+| `payment_account` *(built, part 1)* | `id`, `tenant_id` (unique), `environment` (`sandbox / live`), `checked_at`, `check_ok`, `check_detail`, `checked_by_id`. The keys are `tenant_secret` rows of kinds `nmi_private_key` and `nmi_public_key`. No webhook columns |
+| `tenant` (add, built) | `pricing_program` (`'' / interchange_plus / dual_pricing`), set on the Practices screen |
 | `client_invoice` | `id`, `tenant_id`, `kind` (`one_off / recurring / contact`), `client_company_id` (null for `contact`), `contact_id`, `schedule_id` (null), `number` (unique per practice), `issue_date`, `due_date`, `status` (`draft / sent / paid / partially_paid / void`), `subtotal_cents`, `tax_cents`, `total_cents`, `balance_cents`, `currency`, `notes`, `terms`, `pay_token_hash`, `nmi_invoice_id`, `pdf_id`, `outbox_message_id`, `created_by_id`, `sent_at`, `voided_at` |
 | `client_invoice_line` | `id`, `tenant_id`, `invoice_id`, `position`, `description`, `quantity` (numeric 10,2), `unit_price_cents`, `amount_cents`, `project_id` (null), `goal_id` (null) |
 | `client_invoice_schedule` | `id`, `tenant_id`, `client_company_id`, `day_of_month`, `next_on`, `lines` (the template), `notes`, `terms`, `is_active`, `ends_on` |
@@ -332,27 +333,26 @@ Every migration is shown as SQL first, as the rule requires.
 
 ---
 
-## 6. Build phases, and tests
+## 6. Build parts, and tests
 
-| Phase | What | Stops for |
+The 10/08 phases are replaced by five parts (2026-10-21), each stopping for
+Bryan:
+
+| Part | What | State |
 |---|---|---|
-| **0. Prove NMI** | A1–A8 run in NMI's sandbox with test keys the owner provides: `scripts/nmi_sandbox_check.py` and a short written result per point. **No product code.** It reads `NMI_SANDBOX_SECURITY_KEY`, `NMI_SANDBOX_TOKENIZATION_KEY` and `NMI_SANDBOX_WEBHOOK_KEY` from the laptop's `.env`, and never the live names. A5 and A8 need an address NMI can reach, which the laptop is not: see the note under this table. | The owner reads the results; N2 and N3 are settled on what was found |
-| **1. Subscriptions** | The adapter and its fake; plans and add-ons; card on file; the monthly charge and its invoice; Pay now; the 30-day flag, Suspend and the automatic lift; Settings → Billing; the Practices columns | The owner |
-| **2. Client invoicing** | Connecting a practice's account; one-off, recurring and to-a-contact invoices; the PDF and the approved send; the pay link (N3); paid by NMI and by hand; the portal view | The owner |
+| **1. Gateway and Settings → Billing** | The v5 client, its stub and the guard; the practice's two keys, the sandbox/live switch and the connection test; the pricing program on the Practices screen; `nmi_check`; the token proof | **Built 2026-10-21** |
+| 2. Pay in the portal | Pay on a sent invoice, the full balance, by the practice's own account; the attempt row before the call; one in flight per invoice; receipt | Not started |
+| 3. The signed pay link | `/pay/<token>`, hashed, voided with the invoice; `{PayLink}` in the email, printed on the PDF | Not started |
+| 4. Card on file and auto-pay | A client owner's card in the practice's vault; consent kept and revocable; charged on the due date | Not started |
+| 5. Practice subscriptions | §2 on v5, charged by the app's job on the 1st; agreement v4 ships with it | Not started |
 
 No release until the owner says so.
 
-**Webhooks in Phase 0.** NMI can only post to a public address. Two ways to
-see a real delivery, neither of them product code: a request-capture service
-the owner opens for an hour (it shows the headers and the raw body, which is
-all A5 needs), or a tunnel to the laptop. Which one is the owner's choice when
-the keys arrive; the other six points do not wait on it.
-
 | Family | Tests |
 |---|---|
-| **Practice isolation** | Every new practice-scoped table joins the registry. Practice A never sees B's invoices, payments, schedules, keys or subscription. A webhook on A's address signed with B's key is refused. A webhook for a reference that is not A's changes nothing. **A payment to Executives Now as a practice never marks a subscription invoice paid, and the reverse, on the shared account.** The platform never reads a `tenant_secret`. |
+| **Practice isolation** | Every new practice-scoped table joins the registry. Practice A never sees B's invoices, payments, schedules, keys or subscription. A charge for practice A is made only with A's key; a read-back for a reference that is not A's changes nothing. **A payment to Executives Now as a practice never marks a subscription invoice paid, and the reverse, on the shared account.** The platform never reads a `tenant_secret`. |
 | **Role boundaries** | The matrix of §3.5, row by row: an associate only for assigned client companies and never a send; an assistant 403 on every billing and invoicing route; a client team member sees their own company's invoices and nothing of another company's; a contact invoice appears in no portal. The platform owner reads subscription status and never a client invoice. |
-| NMI | A bad signature is refused. An event is processed once. Polling finds a payment the webhook missed, and marks it once when both arrive. No key, card number or full webhook body is ever written to a log or a row. |
+| NMI | Tests never reach NMI (the stub, always). No method takes a card field and no body carrying one is sent. The read-back marks a payment once, also after a lost answer. No key, card number or full NMI body is ever written to a log or a row. |
 | Subscriptions | No charge before a card, and none before the next 1st. A receipt with the PDF for every successful charge, and none for a failed one. $20.00 by default; an override applies from the next period; an add-on added mid-month is not charged until the next period. Flagged at 30 days and not suspended by itself. A suspended practice's staff see only the billing screen, its jobs stop, no row changes. Paying lifts it. |
 | Invoices | Numbers never skip or repeat under concurrency. Totals are integer cents. A sent invoice is unchanged except by void. A schedule makes a draft and sends nothing. Sending is an approved Outbox message with the PDF. |
 
@@ -387,7 +387,7 @@ the keys arrive; the other six points do not wait on it.
 | N5 | Can a client owner switch off a client team member's view of the company's invoices? | No switch in the first build. | **As recommended.** |
 | N6 | Does an add-on also switch its module on and off, or only price it? | Price and record only, for now. | **As recommended.** |
 | N7 | Where sales tax rates come from at release. | Decide at release; the tax line exists now, at zero. | **As recommended.** |
-| N8 | Sandbox keys for Phase 0. | The owner provides them. | **He is getting them.** `NMI_SANDBOX_SECURITY_KEY`, `NMI_SANDBOX_TOKENIZATION_KEY`, `NMI_SANDBOX_WEBHOOK_KEY`, in the laptop's `.env`. |
+| N8 | Sandbox keys for Phase 0. | The owner provides them. | **He is getting them.** *(10/21: provided as `NMI_ENVIRONMENT`, `NMI_PUBLIC_TOKENIZATION_KEY`, `NMI_PRIVATE_API_KEY`; no webhook key.)* |
 | N9 | Which PCI self-assessment applies. | Ask NMI or the acquiring bank. | **He is asking NMI. Assume SAQ A for the design.** |
 
 **Order:** Phase 0, then stop and report what the sandbox showed; then
@@ -415,3 +415,25 @@ Open, for when this is decided: whether "for life" covers modules or only the
 base; what a released, non-beta practice pays as its base; and whether portal
 seats are counted per practice or per client company (CLAUDE.md models a seat
 count per client company).
+
+---
+
+## 10. Decisions, 2026-10-21
+
+Bryan's requirements for the processor layer, and his answers to the five
+choices of the plan, all "as recommended".
+
+| # | Question | Decided |
+|---|---|---|
+| R1 | Card data | **Never touches the app.** NMI's Payment Component tokenizes in the browser; the public key reaches the page at runtime; the private key never reaches the frontend bundle. |
+| R2 | Which API | **v5 REST** at `sandbox.nmi.com` or `secure.nmi.com` by `NMI_ENVIRONMENT`; the key in `Authorization`; the token under `payment_details.payment_token`; our id in `merchant_defined_fields`; refunds by the v5 route, partials allowed, no void. Never `transact.php`. |
+| R3 | Card on file | **Customer Vault.** The app stores only the vault id and the last four. |
+| R4 | The guard | Tests always run against a stub gateway; a real call needs an explicit setting (`NMI_LIVE_CALLS`); no backend method accepts raw card fields. |
+| R5 | Proof | The only backend probe is connectivity and auth (`nmi_check`); the token path is proved end to end in headless Chrome against the sandbox with NMI's test card. |
+| R6 | Keys | Each practice holds its own two keys, encrypted, under Settings → Billing with a sandbox/live switch and a connection test; the platform's come from the environment. |
+| 1 | Who sets the pricing program | **The platform owner, on the Practices screen at setup**; read-only to the practice. |
+| 2 | What charges subscriptions | **The app's own job on the 1st**, a sale on the vault. |
+| 3 | Auto-pay | **On the due date, for invoices sent after consent, until revoked.** |
+| 4 | Part payments by card | **No: the full balance only.** |
+| 5 | Webhooks | **None; a daily read-back per account.** |
+
