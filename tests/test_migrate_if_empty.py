@@ -94,3 +94,97 @@ def test_production_still_refuses(settings):
         with pytest.raises(CommandError, match="Unapplied migrations"):
             call_command("migrate_if_empty")
     run.assert_not_called()
+
+
+# ------------------------------------------------- web waits (owner, 2026-10-20)
+
+class _Clock:
+    """Stands in for `time` in the command: sleeping moves the clock on."""
+
+    def __init__(self):
+        self.now = 1000.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+    def strftime(self, fmt, _t):
+        return "2026-10-21T00:34:00Z"
+
+    def gmtime(self):
+        return None
+
+
+def _plans(*plans):
+    """migration_plan answering each check in turn: pending, then as given."""
+    from django.db.migrations.executor import MigrationExecutor
+
+    pending = mock.Mock(app_label="crm")
+    pending.name = "0099_x"
+    answers = [[(pending, False)] if p else [] for p in plans]
+    return mock.patch.object(MigrationExecutor, "migration_plan", side_effect=answers)
+
+
+@pytest.mark.django_db
+def test_web_waits_for_the_migration_and_starts_once_it_is_applied(settings):
+    from io import StringIO
+
+    settings.IS_DEMO = False
+    clock, out = _Clock(), StringIO()
+    with _plans(True, True, True, False), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.time", clock), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.call_command") as run:
+        call_command("migrate_if_empty", wait=360, every=10, stdout=out)
+    run.assert_not_called()
+    assert clock.sleeps == [10, 10, 10]
+    lines = out.getvalue().splitlines()
+    assert lines[0] == ("==> 2026-10-21T00:34:00Z WAITING (0s of 360s) for: crm.0099_x. "
+                        "Apply them in the waiting worker: railway ssh --service qcluster "
+                        "-- python manage.py migrate")
+    assert "(20s of 360s)" in lines[2]
+    assert lines[-1] == "Migrations are current."
+
+
+@pytest.mark.django_db
+def test_web_gives_up_after_the_wait_and_never_migrates(settings):
+    settings.IS_DEMO = False
+    clock = _Clock()
+    with _plans(*[True] * 40), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.time", clock), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.call_command") as run:
+        with pytest.raises(CommandError, match="Unapplied migrations: crm.0099_x"):
+            call_command("migrate_if_empty", wait=360, every=10)
+    run.assert_not_called()
+    assert clock.sleeps == [10] * 36
+
+
+@pytest.mark.django_db
+def test_without_a_wait_it_refuses_at_once(settings):
+    settings.IS_DEMO = False
+    clock = _Clock()
+    with _plans(True), \
+         mock.patch("apps.tenancy.management.commands.migrate_if_empty.time", clock):
+        with pytest.raises(CommandError, match="Unapplied migrations"):
+            call_command("migrate_if_empty")
+    assert clock.sleeps == []
+
+
+def test_web_start_waits_six_minutes_inside_its_health_check():
+    """The start script's wait, and Railway's health check on web outlasting it:
+    a check that gives up first fails the deploy all the same."""
+    import json
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    start = (root / "scripts/start_web.sh").read_text()
+    wait = int(re.search(r"migrate_if_empty --wait (\d+) --every 10\b", start).group(1))
+    assert wait == 360
+    health = json.loads((root / "railway/web.json").read_text())["deploy"]["healthcheckTimeout"]
+    assert health > wait + 60
+    worker = (root / "scripts/start_qcluster.sh").read_text()
+    assert "migrate_if_empty" not in worker and "sleep 30" in worker

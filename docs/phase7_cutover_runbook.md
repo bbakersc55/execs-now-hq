@@ -233,12 +233,13 @@ Anything destructive or data-rewriting has your explicit yes on the dry run
 | R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else |
 | R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report |
 | R5 | Worker resumes by itself | `railway logs --service qcluster` | `migrations current`, then `Q Cluster … starting`, within 30 s |
-| R6 | Web onto the new code | `railway redeploy --service execs-now-hq -y` (production's web service is named `execs-now-hq`, not `web`) | Deployment active; `curl -s -o /dev/null -w '%{http_code}' https://app.getexecutivesnow.com/healthz` is `200` |
+| R6 | Web onto the new code | Usually nothing to do: since Release 20, web's own build **waits up to six minutes** for R4 (`migrate_if_empty --wait 360`, a `WAITING (Ns of 360s) for: …` line every 10 s in `railway logs --service execs-now-hq`) and comes up by itself. Only if it gave up (R4 came more than six minutes after web started, or its deployment shows FAILED): deploy the commit to web by hand (`serviceInstanceDeployV2`, as at Release 19) | Web's new deployment SUCCESS; `curl -s -o /dev/null -w '%{http_code}' https://app.getexecutivesnow.com/healthz` is `200` |
 | R7 | Report | | R1–R6 results, the migration names, and the time from R2 to R6 |
 
 **What it costs.** The worker is paused from R2 to R5. That is intended, so no
 old-code job runs while the schema changes. Web's new deployment fails its
-health check until R4. Whether Railway keeps the old web serving in the
+health check until R4 (since Release 20 it waits for R4 instead, up to six
+minutes, and passes once it lands). Whether Railway keeps the old web serving in the
 meantime, as it does for a failed health check, **has not been observed yet**:
 if it does, nothing goes down; if not, web is down from R2 to R6, a few minutes
 when R4 follows R3 immediately. The first migration release records which.
@@ -493,6 +494,25 @@ rebuilds the deployment's own commit, the old one. Worker deploy 20:18:16;
 20:21:41–45, OK; running 20:21:57. Web deploy 20:23:20, SUCCESS; `/healthz`
 200 on all 6 samples at 5 s. **Worker paused about 37 s.** The backup cron
 stays on `6af19f2` until a push builds it; its files did not change.
+
+**Observed at Release 20 (2026-10-21 UTC, 2 migrations, `tenancy 0019` and
+`crm 0039`: inbound referrals; also the R3b backlog row):** R1: the owner's
+run-now dump `execsnowhq_prod_20261020_193017.sql.gz` (3,722,135 bytes),
+seen in the backup log and then in the bucket listing. `main` fast-forwarded
+from `2b1c257` to `936714f` and pushed 00:31 UTC, by Claude this time.
+**Railway built from the push** (both deployments at 00:31:59), unlike
+Release 19. Worker `WAITING` 00:33:50 listing exactly
+`tenancy.0019_referral_thanks_settings` and `crm.0039_referrals`; applied
+00:34:15–20, both OK; worker running 00:34:26. **Web's own build had
+already failed:** it started 00:32:59, refused on the unapplied migrations,
+and used up its five restarts by about 00:33:12, a minute before R4. The old
+web served throughout (`/healthz` 200). Web deployed by commit 00:35:07,
+listening 00:35:33, SUCCESS; `/healthz` 200, and `/api/referrals/` 403
+signed out (the route is there). **Worker paused about 36 s; push to new code
+about 4 min.** What followed (owner, 2026-10-20): web now waits up to six
+minutes for the migrations before refusing, checking every 10 s, and its
+health check timeout is 480 s so Railway does not fail it first; R6 above
+changed to match. The worker is unchanged.
 
 ---
 

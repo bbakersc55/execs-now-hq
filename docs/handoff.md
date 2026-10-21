@@ -1,7 +1,7 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-20**, after promises in the meeting queue. **The next session starts at "Where things
+2026-10-21 UTC**, after Release 20. **The next session starts at "Where things
 stand" just below, then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
 and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
@@ -11,9 +11,24 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## Where things stand (2026-10-20): Release 19 is live
+## Where things stand (2026-10-21 UTC): Release 20 is live
 
-- **Inbound referrals (10/20, on `dev`, not released; migrations `tenancy
+- **Release 20** (00:31–00:35 UTC, the evening of 10/20 Mountain): `main` at
+  `936714f`, `tenancy 0019` and `crm 0039` applied by the runbook
+  (00:34:15–20), both OK; `/healthz` 200. Railway built from the push this
+  time, but web's own build had given up on the pending migrations a minute
+  before they were applied, so web was deployed by commit (runbook,
+  "Observed at Release 20"). The demo checks of the referrals passed before
+  it (Bryan).
+- **Web waits for a release's migrations (10/21, on `dev`, not released).**
+  `migrate_if_empty --wait 360 --every 10` in `start_web.sh`: a `WAITING
+  (Ns of 360s) for: …` line every 10 s, then it starts once they are
+  applied, or refuses as before after six minutes. It never migrates. Web's
+  health check timeout must be 480 s on Railway (`railway/web.json`;
+  `serviceInstanceUpdate`, run by Bryan, since Claude's auto mode refuses a
+  production setting). Runbook R6 is now "usually nothing to do". The worker
+  is unchanged.
+- **Inbound referrals (10/20, Release 20; migrations `tenancy
   0019` and `crm 0039`, both additive).** `apps/crm/services/referrals.py`:
   one `referral` row per prospect per pipeline (Sales), first recorded has
   the credit, changeable on the prospect's page ("Referred by", any contact,

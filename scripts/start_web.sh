@@ -5,7 +5,10 @@ set -eu
 echo "==> $(date -u +%FT%TZ) web starting (APP_ENVIRONMENT=${APP_ENVIRONMENT:-unset})"
 # A brand-new empty database gets its schema, and the demo applies its own
 # migrations; anything else must already be migrated, or the start is refused
-# (apps/tenancy/.../migrate_if_empty.py).
-python manage.py migrate_if_empty
+# (apps/tenancy/.../migrate_if_empty.py). It waits six minutes for a release's
+# migrations to be applied by hand in the waiting worker before refusing, so
+# the push's own build comes up (owner, 2026-10-20). Railway's health check
+# timeout on web (railway/web.json) must stay longer than this wait.
+python manage.py migrate_if_empty --wait 360 --every 10
 python manage.py check --fail-level ERROR
 exec gunicorn config.wsgi --bind 0.0.0.0:8080 --workers 3 --timeout 120 --access-logfile -

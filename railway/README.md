@@ -10,7 +10,7 @@ because a quoted `sh -c '…'` start command was not run as written.
 
 | Service | File | Runs |
 |---|---|---|
-| `web` (named **`execs-now-hq`** in the production project) | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database; on the demo (`APP_ENVIRONMENT=demo`) applies unapplied migrations; otherwise **refuses to start while any migration is unapplied**. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
+| `web` (named **`execs-now-hq`** in the production project) | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database; on the demo (`APP_ENVIRONMENT=demo`) applies unapplied migrations; otherwise **refuses to start while any migration is unapplied**, after waiting up to six minutes (`--wait 360`, checked every 10 s) for it to be applied by hand. Health check timeout 480 s, longer than that wait. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
 | `qcluster` | `railway/qcluster.json` | the Django-Q2 worker, with the same unapplied-migration refusal. **No public domain.** Starts at 0 replicas and is scaled to 1 only at runbook C9. |
 | `backup` | `railway/backup.json` | `scripts/backup_db_railway.sh`, nightly at 08:00 UTC (02:00 Mountain). |
 
@@ -24,13 +24,15 @@ is where that happens. The variables each service needs are in
 
 ## Migrations are never applied by a deploy
 
-A release that carries a migration deploys, web **refuses to start**, and
-qcluster **waits**. The migration is then applied by hand inside the waiting
+A release that carries a migration deploys, web **waits up to six minutes,
+then refuses to start**, and qcluster **waits** without limit. The migration is then applied by hand inside the waiting
 worker, the only active container running the new code:
 
     railway ssh --service qcluster -- python manage.py migrate
 
-The worker starts by itself, and web is redeployed onto the new code. The full
+The worker starts by itself, and web, if it is still within its six
+minutes, starts by itself too; otherwise it is deployed onto the new code by
+hand. The full
 sequence, including the backup check that comes first, is
 `docs/phase7_cutover_runbook.md`, "Releasing a migration". It is the only way a
 migration reaches production.
