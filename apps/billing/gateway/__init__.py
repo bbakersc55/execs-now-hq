@@ -133,6 +133,8 @@ class VaultRecord:
     last4: str
     #: MMYY, as NMI returns it.
     card_exp: str
+    #: From the masked number's leading digits: NMI's answer names no brand.
+    brand: str = ""
 
 
 @dataclass(frozen=True)

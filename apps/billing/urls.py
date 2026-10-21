@@ -8,5 +8,6 @@ router.register("invoice-settings", views.InvoiceSettingsView, basename="invoice
 router.register("invoice-schedules", views.ScheduleViewSet, basename="invoice-schedule")
 router.register("portal-invoices", views.PortalInvoiceViewSet, basename="portal-invoice")
 router.register("payment-account", views.PaymentAccountView, basename="payment-account")
+router.register("portal-autopay", views.PortalAutopayView, basename="portal-autopay")
 
 urlpatterns = router.urls

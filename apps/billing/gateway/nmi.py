@@ -145,7 +145,8 @@ class NmiGateway:
         card = cards[0] if cards else {}
         return VaultRecord(id=str(payload.get("id", "")),
                            last4=_last4(card.get("card_number", "")),
-                           card_exp=str(card.get("card_exp", "")))
+                           card_exp=str(card.get("card_exp", "")),
+                           brand=brand_of(card.get("card_number", "")))
 
     def vault_delete(self, account: Account, vault_id: str) -> None:
         self._send(account, "DELETE", f"/customers/{vault_id}", None)
@@ -217,6 +218,20 @@ class NmiGateway:
             last4=_last4(card.get("card_number", "")),
             reference=str(fields.get("field_1", "")) if isinstance(fields, dict) else "",
         )
+
+
+def brand_of(masked: str) -> str:
+    """The brand from a masked number's first digits ("411111******1111")."""
+    lead = str(masked)[:2]
+    if lead[:1] == "4":
+        return "Visa"
+    if lead in ("34", "37"):
+        return "Amex"
+    if lead[:1] == "5" or lead[:1] == "2":
+        return "Mastercard"
+    if lead[:1] == "6":
+        return "Discover"
+    return ""
 
 
 def _last4(masked: str) -> str:

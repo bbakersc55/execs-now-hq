@@ -69,6 +69,10 @@ SCHEDULES = [
     # our reference until it is known. A no-op unless one is waiting.
     ("billing.resolve_card_payments", "apps.billing.tasks.resolve_card_payments",
      Schedule.MINUTES, 10, None),
+    # P4 part 4: auto-pay, on each invoice's due date, at the practice's
+    # 9:00; a failed charge once more the next day; card-expiry notices.
+    # Safe to run twice: an attempt made today is never made again.
+    ("billing.run_autopay", "apps.billing.tasks.run_autopay", Schedule.DAILY, None, 9),
     # P6 M2: the month's forecast, kept for "how good it has been". Daily at
     # the practice's midnight, so the 1st is caught as the month begins and a
     # missed 1st the day after; a no-op once the month's is kept, and for a

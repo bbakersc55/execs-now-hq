@@ -3,6 +3,7 @@
     .venv/bin/python scripts/nmi_token_proof.py            # the gateway (part 1)
     .venv/bin/python scripts/nmi_token_proof.py --portal   # the portal's Pay (part 2)
     .venv/bin/python scripts/nmi_token_proof.py --link     # the pay link (part 3)
+    .venv/bin/python scripts/nmi_token_proof.py --autopay  # card on file, auto-pay (part 4)
 
 **--portal** pays a real invoice through the real portal page, as a client
 would: it builds the frontend, makes a fresh database `execsnowhq_nmi_proof`
@@ -16,6 +17,13 @@ holds them. The database is left for a look and remade by the next run.
 the invoice is to a contact alone (in no portal), the page is opened at its
 `/pay/<token>`, paid with the test card, then opened again to show Paid; a
 wrong token is checked to be a 404.
+
+**--autopay** signs in as the client owner, saves the test card from the
+Invoices page into the practice's sandbox vault and turns auto-pay on; then
+a new invoice is sent through the practice's approval, made due today, and
+the auto-pay job is run twice; the sale on the vault record is read back and
+looked up by our reference, the invoice sent before consent is shown not
+charged, and the vault record is deleted at the end.
 
 Without --portal:
 
@@ -174,6 +182,114 @@ def link_after(browser, setup) -> dict:
     return {"shows_paid": paid, "card_form_shown": form, "wrong_token_status": status}
 
 
+def autopay_attempt(browser, setup) -> None:
+    page = browser.new_page()
+    try:
+        page.goto(BASE + setup["sign_in_path"], wait_until="domcontentloaded", timeout=90000)
+        page.get_by_role("button", name="Sign in").click()
+        page.get_by_role("button", name="Save a card").click(timeout=90000)
+        fill_card(page, button=re.compile(r"^Save this card$"))
+        page.get_by_text(re.compile(r"ending 1111")).first.wait_for(timeout=120000)
+        page.get_by_label("I agree").check(timeout=30000)
+        page.get_by_role("button", name="Turn auto-pay on").click()
+        page.get_by_text("Auto-pay on", exact=True).wait_for(timeout=60000)
+    finally:
+        page.close()
+
+
+AUTOPAY_READ_BACK = """
+import json
+from apps.billing import gateway as gw, payment_accounts
+from apps.billing.models import (AutopayConsent, ClientInvoice, ClientPayment,
+    ClientPaymentMethod, PaymentAttempt)
+from apps.crm.models import OutboxMessage
+card = ClientPaymentMethod.all_objects.get(removed_at__isnull=True)
+consent = AutopayConsent.all_objects.select_related("consented_by").get()
+a = PaymentAttempt.all_objects.select_related("invoice").get(via="autopay")
+p = ClientPayment.all_objects.filter(invoice=a.invoice).first()
+before = ClientInvoice.all_objects.exclude(pk=a.invoice_id).get()
+account = payment_accounts.practice_account(a.invoice.tenant)
+found = gw.gateway().find_by_reference(account, str(a.pk))
+gw.gateway().vault_delete(account, card.vault_id)
+print(json.dumps({
+    "card": {"brand": card.brand, "last4": card.last4,
+             "expires": f"{card.exp_month:02d}/{card.exp_year}", "vault_id_kept": bool(card.vault_id),
+             "environment": card.environment, "added_by": card.added_by.email},
+    "consent": {"by": consent.consented_by.email, "version": consent.wording_version,
+                "address_kept": bool(consent.ip_address),
+                "browser_kept": "Chrome" in consent.user_agent,
+                "wording_starts": consent.wording[:60]},
+    "attempt": {"status": a.status, "via": a.via, "nmi_transaction_id": a.nmi_transaction_id,
+                "amount_cents": a.amount_cents, "card": f"{a.card_type} {a.last4}",
+                "on_the_card_on_file": a.payment_method_id == card.pk,
+                "environment": a.environment},
+    "payment": p and {"method": p.method, "amount_cents": p.amount_cents,
+                      "nmi_transaction_id": p.nmi_transaction_id, "note": p.note},
+    "invoice": {"number": a.invoice.number, "status": a.invoice.status,
+                "balance_cents": a.invoice.balance_cents},
+    "sent_before_consent": {"number": before.number, "status": before.status,
+        "attempts": PaymentAttempt.all_objects.filter(invoice=before).count()},
+    "mail": list(OutboxMessage.all_objects.filter(producer__in=["payment_receipt",
+        "payment_notice", "autopay_notice"]).values_list("producer", "to_address", "state")),
+    "lookup": found and {"nmi_transaction_id": found.id, "approved": found.approved},
+    "vault_record_deleted": True}))
+"""
+
+
+def autopay_proof() -> dict:
+    from playwright.sync_api import sync_playwright
+
+    print("Building the frontend…", file=sys.stderr)
+    built = subprocess.run(["npm", "run", "build"], cwd=ROOT / "frontend",
+                           capture_output=True, text=True)
+    if built.returncode != 0:
+        sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
+    subprocess.run(["dropdb", "--if-exists", PROOF_DB], check=True)
+    subprocess.run(["createdb", PROOF_DB], check=True)
+    print("Migrating the proof database…", file=sys.stderr)
+    manage("migrate", "--noinput", env_extra=PROOF_ENV)
+    setup = json.loads(manage("nmi_proof_setup", env_extra=PROOF_ENV).strip().splitlines()[-1])
+    server = start_server(PROOF_ENV)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            for tries in range(1, 4):
+                try:
+                    autopay_attempt(browser, setup)
+                    break
+                except Exception as exc:
+                    if tries == 3:
+                        raise
+                    print(f"Try {tries}: {type(exc).__name__}", file=sys.stderr)
+                    # A fresh sign-in link for the next try.
+                    setup["sign_in_path"] = manage(
+                        "shell", "-c", "from apps.accounts.models import MagicLinkToken, User; "
+                        "from apps.tenancy.models import Tenant; "
+                        "u = User.objects.get(email='casey@proof-client.invalid'); "
+                        "t = Tenant.objects.get(legal_name='Proof Practice LLC'); "
+                        "_, raw = MagicLinkToken.issue(tenant=t, user=u, redirect_to='/invoices'); "
+                        "print('/auth/magic/' + raw)", env_extra=PROOF_ENV).strip().splitlines()[-1]
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    charged = json.loads(manage("nmi_proof_setup", "--autopay-charge",
+                                env_extra=PROOF_ENV).strip().splitlines()[-1])
+    result = json.loads(manage("shell", "-c", AUTOPAY_READ_BACK,
+                               env_extra=PROOF_ENV).strip().splitlines()[-1])
+    result["send"] = charged
+    result["ok"] = (result["attempt"]["status"] == "approved"
+                    and result["attempt"]["on_the_card_on_file"]
+                    and result["payment"] is not None and result["invoice"]["status"] == "paid"
+                    and result["sent_before_consent"]["attempts"] == 0
+                    and charged["job"]["charged"] == 1 and charged["job_again"]["charged"] == 0
+                    and "will be charged to the card ending 1111" in charged["email_says"]
+                    and result["lookup"] is not None
+                    and result["lookup"]["nmi_transaction_id"]
+                    == result["attempt"]["nmi_transaction_id"])
+    return result
+
+
 def portal_attempt(browser, setup) -> None:
     page = browser.new_page()
     try:
@@ -274,7 +390,9 @@ def portal(by_link=False) -> dict:
 
 
 def main():
-    if "--portal" in sys.argv or "--link" in sys.argv:
+    if "--autopay" in sys.argv:
+        result = autopay_proof()
+    elif "--portal" in sys.argv or "--link" in sys.argv:
         result = portal(by_link="--link" in sys.argv)
     else:
         server = start_server()

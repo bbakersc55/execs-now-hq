@@ -35,6 +35,8 @@ class StubGateway:
         self.refuse_next: tuple[str, str] | None = None
         self.lose_next_answer: bool | str = False
         self.lookup_unreachable = False
+        #: The expiry the next stored card has, MMYY.
+        self.vault_card_exp = "1029"
 
     @classmethod
     def shared(cls) -> "StubGateway":
@@ -73,7 +75,8 @@ class StubGateway:
             raise GatewayRefused(message, code=code)
         if payment_token is not None:
             self._use(payment_token)
-        elif vault_id not in self.vault:
+        elif self.vault.get(vault_id, {}).get("account") != account.label:
+            # Each practice's vault is its own, as at NMI.
             raise GatewayRefused("No such customer in the vault.")
         lost, self.lose_next_answer = self.lose_next_answer, False
         if lost == "uncharged":
@@ -135,7 +138,7 @@ class StubGateway:
         self._use(payment_token)
         vid = str(next(self._ids))
         self.vault[vid] = {"account": account.label}
-        return VaultRecord(id=vid, last4="1111", card_exp="1029")
+        return VaultRecord(id=vid, last4="1111", card_exp=self.vault_card_exp, brand="Visa")
 
     def vault_delete(self, account: Account, vault_id: str) -> None:
         self._record("vault_delete", account, {"vault_id": vault_id})

@@ -36,6 +36,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--contact", action="store_true",
                             help="Invoice a contact rather than the client company.")
+        parser.add_argument("--autopay-charge", action="store_true",
+                            help="Part 4, after the client saved a card and turned auto-pay "
+                                 "on: send a new invoice through the practice's approval, "
+                                 "make it due today, and run the auto-pay job.")
 
     def handle(self, *args, **options):
         database = connection.settings_dict["NAME"] or ""
@@ -43,6 +47,8 @@ class Command(BaseCommand):
                 and gw.live_calls_allowed() and database.endswith("_nmi_proof")):
             raise CommandError("Only on the laptop, against NMI's sandbox with NMI_LIVE_CALLS "
                                "on, in a database whose name ends in _nmi_proof.")
+        if options["autopay_charge"]:
+            return self.autopay_charge()
         from apps.accounts.models import MagicLinkToken, User
         from apps.billing import pay_links, payment_accounts, services
         from apps.billing.models import ClientInvoice
@@ -97,3 +103,37 @@ class Command(BaseCommand):
             "sign_in_path": f"/auth/magic/{raw}", "invoice_id": str(invoice.pk),
             "pay_path": link[link.index("/pay/"):] if link else "",
             "number": invoice.number, "amount_cents": invoice.total_cents}))
+
+    def autopay_charge(self):
+        from apps.billing import autopay, services
+        from apps.billing.models import ClientInvoice
+        from apps.crm.models import Company, Contact, OutboxMessage
+        from apps.tenancy.context import tenant_context
+        from apps.tenancy.models import Membership, Role, Tenant
+
+        tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        owner = Membership.all_objects.get(tenant=tenant, role=Role.FF).user
+        with tenant_context(tenant.pk):
+            company = Company.objects.get(name="Proof Client Co")
+            contact = Contact.objects.get(first_name="Casey")
+            cents = 4000 + timezone.now().microsecond % 3000
+            invoice = services.create_draft(
+                tenant, actor=owner, client_company=company, contact=contact,
+                lines=[{"description": "Operations retainer (auto-pay proof)",
+                        "quantity": "1", "unit_price_cents": cents}])
+            services.make_ready(invoice, actor=owner, role=Role.FF)
+            services.send(invoice, actor=owner, role=Role.FF)
+            invoice.refresh_from_db()
+            email = OutboxMessage.all_objects.filter(
+                source_type="client_invoice", source_id=invoice.pk).order_by(
+                    "-created_at").first()
+            line = next((part for part in email.body_text.split("\n\n")
+                         if "will be charged" in part), "")
+            ClientInvoice.all_objects.filter(pk=invoice.pk).update(
+                due_date=timezone.localdate())
+            ran = autopay.run(tenant)
+            ran_again = autopay.run(tenant)
+        self.stdout.write(json.dumps({
+            "invoice_id": str(invoice.pk), "number": invoice.number,
+            "invoice_status_after_send": invoice.status, "email_state": email.state,
+            "email_says": line, "job": ran, "job_again": ran_again}))

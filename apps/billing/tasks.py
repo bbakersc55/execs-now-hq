@@ -1,5 +1,5 @@
-"""Scheduled work for invoicing: the recurring drafts, and card payments
-whose answer from NMI was lost."""
+"""Scheduled work for invoicing: the recurring drafts, card payments whose
+answer from NMI was lost, and auto-pay."""
 
 from __future__ import annotations
 
@@ -31,3 +31,16 @@ def resolve_card_payments(tenant_id: str) -> int:
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
         return card_payments.resolve_unknown(tenant)
+
+
+@unattended_job("billing.run_autopay")
+def run_autopay(tenant_id: str) -> dict:
+    """Charges the card on file for each invoice due today under a standing
+    auto-pay consent, tries a failed one once more on a later day, and tells
+    clients of cards about to expire (P4 part 4). Safe to run twice."""
+    from apps.billing import autopay
+    from apps.tenancy.models import Tenant
+
+    with tenant_context(tenant_id):
+        tenant = Tenant.objects.get(pk=tenant_id)
+        return autopay.run(tenant)

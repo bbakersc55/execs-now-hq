@@ -13,6 +13,7 @@ import csv
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
 from rest_framework import permissions, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -671,3 +672,66 @@ class PaymentAccountView(viewsets.ViewSet):
             return Response(payment_accounts.retest(request.tenant, actor=request.user))
         except payment_accounts.PaymentAccountError as exc:
             return Response({"detail": str(exc)}, status=400)
+
+
+class PortalAutopayView(viewsets.ViewSet):
+    """P4 part 4: the company's card on file and auto-pay, in the portal.
+    **A client owner's only.** A client team member is refused (403); practice
+    staff have no such route (404), and the pay link never reaches it."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def company(self):
+        membership = getattr(self.request, "membership", None)
+        if membership is None or membership.role not in CLIENT_ROLES \
+                or membership.client_company_id is None:
+            raise Http404
+        if membership.role != Role.FCC:
+            raise PermissionDenied("Only a client owner can manage the card on file and "
+                                   "auto-pay.")
+        return membership.client_company
+
+    def _do(self, fn):
+        from apps.billing import autopay
+
+        company = self.company()
+        try:
+            fn(company)
+        except autopay.AutopayRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response(autopay.state(company))
+
+    def list(self, request):
+        from apps.billing import autopay
+
+        return Response(autopay.state(self.company()))
+
+    @action(detail=False, methods=["post"])
+    def card(self, request):
+        from apps.billing import autopay
+
+        return self._do(lambda company: autopay.save_card(
+            company, user=request.user, payment_token=request.data.get("payment_token")))
+
+    @action(detail=False, methods=["post"], url_path="remove-card")
+    def remove_card(self, request):
+        from apps.billing import autopay
+
+        return self._do(lambda company: autopay.remove_card(company, user=request.user))
+
+    @action(detail=False, methods=["post"])
+    def consent(self, request):
+        from apps.billing import autopay
+
+        if request.data.get("agree") is not True:
+            return Response({"detail": "Tick the box to agree first."}, status=400)
+        return self._do(lambda company: autopay.consent(
+            company, user=request.user, version=request.data.get("version", ""),
+            ip_address=request.META.get("REMOTE_ADDR"),
+            user_agent=request.META.get("HTTP_USER_AGENT", "")))
+
+    @action(detail=False, methods=["post"])
+    def revoke(self, request):
+        from apps.billing import autopay
+
+        return self._do(lambda company: autopay.revoke(company, user=request.user))

@@ -70,7 +70,7 @@ def in_flight(invoice) -> PaymentAttempt | None:
 def can_pay(invoice, *, via=PaymentAttempt.Via.PORTAL) -> bool:
     """Whether Pay shows: sent or partly paid, something owed, the practice's
     account ready, and no payment already under way. A contact invoice is in
-    no portal, so only its link pays it."""
+    no portal and has no card on file, so only its link pays it."""
     return (invoice.status in ClientInvoice.OPEN and invoice.balance_cents > 0
             and (via == PaymentAttempt.Via.LINK or invoice.kind != ClientInvoice.Kind.CONTACT)
             and payment_accounts.is_ready(invoice.tenant) and in_flight(invoice) is None)
@@ -130,10 +130,28 @@ def pay(invoice, *, payer, payment_token: str,
     if not isinstance(payment_token, str) or not payment_token.strip():
         raise PaymentRefused("The card details did not come through. Please try again.", 400)
     attempt = start(invoice, payer=payer, via=via)
+    return _charge(attempt, payment_token=payment_token)
+
+
+def charge_on_file(invoice, *, card) -> tuple[PaymentAttempt, str]:
+    """Auto-pay (P4 part 4): the company's card on file, for the balance,
+    on the practice's own account. The caller has checked the consent; this
+    checks the card belongs to the invoice's own company."""
+    if card.removed_at is not None or card.client_company_id != invoice.client_company_id \
+            or card.tenant_id != invoice.tenant_id:
+        raise PaymentRefused("That card is not on file for this invoice's company.")
+    attempt = start(invoice, payer=None, via=PaymentAttempt.Via.AUTOPAY)
+    attempt.payment_method = card
+    attempt.save(update_fields=["payment_method", "updated_at"])
+    return _charge(attempt, vault_id=card.vault_id)
+
+
+def _charge(attempt, **source) -> tuple[PaymentAttempt, str]:
+    """One sale for a written attempt, never retried; its answer finishes it."""
     try:
-        account = payment_accounts.practice_account(invoice.tenant)
+        account = payment_accounts.practice_account(attempt.invoice.tenant)
         txn = gw.gateway().sale(account, amount_cents=attempt.amount_cents,
-                                reference=str(attempt.pk), payment_token=payment_token)
+                                reference=str(attempt.pk), **source)
     except gw.GatewayUnreachable:
         _finish(attempt, A.UNKNOWN, response_text="No answer from NMI.")
         return attempt, UNKNOWN_MESSAGE
@@ -182,9 +200,10 @@ def settle(attempt, txn: gw.Transaction) -> tuple[PaymentAttempt, str]:
                     attempt.invoice, actor=attempt.payer, amount_cents=attempt.amount_cents,
                     paid_on=timezone.localdate(), method="card",
                     reference=f"Card {card}".strip()[:120], nmi_transaction_id=txn.id,
-                    note=(f"Paid by the pay link. NMI transaction {txn.id}."
-                          if attempt.via == PaymentAttempt.Via.LINK
-                          else f"Paid in the portal. NMI transaction {txn.id}."))
+                    note={PaymentAttempt.Via.LINK: "Paid by the pay link.",
+                          PaymentAttempt.Via.AUTOPAY: "Charged by auto-pay to the card on file.",
+                          }.get(attempt.via, "Paid in the portal.")
+                    + f" NMI transaction {txn.id}.")
             attempt.payment = payment
             attempt.save(update_fields=["payment", "updated_at"])
         except services.BillingError as exc:
@@ -233,9 +252,11 @@ def _send_receipt_and_notice(attempt_id) -> None:
     thread = services._thread_for(invoice)
     test = " (test mode: no real money moved)" if attempt.environment != "live" else ""
 
-    # By the link no one is signed in: the receipt goes where the invoice went.
+    # By the link or auto-pay no one is signed in: the receipt goes where the
+    # invoice went.
     receipt_to = (attempt.payer.email if attempt.payer is not None
-                  else invoice.email_to if attempt.via == PaymentAttempt.Via.LINK else "")
+                  else invoice.email_to if attempt.via in (PaymentAttempt.Via.LINK,
+                                                           PaymentAttempt.Via.AUTOPAY) else "")
     with tenant_context(tenant.pk):
         if receipt_to and not attempt.problem:
             subject = f"Receipt: {paid} paid on invoice {invoice.number}"
@@ -259,7 +280,8 @@ def _send_receipt_and_notice(attempt_id) -> None:
 
         who = ((attempt.payer.full_name or attempt.payer.email) if attempt.payer
                else f"{(invoice.bill_to or {}).get('name') or 'The client'}, by the pay link,"
-               if attempt.via == PaymentAttempt.Via.LINK else "A client")
+               if attempt.via == PaymentAttempt.Via.LINK
+               else "Auto-pay" if attempt.via == PaymentAttempt.Via.AUTOPAY else "A client")
         company = invoice.client_company.name if invoice.client_company_id else ""
         subject = (f"Card payment: {paid} on invoice {invoice.number}"
                    + (f" from {company}" if company else ""))

@@ -1072,6 +1072,33 @@ class PaymentAttemptFactory(TenantScopedFactory):
     status = "declined"
 
 
+class ClientPaymentMethodFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.ClientPaymentMethod"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    vault_id = factory.Sequence(lambda n: str(90000 + n))
+    brand = "Visa"
+    last4 = "1111"
+    exp_month = 10
+    exp_year = 2029
+
+
+class AutopayConsentFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.AutopayConsent"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    consented_by = factory.SubFactory(UserFactory)
+    consented_at = factory.LazyFunction(timezone.now)
+    wording = "I authorize it."
+    wording_version = "2026-10-21"
+
+
 class ClientInvoiceLineFactory(TenantScopedFactory):
     class Meta:
         model = "billing.ClientInvoiceLine"

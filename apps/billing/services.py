@@ -519,17 +519,25 @@ def _queue(invoice, *, actor, role, to_address=None):
     from apps.crm.models import OutboxMessage
     from apps.crm.services import outbox
 
+    from apps.billing import autopay
+
     url = pay_links.url_of(invoice)
+    body = with_pay_link(invoice.email_body, url, add=True)
+    # With auto-pay on for the company, the email says when the card on file
+    # will be charged, and the invoice is tied to that consent (P4 part 4).
+    invoice.autopay_consent, line = autopay.email_line(invoice)
+    if line:
+        body = f"{body.rstrip()}\n\n{line}"
     message = outbox.create_message(
         tenant=invoice.tenant, producer=OutboxMessage.Producer.CLIENT_INVOICE,
         to_address=to_address or invoice.email_to, to_contact=invoice.contact,
         subject=with_pay_link(invoice.email_subject, url),
-        body_text=with_pay_link(invoice.email_body, url, add=True), role=role,
+        body_text=body, role=role,
         actor=actor, thread=_thread_for(invoice), source_type="client_invoice",
         source_id=invoice.pk,
         attachments=[(invoice.pdf, f"Invoice-{invoice.number}.pdf")])
     invoice.outbox_message = message
-    invoice.save(update_fields=["outbox_message", "updated_at"])
+    invoice.save(update_fields=["outbox_message", "autopay_consent", "updated_at"])
     return message
 
 

@@ -1720,6 +1720,16 @@ export interface PayResult {
   message: string; balance_cents: number; invoice_status?: InvoiceStatus;
 }
 
+/** GET /api/portal-autopay/ — a client owner's card on file and auto-pay
+ *  (P4 part 4). A client team member gets 403. */
+export interface AutopayState {
+  ready: boolean; test_mode: boolean; public_key: string;
+  card: { brand: string; last4: string; expires: string; added_by: string;
+          added_at: string } | null;
+  autopay: { since: string; by: string } | null;
+  wording: string; wording_version: string;
+}
+
 /** GET /api/pay/:token — the pay link's page (P4 part 3), and nothing more. */
 export interface PayLinkPage {
   practice: string; number: string; amount_due_cents: number; due_date: string;

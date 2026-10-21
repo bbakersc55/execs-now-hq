@@ -150,6 +150,11 @@ class ClientInvoice(TenantScopedModel):
     #: ready, or the invoice was voided).
     pay_token_hash = models.CharField(max_length=64, blank=True, default="", db_default="")
     pay_link_issued_at = models.DateTimeField(null=True, blank=True)
+    #: Set when its email was queued to a company with auto-pay on (P4 part
+    #: 4): the email said the card would be charged on the due date, and the
+    #: auto-pay job charges it then, while this consent stands.
+    autopay_consent = models.ForeignKey("AutopayConsent", null=True, blank=True,
+                                        on_delete=models.PROTECT, related_name="invoices")
     pdf = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
                             on_delete=models.PROTECT, related_name="+")
     outbox_message = models.ForeignKey("crm.OutboxMessage", null=True, blank=True,
@@ -311,6 +316,8 @@ class PaymentAttempt(TenantScopedModel):
         PORTAL = "portal", "The portal"
         #: The signed link in the email and on the PDF: no one signed in.
         LINK = "link", "The pay link"
+        #: The card on file, on the due date, under the company's consent.
+        AUTOPAY = "autopay", "Auto-pay"
 
     IN_FLIGHT = (Status.PENDING, Status.UNKNOWN)
 
@@ -334,6 +341,9 @@ class PaymentAttempt(TenantScopedModel):
     last4 = models.CharField(max_length=4, blank=True, default="", db_default="")
     payment = models.OneToOneField(ClientPayment, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="attempt")
+    #: Auto-pay's: the card on file it charged.
+    payment_method = models.ForeignKey("ClientPaymentMethod", null=True, blank=True,
+                                       on_delete=models.PROTECT, related_name="attempts")
     #: A charge NMI approved that could not be recorded on the invoice (it was
     #: voided or paid in the meantime). The practice owner is told.
     problem = models.TextField(blank=True, default="", db_default="")
@@ -350,3 +360,68 @@ class PaymentAttempt(TenantScopedModel):
                                    name="payment_attempt_amount_positive"),
         ]
         indexes = [models.Index(fields=["status", "created_at"])]
+
+
+class ClientPaymentMethod(TenantScopedModel):
+    """A client company's card on file (P4 part 4): a record in the
+    practice's own NMI Customer Vault. The app keeps the vault id, the brand,
+    the last four and the expiry; never the card. Saved only by a signed-in
+    client owner in the portal. Removed, it is deleted from the vault and the
+    row kept, marked removed. One card on file per company at a time."""
+
+    client_company = models.ForeignKey("crm.Company", on_delete=models.PROTECT,
+                                       related_name="payment_methods")
+    #: The record's id in the practice's Customer Vault.
+    vault_id = models.CharField(max_length=40)
+    #: Which of NMI's environments that vault is in.
+    environment = models.CharField(max_length=8, default="sandbox")
+    brand = models.CharField(max_length=20, blank=True, default="", db_default="")
+    last4 = models.CharField(max_length=4)
+    exp_month = models.PositiveSmallIntegerField()
+    exp_year = models.PositiveSmallIntegerField()
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                                 related_name="+")
+    removed_at = models.DateTimeField(null=True, blank=True)
+    removed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    #: When the client was told the card is about to expire. Once per card.
+    expiry_notice_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "client_payment_method"
+        constraints = [
+            models.UniqueConstraint(fields=["client_company"], condition=Q(removed_at__isnull=True),
+                                    name="client_payment_method_one_on_file"),
+            models.CheckConstraint(condition=Q(exp_month__gte=1, exp_month__lte=12),
+                                   name="client_payment_method_exp_month"),
+        ]
+
+
+class AutopayConsent(TenantScopedModel):
+    """A client owner's agreement that the card on file is charged on each
+    invoice's due date (P4 part 4, §10 choice 3). Kept as given: who, when,
+    the exact wording they saw and its version, their address and browser.
+    Revocable at any time, and the revocation is kept too. One standing
+    consent per company."""
+
+    client_company = models.ForeignKey("crm.Company", on_delete=models.PROTECT,
+                                       related_name="autopay_consents")
+    consented_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                     related_name="+")
+    consented_at = models.DateTimeField()
+    wording = models.TextField()
+    wording_version = models.CharField(max_length=20)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=400, blank=True, default="", db_default="")
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    #: "Turned off", "Card removed", …
+    revoke_reason = models.CharField(max_length=120, blank=True, default="", db_default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "autopay_consent"
+        constraints = [
+            models.UniqueConstraint(fields=["client_company"], condition=Q(revoked_at__isnull=True),
+                                    name="autopay_consent_one_standing"),
+        ]

@@ -910,6 +910,9 @@ class OutboxMessage(TenantScopedModel):
         # invoice: left out of everything an assistant sees.
         PAYMENT_RECEIPT = "payment_receipt", "Payment receipt"
         PAYMENT_NOTICE = "payment_notice", "Payment notice"
+        # P4 part 4: to the client about their card on file: an auto-pay
+        # charge that failed, a card about to expire. Financial too.
+        AUTOPAY_NOTICE = "autopay_notice", "Auto-pay notice"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -931,6 +934,8 @@ class OutboxMessage(TenantScopedModel):
         # P4 part 2: a receipt for what the client just did, and the owner's
         # notice of it. Fixed wording, nothing written by AI.
         Producer.PAYMENT_RECEIPT, Producer.PAYMENT_NOTICE,
+        # P4 part 4: fixed wording about what already happened to their card.
+        Producer.AUTOPAY_NOTICE,
     }
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)
