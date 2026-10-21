@@ -111,6 +111,9 @@ def archive(tenant, *, actor) -> None:
         tenant.status, tenant.archived_at = Tenant.Status.ARCHIVED, timezone.now()
         tenant.save(update_fields=["status", "archived_at", "updated_at"])
         remove_for(tenant)
+        from apps.billing import subscriptions
+
+        subscriptions.archived(tenant)
         AuditEvent.all_objects.create(tenant=tenant, actor=actor, verb="practice.archived",
                                       target_type="tenant", target_id=tenant.pk, payload={})
 
@@ -128,6 +131,9 @@ def unarchive(tenant, *, actor) -> None:
         tenant.archived_at = None
         tenant.save(update_fields=["status", "archived_at", "updated_at"])
         ensure_for(tenant)
+        from apps.billing import subscriptions
+
+        subscriptions.unarchived(tenant)
         AuditEvent.all_objects.create(tenant=tenant, actor=actor, verb="practice.unarchived",
                                       target_type="tenant", target_id=tenant.pk, payload={})
 

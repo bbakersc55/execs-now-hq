@@ -69,22 +69,45 @@ class PracticeView(APIView):
         tenant = self._tenant(pk)
         if tenant is None:
             return Response({"detail": "No such practice."}, status=404)
+        from apps.billing.subscriptions import SubscriptionRefused
+        from apps.platform import billing
+
         try:
             provisioning.update_identity(
                 tenant, legal_name=request.data.get("legal_name"),
                 display_name=request.data.get("display_name"),
                 domain=request.data.get("domain"),
                 pricing_program=request.data.get("pricing_program"))
+            # P4 part 5: the monthly amount for this practice; null is the plan's.
+            if "subscription_amount_cents" in request.data:
+                billing.set_amount(tenant, request.data["subscription_amount_cents"],
+                                   actor=request.user)
         except provisioning.ProvisioningRefused as exc:
             return Response({"detail": str(exc), "errors": exc.errors}, status=400)
+        except SubscriptionRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
         return Response(next(r for r in stats.practice_rows() if r["id"] == str(tenant.pk)))
 
     def post(self, request, pk, action=None):
-        if action not in ("archive", "unarchive"):
+        if action not in ("archive", "unarchive", "suspend", "unsuspend"):
             return Response({"detail": "Archive or unarchive."}, status=405)
         tenant = self._tenant(pk)
         if tenant is None:
             return Response({"detail": "No such practice."}, status=404)
+        if action in ("suspend", "unsuspend"):
+            # P4 part 5 (D2, D3): by hand, once 30 days unpaid; lifted by
+            # itself when paid, or here.
+            from apps.billing import subscriptions
+
+            try:
+                if action == "suspend":
+                    subscriptions.suspend(tenant, actor=request.user,
+                                          reason=request.data.get("reason", ""))
+                else:
+                    subscriptions.lift(tenant, actor=request.user)
+            except subscriptions.SubscriptionRefused as exc:
+                return Response({"detail": str(exc)}, status=exc.status)
+            return Response(next(r for r in stats.practice_rows() if r["id"] == str(tenant.pk)))
         if action == "archive":
             # Archiving your own practice would sign you out of it, with no
             # practice left to switch back to.

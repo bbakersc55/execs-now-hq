@@ -16,7 +16,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.response import Response
 
-from apps.accounts.ratelimit import RateLimit, too_many
+from apps.accounts.ratelimit import RateLimit, client_ip, too_many
 from apps.billing import card_payments, pay_links, services
 from apps.billing.models import ClientInvoice, PaymentAttempt
 from apps.tenancy.context import tenant_context
@@ -33,7 +33,7 @@ _PER_ADDRESS = RateLimit(limit=120, window_seconds=3600, prefix="pay-ip")
 
 
 def _limited(request, token, *, charge=False) -> bool:
-    ip = request.META.get("REMOTE_ADDR")
+    ip = client_ip(request)
     return (too_many(_PER_ADDRESS, ip) or too_many(_VIEWS_PER_LINK, token)
             or (charge and too_many(_CHARGES_PER_LINK, token)))
 

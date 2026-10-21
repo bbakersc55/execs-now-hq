@@ -4,6 +4,7 @@
     .venv/bin/python scripts/nmi_token_proof.py --portal   # the portal's Pay (part 2)
     .venv/bin/python scripts/nmi_token_proof.py --link     # the pay link (part 3)
     .venv/bin/python scripts/nmi_token_proof.py --autopay  # card on file, auto-pay (part 4)
+    .venv/bin/python scripts/nmi_token_proof.py --subscription  # practice subscription (part 5)
 
 **--portal** pays a real invoice through the real portal page, as a client
 would: it builds the frontend, makes a fresh database `execsnowhq_nmi_proof`
@@ -24,6 +25,14 @@ a new invoice is sent through the practice's approval, made due today, and
 the auto-pay job is run twice; the sale on the vault record is read back and
 looked up by our reference, the invoice sent before consent is shown not
 charged, and the vault record is deleted at the end.
+
+**--subscription** signs in as the practice owner (a session made in the
+proof database), saves the test card under Settings → Billing, "Your
+subscription", into the **platform's** sandbox vault (the NMI_* keys), then
+runs the subscription job the day before the card's first 1st (nothing) and
+on that 1st, twice; the sale, the invoice and its PDF, the receipt with the
+PDF attached, and the lookup by the invoice's reference are read back, and
+the vault record is deleted at the end.
 
 Without --portal:
 
@@ -290,6 +299,105 @@ def autopay_proof() -> dict:
     return result
 
 
+def subscription_attempt(browser, session) -> None:
+    context = browser.new_context()
+    context.add_cookies([{"name": session["cookie"], "value": session["session"],
+                          "url": BASE}])
+    page = context.new_page()
+    try:
+        page.goto(BASE + "/settings/billing", wait_until="domcontentloaded", timeout=90000)
+        page.get_by_role("button", name="Add a card").click(timeout=90000)
+        # Below the fold on this page: NMI's frames load once in view.
+        page.locator("[data-testid=card-form]").scroll_into_view_if_needed(timeout=30000)
+        fill_card(page, button=re.compile(r"^Save this card$"))
+        page.get_by_text(re.compile(r"ending 1111")).first.wait_for(timeout=120000)
+    finally:
+        context.close()
+
+
+SUBSCRIPTION_READ_BACK = """
+import json
+from apps.billing import gateway as gw
+from apps.billing.models import ClientPayment, PracticeInvoice, PracticeSubscription
+from apps.crm.models import OutboxAttachment, OutboxMessage
+from apps.tenancy import storage
+row = PracticeSubscription.all_objects.select_related("tenant").get(
+    tenant__legal_name="Proof Practice LLC")
+inv = PracticeInvoice.all_objects.get(tenant=row.tenant)
+receipt = OutboxMessage.all_objects.filter(producer="subscription_receipt").first()
+attached = list(OutboxAttachment.all_objects.filter(outbox_message=receipt)) if receipt else []
+found = gw.gateway().find_by_reference(gw.platform_account(), inv.reference)
+gw.gateway().vault_delete(gw.platform_account(), row.nmi_vault_id)
+print(json.dumps({
+    "subscription": {"status": row.status, "card": f"{row.card_brand} {row.card_last4}",
+                     "expires": row.card_expires, "environment": row.card_environment,
+                     "first_charge_on": row.first_charge_on.isoformat()},
+    "invoice": {"number": inv.number, "status": inv.status, "total_cents": inv.total_cents,
+                "tax_cents": inv.tax_cents, "period": f"{inv.period_start}..{inv.period_end}",
+                "nmi_transaction_id": inv.nmi_transaction_id, "reference": inv.reference,
+                "pdf_bytes": len(storage.read(inv.pdf)) if inv.pdf_id else 0},
+    "receipt": receipt and {"to": receipt.to_address, "state": receipt.state,
+        "sent_from": receipt.tenant.legal_name, "attachments": [a.filename for a in attached],
+        "attachment_bytes": [len(storage.read(a.stored_file)) for a in attached]},
+    "client_payments": ClientPayment.all_objects.count(),
+    "lookup": found and {"nmi_transaction_id": found.id, "approved": found.approved,
+                         "amount_cents": found.amount_cents, "reference": found.reference},
+    "vault_record_deleted": True}))
+"""
+
+
+def subscription_proof() -> dict:
+    from playwright.sync_api import sync_playwright
+
+    print("Building the frontend…", file=sys.stderr)
+    built = subprocess.run(["npm", "run", "build"], cwd=ROOT / "frontend",
+                           capture_output=True, text=True)
+    if built.returncode != 0:
+        sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
+    subprocess.run(["dropdb", "--if-exists", PROOF_DB], check=True)
+    subprocess.run(["createdb", PROOF_DB], check=True)
+    print("Migrating the proof database…", file=sys.stderr)
+    manage("migrate", "--noinput", env_extra=PROOF_ENV)
+    manage("nmi_proof_setup", env_extra=PROOF_ENV)
+    session = json.loads(manage("nmi_proof_setup", "--subscription",
+                                env_extra=PROOF_ENV).strip().splitlines()[-1])
+    server = start_server(PROOF_ENV)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            for tries in range(1, 4):
+                try:
+                    subscription_attempt(browser, session)
+                    break
+                except Exception as exc:
+                    saved = manage("shell", "-c", "from apps.billing.models import "
+                                   "PracticeSubscription as S; print(S.all_objects.exclude("
+                                   "nmi_vault_id='').count())", env_extra=PROOF_ENV).strip()
+                    if tries == 3 or saved.splitlines()[-1] != "0":
+                        raise
+                    print(f"Try {tries}: {type(exc).__name__}", file=sys.stderr)
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    charged = json.loads(manage("nmi_proof_setup", "--subscription-charge",
+                                env_extra=PROOF_ENV).strip().splitlines()[-1])
+    result = json.loads(manage("shell", "-c", SUBSCRIPTION_READ_BACK,
+                               env_extra=PROOF_ENV).strip().splitlines()[-1])
+    result["job"] = charged
+    inv = result["invoice"]
+    result["ok"] = (inv["status"] == "paid" and inv["nmi_transaction_id"] != ""
+                    and inv["pdf_bytes"] > 0
+                    and charged["day_before"]["charged"] == 0
+                    and charged["job"]["charged"] == 1 and charged["job_again"]["charged"] == 0
+                    and result["receipt"] is not None
+                    and result["receipt"]["attachments"] == [f"Invoice-{inv['number']}.pdf"]
+                    and result["client_payments"] == 0
+                    and result["lookup"] is not None
+                    and result["lookup"]["nmi_transaction_id"] == inv["nmi_transaction_id"])
+    return result
+
+
 def portal_attempt(browser, setup) -> None:
     page = browser.new_page()
     try:
@@ -390,7 +498,9 @@ def portal(by_link=False) -> dict:
 
 
 def main():
-    if "--autopay" in sys.argv:
+    if "--subscription" in sys.argv:
+        result = subscription_proof()
+    elif "--autopay" in sys.argv:
         result = autopay_proof()
     elif "--portal" in sys.argv or "--link" in sys.argv:
         result = portal(by_link="--link" in sys.argv)

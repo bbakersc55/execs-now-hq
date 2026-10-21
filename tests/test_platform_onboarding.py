@@ -161,7 +161,7 @@ def test_a_new_version_asks_again(api, blue_sky_owner, monkeypatch):
                                            user=blue_sky_owner.user, version=agreement.VERSION,
                                            text_sha256=terms["sha256"])
     assert api.as_(blue_sky_owner).get("/api/me").json()["agreement_required"] is False
-    monkeypatch.setattr(agreement, "VERSION", "v4")
+    monkeypatch.setattr(agreement, "VERSION", "v5")
     assert api.as_(blue_sky_owner).get("/api/me").json()["agreement_required"] is True
 
 

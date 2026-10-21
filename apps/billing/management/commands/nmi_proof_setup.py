@@ -21,6 +21,7 @@ without its email.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -36,6 +37,13 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--contact", action="store_true",
                             help="Invoice a contact rather than the client company.")
+        parser.add_argument("--subscription", action="store_true",
+                            help="Part 5: the platform owner's own practice (platform mail "
+                                 "is sent from it), the agreement accepted by the proof "
+                                 "practice's owner, and a signed-in session for that owner.")
+        parser.add_argument("--subscription-charge", action="store_true",
+                            help="Part 5, after the owner saved the practice's card: run the "
+                                 "subscription job on the card's first charge day, twice.")
         parser.add_argument("--autopay-charge", action="store_true",
                             help="Part 4, after the client saved a card and turned auto-pay "
                                  "on: send a new invoice through the practice's approval, "
@@ -49,6 +57,10 @@ class Command(BaseCommand):
                                "on, in a database whose name ends in _nmi_proof.")
         if options["autopay_charge"]:
             return self.autopay_charge()
+        if options["subscription"]:
+            return self.subscription()
+        if options["subscription_charge"]:
+            return self.subscription_charge()
         from apps.accounts.models import MagicLinkToken, User
         from apps.billing import pay_links, payment_accounts, services
         from apps.billing.models import ClientInvoice
@@ -137,3 +149,50 @@ class Command(BaseCommand):
             "invoice_id": str(invoice.pk), "number": invoice.number,
             "invoice_status_after_send": invoice.status, "email_state": email.state,
             "email_says": line, "job": ran, "job_again": ran_again}))
+
+    def subscription(self):
+        from django.conf import settings as dj
+        from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+        from django.contrib.sessions.backends.db import SessionStore
+
+        from apps.accounts.models import User
+        from apps.platform import agreement, provisioning
+        from apps.platform.models import AgreementAcceptance
+        from apps.tenancy.models import Membership, Role, Tenant
+
+        if not Tenant.objects.filter(legal_name="Proof Platform LLC").exists():
+            platform = provisioning.provision_practice(
+                legal_name="Proof Platform LLC", display_name="Proof Platform",
+                domain="proof-platform.invalid", owner_email="platform@proof-platform.invalid",
+                actor=None, pricing_program="interchange_plus")
+            Tenant.objects.filter(pk=platform.pk).update(status=Tenant.Status.ACTIVE)
+        User.objects.filter(email="platform@proof-platform.invalid").update(
+            is_platform_owner=True)
+        tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        owner = Membership.all_objects.get(tenant=tenant, role=Role.FF).user
+        terms = agreement.current()
+        AgreementAcceptance.all_objects.get_or_create(
+            user=owner, version=terms["version"],
+            defaults={"tenant": tenant, "text_sha256": terms["sha256"]})
+        session = SessionStore()
+        session[SESSION_KEY] = str(owner.pk)
+        session[BACKEND_SESSION_KEY] = dj.AUTHENTICATION_BACKENDS[0]
+        session[HASH_SESSION_KEY] = owner.get_session_auth_hash()
+        session.create()
+        self.stdout.write(json.dumps({"cookie": dj.SESSION_COOKIE_NAME,
+                                      "session": session.session_key}))
+
+    def subscription_charge(self):
+        from apps.billing import subscriptions
+        from apps.tenancy.context import tenant_context
+        from apps.tenancy.models import Tenant
+
+        tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        with tenant_context(tenant.pk):
+            row = subscriptions.subscription_for(tenant)
+            day = row.first_charge_on
+            before = subscriptions.run(tenant, today=day - timedelta(days=1))
+            ran = subscriptions.run(tenant, today=day)
+            again = subscriptions.run(tenant, today=day)
+        self.stdout.write(json.dumps({"first_charge_on": day.isoformat(),
+                                      "day_before": before, "job": ran, "job_again": again}))

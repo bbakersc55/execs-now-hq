@@ -913,6 +913,11 @@ class OutboxMessage(TenantScopedModel):
         # P4 part 4: to the client about their card on file: an auto-pay
         # charge that failed, a card about to expire. Financial too.
         AUTOPAY_NOTICE = "autopay_notice", "Auto-pay notice"
+        # P4 part 5: the platform's mail to a practice about its subscription,
+        # sent through the platform owner's practice: a receipt with the
+        # invoice's PDF, and a failed charge. Financial.
+        SUBSCRIPTION_RECEIPT = "subscription_receipt", "Subscription receipt"
+        SUBSCRIPTION_NOTICE = "subscription_notice", "Subscription notice"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -936,6 +941,7 @@ class OutboxMessage(TenantScopedModel):
         Producer.PAYMENT_RECEIPT, Producer.PAYMENT_NOTICE,
         # P4 part 4: fixed wording about what already happened to their card.
         Producer.AUTOPAY_NOTICE,
+        Producer.SUBSCRIPTION_RECEIPT, Producer.SUBSCRIPTION_NOTICE,
     }
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)

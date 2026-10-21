@@ -86,6 +86,8 @@ export interface Me {
   home_practice?: string | null;
   /** P2: a practice owner who has not accepted the beta agreement yet. */
   agreement_required?: boolean;
+  /** P4 part 5: staff of a suspended practice see only the billing screen. */
+  suspended?: boolean;
   tenant: string | null;
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */
@@ -1728,6 +1730,29 @@ export interface AutopayState {
           added_at: string } | null;
   autopay: { since: string; by: string } | null;
   wording: string; wording_version: string;
+}
+
+/** GET /api/subscription/ — what the practice pays Execs NOW HQ (P4 part 5).
+ *  The practice owner's only. */
+export interface SubscriptionState {
+  status: "not_billed" | "needs_card" | "active" | "past_due" | "canceled";
+  status_label: string; not_billed: boolean; plan: string; amount_cents: number;
+  billing_email: string;
+  card: { brand: string; last4: string; expires: string } | null;
+  next_charge_on: string | null; public_key: string; test_mode: boolean;
+  suspended: boolean; open_cents: number;
+  invoices: { id: string; number: string; period_start: string; total_cents: number;
+              status: "open" | "paid" | "void" | "refunded"; status_label: string;
+              paid_at: string | null; checking: boolean; last_charge_text: string }[];
+  /** After a card is saved or Pay now: what happened. */
+  message?: string;
+}
+
+/** GET /api/invoices/card-on-file/?company= — the read-only line on a client
+ *  company's page (P4 part 5). */
+export interface CardOnFile {
+  card: { brand: string; last4: string; expires: string } | null;
+  autopay_since: string | null;
 }
 
 /** GET /api/pay/:token — the pay link's page (P4 part 3), and nothing more. */

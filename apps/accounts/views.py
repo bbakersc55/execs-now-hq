@@ -14,7 +14,7 @@ from config.branding import PALETTE, PRODUCT_NAME
 
 from apps.tenancy.roles import role_label
 from .models import SIGN_IN_PURPOSES, MagicLinkPurpose, MagicLinkToken
-from .ratelimit import RateLimit, too_many
+from .ratelimit import RateLimit, client_ip, too_many
 
 # C3.4 — 5/hour per email, 20/hour per IP.
 _EMAIL_LIMIT = RateLimit(limit=5, window_seconds=3600, prefix="magic-email")
@@ -266,6 +266,9 @@ def me(request):
         "home_practice": _home_practice(request.user) if request.user.is_platform_owner else None,
         # P2: a practice owner sees the beta agreement before anything else.
         "agreement_required": _agreement_required(request),
+        # P4 part 5: staff of a suspended practice see only the billing screen.
+        "suspended": bool(membership and membership.tenant.status == "suspended"
+                          and membership.role in ("FF", "CF", "VA")),
         "tenant": str(membership.tenant_id) if membership else None,
         # P6 M1: the modules this practice has, for the screens only they show.
         # Staff only: a client user is told nothing about what the practice has.
@@ -415,7 +418,7 @@ def login_refused(request):
 @require_http_methods(["POST"])
 def request_magic_link(request):
     email = (request.POST.get("email") or "").strip().lower()
-    ip = request.META.get("REMOTE_ADDR")
+    ip = client_ip(request)
 
     if too_many(_IP_LIMIT, ip) or too_many(_EMAIL_LIMIT, email):
         return JsonResponse(_OPAQUE, status=429)

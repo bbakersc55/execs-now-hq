@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invoice {{ number }} — {{ product }}</title>
+<style>
+  @page { size: Letter; margin: 0.75in; }
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-size: 10pt;
+         color: #222; line-height: 1.4; margin: 0; }
+  .head { border-bottom: 2.5pt solid #F58220; padding-bottom: 10pt; margin-bottom: 18pt;
+          overflow: hidden; }
+  .head .who { float: left; font-size: 14pt; font-weight: 700; color: #0A3A65; }
+  .head .what { float: right; text-align: right; }
+  h1 { font-size: 22pt; color: #0A3A65; margin: 0; letter-spacing: 0.5pt; }
+  .number { font-size: 11pt; color: #6D6E71; }
+  .meta { width: 100%; margin-bottom: 20pt; border-collapse: collapse; }
+  .meta td { vertical-align: top; padding: 0; }
+  .label { font-size: 7.5pt; letter-spacing: 0.6pt; text-transform: uppercase;
+           color: #6D6E71; margin-bottom: 2pt; }
+  .dates td { padding: 1pt 0 1pt 14pt; }
+  .lines { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
+  .lines th { font-size: 7.5pt; letter-spacing: 0.6pt; text-transform: uppercase; color: #fff;
+              background: #0A3A65; text-align: left; padding: 5pt 7pt; }
+  .lines td { padding: 6pt 7pt; border-bottom: 0.5pt solid #D8DADC; }
+  .num { text-align: right; white-space: nowrap; }
+  .totals { width: 44%; margin-left: 56%; border-collapse: collapse; margin-bottom: 22pt; }
+  .totals td { padding: 3pt 7pt; }
+  .totals .total td { font-size: 12.5pt; font-weight: 700; color: #0A3A65;
+                      border-top: 1.5pt solid #0A3A65; padding-top: 6pt; }
+  .paid { background: #F3F6F9; border-left: 3pt solid #F58220; padding: 8pt 10pt; }
+  .foot { margin-top: 24pt; font-size: 8pt; color: #939598; }
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="who">{{ product }}</div>
+  <div class="what"><h1>Invoice</h1><div class="number">{{ number }}</div></div>
+</div>
+
+<table class="meta"><tr>
+  <td>
+    <div class="label">Bill to</div>
+    <strong>{{ practice }}</strong>{% if billing_email %}<br>{{ billing_email }}{% endif %}
+  </td>
+  <td>
+    <table class="dates" style="margin-left:auto">
+      <tr><td class="label">From</td><td>{{ seller }}</td></tr>
+      <tr><td class="label">Issued</td><td>{{ issued }}</td></tr>
+      <tr><td class="label">Period</td><td>{{ period }}</td></tr>
+    </table>
+  </td>
+</tr></table>
+
+<table class="lines">
+  <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for line in lines %}<tr><td>{{ line.description }}</td><td class="num">{{ line.amount }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<table class="totals">
+  <tr><td>Subtotal</td><td class="num">{{ subtotal }}</td></tr>
+  <tr><td>Tax</td><td class="num">{{ tax }}</td></tr>
+  <tr class="total"><td>Total</td><td class="num">{{ total }}</td></tr>
+</table>
+
+{% if paid %}<div class="paid"><div class="label">Paid</div>
+<p style="margin:0">{{ paid }}</p></div>{% endif %}
+
+<div class="foot">Charged on the first of each month to the card on file, as the beta agreement
+says. {{ seller }}. Questions: {{ contact }}</div>
+</body>
+</html>

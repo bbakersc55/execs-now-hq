@@ -648,8 +648,12 @@ def test_ac_2_9_the_retention_job_is_scheduled(seeded_tenant):
     # 3 Module 1, work.tick, Module 2's two, Module 5's two (the ten-minute
     # poll and the one-minute backfill tick), Module 6's inbound poll, P4A's
     # recurring invoice drafts, P6 M2's month forecast, and P4 part 2's
-    # lookup of card payments NMI did not answer, and P4 part 4's auto-pay.
-    assert Schedule.objects.count() == 13
+    # lookup of card payments NMI did not answer, P4 part 4's auto-pay and
+    # part 5's subscription charge.
+    assert Schedule.objects.count() == 14
+    assert Schedule.objects.filter(
+        name=f"billing.charge_subscription:{seeded_tenant.slug}",
+        schedule_type=Schedule.DAILY).exists()
     assert Schedule.objects.filter(
         name=f"billing.run_autopay:{seeded_tenant.slug}",
         schedule_type=Schedule.DAILY).exists()

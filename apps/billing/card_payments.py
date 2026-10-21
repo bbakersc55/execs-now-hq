@@ -181,6 +181,12 @@ def _finish(attempt, status, **fields) -> None:
 def settle(attempt, txn: gw.Transaction) -> tuple[PaymentAttempt, str]:
     """Finish an attempt from NMI's transaction: from the sale's own answer,
     or from the lookup. Safe to run twice."""
+    if txn.reference and txn.reference != str(attempt.pk):
+        # Not this attempt's sale: a subscription's ("sub-…") or another
+        # payment's. Told apart by our reference, never by the account (§1.2).
+        log.warning("card payment %s: NMI transaction carries another reference; ignored",
+                    attempt.pk)
+        return attempt, FAILED_MESSAGE
     with transaction.atomic():
         attempt = PaymentAttempt.all_objects.select_for_update().get(pk=attempt.pk)
         if attempt.status == A.APPROVED:

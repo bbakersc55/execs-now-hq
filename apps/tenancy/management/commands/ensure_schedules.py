@@ -73,6 +73,11 @@ SCHEDULES = [
     # 9:00; a failed charge once more the next day; card-expiry notices.
     # Safe to run twice: an attempt made today is never made again.
     ("billing.run_autopay", "apps.billing.tasks.run_autopay", Schedule.DAILY, None, 9),
+    # P4 part 5: the practice's own subscription, charged by the app on the
+    # 1st (a missed day catches up), and a lost answer looked up. The one job
+    # a suspended practice keeps: paying is what lifts the suspension.
+    ("billing.charge_subscription", "apps.billing.tasks.charge_subscription",
+     Schedule.DAILY, None, 7),
     # P6 M2: the month's forecast, kept for "how good it has been". Daily at
     # the practice's midnight, so the 1st is caught as the month begins and a
     # missed 1st the day after; a no-op once the month's is kept, and for a
@@ -80,6 +85,10 @@ SCHEDULES = [
     ("finance.keep_month_forecast", "apps.finance.tasks.keep_month_forecast",
      Schedule.DAILY, None, 0),
 ]
+
+
+#: What a suspended practice still runs (P4 part 5).
+SUSPENDED_RUNS = ("billing.charge_subscription",)
 
 
 def _first_run(tenant, local_hour):
@@ -126,10 +135,12 @@ def realign_local_hours(tenant) -> int:
     return moved
 
 
-def ensure_for(tenant, write=None) -> None:
+def ensure_for(tenant, write=None, only=None) -> None:
     """Create or update one practice's schedules (P2: provisioning and
-    unarchiving call this for the one practice)."""
+    unarchiving call this for the one practice). `only`: just those."""
     for name, func, schedule_type, minutes, local_hour in SCHEDULES:
+        if only is not None and name not in only:
+            continue
         full_name = f"{name}:{tenant.slug}"
         fields = {
             "func": func, "args": repr(str(tenant.pk)),
@@ -154,9 +165,10 @@ def ensure_for(tenant, write=None) -> None:
             write(f"{verb:8} {full_name:45} next run {schedule.next_run:%Y-%m-%d %H:%M %Z}")
 
 
-def remove_for(tenant) -> int:
-    """Delete one practice's schedules: an archived practice runs nothing."""
-    names = [f"{name}:{tenant.slug}" for name, *_ in SCHEDULES]
+def remove_for(tenant, keep=()) -> int:
+    """Delete one practice's schedules: an archived practice runs nothing, a
+    suspended one only what is in `keep`."""
+    names = [f"{name}:{tenant.slug}" for name, *_ in SCHEDULES if name not in keep]
     deleted, _ = Schedule.objects.filter(name__in=names).delete()
     return deleted
 
@@ -171,5 +183,9 @@ class Command(BaseCommand):
                 # run after every pull: it must not bring the jobs back.
                 remove_for(tenant)
                 self.stdout.write(f"{'skipped':8} {tenant.slug:45} archived")
+                continue
+            if tenant.status == Tenant.Status.SUSPENDED:
+                remove_for(tenant, keep=SUSPENDED_RUNS)
+                ensure_for(tenant, self.stdout.write, only=SUSPENDED_RUNS)
                 continue
             ensure_for(tenant, self.stdout.write)

@@ -19,7 +19,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 
-from apps.tenancy.models import TenantScopedModel
+from apps.tenancy.models import TenantScopedModel, UUIDModel
 
 
 class InvoiceSettings(TenantScopedModel):
@@ -425,3 +425,169 @@ class AutopayConsent(TenantScopedModel):
             models.UniqueConstraint(fields=["client_company"], condition=Q(revoked_at__isnull=True),
                                     name="autopay_consent_one_standing"),
         ]
+
+
+# ------------------------------------------------- practice subscriptions
+# P4 part 5, `docs/p4_billing.md` §2 and §5.1: a practice pays the platform,
+# on the platform's own NMI account (the NMI_* keys in the environment).
+# Nothing here is a client's: a subscription invoice is told apart from a
+# client payment by its own reference ("sub-<id>"), never by the account.
+
+class BillingPlan(UUIDModel):
+    """The platform's. "Beta at cost" is the one plan in Beta (D9)."""
+
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    interval = models.CharField(max_length=8, default="month", db_default="month")
+    price_cents = models.BigIntegerField()
+    #: A price not decided yet: never shown to a practice.
+    is_placeholder = models.BooleanField(default=False, db_default=False)
+    is_active = models.BooleanField(default=True, db_default=True)
+
+    class Meta:
+        db_table = "billing_plan"
+
+
+class BillingAddon(UUIDModel):
+    """The platform's: a monthly price for one module, added to the base.
+    None in Beta; the table is here for released pricing (D9)."""
+
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    price_cents = models.BigIntegerField()
+    is_placeholder = models.BooleanField(default=True, db_default=True)
+    is_active = models.BooleanField(default=True, db_default=True)
+
+    class Meta:
+        db_table = "billing_addon"
+
+
+class PracticeSubscription(TenantScopedModel):
+    """A practice's subscription: its plan, its amount, and its card in the
+    **platform's** Customer Vault. One per practice."""
+
+    class Status(models.TextChoices):
+        #: The platform owner's own practice: never billed.
+        NOT_BILLED = "not_billed", "Not billed"
+        NEEDS_CARD = "needs_card", "Needs a card"
+        ACTIVE = "active", "Active"
+        PAST_DUE = "past_due", "Past due"
+        CANCELED = "canceled", "Canceled"
+
+    plan = models.ForeignKey(BillingPlan, on_delete=models.PROTECT, related_name="+")
+    #: The platform owner's figure for this practice; null is the plan's price.
+    amount_override_cents = models.BigIntegerField(null=True, blank=True)
+    currency = models.CharField(max_length=3, default="usd", db_default="usd")
+    #: Where receipts go: the practice owner's address unless changed.
+    billing_email = models.EmailField(blank=True, default="", db_default="")
+    nmi_vault_id = models.CharField(max_length=40, blank=True, default="", db_default="")
+    #: Which of NMI's environments the platform account's vault was in.
+    card_environment = models.CharField(max_length=8, blank=True, default="", db_default="")
+    card_brand = models.CharField(max_length=20, blank=True, default="", db_default="")
+    card_last4 = models.CharField(max_length=4, blank=True, default="", db_default="")
+    #: "MM/YY", as shown.
+    card_expires = models.CharField(max_length=5, blank=True, default="", db_default="")
+    card_added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    card_added_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=12, choices=Status.choices,
+                              default=Status.NEEDS_CARD, db_default=Status.NEEDS_CARD)
+    #: The first 1st on or after the card went on file: no part-month (§2.2).
+    first_charge_on = models.DateField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "practice_subscription"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"], name="practice_subscription_one_each"),
+            models.CheckConstraint(
+                condition=Q(amount_override_cents__isnull=True)
+                | Q(amount_override_cents__gte=0),
+                name="practice_subscription_override_not_negative"),
+        ]
+
+
+class PracticeSubscriptionAddon(TenantScopedModel):
+    subscription = models.ForeignKey(PracticeSubscription, on_delete=models.CASCADE,
+                                     related_name="addons")
+    addon = models.ForeignKey(BillingAddon, on_delete=models.PROTECT, related_name="+")
+    added_at = models.DateTimeField()
+    #: The next period's start (D4): the rest of the month it was added in is
+    #: included.
+    charged_from = models.DateField()
+    removed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "practice_subscription_addon"
+
+
+class PracticeInvoice(TenantScopedModel):
+    """The platform's invoice to a practice for one month, made by the app
+    for every charge, with its PDF (D8). Never a client invoice."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        PAID = "paid", "Paid"
+        VOID = "void", "Void"
+        REFUNDED = "refunded", "Refunded"
+
+    number = models.CharField(max_length=60)
+    period_start = models.DateField()
+    period_end = models.DateField()
+    subtotal_cents = models.BigIntegerField(default=0, db_default=0)
+    #: Zero in Beta (D5); the line is there.
+    tax_cents = models.BigIntegerField(default=0, db_default=0)
+    total_cents = models.BigIntegerField(default=0, db_default=0)
+    amount_paid_cents = models.BigIntegerField(default=0, db_default=0)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN,
+                              db_default=Status.OPEN)
+    issued_at = models.DateTimeField()
+    due_at = models.DateTimeField()
+    paid_at = models.DateTimeField(null=True, blank=True)
+    nmi_transaction_id = models.CharField(max_length=40, blank=True, default="", db_default="")
+    pdf = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
+                            on_delete=models.PROTECT, related_name="+")
+    #: A charge under way, or one whose answer was lost ("unknown"): no other
+    #: is made until it is settled by the lookup.
+    charge_state = models.CharField(max_length=10, blank=True, default="", db_default="")
+    charge_started_at = models.DateTimeField(null=True, blank=True)
+    charge_tries = models.PositiveSmallIntegerField(default=0, db_default=0)
+    #: What NMI said to the last charge that was not approved.
+    last_charge_text = models.TextField(blank=True, default="", db_default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "practice_invoice"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "period_start"],
+                                    name="practice_invoice_one_per_period"),
+            models.UniqueConstraint(fields=["number"], name="practice_invoice_number_unique"),
+            models.CheckConstraint(condition=Q(amount_paid_cents__lte=F("total_cents")),
+                                   name="practice_invoice_not_overpaid"),
+            models.CheckConstraint(
+                condition=Q(subtotal_cents__gte=0, tax_cents__gte=0, total_cents__gte=0,
+                            amount_paid_cents__gte=0),
+                name="practice_invoice_amounts_not_negative"),
+        ]
+
+    @property
+    def reference(self) -> str:
+        """Our reference at NMI: what tells it from any client payment."""
+        return f"sub-{self.pk}"
+
+    @property
+    def balance_cents(self) -> int:
+        return self.total_cents - self.amount_paid_cents
+
+
+class PracticeInvoiceLine(TenantScopedModel):
+    invoice = models.ForeignKey(PracticeInvoice, on_delete=models.CASCADE,
+                                related_name="lines")
+    position = models.PositiveSmallIntegerField(default=0)
+    description = models.CharField(max_length=200)
+    amount_cents = models.BigIntegerField()
+    #: Null for the base plan.
+    addon = models.ForeignKey(BillingAddon, null=True, blank=True, on_delete=models.PROTECT,
+                              related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "practice_invoice_line"
+        ordering = ["position"]

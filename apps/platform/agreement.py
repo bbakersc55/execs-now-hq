@@ -4,8 +4,10 @@ A practice owner accepts the current version before using the app; the
 acceptance records the SHA-256 of the exact text shown. A new version asks
 again (D3). The platform owner is exempt (their own practice).
 
-v3 (2026-10-20) is v1 with clause 8, personal finance and the demo. v2, the
-card-on-file costs clause, still waits for subscriptions (p4_billing N1).
+v3 (2026-10-20) is v1 with clause 8, personal finance and the demo. v4 (P4
+part 5, with subscriptions) is v3 with v2's clause 3: the monthly beta fee
+charged on the 1st to the card on file, a receipt for every charge
+(p4_billing N1). Every practice owner accepts it again.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from functools import lru_cache
 
 from django.conf import settings
 
-VERSION = "v3"
+VERSION = "v4"
 PATH = settings.BASE_DIR / "docs" / "legal" / f"beta_agreement_{VERSION}.md"
 
 
@@ -47,6 +49,7 @@ def required(request) -> bool:
 
 
 def accept(request, *, version: str, sha256: str) -> None:
+    from apps.accounts.ratelimit import client_ip
     from apps.platform.models import AgreementAcceptance
 
     terms = current()
@@ -55,4 +58,4 @@ def accept(request, *, version: str, sha256: str) -> None:
     AgreementAcceptance.all_objects.get_or_create(
         user=request.user, version=version,
         defaults={"tenant": request.membership.tenant, "text_sha256": sha256,
-                  "ip": request.META.get("REMOTE_ADDR")})
+                  "ip": client_ip(request)})

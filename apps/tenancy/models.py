@@ -96,6 +96,9 @@ class Tenant(UUIDModel):
         INVITED = "invited", "Invited"
         #: Nobody signs in, nothing runs or sends; every row is kept.
         ARCHIVED = "archived", "Archived"
+        #: P4 part 5: its staff see only the billing screen; nothing runs or
+        #: sends but its subscription charge; no data is touched.
+        SUSPENDED = "suspended", "Suspended"
 
     class OAuthClient(models.TextChoices):
         #: The Executives Now Workspace client (consent screen Internal).
@@ -111,6 +114,10 @@ class Tenant(UUIDModel):
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE,
                               db_default=Status.ACTIVE)
     archived_at = models.DateTimeField(null=True, blank=True)
+    #: P4 part 5: suspended by the platform owner for a subscription invoice
+    #: unpaid 30 days (D2); lifted by itself when it is paid (D3).
+    suspended_at = models.DateTimeField(null=True, blank=True)
+    suspension_reason = models.CharField(max_length=200, blank=True, default="", db_default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     oauth_client = models.CharField(max_length=12, choices=OAuthClient.choices,

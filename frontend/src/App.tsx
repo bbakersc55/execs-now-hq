@@ -58,6 +58,7 @@ import { Invoices } from "./screens/Invoices";
 import { InvoiceSettings } from "./screens/InvoiceSettings";
 import { BillingSettings } from "./screens/BillingSettings";
 import { PayLink } from "./screens/PayLink";
+import { Suspended } from "./screens/Suspended";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
@@ -277,6 +278,10 @@ export function App() {
   // P2: a practice owner reads and accepts the beta agreement before anything
   // else; the server refuses every other call until then.
   if (me.agreement_required) return <AgreementGate />;
+
+  // P4 part 5: a suspended practice's staff see one screen, on the server as
+  // well: the practice owner can pay from it.
+  if (me.suspended) return <Suspended me={me} />;
 
   // A demo visitor's copy: first their one tick, then, until it is ready,
   // only that it is being set up (2026-10-17).

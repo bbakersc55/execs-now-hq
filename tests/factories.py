@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import decimal
 
 import factory
@@ -998,7 +999,7 @@ class AgreementAcceptanceFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     user = factory.SubFactory(UserFactory)
-    version = "v3"
+    version = "v4"
     text_sha256 = "0" * 64
 
 
@@ -1097,6 +1098,64 @@ class AutopayConsentFactory(TenantScopedFactory):
     consented_at = factory.LazyFunction(timezone.now)
     wording = "I authorize it."
     wording_version = "2026-10-21"
+
+
+def _beta_plan():
+    from apps.billing.models import BillingPlan
+
+    return BillingPlan.objects.get_or_create(
+        code="beta_at_cost", defaults={"name": "Beta at cost", "price_cents": 2000})[0]
+
+
+def _addon():
+    from apps.billing.models import BillingAddon
+
+    return BillingAddon.objects.get_or_create(
+        code="bookkeeping", defaults={"name": "Bookkeeping", "price_cents": 2500})[0]
+
+
+class PracticeSubscriptionFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.PracticeSubscription"
+
+    tenant = factory.SubFactory(TenantFactory)
+    plan = factory.LazyFunction(_beta_plan)
+
+
+class PracticeSubscriptionAddonFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.PracticeSubscriptionAddon"
+
+    tenant = factory.SubFactory(TenantFactory)
+    subscription = factory.SubFactory(PracticeSubscriptionFactory,
+                                      tenant=factory.SelfAttribute("..tenant"))
+    addon = factory.LazyFunction(_addon)
+    added_at = factory.LazyFunction(timezone.now)
+    charged_from = factory.LazyFunction(lambda: timezone.localdate().replace(day=1))
+
+
+class PracticeInvoiceFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.PracticeInvoice"
+
+    tenant = factory.SubFactory(TenantFactory)
+    number = factory.Sequence(lambda n: f"ENH-TEST-{n:05d}")
+    period_start = factory.Sequence(lambda n: datetime.date(2020 + n // 12, n % 12 + 1, 1))
+    period_end = factory.LazyAttribute(lambda o: o.period_start.replace(day=28))
+    total_cents = 2000
+    subtotal_cents = 2000
+    issued_at = factory.LazyFunction(timezone.now)
+    due_at = factory.LazyFunction(timezone.now)
+
+
+class PracticeInvoiceLineFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.PracticeInvoiceLine"
+
+    tenant = factory.SubFactory(TenantFactory)
+    invoice = factory.SubFactory(PracticeInvoiceFactory, tenant=factory.SelfAttribute("..tenant"))
+    description = "Beta at cost"
+    amount_cents = 2000
 
 
 class ClientInvoiceLineFactory(TenantScopedFactory):

@@ -12,7 +12,7 @@ export interface PracticeRow {
   display_name: string;
   legal_name: string;
   domain: string;
-  status: "active" | "invited" | "archived";
+  status: "active" | "invited" | "archived" | "suspended";
   created_at: string;
   archived_at: string | null;
   oauth_client: "internal" | "external";
@@ -24,6 +24,13 @@ export interface PracticeRow {
   last_activity_at: string | null;
   /** P6 M1: the modules it has. The platform's record of the practice. */
   modules?: { code: string; name: string; enabled: boolean }[];
+  /** P4 part 5: amounts, dates and states only (apps/platform/billing.py). */
+  subscription?: {
+    status: string; not_billed: boolean; amount_cents: number; plan_cents: number;
+    overridden: boolean; card_on_file: boolean; open_cents: number;
+    oldest_open_days: number | null; eligible_for_suspension: boolean;
+    suspended_at: string | null;
+  };
 }
 
 const EMPTY = { legal_name: "", display_name: "", domain: "", owner_email: "",
@@ -42,7 +49,11 @@ function PricingSelect({ label, value, onChange }: {
     </select>
   );
 }
-const STATUS_KIND: Record<string, string> = { active: "ok", invited: "warn", archived: "" };
+const STATUS_KIND: Record<string, string> = {
+  active: "ok", invited: "warn", archived: "", suspended: "bad" };
+const SUB_LABEL: Record<string, string> = {
+  not_billed: "Not billed", needs_card: "No card yet", active: "Card on file",
+  past_due: "Past due", canceled: "Canceled" };
 
 /**
  * The Practices area (P2, owner 2026-10-02). The platform owner sees each
@@ -78,11 +89,14 @@ export function Practices({ me }: { me?: Me }) {
     onError: failed,
   });
   const act = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: "archive" | "unarchive" }) =>
+    mutationFn: ({ id, action }: { id: string;
+                                   action: "archive" | "unarchive" | "suspend" | "unsuspend" }) =>
       api.post<PracticeRow>(`/api/platform/practices/${id}/${action}`),
     onSuccess: (row, { action }) => done(action === "archive"
       ? `${row.display_name} is archived: nobody can sign in, nothing runs, all data is kept.`
-      : `${row.display_name} is back.`),
+      : action === "suspend"
+        ? `${row.display_name} is suspended until its invoice is paid. Paying lifts it.`
+        : `${row.display_name} is back.`),
     onError: failed,
   });
   // P6 M1: a module a practice has or does not have. The price is P4's.
@@ -108,6 +122,18 @@ export function Practices({ me }: { me?: Me }) {
   const save = useMutation({
     mutationFn: (id: string) => api.patch<PracticeRow>(`/api/platform/practices/${id}`, draft),
     onSuccess: (row) => { setEditing(null); done(`${row.display_name} updated.`); },
+    onError: failed,
+  });
+
+  // P4 part 5: this practice's monthly amount; empty goes back to the plan's.
+  const [amountFor, setAmountFor] = useState<{ id: string; dollars: string } | null>(null);
+  const amount = useMutation({
+    mutationFn: ({ id, cents }: { id: string; cents: number | null }) =>
+      api.patch<PracticeRow>(`/api/platform/practices/${id}`,
+                             { subscription_amount_cents: cents }),
+    onSuccess: (row) => { setAmountFor(null); done(
+      `${row.display_name} now pays $${((row.subscription?.amount_cents ?? 0) / 100).toFixed(2)} `
+      + "a month, from the next month."); },
     onError: failed,
   });
 
@@ -154,7 +180,8 @@ export function Practices({ me }: { me?: Me }) {
                     )}
                     </div>
                     <Pill kind={STATUS_KIND[p.status]}>{p.status === "invited"
-                      ? "Owner not signed in yet" : p.status === "active" ? "Active" : "Archived"}</Pill>
+                      ? "Owner not signed in yet" : p.status === "active" ? "Active"
+                      : p.status === "suspended" ? "Suspended" : "Archived"}</Pill>
                   </div>
                   <dl className="facts" style={{ margin: "var(--s3) 0" }}>
                     <dt>Created</dt><dd>{when(p.created_at)}</dd>
@@ -172,7 +199,41 @@ export function Practices({ me }: { me?: Me }) {
                           onChange={(e) => module.mutate(
                             { id: p.id, code: m.code, enabled: e.target.checked })} />
                         {" "}{m.name}</label>))}</dd>
+                    {p.subscription && (<>
+                      <dt>Subscription</dt>
+                      <dd>
+                        {p.subscription.not_billed ? "Not billed (your own practice)" : (<>
+                          {amountFor?.id === p.id ? (
+                            <span className="row tight">
+                              <input aria-label={`Monthly amount for ${p.display_name}`}
+                                inputMode="decimal" value={amountFor.dollars} style={{ width: "6rem" }}
+                                placeholder={(p.subscription.plan_cents / 100).toFixed(2)}
+                                onChange={(e) => setAmountFor({ id: p.id, dollars: e.target.value })} />
+                              <button className="small primary" disabled={amount.isPending}
+                                onClick={() => amount.mutate({ id: p.id,
+                                  cents: amountFor.dollars.trim() === "" ? null
+                                    : Math.round(Number(amountFor.dollars) * 100) })}>Save</button>
+                              <button className="small ghost" onClick={() => setAmountFor(null)}>
+                                Cancel</button>
+                            </span>
+                          ) : (
+                            <button className="link" aria-label={`Change the amount for ${p.display_name}`}
+                              onClick={() => setAmountFor({ id: p.id, dollars: p.subscription!.overridden
+                                ? (p.subscription!.amount_cents / 100).toFixed(2) : "" })}>
+                              ${(p.subscription.amount_cents / 100).toFixed(2)} a month
+                              {p.subscription.overridden ? " (its own)" : ""}</button>
+                          )}
+                          {" · "}{SUB_LABEL[p.subscription.status] ?? p.subscription.status}
+                          {p.subscription.open_cents > 0 && <> · ${(p.subscription.open_cents / 100)
+                            .toFixed(2)} open{p.subscription.oldest_open_days != null
+                            && ` for ${p.subscription.oldest_open_days} days`}</>}
+                        </>)}
+                      </dd>
+                    </>)}
                   </dl>
+                  {p.subscription?.eligible_for_suspension && p.status !== "suspended" && (
+                    <Banner kind="warn">Overdue 30+ days: suspend?</Banner>
+                  )}
                   <div className="row tight">
                     {editing !== p.id && (
                       <button className="ghost" onClick={() => {
@@ -192,6 +253,18 @@ export function Practices({ me }: { me?: Me }) {
                         style={{ maxWidth: "22rem", marginTop: "0.4rem" }}>
                         <Banner kind={rowNote.kind}>{rowNote.text}</Banner>
                       </div>
+                    )}
+                    {p.subscription?.eligible_for_suspension && p.status === "active" && (
+                      <button className="ghost" disabled={act.isPending} onClick={() => {
+                        if (window.confirm(`Suspend ${p.display_name}? Its team will see only the `
+                          + "billing screen until the invoice is paid. Nothing is removed, and "
+                          + "paying lifts it at once.")) act.mutate({ id: p.id, action: "suspend" });
+                      }}>Suspend</button>
+                    )}
+                    {p.status === "suspended" && (
+                      <button className="ghost" disabled={act.isPending}
+                        onClick={() => act.mutate({ id: p.id, action: "unsuspend" })}>
+                        Lift the suspension</button>
                     )}
                     {p.status === "archived" ? (
                       <button className="ghost" disabled={act.isPending}

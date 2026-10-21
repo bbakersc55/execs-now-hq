@@ -120,7 +120,8 @@ def company_queryset_for(request, queryset):
 #: The Outbox producers that carry money: the invoice (P4A), and a card
 #: payment's receipt and notice (P4 part 2).
 INVOICE_PRODUCER = "client_invoice"
-MONEY_PRODUCERS = (INVOICE_PRODUCER, "payment_receipt", "payment_notice", "autopay_notice")
+MONEY_PRODUCERS = (INVOICE_PRODUCER, "payment_receipt", "payment_notice", "autopay_notice",
+                   "subscription_receipt", "subscription_notice")
 
 
 def sees_money(request, company_id=None) -> bool:

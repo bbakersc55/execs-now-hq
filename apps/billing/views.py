@@ -17,6 +17,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.accounts.ratelimit import client_ip
 from apps.billing import money, services
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, PaymentAttempt,
@@ -410,6 +411,28 @@ class InvoiceViewSet(BillingViewSet):
         response["Content-Disposition"] = 'inline; filename="Invoice-draft.pdf"'
         return response
 
+    @action(detail=False, methods=["get"], url_path="card-on-file")
+    def card_on_file(self, request):
+        """P4 part 5: the read-only "Card on file" line on a client company's
+        page, for the practice owner and an associate (one assigned to it):
+        the brand, the last four, and whether auto-pay is on and since when.
+        Never the vault id."""
+        from apps.billing import autopay
+
+        refused = self._staff()
+        if refused:
+            return refused
+        company = self._company(request.query_params.get("company"))
+        if self._role() == Role.CF and company.pk not in set(
+                crm_perms.assigned_company_ids(request)):
+            raise Http404
+        card, consent = autopay.card_on_file(company), autopay.standing_consent(company)
+        return Response({
+            "card": card and {"brand": card.brand, "last4": card.last4,
+                              "expires": f"{card.exp_month:02d}/{card.exp_year % 100:02d}"},
+            "autopay_since": consent.consented_at.isoformat() if consent and card else None,
+        })
+
     @action(detail=True, methods=["get"])
     def history(self, request, pk=None):
         """The audit trail of this invoice, in order (§4)."""
@@ -727,7 +750,7 @@ class PortalAutopayView(viewsets.ViewSet):
             return Response({"detail": "Tick the box to agree first."}, status=400)
         return self._do(lambda company: autopay.consent(
             company, user=request.user, version=request.data.get("version", ""),
-            ip_address=request.META.get("REMOTE_ADDR"),
+            ip_address=client_ip(request),
             user_agent=request.META.get("HTTP_USER_AGENT", "")))
 
     @action(detail=False, methods=["post"])
@@ -735,3 +758,50 @@ class PortalAutopayView(viewsets.ViewSet):
         from apps.billing import autopay
 
         return self._do(lambda company: autopay.revoke(company, user=request.user))
+
+
+class SubscriptionView(viewsets.ViewSet):
+    """Settings → Billing, "Your subscription" (P4 part 5): the practice
+    owner's only. The card goes into the **platform's** vault; the public key
+    sent is the platform's; no private key is ever in an answer."""
+
+    permission_classes = [crm_perms.IsTenantStaff, crm_perms.IsFF]
+
+    def list(self, request):
+        from apps.billing import subscriptions
+
+        return Response(subscriptions.state(request.tenant))
+
+    def _do(self, request, fn):
+        from apps.billing import subscriptions
+
+        try:
+            message = fn()
+        except subscriptions.SubscriptionRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        request.tenant.refresh_from_db()
+        return Response({**subscriptions.state(request.tenant), "message": message or ""})
+
+    @action(detail=False, methods=["post"])
+    def card(self, request):
+        from apps.billing import subscriptions
+
+        return self._do(request, lambda: subscriptions.save_card(
+            request.tenant, user=request.user,
+            payment_token=request.data.get("payment_token")) and "The card is saved.")
+
+    @action(detail=False, methods=["post"], url_path="pay-now")
+    def pay_now(self, request):
+        from apps.billing import subscriptions
+
+        return self._do(request, lambda: subscriptions.pay_now(request.tenant,
+                                                                user=request.user)[1])
+
+    @action(detail=True, methods=["get"])
+    def pdf(self, request, pk=None):
+        from apps.billing.models import PracticeInvoice
+
+        invoice = PracticeInvoice.objects.filter(pk=pk).first()
+        if invoice is None or invoice.pdf_id is None:
+            raise Http404
+        return pdf_response(invoice)

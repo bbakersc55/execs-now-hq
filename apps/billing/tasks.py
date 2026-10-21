@@ -44,3 +44,16 @@ def run_autopay(tenant_id: str) -> dict:
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
         return autopay.run(tenant)
+
+
+@unattended_job("billing.charge_subscription")
+def charge_subscription(tenant_id: str) -> dict:
+    """The practice's subscription (P4 part 5): its month's invoice and one
+    charge on the platform's vault from the 1st, and any lost answer looked
+    up. Nothing for the platform owner's own practice."""
+    from apps.billing import subscriptions
+    from apps.tenancy.models import Tenant
+
+    with tenant_context(tenant_id):
+        tenant = Tenant.objects.get(pk=tenant_id)
+        return subscriptions.run(tenant)

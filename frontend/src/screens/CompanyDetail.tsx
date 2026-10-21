@@ -7,7 +7,8 @@ import { useRowLink } from "../components/shell";
 
 import { Banner, Card, Empty, PageLinks, Pill, when, positionsLabel } from "../components/ui";
 import { AddCompany } from "./AddCompany";
-import { Company, Contact, Me, api } from "../lib/api";
+import { CardOnFile, Company, Contact, Me, api } from "../lib/api";
+import { longDate } from "../lib/money";
 import { ClientTeamsCard } from "../components/ClientTeams";
 import { CompanyCommitments } from "../components/ContactCommitments";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
@@ -104,6 +105,9 @@ export function CompanyDetail({ me }: { me: Me }) {
         <p className="small"><Link to={`/invoices?company=${c.id}`}>
           Invoices for this client</Link></p>
       )}
+      {c.is_client_company && (me.role === "FF" || me.role === "CF") && (
+        <CardOnFileLine companyId={c.id} />
+      )}
 
       {/* As wide together as the Teams card below them (Bryan, 2026-10-15). */}
       <div className="record-cols span">
@@ -166,5 +170,25 @@ export function CompanyDetail({ me }: { me: Me }) {
         </Card>
       </div>
     </>
+  );
+}
+
+
+/** P4 part 5: read-only. The client owner saves and removes the card in the
+ *  portal; the practice sees which card and whether auto-pay is on. An
+ *  associate not assigned here gets nothing (the server answers 404). */
+function CardOnFileLine({ companyId }: { companyId: string }) {
+  const line = useQuery<CardOnFile>({
+    queryKey: ["card-on-file", companyId], retry: false,
+    queryFn: () => api.get<CardOnFile>(`/api/invoices/card-on-file/?company=${companyId}`) });
+  if (!line.data?.card) return null;
+  const { card, autopay_since } = line.data;
+  return (
+    <p className="small">
+      Card on file: <strong>{card.brand || "Card"} ending {card.last4}</strong>, expires{" "}
+      {card.expires}.{" "}
+      {autopay_since ? <>Auto-pay on since {longDate(autopay_since.slice(0, 10))}.</>
+        : "Auto-pay off."}
+    </p>
   );
 }

@@ -83,6 +83,7 @@ MIDDLEWARE = [
     # acting-as session can say who was acting as whom.
     "apps.accounts.middleware.StaffIdleSignOut",
     "apps.platform.middleware.AgreementGate",
+    "apps.platform.middleware.SuspendedGate",
     # A demo visitor's copy: being set up, or ended and read-only (2026-10-17).
     "apps.tenancy.middleware.DemoVisitorGate",
 ]
@@ -209,6 +210,11 @@ if not IS_LOCAL:
 SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 # The public origin, and any others named (a staging host), for CSRF on
 # HTTPS POSTs. Localhost needs none: Django checks same-origin itself.
+# The visitor's real address behind a proxy (P4 part 5): how many proxies in
+# front of the app append to X-Forwarded-For. 0 (the laptop) reads
+# REMOTE_ADDR; Railway's edge is 1. Only the right-most entries a trusted
+# proxy wrote are believed, so a client cannot forge its address.
+TRUSTED_PROXY_HOPS = env.int("TRUSTED_PROXY_HOPS", default=0)
 CSRF_TRUSTED_ORIGINS = ([] if IS_LOCAL else [PUBLIC_BASE_URL.rstrip("/")]) + env.list(
     "CSRF_TRUSTED_ORIGINS", default=[])
 CLIENT_SESSION_AGE = 60 * 60 * 24 * 30

@@ -41,7 +41,8 @@ from apps.tenancy.models import (
 )
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
-    AutopayConsent, ClientPaymentMethod, PaymentAccount, PaymentAttempt,
+    AutopayConsent, ClientPaymentMethod, PaymentAccount, PaymentAttempt, PracticeInvoice,
+    PracticeInvoiceLine, PracticeSubscription, PracticeSubscriptionAddon,
 )
 from apps.finance.models import (
     FinanceAccount, FinanceCategory, FinanceCategoryChange, FinanceCleared, FinanceEntry,
@@ -210,6 +211,13 @@ register(PaymentAttempt, factories.PaymentAttemptFactory, api_exposed=False)
 # P4 part 4: the company's own, through /api/portal-autopay/ (no ids).
 register(ClientPaymentMethod, factories.ClientPaymentMethodFactory, api_exposed=False)
 register(AutopayConsent, factories.AutopayConsentFactory, api_exposed=False)
+# P4 part 5: the practice's own subscription, through /api/subscription/ (the
+# practice owner's; no ids but its invoices' PDFs).
+register(PracticeSubscription, factories.PracticeSubscriptionFactory, api_exposed=False)
+register(PracticeSubscriptionAddon, factories.PracticeSubscriptionAddonFactory,
+         api_exposed=False)
+register(PracticeInvoice, factories.PracticeInvoiceFactory, api_exposed=False)
+register(PracticeInvoiceLine, factories.PracticeInvoiceLineFactory, api_exposed=False)
 
 # --- P5: the books (the practice owner's only) ---
 register(FinanceEntry, factories.FinanceEntryFactory, endpoints=("/api/finance-entries/",))

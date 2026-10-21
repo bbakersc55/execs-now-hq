@@ -23,11 +23,12 @@ STAFF_ROLES = ("FF", "CF", "VA")
 #: The keys a practice row carries. Tested: nothing else ever appears.
 ROW_KEYS = ("id", "display_name", "legal_name", "domain", "status", "created_at",
             "archived_at", "oauth_client", "pricing_program", "staff_count", "client_count",
-            "ai_spend_this_month_usd", "last_activity_at", "modules")
+            "ai_spend_this_month_usd", "last_activity_at", "modules", "subscription")
 
 
 def practice_rows() -> list[dict]:
     from apps.crm.models import Company
+    from apps.platform import billing
     from apps.tenancy import modules
     from apps.tenancy.models import AiCall, Membership, Tenant
 
@@ -68,6 +69,8 @@ def practice_rows() -> list[dict]:
             # practice (apps/tenancy/modules.py), not anything inside it.
             "modules": [{"code": code, "name": name, "enabled": code in on.get(tenant.pk, ())}
                         for code, name in modules.MODULES.items()],
+            # P4 part 5: amounts, dates and states only (apps/platform/billing.py).
+            "subscription": billing.subscription_row(tenant),
         })
     return rows
 

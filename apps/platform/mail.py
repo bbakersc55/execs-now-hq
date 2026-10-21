@@ -36,7 +36,26 @@ def sender_tenant():
     return membership.tenant
 
 
-def _send(*, to, subject, paragraphs, producer):
+def send_platform_mail(*, to, subject, paragraphs, producer, attachment=None):
+    """Mail from the platform about a practice's subscription (P4 part 5):
+    its receipt with the invoice's PDF, or a failed charge. `attachment` is
+    `(bytes, filename)`; a copy is kept with the sending practice's Outbox
+    row, as every attachment is."""
+    files = ()
+    if attachment is not None:
+        from apps.tenancy import storage
+
+        content, filename = attachment
+        stored = storage.save(tenant=sender_tenant(), content=content,
+                              object_key=storage.object_key("platform-mail", filename),
+                              purpose="platform_mail_attachment",
+                              content_type="application/pdf")
+        files = ((stored, filename),)
+    return _send(to=to, subject=subject, paragraphs=paragraphs, producer=producer,
+                 attachments=files)
+
+
+def _send(*, to, subject, paragraphs, producer, attachments=()):
     from apps.crm.services import email_layout, outbox
     from apps.tenancy.context import tenant_context
 
@@ -50,7 +69,8 @@ def _send(*, to, subject, paragraphs, producer):
     try:
         with tenant_context(sender.pk):
             return outbox.create_message(tenant=sender, producer=producer, to_address=to,
-                                         subject=subject, body_text=text, body_html=html)
+                                         subject=subject, body_text=text, body_html=html,
+                                         attachments=attachments)
     except TransportUnavailable as exc:
         raise PlatformMailUnavailable(
             f"Platform mail goes through {sender.email_display_name or sender.name}'s Gmail, "

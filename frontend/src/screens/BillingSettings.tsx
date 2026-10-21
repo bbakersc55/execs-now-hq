@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import { api } from "../lib/api";
+import { YourSubscription } from "./YourSubscription";
 
 /** GET /api/payment-account/ — never a key, only the last four of each. */
 export interface PaymentAccountState {
@@ -144,6 +145,7 @@ export function BillingSettings() {
             Executives Now.</span>
         </p>
       </Card>
+      <YourSubscription />
     </>
   );
 }
