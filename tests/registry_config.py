@@ -41,7 +41,7 @@ from apps.tenancy.models import (
 )
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
-    PaymentAccount,
+    PaymentAccount, PaymentAttempt,
 )
 from apps.finance.models import (
     FinanceAccount, FinanceCategory, FinanceCategoryChange, FinanceCleared, FinanceEntry,
@@ -205,6 +205,8 @@ register(InvoiceSettings, factories.InvoiceSettingsFactory, api_exposed=False)
 # --- P4 part 1: the practice's NMI account. Its one route is the practice's
 # own (/api/payment-account/), never by id.
 register(PaymentAccount, factories.PaymentAccountFactory, api_exposed=False)
+# P4 part 2: read only through the portal's invoice routes, never by id.
+register(PaymentAttempt, factories.PaymentAttemptFactory, api_exposed=False)
 
 # --- P5: the books (the practice owner's only) ---
 register(FinanceEntry, factories.FinanceEntryFactory, endpoints=("/api/finance-entries/",))

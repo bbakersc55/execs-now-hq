@@ -232,12 +232,19 @@ class ClientPayment(TenantScopedModel):
     removed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     remove_reason = models.TextField(blank=True, default="", db_default="")
+    #: P4 part 2: the NMI transaction a card payment in the portal made. Empty
+    #: for one recorded by hand. One transaction is never recorded twice.
+    nmi_transaction_id = models.CharField(max_length=40, blank=True, default="",
+                                          db_default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "client_payment"
         constraints = [
             models.CheckConstraint(condition=Q(amount_cents__gt=0),
                                    name="client_payment_amount_positive"),
+            models.UniqueConstraint(fields=["tenant", "nmi_transaction_id"],
+                                    condition=~Q(nmi_transaction_id=""),
+                                    name="client_payment_nmi_transaction_once"),
         ]
 
 
@@ -267,3 +274,62 @@ class PaymentAccount(TenantScopedModel):
         constraints = [
             models.UniqueConstraint(fields=["tenant"], name="payment_account_one_per_practice"),
         ]
+
+
+class PaymentAttempt(TenantScopedModel):
+    """One card payment of an invoice from the portal (P4 part 2), written
+    before NMI is asked and finished from its answer.
+
+    **One in flight per invoice:** while an attempt is pending (NMI is being
+    asked) or unknown (NMI's answer was lost), no other can start, so a
+    double click or a second tab never charges twice. An unknown attempt is
+    settled by `card_payments.resolve_unknown`, which looks the sale up by our
+    reference; nothing is ever retried by itself. The decline text NMI gave is
+    kept. No card data: a brand and the last four, from NMI's answer.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Asking NMI"
+        APPROVED = "approved", "Paid"
+        DECLINED = "declined", "Declined"
+        #: NMI's answer was lost; being looked up.
+        UNKNOWN = "unknown", "Checking with NMI"
+        #: Never reached NMI, or NMI has no sale for it.
+        FAILED = "failed", "Not charged"
+
+    IN_FLIGHT = (Status.PENDING, Status.UNKNOWN)
+
+    invoice = models.ForeignKey(ClientInvoice, on_delete=models.PROTECT,
+                                related_name="payment_attempts")
+    payer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    amount_cents = models.BigIntegerField()
+    #: Which of NMI's environments the practice's account was in.
+    environment = models.CharField(max_length=8, default="sandbox")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING,
+                              db_default=Status.PENDING)
+    nmi_transaction_id = models.CharField(max_length=40, blank=True, default="",
+                                          db_default="")
+    #: NMI's own, kept as it said them: "100", "200" … or "E_DUPLICATE".
+    response_code = models.CharField(max_length=40, blank=True, default="", db_default="")
+    response_text = models.TextField(blank=True, default="", db_default="")
+    card_type = models.CharField(max_length=20, blank=True, default="", db_default="")
+    last4 = models.CharField(max_length=4, blank=True, default="", db_default="")
+    payment = models.OneToOneField(ClientPayment, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="attempt")
+    #: A charge NMI approved that could not be recorded on the invoice (it was
+    #: voided or paid in the meantime). The practice owner is told.
+    problem = models.TextField(blank=True, default="", db_default="")
+    finished_at = models.DateTimeField(null=True, blank=True)
+    looked_up_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "payment_attempt"
+        constraints = [
+            models.UniqueConstraint(fields=["invoice"],
+                                    condition=Q(status__in=["pending", "unknown"]),
+                                    name="payment_attempt_one_in_flight"),
+            models.CheckConstraint(condition=Q(amount_cents__gt=0),
+                                   name="payment_attempt_amount_positive"),
+        ]
+        indexes = [models.Index(fields=["status", "created_at"])]

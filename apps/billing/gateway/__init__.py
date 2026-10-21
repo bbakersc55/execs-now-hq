@@ -26,6 +26,15 @@ BASE_URLS = {
     "live": "https://secure.nmi.com/api/v5",
 }
 
+#: NMI's Query API, read-only. Used for one thing v5 cannot do: find a
+#: transaction by our reference when the sale's answer was lost (v5 has no
+#: search). It takes the same private key and never charges. Proved
+#: 2026-10-21; a sandbox account must use the sandbox host.
+QUERY_URLS = {
+    "sandbox": "https://sandbox.nmi.com/api/query.php",
+    "live": "https://secure.nmi.com/api/query.php",
+}
+
 #: Field names that hold card or bank data, in NMI's v5 and classic APIs. A
 #: body carrying any of them is refused before it is sent.
 CARD_FIELDS = frozenset({
@@ -37,6 +46,25 @@ CARD_FIELDS = frozenset({
 class GatewayError(Exception):
     """NMI refused, failed, or could not be reached. The message is safe to
     show to the practice owner: it never contains a key."""
+
+
+class GatewayRefused(GatewayError):
+    """NMI answered and refused the request (4xx): nothing was charged.
+    `code` is NMI's own, e.g. "E_DUPLICATE" for the same card and amount
+    again within minutes."""
+
+    def __init__(self, message: str, code: str = ""):
+        super().__init__(message)
+        self.code = code
+
+    @property
+    def duplicate(self) -> bool:
+        return self.code == "E_DUPLICATE"
+
+
+class GatewayUnreachable(GatewayError):
+    """No answer, or not a usable one (a timeout, a dropped connection, a 5xx):
+    a charge may or may not have been made. Never retried; looked up instead."""
 
 
 class CardDataRefused(GatewayError):
@@ -64,6 +92,10 @@ class Account:
     @property
     def base_url(self) -> str:
         return BASE_URLS[self.environment]
+
+    @property
+    def query_url(self) -> str:
+        return QUERY_URLS[self.environment]
 
     def scrub(self, text: str) -> str:
         for key in (self.private_key, self.public_key):

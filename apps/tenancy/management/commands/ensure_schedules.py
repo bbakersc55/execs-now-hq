@@ -65,6 +65,10 @@ SCHEDULES = [
     # numbers nothing and sends nothing.
     ("billing.run_invoice_schedules", "apps.billing.tasks.run_invoice_schedules",
      Schedule.DAILY, None, 5),
+    # P4 part 2: a card payment whose answer from NMI was lost, looked up by
+    # our reference until it is known. A no-op unless one is waiting.
+    ("billing.resolve_card_payments", "apps.billing.tasks.resolve_card_payments",
+     Schedule.MINUTES, 10, None),
     # P6 M2: the month's forecast, kept for "how good it has been". Daily at
     # the practice's midnight, so the 1st is caught as the month begins and a
     # missed 1st the day after; a no-op once the month's is kept, and for a

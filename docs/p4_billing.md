@@ -64,6 +64,8 @@ contradicted itself or the sandbox, **the sandbox is what the code follows**.
 | A9 | **Our reference:** `merchant_defined_fields: {"field_1": "<ours>"}` is accepted, returned on the sale, and carried onto its refunds. | Sandbox |
 | A10 | **Unknown fields are refused** (422, `extraParameters`). A decline is HTTP 200 with `response` "2" (`response_code` 200); validation errors are 422, not the documented 400. Amounts are dollars; a string `"12.34"` and a number both work. | Sandbox |
 | A11 | **Refunds:** `POST /api/v5/payments/{id}/refund` with `{"amount": "2.00"}` refunds part of a sale **that has not settled** (NMI's reference page says only settled ones; the sandbox did it). More than what is left is refused (400). No void is used. **Proved in the sandbox only**; a live account's behavior is checked at the first live refund. | Sandbox |
+| A12 | **Duplicates:** the same card for the same amount again within minutes is refused, HTTP 400 `error_code: E_DUPLICATE`, `"Duplicate transaction"`; nothing is charged. | Sandbox, 10/21 |
+| A13 | **Finding a lost sale.** v5 has no search (its reference lists only get-by-id). The classic **Query API** (`query.php`, form-posted, XML back), with the same private key as `security_key`, finds a transaction by `order_id`; a sandbox account must use `sandbox.nmi.com`. So every sale also carries our reference as `order_details.id`, and the lookup is read-only: it never charges. **The one use of a classic endpoint**, and only because v5 cannot do it. | Sandbox, 10/21, through the lookup's own code |
 | A7 | Vault and the v5 API on a **live** account: whether every practice's account has them switched on is still to be checked per account; the connection test proves the key, not the services. | Open |
 
 ## 1. The processor layer
@@ -341,7 +343,7 @@ Bryan:
 | Part | What | State |
 |---|---|---|
 | **1. Gateway and Settings → Billing** | The v5 client, its stub and the guard; the practice's two keys, the sandbox/live switch and the connection test; the pricing program on the Practices screen; `nmi_check`; the token proof | **Built 2026-10-21** |
-| 2. Pay in the portal | Pay on a sent invoice, the full balance, by the practice's own account; the attempt row before the call; one in flight per invoice; receipt | Not started |
+| **2. Pay in the portal** | Pay on a sent or partly paid invoice for a client owner or client team member, when the practice's account is ready; "Test mode" on a sandbox account; NMI's component with the practice's public key, fetched at runtime; `payment_attempt` written with the invoice locked, one pending or unknown per invoice (a partial unique index); one sale on the practice's own key, never retried; the `ClientPayment` through `record_payment` (books included); NMI's decline text kept; a duplicate refused with a plain message; a lost answer "unknown" and settled by `billing.resolve_card_payments` every 10 minutes (A13); the receipt to whoever paid and the notice to the practice owner, both financial (hidden from assistants), neither able to undo a payment; nothing paid while acting as the client | **Built 2026-10-21** |
 | 3. The signed pay link | `/pay/<token>`, hashed, voided with the invoice; `{PayLink}` in the email, printed on the PDF | Not started |
 | 4. Card on file and auto-pay | A client owner's card in the practice's vault; consent kept and revocable; charged on the due date | Not started |
 | 5. Practice subscriptions | §2 on v5, charged by the app's job on the 1st; agreement v4 ships with it | Not started |

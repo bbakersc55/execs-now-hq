@@ -38,9 +38,14 @@ class Recorder:
         self.answers = list(answers)
         self.requests = []
 
-    def __call__(self, method, url, headers, body):
+    def __call__(self, method, url, headers, data):
+        body = json.loads(data) if data and headers.get("Content-Type") == "application/json" \
+            else data
         self.requests.append({"method": method, "url": url, "headers": headers, "body": body})
-        return self.answers.pop(0)
+        status, payload = self.answers.pop(0)
+        if isinstance(payload, str):
+            return status, payload
+        return status, json.dumps(payload) if payload is not None else ""
 
 
 SALE_OK = {"object": "transaction", "id": "12707835156", "amount": "12.34",
@@ -125,6 +130,7 @@ def test_a_sale_on_a_token():
     assert sent["url"] == "https://sandbox.nmi.com/api/v5/payments/sale"
     assert sent["headers"]["Authorization"] == PRIVATE
     assert sent["body"] == {"amount": "12.34", "currency": "USD",
+                            "order_details": {"id": "inv-1"},
                             "merchant_defined_fields": {"field_1": "inv-1"},
                             "payment_details": {"payment_token": "tok-1"}}
     assert (txn.id, txn.approved, txn.amount_cents, txn.last4, txn.card_type, txn.reference) \
@@ -406,3 +412,65 @@ def test_no_nmi_key_name_reaches_the_frontend():
             text = path.read_text(errors="ignore")
             for name in names:
                 assert name not in text, f"{name} in {path}"
+
+
+# ------------------------------------- P4 part 2: refusals, lost answers, lookup
+
+def test_a_duplicate_is_a_refusal_with_nmis_code():
+    duplicate = {"type": "inputError", "error_code": "E_DUPLICATE",
+                 "message": "Duplicate transaction", "ref_id": "289488044"}
+    with pytest.raises(gw.GatewayRefused) as caught:
+        NmiGateway(Recorder((400, duplicate))).sale(ACCOUNT, amount_cents=2000,
+                                                    reference="r", payment_token="t")
+    assert caught.value.duplicate and str(caught.value) == "Duplicate transaction"
+
+
+@pytest.mark.parametrize("answer", [(502, None), (200, {"object": "transaction"}),
+                                    (200, "<html>bad gateway</html>")])
+def test_no_usable_answer_is_unknown_not_a_refusal(answer):
+    with pytest.raises(gw.GatewayUnreachable):
+        NmiGateway(Recorder(answer)).sale(ACCOUNT, amount_cents=2000, reference="r",
+                                          payment_token="t")
+
+
+def test_a_dropped_connection_is_unknown():
+    import requests
+
+    def transport(*args):
+        raise requests.ReadTimeout("read timed out")
+
+    with pytest.raises(gw.GatewayUnreachable):
+        NmiGateway(transport).sale(ACCOUNT, amount_cents=2000, reference="r", payment_token="t")
+
+
+QUERY_FOUND = """<?xml version="1.0" encoding="UTF-8"?>
+<nm_response><transaction><transaction_id>12707836731</transaction_id>
+<condition>pendingsettlement</condition><order_id>att-1</order_id>
+<cc_number>4xxxxxxxxxxx1111</cc_number><cc_type>Visa</cc_type>
+<action><amount>58.00</amount><action_type>sale</action_type><success>1</success>
+<response_text>SUCCESS</response_text><response_code>100</response_code></action>
+</transaction></nm_response>"""
+
+
+def test_the_lookup_reads_the_query_api_by_order_id():
+    transport = Recorder((200, QUERY_FOUND))
+    txn = NmiGateway(transport).find_by_reference(ACCOUNT, "att-1")
+    sent = transport.requests[0]
+    assert sent["url"] == "https://sandbox.nmi.com/api/query.php"
+    assert "order_id=att-1" in sent["body"] and "Authorization" not in sent["headers"]
+    assert (txn.id, txn.approved, txn.amount_cents, txn.last4, txn.reference) == (
+        "12707836731", True, 5800, "1111", "att-1")
+
+
+def test_the_lookup_finds_nothing():
+    answer = '<?xml version="1.0" encoding="UTF-8"?>\n<nm_response>\n</nm_response>'
+    assert NmiGateway(Recorder((200, answer))).find_by_reference(ACCOUNT, "att-2") is None
+
+
+def test_the_lookup_never_shows_the_key_in_an_error(caplog):
+    caplog.set_level(logging.DEBUG)
+    answer = (f"<nm_response><error_response>Authentication Failed for {PRIVATE}"
+              "</error_response></nm_response>")
+    with pytest.raises(gw.GatewayError) as caught:
+        NmiGateway(Recorder((200, answer))).find_by_reference(ACCOUNT, "att-3")
+    assert PRIVATE not in str(caught.value) and PRIVATE not in caplog.text

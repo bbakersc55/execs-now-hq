@@ -117,8 +117,10 @@ def company_queryset_for(request, queryset):
     return queryset.none()
 
 
-#: The Outbox producer that carries money (P4A).
+#: The Outbox producers that carry money: the invoice (P4A), and a card
+#: payment's receipt and notice (P4 part 2).
 INVOICE_PRODUCER = "client_invoice"
+MONEY_PRODUCERS = (INVOICE_PRODUCER, "payment_receipt", "payment_notice")
 
 
 def sees_money(request, company_id=None) -> bool:
@@ -144,7 +146,7 @@ def without_money(request, queryset, *, thread="thread"):
     role = role_of(request)
     if role == Role.FF:
         return queryset
-    invoices = Q(producer=INVOICE_PRODUCER)
+    invoices = Q(producer__in=MONEY_PRODUCERS)
     if role == Role.CF:
         return queryset.exclude(invoices & ~Q(**{
             f"{thread}__client_company_id__in": assigned_company_ids(request)}))

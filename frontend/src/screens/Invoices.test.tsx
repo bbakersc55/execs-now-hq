@@ -687,13 +687,16 @@ describe("a client's invoices", () => {
   const ROWS: PortalInvoice[] = [
     { id: "a", number: "INV-0007", issue_date: "2026-10-01", due_date: "2026-10-16",
       total_cents: 680000, balance_cents: 580000, status: "partially_paid",
-      status_label: "Partly paid", overdue: true, pay_url: "" },
+      status_label: "Partly paid", overdue: true, pay_url: "", can_pay: false,
+      payment_in_progress: false, test_mode: false },
     { id: "b", number: "INV-0003", issue_date: "2026-08-01", due_date: "2026-08-16",
       total_cents: 500000, balance_cents: 0, status: "paid", status_label: "Paid",
-      overdue: false, pay_url: "" },
+      overdue: false, pay_url: "", can_pay: false,
+      payment_in_progress: false, test_mode: false },
     { id: "c", number: "INV-0002", issue_date: "2026-07-01", due_date: "2026-07-16",
       total_cents: 500000, balance_cents: 500000, status: "void", status_label: "Void",
-      overdue: false, pay_url: "" }];
+      overdue: false, pay_url: "", can_pay: false,
+      payment_in_progress: false, test_mode: false }];
 
   it("shows what they were sent, what is owed, and each PDF", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/portal-invoices/": ROWS }));

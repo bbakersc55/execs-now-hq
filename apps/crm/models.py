@@ -905,6 +905,11 @@ class OutboxMessage(TenantScopedModel):
         # P4A: an invoice to a client, with its PDF. Financial: left out of
         # everything an assistant sees (`permissions.without_money`).
         CLIENT_INVOICE = "client_invoice", "Invoice"
+        # P4 part 2: a card payment in the portal. The receipt to whoever
+        # paid, and the notice to the practice owner. Financial, like the
+        # invoice: left out of everything an assistant sees.
+        PAYMENT_RECEIPT = "payment_receipt", "Payment receipt"
+        PAYMENT_NOTICE = "payment_notice", "Payment notice"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -923,6 +928,9 @@ class OutboxMessage(TenantScopedModel):
         Producer.CADENCE_CHANGE, Producer.INBOUND_FORWARD,
         # P2: platform mail to a practice owner or the platform owner.
         Producer.PRACTICE_INVITE, Producer.FEEDBACK_NOTICE,
+        # P4 part 2: a receipt for what the client just did, and the owner's
+        # notice of it. Fixed wording, nothing written by AI.
+        Producer.PAYMENT_RECEIPT, Producer.PAYMENT_NOTICE,
     }
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)

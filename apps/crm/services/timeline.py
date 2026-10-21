@@ -59,7 +59,9 @@ def for_contact(contact, limit=100, *, money=False):
     sent = OutboxMessage.objects.filter(to_contact=contact)
     replies = EmailMessage.objects.filter(contact=contact, direction="inbound")
     if not money:
-        sent = sent.exclude(producer="client_invoice")
+        from apps.crm.permissions import MONEY_PRODUCERS
+
+        sent = sent.exclude(producer__in=MONEY_PRODUCERS)
         replies = replies.exclude(thread__is_financial=True)
     for message in sent:
         verb = {

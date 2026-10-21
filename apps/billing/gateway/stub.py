@@ -5,6 +5,10 @@ It behaves as the sandbox did on 2026-10-21 where that matters to a caller:
 under $1.00 is declined, a refund cannot exceed what is left of the sale, a
 token is used once. A private key that starts with "bad" fails the
 connection test. It refuses card fields exactly as the real one does.
+
+A test sets what the next sale meets: `refuse_next = ("E_DUPLICATE",
+"Duplicate transaction")` for NMI's refusal, or `lose_next_answer = True`
+(charged, answer lost) / `"uncharged"` (never reached) for a timeout.
 """
 
 from __future__ import annotations
@@ -12,8 +16,8 @@ from __future__ import annotations
 import itertools
 
 from apps.billing.gateway import (
-    Account, Billing, ConnectionResult, GatewayError, Transaction, VaultRecord,
-    refuse_card_fields,
+    Account, Billing, ConnectionResult, GatewayError, GatewayRefused, GatewayUnreachable,
+    Transaction, VaultRecord, refuse_card_fields,
 )
 
 DECLINE_BELOW_CENTS = 100
@@ -28,6 +32,9 @@ class StubGateway:
         self.vault: dict[str, dict] = {}
         self.used_tokens: set[str] = set()
         self._ids = itertools.count(1000)
+        self.refuse_next: tuple[str, str] | None = None
+        self.lose_next_answer: bool | str = False
+        self.lookup_unreachable = False
 
     @classmethod
     def shared(cls) -> "StubGateway":
@@ -60,14 +67,23 @@ class StubGateway:
             raise GatewayError("A sale is for more than nothing.")
         self._record("sale", account, {"amount_cents": amount_cents, "reference": reference,
                                        "payment_token": payment_token, "vault_id": vault_id})
+        if self.refuse_next is not None:
+            code, message = self.refuse_next
+            self.refuse_next = None
+            raise GatewayRefused(message, code=code)
         if payment_token is not None:
             self._use(payment_token)
         elif vault_id not in self.vault:
-            raise GatewayError("No such customer in the vault.")
+            raise GatewayRefused("No such customer in the vault.")
+        lost, self.lose_next_answer = self.lose_next_answer, False
+        if lost == "uncharged":
+            raise GatewayUnreachable("NMI did not answer.")
         approved = amount_cents >= DECLINE_BELOW_CENTS
         tid = str(next(self._ids))
         self.sales[tid] = {"account": account.label, "amount_cents": amount_cents,
                            "refunded_cents": 0, "reference": reference, "approved": approved}
+        if lost:
+            raise GatewayUnreachable("NMI did not answer.")
         return Transaction(id=tid, approved=approved,
                            status="pendingsettlement" if approved else "failed",
                            response_code="100" if approved else "200",
@@ -101,6 +117,15 @@ class StubGateway:
                            response_text="SUCCESS" if sale["approved"] else "DECLINE",
                            amount_cents=sale["amount_cents"], card_type="Visa", last4="1111",
                            reference=sale["reference"])
+
+    def find_by_reference(self, account: Account, reference: str) -> Transaction | None:
+        self._record("find_by_reference", account, {"reference": reference})
+        if self.lookup_unreachable:
+            raise GatewayUnreachable("NMI's lookup did not answer.")
+        for tid, sale in self.sales.items():
+            if sale["account"] == account.label and sale["reference"] == reference:
+                return self.get_transaction(account, tid)
+        return None
 
     def vault_add(self, account: Account, *, payment_token: str,
                   billing: Billing) -> VaultRecord:

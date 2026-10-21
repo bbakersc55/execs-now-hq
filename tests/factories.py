@@ -1062,6 +1062,16 @@ class ClientInvoiceFactory(TenantScopedFactory):
     due_date = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 16))
 
 
+class PaymentAttemptFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.PaymentAttempt"
+
+    tenant = factory.SubFactory(TenantFactory)
+    invoice = factory.SubFactory(ClientInvoiceFactory, tenant=factory.SelfAttribute("..tenant"))
+    amount_cents = 1000
+    status = "declined"
+
+
 class ClientInvoiceLineFactory(TenantScopedFactory):
     class Meta:
         model = "billing.ClientInvoiceLine"

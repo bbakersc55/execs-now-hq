@@ -629,7 +629,7 @@ def _recount(invoice) -> None:
 
 @transaction.atomic
 def record_payment(invoice, *, actor, amount_cents, paid_on, method=None, reference="",
-                   note="") -> ClientPayment:
+                   note="", nmi_transaction_id="") -> ClientPayment:
     invoice = ClientInvoice.all_objects.select_for_update().get(pk=invoice.pk)
     if invoice.status not in ClientInvoice.OPEN:
         raise BillingError(
@@ -653,7 +653,8 @@ def record_payment(invoice, *, actor, amount_cents, paid_on, method=None, refere
     payment = ClientPayment.all_objects.create(
         tenant_id=invoice.tenant_id, invoice=invoice, amount_cents=amount, paid_on=paid_on,
         method=method, reference=str(reference or "").strip()[:120],
-        note=str(note or "").strip(), recorded_by=actor)
+        note=str(note or "").strip(), recorded_by=actor,
+        nmi_transaction_id=str(nmi_transaction_id or ""))
     _recount(invoice)
     _to_the_books(lambda finance: finance.payment_recorded(payment, actor=actor))
     audit(invoice, "payment_recorded", actor, payment=str(payment.pk), amount_cents=amount,

@@ -1,4 +1,5 @@
-"""Scheduled work for invoicing. One job: the recurring drafts."""
+"""Scheduled work for invoicing: the recurring drafts, and card payments
+whose answer from NMI was lost."""
 
 from __future__ import annotations
 
@@ -18,3 +19,15 @@ def run_invoice_schedules(tenant_id: str) -> int:
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
         return len(services.run_schedules(tenant))
+
+
+@unattended_job("billing.resolve_card_payments")
+def resolve_card_payments(tenant_id: str) -> int:
+    """Looks up, by our reference, each card payment NMI did not answer
+    (P4 part 2). It charges nothing: it only reads what NMI did."""
+    from apps.billing import card_payments
+    from apps.tenancy.models import Tenant
+
+    with tenant_context(tenant_id):
+        tenant = Tenant.objects.get(pk=tenant_id)
+        return card_payments.resolve_unknown(tenant)

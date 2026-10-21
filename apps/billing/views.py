@@ -18,7 +18,7 @@ from rest_framework.response import Response
 
 from apps.billing import money, services
 from apps.billing.models import (
-    ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment,
+    ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, PaymentAttempt,
 )
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Company, Contact, OutboxMessage
@@ -577,7 +577,14 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
                 kind=ClientInvoice.Kind.CONTACT)
 
     def list(self, request):
-        rows = self.invoices().order_by("-issue_date", "-created_at")
+        from apps.billing import card_payments, payment_accounts
+
+        rows = list(self.invoices().order_by("-issue_date", "-created_at"))
+        ready = payment_accounts.is_ready(request.tenant)
+        test_mode = card_payments.is_test_mode(request.tenant)
+        flying = set(PaymentAttempt.objects.filter(
+            invoice__in=rows, status__in=PaymentAttempt.IN_FLIGHT).values_list(
+                "invoice_id", flat=True))
         return Response([{
             "id": str(invoice.pk), "number": invoice.number,
             "issue_date": invoice.issue_date.isoformat(),
@@ -585,8 +592,14 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
             "total_cents": invoice.total_cents, "balance_cents": invoice.balance_cents,
             "status": invoice.status, "status_label": invoice.get_status_display(),
             "overdue": services.is_overdue(invoice),
-            # Empty until a processor is connected (P4).
+            # Empty until the signed link (P4 part 3).
             "pay_url": invoice.pay_url,
+            # P4 part 2: Pay shows when this is true. Never a contact invoice
+            # (not listed here at all), and never with a payment under way.
+            "can_pay": (ready and invoice.status in ClientInvoice.OPEN
+                        and invoice.balance_cents > 0 and invoice.pk not in flying),
+            "payment_in_progress": invoice.pk in flying,
+            "test_mode": test_mode,
         } for invoice in rows])
 
     @action(detail=True, methods=["get"])
@@ -595,6 +608,27 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
         if invoice is None:
             raise Http404
         return pdf_response(invoice)
+
+    @action(detail=True, methods=["get", "post"])
+    def pay(self, request, pk=None):
+        """GET: what the card form needs, at runtime (the practice's public
+        key). POST {payment_token}: the payment, the full balance."""
+        from apps.billing import card_payments
+
+        invoice = self.invoices().filter(pk=pk).first()
+        if invoice is None:
+            raise Http404
+        try:
+            if request.method == "GET":
+                return Response(card_payments.pay_config(invoice))
+            attempt, message = card_payments.pay(
+                invoice, payer=request.user, payment_token=request.data.get("payment_token"))
+        except card_payments.PaymentRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        invoice.refresh_from_db()
+        return Response({"status": attempt.status, "message": message,
+                         "balance_cents": invoice.balance_cents,
+                         "invoice_status": invoice.status})
 
 
 class PaymentAccountView(viewsets.ViewSet):

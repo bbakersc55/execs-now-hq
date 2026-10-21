@@ -8,28 +8,35 @@ The request and response shapes below were proved against NMI's sandbox on
 - A sale takes the browser's token as `payment_details.payment_token`, or a
   stored card as a top-level `customer_vault.id`
   (`payment_details.customer_vault_id` is refused).
-- Our reference travels as `merchant_defined_fields.field_1`, comes back on
-  the transaction, and is carried onto its refunds.
+- Our reference travels as `merchant_defined_fields.field_1` and as the
+  order id (`order_details.id`), comes back on the transaction, and is
+  carried onto its refunds. The order id is what the lookup searches.
 - A field v5 does not know is refused (422), so nothing extra is ever sent.
-- A decline is HTTP 200 with `response` "2"; validation errors are 422.
+- A decline is HTTP 200 with `response` "2"; validation errors are 422; the
+  same card for the same amount again within minutes is 400 `E_DUPLICATE`.
 - A vault record is `billing.payment_details.payment_token` with the
   cardholder's name beside it; the record's card comes back masked.
 - A refund (`/payments/{id}/refund`) takes a partial amount, also on a sale
   that has not settled yet; more than the balance is refused (400).
 - `GET /payments/{id}` answers 401 for a bad key and 404 for an unknown id,
   which makes it the connection test.
+- v5 cannot search. Finding a sale whose answer was lost is the read-only
+  Query API (`query.php`, form-posted, XML back) by order id.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import urllib.parse
+import xml.etree.ElementTree as ET
 
 import requests
 
 from apps.billing.gateway import (
-    Account, Billing, ConnectionResult, GatewayError, LiveCallsRefused, Transaction,
-    VaultRecord, live_calls_allowed, refuse_card_fields, to_cents, to_dollars,
+    Account, Billing, ConnectionResult, GatewayError, GatewayRefused, GatewayUnreachable,
+    LiveCallsRefused, Transaction, VaultRecord, live_calls_allowed, refuse_card_fields,
+    to_cents, to_dollars,
 )
 
 log = logging.getLogger(__name__)
@@ -39,18 +46,14 @@ TIMEOUT_SECONDS = 30
 PROBE_ID = "1"
 
 
-def http_transport(method: str, url: str, headers: dict, body: dict | None):
-    """The network. Refused unless real calls are allowed (`NMI_LIVE_CALLS`,
-    and never under the test runner)."""
+def http_transport(method: str, url: str, headers: dict, data: str | None):
+    """The network: (status, text). Refused unless real calls are allowed
+    (`NMI_LIVE_CALLS`, and never under the test runner)."""
     if not live_calls_allowed():
         raise LiveCallsRefused("Real calls to NMI are off on this server (NMI_LIVE_CALLS).")
-    response = requests.request(method, url, headers=headers, timeout=TIMEOUT_SECONDS,
-                                data=json.dumps(body) if body is not None else None)
-    try:
-        payload = response.json() if response.content else None
-    except ValueError:
-        payload = None
-    return response.status_code, payload
+    response = requests.request(method, url, headers=headers, data=data,
+                                timeout=TIMEOUT_SECONDS)
+    return response.status_code, response.text
 
 
 class NmiGateway:
@@ -77,6 +80,7 @@ class NmiGateway:
         if amount_cents <= 0:
             raise GatewayError("A sale is for more than nothing.")
         body = {"amount": to_dollars(amount_cents), "currency": "USD",
+                "order_details": {"id": reference[:50]},
                 "merchant_defined_fields": {"field_1": reference}}
         if payment_token is not None:
             body["payment_details"] = {"payment_token": payment_token}
@@ -97,6 +101,40 @@ class NmiGateway:
         _, payload = self._send(account, "GET", f"/payments/{transaction_id}", None)
         return self._transaction(payload)
 
+    def find_by_reference(self, account: Account, reference: str) -> Transaction | None:
+        """The sale made with our reference as its order id, or None if NMI
+        has none. Read-only (the Query API); nothing is charged."""
+        form = {"order_id": reference[:50]}
+        refuse_card_fields(form)
+        data = urllib.parse.urlencode({"security_key": account.private_key, **form})
+        status, text = self._call(account, "POST", account.query_url, data, "query",
+                                  {"Content-Type": "application/x-www-form-urlencoded"})
+        if status >= 300:
+            raise GatewayUnreachable(f"NMI's lookup answered {status}.")
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            raise GatewayUnreachable("NMI's lookup answer could not be read.") from None
+        error = root.findtext("error_response")
+        if error:
+            raise GatewayError(account.scrub(error.strip()))
+        for node in root.findall("transaction"):
+            sales = [a for a in node.findall("action") if a.findtext("action_type") == "sale"]
+            if not sales:
+                continue
+            sale = sales[0]
+            approved = sale.findtext("success") == "1"
+            return Transaction(
+                id=node.findtext("transaction_id", ""), approved=approved,
+                status=node.findtext("condition", ""),
+                response_code=sale.findtext("response_code", ""),
+                response_text=sale.findtext("response_text", ""),
+                amount_cents=to_cents(sale.findtext("amount") or 0),
+                card_type=node.findtext("cc_type", ""),
+                last4=_last4(node.findtext("cc_number", "")),
+                reference=node.findtext("order_id", ""))
+        return None
+
     def vault_add(self, account: Account, *, payment_token: str,
                   billing: Billing) -> VaultRecord:
         body = {"billing": {"first_name": billing.first_name[:50],
@@ -114,25 +152,42 @@ class NmiGateway:
 
     # --- the edge --------------------------------------------------------------
 
+    def _call(self, account: Account, method: str, url: str, data, label: str,
+              headers: dict):
+        try:
+            status, text = self._transport(method, url, headers, data)
+        except LiveCallsRefused:
+            raise
+        except requests.RequestException as exc:
+            # The exception's text can include the URL, never the headers.
+            log.warning("nmi %s %s for %s: no answer (%s)", method, label, account.label,
+                        type(exc).__name__)
+            raise GatewayUnreachable("NMI did not answer.") from None
+        return status, text
+
     def _send(self, account: Account, method: str, path: str, body, *,
               raise_for_status: bool = True):
         refuse_card_fields(body)
         headers = {"Authorization": account.private_key, "Content-Type": "application/json",
                    "Accept": "application/json"}
+        status, text = self._call(account, method, account.base_url + path,
+                                  json.dumps(body) if body is not None else None,
+                                  _shape(path), headers)
         try:
-            status, payload = self._transport(method, account.base_url + path, headers, body)
-        except LiveCallsRefused:
-            raise
-        except requests.RequestException as exc:
-            # The exception's text can include the URL, never the headers.
-            log.warning("nmi %s %s for %s: unreachable (%s)", method, _shape(path),
-                        account.label, type(exc).__name__)
-            raise GatewayError("NMI could not be reached. Nothing was charged.") from None
+            payload = json.loads(text) if text else None
+        except ValueError:
+            payload = None
         ref = (payload.get("ref_id") or payload.get("refId")) if isinstance(payload, dict) else ""
         log.info("nmi %s %s for %s: %s ref %s", method, _shape(path), account.label, status,
                  ref or "-")
+        if raise_for_status and status >= 500:
+            raise GatewayUnreachable(f"NMI answered {status}.")
         if raise_for_status and status >= 300:
-            raise GatewayError(self._message(account, payload) or f"NMI answered {status}.")
+            code = ""
+            if isinstance(payload, dict):
+                code = str(payload.get("error_code") or payload.get("errorCode") or "")
+            raise GatewayRefused(self._message(account, payload) or f"NMI answered {status}.",
+                                 code=code)
         return status, payload
 
     @staticmethod
@@ -148,7 +203,7 @@ class NmiGateway:
     @staticmethod
     def _transaction(payload) -> Transaction:
         if not isinstance(payload, dict) or not payload.get("id"):
-            raise GatewayError("NMI's answer had no transaction in it.")
+            raise GatewayUnreachable("NMI's answer had no transaction in it.")
         card = payload.get("payment_details") or {}
         fields = payload.get("merchant_defined_fields") or {}
         return Transaction(

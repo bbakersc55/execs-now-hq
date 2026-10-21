@@ -1703,6 +1703,20 @@ export interface PortalInvoice {
   id: string; number: string; issue_date: string; due_date: string;
   total_cents: number; balance_cents: number; status: InvoiceStatus; status_label: string;
   overdue: boolean; pay_url: string;
+  /** P4 part 2: Pay shows; a payment is being checked; the practice's
+   *  account is NMI's sandbox (shown as "Test mode"). */
+  can_pay: boolean; payment_in_progress: boolean; test_mode: boolean;
+}
+
+/** GET /api/portal-invoices/:id/pay/ — the card form's key, at runtime. */
+export interface PayConfig {
+  public_key: string; test_mode: boolean; amount_cents: number; number: string;
+}
+
+/** POST /api/portal-invoices/:id/pay/ — how the payment ended. */
+export interface PayResult {
+  status: "approved" | "declined" | "unknown" | "failed";
+  message: string; balance_cents: number; invoice_status: InvoiceStatus;
 }
 
 // ------------------------------------------------------------- the books (P5)
