@@ -46,7 +46,7 @@ def test_the_test_copy_has_the_files_the_placeholders_and_the_line(
     test = OutboxMessage.objects.get(source_type="campaign_test")
     assert test.subject == "[Test] Hello [First name]"
     # Escaped in the HTML, as every merged value is.
-    assert "Hi [First name], a note from [Fractional&#x27;s name] at [Company]." \
+    assert "Hi [First name], a note from [Your name] at [Company]." \
         in test.body_html
     assert test.body_html.index(campaigns.TEST_LINE) < test.body_html.index("Hi [First name]")
     assert test.body_text.startswith(campaigns.TEST_LINE)

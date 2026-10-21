@@ -72,6 +72,26 @@ describe("the campaign composer", () => {
     expect(await screen.findByText(/1 queued in the sending queue/)).toBeInTheDocument();
   });
 
+  it("starts from a template by copying its subject, words and fallback", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({
+      "PATCH /api/campaigns/k1/": CAMPAIGN,
+      "GET /api/email-templates/": [{ id: "t1", name: "Proposal nudge", kind: "general",
+        subject: "Following up, {FirstName}", body: "Hi {FirstName},\n\nA & B.\nThanks.",
+        first_name_fallback: "friend", original: "", is_original: false, changed: false,
+        used_for: [], updated_at: "2026-10-20T12:00:00Z" }],
+    });
+    const start = await screen.findByLabelText("Start from a template");
+    await waitFor(() => expect(start.querySelectorAll("option")).toHaveLength(2));
+    await user.selectOptions(start, "t1");
+    expect(screen.getByLabelText("Subject")).toHaveValue("Following up, {FirstName}");
+    expect(screen.getByText(/Copied from “Proposal nudge”/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+      .toMatchObject({ subject: "Following up, {FirstName}", first_name_fallback: "friend",
+                       body_html: "<p>Hi {FirstName},</p><p>A &amp; B.<br>Thanks.</p>" }));
+  });
+
   it("offers send-as-is only when writing raw HTML", async () => {
     const user = userEvent.setup();
     show();

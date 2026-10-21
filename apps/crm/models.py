@@ -274,10 +274,14 @@ class Contact(TenantScopedModel):
     # FF-written template. The data model had no column for that choice; this is
     # the smallest thing that expresses it, and it keeps the two states from
     # contradicting each other (a template can be attached without switching).
+    # Two honest modes (owner, 2026-10-20): the practice's template, or a
+    # draft Claude writes from the partner's record and last meeting, which
+    # falls back to the template with no key. The old "ai" mode was fixed
+    # wording, not Claude; it became the seeded touch template.
     referral_touch_mode = models.CharField(
         max_length=12,
-        choices=[("ai", "AI-drafted"), ("template", "Written by the practice owner")],
-        default="ai",
+        choices=[("template", "My template"), ("claude", "Draft with Claude")],
+        default="template",
     )
     referral_template = models.ForeignKey(
         "crm.EmailTemplate", null=True, blank=True,
@@ -530,19 +534,64 @@ class Referral(TenantScopedModel):
 # --------------------------------------------------------- automations, mail
 
 class EmailTemplate(TenantScopedModel):
+    """The practice's template library (owner, 2026-10-20): plain text with
+    `{FirstName}`-style merge fields, picked by every place that drafts an
+    email (`apps/crm/services/templates.py`). The signature is never in a
+    template; the draft adds it.
+
+    `original` names a built-in one, seeded with the wording the app used
+    before the library (`apps/crm/template_seed.py`), which "Restore the
+    original" puts back. `kind` is kept for the rows written before the
+    library; nothing chooses by it any more."""
+
     class Kind(models.TextChoices):
+        GENERAL = "general", "General"
         STAGE = "stage", "Stage change"
         REFERRAL_TOUCH = "referral_touch", "Referral touch"
         REFERRAL_ONBOARDING = "referral_onboarding", "Referral onboarding"
         PRECALL_INVITE = "precall_invite", "Pre-call invite"
 
     name = models.CharField(max_length=120)
-    kind = models.CharField(max_length=32, choices=Kind.choices)
+    kind = models.CharField(max_length=32, choices=Kind.choices, default=Kind.GENERAL,
+                            db_default=Kind.GENERAL)
     subject = models.CharField(max_length=255)
     body = models.TextField()
+    #: What {FirstName} reads as when a person has none ("Hi there,").
+    first_name_fallback = models.CharField(max_length=60, default="there",
+                                           db_default="there")
+    original = models.CharField(max_length=40, blank=True, default="", db_default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "email_template"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "original"], condition=~models.Q(original=""),
+                name="email_template_one_original_each",
+            ),
+        ]
+
+
+class EmailTemplateUse(TenantScopedModel):
+    """Which template a practice-wide email uses: the default touch, the
+    onboarding note, each thank-you. One row per use; seeded pointing at the
+    built-in template for it."""
+
+    class Use(models.TextChoices):
+        REFERRAL_TOUCH = "referral_touch", "Referral touch (unless the partner has their own)"
+        REFERRAL_ONBOARDING = "referral_onboarding", "A new referral partner's first email"
+        THANKS_RECORDED = "thanks_recorded", "Thank-you when a referral is recorded"
+        THANKS_WON = "thanks_won", "Thank-you when the prospect is won"
+        THANKS_LOST = "thanks_lost", "Thank-you when the prospect is lost"
+
+    use = models.CharField(max_length=32, choices=Use.choices)
+    template = models.ForeignKey(EmailTemplate, on_delete=models.PROTECT, related_name="uses")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "email_template_use"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "use"],
+                                    name="email_template_use_one_each"),
+        ]
 
 
 class StageAutomation(TenantScopedModel):

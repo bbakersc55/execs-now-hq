@@ -44,6 +44,7 @@ import { SendingQueue } from "./screens/SendingQueue";
 import { WaitingOnOthers } from "./screens/WaitingOnOthers";
 import { Pipeline } from "./screens/Pipeline";
 import { ReferralSettings } from "./screens/ReferralSettings";
+import { EmailTemplates } from "./screens/EmailTemplates";
 import { StageRules } from "./screens/StageRules";
 import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
@@ -368,6 +369,8 @@ export function App() {
             <Route path="/settings/words" element={<Navigate to="/settings/branding#wording" replace />} />
             <Route path="/referrals" element={<Settings me={me}><ReferralSettings /></Settings>} />
             <Route path="/rules" element={<Settings me={me}><StageRules /></Settings>} />
+            <Route path="/settings/templates"
+              element={<Settings me={me}><EmailTemplates /></Settings>} />
             <Route path="/staff" element={<Settings me={me}><Staff me={me} /></Settings>} />
             <Route path="/ai-usage" element={<Settings me={me}><AiUsage /></Settings>} />
             {me.role === "FF" && <Route path="/settings/digests"

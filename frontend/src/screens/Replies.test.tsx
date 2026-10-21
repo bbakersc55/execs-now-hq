@@ -23,7 +23,7 @@ const CONTACTS = [{
   owner: null, pipeline_positions: [], source: "", background: "", tags: [],
   emails: [{ id: "e1", address: "dana@acme.invalid", is_primary: true }],
   phones: [], type_codes: ["client"], referral_fee_terms: "", referral_cadence: "",
-  referral_touch_mode: "ai", referral_next_touch_at: null,
+  referral_touch_mode: "template", referral_next_touch_at: null,
   referral_onboarded_at: null,
 }];
 

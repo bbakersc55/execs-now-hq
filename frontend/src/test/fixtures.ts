@@ -50,7 +50,7 @@ export function aContact(overrides: Partial<Contact> = {}): Contact {
     ],
     referral_fee_terms: "",
     referral_cadence: "",
-    referral_touch_mode: "ai",
+    referral_touch_mode: "template",
     referral_next_touch_at: null,
     referral_onboarded_at: null,
     created_at: "2026-09-11T00:16:58.068612Z",

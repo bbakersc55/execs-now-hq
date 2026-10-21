@@ -10,7 +10,7 @@ from apps.accounts.models import MagicLinkToken
 from apps.crm.models import (
     EmailAttachment, UnmatchedInbound, Company, CompanyDomain, CompanyLocation, Contact, ContactEmail, ContactPhone,
     ContactServiceCategory, ContactType, ContactTypeLink, EmailMessage,
-    ContactPipelinePosition, DevSendAllowlistEntry, EmailTemplate, EmailThread,
+    ContactPipelinePosition, DevSendAllowlistEntry, EmailTemplate, EmailTemplateUse, EmailThread,
     Campaign, CampaignAttachment, CampaignRecipient, EmailSuppression, Enrollment, MailPreference,
     DuplicateDismissal,
     GmailConnection,
@@ -83,7 +83,8 @@ register(StageChange, factories.StageChangeFactory)
 register(CompanyDomain, factories.CompanyDomainFactory)
 register(CompanyLocation, factories.CompanyLocationFactory)
 register(StageAutomation, factories.StageAutomationFactory)
-register(EmailTemplate, factories.EmailTemplateFactory)
+register(EmailTemplate, factories.EmailTemplateFactory, endpoints=("/api/email-templates/",))
+register(EmailTemplateUse, factories.EmailTemplateUseFactory)
 register(EmailThread, factories.EmailThreadFactory)
 register(EmailMessage, factories.EmailMessageFactory)
 # --- Module 6 — inbound.

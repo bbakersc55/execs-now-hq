@@ -1,6 +1,7 @@
 import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import { Pipeline, Stage, api } from "../lib/api";
@@ -30,7 +31,6 @@ export function StageRules() {
   const w = useWords();
   const [note, setNote] = useState("");
   const [pipelineId, setPipelineId] = useState("");
-  const [newTemplate, setNewTemplate] = useState({ name: "", subject: "", body: "" });
   const [draft, setDraft] = useState({
     to_stage: "", action_type: "create_task", task_title_template: "",
     task_due_offset_days: 3, task_client_visible: false, email_template: "",
@@ -68,18 +68,6 @@ export function StageRules() {
       setNote("Rule saved.");
       qc.invalidateQueries({ queryKey: ["rules"] });
       setDraft({ ...draft, task_title_template: "", to_stage: "" });
-    },
-    onError: (e: Error) => setNote(e.message),
-  });
-
-  const createTemplate = useMutation({
-    mutationFn: () => api.post<Template>("/api/email-templates/", {
-      ...newTemplate, kind: "stage",
-    }),
-    onSuccess: (t) => {
-      setNote(`Template “${t.name}” created. You can now add a draft-email rule.`);
-      setNewTemplate({ name: "", subject: "", body: "" });
-      qc.invalidateQueries({ queryKey: ["templates"] });
     },
     onError: (e: Error) => setNote(e.message),
   });
@@ -122,36 +110,11 @@ export function StageRules() {
 
       {note && <Banner kind="ok">{note}</Banner>}
 
-      <Card title="Email templates">
-        <p className="muted small">
-          A <strong>draft an email</strong> rule needs a template to render. Without one
-          the rule cannot be created, which is why this sits above.
-        </p>
-        <div className="row">
-          <Field label="Name">
-            <input value={newTemplate.name} aria-label="Template name"
-              placeholder="Qualified follow-up"
-              onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })} />
-          </Field>
-          <Field label="Subject">
-            <input value={newTemplate.subject} aria-label="Template subject"
-              onChange={(e) => setNewTemplate({ ...newTemplate, subject: e.target.value })} />
-          </Field>
-        </div>
-        <Field label="Body">
-          <textarea rows={4} value={newTemplate.body} aria-label="Template body"
-            onChange={(e) => setNewTemplate({ ...newTemplate, body: e.target.value })} />
-        </Field>
-        <button disabled={!newTemplate.name || !newTemplate.subject || createTemplate.isPending}
-          onClick={() => createTemplate.mutate()}>
-          Create template
-        </button>
-        {(templates.data ?? []).length > 0 && (
-          <p className="muted small" style={{ marginTop: ".6rem", marginBottom: 0 }}>
-            Existing: {templates.data!.map((t) => t.name).join(", ")}
-          </p>
-        )}
-      </Card>
+      <p className="small muted">
+        A <strong>draft an email</strong> rule uses one of the practice's{" "}
+        <Link to="/settings/templates">email templates</Link>, merged for each person and
+        signed by you.
+      </p>
 
       <Card title="Add a rule">
         <div className="row">
@@ -204,7 +167,8 @@ export function StageRules() {
                 </select>
                 {(templates.data ?? []).length === 0 && (
                   <p className="muted small" style={{ marginBottom: 0 }}>
-                    No templates yet — create one below first.
+                    No templates yet: write one under <Link to="/settings/templates">Email
+                    templates</Link>.
                   </p>
                 )}
               </Field>

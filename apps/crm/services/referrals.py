@@ -10,7 +10,8 @@ The outcome is written when the prospect first reaches a won or lost stage
 
 At three moments a thank-you to the referrer is drafted into the Outbox, each
 a practice setting: when the referral is recorded, when the prospect is won,
-when lost. The lost one gives no reason. A draft is never sent without
+when lost, each from the template chosen for it (the built-in lost one gives
+no reason). A draft is never sent without
 approval, is never made twice for the same referrer and moment, and once
 approved counts as the referrer's next touch.
 """
@@ -204,32 +205,15 @@ def after_stage_change(contact, to_stage, *, actor=None, quiet=False):
 
 # ----------------------------------------------------------------- thanks
 
-def compose_thanks(referral, moment, *, actor=None) -> str:
-    """The words. Plain and short, as a person writes; the lost one says
-    only that it did not go ahead, never why."""
-    from apps.crm.services import sender as sender_service
+def compose_thanks(referral, moment, *, actor=None) -> tuple[str, str]:
+    """`(subject, body)`, from the practice's thank-you template for the
+    moment (Referral settings). The built-in lost one says only that it did
+    not go ahead, never why."""
+    from apps.crm.services import templates
 
-    referrer, prospect = referral.referrer, referral.prospect
-    name = full_name(prospect)
-    if moment == RECORDED:
-        middle = (f"Thank you for introducing me to {name}. I'll take good care of them, "
-                  "and I'll let you know how it goes.")
-    elif moment == WON:
-        middle = (f"Good news: {name} has decided to work with us. Thank you for the "
-                  "introduction; it means a lot.")
-    else:
-        middle = (f"A quick update on {name}: it didn't turn into an engagement this time. "
-                  "Thank you all the same for thinking of me. I appreciate every "
-                  "introduction.")
-    signature_text, _ = sender_service.signature(referral.tenant, actor)
-    return "\n".join([f"Hi {referrer.first_name},", "", middle, "", signature_text]).rstrip()
-
-
-SUBJECT = {
-    RECORDED: "Thank you for the introduction",
-    WON: "Good news, and thank you",
-    LOST: "A quick update, and thank you",
-}
+    template = templates.for_use(referral.tenant, f"thanks_{moment}")
+    return templates.compose(template, referral.referrer, actor=actor,
+                             ProspectName=full_name(referral.prospect))
 
 
 def draft_thanks(referral, moment, *, actor=None):
@@ -251,10 +235,10 @@ def draft_thanks(referral, moment, *, actor=None):
     # Signed by the person whose relationship it is when no one is at the
     # keyboard (a stage move from a job).
     actor = actor or referrer.owner
+    subject, body = compose_thanks(referral, moment, actor=actor)
     return create_message(
         tenant=tenant, producer=P.REFERRAL_THANKS, to_contact=referrer,
-        to_address=address, subject=SUBJECT[moment],
-        body_text=compose_thanks(referral, moment, actor=actor), actor=actor,
+        to_address=address, subject=subject, body_text=body, actor=actor,
         warning="" if address else f"{full_name(referrer)} has no email address.",
         send_by=timezone.now() + timezone.timedelta(days=SEND_BY_DAYS),
         source_type=SOURCE_TYPE[moment], source_id=referral.pk,

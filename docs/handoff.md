@@ -1,7 +1,7 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-21 UTC**, after Release 20. **The next session starts at "Where things
+2026-10-21 UTC**, after the template library. **The next session starts at "Where things
 stand" just below, then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
 and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
@@ -12,6 +12,35 @@ then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
 ## Where things stand (2026-10-21 UTC): Release 20 is live
+
+- **The template library (10/21 UTC, on `dev`, not released; migrations `crm
+  0040`, additive, and `crm 0041`, data: it adds rows and rewrites one
+  column's value).** Backlog S4 part 1, from the plan Bryan approved on
+  10/20 with his five choices. `EmailTemplate` gains `original` (a built-in
+  one's key) and `first_name_fallback`; `EmailTemplateUse` says which
+  template each practice-wide email uses (the default touch, onboarding, the
+  three thank-yous). `apps/crm/template_seed.py` holds the old wording and
+  seeds every practice (0041 for existing ones, `crm.seed` for new ones; it
+  never rewrites a template, and keeps a practice's own onboarding template
+  as its onboarding email). `apps/crm/services/templates.py` is the one
+  renderer: `{FirstName}` and eight more fields, the fallback, a line of
+  only empty fields left out, unknown fields refused on save, the signature
+  added once by `compose`. Stage rules, touches, onboarding, thank-yous and
+  bulk email go through it; campaigns merge the same seven general fields
+  and copy a template with "Start from a template". Touch modes are now
+  "template" and "claude": every old "ai" partner became "template" (the
+  same words); "Draft with Claude" sends the partner's record, their last
+  meeting and the template's shape (purpose `referral_touch`) and falls back
+  to the template, saying why, with no key. Invoices offer `{FirstName}`,
+  `{DueDate}`, `{PaymentTerms}` and still merge the old spaced forms. The
+  screens: Settings → Email templates (owner only), the stage rules screen
+  no longer makes templates, Referral settings has "Which template each
+  email uses", a partner's page has the two modes and their own template,
+  and "Email these contacts" starts from a template with the chip editor.
+  `manage.py seed_email_templates --dry-run` shows what 0041 will do, and
+  needs 0040's columns. At the next release, in the waiting worker:
+  `migrate crm 0040` (additive), the dry run, Bryan's yes on it (CLAUDE.md:
+  data-rewriting), then `migrate`.
 
 - **Release 20** (00:31–00:35 UTC, the evening of 10/20 Mountain): `main` at
   `936714f`, `tenancy 0019` and `crm 0039` applied by the runbook

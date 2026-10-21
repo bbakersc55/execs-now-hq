@@ -1384,3 +1384,17 @@ ul.plain li { padding: var(--s1) 0; }
 .referrals-table td { vertical-align: top; }
 td:has(> .referrer-picker) { white-space: normal; width: 100%; }
 .check-line { display: flex; gap: .4rem; align-items: center; margin: .35rem 0; }
+
+/* Email templates (owner, 2026-10-20): the list beside the editor. */
+.template-library { display: grid; gap: var(--s4); align-items: start;
+                    grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr); }
+@media (max-width: 900px) { .template-library { grid-template-columns: 1fr; } }
+.template-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.template-pick { width: 100%; display: flex; flex-wrap: wrap; align-items: center;
+                 justify-content: space-between; gap: var(--s1); text-align: left;
+                 background: none; border: 1px solid transparent; border-radius: var(--radius);
+                 padding: var(--s2); color: var(--ink); font-weight: 400; }
+.template-pick:hover { background: var(--surface); }
+.template-pick.on { border-color: var(--line); background: var(--surface); font-weight: 600; }
+.template-name { min-width: 0; overflow-wrap: anywhere; }
+.template-tags { display: inline-flex; gap: var(--s1); flex-wrap: wrap; }

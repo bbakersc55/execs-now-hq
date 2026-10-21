@@ -61,3 +61,7 @@ def seed_tenant(tenant):
             tenant=tenant, code=code,
             defaults={"label": label, "position": position},
         )
+    # The template library, with the app's own wording (owner, 2026-10-20).
+    from apps.crm import template_seed
+
+    template_seed.seed_tenant(tenant)

@@ -189,7 +189,10 @@ export interface Contact {
   type_codes: string[];
   referral_fee_terms: string;
   referral_cadence: string;
+  /** "template" (My template) or "claude" (Draft with Claude). */
   referral_touch_mode: string;
+  /** The partner's own touch template; null means the practice's. */
+  referral_template?: string | null;
   referral_next_touch_at: string | null;
   referral_onboarded_at: string | null;
   /** On the touch cadence — only ever because someone enrolled them. */
@@ -1567,7 +1570,48 @@ export interface CampaignCandidate {
   unsendable: string;
 }
 
-export const MERGE_FIELDS = ["{FirstName}", "{Company}", "{FractionalName}"] as const;
+/**
+ * The template library's merge fields (owner, 2026-10-20): one style
+ * everywhere, mirrored from apps/crm/services/templates.py. The last two mean
+ * something only in their own emails.
+ */
+export const TEMPLATE_FIELDS: { field: string; label: string }[] = [
+  { field: "{FirstName}", label: "First name" },
+  { field: "{LastName}", label: "Last name" },
+  { field: "{Company}", label: "Company" },
+  { field: "{FractionalName}", label: "Your name" },
+  { field: "{PracticeName}", label: "The practice's name" },
+  { field: "{PracticeNews}", label: "What you're working on lately (Referral settings)" },
+  { field: "{FeeTerms}", label: "Their referral fee terms" },
+  { field: "{ProspectName}", label: "Who they referred (thank-yous only)" },
+  { field: "{FlyerNote}", label: "The flyer line (a new partner's email only)" },
+];
+
+/** The fields a campaign can use: all but the two that belong to one email. */
+export const MERGE_FIELDS = TEMPLATE_FIELDS.slice(0, 7).map((f) => f.field);
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  kind: string;
+  subject: string;
+  /** Plain text with merge fields; never the signature. */
+  body: string;
+  first_name_fallback: string;
+  /** A built-in template's key, "" for one the practice wrote. */
+  original: string;
+  is_original: boolean;
+  /** A built-in one that no longer reads as the original. */
+  changed: boolean;
+  /** Where it is in use, in words. */
+  used_for: string[];
+  updated_at: string;
+}
+
+export type TemplateUseKey =
+  "referral_touch" | "referral_onboarding" | "thanks_recorded" | "thanks_won" | "thanks_lost";
+
+export interface TemplateUse { use: TemplateUseKey; label: string; template: string; }
 
 // ------------------------------------------------------------ invoices (P4A)
 

@@ -4,11 +4,11 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { Plus, Save, Search, Send, UserPlus } from "lucide-react";
 
-import { RichText, insertMergeField } from "../components/RichText";
+import { RichText, insertMergeField, textToHtml } from "../components/RichText";
 import { Chip, FilterBar, PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
 import {
-  Campaign, CampaignCandidate, ContactType, MERGE_FIELDS, Pipeline, api,
+  Campaign, CampaignCandidate, ContactType, EmailTemplate, MERGE_FIELDS, Pipeline, api,
 } from "../lib/api";
 
 /**
@@ -66,6 +66,27 @@ export function Campaigns() {
         )}
       </Card>
     </>
+  );
+}
+
+
+/** "Start from a template": copies one of the library's into the campaign,
+ *  which keeps its own copy from then on (owner, 2026-10-20). */
+function StartFromTemplate({ onCopy }: { onCopy: (t: EmailTemplate) => void }) {
+  const templates = useQuery<EmailTemplate[]>({
+    queryKey: ["templates"], queryFn: () => api.get<EmailTemplate[]>("/api/email-templates/"),
+  });
+  return (
+    <Field label="Start from a template">
+      <select aria-label="Start from a template" value=""
+        onChange={(e) => {
+          const t = (templates.data ?? []).find((row) => row.id === e.target.value);
+          if (t) onCopy(t);
+        }}>
+        <option value="">Choose one to copy its subject and words…</option>
+        {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+    </Field>
   );
 }
 
@@ -185,6 +206,11 @@ export function CampaignDetail() {
               </select>
             </Field>
           </div>
+          <StartFromTemplate onCopy={(t) => {
+            set({ subject: t.subject, body_html: textToHtml(t.body), body_mode: "rich",
+                  send_as_is: false, first_name_fallback: t.first_name_fallback });
+            setNote(`Copied from “${t.name}”. Changes here stay with this campaign; save to keep them.`);
+          }} />
           <Field label="Subject">
             <input aria-label="Subject" value={c.subject}
               onChange={(e) => set({ subject: e.target.value })} />

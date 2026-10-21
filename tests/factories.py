@@ -13,7 +13,7 @@ from apps.crm.models import (
     ContactPipelinePosition, ContactType, ContactTypeLink, ContactServiceCategory,
     Campaign, CampaignAttachment, CampaignRecipient, DevSendAllowlistEntry, EmailSuppression, Enrollment,
     MailPreference, DuplicateDismissal,
-    EmailMessage, EmailTemplate, EmailThread, GmailConnection, ImportBatch,
+    EmailMessage, EmailTemplate, EmailTemplateUse, EmailThread, GmailConnection, ImportBatch,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage, Pipeline,
     PipelineStage, Referral, ServiceCategory, StageAutomation, StageChange, Task,
 )
@@ -370,6 +370,15 @@ class EmailTemplateFactory(TenantScopedFactory):
     kind = "stage"
     subject = "Following up"
     body = "Body text"
+
+
+class EmailTemplateUseFactory(TenantScopedFactory):
+    class Meta:
+        model = EmailTemplateUse
+
+    tenant = factory.SubFactory(TenantFactory)
+    use = "thanks_won"
+    template = factory.SubFactory(EmailTemplateFactory, tenant=factory.SelfAttribute("..tenant"))
 
 
 class StageAutomationFactory(TenantScopedFactory):

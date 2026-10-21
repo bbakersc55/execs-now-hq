@@ -24,6 +24,7 @@ export const SETTINGS: { to: string; label: string; roles: Role[] }[] = [
   // "Team", not "Staff", which a new owner read as his client's staff (beta
   // feedback, 2026-10-05). The address stays /staff so links keep working.
   { to: "/staff", label: "Team", roles: ["FF"] },
+  { to: "/settings/templates", label: "Email templates", roles: ["FF"] },
   { to: "/rules", label: "Stage automations", roles: ["FF"] },
   { to: "/referrals", label: "Referral settings", roles: ["FF"] },
   { to: "/settings/digests", label: "Digests", roles: ["FF"] },

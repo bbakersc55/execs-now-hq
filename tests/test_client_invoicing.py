@@ -971,8 +971,14 @@ def test_payment_terms_are_the_practices_default_and_each_invoices_own(acme, ff,
         assert html.index("Payment terms") < html.index("Due on receipt") \
             < html.index("<strong>November 3, 2026</strong>"), "beside the due date"
         body = services.render(invoice.email_body, services.merge_values(invoice))
+    # The old spaced forms above still merge (owner, 2026-10-20); the new
+    # one-style names are what is offered, and merge the same.
     assert body == f"Invoice {invoice.number}, Due on receipt, due November 3, 2026."
-    assert "Payment terms" in get(api, ff, SETTINGS).json()["merge_fields"]
+    assert "PaymentTerms" in get(api, ff, SETTINGS).json()["merge_fields"]
+    with tenant_context(acme[0].tenant_id):
+        assert services.render("{PaymentTerms}, due {DueDate}, {FirstName}",
+                               services.merge_values(invoice)) == services.render(
+            "{Payment terms}, due {Due date}, {First name}", services.merge_values(invoice))
 
 
 @pytest.mark.django_db

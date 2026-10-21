@@ -239,7 +239,7 @@ function AnthropicKey() {
 
 const PURPOSES: Record<string, string> = {
   meeting_parse: "Reading meeting notes", meeting_owner_classify: "Classifying owners",
-  digest_prose: "Digest prose", note_summary: "Note summary",
+  digest_prose: "Digest prose", note_summary: "Note summary", referral_touch: "Referral touch",
 };
 
 /**

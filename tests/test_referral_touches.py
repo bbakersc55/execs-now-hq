@@ -170,7 +170,7 @@ def test_the_on_demand_draft_uses_the_same_composer(seeded_tenant, referrals, ff
         referral.add_type(contact, "referral_partner", actor=ff.user)
         _enrol(contact, ff)
         # Same actor the endpoint will use, so the signature matches.
-        expected, _, _ = referral.compose_touch(contact, actor=ff.user)
+        _, expected, _, _ = referral.compose_touch(contact, actor=ff.user)
 
     body = api.as_(ff).post(f"/api/contacts/{contact.pk}/draft-touch/").json()
     assert body["body_text"] == expected

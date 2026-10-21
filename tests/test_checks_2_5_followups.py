@@ -354,7 +354,7 @@ def test_a_touch_signs_off_with_the_signature(seeded_tenant, referrals, ff):
     ff.user.save(update_fields=["full_name"])
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant)
-        body, _, _ = referral.compose_touch(contact, actor=ff.user)
+        _, body, _, _ = referral.compose_touch(contact, actor=ff.user)
     assert body.rstrip().endswith(f"Bryan Baker\n{seeded_tenant.name}")
 
 

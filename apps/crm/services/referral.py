@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
-from apps.crm.models import Contact, ContactType, ContactTypeLink, EmailTemplate
+from apps.crm.models import Contact, ContactType, ContactTypeLink
 from apps.crm.services.outbox import P, create_message
 from apps.tenancy.models import AuditEvent
 
@@ -12,43 +12,100 @@ CADENCE_DAYS = {"monthly": 30, "bimonthly": 60, "quarterly": 90}
 DRAFT_LEAD_DAYS = 3  # FR-1.21 — drafted 3 days BEFORE the due date.
 
 
-def compose_touch(contact, *, actor=None) -> tuple[str, bool, str]:
-    """FR-1.22 — three parts, 3-5 lines.
+def touch_template(contact):
+    """The partner's own template, else the practice's touch template."""
+    from apps.crm.services import templates
 
-    Returns (body, is_ai_generated, warning).
+    return contact.referral_template or templates.for_use(contact.tenant, "referral_touch")
 
-    A touch that only asks is a worse email than one that also offers, which is
-    why the reciprocal line is not optional.
+
+def compose_touch(contact, *, actor=None) -> tuple[str, str, bool, str]:
+    """FR-1.22: `(subject, body, is_ai_generated, warning)`.
+
+    Two modes (owner, 2026-10-20). **My template**: the touch template, merged
+    and signed. **Draft with Claude**: Claude writes it from the partner's
+    record and the last meeting they were in, under the practice's key, in
+    the shape of the template; with no key, or if Claude cannot answer, the
+    template is used and the draft says why.
     """
-    tenant = contact.tenant
+    from apps.crm.services import templates
+
     warning = _blurb_warning(contact)
+    template = touch_template(contact)
+    subject, body = templates.compose(template, contact, actor=actor)
+    if contact.referral_touch_mode != "claude":
+        return subject, body, False, warning
+    from apps.tenancy import claude
 
-    if contact.referral_touch_mode == "template" and contact.referral_template:
-        return contact.referral_template.body, False, warning
+    try:
+        drafted = claude.complete(
+            tenant=contact.tenant, purpose="referral_touch",
+            system=claude.drafting(TOUCH_SYSTEM),
+            user_text=_touch_facts(contact, template, actor),
+            target_type="contact", target_id=contact.pk,
+            trigger="auto", max_tokens=1500,
+        ).strip()
+    except (claude.ClaudeUnavailable, claude.ClaudeRefused) as error:
+        why = str(error).strip() or "Claude could not draft it"
+        note = f"Drafted from the template instead of by Claude: {why}"
+        return subject, body, False, " ".join(filter(None, [note, warning]))
+    if not drafted:
+        return subject, body, False, " ".join(filter(None, [
+            "Drafted from the template: Claude's answer was empty.", warning]))
+    return subject, templates.with_signature(drafted, contact.tenant, actor), True, warning
 
-    # Part 1 — what the fractional has been working on lately (the substance).
-    blurb = (tenant.referral_blurb or "").strip()
-    lines = [f"Hi {contact.first_name},", ""]
-    if blurb:
-        lines.append(blurb)
-    # Part 2 — the fee reminder, ONLY when terms exist, phrased as a reminder
-    # of the arrangement rather than a demand.
-    if contact.referral_fee_terms:
-        lines.append(
-            f"As a reminder of our arrangement: {contact.referral_fee_terms}."
-        )
-    # Part 3 — the reciprocal line.
-    lines.append(
-        "If there's a type of introduction that would help you right now, "
-        "tell me and I'll keep an eye out."
-    )
-    # FR-1.15d — sign off as a person. A bare practice name under a message
-    # asking a partner for introductions reads as a form letter.
-    from apps.crm.services import sender as sender_service
 
-    signature_text, _ = sender_service.signature(tenant, actor)
-    lines += ["", signature_text]
-    return "\n".join(lines), True, warning
+TOUCH_SYSTEM = """You write a short check-in email from a fractional executive to one of \
+their referral partners: someone who sends them clients and whom they help in return.
+
+Three to five short lines, warm and plain, written as the person writes, never as \
+marketing. Use only the facts you are given; never invent news, clients, numbers or \
+promises. If a recent meeting is given, pick up one real thread from it. Mention the \
+fee arrangement only when terms are given, as a light reminder, never a demand. End \
+with an offer to look out for introductions that would help them.
+
+Write only the email's body. Start with "Hi <their first name>," on its own line, and \
+stop before any sign-off: the signature is added after. No subject line."""
+
+
+def _touch_facts(contact, template, actor) -> str:
+    """What Claude is given: the partner's record, their last meeting, and the
+    practice's own template for tone and shape."""
+    from django.db.models import F
+
+    from apps.crm.services import templates
+    from apps.meetings.models import Meeting
+
+    tenant = contact.tenant
+    lines = [
+        f"Practice: {tenant.name}",
+        f"Written by: {(getattr(actor, 'full_name', '') or '').strip() or 'the practice owner'}",
+        f"Partner: {contact.first_name} {contact.last_name}".rstrip(),
+    ]
+    if contact.title:
+        lines.append(f"Their title: {contact.title}")
+    if contact.company_id:
+        lines.append(f"Their company: {contact.company.name}")
+    if contact.background.strip():
+        lines.append(f"Who they are and how we know them: {contact.background.strip()[:1500]}")
+    if contact.referral_fee_terms.strip():
+        lines.append(f"Fee terms: {contact.referral_fee_terms.strip()}")
+    if (tenant.referral_blurb or "").strip():
+        lines.append(f"What the practice is working on lately: {tenant.referral_blurb.strip()}")
+    # Newest first, an undated one last: Postgres sorts NULL first otherwise.
+    meeting = (Meeting.all_objects.filter(tenant=tenant, participants__contact=contact)
+               .order_by(F("meeting_date").desc(nulls_last=True), "-created_at").first())
+    if meeting is not None:
+        when = meeting.meeting_date.isoformat() if meeting.meeting_date else "date unknown"
+        lines.append(f"\nTheir last meeting with us ({when}): {meeting.title or 'untitled'}")
+        if meeting.summary.strip():
+            lines.append(meeting.summary.strip()[:3000])
+    else:
+        lines.append("\nNo meeting with them is on record.")
+    shape = templates.render(template.body, templates.values_for(
+        contact, tenant=tenant, sender=actor), fallback=template.first_name_fallback)
+    lines += ["", "The practice's own touch email, for tone and length:", shape]
+    return "\n".join(lines)
 
 
 def _blurb_warning(contact) -> str:
@@ -98,12 +155,12 @@ def draft_due_touches(tenant, *, now=None):
         # No human triggered this run, so the touch signs off as the person
         # whose relationship it is — the contact's owner — not as nobody.
         actor = contact.owner
-        body, is_ai, warning = compose_touch(contact, actor=actor)
+        subject, body, is_ai, warning = compose_touch(contact, actor=actor)
         message = create_message(
             actor=actor,
             tenant=tenant, producer=P.REFERRAL_TOUCH,
             to_contact=contact, to_address=contact.primary_email or "",
-            subject=f"Checking in from {tenant.name}",
+            subject=subject,
             body_text=body, is_ai_generated=is_ai, warning=warning,
             send_by=contact.referral_next_touch_at,
             source_type="contact", source_id=contact.pk,
@@ -120,25 +177,14 @@ def _next_touch(contact, from_when):
 
 
 def compose_onboarding(contact, *, actor=None, template=None, with_attachment=False):
-    """FR-1.23b — the onboarding note's words."""
-    if template is not None:
-        return template.body
-    # The sentence has to match reality. Claiming an attachment that is not
-    # there is worse than not mentioning one: the partner looks for a file,
-    # finds none, and the first impression is of a broken email.
-    opening = (
-        "Great to meet you. I've attached a short overview of what we do, "
-        "so you know what to look out for."
-        if with_attachment else
-        "Great to meet you — good to know what you're working on."
-    )
-    return (
-        f"Hi {contact.first_name},\n\n"
-        f"{opening}\n\n"
-        "If there's a type of introduction that would help you, tell me and "
-        "I'll keep an eye out.\n\n"
-        f"{_signature_for(contact.tenant, actor)}"
-    )
+    """FR-1.23b: `(subject, body)`, from the practice's onboarding template.
+    The flyer line is there only when the flyer is: claiming an attachment
+    that is not there is worse than not mentioning one."""
+    from apps.crm.services import templates
+
+    template = template or templates.for_use(contact.tenant, "referral_onboarding")
+    return templates.compose(template, contact, actor=actor,
+                             FlyerNote=templates.FLYER_NOTE if with_attachment else "")
 
 
 def onboard_referral_partner(contact, *, actor=None):
@@ -152,10 +198,6 @@ def onboard_referral_partner(contact, *, actor=None):
         return None  # FR-1.23d — never re-triggers.
 
     tenant = contact.tenant
-    template = EmailTemplate.all_objects.filter(
-        tenant=tenant, kind=EmailTemplate.Kind.REFERRAL_ONBOARDING
-    ).first()
-
     attachments = []
     warning = ""
     if tenant.marketing_flyer_id:
@@ -169,14 +211,13 @@ def onboard_referral_partner(contact, *, actor=None):
         # draft.
         warning = "No marketing flyer is uploaded, so this draft has no attachment."
 
-    body = compose_onboarding(contact, actor=actor, template=template,
-                              with_attachment=bool(attachments))
+    subject, body = compose_onboarding(contact, actor=actor,
+                                       with_attachment=bool(attachments))
 
     message = create_message(
         tenant=tenant, producer=P.REFERRAL_ONBOARDING,
         to_contact=contact, to_address=contact.primary_email or "",
-        subject=template.subject if template else "Good to meet you",
-        body_text=body, warning=warning, actor=actor,
+        subject=subject, body_text=body, warning=warning, actor=actor,
         send_by=timezone.now() + timezone.timedelta(days=7),
         attachments=attachments,
         source_type="contact", source_id=contact.pk,
@@ -202,13 +243,6 @@ def onboard_referral_partner(contact, *, actor=None):
         payload={"flyer_attached": bool(attachments), "outbox_id": str(message.pk)},
     )
     return message
-
-
-def _signature_for(tenant, actor):
-    from apps.crm.services import sender as sender_service
-
-    text, _ = sender_service.signature(tenant, actor)
-    return text
 
 
 def _place_in_referral_pipeline(contact, *, actor=None):
@@ -291,11 +325,11 @@ def draft_touch_now(contact, *, actor=None):
     It does NOT move `referral_next_touch_at`: drafting one now is an extra
     touch, not a replacement for the one already due.
     """
-    body, is_ai, warning = compose_touch(contact, actor=actor)
+    subject, body, is_ai, warning = compose_touch(contact, actor=actor)
     message = create_message(
         tenant=contact.tenant, producer=P.REFERRAL_TOUCH,
         to_contact=contact, to_address=contact.primary_email or "",
-        subject=f"Checking in — {contact.tenant.name}",
+        subject=subject,
         body_text=body, is_ai_generated=is_ai, warning=warning, actor=actor,
         send_by=timezone.now() + timezone.timedelta(days=DRAFT_LEAD_DAYS),
         source_type="contact", source_id=contact.pk,

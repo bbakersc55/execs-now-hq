@@ -33,6 +33,15 @@ export function sanitize(html: string): string {
   return host.innerHTML;
 }
 
+/** Plain text as the editor shows it: a blank line starts a paragraph, a
+ *  single line break stays a line break. */
+export function textToHtml(text: string): string {
+  const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return (text ?? "").split(/\n{2,}/).filter((p) => p !== "")
+    .map((p) => `<p>${escape(p).split("\n").join("<br>")}</p>`).join("");
+}
+
 /** The plain-text alternative every message carries alongside its HTML. */
 export function toPlainText(html: string): string {
   const host = document.createElement("div");
@@ -143,10 +152,16 @@ function chipBefore(range: Range): { chip: HTMLElement; text: Text | null } | nu
     ? { chip: node, text } : null;
 }
 
-export function RichText({ value, onChange, label }: {
+/**
+ * `plain` (owner, 2026-10-20): the template library's editor. The same chips
+ * and the same caret behavior, but the value is plain text, there is no
+ * formatting toolbar, and bold typed by habit is dropped on the way out.
+ */
+export function RichText({ value, onChange, label, plain = false }: {
   value: string;
   onChange: (html: string, text: string) => void;
   label: string;
+  plain?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // What this editor last sent up. A value that is only that coming back is
@@ -156,13 +171,19 @@ export function RichText({ value, onChange, label }: {
 
   useEffect(() => {
     if (!ref.current || value === sent.current) return;
-    const shown = toEditor(value);
+    const shown = toEditor(plain ? textToHtml(value) : value);
     if (ref.current.innerHTML !== shown) ref.current.innerHTML = shown;
   }, [value]);
 
   function emit() {
     if (!ref.current) return;
     const html = fromEditor(ref.current);
+    if (plain) {
+      const text = toPlainText(html).replace(/\u00a0/g, " ");
+      sent.current = text;
+      onChange(text, text);
+      return;
+    }
     sent.current = html;
     onChange(html, toPlainText(html));
   }
@@ -198,7 +219,7 @@ export function RichText({ value, onChange, label }: {
 
   return (
     <div>
-      <div className="row" style={{ marginBottom: ".3rem" }}>
+      {!plain && <div className="row" style={{ marginBottom: ".3rem" }}>
         {[["bold", "B"], ["italic", "I"], ["insertUnorderedList", "• List"]].map(
           ([command, text]) => (
             <button key={command} type="button" className="ghost small"
@@ -211,7 +232,7 @@ export function RichText({ value, onChange, label }: {
         <span className="muted small" style={{ flex: "1 1 auto" }}>
           Pasted text keeps its words, not its styling.
         </span>
-      </div>
+      </div>}
       <div
         ref={ref}
         className="richtext"

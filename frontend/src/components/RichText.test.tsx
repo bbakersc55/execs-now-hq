@@ -80,3 +80,34 @@ describe("merge fields in the rich editor", () => {
     box.remove();
   });
 });
+
+/** Owner, 2026-10-20: the template library's editor is the same chips over
+ *  plain text. */
+describe("the plain-text chip editor", () => {
+  function Plain({ start, seen }: { start: string; seen: string[] }) {
+    const [value, setValue] = useState(start);
+    return <RichText plain label="Template body" value={value}
+      onChange={(text) => { seen.push(text); setValue(text); }} />;
+  }
+
+  it("shows plain text with chips and hands back plain text", () => {
+    const seen: string[] = [];
+    render(<Plain start={"Hi {FirstName},\n\n{PracticeNews}\nThanks & bye."} seen={seen} />);
+    const editor = screen.getByRole("textbox", { name: "Template body" });
+    expect([...editor.querySelectorAll<HTMLElement>("[data-merge]")].map((c) => c.dataset.merge))
+      .toEqual(["{FirstName}", "{PracticeNews}"]);
+    expect(editor.querySelectorAll("p")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "B" })).not.toBeInTheDocument();
+    fireEvent.input(editor);
+    expect(seen.at(-1)).toBe("Hi {FirstName},\n\n{PracticeNews}\nThanks & bye.");
+  });
+
+  it("drops formatting typed by habit", () => {
+    const seen: string[] = [];
+    render(<Plain start="Hi" seen={seen} />);
+    const editor = screen.getByRole("textbox", { name: "Template body" });
+    editor.innerHTML = "<p>Hi <b>{FirstName}</b></p>";
+    fireEvent.input(editor);
+    expect(seen.at(-1)).toBe("Hi {FirstName}");
+  });
+});

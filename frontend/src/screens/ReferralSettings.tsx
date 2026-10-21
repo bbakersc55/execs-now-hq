@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { BulkBar } from "../components/BulkBar";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { api, Contact } from "../lib/api";
+import { TemplateUses } from "./EmailTemplates";
 
 interface Settings {
   referral_blurb: string;
@@ -186,6 +187,8 @@ export function ReferralSettings() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); }} />
       </Card>
 
+      <TemplateUses onNote={setNote} />
+
       <Card title="Thank-you drafts">
         <p className="muted small">
           When someone refers a prospect, a short thank-you to them is drafted into the
@@ -262,8 +265,8 @@ export function ReferralSettings() {
                     </span>
                   </td>
                   <td>{p.referral_cadence || "monthly"}</td>
-                  <td>{p.referral_touch_mode === "ai"
-                    ? <Pill kind="ai">AI-drafted</Pill> : <Pill>my template</Pill>}</td>
+                  <td>{p.referral_touch_mode === "claude"
+                    ? <Pill kind="ai">Draft with Claude</Pill> : <Pill>My template</Pill>}</td>
                   <td className="muted small">{p.referral_fee_terms || "—"}</td>
                   <td className="muted small">
                     {!p.referral_enrolled ? "—"

@@ -40,10 +40,13 @@ K = ClientInvoice.Kind
 
 LINES_MOST = 50
 DEFAULT_SUBJECT = "Invoice {Number} from {Practice}"
-DEFAULT_BODY = ("Hi {First name},\n\nInvoice {Number} for {Total} is attached. "
-                "It is due {Due date}.\n\nThank you,\n{Practice}")
-MERGE_FIELDS = ("Client", "First name", "Number", "Total", "Due date", "Payment terms",
+DEFAULT_BODY = ("Hi {FirstName},\n\nInvoice {Number} for {Total} is attached. "
+                "It is due {DueDate}.\n\nThank you,\n{Practice}")
+#: The template library's style (owner, 2026-10-20). The old spaced forms
+#: are still accepted, for the invoice wording practices saved before it.
+MERGE_FIELDS = ("Client", "FirstName", "Number", "Total", "DueDate", "PaymentTerms",
                 "Practice")
+OLD_FORMS = {"First name": "FirstName", "Due date": "DueDate", "Payment terms": "PaymentTerms"}
 _MERGE = re.compile(r"\{([A-Za-z ]+)\}")
 
 
@@ -78,7 +81,7 @@ def practice_name(tenant) -> str:
 
 def unknown_merge_fields(text: str) -> list[str]:
     return sorted({field for field in _MERGE.findall(text or "")
-                   if field not in MERGE_FIELDS})
+                   if field not in MERGE_FIELDS and field not in OLD_FORMS})
 
 
 def _check_merge(text: str) -> None:
@@ -385,17 +388,20 @@ def merge_values(invoice) -> dict:
     return {
         "Client": (invoice.client_company.name if invoice.client_company_id
                    else f"{contact.first_name} {contact.last_name}".strip()),
-        "First name": contact.first_name or "there",
+        "FirstName": contact.first_name or "there",
         "Number": invoice.number or "",
         "Total": money.dollars(invoice.total_cents),
-        "Due date": f"{invoice.due_date:%B} {invoice.due_date.day}, {invoice.due_date.year}",
-        "Payment terms": terms_label(terms_days_of(invoice)),
+        "DueDate": f"{invoice.due_date:%B} {invoice.due_date.day}, {invoice.due_date.year}",
+        "PaymentTerms": terms_label(terms_days_of(invoice)),
         "Practice": practice_name(invoice.tenant),
     }
 
 
 def render(text: str, values: dict) -> str:
-    return _MERGE.sub(lambda match: values.get(match.group(1), match.group(0)), text or "")
+    def value(match):
+        name = OLD_FORMS.get(match.group(1), match.group(1))
+        return values.get(name, match.group(0))
+    return _MERGE.sub(value, text or "")
 
 
 def _address_of(invoice) -> str:

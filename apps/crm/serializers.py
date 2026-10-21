@@ -206,7 +206,7 @@ class ContactSerializer(serializers.ModelSerializer):
             "emails", "phones", "type_codes", "pipeline_positions",
             "types", "company_name", "placement", "referred_by", "referrer",
             "referral_fee_terms", "referral_cadence", "referral_touch_mode",
-            "referral_next_touch_at", "referral_onboarded_at", "referral_enrolled",
+            "referral_template", "referral_next_touch_at", "referral_onboarded_at", "referral_enrolled",
             "merged_into", "created_at", "updated_at",
         ]
         read_only_fields = ["merged_into", "referral_onboarded_at"]
@@ -557,9 +557,46 @@ class StageAutomationSerializer(serializers.ModelSerializer):
 
 
 class EmailTemplateSerializer(serializers.ModelSerializer):
+    """The library (owner, 2026-10-20): plain text, merge fields checked on
+    save, a built-in one marked with whether it still reads as the original."""
+
+    is_original = serializers.SerializerMethodField()
+    changed = serializers.SerializerMethodField()
+    used_for = serializers.SerializerMethodField()
+
     class Meta:
         model = EmailTemplate
-        fields = ["id", "name", "kind", "subject", "body"]
+        fields = ["id", "name", "kind", "subject", "body", "first_name_fallback",
+                  "original", "is_original", "changed", "used_for", "updated_at"]
+        read_only_fields = ["kind", "original", "updated_at"]
+        extra_kwargs = {"first_name_fallback": {"allow_blank": True}}
+
+    def get_is_original(self, obj):
+        return bool(obj.original)
+
+    def get_changed(self, obj):
+        from apps.crm.services import templates
+
+        return templates.is_changed(obj)
+
+    def get_used_for(self, obj):
+        from apps.crm.services import templates
+
+        return templates.used_for(obj)
+
+    def validate(self, attrs):
+        from apps.crm.services import templates
+
+        subject = attrs.get("subject", getattr(self.instance, "subject", ""))
+        body = attrs.get("body", getattr(self.instance, "body", ""))
+        try:
+            templates.check(subject, body)
+        except templates.TemplateRefused as refused:
+            raise serializers.ValidationError({"body": str(refused)}) from None
+        if "first_name_fallback" in attrs:
+            attrs["first_name_fallback"] = (attrs["first_name_fallback"] or "").strip() \
+                or templates.DEFAULT_FALLBACK
+        return attrs
 
 
 class OutboxAttachmentSerializer(serializers.ModelSerializer):

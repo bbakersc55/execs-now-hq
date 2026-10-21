@@ -333,9 +333,16 @@ class ContactViewSet(TenantStaffViewSet):
         )
         template = None
         if kind == "email":
+            from apps.crm.services import templates
+
             template_id = request.data.get("template")
-            if template_id:
+            if template_id and _is_uuid(template_id):
                 template = EmailTemplate.objects.filter(pk=template_id).first()
+            try:
+                templates.check(*(str(request.data.get(k) or "").replace(
+                    "{first_name}", "{FirstName}") for k in ("subject", "body_text")))
+            except templates.TemplateRefused as refused:
+                return Response({"detail": str(refused)}, status=400)
 
         drafted, skipped = [], []
         # One-off to one person: correspondence. To several at once: marketing,
@@ -371,6 +378,7 @@ class ContactViewSet(TenantStaffViewSet):
                     or (template.body if template else ""),
                     actor=request.user,
                     category="marketing" if many else None,
+                    fallback=template.first_name_fallback if template else None,
                 )
             drafted.append(str(message.pk))
 
@@ -1173,19 +1181,92 @@ class DevSendAllowlistViewSet(viewsets.ModelViewSet):
 
 
 class EmailTemplateViewSet(TenantStaffViewSet):
-    """Matrix 3.13 — a VA may edit body copy; the FF creates and deletes."""
+    """Matrix 3.13 — a VA may edit body copy; the FF creates and deletes.
+
+    The library (owner, 2026-10-20): built-in templates are listed first and
+    can be restored but not deleted; a template in use cannot be deleted
+    either, and the refusal says where it is used. `uses` is which template
+    each practice-wide email uses."""
 
     serializer_class = crm_serializers.EmailTemplateSerializer
 
     def get_queryset(self):
+        from django.db.models import Case, IntegerField, Value, When
+
         from apps.crm.models import EmailTemplate
 
-        return EmailTemplate.objects.all()
+        return EmailTemplate.objects.annotate(
+            builtin=Case(When(original="", then=Value(1)), default=Value(0),
+                         output_field=IntegerField()),
+        ).order_by("builtin", "name")
 
     def get_permissions(self):
-        if self.request.method in ("POST", "DELETE"):
+        if self.request.method == "DELETE" or (
+                self.request.method == "POST" and self.action in ("create", "uses")):
             return [crm_perms.IsTenantStaff(), crm_perms.IsFF()]
         return [crm_perms.IsTenantStaff()]
+
+    def list(self, request, *args, **kwargs):
+        from apps.crm import template_seed
+
+        # A practice made before the library, or a test's, gets it on first
+        # sight rather than an empty page.
+        template_seed.seed_tenant(request.tenant)
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        from apps.crm.services import templates
+
+        template = self.get_object()
+        if template.original:
+            return Response({"detail": "A built-in template can be changed or restored to "
+                                       "its original, not deleted."}, status=409)
+        used = templates.used_for(template)
+        if used:
+            return Response({"detail": "This template is in use: " + "; ".join(used)
+                             + ". Choose another there first."}, status=409)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"])
+    def restore(self, request, pk=None):
+        from apps.crm.services import templates
+
+        template = self.get_object()
+        try:
+            templates.restore(template, actor=request.user)
+        except templates.TemplateRefused as refused:
+            return Response({"detail": str(refused)}, status=400)
+        return Response(self.get_serializer(template).data)
+
+    @action(detail=False, methods=["get", "post"])
+    def uses(self, request):
+        """GET: {use: template id} for every use. POST {use, template}: choose."""
+        from apps.crm import template_seed
+        from apps.crm.models import EmailTemplate, EmailTemplateUse
+        from apps.tenancy.models import AuditEvent
+
+        template_seed.seed_tenant(request.tenant)
+        if request.method == "POST":
+            use = request.data.get("use")
+            if use not in EmailTemplateUse.Use.values:
+                return Response({"detail": "There is no such use."}, status=400)
+            template_id = request.data.get("template")
+            template = (EmailTemplate.objects.filter(pk=template_id).first()
+                        if _is_uuid(template_id) else None)
+            if template is None:
+                return Response({"detail": "Choose one of the practice's templates."},
+                                status=400)
+            row = EmailTemplateUse.objects.get(use=use)
+            row.template = template
+            row.save(update_fields=["template", "updated_at"])
+            AuditEvent.all_objects.create(
+                tenant=request.tenant, actor=request.user, verb="email_template.use_chosen",
+                target_type="email_template", target_id=template.pk, payload={"use": use})
+        rows = EmailTemplateUse.objects.all()
+        return Response({
+            "uses": [{"use": row.use, "label": EmailTemplateUse.Use(row.use).label,
+                      "template": str(row.template_id)} for row in rows],
+        })
 
 
 class ReferralSettingsView(viewsets.ViewSet):

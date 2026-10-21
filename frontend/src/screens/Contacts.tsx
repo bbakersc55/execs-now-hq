@@ -7,8 +7,12 @@ import {
   Avatar, Chip, FilterBar, PageHead, SearchField, Sheet, SortHeader, Sort, sorted,
   useRowLink,
 } from "../components/shell";
-import { Banner, Card, Empty, Pill } from "../components/ui";
-import { Contact, ContactType, Me, Note, Pipeline, api } from "../lib/api";
+import { Banner, Card, Empty, Field, Pill } from "../components/ui";
+import { RichText } from "../components/RichText";
+import {
+  Contact, ContactType, EmailTemplate, Me, Note, Pipeline, TEMPLATE_FIELDS, api,
+} from "../lib/api";
+import { MergeFieldBar } from "./EmailTemplates";
 import { AddContact } from "./AddContact";
 import { NoteRow } from "./Notes";
 
@@ -25,7 +29,13 @@ export function Contacts({ me }: { me: Me }) {
   const [typeFilter, setTypeFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [composing, setComposing] = useState(false);
-  const [draft, setDraft] = useState({ subject: "", body_text: "" });
+  // `template` is the one copied from, if any: its first-name fallback applies.
+  const [draft, setDraft] = useState<{ subject: string; body_text: string; template?: string }>(
+    { subject: "", body_text: "" });
+  const templates = useQuery<EmailTemplate[]>({
+    queryKey: ["templates"], queryFn: () => api.get<EmailTemplate[]>("/api/email-templates/"),
+    enabled: composing,
+  });
 
   // Instant, not type-then-press-Search. Debounced so a five-letter name is
   // one request rather than five.
@@ -171,15 +181,25 @@ export function Contacts({ me }: { me: Me }) {
       {composing && (
         <Card title={`Draft an email to ${picked.length} contacts`}>
           <p className="muted small">
-            One Outbox draft per recipient, each <strong>pending approval</strong>. Use{" "}
-            <code>{"{first_name}"}</code> to address each person by name.
+            One Outbox draft per recipient, each <strong>pending approval</strong>, filled in
+            for each person and signed by you.
           </p>
+          <Field label="Start from a template">
+            <select aria-label="Start from a template" value=""
+              onChange={(e) => {
+                const t = (templates.data ?? []).find((row) => row.id === e.target.value);
+                if (t) setDraft({ subject: t.subject, body_text: t.body, template: t.id });
+              }}>
+              <option value="">Choose one to copy its subject and words…</option>
+              {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </Field>
           <label htmlFor="bulk-subject">Subject</label>
           <input id="bulk-subject" value={draft.subject}
             onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
-          <label htmlFor="bulk-body">Message</label>
-          <textarea id="bulk-body" rows={6} value={draft.body_text}
-            onChange={(e) => setDraft({ ...draft, body_text: e.target.value })} />
+          <MergeFieldBar fields={TEMPLATE_FIELDS.slice(0, 7)} />
+          <RichText plain label="Message" value={draft.body_text}
+            onChange={(text) => setDraft({ ...draft, body_text: text })} />
           <div style={{ marginTop: ".6rem" }}>
             <button className="primary" disabled={!draft.subject || draftEmails.isPending}
               onClick={() => draftEmails.mutate()}>

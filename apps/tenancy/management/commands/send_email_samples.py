@@ -103,18 +103,19 @@ def _referral_touch_sample(tenant, actor):
     from apps.crm.models import Contact
     from apps.crm.services.referral import compose_touch
 
-    body, _ai, _warning = compose_touch(
+    subject, body, _ai, _warning = compose_touch(
         Contact(tenant=tenant, first_name="Maria", last_name="Lopez"), actor=actor)
-    return f"Checking in from {tenant.name}", "", body
+    return subject, "", body
 
 
 def _referral_onboarding_sample(tenant, actor):
     from apps.crm.models import Contact
     from apps.crm.services.referral import compose_onboarding
 
-    body = compose_onboarding(Contact(tenant=tenant, first_name="Maria", last_name="Lopez"),
-                              actor=actor, with_attachment=False)
-    return "Good to meet you", "", body
+    subject, body = compose_onboarding(
+        Contact(tenant=tenant, first_name="Maria", last_name="Lopez"),
+        actor=actor, with_attachment=False)
+    return subject, "", body
 
 
 def _manual_sample(tenant, actor):

@@ -42,7 +42,12 @@ S = OutboxMessage.State
 #: like every other draft (FR-1.18). Two weeks: a campaign is not urgent.
 SEND_BY_DAYS = 14
 
-MERGE_FIELDS = ("{FirstName}", "{Company}", "{FractionalName}")
+#: The template library's fields that mean something in a campaign: all but
+#: the two that belong to one email (a thank-you's prospect, the flyer line).
+#: One style everywhere (owner, 2026-10-20), `services.templates`.
+GENERAL_FIELDS = ("FirstName", "LastName", "Company", "FractionalName", "PracticeName",
+                  "PracticeNews", "FeeTerms")
+MERGE_FIELDS = tuple(f"{{{name}}}" for name in GENERAL_FIELDS)
 #: Files on a campaign (owner, 2026-10-19), each within the Outbox's limit.
 MOST_ATTACHMENTS = 3
 
@@ -55,21 +60,26 @@ class CampaignRefused(Exception):
 
 # -------------------------------------------------------------- merge fields
 
-def merge_values(contact, sender_name) -> dict:
+def merge_values(contact, sender_name, tenant=None) -> dict:
     """What each field becomes for one person. A missing first name reads as
     the campaign's fallback ("Hi there,"), because "Hi ," is worse than
     generic."""
-    return {
-        "{FirstName}": (contact.first_name or "").strip() if contact else "",
-        "{Company}": (contact.company.name if contact and contact.company_id else ""),
-        "{FractionalName}": sender_name or "",
-    }
+    from apps.crm.services import templates
+
+    values = templates.values_for(contact, tenant=tenant or contact.tenant)
+    values["FractionalName"] = sender_name or ""
+    return {f"{{{name}}}": values[name] for name in GENERAL_FIELDS}
 
 
 #: What the preview and a test show for each field when no person is chosen
 #: (owner, 2026-10-20): a visible placeholder, not a nameless sample.
-PLACEHOLDERS = {"{FirstName}": "[First name]", "{Company}": "[Company]",
-                "{FractionalName}": "[Fractional's name]"}
+def _placeholders() -> dict:
+    from apps.crm.services import templates
+
+    return {f"{{{name}}}": templates.PLACEHOLDERS[name] for name in GENERAL_FIELDS}
+
+
+PLACEHOLDERS = _placeholders()
 TEST_LINE = "Test copy. Bracketed words are filled in for each person on the real send."
 DEFAULT_FALLBACK = "there"
 
@@ -129,7 +139,7 @@ def rendered_for(campaign, contact, *, actor=None, test=False) -> tuple[str, str
     if contact is None:
         values, fallback = dict(PLACEHOLDERS), PLACEHOLDERS["{FirstName}"]
     else:
-        values = merge_values(contact, sender_name(campaign, actor))
+        values = merge_values(contact, sender_name(campaign, actor), campaign.tenant)
         fallback = fallback_of(campaign)
     subject = merge(campaign.subject, values, as_html=False, fallback=fallback)
     body = merge(campaign.body_html, values, as_html=True, fallback=fallback)

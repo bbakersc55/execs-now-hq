@@ -9,7 +9,7 @@ import { ReferralsCard, ReferredByRow } from "../components/Referrals";
 import { GrantPortalAccess } from "../components/GrantPortalAccess";
 import { Banner, Card, Empty, Field, PageLinks, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
-import { Contact, Me, OutboxMessage, api } from "../lib/api";
+import { Contact, EmailTemplate, Me, OutboxMessage, api } from "../lib/api";
 import { useWords } from "../lib/words";
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
@@ -252,11 +252,19 @@ export function ContactDetail({ me }: { me: Me }) {
                       defaultValue={c.referral_touch_mode}
                       onChange={(e) => save.mutate({ referral_touch_mode: e.target.value })}
                     >
-                      <option value="ai">AI-drafted</option>
                       <option value="template">My template</option>
+                      <option value="claude">Draft with Claude</option>
                     </select>
                   </Field>
+                  <TouchTemplate contact={c} onSave={(id) => save.mutate({ referral_template: id })} />
                 </div>
+                <p className="muted small">
+                  {c.referral_touch_mode === "claude"
+                    ? <>Claude writes each touch from their record and the last meeting they
+                        were in, in the shape of the template. With no AI key, the template is
+                        used and the draft says so.</>
+                    : <>Each touch is the template, filled in for them and signed by you.</>}
+                </p>
                 <Field label="Fee terms (optional — omitted from the email when blank)">
                   <input
                     defaultValue={c.referral_fee_terms}
@@ -330,5 +338,25 @@ export function ContactDetail({ me }: { me: Me }) {
         </div>
       </div>
     </>
+  );
+}
+
+
+/** Which template a partner's touches use: the practice's, or one of the
+ *  library's for them alone. */
+function TouchTemplate({ contact, onSave }: {
+  contact: Contact; onSave: (id: string | null) => void;
+}) {
+  const templates = useQuery<EmailTemplate[]>({
+    queryKey: ["templates"], queryFn: () => api.get<EmailTemplate[]>("/api/email-templates/"),
+  });
+  return (
+    <Field label="Template">
+      <select aria-label="Touch template" defaultValue={contact.referral_template ?? ""}
+        onChange={(e) => onSave(e.target.value || null)}>
+        <option value="">The practice's touch template</option>
+        {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+    </Field>
   );
 }

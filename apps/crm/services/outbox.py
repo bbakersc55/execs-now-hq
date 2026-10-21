@@ -487,19 +487,26 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
 
 # ------------------------------------------------------------- producers
 
-def create_manual_draft(contact, *, subject, body_text, actor=None, category=None):
+def create_manual_draft(contact, *, subject, body_text, actor=None, category=None,
+                        fallback=None):
     """A one-off email to one contact, queued for approval.
 
     Deliberately NOT a direct-to-`sent` producer even though a human typed it:
     the bulk path composes many of these at once from a template, and "the click
     is the approval" stops being true when one click produced forty messages.
-    """
-    from apps.crm.services import sender as sender_service
 
-    signature_text, _ = sender_service.signature(contact.tenant, actor)
-    body = body_text.replace("{first_name}", contact.first_name or "")
-    if signature_text and signature_text not in body:
-        body = f"{body.rstrip()}\n\n{signature_text}"
+    Merged like every template (`services.templates`); the old `{first_name}`
+    still works.
+    """
+    from apps.crm.services import templates
+
+    values = templates.values_for(contact, tenant=contact.tenant, sender=actor)
+    fallback = fallback or templates.DEFAULT_FALLBACK
+    body = templates.render(body_text.replace("{first_name}", "{FirstName}"), values,
+                            fallback=fallback)
+    subject = templates.render_subject((subject or "").replace("{first_name}", "{FirstName}"),
+                                       values, fallback=fallback)
+    body = templates.with_signature(body, contact.tenant, actor)
     return create_message(
         tenant=contact.tenant, producer=P.MANUAL,
         to_contact=contact, to_address=contact.primary_email or "",
@@ -514,14 +521,20 @@ def create_manual_draft(contact, *, subject, body_text, actor=None, category=Non
 
 
 def queue_stage_email(contact, rule, *, actor=None):
-    """FR-1.12 — a stage rule NEVER sends. Send-by defaults to 7 days."""
+    """FR-1.12 — a stage rule NEVER sends. Send-by defaults to 7 days. Its
+    template is merged and signed like every other (`services.templates`)."""
+    from apps.crm.services import templates
+
     template = rule.email_template
     send_by = timezone.now() + timezone.timedelta(days=rule.send_by_offset_days)
+    if template is not None:
+        subject, body = templates.compose(template, contact, actor=actor)
+    else:
+        subject, body = "Following up", templates.with_signature("", contact.tenant, actor)
     return create_message(
         tenant=contact.tenant, producer=P.STAGE_RULE,
         to_contact=contact, to_address=contact.primary_email or "",
-        subject=template.subject if template else "Following up",
-        body_text=template.body if template else "",
+        subject=subject, body_text=body,
         send_by=send_by, actor=actor,
         source_type="stage_automation", source_id=rule.pk,
     )

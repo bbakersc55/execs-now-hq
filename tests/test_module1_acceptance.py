@@ -429,13 +429,15 @@ def test_ac_1_18_touch_composition_has_all_three_parts(seeded_tenant, types):
         with_fee = _contact(seeded_tenant, referral_fee_terms="10% of first 3 months")
         without_fee = _contact(seeded_tenant)
 
-        body_x, is_ai_x, _ = referral.compose_touch(with_fee)
-        body_y, _, _ = referral.compose_touch(without_fee)
+        _, body_x, is_ai_x, _ = referral.compose_touch(with_fee)
+        _, body_y, _, _ = referral.compose_touch(without_fee)
 
         assert "inspection programmes" in body_x
         assert "10% of first 3 months" in body_x
         assert "keep an eye out" in body_x
-        assert is_ai_x is True
+        # The built-in touch template is the old fixed wording, and honest
+        # about it: not marked as Claude's (owner, 2026-10-20).
+        assert is_ai_x is False
 
         assert "inspection programmes" in body_y
         assert "keep an eye out" in body_y
@@ -453,7 +455,7 @@ def test_ac_1_19_stale_blurb_warns_but_does_not_block(seeded_tenant, ff):
 
     with tenant_context(seeded_tenant.pk):
         contact = _contact(seeded_tenant, referral_cadence="monthly")
-        _, _, warning = referral.compose_touch(contact)
+        _, _, _, warning = referral.compose_touch(contact)
         assert "40 days ago" in warning
         assert "monthly" in warning
 
