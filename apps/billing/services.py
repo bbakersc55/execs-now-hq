@@ -41,11 +41,11 @@ K = ClientInvoice.Kind
 LINES_MOST = 50
 DEFAULT_SUBJECT = "Invoice {Number} from {Practice}"
 DEFAULT_BODY = ("Hi {FirstName},\n\nInvoice {Number} for {Total} is attached. "
-                "It is due {DueDate}.\n\nThank you,\n{Practice}")
+                "It is due {DueDate}.\n\nPay it online: {PayLink}\n\nThank you,\n{Practice}")
 #: The template library's style (owner, 2026-10-20). The old spaced forms
 #: are still accepted, for the invoice wording practices saved before it.
 MERGE_FIELDS = ("Client", "FirstName", "Number", "Total", "DueDate", "PaymentTerms",
-                "Practice")
+                "Practice", "PayLink")
 OLD_FORMS = {"First name": "FirstName", "Due date": "DueDate", "Payment terms": "PaymentTerms"}
 _MERGE = re.compile(r"\{([A-Za-z ]+)\}")
 
@@ -404,6 +404,23 @@ def render(text: str, values: dict) -> str:
     return _MERGE.sub(value, text or "")
 
 
+def with_pay_link(text: str, url: str, *, add: bool = False) -> str:
+    """{PayLink} filled in. It is left in the invoice's stored wording and
+    filled only here, as the email is queued, because the link carries its
+    token (`pay_links`). With no link, a line holding it is left out. `add`
+    puts the link at the end of a body that does not have it: wording saved
+    before {PayLink} existed, and invoices sent before links did."""
+    lines = []
+    for line in (text or "").split("\n"):
+        if "{PayLink}" in line and not url:
+            continue
+        lines.append(line.replace("{PayLink}", url))
+    out = "\n".join(lines)
+    if add and url and url not in out:
+        out = f"{out.rstrip()}\n\nPay this invoice online: {url}"
+    return out
+
+
 def _address_of(invoice) -> str:
     typed = ((invoice.bill_to or {}).get("address") or "").strip()
     if typed or not invoice.client_company_id:
@@ -465,6 +482,11 @@ def make_ready(invoice, *, actor, role) -> ClientInvoice:
     invoice.status = S.READY
     invoice.ready_at = timezone.now()
     invoice.save()
+    from apps.billing import pay_links
+
+    pay_links.ensure(invoice)
+    # Filled in memory for the PDF to print; never saved (see the model).
+    invoice.pay_url = pay_links.url_of(invoice)
     invoice.pdf = pdf.store(invoice)
     invoice.save(update_fields=["pdf", "updated_at"])
     audit(invoice, "invoice_ready", actor, before=before, after=S.READY,
@@ -493,13 +515,16 @@ def _queue(invoice, *, actor, role, to_address=None):
     """The email into the Sending queue, waiting. The PDF attached is the one
     stored. Never direct: the Outbox has no rule that sends an invoice by
     itself."""
+    from apps.billing import pay_links
     from apps.crm.models import OutboxMessage
     from apps.crm.services import outbox
 
+    url = pay_links.url_of(invoice)
     message = outbox.create_message(
         tenant=invoice.tenant, producer=OutboxMessage.Producer.CLIENT_INVOICE,
         to_address=to_address or invoice.email_to, to_contact=invoice.contact,
-        subject=invoice.email_subject, body_text=invoice.email_body, role=role,
+        subject=with_pay_link(invoice.email_subject, url),
+        body_text=with_pay_link(invoice.email_body, url, add=True), role=role,
         actor=actor, thread=_thread_for(invoice), source_type="client_invoice",
         source_id=invoice.pk,
         attachments=[(invoice.pdf, f"Invoice-{invoice.number}.pdf")])
@@ -535,7 +560,14 @@ def send(invoice, *, actor, role, to_address=None) -> ClientInvoice:
     if invoice.status in (S.DRAFT, S.VOID):
         raise BillingError("Make the invoice ready before sending it." if invoice.status
                            == S.DRAFT else "A void invoice is not sent.", status=409)
+    from apps.billing import pay_links
+
     message = _waiting(invoice)
+    # An invoice made ready or sent before its practice could take cards (or
+    # before links existed) gets its link now, and the email carries it.
+    if pay_links.ensure(invoice) and message is not None:
+        outbox.reject(message, actor=actor)
+        message = None
     if message is None or (to_address and to_address != message.to_address):
         if message is not None:
             outbox.reject(message, actor=actor)
@@ -712,7 +744,10 @@ def void(invoice, *, actor, reason) -> ClientInvoice:
     invoice.status = S.VOID
     invoice.voided_at = timezone.now()
     invoice.void_reason = reason
-    invoice.save(update_fields=["status", "voided_at", "void_reason", "updated_at"])
+    # Its pay link stops working with it.
+    invoice.pay_token_hash = ""
+    invoice.save(update_fields=["status", "voided_at", "void_reason", "pay_token_hash",
+                                "updated_at"])
     audit(invoice, "invoice_voided", actor, before=before, after=S.VOID, reason=reason)
     return invoice
 

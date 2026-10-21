@@ -57,6 +57,7 @@ import { InvoiceDetail } from "./screens/InvoiceDetail";
 import { Invoices } from "./screens/Invoices";
 import { InvoiceSettings } from "./screens/InvoiceSettings";
 import { BillingSettings } from "./screens/BillingSettings";
+import { PayLink } from "./screens/PayLink";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
@@ -182,9 +183,10 @@ function captureDefaults(pathname: string) {
 
 export function App() {
   const location = useLocation();
-  // The two pages reachable with **no session at all**: the cadence link in
-  // every digest footer (FR-3.33a) and the pre-call form (FR-4.6, matrix
-  // 10.13). They render before the sign-in check below.
+  // The pages reachable with **no session at all**: the cadence link in
+  // every digest footer (FR-3.33a), the pre-call form (FR-4.6, matrix
+  // 10.13), unsubscribe, and an invoice's pay link (P4 part 3). They render
+  // before the sign-in check below.
   //
   // They are rendered inside <Routes>, not returned bare. `useParams()` reads
   // from the matched route, so a bare element gets an EMPTY params object and
@@ -193,7 +195,8 @@ export function App() {
   // valid token, a valid session, and a page that never sent it.
   const isPublic = matchPath("/updates/:token", location.pathname)
     || matchPath("/strategy/precall/:token", location.pathname)
-    || matchPath("/unsubscribe/:token", location.pathname);
+    || matchPath("/unsubscribe/:token", location.pathname)
+    || matchPath("/pay/:token", location.pathname);
   if (isPublic) {
     return (
       <Routes>
@@ -203,6 +206,8 @@ export function App() {
           element={<LinkBranded kind="precall"><PreCallForm /></LinkBranded>} />
         <Route path="/unsubscribe/:token"
           element={<LinkBranded kind="unsubscribe"><Unsubscribe /></LinkBranded>} />
+        <Route path="/pay/:token"
+          element={<LinkBranded kind="pay"><PayLink /></LinkBranded>} />
       </Routes>
     );
   }

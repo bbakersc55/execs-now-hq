@@ -1572,8 +1572,8 @@ export interface CampaignCandidate {
 
 /**
  * The template library's merge fields (owner, 2026-10-20): one style
- * everywhere, mirrored from apps/crm/services/templates.py. The last two mean
- * something only in their own emails.
+ * everywhere, mirrored from apps/crm/services/templates.py. The last three
+ * mean something only in their own emails.
  */
 export const TEMPLATE_FIELDS: { field: string; label: string }[] = [
   { field: "{FirstName}", label: "First name" },
@@ -1585,6 +1585,7 @@ export const TEMPLATE_FIELDS: { field: string; label: string }[] = [
   { field: "{FeeTerms}", label: "Their referral fee terms" },
   { field: "{ProspectName}", label: "Who they referred (thank-yous only)" },
   { field: "{FlyerNote}", label: "The flyer line (a new partner's email only)" },
+  { field: "{PayLink}", label: "The invoice's payment link (invoice emails only)" },
 ];
 
 /** The fields a campaign can use: all but the two that belong to one email. */
@@ -1713,10 +1714,18 @@ export interface PayConfig {
   public_key: string; test_mode: boolean; amount_cents: number; number: string;
 }
 
-/** POST /api/portal-invoices/:id/pay/ — how the payment ended. */
+/** POST /api/portal-invoices/:id/pay/ or /api/pay/:token — how the payment ended. */
 export interface PayResult {
   status: "approved" | "declined" | "unknown" | "failed";
-  message: string; balance_cents: number; invoice_status: InvoiceStatus;
+  message: string; balance_cents: number; invoice_status?: InvoiceStatus;
+}
+
+/** GET /api/pay/:token — the pay link's page (P4 part 3), and nothing more. */
+export interface PayLinkPage {
+  practice: string; number: string; amount_due_cents: number; due_date: string;
+  paid: boolean; test_mode: boolean;
+  /** Empty when there is no card form: paid, or the reason in `notice`. */
+  public_key: string; notice: string;
 }
 
 // ------------------------------------------------------------- the books (P5)

@@ -77,6 +77,9 @@ def books_category(row, role) -> dict:
 
 
 def represent(invoice, role=None) -> dict:
+    from apps.billing import pay_links
+
+    pay_url = pay_links.url_of(invoice)
     lines = ClientInvoiceLine.all_objects.filter(invoice=invoice).order_by(
         "position", "created_at")
     payments = (ClientPayment.all_objects.filter(invoice=invoice)
@@ -85,9 +88,15 @@ def represent(invoice, role=None) -> dict:
         **represent_row(invoice), **books_category(invoice, role),
         "subtotal_cents": invoice.subtotal_cents, "tax_cents": invoice.tax_cents,
         "currency": invoice.currency, "notes": invoice.notes, "terms": invoice.terms,
-        "pay_instructions": invoice.pay_instructions, "pay_url": invoice.pay_url,
-        "email_to": invoice.email_to, "email_subject": invoice.email_subject,
-        "email_body": invoice.email_body, "bill_to": invoice.bill_to or {},
+        "pay_instructions": invoice.pay_instructions, "pay_url": pay_url,
+        "email_to": invoice.email_to,
+        # A draft's wording is still being written: {PayLink} stays as typed.
+        # After, it reads as the email does.
+        "email_subject": (invoice.email_subject if invoice.status == S.DRAFT
+                          else services.with_pay_link(invoice.email_subject, pay_url)),
+        "email_body": (invoice.email_body if invoice.status == S.DRAFT
+                       else services.with_pay_link(invoice.email_body, pay_url, add=True)),
+        "bill_to": invoice.bill_to or {},
         "has_pdf": invoice.pdf_id is not None,
         "sent_at": invoice.sent_at.isoformat() if invoice.sent_at else None,
         "voided_at": invoice.voided_at.isoformat() if invoice.voided_at else None,
@@ -592,8 +601,8 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
             "total_cents": invoice.total_cents, "balance_cents": invoice.balance_cents,
             "status": invoice.status, "status_label": invoice.get_status_display(),
             "overdue": services.is_overdue(invoice),
-            # Empty until the signed link (P4 part 3).
-            "pay_url": invoice.pay_url,
+            # The portal has Pay; the link is for paying without signing in.
+            "pay_url": "",
             # P4 part 2: Pay shows when this is true. Never a contact invoice
             # (not listed here at all), and never with a payment under way.
             "can_pay": (ready and invoice.status in ClientInvoice.OPEN

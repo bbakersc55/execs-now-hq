@@ -13,7 +13,7 @@ import { applyPortalTokens } from "../lib/palette";
  * icon to the practice's mark, the title to its name, and the colors to its own.
  */
 export function LinkBranded({ kind, children }: {
-  kind: "cadence" | "precall" | "unsubscribe"; children: ReactNode;
+  kind: "cadence" | "precall" | "unsubscribe" | "pay"; children: ReactNode;
 }) {
   const { token = "" } = useParams();
   const via = `${kind}:${token}`;

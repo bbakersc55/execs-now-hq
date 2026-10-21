@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { PageHead } from "../components/shell";
+import { NmiCardForm } from "../components/NmiCardForm";
 import { Banner, Card, Empty, Pill } from "../components/ui";
 import { PayConfig, PayResult, PortalInvoice, api } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
@@ -81,8 +82,8 @@ export function ClientInvoices() {
   );
 }
 
-/** NMI's card fields, mounted with the practice's public key fetched at
- *  runtime. The component is loaded only when someone pays. */
+/** The card form for one invoice, with the practice's public key fetched
+ *  when someone presses Pay. */
 function PayPanel({ invoice, onDone, onCancel }: {
   invoice: PortalInvoice; onDone: (result: PayResult) => void; onCancel: () => void;
 }) {
@@ -90,44 +91,11 @@ function PayPanel({ invoice, onDone, onCancel }: {
     queryKey: ["pay-config", invoice.id],
     queryFn: () => api.get<PayConfig>(`/api/portal-invoices/${invoice.id}/pay/`),
     staleTime: 0, gcTime: 0 });
-  const box = useRef<HTMLDivElement>(null);
-  const [loadError, setLoadError] = useState("");
-  const done = useRef(onDone);
-  done.current = onDone;
-
-  useEffect(() => {
-    const key = config.data?.public_key;
-    if (!key || !box.current) return;
-    let widget: { destroy: () => void } | null = null;
-    let cancelled = false;
-    import("@nmipayments/nmi-pay").then(({ mountNmiPayments }) => {
-      if (cancelled || !box.current) return;
-      widget = mountNmiPayments(box.current, {
-        tokenizationKey: key, paymentMethods: ["card"],
-        payButtonText: `Pay ${dollars(config.data!.amount_cents)}`,
-        onPay: async (event) => {
-          try {
-            const result = await api.post<PayResult>(
-              `/api/portal-invoices/${invoice.id}/pay/`, { payment_token: event.token });
-            done.current(result);
-            return result.status === "approved" ? true : result.message;
-          } catch (e) {
-            const message = (e as Error).message;
-            done.current({ status: "failed", message, balance_cents: invoice.balance_cents,
-                           invoice_status: invoice.status });
-            return message;
-          }
-        },
-      });
-    }).catch(() => setLoadError("The card form could not be loaded. Please try again."));
-    return () => { cancelled = true; widget?.destroy(); };
-  }, [config.data, invoice.id, invoice.balance_cents, invoice.status]);
 
   return (
     <Card title={`Pay invoice ${invoice.number}`}
       actions={<button className="ghost" onClick={onCancel}>Cancel</button>}>
       {config.isError && <Banner kind="bad">{(config.error as Error).message}</Banner>}
-      {loadError && <Banner kind="bad">{loadError}</Banner>}
       {config.data && (
         <>
           <p style={{ marginTop: 0 }}>
@@ -138,12 +106,10 @@ function PayPanel({ invoice, onDone, onCancel }: {
             <p className="small muted">Test mode: this practice's card account is a test
               account, so no real money moves.</p>
           )}
+          <NmiCardForm publicKey={config.data.public_key} amountCents={config.data.amount_cents}
+            payPath={`/api/portal-invoices/${invoice.id}/pay/`} onDone={onDone} />
         </>
       )}
-      <div ref={box} data-testid="card-form" />
-      <p className="small muted" style={{ marginBottom: 0 }}>
-        Your card details go straight to the card processor and never to this app.
-      </p>
     </Card>
   );
 }

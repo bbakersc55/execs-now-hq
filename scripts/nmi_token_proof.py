@@ -2,6 +2,7 @@
 
     .venv/bin/python scripts/nmi_token_proof.py            # the gateway (part 1)
     .venv/bin/python scripts/nmi_token_proof.py --portal   # the portal's Pay (part 2)
+    .venv/bin/python scripts/nmi_token_proof.py --link     # the pay link (part 3)
 
 **--portal** pays a real invoice through the real portal page, as a client
 would: it builds the frontend, makes a fresh database `execsnowhq_nmi_proof`
@@ -10,6 +11,11 @@ and a sent invoice (`manage.py nmi_proof_setup`), signs in as the client
 owner with a magic link, presses Pay, types NMI's test card into NMI's
 fields, and prints the attempt, the payment and the receipt as the database
 holds them. The database is left for a look and remade by the next run.
+
+**--link** does the same through the signed pay link, signed in as no one:
+the invoice is to a contact alone (in no portal), the page is opened at its
+`/pay/<token>`, paid with the test card, then opened again to show Paid; a
+wrong token is checked to be a 404.
 
 Without --portal:
 
@@ -34,6 +40,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -136,6 +143,37 @@ def run() -> dict:
     return {}
 
 
+def link_attempt(browser, setup) -> None:
+    page = browser.new_page()
+    try:
+        page.goto(BASE + setup["pay_path"], wait_until="domcontentloaded", timeout=90000)
+        page.get_by_role("heading", name=f"Invoice {setup['number']}").wait_for(timeout=90000)
+        page.get_by_text("Test mode").first.wait_for(timeout=60000)
+        fill_card(page, button=re.compile(r"^Pay \$"))
+        page.get_by_role("status").filter(has_text="was paid on invoice").wait_for(
+            timeout=120000)
+    finally:
+        page.close()
+
+
+def link_after(browser, setup) -> dict:
+    """The page opened again once paid, and a wrong token."""
+    page = browser.new_page()
+    try:
+        page.goto(BASE + setup["pay_path"], wait_until="domcontentloaded", timeout=90000)
+        page.get_by_role("heading", name=f"Invoice {setup['number']}").wait_for(timeout=90000)
+        paid = page.get_by_text("Paid", exact=True).count() > 0
+        form = page.get_by_text("Pay by card").count() > 0
+    finally:
+        page.close()
+    wrong = setup["pay_path"][:-2] + ("xy" if not setup["pay_path"].endswith("xy") else "zz")
+    try:
+        status = urllib.request.urlopen(BASE + "/api" + wrong, timeout=30).status
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+    return {"shows_paid": paid, "card_form_shown": form, "wrong_token_status": status}
+
+
 def portal_attempt(browser, setup) -> None:
     page = browser.new_page()
     try:
@@ -157,6 +195,8 @@ import json
 from apps.billing.models import PaymentAttempt, ClientPayment
 from apps.crm.models import OutboxMessage
 a = PaymentAttempt.all_objects.select_related("invoice").get()
+from apps.billing.models import ClientInvoice
+row = ClientInvoice.all_objects.filter(pk=a.invoice_id).values("pay_url", "pay_token_hash").get()
 p = ClientPayment.all_objects.filter(invoice=a.invoice).first()
 mail = list(OutboxMessage.all_objects.filter(producer__in=["payment_receipt",
     "payment_notice"]).values_list("producer", "to_address", "state"))
@@ -165,8 +205,11 @@ print(json.dumps({"attempt": {"status": a.status, "nmi_transaction_id": a.nmi_tr
     "response_code": a.response_code, "environment": a.environment},
     "payment": p and {"method": p.method, "amount_cents": p.amount_cents,
                       "nmi_transaction_id": p.nmi_transaction_id, "reference": p.reference},
-    "invoice": {"number": a.invoice.number, "status": a.invoice.status,
-                "balance_cents": a.invoice.balance_cents},
+    "invoice": {"number": a.invoice.number, "kind": a.invoice.kind,
+                "status": a.invoice.status, "balance_cents": a.invoice.balance_cents,
+                "pay_url_column_empty": row["pay_url"] == "",
+                "pay_token_hash_stored": bool(row["pay_token_hash"])},
+    "via": a.via,
     "mail": mail,
     # The unknown-answer lookup's own code, against the sandbox: the sale found
     # by our reference alone, as `resolve_unknown` would find it.
@@ -178,7 +221,7 @@ print(json.dumps({"attempt": {"status": a.status, "nmi_transaction_id": a.nmi_tr
 """
 
 
-def portal() -> dict:
+def portal(by_link=False) -> dict:
     from playwright.sync_api import sync_playwright
 
     print("Building the frontend…", file=sys.stderr)
@@ -190,14 +233,16 @@ def portal() -> dict:
     subprocess.run(["createdb", PROOF_DB], check=True)
     print("Migrating the proof database…", file=sys.stderr)
     manage("migrate", "--noinput", env_extra=PROOF_ENV)
-    setup = json.loads(manage("nmi_proof_setup", env_extra=PROOF_ENV).strip().splitlines()[-1])
+    setup = json.loads(manage("nmi_proof_setup", *(["--contact"] if by_link else []),
+                              env_extra=PROOF_ENV).strip().splitlines()[-1])
+    after = {}
     server = start_server(PROOF_ENV)
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(channel="chrome", headless=True)
             for tries in range(1, 4):
                 try:
-                    portal_attempt(browser, setup)
+                    (link_attempt if by_link else portal_attempt)(browser, setup)
                     break
                 except Exception as exc:
                     # A try that never reached Pay spent no token and charged
@@ -207,6 +252,8 @@ def portal() -> dict:
                                             env_extra=PROOF_ENV).strip() != "0":
                         raise
                     print(f"Try {tries}: {type(exc).__name__}", file=sys.stderr)
+            if by_link:
+                after = link_after(browser, setup)
             browser.close()
     finally:
         server.terminate()
@@ -216,12 +263,19 @@ def portal() -> dict:
                     and result["invoice"]["status"] == "paid" and result["lookup"] is not None
                     and result["lookup"]["nmi_transaction_id"]
                     == result["attempt"]["nmi_transaction_id"])
+    if by_link:
+        result["after"] = after
+        result["ok"] = (result["ok"] and result["via"] == "link"
+                        and result["invoice"]["kind"] == "contact"
+                        and result["invoice"]["pay_url_column_empty"]
+                        and after.get("shows_paid") and not after.get("card_form_shown")
+                        and after.get("wrong_token_status") == 404)
     return result
 
 
 def main():
-    if "--portal" in sys.argv:
-        result = portal()
+    if "--portal" in sys.argv or "--link" in sys.argv:
+        result = portal(by_link="--link" in sys.argv)
     else:
         server = start_server()
         try:

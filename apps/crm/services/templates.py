@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import re
 
-#: (field, what it is). The first seven work anywhere; the last two only where
-#: they mean something, and read as nothing elsewhere.
+#: (field, what it is). The first seven work anywhere; the last three only
+#: where they mean something, and read as nothing elsewhere. {PayLink} is
+#: filled by the invoice email (`apps/billing/services.with_pay_link`).
 FIELDS = (
     ("FirstName", "First name"),
     ("LastName", "Last name"),
@@ -33,6 +34,7 @@ FIELDS = (
     ("FeeTerms", "Their referral fee terms"),
     ("ProspectName", "Who they referred (thank-yous)"),
     ("FlyerNote", "A line saying the flyer is attached (new partner's email)"),
+    ("PayLink", "The invoice's payment link (invoice emails)"),
 )
 NAMES = tuple(name for name, _ in FIELDS)
 _FIELD = re.compile(r"\{([A-Za-z][A-Za-z ]*)\}")
@@ -45,6 +47,7 @@ PLACEHOLDERS = {
     "FractionalName": "[Your name]", "PracticeName": "[Practice name]",
     "PracticeNews": "[What you're working on lately]", "FeeTerms": "[Fee terms]",
     "ProspectName": "[Who they referred]", "FlyerNote": "[The flyer line]",
+    "PayLink": "[The invoice's payment link]",
 }
 
 

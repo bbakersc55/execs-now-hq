@@ -11,9 +11,11 @@ fresh, runs this, and drives the portal.
 
 It makes one practice whose NMI account is connected with the platform's
 sandbox keys (tested with NMI as Settings → Billing does), a client company
-with a client owner, and one sent invoice. It prints, as JSON, the client
-owner's one-time sign-in path and the invoice's id and number. Nothing is
-emailed: the invoice is marked sent without its email.
+with a client owner, and one sent invoice: to the company, or with
+`--contact` to a contact alone (paid only by its link). It prints, as JSON,
+the client owner's one-time sign-in path, the invoice's pay link path (part
+3), and its id and number. Nothing is emailed: the invoice is marked sent
+without its email.
 """
 
 from __future__ import annotations
@@ -31,6 +33,10 @@ from apps.billing import gateway as gw
 class Command(BaseCommand):
     help = "Make the portal proof's practice, client and invoice (laptop, sandbox only)."
 
+    def add_arguments(self, parser):
+        parser.add_argument("--contact", action="store_true",
+                            help="Invoice a contact rather than the client company.")
+
     def handle(self, *args, **options):
         database = connection.settings_dict["NAME"] or ""
         if not (settings.APP_ENVIRONMENT == "local" and settings.NMI_ENVIRONMENT == "sandbox"
@@ -38,7 +44,7 @@ class Command(BaseCommand):
             raise CommandError("Only on the laptop, against NMI's sandbox with NMI_LIVE_CALLS "
                                "on, in a database whose name ends in _nmi_proof.")
         from apps.accounts.models import MagicLinkToken, User
-        from apps.billing import payment_accounts, services
+        from apps.billing import pay_links, payment_accounts, services
         from apps.billing.models import ClientInvoice
         from apps.crm.models import Company, Contact, ContactEmail
         from apps.platform import provisioning
@@ -70,8 +76,15 @@ class Command(BaseCommand):
             # NMI refuses the same card for the same amount twice within
             # minutes: each run's amount differs.
             cents = 2000 + timezone.now().microsecond % 3000
+            to_contact = options["contact"]
+            if to_contact:
+                contact = Contact.objects.create(tenant=tenant, first_name="Robin",
+                                                 last_name="Solo")
+                ContactEmail.objects.create(tenant=tenant, contact=contact, is_primary=True,
+                                            address="robin@proof-contact.invalid")
             invoice = services.create_draft(
-                tenant, actor=owner, client_company=company, contact=contact,
+                tenant, actor=owner, kind=("contact" if to_contact else "one_off"),
+                client_company=None if to_contact else company, contact=contact,
                 lines=[{"description": "Operations retainer (proof)", "quantity": "1",
                         "unit_price_cents": cents}])
             services.make_ready(invoice, actor=owner, role=Role.FF)
@@ -79,6 +92,8 @@ class Command(BaseCommand):
                 status=ClientInvoice.Status.SENT, sent_at=timezone.now())
             invoice.refresh_from_db()
             _, raw = MagicLinkToken.issue(tenant=tenant, user=client, redirect_to="/invoices")
+        link = pay_links.url_of(invoice)
         self.stdout.write(json.dumps({
             "sign_in_path": f"/auth/magic/{raw}", "invoice_id": str(invoice.pk),
+            "pay_path": link[link.index("/pay/"):] if link else "",
             "number": invoice.number, "amount_cents": invoice.total_cents}))

@@ -1,8 +1,8 @@
 """Client invoicing without a processor (`docs/p4a_client_invoicing.md`).
 
 A practice writes an invoice, sends it through the Sending queue, and records
-by hand that it was paid. No payment is taken in the app: `pay_url` stays
-empty until P4's NMI work fills it.
+by hand that it was paid. P4 adds payment by card: in the portal, and by the
+signed pay link printed on the PDF and in the email.
 
 Three things these models hold to:
 
@@ -141,8 +141,15 @@ class ClientInvoice(TenantScopedModel):
     email_to = models.EmailField(blank=True, default="", db_default="")
     email_subject = models.CharField(max_length=200, blank=True, default="", db_default="")
     email_body = models.TextField(blank=True, default="", db_default="")
-    #: Empty until P4's NMI phase. Nothing prints or shows for it while empty.
+    #: What the PDF prints as the pay link. Never written: it is filled in
+    #: memory from `pay_links.url_of` when the PDF is made, because the link
+    #: carries its token and only the token's hash is stored (P4 part 3).
     pay_url = models.URLField(max_length=500, blank=True, default="", db_default="")
+    #: The signed pay link's token, hashed (`apps/billing/pay_links.py`), and
+    #: when it was issued. Empty: no link (the practice's card account was not
+    #: ready, or the invoice was voided).
+    pay_token_hash = models.CharField(max_length=64, blank=True, default="", db_default="")
+    pay_link_issued_at = models.DateTimeField(null=True, blank=True)
     pdf = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
                             on_delete=models.PROTECT, related_name="+")
     outbox_message = models.ForeignKey("crm.OutboxMessage", null=True, blank=True,
@@ -175,6 +182,8 @@ class ClientInvoice(TenantScopedModel):
                 name="client_invoice_amounts_not_negative"),
             models.CheckConstraint(condition=Q(paid_cents__lte=F("total_cents")),
                                    name="client_invoice_not_overpaid"),
+            models.UniqueConstraint(fields=["pay_token_hash"], condition=~Q(pay_token_hash=""),
+                                    name="client_invoice_pay_token_once"),
         ]
         indexes = [
             models.Index(fields=["tenant", "status", "due_date"]),
@@ -277,7 +286,8 @@ class PaymentAccount(TenantScopedModel):
 
 
 class PaymentAttempt(TenantScopedModel):
-    """One card payment of an invoice from the portal (P4 part 2), written
+    """One card payment of an invoice, from the portal (P4 part 2) or the pay
+    link (part 3), written
     before NMI is asked and finished from its answer.
 
     **One in flight per invoice:** while an attempt is pending (NMI is being
@@ -297,10 +307,17 @@ class PaymentAttempt(TenantScopedModel):
         #: Never reached NMI, or NMI has no sale for it.
         FAILED = "failed", "Not charged"
 
+    class Via(models.TextChoices):
+        PORTAL = "portal", "The portal"
+        #: The signed link in the email and on the PDF: no one signed in.
+        LINK = "link", "The pay link"
+
     IN_FLIGHT = (Status.PENDING, Status.UNKNOWN)
 
     invoice = models.ForeignKey(ClientInvoice, on_delete=models.PROTECT,
                                 related_name="payment_attempts")
+    via = models.CharField(max_length=8, choices=Via.choices, default=Via.PORTAL,
+                           db_default=Via.PORTAL)
     payer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
     amount_cents = models.BigIntegerField()

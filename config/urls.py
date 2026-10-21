@@ -3,6 +3,7 @@ from django.urls import include, path, re_path
 
 from apps.accounts import google_external
 from apps.accounts import views as account_views
+from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail
 from apps.strategy import views_precall as strategy_precall
@@ -60,6 +61,8 @@ urlpatterns = [
     # pre-call questions.
     path("api/strategy/precall/<str:token>", strategy_precall.precall_form,
          name="precall-form"),
+    path("api/pay/<str:token>", billing_pay.pay_page, name="pay-page"),
+    path("api/pay/<str:token>/pdf", billing_pay.pay_pdf, name="pay-pdf"),
     path("api/strategy/precall/<str:token>/complete", strategy_precall.precall_complete,
          name="precall-complete"),
     path("accounts/refused", account_views.login_refused, name="login-refused"),

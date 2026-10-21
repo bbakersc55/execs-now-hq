@@ -35,7 +35,7 @@ def _branding_tenant(request):
     - The Practices area: none.
     - Signed out: **only a practice an emailed link names.** The app's token
       pages pass their token as `?via=<kind>:<token>` (cadence, pre-call,
-      unsubscribe); the token resolves to its practice, exactly as the page's
+      unsubscribe, pay); the token resolves to its practice, exactly as the page's
       own endpoint does. Nothing else names one: the client sign-in page needs
       no practice, because the email entered finds it. *(Until P2 a signed-out
       visitor got "the one practice", which a second practice would break.)*
@@ -63,6 +63,11 @@ def tenant_from_link(via: str):
 
         session = session_for_precall_token(token)
         return session.tenant if session else None
+    if kind == "pay":
+        from apps.billing.pay_links import invoice_for
+
+        invoice = invoice_for(token)
+        return invoice.tenant if invoice else None
     if kind == "unsubscribe":
         from apps.crm.services import unsubscribe
         from apps.tenancy.models import Tenant

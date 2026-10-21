@@ -1,7 +1,8 @@
-"""Paying an invoice by card in the portal (P4 part 2, `docs/p4_billing.md` §3.4).
+"""Paying an invoice by card (P4 parts 2 and 3, `docs/p4_billing.md` §3.4).
 
 A client owner or a client team member presses Pay on a sent or partly paid
-invoice. NMI's Payment Component, loaded with the practice's public key,
+invoice in the portal, or anyone with the invoice's signed pay link opens it
+(`pay_links`; a contact invoice is paid only this way). NMI's Payment Component, loaded with the practice's public key,
 turns the card into a one-time token in their browser; only the token comes
 here. Then, in order:
 
@@ -66,12 +67,12 @@ def in_flight(invoice) -> PaymentAttempt | None:
                                              status__in=PaymentAttempt.IN_FLIGHT).first()
 
 
-def can_pay(invoice) -> bool:
-    """Whether Pay shows: sent or partly paid, something owed, never a
-    contact invoice (in no portal), the practice's account ready, and no
-    payment already under way."""
+def can_pay(invoice, *, via=PaymentAttempt.Via.PORTAL) -> bool:
+    """Whether Pay shows: sent or partly paid, something owed, the practice's
+    account ready, and no payment already under way. A contact invoice is in
+    no portal, so only its link pays it."""
     return (invoice.status in ClientInvoice.OPEN and invoice.balance_cents > 0
-            and invoice.kind != ClientInvoice.Kind.CONTACT
+            and (via == PaymentAttempt.Via.LINK or invoice.kind != ClientInvoice.Kind.CONTACT)
             and payment_accounts.is_ready(invoice.tenant) and in_flight(invoice) is None)
 
 
@@ -80,9 +81,9 @@ def is_test_mode(tenant) -> bool:
     return row is None or row.environment != "live"
 
 
-def pay_config(invoice) -> dict:
+def pay_config(invoice, *, via=PaymentAttempt.Via.PORTAL) -> dict:
     """What the card form needs, at runtime: the practice's public key."""
-    if not can_pay(invoice):
+    if not can_pay(invoice, via=via):
         raise PaymentRefused(_why_not(invoice))
     account = payment_accounts.practice_account(invoice.tenant)
     return {"public_key": account.public_key, "test_mode": is_test_mode(invoice.tenant),
@@ -97,10 +98,10 @@ def _why_not(invoice) -> str:
         return f"Invoice {invoice.number} is paid in full."
     if invoice.status == ClientInvoice.Status.VOID:
         return "This invoice was voided and takes no payment."
-    return "This invoice cannot be paid online."
+    return "This invoice cannot be paid online just now."
 
 
-def start(invoice, *, payer) -> PaymentAttempt:
+def start(invoice, *, payer, via=PaymentAttempt.Via.PORTAL) -> PaymentAttempt:
     """The attempt, written before NMI is asked, with the invoice locked."""
     from apps.tenancy.context import get_acting
 
@@ -111,23 +112,24 @@ def start(invoice, *, payer) -> PaymentAttempt:
     try:
         with transaction.atomic():
             locked = ClientInvoice.all_objects.select_for_update().get(pk=invoice.pk)
-            if not can_pay(locked):
+            if not can_pay(locked, via=via):
                 raise PaymentRefused(_why_not(locked))
             row = payment_accounts.PaymentAccount.all_objects.get(tenant_id=locked.tenant_id)
             return PaymentAttempt.all_objects.create(
-                tenant_id=locked.tenant_id, invoice=locked, payer=payer,
+                tenant_id=locked.tenant_id, invoice=locked, payer=payer, via=via,
                 amount_cents=locked.balance_cents, environment=row.environment)
     except IntegrityError:
         # Another tab got there between the check and the insert.
         raise PaymentRefused("A payment on this invoice is already under way.") from None
 
 
-def pay(invoice, *, payer, payment_token: str) -> tuple[PaymentAttempt, str]:
+def pay(invoice, *, payer, payment_token: str,
+        via=PaymentAttempt.Via.PORTAL) -> tuple[PaymentAttempt, str]:
     """The whole payment. Returns the finished (or unknown) attempt and the
-    sentence to show the client."""
+    sentence to show the client. `payer` is None by the link."""
     if not isinstance(payment_token, str) or not payment_token.strip():
         raise PaymentRefused("The card details did not come through. Please try again.", 400)
-    attempt = start(invoice, payer=payer)
+    attempt = start(invoice, payer=payer, via=via)
     try:
         account = payment_accounts.practice_account(invoice.tenant)
         txn = gw.gateway().sale(account, amount_cents=attempt.amount_cents,
@@ -180,7 +182,9 @@ def settle(attempt, txn: gw.Transaction) -> tuple[PaymentAttempt, str]:
                     attempt.invoice, actor=attempt.payer, amount_cents=attempt.amount_cents,
                     paid_on=timezone.localdate(), method="card",
                     reference=f"Card {card}".strip()[:120], nmi_transaction_id=txn.id,
-                    note=f"Paid in the portal. NMI transaction {txn.id}.")
+                    note=(f"Paid by the pay link. NMI transaction {txn.id}."
+                          if attempt.via == PaymentAttempt.Via.LINK
+                          else f"Paid in the portal. NMI transaction {txn.id}."))
             attempt.payment = payment
             attempt.save(update_fields=["payment", "updated_at"])
         except services.BillingError as exc:
@@ -229,8 +233,11 @@ def _send_receipt_and_notice(attempt_id) -> None:
     thread = services._thread_for(invoice)
     test = " (test mode: no real money moved)" if attempt.environment != "live" else ""
 
+    # By the link no one is signed in: the receipt goes where the invoice went.
+    receipt_to = (attempt.payer.email if attempt.payer is not None
+                  else invoice.email_to if attempt.via == PaymentAttempt.Via.LINK else "")
     with tenant_context(tenant.pk):
-        if attempt.payer is not None and attempt.payer.email and not attempt.problem:
+        if receipt_to and not attempt.problem:
             subject = f"Receipt: {paid} paid on invoice {invoice.number}"
             lines = [
                 f"Thank you for your payment to {practice}{test}.",
@@ -242,7 +249,7 @@ def _send_receipt_and_notice(attempt_id) -> None:
             ]
             outbox.create_message(
                 tenant=tenant, producer=OutboxMessage.Producer.PAYMENT_RECEIPT,
-                to_address=attempt.payer.email, subject=subject, body_text="\n\n".join(lines),
+                to_address=receipt_to, subject=subject, body_text="\n\n".join(lines),
                 body_html=email_layout.document(
                     tenant, subject=subject, preheader=lines[0],
                     content_html="".join(f"<p>{escape(l).replace(chr(10), '<br>')}</p>"
@@ -250,7 +257,9 @@ def _send_receipt_and_notice(attempt_id) -> None:
                 thread=thread, source_type="payment_attempt", source_id=attempt.pk,
                 force_direct=True)
 
-        who = (attempt.payer.full_name or attempt.payer.email) if attempt.payer else "A client"
+        who = ((attempt.payer.full_name or attempt.payer.email) if attempt.payer
+               else f"{(invoice.bill_to or {}).get('name') or 'The client'}, by the pay link,"
+               if attempt.via == PaymentAttempt.Via.LINK else "A client")
         company = invoice.client_company.name if invoice.client_company_id else ""
         subject = (f"Card payment: {paid} on invoice {invoice.number}"
                    + (f" from {company}" if company else ""))
