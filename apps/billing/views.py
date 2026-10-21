@@ -595,3 +595,36 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
         if invoice is None:
             raise Http404
         return pdf_response(invoice)
+
+
+class PaymentAccountView(viewsets.ViewSet):
+    """Settings → Billing, "Taking card payments" (matrix 12.1): the practice
+    owner's own NMI account. Write-only: no response ever contains a key."""
+
+    permission_classes = [crm_perms.IsTenantStaff, crm_perms.IsFF]
+
+    def list(self, request):
+        from apps.billing import payment_accounts
+
+        return Response(payment_accounts.state(request.tenant))
+
+    def create(self, request):
+        from apps.billing import payment_accounts
+
+        try:
+            data = payment_accounts.connect(
+                request.tenant, environment=request.data.get("environment", ""),
+                private_key=request.data.get("private_key", ""),
+                public_key=request.data.get("public_key", ""), actor=request.user)
+        except payment_accounts.PaymentAccountError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(data)
+
+    @action(detail=False, methods=["post"])
+    def test(self, request):
+        from apps.billing import payment_accounts
+
+        try:
+            return Response(payment_accounts.retest(request.tenant, actor=request.user))
+        except payment_accounts.PaymentAccountError as exc:
+            return Response({"detail": str(exc)}, status=400)

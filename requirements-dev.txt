@@ -4,6 +4,10 @@
 #
 # pytest + pytest-django + factory_boy back the two mandatory test families
 # (assumption B3). Everything below the direct three is transitive.
+#
+# playwright drives the installed Google Chrome for the NMI token proof
+# (scripts/nmi_token_proof.py, P4); it downloads no browser. greenlet and
+# pyee are its own.
 
 -r requirements.txt
 
@@ -15,3 +19,6 @@ pluggy==1.6.0
 Pygments==2.21.0
 pytest==9.1.1
 pytest-django==4.14.0
+playwright==1.55.0
+greenlet==3.5.6
+pyee==13.0.1

@@ -1042,6 +1042,13 @@ class InvoiceSettingsFactory(TenantScopedFactory):
     pay_instructions = "Pay by bank transfer to the account on file."
 
 
+class PaymentAccountFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.PaymentAccount"
+
+    tenant = factory.SubFactory(TenantFactory)
+
+
 class ClientInvoiceFactory(TenantScopedFactory):
     class Meta:
         model = "billing.ClientInvoice"

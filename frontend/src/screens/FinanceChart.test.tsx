@@ -476,7 +476,7 @@ describe("the Bookkeeping switch in the Practices area", () => {
   const ROW: PracticeRow = {
     id: "p1", display_name: "Blue Sky Business Consulting", legal_name: "Blue Sky LLC",
     domain: "bluesky.example", status: "active", created_at: "2026-10-01T00:00:00Z",
-    archived_at: null, oauth_client: "external", staff_count: 1, client_count: 0,
+    archived_at: null, oauth_client: "external", pricing_program: "", staff_count: 1, client_count: 0,
     ai_spend_this_month_usd: "0.00", last_activity_at: null,
     modules: [{ code: "bookkeeping", name: "Bookkeeping", enabled: false }] };
 

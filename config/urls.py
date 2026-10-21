@@ -3,6 +3,7 @@ from django.urls import include, path, re_path
 
 from apps.accounts import google_external
 from apps.accounts import views as account_views
+from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
@@ -67,6 +68,9 @@ urlpatterns = [
     # C3.3: GET renders a confirmation page; only POST consumes the token.
     path("auth/magic/<str:token>", account_views.magic_link_landing, name="magic-landing"),
     path("healthz", spa.healthz, name="healthz"),
+    # P4 part 1: the token proof, laptop and sandbox only (404 elsewhere).
+    path("dev/nmi-proof", billing_proof.proof_page, name="nmi-proof"),
+    path("dev/nmi-proof/run", billing_proof.proof_run, name="nmi-proof-run"),
     # Last: every other path is the React app's (production; Phase 7). The
     # server's own prefixes are excluded so a mistyped API URL is a 404, not
     # a page of HTML.

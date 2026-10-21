@@ -22,7 +22,7 @@ STAFF_ROLES = ("FF", "CF", "VA")
 
 #: The keys a practice row carries. Tested: nothing else ever appears.
 ROW_KEYS = ("id", "display_name", "legal_name", "domain", "status", "created_at",
-            "archived_at", "oauth_client", "staff_count", "client_count",
+            "archived_at", "oauth_client", "pricing_program", "staff_count", "client_count",
             "ai_spend_this_month_usd", "last_activity_at", "modules")
 
 
@@ -59,6 +59,7 @@ def practice_rows() -> list[dict]:
             "created_at": tenant.created_at.isoformat(),
             "archived_at": tenant.archived_at.isoformat() if tenant.archived_at else None,
             "oauth_client": tenant.oauth_client,
+            "pricing_program": tenant.pricing_program,
             "staff_count": staff.get(tenant.pk, 0),
             "client_count": clients.get(tenant.pk, 0),
             "ai_spend_this_month_usd": str(_spend_this_month(AiCall, tenant)),

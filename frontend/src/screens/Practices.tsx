@@ -16,6 +16,8 @@ export interface PracticeRow {
   created_at: string;
   archived_at: string | null;
   oauth_client: "internal" | "external";
+  /** P4: how its own card processing is priced. "" for one made before. */
+  pricing_program: "" | "interchange_plus" | "dual_pricing";
   staff_count: number;
   client_count: number;
   ai_spend_this_month_usd: string;
@@ -24,7 +26,22 @@ export interface PracticeRow {
   modules?: { code: string; name: string; enabled: boolean }[];
 }
 
-const EMPTY = { legal_name: "", display_name: "", domain: "", owner_email: "" };
+const EMPTY = { legal_name: "", display_name: "", domain: "", owner_email: "",
+                pricing_program: "" };
+/** P4 (owner, 2026-10-21): chosen here at setup, read-only to the practice. */
+const PRICING: Record<string, string> = {
+  interchange_plus: "Interchange-plus", dual_pricing: "Dual pricing" };
+
+function PricingSelect({ label, value, onChange }: {
+  label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Choose…</option>
+      {Object.entries(PRICING).map(([code, name]) => (
+        <option key={code} value={code}>{name}</option>))}
+    </select>
+  );
+}
 const STATUS_KIND: Record<string, string> = { active: "ok", invited: "warn", archived: "" };
 
 /**
@@ -39,7 +56,7 @@ export function Practices({ me }: { me?: Me }) {
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ legal_name: "", domain: "" });
+  const [draft, setDraft] = useState({ legal_name: "", domain: "", pricing_program: "" });
 
   const list = useQuery<PracticeRow[]>({
     queryKey: ["platform-practices"],
@@ -122,6 +139,9 @@ export function Practices({ me }: { me?: Me }) {
                         <input aria-label={`Domain of ${p.display_name}`} value={draft.domain}
                           placeholder="domain.com"
                           onChange={(e) => setDraft({ ...draft, domain: e.target.value })} />
+                        <PricingSelect label={`Pricing program of ${p.display_name}`}
+                          value={draft.pricing_program}
+                          onChange={(v) => setDraft({ ...draft, pricing_program: v })} />
                         <button className="primary" disabled={save.isPending}
                           onClick={() => save.mutate(p.id)}>Save</button>
                         <button className="ghost" onClick={() => setEditing(null)}>Cancel</button>
@@ -129,6 +149,7 @@ export function Practices({ me }: { me?: Me }) {
                     ) : (
                       <div className="muted small">
                         {p.legal_name || "No legal name yet"} · {p.domain || "no domain yet"}
+                        {" · "}{PRICING[p.pricing_program] ?? "no pricing program yet"}
                       </div>
                     )}
                     </div>
@@ -156,7 +177,8 @@ export function Practices({ me }: { me?: Me }) {
                     {editing !== p.id && (
                       <button className="ghost" onClick={() => {
                         setEditing(p.id);
-                        setDraft({ legal_name: p.legal_name, domain: p.domain });
+                        setDraft({ legal_name: p.legal_name, domain: p.domain,
+                                   pricing_program: p.pricing_program });
                       }}>Edit</button>
                     )}
                     {p.status === "invited" && (
@@ -207,9 +229,13 @@ export function Practices({ me }: { me?: Me }) {
             placeholder="theirpractice.com" onChange={(e) => set({ domain: e.target.value })} /></Field>
           <Field label="Owner's email"><input aria-label="Owner's email" value={form.owner_email}
             onChange={(e) => set({ owner_email: e.target.value })} /></Field>
+          <Field label="Pricing program">
+            <PricingSelect label="Pricing program" value={form.pricing_program}
+              onChange={(v) => set({ pricing_program: v })} /></Field>
         </div>
         <button className="primary" disabled={create.isPending || !form.legal_name.trim()
-          || !form.display_name.trim() || !form.domain.trim() || !form.owner_email.trim()}
+          || !form.display_name.trim() || !form.domain.trim() || !form.owner_email.trim()
+          || !form.pricing_program}
           onClick={() => create.mutate()}>{create.isPending ? "Creating…" : "Add practice"}</button>
       </Card>
     </>

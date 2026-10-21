@@ -45,7 +45,9 @@ class PracticesView(APIView):
             tenant = provisioning.provision_practice(
                 legal_name=data.get("legal_name", ""), display_name=data.get("display_name", ""),
                 domain=data.get("domain", ""), owner_email=data.get("owner_email", ""),
-                actor=request.user)
+                actor=request.user, pricing_program=data.get("pricing_program", ""),
+                # Chosen at setup: required from the screen, optional to code.
+                pricing_required=True)
         except provisioning.ProvisioningRefused as exc:
             return Response({"detail": str(exc), "errors": exc.errors}, status=400)
         row = next(r for r in stats.practice_rows() if r["id"] == str(tenant.pk))
@@ -71,7 +73,8 @@ class PracticeView(APIView):
             provisioning.update_identity(
                 tenant, legal_name=request.data.get("legal_name"),
                 display_name=request.data.get("display_name"),
-                domain=request.data.get("domain"))
+                domain=request.data.get("domain"),
+                pricing_program=request.data.get("pricing_program"))
         except provisioning.ProvisioningRefused as exc:
             return Response({"detail": str(exc), "errors": exc.errors}, status=400)
         return Response(next(r for r in stats.practice_rows() if r["id"] == str(tenant.pk)))

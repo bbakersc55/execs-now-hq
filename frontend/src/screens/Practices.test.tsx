@@ -9,7 +9,8 @@ import { PracticeRow, Practices } from "./Practices";
 const EN: PracticeRow = {
   id: "11111111-1111-4111-8111-111111111111", display_name: "Executives Now",
   legal_name: "", domain: "", status: "active", created_at: "2026-09-09T16:14:43Z",
-  archived_at: null, oauth_client: "internal", staff_count: 1, client_count: 3,
+  archived_at: null, oauth_client: "internal", pricing_program: "", staff_count: 1,
+  client_count: 3,
   ai_spend_this_month_usd: "0.23", last_activity_at: "2026-10-02T20:03:48Z",
 };
 
@@ -22,10 +23,11 @@ describe("the Practices area (P2)", () => {
     const row = (await screen.findByText("Executives Now")).closest("article")!;
     expect(within(row).getByText("$0.23")).toBeInTheDocument();
     expect(within(row).getByText("3")).toBeInTheDocument();
-    expect(within(row).getByText("No legal name yet · no domain yet")).toBeInTheDocument();
+    expect(within(row).getByText("No legal name yet · no domain yet · no pricing program yet"))
+      .toBeInTheDocument();
   });
 
-  it("adds a practice with the four details, and says the owner is not invited yet", async () => {
+  it("adds a practice with the five details, and says the owner is not invited yet", async () => {
     const user = userEvent.setup();
     const fetchMock = mockApi({
       "POST /api/platform/practices": (body: unknown) => ({ status: 201, body: {
@@ -40,11 +42,36 @@ describe("the Practices area (P2)", () => {
     await user.type(screen.getByLabelText("Display name"), "Blue Sky Business Consulting");
     await user.type(screen.getByLabelText("Domain"), "blueskybizconsulting.com");
     await user.type(screen.getByLabelText("Owner's email"), "shawn@bluesky.invalid");
+    // P4: the pricing program is chosen at setup; without it nothing is added.
+    expect(screen.getByRole("button", { name: "Add practice" })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("Pricing program"), "Dual pricing");
     await user.click(screen.getByRole("button", { name: "Add practice" }));
     expect(await screen.findByText(/Its owner has not been invited yet/)).toBeInTheDocument();
     expect(fetchMock.calls.find((c) => c.method === "POST")?.body).toEqual({
       legal_name: "Blue Sky Business Consulting LLC", display_name: "Blue Sky Business Consulting",
-      domain: "blueskybizconsulting.com", owner_email: "shawn@bluesky.invalid" });
+      domain: "blueskybizconsulting.com", owner_email: "shawn@bluesky.invalid",
+      pricing_program: "dual_pricing" });
+  });
+
+  it("shows and changes a practice's pricing program", async () => {
+    const user = userEvent.setup();
+    const set = { ...EN, pricing_program: "interchange_plus" as const };
+    const fetchMock = mockApi({
+      [`PATCH /api/platform/practices/${EN.id}`]: (body: unknown) => ({ status: 200,
+        body: { ...set, ...(body as object) } }),
+      "GET /api/platform/practices": [set],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Practices />);
+    const row = (await screen.findByText("Executives Now")).closest("article")!;
+    expect(within(row).getByText(/Interchange-plus/)).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: "Edit" }));
+    await user.selectOptions(within(row).getByLabelText("Pricing program of Executives Now"),
+      "Dual pricing");
+    await user.click(within(row).getByRole("button", { name: "Save" }));
+    await screen.findByText("Executives Now updated.");
+    expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toEqual({
+      legal_name: "", domain: "", pricing_program: "dual_pricing" });
   });
 });
 

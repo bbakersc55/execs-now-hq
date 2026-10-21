@@ -56,6 +56,7 @@ import { FinanceSettings } from "./screens/FinanceSettings";
 import { InvoiceDetail } from "./screens/InvoiceDetail";
 import { Invoices } from "./screens/Invoices";
 import { InvoiceSettings } from "./screens/InvoiceSettings";
+import { BillingSettings } from "./screens/BillingSettings";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
@@ -411,6 +412,8 @@ export function App() {
             {me.role === "FCC" && <Route path="/team" element={<YourTeam me={me} />} />}
             {me.role === "FF" && <Route path="/settings/invoices"
               element={<Settings me={me}><InvoiceSettings /></Settings>} />}
+            {me.role === "FF" && <Route path="/settings/billing"
+              element={<Settings me={me}><BillingSettings /></Settings>} />}
             {/* P5: the books. No route at all for anyone but the practice owner. */}
             {me.role === "FF" && (
               <>

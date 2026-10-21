@@ -122,6 +122,13 @@ class Tenant(UUIDModel):
         max_length=200, default="inbound.getexecutivesnow.com"
     )
     discipline = models.CharField(max_length=32, default="operations")
+    # P4 (owner, 2026-10-21): how the practice's own card processing is priced,
+    # set by the platform owner on the Practices screen and shown to the
+    # practice read-only. Only stored for now: what dual pricing changes on an
+    # invoice or a pay page comes later, from the processor. Empty until set.
+    pricing_program = models.CharField(
+        max_length=20, blank=True, default="", db_default="",
+        choices=[("interchange_plus", "Interchange-plus"), ("dual_pricing", "Dual pricing")])
 
     # FR-3.25 — the master safety switch. ON by default for Beta.
     hold_all_digests = models.BooleanField(default=True)
@@ -406,6 +413,9 @@ class SecretKind(models.TextChoices):
     ANTHROPIC_API_KEY = "anthropic_api_key", "Anthropic API key"
     GMAIL_REFRESH = "gmail_refresh", "Gmail refresh token"
     DRIVE_REFRESH = "drive_refresh", "Drive refresh token"
+    #: P4: the practice's own NMI account (apps/billing/payment_accounts.py).
+    NMI_PRIVATE_KEY = "nmi_private_key", "NMI private API key"
+    NMI_PUBLIC_KEY = "nmi_public_key", "NMI public tokenization key"
 
 
 class TenantSecret(TenantScopedModel):

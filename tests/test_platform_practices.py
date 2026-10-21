@@ -28,7 +28,8 @@ from .factories import ClientCompanyFactory, ContactFactory
 
 NEW = {"legal_name": "Blue Sky Business Consulting LLC",
        "display_name": "Blue Sky Business Consulting",
-       "domain": "blueskybizconsulting.com", "owner_email": "owner@bluesky.invalid"}
+       "domain": "blueskybizconsulting.com", "owner_email": "owner@bluesky.invalid",
+       "pricing_program": "interchange_plus"}
 
 
 @pytest.fixture
@@ -125,6 +126,9 @@ def test_an_executives_now_domain_practice_uses_the_internal_client(platform_own
     ("owner_email", "nobody", "email"),
     ("legal_name", "  ", "legal name"),
     ("display_name", "", "clients will see"),
+    # P4: chosen at setup, from the screen.
+    ("pricing_program", "", "interchange-plus or dual pricing"),
+    ("pricing_program", "flat", "interchange-plus or dual pricing"),
 ])
 def test_bad_details_are_refused_and_nothing_is_made(api, platform_owner, field, value, needle):
     before = Tenant.objects.count()

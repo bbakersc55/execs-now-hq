@@ -309,6 +309,22 @@ if ANTHROPIC_API_KEY and not IS_LOCAL:
 # --- Secrets (assumption E1) ---
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 
+# --- NMI (P4: card payments) ---
+# The platform's own account, which charges practices their subscriptions.
+# A practice's own two keys are entered under Settings → Billing and kept in
+# `tenant_secret`, never here. Only `apps/billing/gateway` reads these.
+NMI_ENVIRONMENT = env("NMI_ENVIRONMENT", default="sandbox").strip().lower()
+if NMI_ENVIRONMENT not in ("sandbox", "live"):
+    raise RuntimeError(f"NMI_ENVIRONMENT must be sandbox or live, not {NMI_ENVIRONMENT!r}.")
+NMI_PUBLIC_TOKENIZATION_KEY = env("NMI_PUBLIC_TOKENIZATION_KEY", default="").strip()
+NMI_PRIVATE_API_KEY = env("NMI_PRIVATE_API_KEY", default="").strip()
+# Nothing reaches NMI unless this is true. Off, every charge, refund and
+# connection test goes to the stub gateway. The test suite never turns it on.
+NMI_LIVE_CALLS = env.bool("NMI_LIVE_CALLS", default=False)
+if NMI_ENVIRONMENT == "live" and IS_LOCAL:
+    raise RuntimeError("NMI_ENVIRONMENT is live on a localhost server. Live NMI keys "
+                       "belong only in production.")
+
 # --- Google ---
 GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="execs-now-hq")
 GCS_BUCKET_MEDIA = env("GCS_BUCKET_MEDIA", default="execs-now-hq-media")

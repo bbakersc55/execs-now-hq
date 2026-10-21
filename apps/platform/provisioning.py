@@ -26,6 +26,12 @@ _DOMAIN = re.compile(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+#: P4 (owner, 2026-10-21): how a practice's own card processing is priced,
+#: chosen here when it is set up. "" is a practice made before the choice
+#: existed, or one made by code (the demo), not from the Practices screen.
+PRICING_PROGRAMS = ("", "interchange_plus", "dual_pricing")
+
+
 class ProvisioningRefused(ValueError):
     def __init__(self, errors: dict[str, str]):
         super().__init__("; ".join(errors.values()))
@@ -33,7 +39,8 @@ class ProvisioningRefused(ValueError):
 
 
 def provision_practice(*, legal_name: str, display_name: str, domain: str,
-                       owner_email: str, actor):
+                       owner_email: str, actor, pricing_program: str = "",
+                       pricing_required: bool = False):
     """One transaction: the practice, its structure, its owner. The invitation
     email is sent separately, after commit, and only when asked."""
     from apps.accounts.models import User
@@ -61,11 +68,15 @@ def provision_practice(*, legal_name: str, display_name: str, domain: str,
         if existing is not None:
             # One membership per user in Beta (B4).
             errors["owner_email"] = "That address already belongs to a practice."
+    pricing_program = (pricing_program or "").strip()
+    if pricing_program not in PRICING_PROGRAMS or (pricing_required and not pricing_program):
+        errors["pricing_program"] = "Choose interchange-plus or dual pricing."
     if errors:
         raise ProvisioningRefused(errors)
 
     with transaction.atomic():
         tenant = Tenant.objects.create(
+            pricing_program=pricing_program,
             name=display_name, legal_name=legal_name, email_display_name=display_name,
             domain=domain, slug=_unique_slug(display_name), status=Tenant.Status.INVITED,
             created_by=actor,
@@ -121,9 +132,16 @@ def unarchive(tenant, *, actor) -> None:
                                       target_type="tenant", target_id=tenant.pk, payload={})
 
 
-def update_identity(tenant, *, legal_name=None, display_name=None, domain=None) -> None:
-    """The platform's own record of a practice: its names and domain."""
+def update_identity(tenant, *, legal_name=None, display_name=None, domain=None,
+                    pricing_program=None) -> None:
+    """The platform's own record of a practice: its names, domain and pricing
+    program."""
     errors = {}
+    if pricing_program is not None:
+        if pricing_program.strip() not in PRICING_PROGRAMS or not pricing_program.strip():
+            errors["pricing_program"] = "Choose interchange-plus or dual pricing."
+        else:
+            tenant.pricing_program = pricing_program.strip()
     if legal_name is not None:
         tenant.legal_name = legal_name.strip()
     if display_name is not None:

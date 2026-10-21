@@ -37,7 +37,7 @@ describe("Settings", () => {
     expect(settingsFor(aMe({ role: "FF" })).map((s) => s.label)).toEqual([
       "Email", "Branding", "Team", "Email templates", "Stage automations", "Referral settings",
       "Digests",
-      "Tags", "Notes", "Invoices", "Finance", "AI usage",
+      "Tags", "Notes", "Invoices", "Billing", "Finance", "AI usage",
     ]);
   });
 
@@ -73,6 +73,8 @@ describe("Settings", () => {
       // The template library (2026-10-20); stage rules, where templates were
       // made before, were the practice owner's.
       "/settings/templates": ["FF"],
+      // P4 part 1: the practice's NMI account is the practice owner's (12.1).
+      "/settings/billing": ["FF"],
     };
     for (const section of SETTINGS) {
       expect(section.roles, section.to).toEqual(before[section.to]);
@@ -93,7 +95,7 @@ describe("Settings", () => {
     await user.click(screen.getByRole("menuitem", { name: "Settings" }));
 
     // /settings opens the first section the person has.
-    await waitFor(() => expect(sections()).toHaveLength(12));
+    await waitFor(() => expect(sections()).toHaveLength(13));
     expect(screen.getByRole("link", { name: "Email" })).toHaveClass("on");
   });
 
@@ -116,7 +118,7 @@ describe("Settings", () => {
   it.each(["/settings/email", "/settings/branding", "/referrals", "/rules", "/staff",
            "/ai-usage"])("still opens %s at its old address, inside Settings", async (path) => {
     await showApp(aMe({ role: "FF" }), path);
-    await waitFor(() => expect(sections()).toHaveLength(12));
+    await waitFor(() => expect(sections()).toHaveLength(13));
     const here = SETTINGS.find((s) => s.to === path)!;
     expect(screen.getByRole("link", { name: here.label })).toHaveClass("on");
     expect(document.querySelector(".settings-body")).not.toBeEmptyDOMElement();

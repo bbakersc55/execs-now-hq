@@ -239,3 +239,31 @@ class ClientPayment(TenantScopedModel):
             models.CheckConstraint(condition=Q(amount_cents__gt=0),
                                    name="client_payment_amount_positive"),
         ]
+
+
+class PaymentAccount(TenantScopedModel):
+    """The practice's own NMI merchant account (P4 §1.2, §3.3): which of NMI's
+    environments its keys are for, and the last connection test. The two keys
+    themselves are `tenant_secret` rows (`nmi_private_key`, `nmi_public_key`),
+    encrypted and never shown again. The practice owner's alone (12.1)."""
+
+    class Environment(models.TextChoices):
+        SANDBOX = "sandbox", "Sandbox (test)"
+        LIVE = "live", "Live"
+
+    environment = models.CharField(max_length=8, choices=Environment.choices,
+                                   default=Environment.SANDBOX, db_default=Environment.SANDBOX)
+    #: The last test of the keys now stored: when, whether NMI accepted the
+    #: private key, and what it said. Cleared whenever a key or the
+    #: environment changes, so a pass never outlives what it tested.
+    checked_at = models.DateTimeField(null=True, blank=True)
+    check_ok = models.BooleanField(null=True, blank=True)
+    check_detail = models.TextField(blank=True, default="", db_default="")
+    checked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "payment_account"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"], name="payment_account_one_per_practice"),
+        ]

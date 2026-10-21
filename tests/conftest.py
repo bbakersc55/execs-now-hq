@@ -137,6 +137,19 @@ def api():
 
 
 @pytest.fixture(autouse=True)
+def stub_gateway(settings):
+    """P4: no test reaches NMI. Real calls are off, and each test starts with
+    a fresh stub gateway it can inspect (its `calls`, `sales`, `vault`)."""
+    from apps.billing.gateway.stub import StubGateway
+
+    settings.NMI_LIVE_CALLS = False
+    settings.NMI_ENVIRONMENT = "sandbox"
+    settings.NMI_PRIVATE_API_KEY = "platform-private-test-value"
+    settings.NMI_PUBLIC_TOKENIZATION_KEY = "platform-public-test-value"
+    return StubGateway.reset()
+
+
+@pytest.fixture(autouse=True)
 def _no_digest_reminders(settings):
     """Reminder emails to the practice's own people are tested in
     test_digest_reminders.py, which turns them back on. Everywhere else the
