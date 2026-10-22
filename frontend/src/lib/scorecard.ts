@@ -60,6 +60,8 @@ export interface KpiDef {
   per_person: boolean; leaderboard: boolean; page: string; range_low: number | null;
   range_high: number | null; fixed_target: number | null; band: number | null;
   owner: string; owner_id: string | null; may_enter: boolean;
+  /** A computed KPI's formula in words ("Revenue ÷ Bookings"); "" otherwise. */
+  computed: string;
 }
 
 export interface Tile extends KpiDef {
@@ -127,6 +129,8 @@ export interface SetupKpi extends KpiDef {
   person_total: "sum" | "average"; target_value: number | null; behind_band_pct: number;
   reading_owner: string | null; strategy_component: string;
   month_targets: Record<string, number>; people: string[];
+  formula: "" | "sum" | "difference" | "ratio" | "average";
+  source_a: string | null; source_b: string | null;
 }
 
 export interface Starter {

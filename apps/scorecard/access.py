@@ -22,6 +22,14 @@ senior leadership, the client owner and the practice all of them. A total is
 worked out only from the rows the reader is sent, and not at all for someone
 who is sent only their own.
 
+**The leaderboard switch is the practice's consent to share** (Bryan, after
+part 1): with it on, everyone in the KPI's audience, members included, is
+sent every row, ranked with names and values. It shares what is shown and
+nothing more: who may enter a row, and a reading's history, stay as above.
+
+**A computed KPI** is shown only to someone who sees both the KPIs it is
+worked out from, so it can never reveal one of them; nobody enters it.
+
 **Entering readings** (decision 4): the practice owner and associates always
 may; the client owner and senior leadership may enter any reading; anyone
 else where they are the KPI's reading owner, an assistant included. On a
@@ -41,6 +49,18 @@ from django.http import Http404
 
 from apps.crm import permissions as crm_perms
 from apps.tenancy.models import CLIENT_ROLES, Role
+
+
+def _live_kpis(page):
+    from .models import Kpi
+
+    return Kpi.all_objects.filter(page=page, archived_at__isnull=True)
+
+
+def _tracked(kpi) -> set:
+    from .models import KpiPerson
+
+    return set(KpiPerson.all_objects.filter(kpi=kpi).values_list("membership_id", flat=True))
 
 
 class Reader:
@@ -114,7 +134,7 @@ class Reader:
             return False
         if self.sees_all:
             return True
-        kpis = page.kpis.filter(archived_at__isnull=True) if kpis is None else kpis
+        kpis = _live_kpis(page) if kpis is None else kpis
         return any(self.sees_kpi(kpi) for kpi in kpis)
 
     def sees_kpi(self, kpi) -> bool:
@@ -125,6 +145,10 @@ class Reader:
             return False
         if not self._audience_allows(kpi.audience, kpi.audience_team,
                                      per_person=kpi.per_person):
+            return False
+        if kpi.is_computed and not all(
+                source is not None and source.archived_at is None and self.sees_kpi(source)
+                for source in (kpi.source_a, kpi.source_b)):
             return False
         if self.sees_all:
             return True
@@ -147,14 +171,29 @@ class Reader:
             ).values_list("membership_id", flat=True)) if self.managed_teams else set()
         return self._managed_people
 
-    def rows_of(self, kpi, tracked=None):
-        """The memberships whose rows this person is sent on a per-person KPI."""
-        tracked = set(kpi.people.values_list("membership_id", flat=True)) \
+    def covered_rows(self, kpi, tracked=None):
+        """The rows that are this person's own business: their own, and their
+        team's if they manage it; every row for senior leadership and up."""
+        tracked = set(_tracked(kpi)) \
             if tracked is None else set(tracked)
         if self.sees_all:
             return tracked
         mine = {self.membership.pk} | self.managed_people()
         return tracked & mine
+
+    def rows_of(self, kpi, tracked=None):
+        """The memberships whose rows this person is sent on a per-person KPI,
+        asked once the KPI's audience has let them in. With the leaderboard on,
+        every row; under "each person sees their own" the audience is the
+        tracked people and their managers, so only they get the board."""
+        tracked = set(_tracked(kpi)) \
+            if tracked is None else set(tracked)
+        covered = self.covered_rows(kpi, tracked)
+        if self.sees_all or not kpi.leaderboard:
+            return covered
+        if "each_person" in (kpi.page.audience, kpi.audience) and not covered:
+            return set()
+        return tracked
 
     def sees_only_own_row(self, kpi, tracked=None) -> bool:
         return not self.sees_all and self.rows_of(kpi, tracked) <= {self.membership.pk}
@@ -162,18 +201,17 @@ class Reader:
     # --- what they enter --------------------------------------------------------
 
     def may_enter(self, kpi) -> bool:
-        if not self.sees_kpi(kpi) or self.only_looks:
+        if kpi.is_computed or not self.sees_kpi(kpi) or self.only_looks:
             return False
         if self.enters_any or kpi.reading_owner_id == self.user_id:
             return True
         if kpi.per_person and self.is_client:
-            return self.membership.pk in set(kpi.people.values_list("membership_id",
-                                                                    flat=True))
+            return self.membership.pk in _tracked(kpi)
         return False
 
     def enters_rows_of(self, kpi, tracked=None) -> set:
         """On a per-person KPI, the rows this person may enter."""
-        tracked = set(kpi.people.values_list("membership_id", flat=True)) \
+        tracked = set(_tracked(kpi)) \
             if tracked is None else set(tracked)
         if not self.may_enter(kpi):
             return set()
@@ -182,7 +220,7 @@ class Reader:
         if kpi.reading_owner_id == self.user_id:
             if self.is_practice:
                 return tracked
-            return self.rows_of(kpi, tracked)
+            return self.covered_rows(kpi, tracked)
         return tracked & {self.membership.pk}
 
     def sees_history_of(self, kpi) -> bool:

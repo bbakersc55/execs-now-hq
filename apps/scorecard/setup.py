@@ -12,7 +12,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from .models import Audience, Kpi, KpiMonthTarget, KpiPerson, Scorecard, ScorecardPage
@@ -195,7 +195,8 @@ def clean_kpi(scorecard, data, kpi=None) -> dict:
     keys = ("name", "kind", "direction", "cadence", "rollup", "target_value", "range_low",
             "range_high", "behind_band_pct", "duration_unit", "rating_scale",
             "reading_owner", "per_person", "person_total", "leaderboard", "tile",
-            "audience", "audience_team", "note", "strategy_component", "page")
+            "audience", "audience_team", "note", "strategy_component", "page", "formula",
+            "source_a", "source_b")
     for key in keys:
         if key in data:
             merged[key] = data[key]
@@ -273,7 +274,42 @@ def clean_kpi(scorecard, data, kpi=None) -> dict:
     if page is None:
         raise SetupError("Choose a page of this scorecard.", "page")
     out["page"] = page
+    out.update(_computed(scorecard, merged, kpi, out))
     return out
+
+
+def _computed(scorecard, merged, kpi, out) -> dict:
+    """A computed KPI's formula and two sources, one step only: two live KPIs
+    of this scorecard, on its cadence, neither computed nor per person."""
+    formula = merged.get("formula", kpi.formula if kpi is not None else "") or ""
+    if not formula:
+        return {"formula": "", "source_a": None, "source_b": None}
+    if formula not in Kpi.Formula.values:
+        raise SetupError("A computed KPI is a sum, difference, ratio or average.", "formula")
+    if out["per_person"]:
+        raise SetupError("A computed KPI has no readings per person.", "formula")
+    chosen = []
+    for key in ("source_a", "source_b"):
+        pk = merged.get(key, getattr(kpi, key + "_id", None) if kpi is not None else None)
+        source = Kpi.objects.filter(scorecard=scorecard, pk=pk, archived_at__isnull=True) \
+            .first() if pk and _is_uuid(pk) else None
+        if source is None:
+            raise SetupError("Choose two KPIs of this scorecard to work it out from.", key)
+        if kpi is not None and source.pk == kpi.pk:
+            raise SetupError("A KPI can't be worked out from itself.", key)
+        if source.is_computed:
+            raise SetupError(f"{source.name} is computed itself; one step only.", key)
+        if source.per_person:
+            raise SetupError(f"{source.name} is per person; choose a company KPI.", key)
+        if source.cadence != out["cadence"]:
+            raise SetupError(f"{source.name} is {source.get_cadence_display().lower()}; both "
+                             "KPIs are on the computed KPI's cadence.", key)
+        chosen.append(source)
+    if chosen[0].pk == chosen[1].pk:
+        raise SetupError("Choose two different KPIs.", "source_b")
+    # Nobody enters a computed KPI, so nobody is reminded about one.
+    return {"formula": formula, "source_a": chosen[0], "source_b": chosen[1],
+            "reading_owner": None}
 
 
 def _is_uuid(value) -> bool:
@@ -347,8 +383,14 @@ def create_kpi(scorecard, data, actor) -> Kpi:
 def update_kpi(kpi, data, actor) -> Kpi:
     fields = clean_kpi(kpi.scorecard, data, kpi)
     changed = [k for k, v in fields.items()
-               if getattr(kpi, k if k not in ("page", "audience_team", "reading_owner")
+               if getattr(kpi, k if k not in ("page", "audience_team", "reading_owner",
+                                              "source_a", "source_b")
                           else k + "_id") != (v.pk if hasattr(v, "pk") else v)]
+    if {"cadence", "per_person", "formula"} & set(changed):
+        users = Kpi.objects.filter(Q(source_a=kpi) | Q(source_b=kpi), archived_at__isnull=True)
+        if users.exists():
+            raise SetupError(f"{users.first().name} is worked out from {kpi.name}, so its "
+                             "cadence stays, and it stays a company KPI with readings.")
     for k in changed:
         setattr(kpi, k, fields[k])
     if "page" in changed:
@@ -375,6 +417,12 @@ def archive_kpi(kpi, actor, *, restore=False) -> Kpi:
     or the first live page when its own is archived."""
     if restore == (kpi.archived_at is None):
         return kpi
+    users = Kpi.objects.filter(Q(source_a=kpi) | Q(source_b=kpi), archived_at__isnull=True)
+    if not restore and users.exists():
+        raise SetupError(f"{users.first().name} is worked out from {kpi.name}; archive or "
+                         "change it first.")
+    if restore and kpi.is_computed and (kpi.source_a.archived_at or kpi.source_b.archived_at):
+        raise SetupError("Restore the KPIs it is worked out from first.")
     if restore and kpi.page.archived_at is not None:
         page = ScorecardPage.objects.filter(scorecard=kpi.scorecard,
                                             archived_at__isnull=True).first()
@@ -411,6 +459,9 @@ def describe(kpi) -> dict:
             "behind_band_pct": num(kpi.behind_band_pct),
             "reading_owner": str(kpi.reading_owner_id) if kpi.reading_owner_id else None,
             "strategy_component": kpi.strategy_component,
+            "formula": kpi.formula,
+            "source_a": str(kpi.source_a_id) if kpi.source_a_id else None,
+            "source_b": str(kpi.source_b_id) if kpi.source_b_id else None,
             "month_targets": {str(t.month): num(t.value) for t in kpi.month_targets.all()},
             "people": [str(p.membership_id) for p in kpi.people.all()]}
 

@@ -24,7 +24,8 @@ function tile(over: Partial<Tile>): Tile {
     rollup: "average", tile: "number_trend", unit: "", duration_unit: "", rating_scale: null,
     note: "Booked nights ÷ available nights", component: "", per_person: false,
     leaderboard: false, page: "p1", range_low: null, range_high: null, fixed_target: 82,
-    band: 10, owner: "Elena Brooks", owner_id: "u1", may_enter: true, shape: "number_trend",
+    band: 10, owner: "Elena Brooks", owner_id: "u1", may_enter: true, computed: "",
+    shape: "number_trend",
     summary: { value: 78, target: 82, status: "behind", stale: false, missing: null,
       periods: 1, periods_in: 1, full_target: 82, days_left: 4, elapsed: 0.4 },
     delta: { change: -3, better: false }, spark: history, history, rows: [], total: true,
@@ -275,7 +276,11 @@ const SETUP: SetupState = {
   kpis: [{ ...tile({ id: "k1", name: "Occupancy" }), position: 1, archived: false,
     audience: "page", audience_team: null, person_total: "sum", target_value: 82,
     behind_band_pct: 10, reading_owner: null, strategy_component: "", month_targets: {},
-    people: [] }],
+    people: [], formula: "", source_a: null, source_b: null },
+    { ...tile({ id: "k2", name: "Bookings", kind: "count" }), position: 2, archived: false,
+      audience: "page", audience_team: null, person_total: "sum", target_value: 95,
+      behind_band_pct: 10, reading_owner: null, strategy_component: "", month_targets: {},
+      people: [], formula: "", source_a: null, source_b: null }],
   teams: [{ id: "t1", name: "Everyone", is_default: true }],
   owners: [{ id: "u1", name: "Elena Brooks", side: "client" }],
   people: [], starters: [],
@@ -314,5 +319,53 @@ describe("setting a scorecard up (M5 part 1)", () => {
       expect(body.company).toBe("c1");
     });
     expect(await screen.findByText("Occupancy is saved.")).toBeInTheDocument();
+  });
+});
+
+describe("computed KPIs and the leaderboard switch (M5 part 1, after review)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("words the leaderboard switch as the consent it is", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/setup/": SETUP }));
+    renderRoute(<ScorecardSetup me={aMe({ role: "FF" })}
+      company={aCompany({ id: "c1", is_client_company: true })} />);
+    await user.click(await screen.findByRole("button", { name: "Edit Occupancy" }));
+    await user.click(screen.getByLabelText("Per person: one reading per person"));
+    expect(screen.getByLabelText(
+      "Show a leaderboard: everyone in the audience sees each other's numbers")).toBeInTheDocument();
+  });
+
+  it("makes a KPI computed from two others on its cadence, with nobody to enter it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/scorecard/kpis/": () => ({ status: 201, body: SETUP.kpis[0] }),
+      "GET /api/scorecard/setup/": SETUP,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ScorecardSetup me={aMe({ role: "FF" })}
+      company={aCompany({ id: "c1", is_client_company: true })} />);
+    await user.click(await screen.findByRole("button", { name: "Add a KPI" }));
+    await user.type(screen.getByLabelText("Name"), "Occupancy per booking");
+    await user.click(screen.getByLabelText(/Computed: worked out/));
+    expect(screen.queryByLabelText("Reading owner")).toBeNull();
+    expect(screen.queryByLabelText("Per person: one reading per person")).toBeNull();
+    await user.selectOptions(screen.getByLabelText("First KPI"), "k1");
+    await user.selectOptions(screen.getByLabelText("Second KPI"), "k2");
+    await user.click(screen.getByRole("button", { name: "Add the KPI" }));
+    await waitFor(() => {
+      const body = fetchMock.calls.find((c) => c.method === "POST")?.body as Record<string, unknown>;
+      expect([body.formula, body.source_a, body.source_b, body.reading_owner, body.per_person])
+        .toEqual(["ratio", "k1", "k2", null, false]);
+    });
+  });
+
+  it("says on the tile what a computed KPI is worked out from", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, kpis: [
+      tile({ id: "k7", name: "Revenue per booking", kind: "money", computed: "Revenue ÷ Bookings",
+        owner: "" })] } }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    const t = await screen.findByRole("region", { name: "Revenue per booking" });
+    expect(within(t).getByText(/computed: Revenue ÷ Bookings/)).toBeInTheDocument();
   });
 });

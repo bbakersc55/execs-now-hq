@@ -609,7 +609,7 @@ def _groups(owed, w=practice_words.DEFAULT):
     return [sections[k] for k in section_order]
 
 
-def digest_text(narrative, sections) -> str:
+def digest_text(narrative, sections, waiting=None) -> str:
     """The text/plain part, from the same sections as the HTML."""
     parts = [narrative.strip()] if narrative else []
     for section in sections:
@@ -627,10 +627,21 @@ def digest_text(narrative, sections) -> str:
                 if item["sentence"]:
                     lines.append(f"    “{item['sentence']}”")
             parts.append("\n".join(lines))
+    if waiting:
+        parts.append("\n".join([waiting["heading"]]
+                               + [f"  - {line}" for line in waiting["lines"]]))
     return "\n\n".join(parts).strip()
 
 
-def render(digest, owed, *, narrative=""):
+def _waiting(lines, w) -> dict | None:
+    """M5: the readings the recipient was reminded about and has not entered."""
+    if not lines:
+        return None
+    return {"heading": f"Waiting on you, for the {w.scorecard}",
+            "lines": [text for _, text in lines]}
+
+
+def render(digest, owed, *, narrative="", scorecard_lines=()):
     """`(text, html_content)` — narrative first, then updates grouped by task.
 
     The HTML is content only; `email_for` puts it in the layout at send time, so
@@ -642,9 +653,10 @@ def render(digest, owed, *, narrative=""):
 
     w = practice_words.of(digest.tenant)
     sections = _groups(owed, w)
+    waiting = _waiting(scorecard_lines, w)
     html = render_to_string("email/digest_content.html", email_layout.template_context(
-        digest.tenant, narrative=narrative, sections=sections, words=w))
-    return digest_text(narrative, sections), html
+        digest.tenant, narrative=narrative, sections=sections, words=w, waiting=waiting))
+    return digest_text(narrative, sections, waiting), html
 
 
 # -------------------------------------------------------------- generation
@@ -688,7 +700,12 @@ def generate(*, tenant, contact, cadence, period_start, period_end, send_window_
     )
 
     narrative = narrative_for(tenant, owed, contact=contact) if ai else ""
-    digest.body_text, digest.body_html = render(digest, owed, narrative=narrative)
+    from apps.scorecard import digest as scorecard_digest
+
+    waiting = scorecard_digest.lines_for(tenant, contact, digest)
+    digest.body_text, digest.body_html = render(digest, owed, narrative=narrative,
+                                                scorecard_lines=waiting)
+    scorecard_digest.claim(digest, waiting)
     # FR-3.26/3.27: held means pending. Unheld and deterministic needs no
     # human, so it is pre-approved and will go at its window.
     if not tenant.hold_all_digests and not ai:
@@ -902,7 +919,12 @@ def regenerate(digest, *, actor=None):
         return digest
     narrative = narrative_for(digest.tenant, owed, contact=digest.contact) \
         if digest.is_ai_generated else ""
-    digest.body_text, digest.body_html = render(digest, owed, narrative=narrative)
+    from apps.scorecard import digest as scorecard_digest
+
+    waiting = scorecard_digest.lines_for(digest.tenant, digest.contact, digest)
+    digest.body_text, digest.body_html = render(digest, owed, narrative=narrative,
+                                                scorecard_lines=waiting)
+    scorecard_digest.claim(digest, waiting)
     digest.is_stale = False
     digest.stale_reason = ""
     digest.period_end = timezone.now()

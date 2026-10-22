@@ -144,6 +144,15 @@ class Kpi(TenantScopedModel):
     class Feed(models.TextChoices):
         HAND = "hand", "By hand"
 
+    class Formula(models.TextChoices):
+        """A computed KPI, one step only (spec, "Computed KPIs"): two other
+        KPIs of the same scorecard and cadence, never themselves computed."""
+
+        SUM = "sum", "Sum"
+        DIFFERENCE = "difference", "Difference"
+        RATIO = "ratio", "Ratio"
+        AVERAGE = "average", "Average"
+
     scorecard = models.ForeignKey(Scorecard, on_delete=models.CASCADE, related_name="kpis")
     page = models.ForeignKey(ScorecardPage, on_delete=models.PROTECT, related_name="kpis")
     name = models.CharField(max_length=120)
@@ -185,10 +194,22 @@ class Kpi(TenantScopedModel):
     note = models.CharField(max_length=200, blank=True, default="", db_default="")
     strategy_component = models.CharField(max_length=10, choices=Component.choices,
                                           blank=True, default="", db_default="")
+    #: Blank for a KPI with readings of its own; otherwise its value in each
+    #: period is worked out from `source_a` and `source_b` and nobody enters it.
+    formula = models.CharField(max_length=10, choices=Formula.choices, blank=True,
+                               default="", db_default="")
+    source_a = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT,
+                                 related_name="+")
+    source_b = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT,
+                                 related_name="+")
     position = models.PositiveSmallIntegerField(default=0, db_default=0)
     archived_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
+
+    @property
+    def is_computed(self) -> bool:
+        return bool(self.formula)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "kpi"
@@ -200,6 +221,11 @@ class Kpi(TenantScopedModel):
             models.CheckConstraint(
                 condition=Q(behind_band_pct__gte=0) & Q(behind_band_pct__lte=100),
                 name="kpi_behind_band_is_a_percent"),
+            models.CheckConstraint(
+                condition=(Q(formula="") & Q(source_a__isnull=True) & Q(source_b__isnull=True))
+                | (~Q(formula="") & Q(source_a__isnull=False) & Q(source_b__isnull=False)
+                   & Q(per_person=False)),
+                name="kpi_computed_has_two_sources"),
             models.CheckConstraint(
                 condition=~Q(direction="range")
                 | (Q(range_low__isnull=False) & Q(range_high__isnull=False)
@@ -299,6 +325,10 @@ class KpiReminder(TenantScopedModel):
     period_start = models.DateField()
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                   related_name="+")
+    #: The client digest that carried it, once one did ("and in the next
+    #: digest"). A digest that expires or is skipped gives it back.
+    digest = models.ForeignKey("work.Digest", null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="+")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "kpi_reminder"

@@ -8,7 +8,9 @@
   KPI they can't see, not just the screen.
 - **The leak cases**: a per-person KPI never shows a member a colleague's
   value, in the tile, the trend, the total, the entry form, the bulk table
-  or a reading's history.
+  or a reading's history, unless the practice has switched its leaderboard
+  on, which shares the ranked list within the KPI's audience and nothing more.
+- **Computed KPIs**, one step only, and the reminder line in the next digest.
 - **Entering**: who may, which rows, units refused with a reason, a future
   period refused, saving again keeps the history.
 - **Isolation**: another practice, and another company of the same practice.
@@ -117,7 +119,7 @@ def sc(seeded_tenant, ff, api):
             "all": kpi("For everyone", weekly, reading_owner=str(who["owner"].user_id)),
             "lead": kpi("Cash", weekly, audience="leadership"),
             "ops": kpi("Ops only", weekly, audience="team", audience_team=str(ops.pk)),
-            "calls": kpi("Calls", weekly, per_person=True, leaderboard=True,
+            "calls": kpi("Calls", weekly, per_person=True, leaderboard=False,
                          tile="leaderboard", reading_owner=str(who["manager"].user_id),
                          people=[str(who[k].pk) for k in
                                  ("member", "colleague", "manager", "sales_member")]),
@@ -732,3 +734,235 @@ def test_the_reminder_job_is_scheduled_for_every_practice(seeded_tenant):
 
     call_command("ensure_schedules")
     assert Schedule.objects.filter(name__startswith="scorecard.remind_missing:").exists()
+
+
+# ----------------------------------------- the leaderboard is consent to share
+
+def shared_board(sc, audience="team", **extra):
+    with tenant_context(sc["tenant"].pk):
+        return setup.create_kpi(Scorecard.objects.get(company=sc["company"]), {
+            "name": "Shared calls", "kind": "count", "rollup": "sum", "target_value": 10,
+            "per_person": True, "leaderboard": True, "tile": "leaderboard",
+            "audience": audience, "page": str(sc["pages"]["weekly"].pk),
+            "reading_owner": str(sc["who"]["manager"].user_id),
+            "people": [str(sc["who"][k].pk) for k in ("member", "colleague", "manager")],
+            **extra}, sc["practice"]["ff"].user)
+
+
+def with_readings(sc, kpi):
+    with tenant_context(sc["tenant"].pk):
+        for key, value in (("member", 12), ("colleague", 7), ("manager", 9)):
+            KpiReading.objects.create(tenant=sc["tenant"], kpi=kpi, period_start=sc["week"],
+                                      membership=sc["who"][key], value=value,
+                                      entered_at=timezone.now())
+
+
+@pytest.mark.django_db
+def test_with_the_leaderboard_on_everyone_in_the_audience_sees_the_ranked_list(sc):
+    kpi = shared_board(sc, audience="team", audience_team=str(sc["teams"]["ops"].pk))
+    with_readings(sc, kpi)
+    for key in ("member", "colleague", "ops_viewer", "manager"):
+        _, names = seen(sc, sc["who"][key])
+        board_ = names["Shared calls"]
+        assert board_["shape"] == "leaderboard", key
+        assert [(r["name"], r["value"], r["rank"]) for r in board_["rows"]] == [
+            ("Mia Member", 12.0, 1), ("Max Manager", 9.0, 2), ("Cole Colleague", 7.0, 3)], key
+    for key in ("viewer", "sales_member", "on_no_team"):
+        _, names = seen(sc, sc["who"][key])
+        assert "Shared calls" not in names, f"{key} is outside the KPI's audience"
+
+
+@pytest.mark.django_db
+def test_the_leaderboard_shares_what_is_shown_and_nothing_more(sc):
+    kpi = shared_board(sc, audience="page")
+    with_readings(sc, kpi)
+    member = sc["api"].as_(sc["who"]["member"])
+    form = member.get(f"{B}entry/?company={sc['company'].pk}&day={sc['week']}").json()
+    shared = next(k for k in form["kpis"] if k["name"] == "Shared calls")
+    assert [f["name"] for f in shared["fields"]] == ["Mia Member"]
+    theirs = KpiReading.all_objects.get(kpi=kpi, membership=sc["who"]["colleague"])
+    assert member.get(f"{B}readings/{theirs.pk}/history/").status_code == 404
+    refused = post(member, f"{B}readings/", {"company": str(sc["company"].pk), "readings": [
+        {"kpi": str(kpi.pk), "period_start": str(sc["week"]),
+         "membership": str(sc["who"]["colleague"].pk), "value": "1"}]})
+    assert refused.status_code == 400
+
+
+@pytest.mark.django_db
+def test_with_the_leaderboard_off_a_member_is_back_to_their_own_row(sc):
+    kpi = shared_board(sc, audience="page")
+    with_readings(sc, kpi)
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    assert patch(ff, f"{B}kpis/{kpi.pk}/", {"leaderboard": False}).status_code == 200
+    _, names = seen(sc, sc["who"]["member"])
+    assert names["Shared calls"]["shape"] == "my_row"
+    assert [r["name"] for r in names["Shared calls"]["rows"]] == ["Mia Member"]
+    assert "Cole Colleague" not in json.dumps(names["Shared calls"])
+
+
+@pytest.mark.django_db
+def test_under_each_person_sees_their_own_the_board_goes_to_the_tracked_and_their_managers(sc):
+    kpi = shared_board(sc, audience="each_person")
+    with_readings(sc, kpi)
+    _, names = seen(sc, sc["who"]["colleague"])
+    assert len(names["Shared calls"]["rows"]) == 3
+    for key in ("ops_viewer", "on_no_team", "sales_member", "viewer"):
+        _, names = seen(sc, sc["who"][key])
+        assert "Shared calls" not in names, key
+
+
+# ------------------------------------------------------------- computed KPIs
+
+def computed_world(sc, **extra):
+    ff = sc["practice"]["ff"]
+    with tenant_context(sc["tenant"].pk):
+        card = Scorecard.objects.get(company=sc["company"])
+        page = str(sc["pages"]["weekly"].pk)
+        revenue = setup.create_kpi(card, {"name": "Revenue", "kind": "money", "page": page,
+                                          "rollup": "sum"}, ff.user)
+        bookings = setup.create_kpi(card, {"name": "Bookings", "kind": "count", "page": page,
+                                           "rollup": "sum"}, ff.user)
+        first = sc["week"] - timedelta(days=7)
+        for week, r, b in ((first, 1000, 4), (sc["week"], 1500, 5)):
+            KpiReading.objects.create(tenant=sc["tenant"], kpi=revenue, period_start=week,
+                                      value=r, entered_at=timezone.now())
+            KpiReading.objects.create(tenant=sc["tenant"], kpi=bookings, period_start=week,
+                                      value=b, entered_at=timezone.now())
+        per = setup.create_kpi(card, {"name": "Revenue per booking", "kind": "money",
+                                      "page": page, "rollup": "average", "formula": "ratio",
+                                      "source_a": str(revenue.pk), "source_b": str(bookings.pk),
+                                      "target_value": 260, **extra}, ff.user)
+    return revenue, bookings, per
+
+
+@pytest.mark.django_db
+def test_a_computed_kpi_is_worked_out_from_its_two_sources_each_period(sc):
+    revenue, bookings, per = computed_world(sc)
+    first = sc["week"] - timedelta(days=7)
+    url = (f"{B}?company={sc['company'].pk}&window=custom&from={first}"
+           f"&to={sc['week'] + timedelta(days=6)}")
+    tile = next(t for t in sc["api"].as_(sc["practice"]["ff"]).get(url).json()["kpis"]
+                if t["name"] == "Revenue per booking")
+    assert [p["value"] for p in tile["spark"]] == [250.0, 300.0]
+    assert tile["summary"]["value"] == 275.0, "averaged over the window, as its roll-up says"
+    assert tile["summary"]["status"] == "on_track"
+    assert tile["computed"] == "Revenue ÷ Bookings" and tile["may_enter"] is False
+    with tenant_context(sc["tenant"].pk):
+        assert setup.describe(per)["formula"] == "ratio"
+
+
+@pytest.mark.django_db
+def test_nobody_enters_a_computed_kpi_and_nobody_is_reminded_about_one(sc):
+    _, _, per = computed_world(sc)
+    owner = sc["api"].as_(sc["who"]["owner"])
+    refused = post(owner, f"{B}readings/", {"company": str(sc["company"].pk), "readings": [
+        {"kpi": str(per.pk), "period_start": str(sc["week"]), "value": "1"}]})
+    assert refused.status_code == 400
+    form = owner.get(f"{B}entry/?company={sc['company'].pk}&day={sc['week']}").json()
+    assert "Revenue per booking" not in [k["name"] for k in form["kpis"]]
+    with tenant_context(sc["tenant"].pk):
+        Kpi.objects.filter(pk=per.pk).update(created_at=timezone.now() - timedelta(days=60))
+        readings.remind(sc["tenant"], timezone.localdate())
+    assert not KpiReminder.all_objects.filter(kpi=per).exists()
+
+
+@pytest.mark.django_db
+def test_a_computed_kpi_is_hidden_from_anyone_who_cannot_see_both_sources(sc):
+    revenue, _, _ = computed_world(sc)
+    _, names = seen(sc, sc["who"]["member"])
+    assert "Revenue per booking" in names
+    with tenant_context(sc["tenant"].pk):
+        Kpi.objects.filter(pk=revenue.pk).update(audience="leadership")
+    _, names = seen(sc, sc["who"]["member"])
+    assert "Revenue" not in names and "Revenue per booking" not in names
+    _, names = seen(sc, sc["who"]["leader"])
+    assert "Revenue per booking" in names
+
+
+@pytest.mark.django_db
+def test_a_computed_kpi_is_one_step_only_and_keeps_its_sources(sc):
+    revenue, bookings, per = computed_world(sc)
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    base = {"company": str(sc["company"].pk), "name": "x", "kind": "number",
+            "page": str(sc["pages"]["weekly"].pk), "formula": "sum"}
+    monthly = post(ff, f"{B}kpis/", {**base, "name": "Monthly", "cadence": "monthly",
+                                     "kind": "count", "formula": ""}).json()["id"]
+    for body, said in (
+            ({"source_a": str(per.pk), "source_b": str(revenue.pk)}, "one step only"),
+            ({"source_a": str(sc["kpis"]["calls"].pk), "source_b": str(revenue.pk)},
+             "per person"),
+            ({"source_a": monthly, "source_b": str(revenue.pk)}, "computed KPI's cadence"),
+            ({"source_a": str(revenue.pk), "source_b": str(revenue.pk)}, "two different"),
+            ({"source_a": str(revenue.pk)}, "Choose two KPIs"),
+            ({"source_a": str(revenue.pk), "source_b": str(bookings.pk), "formula": "product"},
+             "sum, difference, ratio or average")):
+        refused = post(ff, f"{B}kpis/", {**base, **body})
+        assert refused.status_code == 400 and said in refused.json()["detail"], body
+    archived = post(ff, f"{B}kpis/{revenue.pk}/archive/")
+    assert archived.status_code == 400 and "worked out from Revenue" in archived.json()["detail"]
+    recadenced = patch(ff, f"{B}kpis/{bookings.pk}/", {"cadence": "monthly"})
+    assert recadenced.status_code == 400
+
+
+# ------------------------------------------- the reminder in the next digest
+
+def digest_world(sc):
+    """Mia (a member) owns "For everyone"'s reading, has a contact that is a
+    stakeholder of a project, and missed last week."""
+    from apps.crm.models import Contact
+
+    from .test_module3_digests import a_task, move, stake
+
+    tenant, member = sc["tenant"], sc["who"]["member"]
+    contact = Contact.all_objects.create(tenant=tenant, first_name="Mia", last_name="Member",
+                                         company=sc["company"])
+    Membership.all_objects.filter(pk=member.pk).update(contact=contact)
+    with tenant_context(tenant.pk):
+        Kpi.objects.filter(pk=sc["kpis"]["all"].pk).update(
+            reading_owner=member.user, created_at=timezone.now() - timedelta(days=60))
+        readings.remind(tenant, timezone.localdate())
+        task = a_task(tenant, sc["company"], ff=sc["practice"]["ff"], title="Count the cold room")
+        stake(tenant, contact, task=task)
+        move(task, sc["practice"]["ff"], "in_progress")
+    return contact
+
+
+@pytest.mark.django_db
+def test_the_next_digest_carries_the_missing_reading_once(sc):
+    from .test_module3_digests import generate_weekly
+
+    digest_world(sc)
+    with tenant_context(sc["tenant"].pk):
+        made = generate_weekly(sc["tenant"])
+    assert len(made) == 1
+    digest = made[0]
+    line = f"For everyone: no reading yet for {P.long_label(sc['week'], P.WEEKLY)}."
+    assert "Waiting on you, for the scorecard" in digest.body_text
+    assert line in digest.body_text and line in digest.body_html
+    assert KpiReminder.all_objects.get(kpi=sc["kpis"]["all"]).digest_id == digest.pk
+    # Not repeated in the next one; given back if this one is skipped.
+    from apps.scorecard import digest as scorecard_digest
+
+    assert scorecard_digest.lines_for(sc["tenant"], digest.contact) == []
+    with tenant_context(sc["tenant"].pk):
+        from apps.work import digests
+
+        digests.skip(digest, actor=sc["practice"]["ff"].user, role="FF")
+    assert [t for _, t in scorecard_digest.lines_for(sc["tenant"], digest.contact)] == [line]
+
+
+@pytest.mark.django_db
+def test_the_digest_line_keeps_to_the_audience_and_leaves_once_the_reading_is_in(sc):
+    from apps.scorecard import digest as scorecard_digest
+
+    contact = digest_world(sc)
+    assert len(scorecard_digest.lines_for(sc["tenant"], contact)) == 1
+    with tenant_context(sc["tenant"].pk):
+        Kpi.objects.filter(pk=sc["kpis"]["all"].pk).update(audience="leadership")
+    assert scorecard_digest.lines_for(sc["tenant"], contact) == [], \
+        "a KPI they may no longer see is not named to them"
+    with tenant_context(sc["tenant"].pk):
+        Kpi.objects.filter(pk=sc["kpis"]["all"].pk).update(audience="page")
+        KpiReading.objects.create(tenant=sc["tenant"], kpi=sc["kpis"]["all"],
+                                  period_start=sc["week"], value=3, entered_at=timezone.now())
+    assert scorecard_digest.lines_for(sc["tenant"], contact) == []

@@ -196,6 +196,7 @@ function footer(t: Tile): string {
     : "per person");
   else if (t.shape === "my_row") parts.push("only you see this row");
   else if (t.per_person && t.total_label) parts.push(t.total_label);
+  else if (t.computed) parts.push(`computed: ${t.computed}`);
   else if (t.shape === "status") parts.push(`${t.history.length} ${noun}s of status`);
   else if (t.spark.length > 1) parts.push(`${t.spark.length} ${noun}s shown`);
   return parts.join(" · ");
@@ -337,6 +338,7 @@ function Back({ t }: { t: Tile }) {
     <div className="sc-back">
       <div className="sc-back-note">
         {t.note ? <><strong>How it's measured.</strong> {t.note}</> : "No note on how it's measured."}
+        {t.computed && <div>Worked out each period from {t.computed}.</div>}
       </div>
       <table className="sc-back-table">
         <thead><tr><th>Period</th><th className="money">Reading</th><th>Status</th></tr></thead>

@@ -24,6 +24,8 @@ const TILES = { number_trend: "Number with trend", gauge: "Gauge", progress: "Pr
   my_row: "My row" };
 const COMPONENTS = { "": "None", vision: "Vision", people: "People", data: "Data",
   issues: "Issues", process: "Process", traction: "Traction" };
+const FORMULAS = { sum: "first + second", difference: "first − second",
+  ratio: "first ÷ second", average: "average of the two" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type Draft = Record<string, unknown> & { month_targets?: Record<string, string | number> };
@@ -127,7 +129,8 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
                       <span className="sc-setup-name">{k.name}
                         <span className="small muted"> · {KINDS[k.kind]}, {CADENCES[k.cadence]}, {TILES[k.tile]}
                           {k.per_person ? `, per person (${k.people.length})` : ""}
-                          {k.owner ? ` · entered by ${k.owner}` : " · no reading owner"}
+                          {k.computed ? ` · computed: ${k.computed}`
+                            : k.owner ? ` · entered by ${k.owner}` : " · no reading owner"}
                           {k.target_value !== null ? ` · target ${fmt(k, k.target_value)}` : ""}
                           {Object.keys(k.month_targets).length ? " · seasonal" : ""}</span></span>
                       <span className="sc-setup-tools">
@@ -237,12 +240,14 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
     person_total: kpi.person_total, leaderboard: kpi.leaderboard, tile: kpi.tile, audience: kpi.audience,
     audience_team: kpi.audience_team ?? "", note: kpi.note, strategy_component: kpi.strategy_component,
     people: kpi.people, month_targets: { ...kpi.month_targets },
+    formula: kpi.formula, source_a: kpi.source_a ?? "", source_b: kpi.source_b ?? "",
   } : {
     name: "", page: livePages[0]?.id ?? "", kind: "number", direction: "higher", cadence: "weekly",
     rollup: "sum", target_value: "", range_low: "", range_high: "", behind_band_pct: 10,
     duration_unit: "hours", rating_scale: 5, reading_owner: "", per_person: false, person_total: "sum",
     leaderboard: false, tile: "number_trend", audience: "page", audience_team: "", note: "",
     strategy_component: "", people: [], month_targets: {},
+    formula: "", source_a: "", source_b: "",
   });
   const [seasonal, setSeasonal] = useState(Object.keys(d.month_targets ?? {}).length > 0);
   const [error, setError] = useState<{ text: string; field?: string } | null>(null);
@@ -252,7 +257,10 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
       const body = { ...d, company: state.company.id,
         month_targets: seasonal ? d.month_targets : {},
         audience_team: d.audience === "team" ? d.audience_team || state.teams[0]?.id : null,
-        reading_owner: d.reading_owner || null };
+        reading_owner: d.formula ? null : d.reading_owner || null,
+        per_person: d.formula ? false : d.per_person,
+        source_a: d.formula ? d.source_a || null : null,
+        source_b: d.formula ? d.source_b || null : null };
       return kpi ? api.patch(`/api/scorecard/kpis/${kpi.id}/`, body) : api.post("/api/scorecard/kpis/", body);
     },
     onSuccess: () => onDone(kpi ? `${d.name} is saved.` : `${d.name} is added.`),
@@ -270,6 +278,11 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
         aria-invalid={error?.field === k} {...props} /></label>
   );
   const people = (d.people as string[]) ?? [];
+  // One step only: company KPIs of the same cadence that are not computed.
+  const sources = Object.fromEntries([["", "Choose…"], ...state.kpis
+    .filter((k) => !k.archived && !k.formula && !k.per_person && k.cadence === d.cadence
+      && k.id !== kpi?.id)
+    .map((k) => [k.id, k.name])]);
   return (
     <form className="sc-kpi-form" aria-label={kpi ? `Edit ${kpi.name}` : `New ${w.kpi}`}
       onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
@@ -289,7 +302,7 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
         </> : text("target_value", seasonal ? "Target, other months" : "Target", { inputMode: "decimal" })}
         {text("behind_band_pct", "Behind within (%)", { inputMode: "decimal" })}
         {choice("tile", "Tile", TILES)}
-        {choice("reading_owner", "Reading owner", Object.fromEntries([["", "Nobody yet"],
+        {!d.formula && choice("reading_owner", "Reading owner", Object.fromEntries([["", "Nobody yet"],
           ...state.owners.map((o) => [o.id, `${o.name}${o.side === "practice" ? " (practice)" : ""}`])]))}
         {choice("audience", "Who sees it", KPI_AUDIENCE)}
         {d.audience === "team" && choice("audience_team", "Team",
@@ -311,9 +324,19 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
           ))}
         </div>
       )}
-      <label className="sc-check"><input type="checkbox" checked={!!d.per_person}
-        onChange={(e) => set("per_person", e.target.checked)} /> Per person: one reading per person</label>
-      {!!d.per_person && (
+      <label className="sc-check"><input type="checkbox" checked={!!d.formula}
+        onChange={(e) => set("formula", e.target.checked ? "ratio" : "")} /> Computed: worked out
+        from two other {w.kpis} on the same cadence, and never entered</label>
+      {!!d.formula && (
+        <div className="sc-form-grid">
+          {choice("source_a", `First ${w.kpi}`, sources)}
+          {choice("formula", "Worked out as", FORMULAS)}
+          {choice("source_b", `Second ${w.kpi}`, sources)}
+        </div>
+      )}
+      {!d.formula && <label className="sc-check"><input type="checkbox" checked={!!d.per_person}
+        onChange={(e) => set("per_person", e.target.checked)} /> Per person: one reading per person</label>}
+      {!d.formula && !!d.per_person && (
         <div className="sc-people">
           {state.people.length === 0 && <span className="small muted">The company has no portal users yet.</span>}
           {state.people.map((p) => (
@@ -325,8 +348,8 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
             {choice("person_total", "Company total", { sum: "Sum", average: "Average" })}
           </div>
           <label className="sc-check"><input type="checkbox" checked={!!d.leaderboard}
-            onChange={(e) => set("leaderboard", e.target.checked)} /> Show a leaderboard (managers and up see the ranking;
-            a member still sees only their own row)</label>
+            onChange={(e) => set("leaderboard", e.target.checked)} /> Show a leaderboard: everyone in the
+            audience sees each other's numbers</label>
         </div>
       )}
       {text("note", "How it's measured (shown on the back of the tile)", { maxLength: 200 })}

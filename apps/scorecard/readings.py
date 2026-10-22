@@ -265,7 +265,7 @@ def history(reader, reading) -> dict:
     if not reader.sees_history_of(kpi):
         return None
     if reading.membership_id is not None and \
-            reading.membership_id not in reader.rows_of(kpi):
+            reading.membership_id not in reader.covered_rows(kpi):
         return None
     return {
         "kpi": kpi.name, "period": P.long_label(reading.period_start, kpi.cadence),
@@ -318,7 +318,7 @@ def remind(tenant, today: date) -> int:
     for scorecard in Scorecard.all_objects.filter(tenant=tenant,
                                                   company__deleted_at__isnull=True):
         for kpi in Kpi.all_objects.filter(scorecard=scorecard, archived_at__isnull=True,
-                                          page__archived_at__isnull=True,
+                                          page__archived_at__isnull=True, formula="",
                                           reading_owner__isnull=False):
             start = P.previous_start(P.start_of(today, kpi.cadence, scorecard.week_start),
                                      kpi.cadence, scorecard.week_start)

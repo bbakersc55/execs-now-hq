@@ -226,8 +226,9 @@ def definition(kpi, *, reader=None) -> dict:
         "leaderboard": kpi.leaderboard, "page": str(kpi.page_id),
         "range_low": num(kpi.range_low), "range_high": num(kpi.range_high),
         "fixed_target": num(kpi.target_value), "band": num(kpi.behind_band_pct),
-        "owner": name_of(kpi.reading_owner),
+        "owner": "" if kpi.is_computed else name_of(kpi.reading_owner),
         "owner_id": str(kpi.reading_owner_id) if kpi.reading_owner_id else None,
+        "computed": formula_text(kpi),
         "may_enter": reader.may_enter(kpi) if reader else False,
     }
 
@@ -251,12 +252,48 @@ def _total(kpi, targets, per, rows):
     return Series(kpi, targets, by_start, scale=scale)
 
 
-def tile(kpi, reader, targets, readings, people, win, today, week_start) -> dict:
-    """One KPI as the reader may see it."""
+def computed_values(kpi, readings_a, readings_b) -> dict:
+    """A computed KPI's value in each period both its sources have one:
+    start -> (value, None). A ratio over a zero has no value."""
+    a = {r.period_start: r.value for r in readings_a if r.membership_id is None}
+    b = {r.period_start: r.value for r in readings_b if r.membership_id is None}
+    out = {}
+    for start in a.keys() & b.keys():
+        x, y = a[start], b[start]
+        if kpi.formula == Kpi.Formula.SUM:
+            value = x + y
+        elif kpi.formula == Kpi.Formula.DIFFERENCE:
+            value = x - y
+        elif kpi.formula == Kpi.Formula.AVERAGE:
+            value = (x + y) / 2
+        else:
+            value = (x / y) if y else None
+        if value is not None:
+            out[start] = (value, None)
+    return out
+
+
+FORMULA_SIGN = {"sum": "+", "difference": "−", "ratio": "÷", "average": "and"}
+
+
+def formula_text(kpi) -> str:
+    """"Revenue ÷ Bookings", "average of A and B"."""
+    if not kpi.is_computed or kpi.source_a is None or kpi.source_b is None:
+        return ""
+    if kpi.formula == Kpi.Formula.AVERAGE:
+        return f"average of {kpi.source_a.name} and {kpi.source_b.name}"
+    return f"{kpi.source_a.name} {FORMULA_SIGN[kpi.formula]} {kpi.source_b.name}"
+
+
+def tile(kpi, reader, targets, readings, people, win, today, week_start,
+         sources=None) -> dict:
+    """One KPI as the reader may see it. `sources` holds the readings of a
+    computed KPI's two sources."""
     out = definition(kpi, reader=reader)
     if not kpi.per_person:
-        series = Series(kpi, targets, {r.period_start: (r.value, r) for r in readings
-                                       if r.membership_id is None})
+        values = computed_values(kpi, *sources) if kpi.is_computed else {
+            r.period_start: (r.value, r) for r in readings if r.membership_id is None}
+        series = Series(kpi, targets, values)
         out.update(shape=kpi.tile, summary=_summary(series, kpi, win, today, week_start),
                    delta=_delta(series, kpi, min(win.last, today)),
                    spark=_spark(series, kpi, win, today, week_start),
@@ -296,9 +333,9 @@ def tile(kpi, reader, targets, readings, people, win, today, week_start) -> dict
         ranked = sorted((r for r in row_out if r["value"] is not None),
                         key=lambda r: r["value"], reverse=not better_low)
         unranked = [r for r in row_out if r["value"] is None]
-        row_out = ranked + unranked if kpi.leaderboard else row_out
+        row_out = ranked + unranked
         for i, r in enumerate(row_out):
-            r["rank"] = i + 1 if (kpi.leaderboard and r["value"] is not None) else None
+            r["rank"] = i + 1 if r["value"] is not None else None
     else:
         shape = kpi.tile
     out.update(shape=shape, rows=row_out, total=True,
@@ -346,7 +383,9 @@ def visible_pages(reader, scorecard):
     pages = list(ScorecardPage.objects.filter(scorecard=scorecard, archived_at__isnull=True)
                  .select_related("team"))
     kpis = list(Kpi.objects.filter(scorecard=scorecard, archived_at__isnull=True)
-                .select_related("page", "page__team", "audience_team", "reading_owner"))
+                .select_related("page", "page__team", "audience_team", "reading_owner",
+                                "source_a__page__team", "source_a__audience_team",
+                                "source_b__page__team", "source_b__audience_team"))
     by_page = defaultdict(list)
     for k in kpis:
         by_page[k.page_id].append(k)
@@ -378,9 +417,13 @@ def build(reader, scorecard, page_id, win, today) -> dict:
     if not chosen:
         return out
     kpis = chosen[1]
-    readings, months, people = load(kpis, earliest_needed(win, kpis, today, week_start))
+    sources = [s for k in kpis if k.is_computed for s in (k.source_a, k.source_b)]
+    readings, months, people = load(kpis + sources,
+                                    earliest_needed(win, kpis, today, week_start))
     tiles = [tile(k, reader, Targets(k, months[k.pk]), readings[k.pk], people[k.pk], win,
-                  today, week_start) for k in kpis]
+                  today, week_start,
+                  sources=(readings[k.source_a_id], readings[k.source_b_id])
+                  if k.is_computed else None) for k in kpis]
     out["kpis"] = tiles
     out["counts"] = counts(tiles)
     summaries = [t["summary"] for t in tiles if t.get("summary") and
