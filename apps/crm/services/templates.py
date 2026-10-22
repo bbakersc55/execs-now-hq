@@ -41,6 +41,14 @@ _FIELD = re.compile(r"\{([A-Za-z][A-Za-z ]*)\}")
 DEFAULT_FALLBACK = "there"
 FLYER_NOTE = "I've attached a short overview of what we do, so you know what to look out for."
 
+#: The fields that have a value in one kind of email only, and where. Anywhere
+#: else they read as blank, so a composer offers them greyed (finding T5).
+ONLY_IN = {
+    "ProspectName": "only in referral thank-yous",
+    "FlyerNote": "only in a new partner's first email",
+    "PayLink": "only in invoice emails",
+}
+
 #: What a preview shows when no one is chosen: a visible placeholder.
 PLACEHOLDERS = {
     "FirstName": "[First name]", "LastName": "[Last name]", "Company": "[Company]",
@@ -85,27 +93,53 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
     }
 
 
+#: The fields whose whole line goes when they have nothing to say ("{PracticeNews}",
+#: "…arrangement: {FeeTerms}.", "{FlyerNote}", "Pay here: {PayLink}"). Any other
+#: field with no value reads as blank where it stands, and its line stays.
+LINE_FIELDS = ("PracticeNews", "FeeTerms", "FlyerNote", "PayLink")
+
+
 def render(text: str, values: dict, *, fallback: str = DEFAULT_FALLBACK,
            drop_empty_lines: bool = True) -> str:
     """Each field replaced; a field this email has no value for reads as
-    nothing, and {FirstName} as the fallback."""
+    nothing, and {FirstName} as the fallback.
+
+    Never empty when there were words to send (finding T5, 2026-10-22): a
+    {ProspectName} outside a thank-you once took its whole line with it, and a
+    one-paragraph email came out blank. Now only the line fields leave their
+    line, and if that would leave nothing, nothing is left out."""
     fallback = (fallback or "").strip() or DEFAULT_FALLBACK
 
     def value(name):
         got = values.get(name, "")
         return fallback if name == "FirstName" and not got else got
 
-    def line_of(line):
+    def line_of(line, dropping):
         known = [f for f in _FIELD.findall(line) if f in NAMES]
         merged = _FIELD.sub(lambda m: value(m.group(1)) if m.group(1) in NAMES
                             else m.group(0), line)
-        if drop_empty_lines and known and not any(value(f) for f in known):
+        if (dropping and known and all(f in LINE_FIELDS for f in known)
+                and not any(value(f) for f in known)):
             return None
         return merged
 
-    lines = [line_of(line) for line in (text or "").split("\n")]
-    out = "\n".join(line for line in lines if line is not None)
-    return re.sub(r"\n{3,}", "\n\n", out).strip("\n")
+    def whole(dropping):
+        lines = [line_of(line, dropping) for line in (text or "").split("\n")]
+        out = "\n".join(line for line in lines if line is not None)
+        return re.sub(r"\n{3,}", "\n\n", out).strip("\n")
+
+    out = whole(drop_empty_lines)
+    if drop_empty_lines and not out.strip() and (text or "").strip():
+        out = whole(False)
+    return out
+
+
+def empty_fields(values: dict, *texts: str) -> list[str]:
+    """The fields these words use that have nothing in this email ({FirstName}
+    is never one: it has its fallback). What a preview names."""
+    used = {f for text in texts for f in _FIELD.findall(text or "") if f in NAMES}
+    return [name for name in NAMES
+            if name in used and name != "FirstName" and not values.get(name)]
 
 
 def render_subject(text: str, values: dict, *, fallback: str = DEFAULT_FALLBACK) -> str:

@@ -576,6 +576,14 @@ def send(invoice, *, actor, role, to_address=None) -> ClientInvoice:
     if pay_links.ensure(invoice) and message is not None:
         outbox.reject(message, actor=actor)
         message = None
+    # Auto-pay turned on or off since the email was queued: the waiting one
+    # says the wrong thing about the card, so it is queued again.
+    from apps.billing import autopay
+
+    standing, _line = autopay.email_line(invoice)
+    if message is not None and (standing.pk if standing else None) != invoice.autopay_consent_id:
+        outbox.reject(message, actor=actor)
+        message = None
     if message is None or (to_address and to_address != message.to_address):
         if message is not None:
             outbox.reject(message, actor=actor)

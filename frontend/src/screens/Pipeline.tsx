@@ -77,19 +77,21 @@ export function Pipeline() {
 
   const move = useMutation({
     mutationFn: (vars: { id: string; stage: string; reason: string }) =>
-      api.post(`/api/contacts/${vars.id}/change-stage/`, {
-        stage: vars.stage, reason: vars.reason,
-      }),
-    onSuccess: (_d, vars) => {
+      api.post<{ thanks_drafted?: { to: string; label: string } | null }>(
+        `/api/contacts/${vars.id}/change-stage/`, { stage: vars.stage, reason: vars.reason }),
+    onSuccess: (d, vars) => {
       qc.invalidateQueries({ queryKey: ["board"] });
       qc.invalidateQueries({ queryKey: ["contacts"] });
       qc.invalidateQueries({ queryKey: ["outbox"] });
       const stage = board.data?.columns.find((c) => c.stage.id === vars.stage)?.stage;
       const isSale = stage?.semantic === "won" && board.data?.pipeline.kind === "sales";
+      const thanks = d?.thanks_drafted
+        ? ` A thank-you to ${d.thanks_drafted.to} is waiting in the sending queue (${d.thanks_drafted.label}).`
+        : "";
       setNote(
-        isSale
+        (isSale
           ? `Moved to ${stage?.label}. The contact type ‘client’ was added and their company flagged as a client company.`
-          : "Stage updated. Any matching automations for this pipeline have fired."
+          : "Stage updated. Any matching automations for this pipeline have fired.") + thanks
       );
       setMoving(null); setReason("");
     },

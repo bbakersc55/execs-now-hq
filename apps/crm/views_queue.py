@@ -21,7 +21,7 @@ from rest_framework.response import Response
 
 from apps.crm import permissions as crm_perms
 from apps.crm.models import OutboxMessage
-from apps.crm.services import email_layout, outbox, unsubscribe
+from apps.crm.services import email_layout, outbox, referrals, unsubscribe
 from apps.tenancy.models import CLIENT_ROLES
 
 S = OutboxMessage.State
@@ -56,7 +56,8 @@ class SendingQueueView(viewsets.ViewSet):
         return {
             "key": f"outbox:{m.pk}", "kind": "outbox", "id": str(m.pk),
             "category": unsubscribe.category_of(m),
-            "label": m.get_producer_display(),
+            "label": (referrals.label_of(m) if m.producer == OutboxMessage.Producer.REFERRAL_THANKS
+                      else m.get_producer_display()),
             "to_name": _name(m.to_contact), "to_address": m.to_address,
             "from_address": m.from_address, "subject": m.subject,
             "created_at": m.created_at.isoformat(),

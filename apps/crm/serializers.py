@@ -630,17 +630,27 @@ class OutboxMessageSerializer(serializers.ModelSerializer):
     delivery = serializers.SerializerMethodField()
     attachments = OutboxAttachmentSerializer(many=True, read_only=True)
     sender_options = serializers.SerializerMethodField()
+    label = serializers.SerializerMethodField()
 
     class Meta:
         model = OutboxMessage
         fields = [
-            "id", "state", "producer", "to_contact", "to_address", "from_address",
+            "id", "state", "producer", "label", "to_contact", "to_address", "from_address",
             "subject", "body_text", "body_html", "is_ai_generated", "warning",
             "send_by", "approved_by", "approved_at", "sent_at", "sent_via",
             "dev_real_send", "delivery", "attachments", "sender_options",
             "created_at",
         ]
         read_only_fields = ["state", "approved_by", "approved_at", "sent_at", "dev_real_send"]
+
+    def get_label(self, obj):
+        """What the email is, in words: for a referral thank-you, which moment
+        and whose introduction, since two can share a subject."""
+        if obj.producer == OutboxMessage.Producer.REFERRAL_THANKS:
+            from apps.crm.services import referrals
+
+            return referrals.label_of(obj)
+        return obj.get_producer_display()
 
     def get_sender_options(self, obj):
         """FR-1.15c — the addresses this draft may be sent from.

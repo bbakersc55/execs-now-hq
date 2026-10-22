@@ -35,15 +35,18 @@ export function NmiCardForm({ publicKey, amountCents, payPath, onDone, buttonTex
         payButtonText: buttonText ?? `Pay ${dollars(amountCents)}`,
         onPay: async (event) => {
           if (use.current) return use.current(event.token);
+          // The answer goes back to NMI's form first, and the page hears it
+          // after: a page that closed the form while it was still waiting on
+          // this call left it, and the list behind it, spinning (finding B5).
+          let result: PayResult;
           try {
-            const result = await api.post<PayResult>(payPath, { payment_token: event.token });
-            done.current(result);
-            return result.status === "approved" ? true : result.message;
+            result = await api.post<PayResult>(payPath, { payment_token: event.token });
           } catch (e) {
-            const message = (e as Error).message;
-            done.current({ status: "failed", message, balance_cents: amountCents });
-            return message;
+            result = { status: "failed", message: (e as Error).message,
+                       balance_cents: amountCents };
           }
+          setTimeout(() => done.current(result), 0);
+          return result.status === "approved" ? true : result.message;
         },
       });
     }).catch(() => setLoadError("The card form could not be loaded. Please try again."));

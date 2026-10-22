@@ -320,3 +320,69 @@ def test_only_the_owner_chooses_a_use_and_only_from_their_own(seeded_tenant, ff,
                             content_type="application/json").status_code == 400
     with tenant_context(seeded_tenant.pk):
         assert use(seeded_tenant, "thanks_won").original == "thanks_won"
+
+
+# ------------------------------------------- finding T5 (demo, 2026-10-22)
+
+def test_an_empty_prospect_field_never_empties_the_email():
+    """{ProspectName} outside a thank-you once took its whole line, and a
+    one-paragraph email came out blank. Only the line fields leave a line."""
+    values = {"FirstName": "Dana", "ProspectName": "", "Company": "", "PracticeNews": ""}
+    one_paragraph = "Thank you for introducing me to {ProspectName}. It means a lot."
+    assert templates.render(one_paragraph, values) == (
+        "Thank you for introducing me to . It means a lot.")
+    assert templates.render("{ProspectName}", values) == ""
+    assert templates.render("Hi {FirstName},\n{Company}\nSee you.", values) == (
+        "Hi Dana,\n\nSee you.")
+    # The designed case still holds: a line made of a line field with nothing goes.
+    assert templates.render("Hi.\n{PracticeNews}\nBye.", values) == "Hi.\nBye."
+    # Words were there, so words come out, even if every line held a line field.
+    assert templates.render("News: {PracticeNews}", values) == "News: "
+    assert templates.empty_fields(values, "Hi {FirstName}", one_paragraph + " {Company}") == [
+        "Company", "ProspectName"]
+
+
+@pytest.mark.django_db
+def test_the_bulk_preview_names_each_field_with_nothing_and_writes_nothing(
+        seeded_tenant, ff, api):
+    with tenant_context(seeded_tenant.pk):
+        dana = person(seeded_tenant, "Dana")
+        lee = person(seeded_tenant, "Lee", referral_fee_terms="10% of the first year")
+    body = ("Thank you for introducing me to {ProspectName}. As agreed: {FeeTerms}. "
+            "Talk soon.")
+    got = api.as_(ff).post("/api/contacts/draft-emails/preview/",
+                           {"ids": [str(dana.pk), str(lee.pk)], "subject": "Hi {FirstName}",
+                            "body_text": body}, content_type="application/json")
+    assert got.status_code == 200, got.content
+    p = got.json()
+    assert p["subject"] in ("Hi Dana", "Hi Lee") and p["body"].strip()
+    assert "Talk soon." in p["body"]
+    assert {e["field"]: (e["people"], e["of"], e["why"]) for e in p["empty"]} == {
+        "FeeTerms": (1, 2, ""), "ProspectName": (2, 2, "only in referral thank-yous")}
+    assert not OutboxMessage.all_objects.filter(tenant=seeded_tenant).exists()
+    refused = api.as_(ff).post("/api/contacts/draft-emails/preview/",
+                               {"ids": [str(dana.pk)], "subject": "x", "body_text": "{Frist}"},
+                               content_type="application/json")
+    assert refused.status_code == 400
+
+
+@pytest.mark.django_db
+def test_a_bulk_email_with_the_prospect_field_still_has_its_words(seeded_tenant, ff, api):
+    with tenant_context(seeded_tenant.pk):
+        dana = person(seeded_tenant, "Dana")
+    made = api.as_(ff).post("/api/contacts/draft-emails/",
+                            {"ids": [str(dana.pk)], "subject": "A note",
+                             "body_text": "Thanks for {ProspectName}, and for everything."},
+                            content_type="application/json")
+    assert made.status_code == 201, made.content
+    body = OutboxMessage.all_objects.get(tenant=seeded_tenant).body_text
+    assert body.startswith("Thanks for , and for everything.")
+
+
+@pytest.mark.django_db
+def test_a_new_template_from_the_button_is_accepted(seeded_tenant, ff, api):
+    """The New template button sent a blank subject, which was refused."""
+    made = api.as_(ff).post(ROOT, {"name": "New template", "subject": "A note from {PracticeName}",
+                                   "body": "Hi {FirstName},\n\n"},
+                            content_type="application/json")
+    assert made.status_code == 201, made.content

@@ -720,3 +720,34 @@ describe("a client's invoices", () => {
     expect(await screen.findByText("No invoices yet.")).toBeInTheDocument();
   });
 });
+
+/** Finding B5 (demo, 2026-10-22): the practice sees auto-pay on the invoice. */
+describe("auto-pay on the invoice page", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+  const LINE = "Auto-pay is on for Acme Facilities: charged to Visa …1111 on the due date";
+
+  function open(data: Invoice) {
+    vi.stubGlobal("fetch", mockApi({ [`GET ${ONE}history/`]: [], [`GET ${ONE}`]: data }));
+    renderRoute(<InvoiceDetail me={aMe()} />, { path: "/invoices/:id", route: `/invoices/${ID}` });
+  }
+
+  it("shows the practice's line, and the email as it will be sent says the charge", async () => {
+    open(invoice({ status: "ready", status_label: "Ready to send", sent_at: null,
+      autopay: { line: LINE,
+                 email_line: "This invoice will be charged to the card ending 1111 on October 16, 2026." } }));
+    expect(await screen.findByRole("note")).toHaveTextContent(LINE);
+    expect(screen.getByLabelText("The email as it will be sent")).toHaveTextContent(
+      "will be charged to the card ending 1111 on October 16, 2026.");
+  });
+
+  it("keeps the line on the sent invoice and on the draft form", async () => {
+    open(invoice({ autopay: { line: LINE, email_line: "" } }));
+    expect(await screen.findByRole("note")).toHaveTextContent(LINE);
+  });
+
+  it("says nothing when auto-pay is off", async () => {
+    open(invoice({ autopay: null }));
+    expect(await screen.findByText("Payments")).toBeInTheDocument();
+    expect(screen.queryByText(/Auto-pay is on/)).toBeNull();
+  });
+});

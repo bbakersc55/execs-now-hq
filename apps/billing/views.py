@@ -79,7 +79,7 @@ def books_category(row, role) -> dict:
 
 
 def represent(invoice, role=None) -> dict:
-    from apps.billing import pay_links
+    from apps.billing import autopay, pay_links
 
     pay_url = pay_links.url_of(invoice)
     lines = ClientInvoiceLine.all_objects.filter(invoice=invoice).order_by(
@@ -118,6 +118,8 @@ def represent(invoice, role=None) -> dict:
             "removed_by": _person(p.removed_by),
         } for p in payments],
         "merge_fields": list(services.MERGE_FIELDS),
+        # Whether auto-pay will charge it, for the practice to see on the page.
+        "autopay": autopay.for_practice(invoice),
     }
 
 

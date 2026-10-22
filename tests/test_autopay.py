@@ -25,7 +25,7 @@ from .factories import ContactEmailFactory, ContactFactory
 from .test_card_payments import PRIVATE, connect, sales
 from .test_card_payments import _after_commit_now  # noqa: F401  (autouse)
 from .test_client_invoicing import ready_to_bill  # noqa: F401  (a fixture)
-from .test_client_invoicing import a_client, post, sent
+from .test_client_invoicing import a_client, draft, post, sent
 
 ROOT = "/api/portal-autopay/"
 A = PaymentAttempt.Status
@@ -413,3 +413,56 @@ def test_auto_pay_mail_never_reaches_an_assistant(on, ff, contact, api, seeded_t
     va = _member(seeded_tenant, "VA")
     text = api.as_(va).get("/api/outbox/").content.decode()
     assert "Auto-pay" not in text and "could not charge" not in text
+
+
+# ------------------------------------------- finding B5 (demo, 2026-10-22)
+
+@pytest.mark.django_db
+def test_the_practice_sees_auto_pay_on_the_form_the_preview_and_the_sent_invoice(
+        on, ff, contact, api):
+    """On the demo the email went with the sentence, but the invoice page's
+    "The email as it will be sent" did not show it, and the practice had no
+    line of its own saying the invoice would be charged."""
+    made = draft(api, ff, on.client_company, contact).json()
+    line = (f"Auto-pay is on for {on.client_company.name}: charged to Visa …1111 on the "
+            "due date")
+    assert made["autopay"]["line"] == line
+    assert made["autopay"]["email_line"].startswith(
+        "This invoice will be charged to the card ending 1111 on ")
+    ready = post(api, ff, f"/api/invoices/{made['id']}/make-ready/").json()
+    assert ready["autopay"]["line"] == line
+    queued = invoice_email(ClientInvoice.all_objects.get(pk=made["id"]))
+    assert ready["autopay"]["email_line"] in queued.body_text, "the preview is the email"
+    done = post(api, ff, f"/api/invoices/{made['id']}/send/").json()
+    assert done["status"] == "sent" and done["autopay"] == {"line": line, "email_line": ""}
+    # Turned off: the sent invoice will not be charged, and no longer says so.
+    post(api, on, ROOT + "revoke/")
+    assert api.as_(ff).get(f"/api/invoices/{made['id']}/").json()["autopay"] is None
+
+
+@pytest.mark.django_db
+def test_no_line_without_a_card_and_consent(connected, ff, fcc, contact, api):
+    made = draft(api, ff, fcc.client_company, contact).json()
+    assert made["autopay"] is None
+    save_card(api, fcc)
+    assert api.as_(ff).get(f"/api/invoices/{made['id']}/").json()["autopay"] is None
+
+
+@pytest.mark.django_db
+def test_auto_pay_turned_on_while_the_email_waits_is_said_when_it_is_sent(
+        connected, ff, fcc, contact, api, seeded_tenant, stub_gateway):
+    """Ready before consent, sent after: the waiting email is queued again, so
+    it says when the card will be charged, and the invoice is charged."""
+    made = draft(api, ff, fcc.client_company, contact).json()
+    post(api, ff, f"/api/invoices/{made['id']}/make-ready/")
+    invoice = ClientInvoice.all_objects.get(pk=made["id"])
+    assert "will be charged" not in invoice_email(invoice).body_text
+    save_card(api, fcc)
+    turn_on(api, fcc)
+    assert post(api, ff, f"/api/invoices/{made['id']}/send/").status_code == 200
+    invoice.refresh_from_db()
+    assert "will be charged to the card ending 1111" in invoice_email(invoice).body_text
+    assert invoice_email(invoice).state == OutboxMessage.State.SENT
+    assert invoice.autopay_consent_id == AutopayConsent.all_objects.get().pk
+    run(seeded_tenant, due_today(invoice))
+    assert len(sales(stub_gateway)) == 1

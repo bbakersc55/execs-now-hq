@@ -55,6 +55,19 @@ const SUB_LABEL: Record<string, string> = {
   not_billed: "Not billed", needs_card: "No card yet", active: "Card on file",
   past_due: "Past due", canceled: "Canceled" };
 
+/** One line on every row, seen without opening anything (finding B2): the
+ *  plan amount, the card's state and the pricing program, or that the
+ *  platform owner's own practice is not billed. */
+export function billingLine(p: PracticeRow): string {
+  const program = PRICING[p.pricing_program] ?? "no pricing program yet";
+  const sub = p.subscription;
+  if (!sub) return program;
+  if (sub.not_billed) return `Not billed, your own practice · ${program}`;
+  const card = sub.status === "past_due" || sub.status === "canceled"
+    ? SUB_LABEL[sub.status] : sub.card_on_file ? "Card on file" : "No card yet";
+  return `$${(sub.amount_cents / 100).toFixed(2)} a month · ${card} · ${program}`;
+}
+
 /**
  * The Practices area (P2, owner 2026-10-02). The platform owner sees each
  * practice's record and its totals, and nothing inside it: no contacts, work,
@@ -157,6 +170,8 @@ export function Practices({ me }: { me?: Me }) {
                   <div className="spread" style={{ alignItems: "flex-start" }}>
                     <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0 }}>{p.display_name}</h3>
+                    <div className="small" aria-label={`Billing of ${p.display_name}`}>
+                      {billingLine(p)}</div>
                     {editing === p.id ? (
                       <div className="row" style={{ gap: "0.4rem", marginTop: "0.3rem" }}>
                         <input aria-label={`Legal name of ${p.display_name}`} value={draft.legal_name}
@@ -175,7 +190,6 @@ export function Practices({ me }: { me?: Me }) {
                     ) : (
                       <div className="muted small">
                         {p.legal_name || "No legal name yet"} · {p.domain || "no domain yet"}
-                        {" · "}{PRICING[p.pricing_program] ?? "no pricing program yet"}
                       </div>
                     )}
                     </div>
@@ -202,7 +216,7 @@ export function Practices({ me }: { me?: Me }) {
                     {p.subscription && (<>
                       <dt>Subscription</dt>
                       <dd>
-                        {p.subscription.not_billed ? "Not billed (your own practice)" : (<>
+                        {p.subscription.not_billed ? "Not billed, your own practice" : (<>
                           {amountFor?.id === p.id ? (
                             <span className="row tight">
                               <input aria-label={`Monthly amount for ${p.display_name}`}

@@ -67,6 +67,26 @@ class TenantStaffViewSet(viewsets.ModelViewSet):
         serializer.save(tenant=self.request.tenant)
 
 
+def _thanks_drafted(contact, change):
+    """{"to", "label"} of the referral thank-you a stage move drafted, or None."""
+    from apps.crm.models import Referral
+    from apps.crm.services import referrals
+
+    if change is None:
+        return None
+    ids = Referral.all_objects.filter(tenant_id=contact.tenant_id, prospect=contact,
+                                      pipeline_id=change.pipeline_id).values_list("pk", flat=True)
+    message = (OutboxMessage.all_objects.filter(
+        tenant_id=contact.tenant_id, producer=OutboxMessage.Producer.REFERRAL_THANKS,
+        source_id__in=list(ids), source_type__in=[referrals.SOURCE_TYPE[referrals.WON],
+                                                  referrals.SOURCE_TYPE[referrals.LOST]],
+        created_at__gte=change.created_at).select_related("to_contact").first())
+    if message is None:
+        return None
+    return {"to": referrals.full_name(message.to_contact) if message.to_contact else
+            message.to_address, "label": referrals.label_of(message)}
+
+
 class ContactViewSet(TenantStaffViewSet):
     serializer_class = crm_serializers.ContactSerializer
 
@@ -260,6 +280,9 @@ class ContactViewSet(TenantStaffViewSet):
         return Response({
             "contact": self.get_serializer(contact).data,
             "changed": change is not None,
+            # A referred prospect won or lost: the thank-you this move drafted,
+            # so the board can say where it is (finding T2, 2026-10-22).
+            "thanks_drafted": _thanks_drafted(contact, change),
         })
 
     @action(detail=True, methods=["post"], url_path="add-type")
@@ -322,6 +345,49 @@ class ContactViewSet(TenantStaffViewSet):
         a contact's inbox, however it was composed (assumption F3).
         """
         return self._bulk_draft(request, kind="email")
+
+    @action(detail=False, methods=["post"], url_path="draft-emails/preview")
+    def draft_emails_preview(self, request):
+        """The email "Email these contacts" would draft, for the first person
+        picked, and every field that has nothing for any of them, by name
+        (finding T5, 2026-10-22). Writes nothing."""
+        from apps.crm.services import templates
+
+        ids = request.data.get("ids") or []
+        if not isinstance(ids, list) or not ids:
+            return Response({"detail": "Select at least one contact."}, status=400)
+        contacts = list(crm_perms.contact_queryset_for(
+            request, Contact.objects.filter(pk__in=ids, deleted_at__isnull=True))
+            .select_related("company"))
+        if not contacts:
+            return Response({"detail": "Select at least one contact."}, status=400)
+        subject = str(request.data.get("subject") or "").replace("{first_name}", "{FirstName}")
+        body = str(request.data.get("body_text") or "").replace("{first_name}", "{FirstName}")
+        try:
+            templates.check(subject, body)
+        except templates.TemplateRefused as refused:
+            return Response({"detail": str(refused)}, status=400)
+        fallback = (str(request.data.get("fallback") or "").strip()
+                    or templates.DEFAULT_FALLBACK)
+        empty = {}
+        for contact in contacts:
+            values = templates.values_for(contact, tenant=request.tenant, sender=request.user)
+            for name in templates.empty_fields(values, subject, body):
+                empty.setdefault(name, []).append(
+                    f"{contact.first_name} {contact.last_name}".strip())
+        first = contacts[0]
+        values = templates.values_for(first, tenant=request.tenant, sender=request.user)
+        labels = dict(templates.FIELDS)
+        return Response({
+            "to": f"{first.first_name} {first.last_name}".strip(),
+            "subject": templates.render_subject(subject, values, fallback=fallback),
+            "body": templates.render(body, values, fallback=fallback),
+            "empty": [{
+                "field": name, "label": labels[name],
+                "why": templates.ONLY_IN.get(name, ""),
+                "people": len(people), "of": len(contacts),
+            } for name, people in empty.items()],
+        })
 
     def _bulk_draft(self, request, *, kind):
         ids = request.data.get("ids") or []

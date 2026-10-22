@@ -482,3 +482,51 @@ def test_no_sales_pipeline_is_said_not_guessed(seeded_tenant, ff, api, mark):
                                 content_type="application/json")
     assert response.status_code == 400
     assert "no sales pipeline" in str(response.json()["referrer"])
+
+
+# ------------------------------------------- finding T2 (demo, 2026-10-22)
+
+@pytest.mark.django_db
+def test_a_won_thanks_from_the_board_says_what_it_is_even_with_the_recorded_wording(
+        seeded_tenant, ff, mark, stages, api):
+    """On the demo the won thank-you WAS drafted, but from a template with the
+    recorded one's subject, so it read as the referrer's older draft. The board
+    now says one was drafted, and the queue and Outbox name the moment and
+    the prospect."""
+    from apps.crm.models import EmailTemplateUse
+
+    dana = person(seeded_tenant, "Dana", "Cole")
+    with tenant_context(seeded_tenant.pk):
+        referral_service.record(dana, mark, actor=ff.user)
+        recorded = EmailTemplateUse.all_objects.get(tenant=seeded_tenant,
+                                                    use="thanks_recorded").template
+    chose = api.as_(ff).post("/api/email-templates/uses/",
+                             {"use": "thanks_won", "template": str(recorded.pk)},
+                             content_type="application/json")
+    assert chose.status_code == 200
+    moved = api.as_(ff).post(f"/api/contacts/{dana.pk}/change-stage/",
+                             {"stage": str(stages[code_of("won", stages)].pk)},
+                             content_type="application/json").json()
+    assert moved["changed"] is True
+    assert moved["thanks_drafted"] == {
+        "to": "Mark Ellis", "label": "Referral thank-you, prospect won: Dana Cole"}
+    subjects = [m.subject for m in thanks(seeded_tenant)]
+    assert subjects == ["Thank you for the introduction"] * 2, "the same subject twice"
+
+    queue = api.as_(ff).get("/api/sending-queue/").json()
+    rows = queue["rows"] if isinstance(queue, dict) else queue
+    labels = sorted(r["label"] for r in rows if r.get("to_name") == "Mark Ellis")
+    assert labels == ["Referral thank-you, prospect won: Dana Cole",
+                      "Referral thank-you, referral recorded: Dana Cole"]
+    outbox_labels = sorted(m["label"] for m in api.as_(ff).get("/api/outbox/").json()
+                           if m["producer"] == "referral_thanks")
+    assert outbox_labels == labels
+
+
+@pytest.mark.django_db
+def test_a_move_that_drafts_nothing_says_nothing(seeded_tenant, ff, mark, stages, api):
+    dana = person(seeded_tenant, "Dana", "Cole")
+    moved = api.as_(ff).post(f"/api/contacts/{dana.pk}/change-stage/",
+                             {"stage": str(stages[code_of("won", stages)].pk)},
+                             content_type="application/json").json()
+    assert moved["changed"] is True and moved["thanks_drafted"] is None

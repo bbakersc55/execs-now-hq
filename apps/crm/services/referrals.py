@@ -245,6 +245,24 @@ def draft_thanks(referral, moment, *, actor=None):
     )
 
 
+#: How each moment's draft is named where it waits.
+MOMENT_LABEL = {RECORDED: "referral recorded", WON: "prospect won", LOST: "prospect lost"}
+
+
+def label_of(message) -> str:
+    """What a thank-you draft is for, where it waits: "Referral thank-you,
+    prospect won: Selina Kyle". Two thank-yous to the same referrer can share a
+    template's subject; this is what tells them apart (finding T2, 2026-10-22)."""
+    moment = next((m for m, source in SOURCE_TYPE.items()
+                   if source == message.source_type), None)
+    if moment is None:
+        return message.get_producer_display()
+    referral = (Referral.all_objects.filter(pk=message.source_id)
+                .select_related("prospect").first())
+    prospect = f": {full_name(referral.prospect)}" if referral is not None else ""
+    return f"Referral thank-you, {MOMENT_LABEL[moment]}{prospect}"
+
+
 def thanks_sent(message):
     """An approved thank-you is the referrer's touch: the next one is a full
     cadence period from now. Only for someone on a touch schedule."""

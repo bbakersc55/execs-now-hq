@@ -311,3 +311,24 @@ describe("Pipeline board", () => {
     expect(screen.queryByText(/Searching/)).not.toBeInTheDocument();
   });
 });
+
+/** Finding T2 (demo, 2026-10-22): a move that drafts a thank-you says so. */
+describe("a referral thank-you from the board", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("names the thank-you the move drafted and where it waits", async () => {
+    const fetchMock = mockApi({
+      "/api/pipelines/p-sales/board/": board(),
+      "/api/pipelines/": PIPELINES,
+      "POST /api/contacts/dana/change-stage/": { contact: DANA, changed: true,
+        thanks_drafted: { to: "Ben Wyatt",
+                          label: "Referral thank-you, prospect won: Dana Reyes" } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Pipeline />);
+    await screen.findByRole("link", { name: "Dana Reyes" });
+    dragCardTo(cardFor("Dana Reyes"), screen.getByLabelText(`${QUAL.label} column`));
+    expect(await screen.findByText(/A thank-you to Ben Wyatt is waiting in the sending queue/))
+      .toHaveTextContent("(Referral thank-you, prospect won: Dana Reyes)");
+  });
+});

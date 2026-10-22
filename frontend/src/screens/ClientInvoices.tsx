@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { PageHead } from "../components/shell";
+import { Modal, PageHead } from "../components/shell";
 import { NmiCardForm } from "../components/NmiCardForm";
 import { ClientAutopay } from "./ClientAutopay";
 import { Banner, Card, Empty, Pill } from "../components/ui";
@@ -22,7 +22,11 @@ export function ClientInvoices() {
   const qc = useQueryClient();
   const rows = useQuery<PortalInvoice[]>({
     queryKey: ["portal-invoices"],
-    queryFn: () => api.get<PortalInvoice[]>("/api/portal-invoices/") });
+    queryFn: () => api.get<PortalInvoice[]>("/api/portal-invoices/"),
+    // A payment still being checked settles by itself: the list asks again
+    // until it has, rather than waiting for a refresh (finding B5).
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((row) => row.payment_in_progress) ? 3000 : false });
   const [paying, setPaying] = useState<PortalInvoice | null>(null);
   const [outcome, setOutcome] = useState<{ kind: "ok" | "warn" | "bad"; text: string } | null>(
     null);
@@ -84,8 +88,9 @@ export function ClientInvoices() {
   );
 }
 
-/** The card form for one invoice, with the practice's public key fetched
- *  when someone presses Pay. */
+/** The card form for one invoice, as a pop-up over the page like New
+ *  invoice, the amount and "Test mode" in its header (finding B3); the
+ *  practice's public key is fetched when someone presses Pay. */
 function PayPanel({ invoice, onDone, onCancel }: {
   invoice: PortalInvoice; onDone: (result: PayResult) => void; onCancel: () => void;
 }) {
@@ -93,16 +98,18 @@ function PayPanel({ invoice, onDone, onCancel }: {
     queryKey: ["pay-config", invoice.id],
     queryFn: () => api.get<PayConfig>(`/api/portal-invoices/${invoice.id}/pay/`),
     staleTime: 0, gcTime: 0 });
+  const amount = config.data?.amount_cents ?? invoice.balance_cents;
 
   return (
-    <Card title={`Pay invoice ${invoice.number}`}
-      actions={<button className="ghost" onClick={onCancel}>Cancel</button>}>
+    <Modal label={`Pay invoice ${invoice.number}`} onClose={onCancel}
+      title={<>Pay invoice {invoice.number}: {dollars(amount)}
+        {config.data?.test_mode && <> <Pill kind="warn">Test mode</Pill></>}</>}>
       {config.isError && <Banner kind="bad">{(config.error as Error).message}</Banner>}
+      {!config.data && !config.isError && <p className="muted">Loading the card form…</p>}
       {config.data && (
         <>
           <p style={{ marginTop: 0 }}>
-            <strong>{dollars(config.data.amount_cents)}</strong>, the whole balance, by card.{" "}
-            {config.data.test_mode && <Pill kind="warn">Test mode</Pill>}
+            <strong>{dollars(config.data.amount_cents)}</strong>, the whole balance, by card.
           </p>
           {config.data.test_mode && (
             <p className="small muted">Test mode: this practice's card account is a test
@@ -112,6 +119,6 @@ function PayPanel({ invoice, onDone, onCancel }: {
             payPath={`/api/portal-invoices/${invoice.id}/pay/`} onDone={onDone} />
         </>
       )}
-    </Card>
+    </Modal>
   );
 }

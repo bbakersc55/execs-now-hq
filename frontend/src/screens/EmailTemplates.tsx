@@ -9,20 +9,31 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import { EmailTemplate, TEMPLATE_FIELDS, TemplateUse, api } from "../lib/api";
 
-/** The merge fields, as buttons that drop a chip at the cursor. */
-export function MergeFieldBar({ fields = TEMPLATE_FIELDS, fallback, onFallback }: {
-  fields?: { field: string; label: string }[];
+/** The merge fields, as buttons that drop a chip at the cursor. In one
+ *  email's composer (`oneEmail`), a field that has a value only in another
+ *  kind of email is listed greyed, saying where, and cannot be dropped in. */
+export function MergeFieldBar({ fields = TEMPLATE_FIELDS, fallback, onFallback, oneEmail = false }: {
+  fields?: { field: string; label: string; only?: string }[];
   fallback?: string;
   onFallback?: (value: string) => void;
+  oneEmail?: boolean;
 }) {
+  const usable = oneEmail ? fields.filter((f) => !f.only) : fields;
+  const elsewhere = oneEmail ? fields.filter((f) => f.only) : [];
   return (
     <div className="merge-fields" aria-label="Merge fields">
       <span className="small muted">Insert at the cursor:</span>
-      {fields.map(({ field, label }) => (
+      {usable.map(({ field, label }) => (
         <button key={field} type="button" className="small ghost" title={label}
           onMouseDown={(e) => { e.preventDefault(); insertMergeField(field); }}>
           {field}
         </button>
+      ))}
+      {elsewhere.map(({ field, only }) => (
+        <span key={field} className="small muted" aria-disabled="true"
+          aria-label={`${field}, ${only}`} style={{ opacity: 0.6 }}>
+          {field} <span className="tiny">({only})</span>
+        </span>
       ))}
       {onFallback && (
         <label className="inline small">If a first name is missing, use:
@@ -69,7 +80,7 @@ export function EmailTemplates() {
   });
   const create = useMutation({
     mutationFn: () => api.post<EmailTemplate>("/api/email-templates/", {
-      name: "New template", subject: "", body: "Hi {FirstName},\n\n",
+      name: "New template", subject: "A note from {PracticeName}", body: "Hi {FirstName},\n\n",
     }),
     onSuccess: (made) => { refresh(made); setNote({ kind: "ok", text: "Template added." }); },
     onError: fail,

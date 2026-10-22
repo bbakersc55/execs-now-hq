@@ -313,6 +313,8 @@ export interface OutboxMessage {
   id: string;
   state: string;
   producer: string;
+  /** What it is, in words; for a referral thank-you, which moment and whose. */
+  label?: string;
   to_contact: string | null;
   to_address: string;
   from_address: string;
@@ -1580,7 +1582,7 @@ export interface CampaignCandidate {
  * everywhere, mirrored from apps/crm/services/templates.py. The last three
  * mean something only in their own emails.
  */
-export const TEMPLATE_FIELDS: { field: string; label: string }[] = [
+export const TEMPLATE_FIELDS: { field: string; label: string; only?: string }[] = [
   { field: "{FirstName}", label: "First name" },
   { field: "{LastName}", label: "Last name" },
   { field: "{Company}", label: "Company" },
@@ -1588,9 +1590,14 @@ export const TEMPLATE_FIELDS: { field: string; label: string }[] = [
   { field: "{PracticeName}", label: "The practice's name" },
   { field: "{PracticeNews}", label: "What you're working on lately (Referral settings)" },
   { field: "{FeeTerms}", label: "Their referral fee terms" },
-  { field: "{ProspectName}", label: "Who they referred (thank-yous only)" },
-  { field: "{FlyerNote}", label: "The flyer line (a new partner's email only)" },
-  { field: "{PayLink}", label: "The invoice's payment link (invoice emails only)" },
+  // `only`: where it has a value; anywhere else it reads as blank
+  // (apps/crm/services/templates.ONLY_IN).
+  { field: "{ProspectName}", label: "Who they referred (thank-yous only)",
+    only: "only in referral thank-yous" },
+  { field: "{FlyerNote}", label: "The flyer line (a new partner's email only)",
+    only: "only in a new partner's first email" },
+  { field: "{PayLink}", label: "The invoice's payment link (invoice emails only)",
+    only: "only in invoice emails" },
 ];
 
 /** The fields a campaign can use: all but the two that belong to one email. */
@@ -1657,6 +1664,8 @@ export interface Invoice extends InvoiceRow {
   bill_to: { name?: string; company?: string; email?: string; address?: string };
   has_pdf: boolean; sent_at: string | null; voided_at: string | null; void_reason: string;
   lines: InvoiceLine[]; payments: InvoicePayment[]; merge_fields: string[];
+  /** Auto-pay will charge it: the practice's line, and what the email says. */
+  autopay?: { line: string; email_line: string } | null;
   /** Where its payments are entered in the books, "" for what its kind
    *  usually goes to. Sent to the practice owner only. */
   income_category?: string;

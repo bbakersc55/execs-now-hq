@@ -23,8 +23,10 @@ describe("the Practices area (P2)", () => {
     const row = (await screen.findByText("Executives Now")).closest("article")!;
     expect(within(row).getByText("$0.23")).toBeInTheDocument();
     expect(within(row).getByText("3")).toBeInTheDocument();
-    expect(within(row).getByText("No legal name yet · no domain yet · no pricing program yet"))
-      .toBeInTheDocument();
+    expect(within(row).getByText("No legal name yet · no domain yet")).toBeInTheDocument();
+    // The pricing program is on the billing line (finding B2, 2026-10-22).
+    expect(within(row).getByLabelText("Billing of Executives Now"))
+      .toHaveTextContent("no pricing program yet");
   });
 
   it("adds a practice with the five details, and says the owner is not invited yet", async () => {
@@ -64,7 +66,8 @@ describe("the Practices area (P2)", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderRoute(<Practices />);
     const row = (await screen.findByText("Executives Now")).closest("article")!;
-    expect(within(row).getByText(/Interchange-plus/)).toBeInTheDocument();
+    expect(within(row).getByLabelText("Billing of Executives Now"))
+      .toHaveTextContent("Interchange-plus");
     await user.click(within(row).getByRole("button", { name: "Edit" }));
     await user.selectOptions(within(row).getByLabelText("Pricing program of Executives Now"),
       "Dual pricing");

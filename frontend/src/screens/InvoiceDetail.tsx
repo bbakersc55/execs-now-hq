@@ -84,6 +84,8 @@ export function InvoiceDetail({ me }: { me: Me }) {
           <StatusPill row={i} />{i.kind === "contact"
             && <> <Pill>not a client: email only</Pill></>}</>} />
       {said && <Banner kind="bad">{said}</Banner>}
+      {/* For the practice, on the form and once sent: auto-pay will charge it. */}
+      {i.autopay && <div role="note"><Banner>{i.autopay.line}</Banner></div>}
 
       {i.status === "draft" && (
         <Draft invoice={i} busy={busy} onSaved={refresh} onError={setSaid}
@@ -222,6 +224,8 @@ function Email({ invoice: i }: { invoice: Invoice }) {
       <p className="small" style={{ margin: 0 }}>To <strong>{i.email_to}</strong></p>
       <p className="small" style={{ margin: 0 }}>Subject <strong>{i.email_subject}</strong></p>
       <p className="small" style={{ whiteSpace: "pre-line" }}>{i.email_body}</p>
+      {/* Added when it is queued, so the preview shows it too (finding B5). */}
+      {i.autopay?.email_line && <p className="small">{i.autopay.email_line}</p>}
       <p className="tiny muted" style={{ margin: 0 }}>Attached: Invoice-{i.number}.pdf</p>
     </div>
   );

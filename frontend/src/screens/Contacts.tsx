@@ -197,9 +197,10 @@ export function Contacts({ me }: { me: Me }) {
           <label htmlFor="bulk-subject">Subject</label>
           <input id="bulk-subject" value={draft.subject}
             onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
-          <MergeFieldBar fields={TEMPLATE_FIELDS.slice(0, 7)} />
+          <MergeFieldBar fields={TEMPLATE_FIELDS} oneEmail />
           <RichText plain label="Message" value={draft.body_text}
             onChange={(text) => setDraft({ ...draft, body_text: text })} />
+          <DraftPreview ids={picked} subject={draft.subject} body={draft.body_text} />
           <div style={{ marginTop: ".6rem" }}>
             <button className="primary" disabled={!draft.subject || draftEmails.isPending}
               onClick={() => draftEmails.mutate()}>
@@ -336,4 +337,44 @@ function stageLabel(pipelines: Pipeline[] | undefined, id: string) {
     if (found) return found.label;
   }
   return id;
+}
+
+
+interface DraftPreviewData {
+  to: string; subject: string; body: string;
+  empty: { field: string; label: string; why: string; people: number; of: number }[];
+}
+
+/** The email as the first person picked would get it, and every field that
+ *  has nothing in it, by name (finding T5): never a surprise blank. */
+function DraftPreview({ ids, subject, body }: { ids: string[]; subject: string; body: string }) {
+  const [asked, setAsked] = useState({ subject, body });
+  useEffect(() => {
+    const timer = setTimeout(() => setAsked({ subject, body }), 400);
+    return () => clearTimeout(timer);
+  }, [subject, body]);
+  const preview = useQuery<DraftPreviewData>({
+    queryKey: ["draft-preview", ids, asked],
+    queryFn: () => api.post<DraftPreviewData>("/api/contacts/draft-emails/preview/",
+      { ids, subject: asked.subject, body_text: asked.body }),
+    enabled: ids.length > 0 && !!(asked.subject.trim() || asked.body.trim()),
+  });
+  if (preview.isError) return <Banner kind="bad">{(preview.error as Error).message}</Banner>;
+  const p = preview.data;
+  if (!p) return null;
+  return (
+    <div className="card" aria-label="Preview" style={{ marginTop: ".6rem" }}>
+      <p className="small muted" style={{ marginTop: 0 }}>Preview for {p.to}, before your
+        signature</p>
+      <p className="small" style={{ margin: 0 }}>Subject <strong>{p.subject}</strong></p>
+      <p className="small" style={{ whiteSpace: "pre-line" }}>{p.body}</p>
+      {p.empty.map((e) => (
+        <div key={e.field} role="note">
+          <Banner kind="warn">{`{${e.field}}`} has nothing
+            {e.of > 1 ? ` for ${e.people} of ${e.of} people` : ""}
+            {e.why ? ` (${e.why})` : ""}, so it reads as blank.</Banner>
+        </div>
+      ))}
+    </div>
+  );
 }

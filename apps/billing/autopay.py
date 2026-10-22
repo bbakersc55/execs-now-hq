@@ -248,6 +248,30 @@ def email_line(invoice) -> tuple[AutopayConsent | None, str]:
                      f"{on:%B} {on.day}, {on.year}.")
 
 
+def for_practice(invoice) -> dict | None:
+    """The invoice page's plain line for the practice (finding B5, 2026-10-22):
+    "Auto-pay is on for Acme: charged to Visa …1111 on the due date", and the
+    sentence its email carries. A draft or ready invoice reads the company's
+    standing consent, as its email will when it is queued; a sent one the
+    consent it was tied to, while that still stands. None otherwise."""
+    S = ClientInvoice.Status
+    if not invoice.client_company_id or invoice.status in (S.PAID, S.VOID):
+        return None
+    card = card_on_file(invoice.client_company)
+    if invoice.status in (S.DRAFT, S.READY):
+        consent, email = email_line(invoice)
+    else:
+        consent = (AutopayConsent.all_objects.filter(pk=invoice.autopay_consent_id,
+                                                     revoked_at__isnull=True).first()
+                   if invoice.autopay_consent_id else None)
+        email = ""
+    if consent is None or card is None:
+        return None
+    return {"line": f"Auto-pay is on for {invoice.client_company.name}: charged to "
+                    f"{card.brand or 'the card'} …{card.last4} on the due date",
+            "email_line": email}
+
+
 # ------------------------------------------------------------- the job
 
 def run(tenant, *, today=None) -> dict:
