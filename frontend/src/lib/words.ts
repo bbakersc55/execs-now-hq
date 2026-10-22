@@ -1,7 +1,8 @@
 import { createContext, createElement, ReactNode, useContext, useMemo } from "react";
 
 /**
- * What this practice calls its goals, projects, tasks and steps (2026-10-15).
+ * What this practice calls its goals, projects, tasks and steps (2026-10-15),
+ * and its KPIs and scorecard (M5 part 1).
  *
  * Each practice names them in Settings → Branding → Wording; the server sends them on
  * `/api/me` as `words`. Screens read them with `useWords()` and never write
@@ -12,16 +13,21 @@ import { createContext, createElement, ReactNode, useContext, useMemo } from "re
  * Not applied to the platform owner's pages, the code or the API: URLs, field
  * names and the values in stored data keep "task", "project" and so on.
  */
-export type WordKind = "goal" | "project" | "task" | "step";
+export type WordKind = "goal" | "project" | "task" | "step" | "kpi" | "scorecard";
 export type WordPairs = Record<WordKind, { singular: string; plural: string }>;
 
+/** The four levels of the work, as Settings lists them. */
 export const WORD_KINDS: WordKind[] = ["goal", "project", "task", "step"];
+/** The scorecard's two words (M5), listed after the levels. */
+export const SCORECARD_WORD_KINDS: WordKind[] = ["kpi", "scorecard"];
 
 export const DEFAULT_WORD_PAIRS: WordPairs = {
   goal: { singular: "goal", plural: "goals" },
   project: { singular: "project", plural: "projects" },
   task: { singular: "task", plural: "tasks" },
   step: { singular: "step", plural: "steps" },
+  kpi: { singular: "KPI", plural: "KPIs" },
+  scorecard: { singular: "scorecard", plural: "scorecards" },
 };
 
 export interface Words {
@@ -30,6 +36,9 @@ export interface Words {
   aProject: string; AProject: string;
   task: string; tasks: string; Task: string; Tasks: string; aTask: string; ATask: string;
   step: string; steps: string; Step: string; Steps: string; aStep: string; AStep: string;
+  kpi: string; kpis: string; Kpi: string; Kpis: string; aKpi: string; AKpi: string;
+  scorecard: string; scorecards: string; Scorecard: string; Scorecards: string;
+  aScorecard: string; AScorecard: string;
   /** The word for a kind, as the place needs it. */
   of: (kind: WordKind, opts?: { plural?: boolean; capital?: boolean }) => string;
   /** "1 task", "3 tasks". */
@@ -55,6 +64,7 @@ export function makeWords(pairs?: Partial<WordPairs> | null): Words {
   });
   return {
     ...forms("goal"), ...forms("project"), ...forms("task"), ...forms("step"),
+    ...forms("kpi"), ...forms("scorecard"),
     of: (kind, opts = {}) => {
       const word = opts.plural ? many(kind) : one(kind);
       return opts.capital ? cap(word) : word;

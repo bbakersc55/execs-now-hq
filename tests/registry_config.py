@@ -49,6 +49,10 @@ from apps.finance.models import (
     FinanceGuide, FinanceImportBatch, FinanceImportProfile, FinanceImportRow,
     FinanceMonthClose, FinanceReconciliation, FinanceRule, FinanceSettings,
 )
+from apps.scorecard.models import (
+    Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange, KpiReminder, Scorecard,
+    ScorecardPage,
+)
 from apps.tenancy.registry import register
 
 from . import factories
@@ -277,3 +281,14 @@ register(FinanceForecastAdjustment, factories.FinanceForecastAdjustmentFactory,
          endpoints=("/api/finance-forecast/",))
 register(FinanceForecastSnapshot, factories.FinanceForecastSnapshotFactory,
          api_exposed=False)
+
+# --- M5 part 1: the KPI scorecard. Read only through /api/scorecard/, which
+# asks `apps.scorecard.access` (tests/test_scorecard.py). ---
+register(Scorecard, factories.ScorecardFactory, api_exposed=False)
+register(ScorecardPage, factories.ScorecardPageFactory, api_exposed=False)
+register(Kpi, factories.KpiFactory, api_exposed=False)
+register(KpiMonthTarget, factories.KpiMonthTargetFactory, api_exposed=False)
+register(KpiPerson, factories.KpiPersonFactory, api_exposed=False)
+register(KpiReading, factories.KpiReadingFactory, api_exposed=False)
+register(KpiReadingChange, factories.KpiReadingChangeFactory, api_exposed=False)
+register(KpiReminder, factories.KpiReminderFactory, api_exposed=False)

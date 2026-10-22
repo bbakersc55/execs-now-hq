@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "apps.billing",
     "apps.finance",
     "apps.personal",
+    "apps.scorecard",
 ]
 
 MIDDLEWARE = [

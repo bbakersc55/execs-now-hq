@@ -7,6 +7,7 @@ import { Banner, Card, Empty, Field, when } from "../components/ui";
 import {
   ACTIVITY_CATEGORIES, ActivityEntry, Company, Contact, Me, PortalPerson, api,
 } from "../lib/api";
+import { useWords } from "../lib/words";
 
 const LINK: Record<string, string> = {
   task: "/tasks", project: "/work/projects", goal: "/work/goals",
@@ -32,6 +33,8 @@ const TENANT = ["FF", "CF", "VA"];
  * Read-only for every role, with no exception and no write path behind it.
  */
 export function Activity({ me }: { me: Me }) {
+  const w = useWords();
+  const labels: Record<string, string> = { ...CATEGORY_LABELS, scorecard: w.Scorecard };
   const [company, setCompany] = useState("");
   const [contact, setContact] = useState("");
   const [actor, setActor] = useState("");
@@ -118,7 +121,7 @@ export function Activity({ me }: { me: Me }) {
               onChange={(e) => setCategory(e.target.value)}>
               <option value="">Everything</option>
               {ACTIVITY_CATEGORIES.map((c) => (
-                <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                <option key={c} value={c}>{labels[c]}</option>
               ))}
             </select>
           </Field>
@@ -141,7 +144,7 @@ export function Activity({ me }: { me: Me }) {
             {rows.map((e) => (
               <li key={e.id}>
                 <div>
-                  <span className="pill">{CATEGORY_LABELS[e.category] ?? e.category}</span>{" "}
+                  <span className="pill">{labels[e.category] ?? e.category}</span>{" "}
                   <strong>{e.by}</strong>
                   {e.on_behalf_of && <> on behalf of <strong>{e.on_behalf_of}</strong></>}{" "}
                   {e.text}

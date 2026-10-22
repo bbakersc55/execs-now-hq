@@ -52,7 +52,7 @@ SOURCE_CAP = 500
 LIMIT = 200
 
 CATEGORIES = ("work", "comment", "note", "email", "pipeline", "import",
-              "portal", "team", "act_as", "digest", "settings")
+              "portal", "team", "act_as", "digest", "settings", "scorecard")
 
 # Verb → (category, phrasing). A verb absent here is absent from the feed, so
 # adding an audited action is a deliberate act rather than an automatic leak.
@@ -124,13 +124,31 @@ AUDIT = {
     "client_team.person_removed": ("team", "took {target} off a team"),
     "portal.may_create_changed": ("team", "changed what {target} may create"),
     "portal.leads_all_teams_changed": ("team", "changed {target}'s senior leadership"),
+    # M5: a client's scorecard set up. `{name}` is the page's or the KPI's.
+    "scorecard.page_created": ("scorecard", "added the page “{name}” to {target}'s {scorecard}"),
+    "scorecard.page_changed": ("scorecard", "changed the page “{name}” of {target}'s {scorecard}"),
+    "scorecard.page_archived": ("scorecard",
+                                "archived the page “{name}” of {target}'s {scorecard}"),
+    "scorecard.page_restored": ("scorecard",
+                                "restored the page “{name}” of {target}'s {scorecard}"),
+    "scorecard.pages_reordered": ("scorecard", "reordered the pages of {target}'s {scorecard}"),
+    "scorecard.kpi_created": ("scorecard", "added the {kpi} “{name}” to {target}'s {scorecard}"),
+    "scorecard.kpi_changed": ("scorecard", "changed the {kpi} “{name}” on {target}'s {scorecard}"),
+    "scorecard.kpi_archived": ("scorecard",
+                               "archived the {kpi} “{name}” on {target}'s {scorecard}"),
+    "scorecard.kpi_restored": ("scorecard",
+                               "restored the {kpi} “{name}” on {target}'s {scorecard}"),
+    "scorecard.kpis_reordered": ("scorecard",
+                                 "reordered the {kpis} on “{name}”, {target}'s {scorecard}"),
+    "scorecard.week_start_changed": ("scorecard",
+                                     "changed when the week starts on {target}'s {scorecard}"),
 }
 
 
 def _forms(w) -> dict:
     """The practice's words as `AUDIT`'s phrasings name them."""
     out = {}
-    for kind in practice_words.KINDS:
+    for kind in practice_words.ALL_KINDS:
         out[kind], out[kind + "s"] = w.of(kind), w.of(kind, plural=True)
         out["a_" + kind] = getattr(w, "a_" + kind)
     return out
@@ -437,8 +455,13 @@ def _audit_entries(scope, since, until, actor):
             t = teams.get(a.target_id)
             company = t.client_company if t else None
         by, behalf = _person(a.actor, a.acting_user)
-        text = (_team_text(a, target, phrasing, scope.words) if category == "team"
-                else phrasing.format(target=target or "a record", **forms))
+        if category == "team":
+            text = _team_text(a, target, phrasing, scope.words)
+        elif category == "scorecard":
+            text = phrasing.format(target=target or "a company",
+                                   name=str(a.payload.get("name") or ""), **forms)
+        else:
+            text = phrasing.format(target=target or "a record", **forms)
         if a.verb == "goal.added_by_client" and a.payload.get("title"):
             text += f": “{a.payload['title']}”"
         if a.verb == "enrollment.started" and str(a.payload.get("source", "")).startswith(

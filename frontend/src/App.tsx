@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-  Receipt, Landmark, Users } from "lucide-react";
+  Receipt, Landmark, Users, Gauge } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 
@@ -25,6 +25,8 @@ import { AreaSwitch } from "./components/AreaSwitch";
 import { AgreementGate } from "./components/AgreementGate";
 import { TopBar } from "./components/TopBar";
 import { Profile } from "./screens/Profile";
+import { Scorecard } from "./screens/Scorecard";
+import { ScorecardEntry } from "./screens/ScorecardEntry";
 import { DigestSettings } from "./screens/DigestSettings";
 import { Settings } from "./screens/Settings";
 import { ContactTags } from "./screens/ContactTags";
@@ -113,6 +115,8 @@ type NavItem = {
   to: string; label: string | ((w: Words) => string); roles?: string[]; group?: string;
   /** Every nav item has one (design brief, Tier 1). */
   icon: typeof Mail;
+  /** Shown only when this holds for the person signed in. */
+  when?: (me: Me) => boolean;
 };
 
 /** The Practices area's whole navigation (P2). */
@@ -159,6 +163,9 @@ const NAV: NavItem[] = [
   // Module 4B — replaces FR-3.38's progress report. A place they can go,
   // not a document somebody remembered to send.
   { to: "/report", label: "Where we are", roles: CLIENT , icon: BarChart3 },
+  // M5 part 1: only for someone who sees at least one KPI.
+  { to: "/scorecard", label: (w) => w.Scorecard, roles: CLIENT, icon: Gauge,
+    when: (me) => !!me.has_scorecard },
   { to: "/invoices", label: "Invoices", roles: CLIENT, icon: Receipt },
   // P7 phase 3: the client owner sets up their company's teams.
   { to: "/team", label: "Your team", roles: ["FCC"], icon: Users },
@@ -291,7 +298,8 @@ export function App() {
   // The platform owner's pages keep the default words (2026-10-15).
   const words = makeWords(platform ? null : me.words);
   const visible = platform ? PLATFORM_NAV
-    : NAV.filter((n) => !n.roles || (me.role && n.roles.includes(me.role)));
+    : NAV.filter((n) => (!n.roles || (me.role && n.roles.includes(me.role)))
+      && (!n.when || n.when(me)));
 
   return (
     <WordsProvider pairs={platform ? null : me.words}>
@@ -357,6 +365,12 @@ export function App() {
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/companies" element={<Companies me={me} />} />
             <Route path="/companies/:id" element={<CompanyDetail me={me} />} />
+            {/* M5 part 1: a client's scorecard, for the practice. */}
+            <Route path="/companies/:id/scorecard" element={<Scorecard me={me} />} />
+            <Route path="/companies/:id/scorecard/enter" element={<ScorecardEntry me={me} />} />
+            {/* ...and the portal's own. */}
+            <Route path="/scorecard" element={<Scorecard me={me} />} />
+            <Route path="/scorecard/enter" element={<ScorecardEntry me={me} />} />
             <Route path="/vendors" element={<Vendors />} />
             <Route path="/sending-queue" element={<SendingQueue me={me} />} />
             <Route path="/waiting" element={<WaitingOnOthers />} />

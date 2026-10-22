@@ -500,6 +500,12 @@ def _forecast_counts(world) -> dict:
     }
 
 
+def _scorecard_count(model: str) -> int:
+    from apps.scorecard import models
+
+    return getattr(models, model).objects.count()
+
+
 def counts(world: World) -> dict:
     """What was seeded, counted from the database rather than remembered."""
     from apps.billing.models import ClientInvoice, ClientInvoiceSchedule, ClientPayment
@@ -560,6 +566,9 @@ def counts(world: World) -> dict:
         "stakeholders": Stakeholder.objects.count(),
         "digests": {s: Digest.objects.filter(state=s).count()
                     for s in ("pending", "sent")},
+        # M5 part 1: one client's scorecard.
+        "scorecard KPIs": _scorecard_count("Kpi"),
+        "scorecard readings": _scorecard_count("KpiReading"),
         "commitments open": Commitment.objects.filter(state="open").count(),
         "commitments overdue": Commitment.objects.filter(
             state="open", due_date__lt=today).count(),

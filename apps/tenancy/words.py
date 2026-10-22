@@ -1,5 +1,6 @@
 """What a practice calls its goals, projects, tasks and steps (Melissa's
-feedback, 2026-10-15).
+feedback, 2026-10-15), and its KPIs and scorecard (M5 part 1, since some
+practices say "metrics" or "numbers").
 
 Each practice names the four levels of its work itself, singular and plural.
 The words show wherever the practice and its portal read them: screens,
@@ -17,12 +18,17 @@ from dataclasses import dataclass
 
 #: The four levels, in the order Settings lists them.
 KINDS = ("goal", "project", "task", "step")
+#: The scorecard's two words (M5), listed after the levels.
+SCORECARD_KINDS = ("kpi", "scorecard")
+ALL_KINDS = KINDS + SCORECARD_KINDS
 
 DEFAULTS: dict[str, tuple[str, str]] = {
     "goal": ("goal", "goals"),
     "project": ("project", "projects"),
     "task": ("task", "tasks"),
     "step": ("step", "steps"),
+    "kpi": ("KPI", "KPIs"),
+    "scorecard": ("scorecard", "scorecards"),
 }
 
 MAX_LENGTH = 30
@@ -64,10 +70,14 @@ class Words:
     tasks: str
     step: str
     steps: str
+    kpi: str
+    kpis: str
+    scorecard: str
+    scorecards: str
 
     def __getattr__(self, name: str) -> str:
         # Capitalised forms (`Task`, `Goals`) and "a"/"an" forms (`a_task`).
-        if name.startswith("a_") and name[2:] in KINDS:
+        if name.startswith("a_") and name[2:] in ALL_KINDS:
             word = object.__getattribute__(self, name[2:])
             return f"{_article(word)} {word}"
         lower = name[:1].lower() + name[1:]
@@ -76,13 +86,14 @@ class Words:
         raise AttributeError(name)
 
     def of(self, kind: str, plural: bool = False, capital: bool = False) -> str:
-        """The word for `kind` (goal, project, task, step), as the place needs."""
+        """The word for `kind` (goal, project, task, step, kpi, scorecard), as
+        the place needs."""
         word = getattr(self, kind + ("s" if plural else ""))
         return _cap(word) if capital else word
 
     def as_dict(self) -> dict[str, dict[str, str]]:
         return {kind: {"singular": getattr(self, kind), "plural": getattr(self, kind + "s")}
-                for kind in KINDS}
+                for kind in ALL_KINDS}
 
 
 DEFAULT = Words(**{key: value for kind, (one, many) in DEFAULTS.items()
@@ -115,7 +126,7 @@ def save(tenant, *, actor, data: dict) -> Words:
 
     errors: dict[str, str] = {}
     stored: dict[str, list[str]] = {}
-    for kind in KINDS:
+    for kind in ALL_KINDS:
         pair = data.get(kind) or {}
         one = _norm(str(pair.get("singular", "")))
         many = _norm(str(pair.get("plural", "")))

@@ -278,6 +278,9 @@ def me(request):
             str(membership.client_company_id)
             if membership and membership.client_company_id else None
         ),
+        # M5 part 1: the portal's Scorecard entry shows only for someone who
+        # sees at least one KPI.
+        "has_scorecard": _has_scorecard(request),
         # Whether this build offers the development-only controls (the digest
         # "Generate now", for instance). False anywhere that is not localhost,
         # so the control cannot appear in front of a client.
@@ -291,6 +294,12 @@ def me(request):
         # its AI is off, if it is. Null everywhere else.
         "demo_visitor": _demo_visitor(membership),
     })
+
+
+def _has_scorecard(request) -> bool:
+    from apps.scorecard.views import has_scorecard
+
+    return has_scorecard(request)
 
 
 def _demo_visitor(membership):

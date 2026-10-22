@@ -1406,3 +1406,84 @@ class FinanceForecastSnapshotFactory(TenantScopedFactory):
     month = factory.LazyFunction(lambda: __import__("datetime").date(2026, 9, 1))
     taken_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 9, 1))
     forecast = {"start_cents": 0, "in_cents": 0, "out_cents": 0, "end_cents": 0, "by": {}}
+
+
+# --- M5 part 1: the KPI scorecard ---
+
+class ScorecardFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.Scorecard"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class ScorecardPageFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.ScorecardPage"
+
+    tenant = factory.SubFactory(TenantFactory)
+    scorecard = factory.SubFactory(ScorecardFactory, tenant=factory.SelfAttribute("..tenant"))
+    name = factory.Sequence(lambda n: f"Page {n}")
+
+
+class KpiFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.Kpi"
+
+    tenant = factory.SubFactory(TenantFactory)
+    page = factory.SubFactory(ScorecardPageFactory, tenant=factory.SelfAttribute("..tenant"))
+    scorecard = factory.SelfAttribute("page.scorecard")
+    name = factory.Sequence(lambda n: f"KPI {n}")
+    kind = "count"
+
+
+class KpiMonthTargetFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiMonthTarget"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    month = 1
+    value = 10
+
+
+class KpiPersonFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiPerson"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    membership = factory.SubFactory(
+        MembershipFactory, tenant=factory.SelfAttribute("..tenant"), role="ECC",
+        client_company=factory.SelfAttribute("..kpi.scorecard.company"))
+
+
+class KpiReadingFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiReading"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    period_start = factory.Sequence(lambda n: datetime.date(2026, 1, 5) + datetime.timedelta(days=7 * n))
+    value = 10
+    entered_at = factory.LazyFunction(timezone.now)
+
+
+class KpiReadingChangeFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiReadingChange"
+
+    tenant = factory.SubFactory(TenantFactory)
+    reading = factory.SubFactory(KpiReadingFactory, tenant=factory.SelfAttribute("..tenant"))
+    value = 10
+
+
+class KpiReminderFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiReminder"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    period_start = factory.Sequence(lambda n: datetime.date(2026, 1, 5) + datetime.timedelta(days=7 * n))
+    recipient = factory.SubFactory(UserFactory)

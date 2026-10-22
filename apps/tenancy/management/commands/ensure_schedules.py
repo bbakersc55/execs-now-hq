@@ -84,6 +84,11 @@ SCHEDULES = [
     # practice without the Cash forecast.
     ("finance.keep_month_forecast", "apps.finance.tasks.keep_month_forecast",
      Schedule.DAILY, None, 0),
+    # M5 part 1: a reading owner is reminded once when a period closes
+    # without a value, the morning after (a week's close is Monday morning).
+    # Safe to run twice: a period is reminded once.
+    ("scorecard.remind_missing", "apps.scorecard.tasks.remind_missing",
+     Schedule.DAILY, None, 8),
 ]
 
 

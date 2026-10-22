@@ -47,6 +47,7 @@ urlpatterns = [
     path("api/", include("apps.billing.urls")),
     path("api/", include("apps.finance.urls")),
     path("api/", include("apps.personal.urls")),
+    path("api/", include("apps.scorecard.urls")),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed
     # token IS the authentication, and it grants that one capability. Under
     # /api/ so the app's own page can render it (the dev proxy forwards /api);

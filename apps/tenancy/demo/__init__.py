@@ -6,7 +6,8 @@ owner, two associates and two assistants; eleven paying clients with goals,
 readings, milestones, projects and tasks moving; a sales pipeline with
 prospects at every stage; several dozen referral partners; strategy sessions
 at each point in their life; a meeting queue; digests waiting and sent; and
-invoices and books from January 2025 to the day it is seeded.
+invoices and books from January 2025 to the day it is seeded; and one client's
+KPI scorecard with thirteen weeks of readings.
 
 **Entirely fictional.** `cast.py` holds who is in it. Every address is at
 `.example`, a reserved domain that cannot receive mail, and nothing leaves
@@ -163,6 +164,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
     from apps.tenancy.context import tenant_context
 
     from . import comms, foundation, money, sessions, work
+    from .scorecard import scorecard
 
     world = foundation.practice(ff_email=ff_email, ff_name=ff_name,
                                 oauth_client=oauth_client, today=today, visitor=visitor)
@@ -172,6 +174,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         sessions.strategy(world)
         work.engagements(world)
         comms.everything(world)
+        scorecard(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the
         # demo's own content is written without Claude.

@@ -88,6 +88,9 @@ export interface Me {
   agreement_required?: boolean;
   /** P4 part 5: staff of a suspended practice see only the billing screen. */
   suspended?: boolean;
+  /** M5 part 1: a client user who sees at least one KPI gets the portal's
+   *  Scorecard entry. */
+  has_scorecard?: boolean;
   tenant: string | null;
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */
@@ -156,7 +159,7 @@ export interface ActAsCandidate {
 /** GET /api/activity/ — the practice's feed across every account. */
 export const ACTIVITY_CATEGORIES = [
   "work", "comment", "note", "email", "pipeline",
-  "import", "portal", "team", "act_as", "digest", "settings",
+  "import", "portal", "team", "act_as", "digest", "settings", "scorecard",
 ] as const;
 
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number];

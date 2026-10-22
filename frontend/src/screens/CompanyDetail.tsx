@@ -12,11 +12,14 @@ import { longDate } from "../lib/money";
 import { ClientTeamsCard } from "../components/ClientTeams";
 import { CompanyCommitments } from "../components/ContactCommitments";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
+import { ScorecardSetup } from "../components/ScorecardSetup";
+import { useWords } from "../lib/words";
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 
 export function CompanyDetail({ me }: { me: Me }) {
   const rowLink = useRowLink();
+  const w = useWords();
   const { id } = useParams();
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
@@ -108,6 +111,10 @@ export function CompanyDetail({ me }: { me: Me }) {
       {c.is_client_company && (me.role === "FF" || me.role === "CF") && (
         <CardOnFileLine companyId={c.id} />
       )}
+      {/* M5 part 1: an assistant sees the scorecard too, and sets nothing up. */}
+      {c.is_client_company && (
+        <p className="small"><Link to={`/companies/${c.id}/scorecard`}>{w.Scorecard} for this client</Link></p>
+      )}
 
       {/* As wide together as the Teams card below them (Bryan, 2026-10-15). */}
       <div className="record-cols span">
@@ -148,6 +155,9 @@ export function CompanyDetail({ me }: { me: Me }) {
       {/* A table with a column per team: it takes the page's width, below the
           pair above, rather than half of it (Bryan, 2026-10-14). */}
       <ClientTeamsCard me={me} company={c} />
+
+      {/* M5 part 1: the practice sets the client's scorecard up here. */}
+      <ScorecardSetup me={me} company={c} />
 
       {/* Promises made in meetings, open and done (2026-10-20). */}
       <CompanyCommitments companyId={c.id} />
