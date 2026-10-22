@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Enter readings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F6F5;font-family:Inter,'Helvetica Neue',Arial,sans-serif;color:#1B1F2A}
+a{color:#1F4E3D}a:hover{color:#163a2d}
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 1000px; background: #F4F6F5; font-size: 14px; line-height: 1.45">
+
+  <nav aria-label="Portal" style="flex: 0 0 232px; background: {{brand}}; color: #ffffff; padding: 24px 16px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px">
+      <svg width="30" height="26" viewBox="0 0 34 30" aria-hidden="true"><path d="M2 28 L13 8 L20 20 L24 14 L32 28 Z" fill="#ffffff"/><circle cx="26" cy="7" r="4" fill="{{accent}}"/></svg>
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.2">Summit Operations Partners</div>
+    </div>
+    <a href="#overview" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Overview</a>
+    <a href="#work" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Work</a>
+    <a href="#tasks" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Tasks</a>
+    <a href="#scorecard" aria-current="page" style="color: #ffffff; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 600; background: rgba(255,255,255,0.14)">Scorecard</a>
+    <a href="#invoices" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Invoices</a>
+    <a href="#team" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Your team</a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px">
+      <div style="font-size: 13px; color: #5C6370"><a href="Main.dc.html" style="text-decoration: none; font-weight: 500">Scorecard</a> › Enter readings · Signed in as Maya Ortiz, Manager, Guest services</div>
+      <div style="width: 36px; height: 36px; border-radius: 50%; background: {{accent}}; color: #1B1F2A; font-weight: 700; display: flex; align-items: center; justify-content: center">MO</div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.01em">Enter readings</h1>
+        <div style="font-size: 14px; color: #5C6370">Only the KPIs you're responsible for are listed. Last week's value sits beside each field.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+        <label for="period" style="font-size: 13px; color: #5C6370">Period</label>
+        <select id="period" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #E3E7E4; background: #ffffff; font: inherit; color: #1B1F2A">
+          <option>Week of Oct 12 to 18, 2026 (closes Sunday)</option><option>Week of Oct 5 to 11, 2026</option><option>Week of Sep 28 to Oct 4, 2026</option>
+        </select>
+        <a href="#catch-up" style="font-size: 13px; font-weight: 500">Catch up on several weeks</a>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start">
+
+      <form style="grid-column: span 2; display: flex; flex-direction: column; gap: 16px; min-width: 0">
+
+        <section aria-label="Company KPIs you enter" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap">
+            <div style="font-size: 15px; font-weight: 600">Company KPIs you enter</div>
+            <div style="font-size: 12px; color: #5C6370">Occupancy, Bookings, Average daily rate and Overtime are entered by Elena and Sam</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 160px 120px; gap: 12px; align-items: center">
+            <label for="rating" style="font-weight: 500">Guest rating <span style="font-weight: 400; color: #5C6370">· average of the week's reviews, out of 5</span></label>
+            <div style="display: flex; align-items: center; border: 1px solid #C9D0CC; border-radius: 10px; background: #ffffff; height: 44px; overflow: hidden"><input id="rating" type="text" inputmode="decimal" value="4.7" style="flex: 1; min-width: 0; height: 44px; border: 0; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600; color: #1B1F2A; background: transparent"><span style="padding: 0 12px; color: #5C6370; font-size: 13px; border-left: 1px solid #E3E7E4; height: 44px; display: flex; align-items: center">of 5</span></div>
+            <div style="font-size: 13px; color: #5C6370">last week 4.7</div>
+          </div>
+        </section>
+
+        <section aria-label="Your team, Guest services" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap">
+            <div style="font-size: 15px; font-weight: 600">Your team, Guest services</div>
+            <div style="font-size: 12px; color: #5C6370">One row per person · each person sees only their own row on the scorecard</div>
+          </div>
+          <div style="overflow-x: auto">
+            <table style="border-collapse: collapse; width: 100%; min-width: 560px">
+              <thead>
+                <tr style="font-size: 11px; color: #5C6370; letter-spacing: 0.06em; text-transform: uppercase">
+                  <th scope="col" style="text-align: left; padding: 6px 8px 10px; font-weight: 600">Person</th>
+                  <th scope="col" style="text-align: left; padding: 6px 8px 10px; font-weight: 600">Five-star reviews <span style="text-transform: none; letter-spacing: 0; font-weight: 400">· count, target 10</span></th>
+                  <th scope="col" style="text-align: left; padding: 6px 8px 10px; font-weight: 600">Response time <span style="text-transform: none; letter-spacing: 0; font-weight: 400">· minutes, keep under 15</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row" style="text-align: left; padding: 6px 8px; font-weight: 500; white-space: nowrap">Dev Patel</th>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="r1" style="position: absolute; left: -9999px">Dev Patel five-star reviews</label><input id="r1" type="text" inputmode="numeric" value="14" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 11</span></div></td>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="t1" style="position: absolute; left: -9999px">Dev Patel response time</label><input id="t1" type="text" inputmode="numeric" value="9" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 10</span></div></td>
+                </tr>
+                <tr>
+                  <th scope="row" style="text-align: left; padding: 6px 8px; font-weight: 500; white-space: nowrap">Maya Ortiz <span style="font-weight: 400; color: #5C6370">(you)</span></th>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="r2" style="position: absolute; left: -9999px">Maya Ortiz five-star reviews</label><input id="r2" type="text" inputmode="numeric" value="12" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 12</span></div></td>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="t2" style="position: absolute; left: -9999px">Maya Ortiz response time</label><input id="t2" type="text" inputmode="numeric" value="11" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 14</span></div></td>
+                </tr>
+                <tr>
+                  <th scope="row" style="text-align: left; padding: 6px 8px; font-weight: 500; white-space: nowrap">Jonah Reyes</th>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="r3" style="position: absolute; left: -9999px">Jonah Reyes five-star reviews</label><input id="r3" type="text" inputmode="numeric" value="9" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 10</span></div></td>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="t3" style="position: absolute; left: -9999px">Jonah Reyes response time</label><input id="t3" type="text" inputmode="numeric" value="13" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 12</span></div></td>
+                </tr>
+                <tr>
+                  <th scope="row" style="text-align: left; padding: 6px 8px; font-weight: 500; white-space: nowrap">Priya Nair</th>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="r4" style="position: absolute; left: -9999px">Priya Nair five-star reviews</label><input id="r4" type="text" inputmode="numeric" value="8" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 9</span></div></td>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="t4" style="position: absolute; left: -9999px">Priya Nair response time</label><input id="t4" type="text" inputmode="numeric" value="12" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 12</span></div></td>
+                </tr>
+                <tr>
+                  <th scope="row" style="text-align: left; padding: 6px 8px; font-weight: 500; white-space: nowrap">Tom Alvarez</th>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="r5" style="position: absolute; left: -9999px">Tom Alvarez five-star reviews</label><input id="r5" type="text" inputmode="numeric" value="5" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #5C6370">last 6</span></div></td>
+                  <td style="padding: 6px 8px"><div style="display: flex; align-items: center; gap: 10px"><label for="t5" style="position: absolute; left: -9999px">Tom Alvarez response time</label><input id="t5" type="text" inputmode="numeric" value="18" style="width: 90px; height: 44px; border: 1px solid #C9D0CC; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600"><span style="font-size: 13px; color: #9B2C1E; font-weight: 500">last 19 · off track</span></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="font-size: 12px; color: #5C6370">Team total this week: 48 five-star reviews · average response 12.6 minutes</div>
+        </section>
+
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+          <button type="submit" style="height: 44px; padding: 0 20px; border-radius: 10px; border: 0; background: {{brand}}; color: #ffffff; font: inherit; font-weight: 700">Save readings</button>
+          <a href="Main.dc.html" style="font-weight: 500; text-decoration: none">Cancel</a>
+          <span style="font-size: 12px; color: #5C6370">Saving again replaces a value and keeps the earlier one in its history, with who changed it.</span>
+        </div>
+      </form>
+
+      <aside aria-label="This week" style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+        <section style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="font-size: 14px; font-weight: 600">This week, across the company</div>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+            <div style="display: flex; justify-content: space-between; gap: 8px"><span>Occupancy</span><span style="color: #1F7A4D; font-weight: 600">In · Elena</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px"><span>Bookings</span><span style="color: #1F7A4D; font-weight: 600">In · Sam</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px"><span>Average daily rate</span><span style="color: #6E4F0E; font-weight: 600">Waiting · Jonah</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px"><span>Guest rating</span><span style="color: #5C6370; font-weight: 600">Yours, above</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px"><span>Overtime hours</span><span style="color: #1F7A4D; font-weight: 600">In · Sam</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px"><span>Five-star reviews</span><span style="color: #5C6370; font-weight: 600">Yours, above</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px"><span>Response time</span><span style="color: #5C6370; font-weight: 600">Yours, above</span></div>
+          </div>
+          <div style="font-size: 12px; color: #5C6370; border-top: 1px solid #EEF1EF; padding-top: 10px">The week closes Sunday night. Anyone still waiting gets one reminder Monday morning and a line in Friday's digest.</div>
+        </section>
+        <section style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">How these are measured</div>
+          <div style="font-size: 13px; color: #3A4150"><span style="font-weight: 600">Five-star reviews.</span> Count of 5-star guest reviews posted this week, by the agent who handled the stay.</div>
+          <div style="font-size: 13px; color: #3A4150"><span style="font-weight: 600">Response time.</span> Average minutes from a guest message to the first reply, from the messaging report.</div>
+          <div style="font-size: 12px; color: #5C6370">Set by the practice on each KPI; shown here so the number means the same thing every week.</div>
+        </section>
+      </aside>
+
+    </div>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"brand":{"editor":"color","default":"#1F4E3D","section":"Practice branding"},"accent":{"editor":"color","default":"#B98A2E","section":"Practice branding"},"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { brand: this.props.brand ?? '#1F4E3D', accent: this.props.accent ?? '#B98A2E' };
+  }
+}
+</script>
+</body>
+</html>

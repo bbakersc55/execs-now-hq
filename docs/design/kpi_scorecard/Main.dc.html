@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scorecard, tiles view</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F6F5;font-family:Inter,'Helvetica Neue',Arial,sans-serif;color:#1B1F2A}
+a{color:#1F4E3D}a:hover{color:#163a2d}
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 1040px; background: #F4F6F5; font-size: 14px; line-height: 1.45">
+
+  <nav aria-label="Portal" style="flex: 0 0 232px; background: {{brand}}; color: #ffffff; padding: 24px 16px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px">
+      <svg width="30" height="26" viewBox="0 0 34 30" aria-hidden="true"><path d="M2 28 L13 8 L20 20 L24 14 L32 28 Z" fill="#ffffff"/><circle cx="26" cy="7" r="4" fill="{{accent}}"/></svg>
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.2">Summit Operations Partners</div>
+    </div>
+    <a href="#overview" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Overview</a>
+    <a href="#work" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Work</a>
+    <a href="#tasks" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Tasks</a>
+    <a href="#scorecard" aria-current="page" style="color: #ffffff; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 600; background: rgba(255,255,255,0.14)">Scorecard</a>
+    <a href="#invoices" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Invoices</a>
+    <a href="#team" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Your team</a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px">
+      <div style="font-size: 13px; color: #5C6370">Alpine Stay Co. · Signed in as Maya Ortiz, Manager, Guest services</div>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <button type="button" aria-label="Notices" style="width: 36px; height: 36px; border-radius: 10px; border: 1px solid #E3E7E4; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B1F2A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: {{accent}}; color: #1B1F2A; font-weight: 700; display: flex; align-items: center; justify-content: center">MO</div>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.01em; color: #1B1F2A">Scorecard</h1>
+        <div style="font-size: 14px; color: #5C6370">Week of October 12 to 18, 2026 · 7 of 8 readings in · 2 behind, 1 off track</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+        <label for="window" style="font-size: 13px; color: #5C6370">Window</label>
+        <select id="window" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #E3E7E4; background: #ffffff; font: inherit; color: #1B1F2A">
+          <option>This week</option><option>This month</option><option>This quarter</option><option>Year to date</option><option>Last year</option><option>Custom dates…</option>
+        </select>
+        <div role="group" aria-label="View" style="display: flex; border: 1px solid #E3E7E4; border-radius: 10px; overflow: hidden; background: #ffffff">
+          <button type="button" aria-pressed="true" style="height: 40px; padding: 0 14px; border: 0; background: {{brand}}; color: #ffffff; font: inherit; font-weight: 600">Tiles</button>
+          <button type="button" style="height: 40px; padding: 0 14px; border: 0; background: #ffffff; color: #1B1F2A; font: inherit; font-weight: 500">Grid</button>
+          <button type="button" style="height: 40px; padding: 0 14px; border: 0; background: #ffffff; color: #1B1F2A; font: inherit; font-weight: 500">Meeting</button>
+        </div>
+        <button type="button" style="height: 40px; padding: 0 16px; border-radius: 10px; border: 0; background: {{accent}}; color: #1B1F2A; font: inherit; font-weight: 700">Enter readings</button>
+      </div>
+    </div>
+
+    <div role="tablist" aria-label="Scorecard pages" style="display: flex; gap: 4px; border-bottom: 1px solid #E3E7E4; flex-wrap: wrap">
+      <button type="button" role="tab" aria-selected="true" style="padding: 10px 14px; border: 0; border-bottom: 3px solid {{brand}}; background: transparent; font: inherit; font-weight: 600; color: {{brand}}; margin-bottom: -1px">Weekly scorecard</button>
+      <button type="button" role="tab" aria-selected="false" style="padding: 10px 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-weight: 500; color: #5C6370; margin-bottom: -1px">Guest services</button>
+      <button type="button" role="tab" aria-selected="false" style="padding: 10px 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-weight: 500; color: #5C6370; margin-bottom: -1px">Bonus</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
+
+      <section aria-label="Occupancy" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Occupancy</div>
+          <span style="background: #FBF1DA; color: #6E4F0E; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px">Behind</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <div style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1">78%</div>
+          <div style="font-size: 13px; color: #9B2C1E; font-weight: 600">▼ 3 pts</div>
+          <div style="font-size: 13px; color: #5C6370">target 82%</div>
+        </div>
+        <svg viewBox="0 0 120 36" width="100%" height="40" preserveAspectRatio="none" role="img" aria-label="Last 13 weeks of occupancy, peaked at 90 percent in late August, now 78"><line x1="0" y1="15.5" x2="120" y2="15.5" stroke="#B98A2E" stroke-width="1" stroke-dasharray="3 3"/><polyline fill="none" stroke="{{brand}}" stroke-width="2" stroke-linejoin="round" points="0,34 10,28.9 20,20.5 30,12.1 40,5.4 50,2 60,8.7 70,13.8 80,18.8 90,23.9 100,20.5 110,17.2 120,22.2"/><circle cx="120" cy="22.2" r="2.5" fill="{{brand}}"/></svg>
+        <div style="font-size: 12px; color: #5C6370">Weekly · average over the window · last 13 weeks shown</div>
+      </section>
+
+      <section aria-label="Guest rating" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Guest rating</div>
+          <span style="background: #E6F2EB; color: #1F7A4D; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px">On track</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 16px">
+          <svg viewBox="0 0 200 110" width="150" height="84" role="img" aria-label="Gauge from 4.0 to 5.0 showing 4.7 against a target of 4.6"><path d="M20,100 A80,80 0 0 1 180,100" fill="none" stroke="#E3E7E4" stroke-width="14" stroke-linecap="round"/><path d="M20,100 A80,80 0 0 1 147,35.3" fill="none" stroke="#1F7A4D" stroke-width="14" stroke-linecap="round"/><line x1="100" y1="100" x2="147" y2="35.3" stroke="#1B1F2A" stroke-width="3" stroke-linecap="round"/><circle cx="100" cy="100" r="5" fill="#1B1F2A"/><line x1="133" y1="26" x2="140" y2="34" stroke="#B98A2E" stroke-width="3"/></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <div style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1">4.7</div>
+            <div style="font-size: 13px; color: #5C6370">of 5 · target 4.6</div>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #5C6370">Weekly · average · 212 reviews this week</div>
+      </section>
+
+      <section aria-label="Revenue" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Revenue, October</div>
+          <span style="background: #E6F2EB; color: #1F7A4D; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px">On track</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <div style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1">$184,200</div>
+          <div style="font-size: 13px; color: #5C6370">of $210,000</div>
+        </div>
+        <div style="height: 12px; background: #E3E7E4; border-radius: 6px; overflow: hidden; position: relative"><div style="width: 88%; height: 12px; background: {{brand}}; border-radius: 6px"></div><div style="position: absolute; left: 68%; top: -2px; width: 2px; height: 16px; background: #B98A2E"></div></div>
+        <div style="font-size: 13px; color: #1B1F2A; font-weight: 500">$25,800 to go with 10 days left · ahead of pace (gold mark)</div>
+        <div style="font-size: 12px; color: #5C6370">Monthly · sum · from the PMS report</div>
+      </section>
+
+      <section aria-label="Bookings" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Bookings</div>
+          <span style="background: #FBF1DA; color: #6E4F0E; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px">Behind</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <div style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1">89</div>
+          <div style="font-size: 13px; color: #5C6370">this week · target 95</div>
+        </div>
+        <svg viewBox="0 0 300 90" width="100%" height="64" preserveAspectRatio="none" role="img" aria-label="Bookings per week for 13 weeks as bars, with the target of 95 as a line"><rect x="0" y="26.8" width="18" height="58.2" rx="2" fill="#C9D6CF"/><rect x="23" y="24.2" width="18" height="60.8" rx="2" fill="#C9D6CF"/><rect x="46" y="18.2" width="18" height="66.8" rx="2" fill="#C9D6CF"/><rect x="69" y="12.3" width="18" height="72.7" rx="2" fill="#C9D6CF"/><rect x="92" y="7" width="18" height="78" rx="2" fill="#C9D6CF"/><rect x="115" y="5" width="18" height="80" rx="2" fill="#C9D6CF"/><rect x="138" y="11" width="18" height="74" rx="2" fill="#C9D6CF"/><rect x="161" y="16.2" width="18" height="68.8" rx="2" fill="#C9D6CF"/><rect x="184" y="20.9" width="18" height="64.1" rx="2" fill="#C9D6CF"/><rect x="207" y="25.5" width="18" height="59.5" rx="2" fill="#C9D6CF"/><rect x="230" y="23.5" width="18" height="61.5" rx="2" fill="#C9D6CF"/><rect x="253" y="21.5" width="18" height="63.5" rx="2" fill="#C9D6CF"/><rect x="276" y="26.2" width="18" height="58.8" rx="2" fill="{{brand}}"/><line x1="0" y1="22.2" x2="300" y2="22.2" stroke="#B98A2E" stroke-width="1.5" stroke-dasharray="4 3"/></svg>
+        <div style="font-size: 12px; color: #5C6370">Weekly · sum over the window · 13 weeks shown</div>
+      </section>
+
+      <section aria-label="Average daily rate" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Average daily rate</div>
+          <span style="background: #FBF1DA; color: #6E4F0E; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px">Behind</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <div style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1">$249</div>
+          <div style="font-size: 13px; color: #5C6370">target $265</div>
+        </div>
+        <svg viewBox="0 0 300 90" width="100%" height="64" preserveAspectRatio="none" role="img" aria-label="Average daily rate over 13 weeks as a line, peaking at 305 dollars in August and now 249"><rect x="0" y="47" width="300" height="12" fill="#FBF1DA"/><line x1="0" y1="53.1" x2="300" y2="53.1" stroke="#B98A2E" stroke-width="1.5" stroke-dasharray="4 3"/><polyline fill="none" stroke="{{brand}}" stroke-width="2.5" stroke-linejoin="round" points="0,80 25,71.4 50,56.3 75,35.8 100,17.5 125,10 150,26.2 175,41.2 200,49.8 225,60.6 250,68.2 275,63.8 300,70.3"/><circle cx="300" cy="70.3" r="3.5" fill="{{brand}}"/></svg>
+        <div style="font-size: 12px; color: #5C6370">Weekly · average · band is within 5% of target</div>
+      </section>
+
+      <section aria-label="Overtime hours" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Overtime hours</div>
+          <span style="background: #E6F2EB; color: #1F7A4D; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px">On track</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <div style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1">36 h</div>
+          <div style="font-size: 13px; color: #1F7A4D; font-weight: 600">▼ 2 h</div>
+          <div style="font-size: 13px; color: #5C6370">keep under 40 h</div>
+        </div>
+        <div style="display: flex; gap: 4px; margin-top: 6px" aria-label="Status by week, oldest first"><span style="flex: 1; height: 10px; border-radius: 3px; background: #9B2C1E"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #9B2C1E"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #9B2C1E"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #D9A441"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #1F7A4D"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #D9A441"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #9B2C1E"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #1F7A4D"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #1F7A4D"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #1F7A4D"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #D9A441"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #1F7A4D"></span><span style="flex: 1; height: 10px; border-radius: 3px; background: #1F7A4D"></span></div>
+        <div style="font-size: 12px; color: #5C6370">Weekly · lower is better · 13 weeks of status</div>
+      </section>
+
+      <section aria-label="Five-star reviews by agent" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Five-star reviews, by agent</div>
+          <span style="font-size: 12px; color: #5C6370">target 10 each</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px">
+          <div style="display: grid; grid-template-columns: 24px 1fr 120px 32px; align-items: center; gap: 10px"><span style="font-size: 12px; color: #5C6370">1</span><span style="font-weight: 500">Dev Patel</span><span style="height: 8px; background: #E3E7E4; border-radius: 4px; overflow: hidden"><span style="display: block; width: 100%; height: 8px; background: {{brand}}"></span></span><span style="text-align: right; font-weight: 600">14</span></div>
+          <div style="display: grid; grid-template-columns: 24px 1fr 120px 32px; align-items: center; gap: 10px"><span style="font-size: 12px; color: #5C6370">2</span><span style="font-weight: 500">Maya Ortiz</span><span style="height: 8px; background: #E3E7E4; border-radius: 4px; overflow: hidden"><span style="display: block; width: 86%; height: 8px; background: {{brand}}"></span></span><span style="text-align: right; font-weight: 600">12</span></div>
+          <div style="display: grid; grid-template-columns: 24px 1fr 120px 32px; align-items: center; gap: 10px"><span style="font-size: 12px; color: #5C6370">3</span><span style="font-weight: 500">Jonah Reyes</span><span style="height: 8px; background: #E3E7E4; border-radius: 4px; overflow: hidden"><span style="display: block; width: 64%; height: 8px; background: #D9A441"></span></span><span style="text-align: right; font-weight: 600">9</span></div>
+          <div style="display: grid; grid-template-columns: 24px 1fr 120px 32px; align-items: center; gap: 10px"><span style="font-size: 12px; color: #5C6370">4</span><span style="font-weight: 500">Priya Nair</span><span style="height: 8px; background: #E3E7E4; border-radius: 4px; overflow: hidden"><span style="display: block; width: 57%; height: 8px; background: #D9A441"></span></span><span style="text-align: right; font-weight: 600">8</span></div>
+          <div style="display: grid; grid-template-columns: 24px 1fr 120px 32px; align-items: center; gap: 10px"><span style="font-size: 12px; color: #5C6370">5</span><span style="font-weight: 500">Tom Alvarez</span><span style="height: 8px; background: #E3E7E4; border-radius: 4px; overflow: hidden"><span style="display: block; width: 36%; height: 8px; background: #9B2C1E"></span></span><span style="text-align: right; font-weight: 600">5</span></div>
+        </div>
+        <div style="font-size: 12px; color: #5C6370">Weekly · per person · leaderboard on for this KPI</div>
+      </section>
+
+      <section aria-label="Response time, your row" style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-height: 196px; border-left: 1px solid #E3E7E4">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+          <div style="font-size: 14px; font-weight: 600">Response time, yours</div>
+          <span style="background: #E6F2EB; color: #1F7A4D; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px">On track</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <div style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1">11 min</div>
+          <div style="font-size: 13px; color: #1F7A4D; font-weight: 600">▼ 3 min</div>
+          <div style="font-size: 13px; color: #5C6370">keep under 15</div>
+        </div>
+        <svg viewBox="0 0 120 36" width="100%" height="40" preserveAspectRatio="none" role="img" aria-label="Your response time over 13 weeks, improving from 22 minutes to 11"><line x1="0" y1="20" x2="120" y2="20" stroke="#B98A2E" stroke-width="1" stroke-dasharray="3 3"/><polyline fill="none" stroke="{{brand}}" stroke-width="2" stroke-linejoin="round" points="0,2 10,5 20,9 30,8 40,14 50,17 60,15 70,21 80,24 90,22 100,27 110,30 120,32"/><circle cx="120" cy="32" r="2.5" fill="{{brand}}"/></svg>
+        <div style="font-size: 12px; color: #5C6370">Weekly · average · only you see this row; your manager sees the team</div>
+      </section>
+
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #5C6370; padding-top: 4px">
+      <div>Missing this week: Average daily rate is waiting on Jonah Reyes · reminded Monday</div>
+      <div>Status: On track at or past target · Behind within 10% · Off track beyond</div>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"brand":{"editor":"color","default":"#1F4E3D","section":"Practice branding"},"accent":{"editor":"color","default":"#B98A2E","section":"Practice branding"},"$preview":{"width":1280,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { brand: this.props.brand ?? '#1F4E3D', accent: this.props.accent ?? '#B98A2E' };
+  }
+}
+</script>
+</body>
+</html>

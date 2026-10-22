@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scorecard, grid view</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F6F5;font-family:Inter,'Helvetica Neue',Arial,sans-serif;color:#1B1F2A}
+a{color:#1F4E3D}a:hover{color:#163a2d}
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 760px; background: #F4F6F5; font-size: 14px; line-height: 1.45">
+
+  <nav aria-label="Portal" style="flex: 0 0 232px; background: {{brand}}; color: #ffffff; padding: 24px 16px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px">
+      <svg width="30" height="26" viewBox="0 0 34 30" aria-hidden="true"><path d="M2 28 L13 8 L20 20 L24 14 L32 28 Z" fill="#ffffff"/><circle cx="26" cy="7" r="4" fill="{{accent}}"/></svg>
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.2">Summit Operations Partners</div>
+    </div>
+    <a href="#overview" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Overview</a>
+    <a href="#work" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Work</a>
+    <a href="#tasks" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Tasks</a>
+    <a href="#scorecard" aria-current="page" style="color: #ffffff; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 600; background: rgba(255,255,255,0.14)">Scorecard</a>
+    <a href="#invoices" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Invoices</a>
+    <a href="#team" style="color: #D6E4DC; text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500">Your team</a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px">
+      <div style="font-size: 13px; color: #5C6370">Alpine Stay Co. · Signed in as Elena Brooks, Client owner</div>
+      <div style="width: 36px; height: 36px; border-radius: 50%; background: {{accent}}; color: #1B1F2A; font-weight: 700; display: flex; align-items: center; justify-content: center">EB</div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.01em">Scorecard</h1>
+        <div style="font-size: 14px; color: #5C6370">Last 13 weeks, July 20 to October 18, 2026 · the weekly meeting view</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+        <label for="window" style="font-size: 13px; color: #5C6370">Window</label>
+        <select id="window" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #E3E7E4; background: #ffffff; font: inherit; color: #1B1F2A">
+          <option>Last 13 weeks</option><option>This quarter</option><option>Year to date</option><option>Custom dates…</option>
+        </select>
+        <div role="group" aria-label="View" style="display: flex; border: 1px solid #E3E7E4; border-radius: 10px; overflow: hidden; background: #ffffff">
+          <button type="button" style="height: 40px; padding: 0 14px; border: 0; background: #ffffff; color: #1B1F2A; font: inherit; font-weight: 500">Tiles</button>
+          <button type="button" aria-pressed="true" style="height: 40px; padding: 0 14px; border: 0; background: {{brand}}; color: #ffffff; font: inherit; font-weight: 600">Grid</button>
+          <button type="button" style="height: 40px; padding: 0 14px; border: 0; background: #ffffff; color: #1B1F2A; font: inherit; font-weight: 500">Meeting</button>
+        </div>
+        <button type="button" style="height: 40px; padding: 0 16px; border-radius: 10px; border: 0; background: {{accent}}; color: #1B1F2A; font: inherit; font-weight: 700">Enter readings</button>
+      </div>
+    </div>
+
+    <div role="tablist" aria-label="Scorecard pages" style="display: flex; gap: 4px; border-bottom: 1px solid #E3E7E4; flex-wrap: wrap">
+      <button type="button" role="tab" aria-selected="true" style="padding: 10px 14px; border: 0; border-bottom: 3px solid {{brand}}; background: transparent; font: inherit; font-weight: 600; color: {{brand}}; margin-bottom: -1px">Weekly scorecard</button>
+      <button type="button" role="tab" aria-selected="false" style="padding: 10px 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-weight: 500; color: #5C6370; margin-bottom: -1px">Guest services</button>
+      <button type="button" role="tab" aria-selected="false" style="padding: 10px 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-weight: 500; color: #5C6370; margin-bottom: -1px">Bonus</button>
+    </div>
+
+    <div style="background: #ffffff; border: 1px solid #E3E7E4; border-radius: 14px; overflow-x: auto">
+      <table style="border-collapse: collapse; width: 100%; min-width: 1120px; font-size: 13px">
+        <thead>
+          <tr style="color: #5C6370; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase">
+            <th scope="col" style="text-align: left; padding: 14px 16px; border-bottom: 1px solid #E3E7E4; font-weight: 600">KPI</th>
+            <th scope="col" style="text-align: right; padding: 14px 10px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Target</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Jul 20</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Jul 27</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Aug 3</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Aug 10</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Aug 17</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Aug 24</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Aug 31</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Sep 7</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Sep 14</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Sep 21</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Sep 28</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Oct 5</th>
+            <th scope="col" style="text-align: center; padding: 14px 6px; border-bottom: 1px solid #E3E7E4; font-weight: 600; color: #1B1F2A">Oct 12</th>
+            <th scope="col" style="text-align: left; padding: 14px 16px; border-bottom: 1px solid #E3E7E4; font-weight: 600">Owner</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row" style="text-align: left; padding: 10px 16px; font-weight: 600; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Occupancy <span style="font-weight: 400; color: #5C6370">· %</span></th>
+            <td style="text-align: right; padding: 10px 10px; color: #5C6370; border-bottom: 1px solid #EEF1EF">82</td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">71</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">74</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">79</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">84</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">88</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">90</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">86</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">83</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">80</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">77</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">79</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">81</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 700; outline: 2px solid #1B1F2A">78</span></td>
+            <td style="text-align: left; padding: 10px 16px; color: #5C6370; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Elena Brooks</td>
+          </tr>
+          <tr>
+            <th scope="row" style="text-align: left; padding: 10px 16px; font-weight: 600; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Bookings</th>
+            <td style="text-align: right; padding: 10px 10px; color: #5C6370; border-bottom: 1px solid #EEF1EF">95</td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">88</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">92</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">101</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">110</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">118</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">121</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">112</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">104</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">97</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">90</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">93</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">96</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 700; outline: 2px solid #1B1F2A">89</span></td>
+            <td style="text-align: left; padding: 10px 16px; color: #5C6370; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Sam Whitfield</td>
+          </tr>
+          <tr>
+            <th scope="row" style="text-align: left; padding: 10px 16px; font-weight: 600; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Average daily rate <span style="font-weight: 400; color: #5C6370">· $</span></th>
+            <td style="text-align: right; padding: 10px 10px; color: #5C6370; border-bottom: 1px solid #EEF1EF">265</td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">240</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">248</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">262</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">281</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">298</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">305</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">290</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">276</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">268</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">258</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">251</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">255</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #F4F6F5; color: #5C6370; font-weight: 500; border: 1px dashed #B8C0BB">—</span></td>
+            <td style="text-align: left; padding: 10px 16px; color: #5C6370; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Jonah Reyes</td>
+          </tr>
+          <tr>
+            <th scope="row" style="text-align: left; padding: 10px 16px; font-weight: 600; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Guest rating <span style="font-weight: 400; color: #5C6370">· of 5</span></th>
+            <td style="text-align: right; padding: 10px 10px; color: #5C6370; border-bottom: 1px solid #EEF1EF">4.6</td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">4.5</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.6</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.6</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.7</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.8</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.8</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.7</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.7</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.6</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.6</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.7</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">4.7</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 700; outline: 2px solid #1B1F2A">4.7</span></td>
+            <td style="text-align: left; padding: 10px 16px; color: #5C6370; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Maya Ortiz</td>
+          </tr>
+          <tr>
+            <th scope="row" style="text-align: left; padding: 10px 16px; font-weight: 600; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Overtime hours <span style="font-weight: 400; color: #5C6370">· lower is better</span></th>
+            <td style="text-align: right; padding: 10px 10px; color: #5C6370; border-bottom: 1px solid #EEF1EF">≤ 40</td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">52</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">48</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">45</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">41</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">38</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">44</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">47</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">39</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">36</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">35</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">42</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">38</span></td>
+            <td style="text-align: center; padding: 6px 4px; border-bottom: 1px solid #EEF1EF"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 700; outline: 2px solid #1B1F2A">36</span></td>
+            <td style="text-align: left; padding: 10px 16px; color: #5C6370; border-bottom: 1px solid #EEF1EF; white-space: nowrap">Sam Whitfield</td>
+          </tr>
+          <tr>
+            <th scope="row" style="text-align: left; padding: 10px 16px; font-weight: 600; white-space: nowrap">Five-star reviews <span style="font-weight: 400; color: #5C6370">· team total</span></th>
+            <td style="text-align: right; padding: 10px 10px; color: #5C6370">50</td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">38</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">41</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">44</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">52</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">58</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">61</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">55</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">49</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">46</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBE7E4; color: #6B1E14; font-weight: 600">44</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 600">47</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #E6F2EB; color: #14502F; font-weight: 600">50</span></td>
+            <td style="text-align: center; padding: 6px 4px"><span style="display: block; padding: 6px 0; border-radius: 6px; background: #FBF1DA; color: #5A4008; font-weight: 700; outline: 2px solid #1B1F2A">48</span></td>
+            <td style="text-align: left; padding: 10px 16px; color: #5C6370; white-space: nowrap">Maya Ortiz</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #5C6370">
+      <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center">
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; background: #E6F2EB; border: 1px solid #B9D9C6"></span>On track</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; background: #FBF1DA; border: 1px solid #E9D59E"></span>Behind, within 10%</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; background: #FBE7E4; border: 1px solid #F0BDB4"></span>Off track</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; background: #F4F6F5; border: 1px dashed #B8C0BB"></span>No reading yet</span>
+      </div>
+      <div>Click any cell for who entered it and when · Download this grid</div>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"brand":{"editor":"color","default":"#1F4E3D","section":"Practice branding"},"accent":{"editor":"color","default":"#B98A2E","section":"Practice branding"},"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { brand: this.props.brand ?? '#1F4E3D', accent: this.props.accent ?? '#B98A2E' };
+  }
+}
+</script>
+</body>
+</html>
