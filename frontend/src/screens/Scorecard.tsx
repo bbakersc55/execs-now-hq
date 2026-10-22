@@ -161,8 +161,17 @@ function PageTabs({ b, onPick }: { b: Board; onPick: (id: string) => void }) {
   );
 }
 
-/** The classic weekly scorecard: KPIs down, the last 13 periods across, each
- *  cell colored by status (Grid.dc.html). One table per cadence. */
+/** The window's value for the grid's last column: the tile's own roll-up,
+ *  and nothing for a value carried from before the window. */
+function windowValue(t: Tile) {
+  const s = t.summary;
+  return s && !s.stale && !s.carried ? s : null;
+}
+
+/** The classic weekly scorecard: KPIs down, periods across, each cell colored
+ *  by status (Grid.dc.html). One table per cadence. A window of several
+ *  periods (a quarter, the year so far, custom dates) draws its own periods,
+ *  then its roll-up, the tile's value; a window of one, the last 13. */
 function Grid({ tiles, b }: { tiles: Tile[]; b: Board }) {
   const [cell, setCell] = useState<{ t: Tile; p: Point } | null>(null);
   // Narrower than the table, the box opens on its latest weeks.
@@ -170,7 +179,9 @@ function Grid({ tiles, b }: { tiles: Tile[]; b: Board }) {
     if (!el) return;
     // The newest week at the right edge of the box, the weeks before it
     // running back under the pinned KPI names.
-    const now = el.querySelector<HTMLElement>("thead .sc-now");
+    // With a window's roll-up after the periods, that column is the edge.
+    const now = el.querySelector<HTMLElement>("thead .sc-window")
+      ?? el.querySelector<HTMLElement>("thead .sc-now");
     el.scrollLeft = now ? now.offsetLeft + now.offsetWidth - el.clientWidth : el.scrollWidth;
   };
   const groups: Record<string, Tile[]> = {};
@@ -178,9 +189,15 @@ function Grid({ tiles, b }: { tiles: Tile[]; b: Board }) {
   const download = () => {
     const lines: string[][] = [];
     Object.values(groups).forEach((ts) => {
-      lines.push(["KPI", "Target", ...ts[0].history.map((p) => p.label), "Owner"]);
-      ts.forEach((t) => lines.push([t.name, targetCell(t),
-        ...t.history.map((p) => (p.value === null ? "" : String(p.value))), t.owner]));
+      const rolled = !!ts[0].history_is_window;
+      lines.push(["KPI", "Target", ...ts[0].history.map((p) => p.label),
+        ...(rolled ? [b.window.label] : []), "Owner"]);
+      ts.forEach((t) => {
+        const w = windowValue(t);
+        lines.push([t.name, targetCell(t),
+          ...t.history.map((p) => (p.value === null ? "" : String(p.value))),
+          ...(rolled ? [w?.value == null ? "" : String(w.value)] : []), t.owner]);
+      });
       lines.push([]);
     });
     const csv = lines.map((l) => l.map((v) => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -203,6 +220,9 @@ function Grid({ tiles, b }: { tiles: Tile[]; b: Board }) {
                   <th key={p.period_start} scope="col"
                     className={i === ts[0].history.length - 1 ? "sc-c sc-now" : "sc-c"}>{p.label}</th>
                 ))}
+                {ts[0].history_is_window && (
+                  <th scope="col" className="sc-c sc-window">{b.window.label}</th>
+                )}
                 <th scope="col" className="sc-owner">Owner</th>
               </tr>
             </thead>
@@ -221,6 +241,17 @@ function Grid({ tiles, b }: { tiles: Tile[]; b: Board }) {
                       </button>
                     </td>
                   ))}
+                  {ts[0].history_is_window && (() => {
+                    const w = windowValue(t);
+                    return (
+                      <td className="sc-cell-td">
+                        <span className={`sc-cell sc-cell-${w?.status ?? (w?.value == null ? "missing" : "none")} sc-cell-window`}
+                          aria-label={`${t.name}, ${b.window.label}: ${w?.value == null ? "no reading" : fmt(t, w.value)}${w?.status ? `, ${STATUS_LABEL[w.status]}` : ""}`}>
+                          {w?.value == null ? "—" : fmt(t, w.value, { bare: true, compact: true })}
+                        </span>
+                      </td>
+                    );
+                  })()}
                   <td className="sc-owner sc-muted">{t.owner}</td>
                 </tr>
               ))}

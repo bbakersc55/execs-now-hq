@@ -68,6 +68,10 @@ def tenant_from_link(via: str):
 
         invoice = invoice_for(token)
         return invoice.tenant if invoice else None
+    if kind == "signin":
+        # The sign-in link's own page (2026-10-22: its logo was fetched with
+        # no practice named, so a signed-out browser got a broken image).
+        return _tenant_of(MagicLinkToken.find_sign_in(token))
     if kind == "unsubscribe":
         from apps.crm.services import unsubscribe
         from apps.tenancy.models import Tenant
@@ -636,7 +640,9 @@ def magic_link_landing(request, token: str):
     # revoke and a new grant could fix.
     spent = record or MagicLinkToken.find_sign_in(token)
 
-    brand = tenant_branding(_tenant_of(spent) or _branding_tenant(request), check_logo=True)
+    tenant = _tenant_of(spent)
+    brand = tenant_branding(tenant or _branding_tenant(request), check_logo=True,
+                            via=f"signin:{token}" if tenant is not None else "")
     page = {**brand, "token": token, "valid": record is not None,
             "invitation": spent is not None and spent.purpose == MagicLinkPurpose.INVITE,
             "sign_in_url": sign_in_page_url(), "sign_in_button": SIGN_IN_BUTTON}

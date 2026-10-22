@@ -68,6 +68,8 @@ export interface Tile extends KpiDef {
   shape: Shape; summary: Summary | null; delta: Delta | null; spark: Point[];
   history: Point[]; rows: PersonRow[]; total: boolean; total_label?: string;
   each_target?: number | null;
+  /** The grid's columns are the window's own periods, with its roll-up beside. */
+  history_is_window?: boolean;
 }
 
 export interface Notice {

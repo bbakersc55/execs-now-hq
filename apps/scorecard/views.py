@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from django.db.models import Count
 from django.http import Http404
 from rest_framework import permissions
 from rest_framework.response import Response
@@ -402,6 +403,31 @@ class StartersView(Base):
         except setup.SetupError as exc:
             return _setup_error(exc)
         return Response(setup.describe(kpi), status=201)
+
+
+class CompaniesView(Base):
+    """The practice's Scorecard menu (Bryan, 2026-10-22): the client companies
+    this person reaches, a practice owner every one and an associate those
+    assigned to them, each with whether it has a scorecard yet (one with a live
+    KPI) and how many KPIs. Practice owners and associates only."""
+
+    def get(self, request):
+        from apps.crm import permissions as crm_perms
+        from apps.crm.models import Company
+        from apps.tenancy.models import Role
+
+        membership = getattr(request, "membership", None)
+        if membership is None or membership.role not in (Role.FF, Role.CF):
+            return Response({"detail": "The scorecard menu is for the practice owner and "
+                                       "associates."}, status=403)
+        companies = crm_perms.company_queryset_for(request, Company.objects.filter(
+            is_client_company=True, deleted_at__isnull=True)).order_by("name")
+        live = dict(Kpi.objects.filter(archived_at__isnull=True,
+                                       scorecard__company__in=companies)
+                    .values("scorecard__company_id").annotate(n=Count("id"))
+                    .values_list("scorecard__company_id", "n"))
+        return Response([{"id": str(c.pk), "name": c.name, "kpis": live.get(c.pk, 0),
+                          "has_scorecard": live.get(c.pk, 0) > 0} for c in companies])
 
 
 def has_scorecard(request) -> bool:

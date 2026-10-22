@@ -1,8 +1,8 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{# White-label: a client signs in to their fractional's portal, so everything
-   branded here comes from the tenant row and the product is never named. #}
+{% comment %}White-label: a client signs in to their fractional's portal, so everything
+   branded here comes from the tenant row and the product is never named.{% endcomment %}
 <title>Sign in{% if display_name %} — {{ display_name }}{% endif %}</title>
 <style>
   body { font-family: system-ui, sans-serif; display:grid; place-items:center;

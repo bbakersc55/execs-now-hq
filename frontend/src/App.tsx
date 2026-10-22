@@ -26,6 +26,7 @@ import { AgreementGate } from "./components/AgreementGate";
 import { TopBar } from "./components/TopBar";
 import { Profile } from "./screens/Profile";
 import { Scorecard } from "./screens/Scorecard";
+import { ScorecardCompanies } from "./screens/ScorecardCompanies";
 import { ScorecardEntry } from "./screens/ScorecardEntry";
 import { DigestSettings } from "./screens/DigestSettings";
 import { Settings } from "./screens/Settings";
@@ -153,6 +154,9 @@ const NAV: NavItem[] = [
   { to: "/activity", label: "Activity", roles: TENANT , icon: ActivityIcon },
   // The practice reads the same report the client does, per company.
   { to: "/report", label: "Value report", roles: TENANT , icon: BarChart3 },
+  // Every client's scorecard from one place (Bryan, 2026-10-22); the company
+  // page's link stays.
+  { to: "/scorecard", label: (w) => w.Scorecard, roles: ["FF", "CF"], icon: Gauge },
   // P4A. Not an assistant's: no financials (matrix 13.4a).
   { to: "/invoices", label: "Invoices", roles: ["FF", "CF"], icon: Receipt },
   // P5. The practice owner's only (matrix 13.1, 13.6–13.10).
@@ -369,7 +373,8 @@ export function App() {
             <Route path="/companies/:id/scorecard" element={<Scorecard me={me} />} />
             <Route path="/companies/:id/scorecard/enter" element={<ScorecardEntry me={me} />} />
             {/* ...and the portal's own. */}
-            <Route path="/scorecard" element={<Scorecard me={me} />} />
+            <Route path="/scorecard" element={me.role === "FF" || me.role === "CF"
+              ? <ScorecardCompanies /> : <Scorecard me={me} />} />
             <Route path="/scorecard/enter" element={<ScorecardEntry me={me} />} />
             <Route path="/vendors" element={<Vendors />} />
             <Route path="/sending-queue" element={<SendingQueue me={me} />} />

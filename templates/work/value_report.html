@@ -129,8 +129,8 @@
         </div>
       {% endif %}
 
-      {# The completion bar is present and subordinate, and never the headline
-         (FR-4B.20, FR-4B.21). #}
+      {% comment %}The completion bar is present and subordinate, and never the headline
+         (FR-4B.20, FR-4B.21).{% endcomment %}
       {% if block.completion.of %}
         <p class="secondary">
           Work completed:

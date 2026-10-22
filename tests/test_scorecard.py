@@ -966,3 +966,78 @@ def test_the_digest_line_keeps_to_the_audience_and_leaves_once_the_reading_is_in
         KpiReading.objects.create(tenant=sc["tenant"], kpi=sc["kpis"]["all"],
                                   period_start=sc["week"], value=3, entered_at=timezone.now())
     assert scorecard_digest.lines_for(sc["tenant"], contact) == []
+
+
+# -------------------------------- after the demo checks (Bryan, 2026-10-22)
+
+def _grid(sc, window, extra=""):
+    client = sc["api"].as_(sc["practice"]["ff"])
+    url = f"{B}?company={sc['company'].pk}&window={window}{extra}"
+    data = client.get(url).json()
+    return {t["name"]: t for t in data["kpis"]}, data
+
+
+@pytest.mark.django_db
+def test_the_grid_follows_the_window_as_the_tiles_do(sc):
+    """This quarter, year to date and custom dates: the grid's columns are the
+    periods inside the window, and the roll-up beside them is the tile's."""
+    today = timezone.localdate()
+    with tenant_context(sc["tenant"].pk):
+        monthly = setup.create_kpi(sc["kpis"]["all"].scorecard, {
+            "name": "Monthly revenue", "kind": "money", "cadence": "monthly",
+            "rollup": "sum", "target_value": 1000, "page": str(sc["pages"]["weekly"].pk)},
+            sc["practice"]["ff"].user)
+    win = P.window("this_quarter", today, "monday")
+    tiles, data = _grid(sc, "this_quarter")
+    weeks = [s.isoformat() for s in P.periods_in(win, P.WEEKLY, today, "monday")]
+    months = [s.isoformat() for s in P.periods_in(win, P.MONTHLY, today, "monday")]
+    weekly = tiles["For everyone"]
+    assert [p["period_start"] for p in weekly["history"]] == weeks[-P.MOST_DRAWN:]
+    assert weekly["history_is_window"] is (len(weeks) >= 2)
+    drawn = [p["period_start"] for p in tiles[monthly.name]["history"]]
+    if len(months) >= 2:
+        assert drawn == months
+    else:  # The quarter's first month: one period, so the last thirteen up to it.
+        assert len(drawn) == P.HISTORY and drawn[-1] <= months[0]
+    # Year to date: every month of the year so far, for the monthly KPI.
+    tiles, _ = _grid(sc, "year_to_date")
+    ytd = P.window("year_to_date", today, "monday")
+    expect = [s.isoformat() for s in P.periods_in(ytd, P.MONTHLY, today, "monday")]
+    assert [p["period_start"] for p in tiles[monthly.name]["history"]] == expect
+    assert tiles[monthly.name]["history_is_window"] is (len(expect) >= 2)
+    # Custom dates: their weeks, and the roll-up is the tile's own.
+    first = sc["week"] - timedelta(weeks=3)
+    tiles, data = _grid(sc, "custom", f"&from={first.isoformat()}&to={sc['week'].isoformat()}")
+    calls = tiles["Calls"]
+    assert [p["period_start"] for p in calls["history"]] == [
+        (first + timedelta(weeks=i)).isoformat() for i in range(4)]
+    assert calls["history_is_window"] is True
+    assert calls["summary"]["value"] == 43.0, "the window's sum, as the tile shows"
+
+
+@pytest.mark.django_db
+def test_a_window_of_one_period_keeps_the_last_thirteen(sc):
+    tiles, _ = _grid(sc, "this_week")
+    assert len(tiles["For everyone"]["history"]) == P.HISTORY
+    assert tiles["For everyone"]["history_is_window"] is False
+
+
+@pytest.mark.django_db
+def test_the_practice_menu_lists_each_reachable_client_with_its_scorecard(sc, api):
+    tenant, ff = sc["tenant"], sc["practice"]["ff"]
+    bare = ClientCompanyFactory(tenant=tenant, name="Acme Tools", is_client_company=True)
+    ClientCompanyFactory(tenant=tenant, name="A prospect", is_client_company=False)
+    ClientCompanyFactory(tenant=TenantFactory(), name="Elsewhere", is_client_company=True)
+    rows = api.as_(ff).get(f"{B}companies/").json()
+    by = {r["name"]: r for r in rows}
+    assert "A prospect" not in by and "Elsewhere" not in by
+    assert by["Northwind Foods"]["has_scorecard"] is True and by["Northwind Foods"]["kpis"] == 8
+    assert by["Acme Tools"] == {"id": str(bare.pk), "name": "Acme Tools", "kpis": 0,
+                                "has_scorecard": False}
+    # An associate: the clients assigned to them, and only those.
+    assert [r["name"] for r in api.as_(sc["practice"]["cf"]).get(f"{B}companies/").json()] == [
+        "Northwind Foods"]
+    assert api.as_(sc["practice"]["cf_other"]).get(f"{B}companies/").json() == []
+    # Nobody else.
+    assert api.as_(sc["practice"]["va"]).get(f"{B}companies/").status_code == 403
+    assert api.as_(sc["who"]["owner"]).get(f"{B}companies/").status_code == 403

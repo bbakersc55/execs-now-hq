@@ -1566,6 +1566,10 @@ button.sc-cell { display: block; width: 100%; padding: 6px 0; border-radius: 6px
 .sc-key.sc-cell-behind { border: 1px solid var(--sc-behind-line); }
 .sc-key.sc-cell-off_track { border: 1px solid var(--sc-off-line); }
 button.sc-cell-now { font-weight: 700; outline: 2px solid var(--sc-ink); }
+/* The window's roll-up, after its periods: the tile's value. */
+.sc-cell-window { display: block; padding: 6px 8px; border-radius: 6px; font-weight: 700;
+                  text-align: center; min-width: 56px; }
+.sc-table .sc-window { color: var(--sc-ink); border-left: 1px solid var(--sc-line); }
 .sc-cell-detail { font-size: 13px; background: #fff; border: 1px solid var(--sc-line); border-radius: 10px; padding: 8px 12px; }
 
 /* The meeting view: full screen, larger type, for a TV. */

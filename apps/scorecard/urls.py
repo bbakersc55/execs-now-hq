@@ -4,6 +4,7 @@ from apps.scorecard import views
 
 urlpatterns = [
     path("scorecard/", views.BoardView.as_view(), name="scorecard"),
+    path("scorecard/companies/", views.CompaniesView.as_view(), name="scorecard-companies"),
     path("scorecard/entry/", views.EntryView.as_view(), name="scorecard-entry"),
     path("scorecard/readings/", views.ReadingsView.as_view(), name="scorecard-readings"),
     path("scorecard/readings/<str:pk>/history/", views.HistoryView.as_view(),

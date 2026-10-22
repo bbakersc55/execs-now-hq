@@ -1,8 +1,8 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{# Anyone can land here, a client included, so it wears the practice's name and
-   never the product's (white-label). #}
+{% comment %}Anyone can land here, a client included, so it wears the practice's name and
+   never the product's (white-label).{% endcomment %}
 <title>No access{% if display_name %} — {{ display_name }}{% endif %}</title>
 <style>
   body { font-family: system-ui, sans-serif; display:grid; place-items:center;

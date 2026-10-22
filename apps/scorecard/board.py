@@ -202,9 +202,16 @@ def _spark(series, kpi, win, today, week_start):
 
 
 def _history(series, kpi, win, today, week_start):
-    return [_point(series, s, kpi.cadence, today)
-            for s in P.last_n(_drawn_to(series, kpi, win, today, week_start), kpi.cadence,
-                              P.HISTORY, week_start)]
+    """The grid's columns. A window of more than one of the KPI's periods (a
+    quarter, the year so far, custom dates) is drawn as its own periods, weeks
+    for a weekly KPI and months for a monthly one, so the grid follows the
+    window as the tiles do (Bryan, 2026-10-22); a window of one period, the
+    last thirteen up to it."""
+    starts = P.periods_in(win, kpi.cadence, today, week_start)
+    if len(starts) < 2:
+        starts = P.last_n(_drawn_to(series, kpi, win, today, week_start), kpi.cadence,
+                          P.HISTORY, week_start)
+    return [_point(series, s, kpi.cadence, today) for s in starts[-P.MOST_DRAWN:]]
 
 
 def unit_of(kpi) -> str:
@@ -424,6 +431,10 @@ def build(reader, scorecard, page_id, win, today) -> dict:
                   today, week_start,
                   sources=(readings[k.source_a_id], readings[k.source_b_id])
                   if k.is_computed else None) for k in kpis]
+    for t, k in zip(tiles, kpis):
+        # The grid draws this window's own periods, and its roll-up beside
+        # them (the tile's value), when the window holds more than one.
+        t["history_is_window"] = len(P.periods_in(win, k.cadence, today, week_start)) >= 2
     out["kpis"] = tiles
     out["counts"] = counts(tiles)
     summaries = [t["summary"] for t in tiles if t.get("summary") and

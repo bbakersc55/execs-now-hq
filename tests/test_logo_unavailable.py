@@ -50,7 +50,7 @@ def lose_the_file(tenant):
 def test_the_sign_in_page_draws_the_logo_when_its_file_is_there(link):
     _, raw = link
     html = Client().get(f"/auth/magic/{raw}").content.decode()
-    assert '<img src="/api/branding/logo"' in html
+    assert '<img src="/api/branding/logo?via=signin:' in html
     assert "<h1>" not in html
 
 
@@ -92,3 +92,55 @@ def test_storage_being_unreachable_is_also_just_the_name(link, practice_with_log
     page = Client().get(f"/auth/magic/{raw}")
     assert page.status_code == 200
     assert "<img" not in page.content.decode() and "<h1>Tenant A</h1>" in page.content.decode()
+
+
+# ------------------------------- the demo's sign-in page (Bryan, 2026-10-22)
+
+def _img_src(html):
+    import re
+
+    found = re.search(r'<img src="([^"]+)"', html)
+    return found.group(1).replace("&amp;", "&") if found else None
+
+
+@pytest.mark.django_db
+def test_the_logo_on_the_sign_in_page_loads_for_a_signed_out_browser(link):
+    """The page drew /api/branding/logo with no practice named, and a signed-
+    out browser got a 404: a broken image with the practice's name as alt."""
+    _, raw = link
+    browser = Client()
+    html = browser.get(f"/auth/magic/{raw}").content.decode()
+    src = _img_src(html)
+    assert src and src.startswith("/api/branding/logo?via=signin")
+    served = browser.get(src)
+    assert served.status_code == 200 and served.content == PNG
+    # A made-up token names no practice.
+    assert browser.get("/api/branding/logo?via=signin:nothing").status_code == 404
+
+
+@pytest.mark.django_db
+def test_without_a_logo_the_sign_in_page_names_the_practice_in_text(seeded_tenant, in_tenant_a):
+    company = ClientCompanyFactory(tenant=seeded_tenant)
+    member = MembershipFactory(tenant=seeded_tenant, role="FCC", client_company=company)
+    _, raw = MagicLinkToken.issue(tenant=seeded_tenant, user=member.user)
+    html = Client().get(f"/auth/magic/{raw}").content.decode()
+    assert "<img" not in html and "<h1>Tenant A</h1>" in html
+
+
+@pytest.mark.django_db
+def test_no_page_prints_a_template_comment(link):
+    """A {# … #} comment ends at its line; one over two lines was printed."""
+    _, raw = link
+    for url in (f"/auth/magic/{raw}", "/auth/magic/not-a-token", "/accounts/signup/"):
+        html = Client().get(url).content.decode()
+        assert "{#" not in html and "#}" not in html and "White-label" not in html, url
+
+
+def test_no_template_has_a_comment_over_more_than_one_line():
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "templates"
+    bad = [str(p.relative_to(root)) for p in root.rglob("*.html")
+           if re.search(r"\{#(?:(?!#\}).)*\n", p.read_text())]
+    assert bad == [], f"Use {{% comment %}} for these: {bad}"
