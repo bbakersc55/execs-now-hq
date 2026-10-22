@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { BonusArea, bonusLead } from "../components/ScorecardBonus";
 import { ScorecardTile } from "../components/ScorecardTiles";
 import { Banner } from "../components/ui";
 import { Me, api } from "../lib/api";
 import {
-  Board, CADENCE_LABEL, Cadence, Point, STATUS_LABEL, Starter, Tile, WINDOWS, WindowKey, fmt,
+  BONUS_VIEW_LABEL, Board, BonusViewKey, CADENCE_LABEL, Cadence, Point, STATUS_LABEL, Starter,
+  Tile, WINDOWS, WindowKey, fmt,
 } from "../lib/scorecard";
 import { useWords } from "../lib/words";
 
@@ -35,6 +37,7 @@ export function Scorecard({ me }: { me: Me }) {
   const [applied, setApplied] = useState<{ from: string; to: string } | null>(null);
   const [page, setPage] = useState<string | null>(null);
   const [view, setView] = useState<View>("tiles");
+  const [bonus, setBonus] = useState<BonusViewKey | null>(null);
 
   const params = new URLSearchParams({ company: companyId, window: win });
   if (win === "custom" && applied) { params.set("from", applied.from); params.set("to", applied.to); }
@@ -60,6 +63,22 @@ export function Scorecard({ me }: { me: Me }) {
         {b.may_set_up
           ? <StartCard companyId={companyId} onMade={() => qc.invalidateQueries({ queryKey: ["scorecard", companyId] })} />
           : <div className="sc-tile"><p className="sc-empty">There is no {w.scorecard} here yet.</p></div>}
+      </div>
+    );
+  }
+
+  if (bonus && (b.bonus_views ?? []).includes(bonus)) {
+    return (
+      <div className="sc-page">
+        <ScorecardHead b={b} me={me} practice={practice} />
+        <div className="sc-head">
+          <div className="sc-head-text">
+            <h1>{w.Scorecard}</h1>
+            <div className="sc-sub">{bonusLead(bonus)}</div>
+          </div>
+        </div>
+        <PageTabs b={b} onPick={(id) => { setBonus(null); setPage(id); }} bonus={bonus} onBonus={setBonus} />
+        <BonusArea companyId={companyId} view={bonus} companyName={b.company.name} />
       </div>
     );
   }
@@ -115,7 +134,7 @@ export function Scorecard({ me }: { me: Me }) {
         </div>
       )}
 
-      <PageTabs b={b} onPick={setPage} />
+      <PageTabs b={b} onPick={setPage} bonus={null} onBonus={setBonus} />
 
       {view === "grid" ? <Grid tiles={tiles} b={b} /> : (
         <div className="sc-grid">
@@ -147,15 +166,24 @@ function ScorecardHead({ b, me, practice }: { b: Board; me: Me; practice: boolea
   );
 }
 
-function PageTabs({ b, onPick }: { b: Board; onPick: (id: string) => void }) {
-  if (b.pages.length < 2) return <div className="sc-tabs" role="tablist" aria-label="Scorecard pages">
-    {b.pages.map((p) => <button key={p.id} type="button" role="tab" aria-selected="true"
-      className="sc-tab on">{p.name}</button>)}</div>;
+function PageTabs({ b, onPick, bonus, onBonus }: {
+  b: Board; onPick: (id: string) => void; bonus: BonusViewKey | null;
+  onBonus: (v: BonusViewKey) => void;
+}) {
+  const single = b.pages.length < 2 && !(b.bonus_views ?? []).length;
   return (
     <div className="sc-tabs" role="tablist" aria-label="Scorecard pages">
-      {b.pages.map((p) => (
-        <button key={p.id} type="button" role="tab" aria-selected={p.id === b.page}
-          className={p.id === b.page ? "sc-tab on" : "sc-tab"} onClick={() => onPick(p.id)}>{p.name}</button>
+      {b.pages.map((p) => {
+        const on = !bonus && (single || p.id === b.page);
+        return (
+          <button key={p.id} type="button" role="tab" aria-selected={on}
+            className={on ? "sc-tab on" : "sc-tab"} onClick={() => onPick(p.id)}>{p.name}</button>
+        );
+      })}
+      {(b.bonus_views ?? []).map((v) => (
+        <button key={v} type="button" role="tab" aria-selected={bonus === v}
+          className={bonus === v ? "sc-tab on" : "sc-tab"} onClick={() => onBonus(v)}>
+          {BONUS_VIEW_LABEL[v]}</button>
       ))}
     </div>
   );

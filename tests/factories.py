@@ -1487,3 +1487,59 @@ class KpiReminderFactory(TenantScopedFactory):
     kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
     period_start = factory.Sequence(lambda n: datetime.date(2026, 1, 5) + datetime.timedelta(days=7 * n))
     recipient = factory.SubFactory(UserFactory)
+
+
+class BonusPlanFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BonusPlan"
+
+    tenant = factory.SubFactory(TenantFactory)
+    scorecard = factory.SubFactory(ScorecardFactory, tenant=factory.SelfAttribute("..tenant"))
+    series = factory.Faker("uuid4", cast_to=None)
+    name = factory.Sequence(lambda n: f"Bonus plan {n}")
+    period_start = factory.Sequence(lambda n: datetime.date(2026, 1, 1).replace(
+        year=2026 + n // 12, month=n % 12 + 1))
+    amount = decimal.Decimal("600.00")
+
+
+class BonusComponentFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BonusComponent"
+
+    tenant = factory.SubFactory(TenantFactory)
+    plan = factory.SubFactory(BonusPlanFactory, tenant=factory.SelfAttribute("..tenant"))
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"), per_person=True)
+    weight = decimal.Decimal("50.00")
+
+
+class BonusPersonFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BonusPerson"
+
+    tenant = factory.SubFactory(TenantFactory)
+    plan = factory.SubFactory(BonusPlanFactory, tenant=factory.SelfAttribute("..tenant"))
+    membership = factory.SubFactory(
+        MembershipFactory, tenant=factory.SelfAttribute("..tenant"), role="ECC",
+        client_company=factory.SelfAttribute("..plan.scorecard.company"))
+
+
+class BonusResultFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BonusResult"
+
+    tenant = factory.SubFactory(TenantFactory)
+    plan = factory.SubFactory(BonusPlanFactory, tenant=factory.SelfAttribute("..tenant"))
+    membership = factory.SubFactory(
+        MembershipFactory, tenant=factory.SelfAttribute("..tenant"), role="ECC",
+        client_company=factory.SelfAttribute("..plan.scorecard.company"))
+    name = "Someone"
+    full_amount = decimal.Decimal("600.00")
+    earned = decimal.Decimal("300.00")
+
+
+class BonusReopenFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BonusReopen"
+
+    tenant = factory.SubFactory(TenantFactory)
+    plan = factory.SubFactory(BonusPlanFactory, tenant=factory.SelfAttribute("..tenant"))

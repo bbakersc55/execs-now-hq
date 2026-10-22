@@ -16,6 +16,13 @@ one closed:
 One reading was corrected after it was entered, so its history shows, and
 Andy's rating for the week just closed is missing, so his manager has a
 reminder waiting.
+
+Part 2 adds Revenue per order (Revenue ÷ Orders shipped, computed), each
+rep's Sales booked, and the **Sales floor bonus**: $600 a month on Sales
+booked, Sales calls and Customer rating, with the three months before this
+one closed (Andy joined part-way through the first, so it is prorated), and
+this month's copied forward from the last. The readings start in the first
+of those months, so every closed month is worked out from real readings.
 """
 
 from __future__ import annotations
@@ -33,7 +40,8 @@ FLOOR = [("Jim", "Halpert", "Sales representative"),
          ("Phyllis", "Vance", "Sales representative"),
          ("Stanley", "Hudson", "Sales representative"),
          ("Andy", "Bernard", "Sales representative")]
-WEEKS = 13
+#: Closed months of bonus history before this one.
+BONUS_MONTHS = 3
 
 #: Revenue's weekly target, by month: busier in the fall.
 REVENUE_BY_MONTH = {1: 48000, 2: 48000, 3: 50000, 4: 50000, 5: 50000, 6: 50000, 7: 52000,
@@ -49,7 +57,12 @@ def scorecard(world) -> dict:
 
     company = world.companies[COMPANY]
     owner_member, dwight_member = world.portal[COMPANY][:2]
-    start = world.today - timedelta(days=7 * (WEEKS + 2))
+    first_month = world.today.replace(day=1)
+    for _ in range(BONUS_MONTHS):
+        first_month = P.previous_start(first_month, P.MONTHLY)
+    starts = P.starts_between(first_month, world.today, P.WEEKLY)
+    starts = [w for w in starts if P.closed(w, P.WEEKLY, world.today)]
+    start = starts[0] - timedelta(days=14)
 
     with at(start):
         company.seat_count = 8
@@ -119,9 +132,23 @@ def scorecard(world) -> dict:
                 "strategy_component": "people",
                 "note": "Average of the week's customer survey scores, by the rep who "
                         "handled the account"}, world.owner),
+            "booked": setup.create_kpi(card, {
+                "name": "Sales booked", "kind": "money", "cadence": "weekly", "rollup": "sum",
+                "target_value": 11000, "tile": "my_row", "per_person": True,
+                "audience": "each_person", "people": [str(m) for m in team],
+                "reading_owner": str(dwight.pk), "page": str(sales.pk),
+                "strategy_component": "traction",
+                "note": "Orders each rep booked in the week, from the order system"},
+                world.owner),
         }
+        kpis["per_order"] = setup.create_kpi(card, {
+            "name": "Revenue per order", "kind": "money", "cadence": "weekly",
+            "rollup": "average", "target_value": 125, "tile": "number_trend",
+            "formula": "ratio", "source_a": str(kpis["revenue"].pk),
+            "source_b": str(kpis["orders"].pk), "page": str(weekly.pk),
+            "strategy_component": "traction",
+            "note": "Revenue ÷ orders shipped, worked out each week"}, world.owner)
 
-    starts = P.last_n(world.today, P.WEEKLY, WEEKS + 1, card.week_start)[:-1]
     made = 0
 
     def enter(kpi, week, value, by, member=None):
@@ -142,7 +169,7 @@ def scorecard(world) -> dict:
     for i, week in enumerate(starts):
         roll = dice("scorecard", week)
         season = REVENUE_BY_MONTH[week.month]
-        lift = i / (WEEKS - 1)                      # things improve as the work lands
+        lift = i / (len(starts) - 1)                # things improve as the work lands
         enter(kpis["delivery"], week, round(86 + 9 * lift + roll.uniform(-3, 3), 1), dwight)
         enter(kpis["orders"], week, int(380 + 50 * lift + roll.randrange(-30, 30)), dwight)
         enter(kpis["revenue"], week,
@@ -153,6 +180,9 @@ def scorecard(world) -> dict:
             rr = dice("rep", pk, week)
             enter(kpis["calls"], week, int(60 * skill + 6 * lift + rr.randrange(-8, 9)),
                   dwight, member)
+            enter(kpis["booked"], week,
+                  round(season / 5 * (0.78 + 0.25 * skill + 0.1 * lift + rr.uniform(-0.12, 0.12)),
+                        -1), dwight, member)
             if week == starts[-1] and member.user.full_name.startswith("Andy"):
                 continue                            # his manager is reminded
             enter(kpis["rating"], week,
@@ -171,7 +201,51 @@ def scorecard(world) -> dict:
     with at(moment(P.end_of(starts[-1], P.WEEKLY) + timedelta(days=1), 8, 0)):
         readings.remind(world.tenant, P.end_of(starts[-1], P.WEEKLY) + timedelta(days=1))
 
-    return {"scorecard KPIs": Kpi.objects.filter(scorecard=card).count(),
+    plans = bonus_plans(world, card, kpis, team, starts)
+
+    return {"bonus plans": plans,
+            "scorecard KPIs": Kpi.objects.filter(scorecard=card).count(),
             "scorecard readings": made,
             "scorecard reminders": KpiReminder.objects.filter(kpi__scorecard=card).count(),
             "scorecard team": len(team)}
+
+
+def bonus_plans(world, card, kpis, team, starts) -> int:
+    """The Sales floor bonus, month by month: made for the first month, each
+    closed the morning after its last day and copied forward, so this month's
+    is the copy of the last. Andy joined the first month's plan part-way."""
+    from apps.scorecard import bonus
+    from apps.scorecard import periods as P
+
+    from .clock import at, moment
+
+    andy = next(m for m in team.values() if m.user.full_name.startswith("Andy"))
+    month = world.today.replace(day=1)
+    for _ in range(BONUS_MONTHS):
+        month = P.previous_start(month, P.MONTHLY)
+    joined = month + timedelta(days=11)
+    with at(moment(month, 8, 0)):
+        plan = bonus.create_plan(card, {
+            "name": "Sales floor bonus", "period": "monthly",
+            "period_start": month.isoformat(), "amount": 600,
+            "components": [
+                {"kpi": str(kpis["booked"].pk), "weight": 40},
+                {"kpi": str(kpis["calls"].pk), "weight": 30},
+                {"kpi": str(kpis["rating"].pk), "weight": 30,
+                 "tiers": [{"from": 0, "share": 0}, {"from": 90, "share": 50},
+                           {"from": 100, "share": 100}, {"from": 105, "share": 120}]}],
+            "people": [{"membership": str(m.pk),
+                        **({"joined_on": joined.isoformat()} if m.pk == andy.pk else {})}
+                       for m in team.values()]}, world.owner)
+    made = 1
+    while P.end_of(plan.period_start, P.MONTHLY) < world.today:
+        # Closed once the last week starting in the month has closed too.
+        last_week = [w for w in P.starts_between(plan.period_start, P.end_of(
+            plan.period_start, P.MONTHLY), P.WEEKLY) if w >= plan.period_start][-1]
+        close_on = P.end_of(last_week, P.WEEKLY) + timedelta(days=1)
+        with at(moment(min(close_on, world.today), 10, 0)):
+            if close_on <= world.today:
+                bonus.close(plan, world.owner, close_on)
+            plan = bonus.copy_forward(plan, world.owner)
+        made += 1
+    return made

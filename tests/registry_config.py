@@ -50,7 +50,7 @@ from apps.finance.models import (
     FinanceMonthClose, FinanceReconciliation, FinanceRule, FinanceSettings,
 )
 from apps.scorecard.models import (
-    Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange, KpiReminder, Scorecard,
+    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange, KpiReminder, Scorecard,
     ScorecardPage,
 )
 from apps.tenancy.registry import register
@@ -292,3 +292,10 @@ register(KpiPerson, factories.KpiPersonFactory, api_exposed=False)
 register(KpiReading, factories.KpiReadingFactory, api_exposed=False)
 register(KpiReadingChange, factories.KpiReadingChangeFactory, api_exposed=False)
 register(KpiReminder, factories.KpiReminderFactory, api_exposed=False)
+# M5 part 2: bonus plans. Read only through /api/scorecard/bonus/, which asks
+# `apps.scorecard.bonus.BonusReader` (tests/test_scorecard_bonus.py).
+register(BonusPlan, factories.BonusPlanFactory, api_exposed=False)
+register(BonusComponent, factories.BonusComponentFactory, api_exposed=False)
+register(BonusPerson, factories.BonusPersonFactory, api_exposed=False)
+register(BonusResult, factories.BonusResultFactory, api_exposed=False)
+register(BonusReopen, factories.BonusReopenFactory, api_exposed=False)

@@ -142,6 +142,21 @@ AUDIT = {
                                  "reordered the {kpis} on “{name}”, {target}'s {scorecard}"),
     "scorecard.week_start_changed": ("scorecard",
                                      "changed when the week starts on {target}'s {scorecard}"),
+    # M5 part 2: bonus plans. `{name}` is the plan's, `{period}` its period.
+    "scorecard.bonus_plan_created": ("scorecard",
+                                     "made the bonus plan “{name}” for {period} at {target}"),
+    "scorecard.bonus_plan_changed": ("scorecard",
+                                     "changed the bonus plan “{name}” for {period} at {target}"),
+    "scorecard.bonus_plan_archived": ("scorecard",
+                                      "archived the bonus plan “{name}” for {period} at {target}"),
+    "scorecard.bonus_plan_copied": ("scorecard",
+                                    "copied the bonus plan “{name}” forward to {period} at "
+                                    "{target}"),
+    "scorecard.bonus_period_closed": ("scorecard",
+                                      "closed {period} of the bonus plan “{name}” at {target}"),
+    "scorecard.bonus_period_reopened": ("scorecard",
+                                        "confirmed working {period} of the bonus plan “{name}” "
+                                        "out again from corrected readings at {target}"),
 }
 
 
@@ -459,7 +474,8 @@ def _audit_entries(scope, since, until, actor):
             text = _team_text(a, target, phrasing, scope.words)
         elif category == "scorecard":
             text = phrasing.format(target=target or "a company",
-                                   name=str(a.payload.get("name") or ""), **forms)
+                                   name=str(a.payload.get("name") or ""),
+                                   period=str(a.payload.get("period") or ""), **forms)
         else:
             text = phrasing.format(target=target or "a record", **forms)
         if a.verb == "goal.added_by_client" and a.payload.get("title"):

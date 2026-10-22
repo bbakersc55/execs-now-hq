@@ -230,9 +230,10 @@ Anything destructive or data-rewriting has your explicit yes on the dry run
 |---|---|---|---|
 | R1 | Confirm the backup | `gcloud storage ls -l "gs://execs-now-hq-db-backups/execsnowhq_prod_*" \| grep -v '^TOTAL' \| sort -k2 \| tail -1` (the `grep` drops the listing's closing `TOTAL:` line, which otherwise sorts last and is all `tail -1` shows; seen at Release 12) | The newest dump is from the most recent 08:00 UTC run (02:00 Mountain), under 24 hours old, and over the 1 KB floor. If not, stop: run the backup by hand first and check again. **Not `railway redeploy --service backup`**, which rebuilds the service and runs nothing (observed 2026-10-08). The cron's "run now" is `railway api 'mutation($id:String!){deploymentInstanceExecutionCreate(input:{serviceInstanceId:$id})}' --raw-var id=8653b0cf-2067-45ab-b09c-8303172165f2`; the dump landed three seconds after it. |
 | R2 | Release | merge `dev` → `main`, push | Railway builds web and qcluster. If `railway deployment list --service qcluster` shows no new deployment within 2 minutes, deploy the commit by hand (`serviceInstanceDeployV2`, Release 19), worker first; never `railway redeploy` |
-| R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else |
-| R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report |
+| R3 | Watch the worker | `railway logs --service qcluster` | `WAITING` lists exactly the release's migrations, nothing else. **It shows at most ten** (`head -10` in `start_qcluster.sh`): a bigger release looks short, so check the ten shown are the first ten in plan order and that nothing outside the release is among them (Release 21, 14 migrations) |
+| R4 | **Apply, immediately** | `railway ssh --service qcluster -- python manage.py migrate` | Each migration `OK`; output pasted into the report. **Within six minutes of web's build starting**, or web gives up and R6 needs the hand deploy: Claude hands this line to the owner the moment `WAITING` appears, not after checking anything else (Release 21: R4 came ~24 minutes after R2) |
 | R5 | Worker resumes by itself | `railway logs --service qcluster` | `migrations current`, then `Q Cluster … starting`, within 30 s |
+| R5b | **New scheduled jobs**, when the release adds any to `ensure_schedules.SCHEDULES` | `railway ssh --service qcluster -- python manage.py ensure_schedules` | Each new job created for every practice; nothing else does this (neither start script runs it). Missed at Release 21, found the same evening |
 | R6 | Web onto the new code | Usually nothing to do: since Release 20, web's own build **waits up to six minutes** for R4 (`migrate_if_empty --wait 360`, a `WAITING (Ns of 360s) for: …` line every 10 s in `railway logs --service execs-now-hq`) and comes up by itself. Only if it gave up (R4 came more than six minutes after web started, or its deployment shows FAILED): deploy the commit to web by hand (`serviceInstanceDeployV2`, as at Release 19) | Web's new deployment SUCCESS; `curl -s -o /dev/null -w '%{http_code}' https://app.getexecutivesnow.com/healthz` is `200` |
 | R7 | Report | | R1–R6 results, the migration names, and the time from R2 to R6 |
 
@@ -513,6 +514,38 @@ about 4 min.** What followed (owner, 2026-10-20): web now waits up to six
 minutes for the migrations before refusing, checking every 10 s, and its
 health check timeout is 480 s so Railway does not fail it first; R6 above
 changed to match. The worker is unchanged.
+
+**Observed at Release 21 (2026-10-22 UTC, 14 migrations: P4 billing parts 2
+to 5, the template library, M5 part 1 and its fixes):** `tenancy 0020–0021`,
+`crm 0040–0044`, `billing 0005–0009`, `scorecard 0001–0002`. Before:
+the SQL of all fourteen shown; the gate green on `7285b6c`; `execsnowhq_local`
+migrated; a dry run of the whole release on a scratch copy of the 22:04 dump
+(restored, migrated with `dev`'s code, counted, scrubbed, dropped; the dump
+shredded): `crm 0041` added 10 seeded templates (6 for Executives Now, 5 for
+Blue Sky, counting one already there) and 10 template uses, and moved 237
+contacts' touch mode from `ai` to `template`; `billing 0009` added the plan
+`beta_at_cost` at $20.00. Bryan's yes on that dry run before R2. R1: the
+owner's run-now dump `execsnowhq_prod_20261022_220454.sql.gz` (3,907,420
+bytes); the 08:03 one was there too. R2: `main` fast-forwarded from
+`936714f` to `7285b6c` and pushed 22:18:08, by Claude. Worker `WAITING`
+22:23:28, **its list cut at ten** by `head -10`: the first ten in plan order,
+the other four (`billing 0009`, `crm 0044`, `scorecard 0001–0002`) checked
+against the dry run's plan. R4: the owner ran `migrate` at about 22:42, all
+fourteen OK; `migrations current` 22:42:40, worker running 22:42:45. **Web's
+build had given up waiting** (R4 came ~24 minutes after R2; it waits six),
+so R6 was the hand deploy: `serviceInstanceDeployV2` to web at 22:43:12,
+deployment `16f01dff` SUCCESS by 22:46:13; `/healthz` 200 at six samples 5 s
+apart, and `/api/scorecard/companies/` 403 signed out where the old code
+gave 404. **Worker paused about 24 minutes; push to new code about 28
+minutes**, nearly all of it waiting for R4. `/healthz` was 200 whenever
+sampled, so the old web kept serving; it was sampled, not watched. **Not
+done at the time: `ensure_schedules`.** Four jobs are new in this release
+(`billing.resolve_card_payments`, `billing.run_autopay`,
+`billing.charge_subscription`, `scorecard.remind_missing`); a read-only check
+in the worker afterwards found none of them, and the owner was given the
+line (R5b, added from this). Production's data was not read beyond that
+check. Lessons, now in the table: R3's list stops at ten; R4 goes to the
+owner the moment `WAITING` shows.
 
 ---
 

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from apps.scorecard import views
+from apps.scorecard import views, views_bonus
 
 urlpatterns = [
     path("scorecard/", views.BoardView.as_view(), name="scorecard"),
@@ -27,4 +27,18 @@ urlpatterns = [
     path("scorecard/kpis/<str:pk>/restore/", views.KpiRestoreView.as_view(),
          name="scorecard-kpi-restore"),
     path("scorecard/starters/", views.StartersView.as_view(), name="scorecard-starters"),
+    path("scorecard/bonus/", views_bonus.BonusView.as_view(), name="scorecard-bonus"),
+    path("scorecard/bonus/payroll/", views_bonus.PayrollView.as_view(),
+         name="scorecard-bonus-payroll"),
+    path("scorecard/bonus/plans/", views_bonus.PlansView.as_view(), name="scorecard-bonus-plans"),
+    path("scorecard/bonus/plans/<str:pk>/", views_bonus.PlanView.as_view(),
+         name="scorecard-bonus-plan"),
+    path("scorecard/bonus/plans/<str:pk>/copy-forward/", views_bonus.PlanCopyView.as_view(),
+         name="scorecard-bonus-plan-copy"),
+    path("scorecard/bonus/plans/<str:pk>/archive/", views_bonus.PlanArchiveView.as_view(),
+         name="scorecard-bonus-plan-archive"),
+    path("scorecard/bonus/plans/<str:pk>/close/", views_bonus.PlanCloseView.as_view(),
+         name="scorecard-bonus-plan-close"),
+    path("scorecard/bonus/plans/<str:pk>/reopen/", views_bonus.PlanReopenView.as_view(),
+         name="scorecard-bonus-plan-reopen"),
 ]

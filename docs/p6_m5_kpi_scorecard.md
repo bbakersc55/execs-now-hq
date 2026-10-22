@@ -210,3 +210,16 @@ Migrations are additive throughout (new tables for KPIs, pages, readings, feeds,
 - Week start is a setting per company: Monday to Sunday by default, Sunday to Saturday available.
 - The bonus payroll list: on screen and as a spreadsheet, one row per person with the amount earned for the closed period.
 - The approved mock-up is in docs/design/kpi_scorecard/: Main (tiles view as a manager), Grid (13 weeks), Entry (enter readings), Bonus (My bonus as a member; part 2). Build part 1 to it: same layout, tiles, spacing and status colors; the practice's brand colors where the mock uses Summit's green and gold; the app's own UI font rather than the mock's.
+
+## Part 2 as built (October 22, 2026)
+
+Choices the spec left open, made in the build, for Bryan to confirm or change:
+
+- **A plan is one period.** "Copy forward" makes the next period's plan with the same people, amounts, components, weights, targets and tiers; earlier periods are the earlier plans of the same series. Someone who left part-way is not copied.
+- **A week belongs to the month it starts in** when a weekly KPI feeds a monthly plan; a quarterly KPI can't feed a monthly plan.
+- **A component's period target** is the plan's own when one is typed, else what the KPI's targets add up to over the period (summed KPIs) or their average (averaged ones). A KPI judged within a range can't be a component.
+- **Averaged KPIs aren't prorated**: an average doesn't build up over a month, so mid-month it is judged against the target as it stands.
+- **The straight line caps at 120% by default**, matching the default table's top tier; the cap is editable per plan.
+- **Closing** is for the practice owner, associates and the client owner, once the period's last day is over. Confirming a recompute after a correction is the client owner's alone.
+- **Assistants** see the bonus tables with achievement and no dollar amounts.
+- **The spreadsheet** is an .xlsx with two sheets, "Payroll" and "Readings and tiers", written without a new dependency.

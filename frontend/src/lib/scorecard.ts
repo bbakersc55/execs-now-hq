@@ -89,6 +89,74 @@ export interface Board {
   may_enter: boolean;
   counts?: { in: number; of: number; on_track: number; behind: number; off_track: number };
   notices?: Notice[];
+  /** Part 2: which bonus tabs this reader gets (decision 7). */
+  bonus_views?: BonusViewKey[];
+}
+
+export type BonusViewKey = "mine" | "team" | "all";
+export const BONUS_VIEW_LABEL: Record<BonusViewKey, string> = {
+  mine: "My bonus", team: "Team bonus", all: "All bonuses" };
+
+export interface BonusTier { from: number; share: number }
+
+export interface BonusComponentRow {
+  kpi: string; name: string; kind: KpiDef["kind"]; direction: string; rollup: string;
+  weight: number; tiers: BonusTier[];
+  value: number | null; value_text: string; target: number | null; target_text: string;
+  expected: number | null; expected_text: string; achievement: number | null;
+  tier: number | null; share: number; earned?: number;
+  readings: { period_start: string; label: string; value: number }[];
+  tracked: boolean; next?: { text: string; gain: number } | null;
+}
+
+export interface BonusRow {
+  membership: string; name: string; full_amount?: number; amount?: number;
+  prorated: boolean; days_on: number; days: number; joined_on: string | null;
+  left_on: string | null; earned?: number; components: BonusComponentRow[];
+  next?: string | null;
+}
+
+export interface BonusPlanHead {
+  id: string; name: string; series: string; period: "monthly" | "quarterly";
+  period_start: string; period_end: string; period_label: string; days_left: number;
+  ended: boolean; closed: boolean; closed_at: string | null; closed_by: string;
+  straight_line: boolean; cap_pct: number; amount: number;
+  totals?: { people: number; earned: number; full: number } | null;
+  corrections?: { membership: string; name: string; kpi: string; period: string;
+    frozen: number | null; now: number | null }[];
+  next_exists?: boolean;
+}
+
+export interface BonusEditorChoices {
+  kpis: { id: string; name: string; kind: KpiDef["kind"]; direction: string; rollup: string;
+    cadence: Cadence; target: number | null; people: string[] }[];
+  members: { membership: string; name: string }[];
+}
+
+export interface BonusPayload {
+  views: BonusViewKey[]; view: BonusViewKey | null;
+  may_build: boolean; may_close: boolean; may_confirm_reopen: boolean; sees_amounts: boolean;
+  practice: boolean; practice_name: string;
+  editor?: BonusEditorChoices;
+  // My bonus
+  plan?: BonusPlanHead; me?: BonusRow;
+  earlier?: { id: string; label: string; short: string; earned: number; full: number;
+    closed: boolean }[];
+  choices?: { id: string; label: string }[];
+  // Team bonus and All bonuses
+  periods?: { key: string; label: string }[]; period?: string | null;
+  plans?: { plan: BonusPlanHead; rows: BonusRow[] }[];
+  payroll?: { name: string; plan: string; period: string; earned: number }[];
+  payroll_open?: string[];
+}
+
+export interface BonusPlanDraft {
+  id?: string; name: string; period: "monthly" | "quarterly"; period_start: string;
+  amount: string; straight_line: boolean; cap_pct: number;
+  components: { kpi: string; weight: number | string; target_value: number | string | null;
+    tiers: BonusTier[] }[];
+  people: { membership: string; amount: string | null; joined_on: string | null;
+    left_on: string | null }[];
 }
 
 export interface EntryField {

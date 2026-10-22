@@ -110,6 +110,8 @@ class BoardView(Base):
         out = board.build(reader, scorecard, request.query_params.get("page"), win, today)
         out["exists"] = True
         out["notices"] = readings.notices(request, reader.company)
+        from .views_bonus import views_for_board
+        out["bonus_views"] = views_for_board(reader, scorecard)
         return Response(out)
 
 

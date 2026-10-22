@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-21 UTC**, after the template library. **The next session starts at "Where things
-stand" just below, then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
+2026-10-22 UTC**, after Release 21 and M5 part 2. **The next session starts at
+"2026-10-22: Release 21, and M5 part 2" just below, then "Where things
+stand (2026-10-21)", then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
 and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
 "2026-10-13", which is the day in order. Everything from "Next" down was last
@@ -10,6 +11,53 @@ brought up to date on 10/5; where it and a newer section disagree, the newer
 holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
+
+## 2026-10-22: Release 21, and M5 part 2
+
+- **Release 21 is live** (22:18–22:46 UTC): `main` at `7285b6c`, fourteen
+  migrations applied by the runbook, all OK: `tenancy 0020–0021`, `crm
+  0040–0044`, `billing 0005–0009`, `scorecard 0001–0002`. It carried P4
+  billing parts 2 to 5 (card payments, pay links, auto-pay, the practice's
+  own subscription), the template library, M5 part 1 (the scorecard) and the
+  demo fixes since. `crm 0041`'s data step had Bryan's yes on a dry run of
+  the whole release on a scratch copy of the 22:04 dump (237 touch modes
+  `ai` to `template`, 10 seeded templates, the $20.00 beta plan).
+  Runbook, "Observed at Release 21", has the times.
+- **Two lessons, now in the runbook's table.** The worker's `WAITING` list
+  stops at ten migrations (`head -10`), so a bigger release looks short:
+  check the rest against the plan order. And R4 goes to Bryan the moment
+  `WAITING` shows: web's build waits only six minutes for it, and at Release
+  21 it came ~24 minutes after the push, so web needed the hand deploy.
+- **`ensure_schedules` was not run after the release.** Nothing runs it on
+  its own. A read-only check in the worker found none of the four new jobs
+  (`billing.resolve_card_payments`, `billing.run_autopay`,
+  `billing.charge_subscription`, `scorecard.remind_missing`), and Bryan was
+  given the line: `railway ssh --service qcluster -- python manage.py
+  ensure_schedules`. It is R5b in the runbook from now on.
+- **M5 part 2, bonus plans (on `dev`, not released; migration `scorecard
+  0003`, additive: five new tables).** `apps/scorecard/bonus.py` holds the
+  arithmetic, who sees whose and the close; `views_bonus.py` the routes
+  under `/api/scorecard/bonus/`; `payroll.py` the two-sheet .xlsx, written
+  with the standard library. A plan is one period of one company (monthly
+  or quarterly) with its people, an amount per person (or their own), and
+  two to five weighted per-person KPIs, each with a tier table, or a
+  straight line for the whole plan. Copy forward makes the next period's
+  plan in the same `series`. Achievement to date is against the target
+  prorated to today for a summed KPI, the target as it stands for an
+  averaged one, flipped for lower is better; someone added part-way is
+  prorated by days, amount and target, and only their periods count.
+  Decision 7: My bonus (a person on a plan), Team bonus (a manager: their
+  own and their teams'), All bonuses (senior leadership, the client owner,
+  the practice owner and associates; assistants without dollars). Closing
+  (practice or client owner, once the period has ended) writes
+  `BonusResult` rows with every reading, target, weight and tier, and shows
+  them ever after; a reading changed later is listed against the frozen one,
+  and only the client owner can confirm working the amounts out again
+  (`BonusReopen`, audited). The Payroll list is on All bonuses for a closed
+  period, with "Download spreadsheet". The demo seed now starts its readings
+  three months back and adds Revenue per order (computed), each rep's Sales
+  booked, and the Sales floor bonus for Dunder Mifflin: July to September
+  closed, October copied forward, Andy joining July part-way.
 
 ## Where things stand (2026-10-21 UTC): Release 20 is live
 

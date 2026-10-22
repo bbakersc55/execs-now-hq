@@ -335,3 +335,149 @@ class KpiReminder(TenantScopedModel):
         constraints = [
             models.UniqueConstraint(fields=["kpi", "period_start"], name="kpi_reminder_once"),
         ]
+
+
+# ---------------------------------------------------------------- bonus plans
+
+def default_tiers():
+    """The spec's tier table: under 80% earns nothing, 80 to 100 half, 100 to
+    110 all of it, 110 and over 120%. Each row is where a tier starts (an
+    achievement percent) and the share of the component it earns."""
+    return [{"from": 0, "share": 0}, {"from": 80, "share": 50},
+            {"from": 100, "share": 100}, {"from": 110, "share": 120}]
+
+
+class BonusPlan(TenantScopedModel):
+    """A bonus plan for one period of one company (M5 part 2, spec "Per-person
+    KPIs and bonus plans"): the people on it, the amount each earns for a full
+    period, and two to five weighted components. Copying it forward makes the
+    next period's plan in the same `series`, which is how a person's earlier
+    periods are found. It shows what is earned; it pays nothing (decision 8).
+
+    Closing it freezes it: every person's result, with the readings, targets,
+    weights and tiers it came from, is kept in `BonusResult` and shown from
+    there ever after. A reading corrected later changes a closed period only
+    when the client owner confirms (`BonusReopen`)."""
+
+    class Period(models.TextChoices):
+        MONTHLY = "monthly", "Monthly"
+        QUARTERLY = "quarterly", "Quarterly"
+
+    scorecard = models.ForeignKey(Scorecard, on_delete=models.CASCADE,
+                                  related_name="bonus_plans")
+    series = models.UUIDField()
+    name = models.CharField(max_length=120)
+    period = models.CharField(max_length=10, choices=Period.choices,
+                              default=Period.MONTHLY, db_default=Period.MONTHLY)
+    period_start = models.DateField()
+    #: Dollars for a full period, for everyone on the plan unless a person
+    #: has an amount of their own.
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    #: A straight line instead of tiers: the share is the achievement, capped.
+    straight_line = models.BooleanField(default=False, db_default=False)
+    cap_pct = models.DecimalField(max_digits=6, decimal_places=2, default=120,
+                                  db_default=120)
+    copied_from = models.ForeignKey("self", null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
+    archived_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bonus_plan"
+        ordering = ["-period_start", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["series", "period_start"],
+                                    name="bonus_plan_one_per_period_of_a_series"),
+            models.CheckConstraint(condition=Q(amount__gte=0),
+                                   name="bonus_plan_amount_not_negative"),
+            models.CheckConstraint(condition=Q(cap_pct__gte=0) & Q(cap_pct__lte=500),
+                                   name="bonus_plan_cap_is_a_percent"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class BonusComponent(TenantScopedModel):
+    """One weighted component of a plan: a per-person KPI, its weight (the
+    weights of a plan add to 100), the period's target when it differs from
+    what the KPI's own targets add up to, and its tier table."""
+
+    plan = models.ForeignKey(BonusPlan, on_delete=models.CASCADE, related_name="components")
+    kpi = models.ForeignKey(Kpi, on_delete=models.PROTECT, related_name="+")
+    weight = models.DecimalField(max_digits=5, decimal_places=2)
+    target_value = models.DecimalField(max_digits=16, decimal_places=4, null=True, blank=True)
+    tiers = models.JSONField(default=default_tiers)
+    position = models.PositiveSmallIntegerField(default=0, db_default=0)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bonus_component"
+        ordering = ["position", "created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "kpi"], name="bonus_component_kpi_once"),
+            models.CheckConstraint(condition=Q(weight__gt=0) & Q(weight__lte=100),
+                                   name="bonus_component_weight_is_a_percent"),
+        ]
+
+
+class BonusPerson(TenantScopedModel):
+    """A person on a plan: a portal user of the company. `amount` is theirs
+    when it differs from the plan's; `joined_on` and `left_on` inside the
+    period prorate them by days."""
+
+    plan = models.ForeignKey(BonusPlan, on_delete=models.CASCADE, related_name="people")
+    membership = models.ForeignKey("tenancy.Membership", on_delete=models.CASCADE,
+                                   related_name="+")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    joined_on = models.DateField(null=True, blank=True)
+    left_on = models.DateField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bonus_person"
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "membership"],
+                                    name="bonus_person_once_on_a_plan"),
+            models.CheckConstraint(condition=Q(amount__isnull=True) | Q(amount__gte=0),
+                                   name="bonus_person_amount_not_negative"),
+        ]
+
+
+class BonusResult(TenantScopedModel):
+    """One person's result for a closed plan, frozen at the close: the amount
+    earned and, in `detail`, every component's readings, target, achievement,
+    tier and share it was worked out from. The Payroll list is these rows."""
+
+    plan = models.ForeignKey(BonusPlan, on_delete=models.CASCADE, related_name="results")
+    membership = models.ForeignKey("tenancy.Membership", on_delete=models.CASCADE,
+                                   related_name="+")
+    name = models.CharField(max_length=200)
+    full_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    earned = models.DecimalField(max_digits=12, decimal_places=2)
+    detail = models.JSONField(default=dict)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bonus_result"
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "membership"],
+                                    name="bonus_result_once_per_person"),
+        ]
+
+
+class BonusReopen(TenantScopedModel):
+    """A closed plan's amounts worked out again from corrected readings, with
+    the client owner's confirmation: who confirmed, and every person's amount
+    before and after."""
+
+    plan = models.ForeignKey(BonusPlan, on_delete=models.CASCADE, related_name="reopens")
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                     on_delete=models.SET_NULL, related_name="+")
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bonus_reopen"
+        ordering = ["created_at"]
