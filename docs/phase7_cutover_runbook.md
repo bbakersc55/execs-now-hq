@@ -543,8 +543,11 @@ done at the time: `ensure_schedules`.** Four jobs are new in this release
 (`billing.resolve_card_payments`, `billing.run_autopay`,
 `billing.charge_subscription`, `scorecard.remind_missing`); a read-only check
 in the worker afterwards found none of them, and the owner was given the
-line (R5b, added from this). Production's data was not read beyond that
-check. Lessons, now in the table: R3's list stops at ten; R4 goes to the
+line (R5b, added from this). **Run by the owner at about 00:05 UTC on
+10/23:** the four created for both practices (first runs that day: the
+lookup 00:07 UTC, the subscription 07:00, the reminder 08:00, auto-pay 09:00
+Mountain), every other schedule re-timed, nothing else created. Production's
+data was not read beyond that check. Lessons, now in the table: R3's list stops at ten; R4 goes to the
 owner the moment `WAITING` shows.
 
 ---

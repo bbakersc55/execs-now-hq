@@ -33,7 +33,8 @@ truth; this covers what they don't, and what changed since 9/30.
   (`billing.resolve_card_payments`, `billing.run_autopay`,
   `billing.charge_subscription`, `scorecard.remind_missing`), and Bryan was
   given the line: `railway ssh --service qcluster -- python manage.py
-  ensure_schedules`. It is R5b in the runbook from now on.
+  ensure_schedules`, which he ran at about 00:05 UTC on 10/23: all four
+  created for both practices. It is R5b in the runbook from now on.
 - **M5 part 2, bonus plans (on `dev`, not released; migration `scorecard
   0003`, additive: five new tables).** `apps/scorecard/bonus.py` holds the
   arithmetic, who sees whose and the close; `views_bonus.py` the routes
