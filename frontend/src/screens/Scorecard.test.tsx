@@ -170,25 +170,26 @@ describe("the scorecard (M5 part 1)", () => {
       .toBeInTheDocument();
   });
 
-  it("offers the practice the starter KPIs on an empty scorecard, one click each", async () => {
-    const user = userEvent.setup();
-    const fetchMock = mockApi({
-      "POST /api/scorecard/starters/": () => ({ status: 201, body: { id: "k9" } }),
-      "GET /api/scorecard/setup/": { starters: [
-        { discipline: "operations", name: "Operations", kpis: [
-          { key: "on_time_delivery", name: "On-time delivery", kind: "percent" }] },
-        { discipline: "service", name: "Service", kpis: [
-          { key: "response_time", name: "Response time", kind: "duration" }] }] },
-      "GET /api/scorecard/": { ...BOARD, exists: false, pages: [], kpis: [], may_set_up: true },
+  it("offers the practice the starter KPIs on an empty scorecard, made only by Save on the company page",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = mockApi({
+        "GET /api/scorecard/setup/": { starters: [
+          { discipline: "operations", name: "Operations", kpis: [
+            { key: "on_time_delivery", name: "On-time delivery", kind: "percent" }] },
+          { discipline: "service", name: "Service", kpis: [
+            { key: "response_time", name: "Response time", kind: "duration" }] }] },
+        "GET /api/scorecard/": { ...BOARD, exists: false, pages: [], kpis: [], may_set_up: true },
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+        route: "/companies/c1/scorecard" });
+      expect(await screen.findByRole("heading", { name: "Start the scorecard" })).toBeInTheDocument();
+      await user.click(await screen.findByRole("button", { name: "+ On-time delivery" }));
+      // Off to the company page's form (no route for it here), and nothing made.
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Start the scorecard" })).toBeNull());
+      expect(fetchMock.calls.filter((c) => c.method !== "GET")).toEqual([]);
     });
-    vi.stubGlobal("fetch", fetchMock);
-    renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
-      route: "/companies/c1/scorecard" });
-    expect(await screen.findByRole("heading", { name: "Start the scorecard" })).toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "+ On-time delivery" }));
-    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
-      .toEqual({ company: "c1", key: "on_time_delivery" }));
-  });
 
   it("uses the practice's own words for the scorecard", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": BOARD }));
@@ -367,5 +368,114 @@ describe("computed KPIs and the leaderboard switch (M5 part 1, after review)", (
     renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
     const t = await screen.findByRole("region", { name: "Revenue per booking" });
     expect(within(t).getByText(/computed: Revenue ÷ Bookings/)).toBeInTheDocument();
+  });
+});
+
+/** Two faults from production (Bryan, 2026-10-22): a KPI was made before
+ *  Save, and the scorecard view offered the practice no Edit or Archive. */
+describe("a KPI is made only by Save, and managed from both places", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const STARTERS = [{ discipline: "operations", name: "Operations", kpis: [
+    { key: "on_time_delivery", name: "On-time delivery", kind: "percent", direction: "higher",
+      cadence: "weekly", rollup: "average", target_value: 95, tile: "gauge" }] }];
+  const EMPTY = { ...SETUP, exists: false, pages: [], kpis: [], starters: STARTERS };
+
+  it("a starter fills the form in and makes nothing until Save; Cancel and Enter make nothing",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = mockApi({
+        "POST /api/scorecard/kpis/": () => ({ status: 201, body: { id: "k9" } }),
+        "GET /api/scorecard/setup/": EMPTY,
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<ScorecardSetup me={aMe({ role: "FF" })}
+        company={aCompany({ id: "c1", is_client_company: true })} />);
+      await user.click(await screen.findByRole("button", { name: "+ On-time delivery" }));
+      const form = screen.getByRole("form", { name: "New KPI" });
+      expect(within(form).getByLabelText("Name")).toHaveValue("On-time delivery");
+      // Enter in a field doesn't save it.
+      await user.type(within(form).getByLabelText("Name"), " rate{Enter}");
+      // Leaving the form doesn't either.
+      await user.click(within(form).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("form", { name: "New KPI" })).toBeNull();
+      expect(fetchMock.calls.filter((c) => c.method !== "GET")).toEqual([]);
+      // Only Save does.
+      await user.click(screen.getByRole("button", { name: "+ On-time delivery" }));
+      await user.click(screen.getByRole("button", { name: "Add the KPI" }));
+      await waitFor(() => {
+        const made = fetchMock.calls.filter((c) => c.method === "POST");
+        expect(made.map((c) => c.url)).toEqual(["/api/scorecard/kpis/"]);
+        expect(made[0].body).toMatchObject({ company: "c1", name: "On-time delivery",
+          kind: "percent", target_value: 95, tile: "gauge" });
+      });
+    });
+
+  it("the scorecard view's starter link opens the form here, filled in, with nothing made",
+    async () => {
+      const fetchMock = mockApi({ "GET /api/scorecard/setup/": EMPTY });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<ScorecardSetup me={aMe({ role: "FF" })}
+        company={aCompany({ id: "c1", is_client_company: true })} />,
+      { path: "/companies/:id", route: "/companies/c1?starter=on_time_delivery#scorecard-setup" });
+      const form = await screen.findByRole("form", { name: "New KPI" });
+      expect(within(form).getByLabelText("Name")).toHaveValue("On-time delivery");
+      expect(fetchMock.calls.filter((c) => c.method !== "GET")).toEqual([]);
+    });
+
+  it("the company page's card offers Edit and Archive on every KPI", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({ "POST /api/scorecard/kpis/k2/archive/": { ok: true },
+      "GET /api/scorecard/setup/": SETUP });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ScorecardSetup me={aMe({ role: "CF" })}
+      company={aCompany({ id: "c1", is_client_company: true })} />);
+    for (const name of ["Occupancy", "Bookings"]) {
+      expect(await screen.findByRole("button", { name: `Edit ${name}` })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: `Archive ${name}` })).toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("button", { name: "Archive Bookings" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.method === "POST"
+      && c.url === "/api/scorecard/kpis/k2/archive/")).toBe(true));
+  });
+
+  it("the scorecard view's tile: Details → Edit opens the form, and Archive asks first",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = mockApi({
+        "PATCH /api/scorecard/kpis/k1/": { id: "k1" },
+        "POST /api/scorecard/kpis/k1/archive/": { ok: true },
+        "GET /api/scorecard/setup/": SETUP,
+        "GET /api/scorecard/": { ...BOARD, may_set_up: true },
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+        route: "/companies/c1/scorecard" });
+      const tile = await screen.findByRole("region", { name: "Occupancy" });
+      await user.click(within(tile).getByRole("button", { name: "Back of Occupancy" }));
+      await user.click(within(tile).getByRole("button", { name: "Edit Occupancy" }));
+      const dialog = await screen.findByRole("dialog", { name: "Edit Occupancy" });
+      const name = await within(dialog).findByLabelText("Name");
+      await user.clear(name);
+      await user.type(name, "Occupancy rate");
+      await user.click(within(dialog).getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body)
+        .toMatchObject({ name: "Occupancy rate" }));
+      expect(await screen.findByText("Occupancy rate is saved.")).toBeInTheDocument();
+      await user.click(within(tile).getByRole("button", { name: "Archive Occupancy" }));
+      expect(fetchMock.calls.some((c) => c.url.endsWith("/archive/"))).toBe(false);
+      await user.click(within(tile).getByRole("button", { name: "Archive" }));
+      await waitFor(() => expect(fetchMock.calls.some((c) => c.method === "POST"
+        && c.url === "/api/scorecard/kpis/k1/archive/")).toBe(true));
+    });
+
+  it("no Edit or Archive on a tile for anyone who doesn't set the scorecard up", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, may_set_up: false } }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    const tile = await screen.findByRole("region", { name: "Occupancy" });
+    await user.click(within(tile).getByRole("button", { name: "Back of Occupancy" }));
+    expect(within(tile).queryByRole("button", { name: "Edit Occupancy" })).toBeNull();
+    expect(within(tile).queryByRole("button", { name: "Archive Occupancy" })).toBeNull();
   });
 });

@@ -203,9 +203,11 @@ export interface SetupKpi extends KpiDef {
   source_a: string | null; source_b: string | null;
 }
 
+export type StarterKpi = { key: string; name: string; kind: Kind } & Record<string, unknown>;
+
 export interface Starter {
   discipline: string; name: string;
-  kpis: ({ key: string; name: string; kind: Kind } & Record<string, unknown>)[];
+  kpis: StarterKpi[];
 }
 
 export interface SetupState {

@@ -2,9 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { Modal } from "./shell";
 import { Banner, Card } from "./ui";
 import { Company, Me, api } from "../lib/api";
-import { SetupKpi, SetupPage, SetupState, fmt } from "../lib/scorecard";
+import { SetupKpi, SetupPage, SetupState, Starter, StarterKpi, fmt } from "../lib/scorecard";
 import { useWords } from "../lib/words";
 import { StartCard } from "../screens/Scorecard";
 
@@ -40,7 +41,7 @@ type Draft = Record<string, unknown> & { month_targets?: Record<string, string |
 export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
   const w = useWords();
   const qc = useQueryClient();
-  const { hash } = useLocation();
+  const { hash, search } = useLocation();
   const box = useRef<HTMLDivElement>(null);
   const key = ["scorecard-setup", company.id];
   const state = useQuery<SetupState>({
@@ -49,11 +50,20 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
   });
   const [note, setNote] = useState<{ kind: string; text: string } | null>(null);
   const [editing, setEditing] = useState<string | "new" | null>(null);
+  // A starter KPI fills the new-KPI form in; nothing is made until Save.
+  const [starter, setStarter] = useState<StarterKpi | null>(null);
   const [newPage, setNewPage] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
   useEffect(() => {
     if (state.data && hash === "#scorecard-setup") box.current?.scrollIntoView?.({ block: "start" });
   }, [state.data !== undefined, hash]); // eslint-disable-line react-hooks/exhaustive-deps
+  // From the scorecard view's "Start the scorecard": ?starter=<key> opens it here.
+  useEffect(() => {
+    const wanted = new URLSearchParams(search).get("starter");
+    const all = (state.data as (SetupState & { starters?: Starter[] }) | undefined)?.starters ?? [];
+    const found = all.flatMap((g) => g.kpis).find((k) => k.key === wanted);
+    if (found) { setStarter(found); setEditing("new"); }
+  }, [state.data !== undefined, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: key });
@@ -82,7 +92,8 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
         ? <Link className="btn small" to={`/companies/${company.id}/scorecard`}>Open the {w.scorecard}</Link> : undefined}>
         {note && <Banner kind={note.kind}>{note.text}</Banner>}
         {live.length === 0 && (
-          <StartCard compact companyId={company.id} onMade={(id) => { refresh(); setEditing(id); }} />
+          <StartCard compact companyId={company.id}
+            onPick={(k) => { setStarter(k); setEditing("new"); }} />
         )}
         {s.exists && (
           <div className="row tight sc-setup-row">
@@ -157,7 +168,8 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
 
         {s.exists && (
           <div className="row tight sc-setup-row">
-            <button className="primary small" onClick={() => setEditing(editing === "new" ? null : "new")}>
+            <button className="primary small" onClick={() => {
+              setStarter(null); setEditing(editing === "new" ? null : "new"); }}>
               Add {w.aKpi}</button>
             <input aria-label="New page name" placeholder="New page, e.g. Sales" value={newPage}
               onChange={(e) => setNewPage(e.target.value)} />
@@ -173,7 +185,9 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
             body: { company: company.id } })}>Or start with an empty {w.scorecard}</button>
         )}
         {editing === "new" && (
-          <KpiForm state={s} kpi={null} onDone={(text) => { setEditing(null); refresh(); setNote({ kind: "ok", text }); }} />
+          <KpiForm key={starter?.key ?? "blank"} state={s} kpi={null} initial={starter}
+            onCancel={() => { setEditing(null); setStarter(null); }}
+            onDone={(text) => { setEditing(null); setStarter(null); refresh(); setNote({ kind: "ok", text }); }} />
         )}
 
         {(archived.length > 0 || s.pages.some((p) => p.archived)) && (
@@ -229,7 +243,31 @@ function PageLine({ page, teams, first, last, empty, onSave, onMove, onArchive }
   );
 }
 
-function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | null; onDone: (text: string) => void }) {
+/** A KPI's edit form in a pop-up, for the scorecard view's tile (Details →
+ *  Edit), so the practice need not go back to the company page. */
+export function KpiEditModal({ companyId, kpiId, onClose, onSaved }: {
+  companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
+}) {
+  const state = useQuery<SetupState>({
+    queryKey: ["scorecard-setup", companyId],
+    queryFn: () => api.get<SetupState>(`/api/scorecard/setup/?company=${companyId}`),
+  });
+  const kpi = state.data?.kpis.find((k) => k.id === kpiId);
+  return (
+    <Modal label={kpi ? `Edit ${kpi.name}` : "Edit"} wide onClose={onClose}
+      title={kpi ? `Edit ${kpi.name}` : "Edit"}>
+      {state.isError && <Banner kind="bad">{(state.error as Error).message}</Banner>}
+      {!state.data ? <p>Loading…</p> : kpi
+        ? <KpiForm state={state.data} kpi={kpi} onDone={onSaved} onCancel={onClose} />
+        : <p>That KPI is no longer here.</p>}
+    </Modal>
+  );
+}
+
+function KpiForm({ state, kpi, onDone, onCancel, initial }: {
+  state: SetupState; kpi: SetupKpi | null; onDone: (text: string) => void;
+  onCancel?: () => void; initial?: StarterKpi | null;
+}) {
   const w = useWords();
   const livePages = state.pages.filter((p) => !p.archived);
   const [d, setD] = useState<Draft>(() => kpi ? {
@@ -248,6 +286,7 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
     leaderboard: false, tile: "number_trend", audience: "page", audience_team: "", note: "",
     strategy_component: "", people: [], month_targets: {},
     formula: "", source_a: "", source_b: "",
+    ...(initial ? Object.fromEntries(Object.entries(initial).filter(([k]) => k !== "key")) : {}),
   });
   const [seasonal, setSeasonal] = useState(Object.keys(d.month_targets ?? {}).length > 0);
   const [error, setError] = useState<{ text: string; field?: string } | null>(null);
@@ -285,7 +324,11 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
     .map((k) => [k.id, k.name])]);
   return (
     <form className="sc-kpi-form" aria-label={kpi ? `Edit ${kpi.name}` : `New ${w.kpi}`}
-      onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
+      // Only the button saves: Enter in a field doesn't make the KPI.
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault();
+      }}>
       {error && <Banner kind="bad">{error.text}</Banner>}
       <div className="sc-form-grid">
         {text("name", "Name", { maxLength: 120, placeholder: "Occupancy" })}
@@ -356,6 +399,7 @@ function KpiForm({ state, kpi, onDone }: { state: SetupState; kpi: SetupKpi | nu
       <div className="row tight">
         <button type="submit" className="primary small" disabled={save.isPending}>
           {kpi ? "Save" : `Add the ${w.kpi}`}</button>
+        {onCancel && <button type="button" className="small" onClick={onCancel}>Cancel</button>}
       </div>
     </form>
   );

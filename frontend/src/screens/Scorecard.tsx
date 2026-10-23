@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { BonusArea, bonusLead } from "../components/ScorecardBonus";
+import { KpiEditModal } from "../components/ScorecardSetup";
 import { ScorecardTile } from "../components/ScorecardTiles";
 import { Banner } from "../components/ui";
 import { Me, api } from "../lib/api";
 import {
   BONUS_VIEW_LABEL, Board, BonusViewKey, CADENCE_LABEL, Cadence, Point, STATUS_LABEL, Starter,
-  Tile, WINDOWS, WindowKey, fmt,
+  StarterKpi, Tile, WINDOWS, WindowKey, fmt,
 } from "../lib/scorecard";
 import { useWords } from "../lib/words";
 
@@ -31,6 +32,7 @@ export function Scorecard({ me }: { me: Me }) {
   const companyId = id ?? me.client_company ?? "";
   const w = useWords();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [win, setWin] = useState<WindowKey>("this_week");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -38,6 +40,18 @@ export function Scorecard({ me }: { me: Me }) {
   const [page, setPage] = useState<string | null>(null);
   const [view, setView] = useState<View>("tiles");
   const [bonus, setBonus] = useState<BonusViewKey | null>(null);
+  // The practice edits or archives a KPI from its tile (Details → Edit).
+  const [editKpi, setEditKpi] = useState<string | null>(null);
+  const [managed, setManaged] = useState<{ kind: string; text: string } | null>(null);
+  const archive = useMutation({
+    mutationFn: (t: Tile) => api.post(`/api/scorecard/kpis/${t.id}/archive/`, {}),
+    onSuccess: (_r, t) => {
+      setManaged({ kind: "ok", text: `${t.name} is archived; its readings are kept.` });
+      qc.invalidateQueries({ queryKey: ["scorecard", companyId] });
+      qc.invalidateQueries({ queryKey: ["scorecard-setup", companyId] });
+    },
+    onError: (e: Error) => setManaged({ kind: "bad", text: e.message }),
+  });
 
   const params = new URLSearchParams({ company: companyId, window: win });
   if (win === "custom" && applied) { params.set("from", applied.from); params.set("to", applied.to); }
@@ -61,7 +75,8 @@ export function Scorecard({ me }: { me: Me }) {
       <div className="sc-page">
         <ScorecardHead b={b} me={me} practice={practice} />
         {b.may_set_up
-          ? <StartCard companyId={companyId} onMade={() => qc.invalidateQueries({ queryKey: ["scorecard", companyId] })} />
+          ? <StartCard companyId={companyId}
+            onPick={(k) => navigate(`/companies/${companyId}?starter=${encodeURIComponent(k.key)}#scorecard-setup`)} />
           : <div className="sc-tile"><p className="sc-empty">There is no {w.scorecard} here yet.</p></div>}
       </div>
     );
@@ -135,11 +150,22 @@ export function Scorecard({ me }: { me: Me }) {
       )}
 
       <PageTabs b={b} onPick={setPage} bonus={null} onBonus={setBonus} />
+      {managed && <Banner kind={managed.kind}>{managed.text}</Banner>}
+      {editKpi && (
+        <KpiEditModal companyId={companyId} kpiId={editKpi} onClose={() => setEditKpi(null)}
+          onSaved={(text) => {
+            setEditKpi(null); setManaged({ kind: "ok", text });
+            qc.invalidateQueries({ queryKey: ["scorecard", companyId] });
+            qc.invalidateQueries({ queryKey: ["scorecard-setup", companyId] });
+          }} />
+      )}
 
       {view === "grid" ? <Grid tiles={tiles} b={b} /> : (
         <div className="sc-grid">
           {tiles.length === 0 && <p className="sc-empty">No {w.kpis} on this page yet.</p>}
-          {tiles.map((t) => <ScorecardTile key={t.id} t={t} />)}
+          {tiles.map((t) => <ScorecardTile key={t.id} t={t} manage={b.may_set_up ? {
+            onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
+            busy: archive.isPending } : undefined} />)}
         </div>
       )}
       {view === "meeting" && (
@@ -370,36 +396,28 @@ function Meeting({ b, onExit, onPage }: { b: Board; onExit: () => void; onPage: 
   );
 }
 
-/** "Start the scorecard": three suggested KPIs per discipline, each one
- *  click to create (decided after the mock-up). */
-export function StartCard({ companyId, onMade, compact = false }: {
-  companyId: string; onMade: (kpiId: string) => void; compact?: boolean;
+/** "Start the scorecard": three suggested KPIs per discipline. Choosing one
+ *  opens the new-KPI form filled in with it; nothing is made until Save
+ *  (Bryan, 2026-10-22: a starter used to be made on the click). */
+export function StartCard({ companyId, onPick, compact = false }: {
+  companyId: string; onPick: (starter: StarterKpi) => void; compact?: boolean;
 }) {
   const w = useWords();
   const starters = useQuery<{ starters: Starter[] }>({
     queryKey: ["scorecard-setup", companyId],
     queryFn: () => api.get(`/api/scorecard/setup/?company=${companyId}`),
   });
-  const [error, setError] = useState("");
-  const make = useMutation({
-    mutationFn: (key: string) => api.post<{ id: string }>("/api/scorecard/starters/",
-      { company: companyId, key }),
-    onSuccess: (kpi) => { setError(""); onMade(kpi.id); },
-    onError: (e: Error) => setError(e.message),
-  });
   return (
     <section className={compact ? "sc-start compact" : "sc-tile sc-start"} aria-label={`Start the ${w.scorecard}`}>
       {!compact && <h3>Start the {w.scorecard}</h3>}
-      <p className="sc-muted">Pick a few {w.kpis} to begin with. Each is made in one click, with a
-        sensible target, and can be changed afterwards.</p>
-      {error && <Banner kind="bad">{error}</Banner>}
+      <p className="sc-muted">Pick a few {w.kpis} to begin with. Each opens filled in, with a
+        sensible target, to change before you save it.</p>
       <div className="sc-starters">
         {(starters.data?.starters ?? []).map((group) => (
           <div key={group.discipline}>
             <div className="sc-starter-head">{group.name}</div>
             {group.kpis.map((k) => (
-              <button key={k.key} className="small" disabled={make.isPending}
-                onClick={() => make.mutate(k.key)}>+ {k.name}</button>
+              <button key={k.key} type="button" className="small" onClick={() => onPick(k)}>+ {k.name}</button>
             ))}
           </div>
         ))}

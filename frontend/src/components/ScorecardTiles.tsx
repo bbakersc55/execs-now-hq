@@ -331,8 +331,12 @@ function Leaderboard({ t }: { t: Tile }) {
   );
 }
 
-function Back({ t }: { t: Tile }) {
+/** What the practice owner and associates can do to a KPI from its tile. */
+export interface TileManage { onEdit: () => void; onArchive: () => void; busy?: boolean }
+
+function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
   const latest = [...t.history].reverse().find((p) => p.value !== null);
   return (
     <div className="sc-back">
@@ -365,6 +369,26 @@ function Back({ t }: { t: Tile }) {
           {latest.source === "hand" ? ", by hand" : latest.source ? `, from ${latest.source}` : ""}.</>
           : "No readings yet."}
       </div>
+      {manage && (
+        <div className="sc-back-manage">
+          {archiving ? (
+            <>
+              <span className="sc-muted">Archive {t.name}? Its readings are kept, and it can be restored
+                on the company page.</span>
+              <button type="button" className="small" disabled={manage.busy}
+                onClick={manage.onArchive}>Archive</button>
+              <button type="button" className="ghost small" onClick={() => setArchiving(false)}>Keep it</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="small" aria-label={`Edit ${t.name}`}
+                onClick={manage.onEdit}>Edit</button>
+              <button type="button" className="ghost small" aria-label={`Archive ${t.name}`}
+                onClick={() => setArchiving(true)}>Archive</button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -390,8 +414,8 @@ export function HistoryList({ reading, def }: { reading: string; def: KpiDef }) 
 }
 
 /** One KPI's tile. `large` is the Meeting view's bigger type. */
-export function ScorecardTile({ t, large = false, actions }: {
-  t: Tile; large?: boolean; actions?: ReactNode;
+export function ScorecardTile({ t, large = false, actions, manage }: {
+  t: Tile; large?: boolean; actions?: ReactNode; manage?: TileManage;
 }) {
   const [flipped, setFlipped] = useState(false);
   const s = t.summary;
@@ -406,7 +430,7 @@ export function ScorecardTile({ t, large = false, actions }: {
             ? `${t.direction === "lower" ? "keep under" : "target"} ${fmt(t, t.each_target)} each` : ""}</span>
           : <StatusPill status={s?.status ?? null} />}
       </div>
-      {flipped ? <Back t={t} /> : (
+      {flipped ? <Back t={t} manage={manage} /> : (
         <>
           <Body t={t} />
           {s && <Missing s={s} />}

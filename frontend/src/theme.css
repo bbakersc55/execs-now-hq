@@ -1738,3 +1738,7 @@ td.bn-ok, td.bn-behind, td.bn-off { font-weight: 600; }
   .bn-big { font-size: 40px; }
   .bn-moves { max-width: none; }
 }
+
+/* A KPI managed from its tile's back (Details → Edit, Archive), practice only. */
+.sc-back-manage { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+                  border-top: 1px solid var(--sc-line-soft); padding-top: 10px; }

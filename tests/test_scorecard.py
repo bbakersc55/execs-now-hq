@@ -1041,3 +1041,24 @@ def test_the_practice_menu_lists_each_reachable_client_with_its_scorecard(sc, ap
     # Nobody else.
     assert api.as_(sc["practice"]["va"]).get(f"{B}companies/").status_code == 403
     assert api.as_(sc["who"]["owner"]).get(f"{B}companies/").status_code == 403
+
+
+def test_a_refused_kpi_leaves_nothing_behind_and_save_alone_makes_one(seeded_tenant, ff, api):
+    """Bryan, 2026-10-22: nothing is made until Save. A KPI refused on Save
+    leaves no scorecard or page behind; one saved without a page chosen
+    lands on the first page."""
+    from apps.scorecard.models import ScorecardPage
+
+    company = ClientCompanyFactory(tenant=seeded_tenant, name="Brand New Co")
+    client = api.as_(ff)
+    r = post(client, f"{B}kpis/", {"company": str(company.pk), "name": "", "kind": "count"})
+    assert r.status_code == 400
+    with tenant_context(seeded_tenant.pk):
+        assert not Scorecard.objects.filter(company=company).exists()
+        assert not ScorecardPage.objects.filter(scorecard__company=company).exists()
+    r = post(client, f"{B}kpis/", {"company": str(company.pk), "name": "Calls", "kind": "count",
+                                   "cadence": "weekly", "rollup": "sum"})
+    assert r.status_code == 201, r.content
+    with tenant_context(seeded_tenant.pk):
+        kpi = Kpi.objects.get(scorecard__company=company)
+        assert kpi.page.name == setup.FIRST_PAGE

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from django.db import transaction
 from django.db.models import Count
 from django.http import Http404
 from rest_framework import permissions
@@ -340,9 +341,17 @@ class KpisView(Base):
         refused = _refuse_setup(reader)
         if refused:
             return refused
-        scorecard = setup.ensure(reader.company, request.user)
+        # All or nothing: a refused KPI leaves no new scorecard or page behind
+        # (Bryan, 2026-10-22: nothing is made until Save, and only by it).
         try:
-            kpi = setup.create_kpi(scorecard, request.data, request.user)
+            with transaction.atomic():
+                scorecard = setup.ensure(reader.company, request.user)
+                data = dict(request.data)
+                if not data.get("page"):
+                    first = ScorecardPage.objects.filter(scorecard=scorecard,
+                                                         archived_at__isnull=True).first()
+                    data["page"] = str(first.pk) if first else ""
+                kpi = setup.create_kpi(scorecard, data, request.user)
         except setup.SetupError as exc:
             return _setup_error(exc)
         return Response(setup.describe(kpi), status=201)
