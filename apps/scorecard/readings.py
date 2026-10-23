@@ -28,6 +28,9 @@ from .board import Targets, definition, name_of, num
 from .models import Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange, KpiReminder
 
 LIMIT = Decimal("1e12")
+#: How far back the period pickers reach: two years of each cadence (Bryan,
+#: 2026-10-23). Entering further back is allowed; the pickers stop here.
+REACH = {P.DAILY: 731, P.WEEKLY: 105, P.MONTHLY: 24, P.QUARTERLY: 8}
 
 
 class ReadingRefused(ValueError):
@@ -143,7 +146,7 @@ def form(reader, scorecard, day: date, today: date) -> dict:
                    "closes": P.end_of(weekly, P.WEEKLY).isoformat(),
                    "open": not P.closed(weekly, P.WEEKLY, today)},
         "choices": [{"day": s.isoformat(), "label": P.long_label(s, P.WEEKLY)}
-                    for s in reversed(P.last_n(today, P.WEEKLY, 8, week_start))],
+                    for s in reversed(P.last_n(today, P.WEEKLY, REACH[P.WEEKLY], week_start))],
         "kpis": kpis,
         "progress": progress(reader, scorecard, starts_for_week=weekly),
     }
@@ -275,11 +278,19 @@ def history(reader, reading) -> dict:
     }
 
 
-def bulk(reader, scorecard, cadence, count, today) -> dict:
+def bulk(reader, scorecard, cadence, count, today, first=None) -> dict:
     """Periods across, KPIs down: the KPIs of one cadence this person may
-    enter, with their rows, over the last `count` periods."""
+    enter, with their rows, over the last `count` periods, or `count`
+    periods from the one `first` is in (never past the current one)."""
     week_start = scorecard.week_start
-    starts = P.last_n(today, cadence, count, week_start)
+    if first is not None:
+        start = P.start_of(min(first, today), cadence, week_start)
+        starts = []
+        while len(starts) < count and start <= today:
+            starts.append(start)
+            start = P.next_start(start, cadence)
+    else:
+        starts = P.last_n(today, cadence, count, week_start)
     entries = [(p, k, r) for p, k, r in _visible_entries(reader, scorecard)
                if k.cadence == cadence]
     found = {(r.kpi_id, r.period_start, r.membership_id): r for r in
@@ -300,9 +311,15 @@ def bulk(reader, scorecard, cadence, count, today) -> dict:
                            "value": num(found[(kpi.pk, s, member)].value)
                            if (kpi.pk, s, member) in found else None} for s in starts],
             })
+    reach = list(reversed(P.last_n(today, cadence, REACH[cadence], week_start)))
     return {"cadence": cadence, "periods": [{"start": s.isoformat(),
                                               "label": P.short_label(s, cadence)}
-                                             for s in starts], "lines": lines}
+                                             for s in starts], "lines": lines,
+            "from": starts[0].isoformat() if starts else None,
+            "earliest": reach[-1].isoformat(),
+            # The "From" picker's periods, newest first; a daily one is a date field.
+            "choices": [] if cadence == P.DAILY else
+            [{"start": s.isoformat(), "label": P.long_label(s, cadence)} for s in reach]}
 
 
 # ---------------------------------------------------------------- reminders

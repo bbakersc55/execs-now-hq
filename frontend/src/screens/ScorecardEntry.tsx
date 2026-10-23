@@ -227,12 +227,15 @@ export function ScorecardEntry({ me }: { me: Me }) {
 function BulkTable({ companyId }: { companyId: string }) {
   const qc = useQueryClient();
   const [cadence, setCadence] = useState<Cadence>("weekly");
+  // "" is the latest periods; otherwise the first period shown.
+  const [from, setFrom] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [note, setNote] = useState<{ kind: string; text: string } | null>(null);
   const sheet = useQuery<BulkSheet>({
-    queryKey: ["scorecard-bulk", companyId, cadence],
-    queryFn: () => api.get<BulkSheet>(`/api/scorecard/bulk/?company=${companyId}&cadence=${cadence}&count=6`),
+    queryKey: ["scorecard-bulk", companyId, cadence, from],
+    queryFn: () => api.get<BulkSheet>(`/api/scorecard/bulk/?company=${companyId}&cadence=${cadence}&count=6${from ? `&from=${from}` : ""}`),
+    placeholderData: (previous) => previous,
   });
   const save = useMutation({
     mutationFn: (readings: unknown[]) => api.post<SaveResult>("/api/scorecard/readings/",
@@ -255,11 +258,27 @@ function BulkTable({ companyId }: { companyId: string }) {
     <section className="sc-tile" aria-label="Catch up">
       <div className="sc-entry-title-row">
         <div className="sc-entry-title">Catch up on several periods</div>
-        <select aria-label="Cadence" className="sc-select" value={cadence}
-          onChange={(e) => { setCadence(e.target.value as Cadence); setValues({}); }}>
-          <option value="daily">Daily</option><option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option>
-        </select>
+        <div className="sc-controls">
+          <select aria-label="Cadence" className="sc-select" value={cadence}
+            onChange={(e) => { setCadence(e.target.value as Cadence); setFrom(""); setValues({}); }}>
+            <option value="daily">Daily</option><option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option>
+          </select>
+          <label htmlFor="sc-bulk-from" className="sc-muted">From</label>
+          {cadence === "daily" ? (
+            <input id="sc-bulk-from" type="date" className="sc-select" value={from}
+              min={s?.earliest} max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => { setFrom(e.target.value); setValues({}); }} />
+          ) : (
+            <select id="sc-bulk-from" className="sc-select" value={from}
+              onChange={(e) => { setFrom(e.target.value); setValues({}); }}>
+              <option value="">The latest periods</option>
+              {(s?.choices ?? []).map((c) => (
+                <option key={c.start} value={c.start}>{c.label.charAt(0).toUpperCase() + c.label.slice(1)}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
       {note && <div role={note.kind === "ok" ? "status" : "alert"}><Banner kind={note.kind}>{note.text}</Banner></div>}
       {!s ? <p>Loading…</p> : s.lines.length === 0 ? <p className="sc-empty">Nothing of this cadence for you to enter.</p> : (

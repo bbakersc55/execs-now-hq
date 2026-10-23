@@ -479,3 +479,41 @@ describe("a KPI is made only by Save, and managed from both places", () => {
     expect(within(tile).queryByRole("button", { name: "Archive Occupancy" })).toBeNull();
   });
 });
+
+describe("catching up on any past period (Bryan, 2026-10-23)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("the catch-up table has a From picker that asks for the period chosen", async () => {
+    const user = userEvent.setup();
+    const sheet = { cadence: "weekly", lines: [{ ...tile({ id: "k1", name: "Guest rating" }),
+      membership: null, person: "", cells: [{ period_start: "2025-01-06", value: 4.5 }] }],
+      periods: [{ start: "2025-01-06", label: "Jan 6" }], from: "2025-01-06",
+      earliest: "2024-10-21",
+      choices: [{ start: "2026-10-19", label: "the week of October 19 to 25, 2026" },
+        { start: "2025-01-06", label: "the week of January 6 to 12, 2025" }] };
+    const fetchMock = mockApi({ "GET /api/scorecard/bulk/": sheet,
+      "GET /api/scorecard/entry/": FORM });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ScorecardEntry me={aMe({ role: "ECC", client_company: "c1" })} />);
+    await user.click(await screen.findByRole("button", { name: "Catch up on several weeks" }));
+    const picker = await screen.findByLabelText("From");
+    expect(within(picker).getByRole("option", { name: "The latest periods" })).toBeInTheDocument();
+    await user.selectOptions(picker, "2025-01-06");
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.includes("/api/scorecard/bulk/")
+      && c.url.includes("from=2025-01-06"))).toBe(true));
+  });
+
+  it("a daily catch-up table takes a date", async () => {
+    const user = userEvent.setup();
+    const sheet = { cadence: "daily", lines: [], periods: [], from: null, earliest: "2024-10-22",
+      choices: [] };
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/bulk/": sheet,
+      "GET /api/scorecard/entry/": FORM }));
+    renderRoute(<ScorecardEntry me={aMe({ role: "ECC", client_company: "c1" })} />);
+    await user.click(await screen.findByRole("button", { name: "Catch up on several weeks" }));
+    await user.selectOptions(await screen.findByLabelText("Cadence"), "daily");
+    const picker = await screen.findByLabelText("From");
+    expect(picker).toHaveAttribute("type", "date");
+    await waitFor(() => expect(picker).toHaveAttribute("min", "2024-10-22"));
+  });
+});

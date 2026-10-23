@@ -261,7 +261,10 @@ def _total(kpi, targets, per, rows):
 
 def computed_values(kpi, readings_a, readings_b) -> dict:
     """A computed KPI's value in each period both its sources have one:
-    start -> (value, None). A ratio over a zero has no value."""
+    start -> (value, None). A ratio over a zero has no value. A ratio of
+    kind Percent is a percentage, as a typed percent is (93.4, not 0.934),
+    so it is drawn, rolled up and judged against its target on that scale
+    (Bryan, 2026-10-23)."""
     a = {r.period_start: r.value for r in readings_a if r.membership_id is None}
     b = {r.period_start: r.value for r in readings_b if r.membership_id is None}
     out = {}
@@ -275,6 +278,8 @@ def computed_values(kpi, readings_a, readings_b) -> dict:
             value = (x + y) / 2
         else:
             value = (x / y) if y else None
+            if value is not None and kpi.kind == Kpi.Kind.PERCENT:
+                value *= 100
         if value is not None:
             out[start] = (value, None)
     return out

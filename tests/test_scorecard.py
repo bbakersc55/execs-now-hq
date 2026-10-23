@@ -1062,3 +1062,62 @@ def test_a_refused_kpi_leaves_nothing_behind_and_save_alone_makes_one(seeded_ten
     with tenant_context(seeded_tenant.pk):
         kpi = Kpi.objects.get(scorecard__company=company)
         assert kpi.page.name == setup.FIRST_PAGE
+
+
+def test_a_percent_ratio_is_a_percentage_everywhere(seeded_tenant, ff, api):
+    """Bryan, 2026-10-23: Delivered ÷ Shipped of kind Percent showed 0.93.
+    It is 93.4, in the tile, its trend and the window's roll-up, and judged
+    against a target typed as 90."""
+    company = ClientCompanyFactory(tenant=seeded_tenant, name="Ratio Co")
+    with tenant_context(seeded_tenant.pk):
+        card = setup.ensure(company, ff.user)
+        page = card.pages.get()
+
+        def count(name):
+            return setup.create_kpi(card, {"name": name, "kind": "count", "cadence": "weekly",
+                                           "rollup": "sum", "page": str(page.pk)}, ff.user)
+        shipped, delivered = count("Shipped"), count("Delivered")
+        rate = setup.create_kpi(card, {
+            "name": "Delivery rate", "kind": "percent", "cadence": "weekly",
+            "rollup": "average", "target_value": 90, "formula": "ratio",
+            "source_a": str(delivered.pk), "source_b": str(shipped.pk),
+            "page": str(page.pk)}, ff.user)
+        week = last_week()
+        for kpi, value in ((shipped, 500), (delivered, 467)):
+            KpiReading.objects.create(tenant=seeded_tenant, kpi=kpi, period_start=week,
+                                      value=value, entered_by=ff.user, entered_at=timezone.now())
+    data = board(api.as_(ff), company, window="this_month")
+    tile = next(t for t in data["kpis"] if t["name"] == "Delivery rate")
+    point = next(p for p in tile["history"] if p["period_start"] == week.isoformat())
+    assert point["value"] == pytest.approx(93.4)
+    assert point["status"] == "on_track"
+    if tile["summary"]["value"] is not None:
+        assert tile["summary"]["value"] == pytest.approx(93.4)
+        assert tile["summary"]["target"] == 90
+    # A ratio of another kind stays a plain ratio.
+    with tenant_context(seeded_tenant.pk):
+        Kpi.objects.filter(pk=rate.pk).update(kind="number", target_value=None)
+    tile = next(t for t in board(api.as_(ff), company)["kpis"] if t["name"] == "Delivery rate")
+    point = next(p for p in tile["history"] if p["period_start"] == week.isoformat())
+    assert point["value"] == pytest.approx(0.934)
+
+
+def test_the_catch_up_table_starts_from_any_past_period_and_the_pickers_reach_two_years(sc):
+    client = sc["api"].as_(sc["practice"]["ff"])
+    url = f"{B}bulk/?company={sc['company'].pk}&cadence=weekly&count=6"
+    latest = client.get(url).json()
+    assert len(latest["periods"]) == 6 and len(latest["choices"]) == 105
+    earliest = date.fromisoformat(latest["earliest"])
+    assert (timezone.localdate() - earliest).days >= 2 * 365
+    old = sc["week"] - timedelta(weeks=60)
+    back = client.get(f"{url}&from={old.isoformat()}").json()
+    assert back["periods"][0]["start"] == old.isoformat() and len(back["periods"]) == 6
+    assert back["from"] == old.isoformat()
+    # Never past the current period, and a daily table takes a date, not a list.
+    near = client.get(f"{url}&from={sc['week'].isoformat()}").json()
+    assert len(near["periods"]) <= 3
+    daily = client.get(f"{B}bulk/?company={sc['company'].pk}&cadence=daily").json()
+    assert daily["choices"] == [] and daily["earliest"]
+    assert client.get(f"{url}&from=not-a-date").status_code == 400
+    form = client.get(f"{B}entry/?company={sc['company'].pk}").json()
+    assert len(form["choices"]) == 105

@@ -181,7 +181,13 @@ class BulkView(Base):
             count = max(2, min(26, int(request.query_params.get("count") or 6)))
         except ValueError:
             count = 6
-        return Response(readings.bulk(reader, scorecard, cadence, count, _today(request)))
+        try:
+            first = date.fromisoformat(request.query_params["from"]) \
+                if request.query_params.get("from") else None
+        except ValueError:
+            return Response({"detail": "Dates are year-month-day."}, status=400)
+        return Response(readings.bulk(reader, scorecard, cadence, count, _today(request),
+                                      first=first))
 
 
 class NoticesView(Base):

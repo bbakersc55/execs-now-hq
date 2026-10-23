@@ -182,6 +182,10 @@ export interface BulkSheet {
   periods: { start: string; label: string }[];
   lines: (KpiDef & { membership: string | null; person: string;
     cells: { period_start: string; value: number | null }[] })[];
+  /** The first period shown, the earliest the picker offers, and its
+   *  periods newest first (empty for daily, which takes a date). */
+  from?: string | null; earliest?: string;
+  choices?: { start: string; label: string }[];
 }
 
 export interface ReadingHistory {
