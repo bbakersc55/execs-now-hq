@@ -203,6 +203,21 @@ def scorecard(world) -> dict:
 
     plans = bonus_plans(world, card, kpis, team, starts)
 
+    # Part 3: orders arrive from the warehouse's sheet. The demo never reads
+    # Google (and has no worker), so the feed is shown, not run: its readings
+    # are marked as the sheet's, and last week's correction stays by hand.
+    from apps.scorecard.models import KpiFeed
+
+    KpiFeed.objects.create(
+        tenant=world.tenant, kpi=kpis["orders"], spreadsheet_id="demo-warehouse-log",
+        spreadsheet_name="Warehouse log", tab="Weekly", mode="column", refresh="hourly",
+        date_column="A", date_header="Week of", value_column="C",
+        value_header="Orders shipped", header_row=2, last_run_at=moment(world.today, 7, 0),
+        last_success_at=moment(world.today, 7, 0))
+    Kpi.objects.filter(pk=kpis["orders"].pk).update(feed=Kpi.Feed.SHEET)
+    KpiReading.objects.filter(kpi=kpis["orders"]).exclude(pk=fixed.pk).update(
+        source=KpiReading.Source.SHEET, entered_by=None)
+
     return {"bonus plans": plans,
             "scorecard KPIs": Kpi.objects.filter(scorecard=card).count(),
             "scorecard readings": made,

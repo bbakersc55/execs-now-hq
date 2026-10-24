@@ -16,7 +16,8 @@ from apps.crm.models import (
     GmailConnection,
     ImportBatch, Pipeline,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage,
-    PipelineStage, Referral, ServiceCategory, StageAutomation, StageChange, Task,
+    PipelineNotice, PipelineStage, Referral, ServiceCategory, StageAutomation, StageChange,
+    StageRuleFiring, Task,
 )
 from apps.notes.models import Note, NoteFolder, NotePinUnlock
 from apps.platform.models import AgreementAcceptance, Feedback
@@ -302,3 +303,9 @@ register(BonusComponent, factories.BonusComponentFactory, api_exposed=False)
 register(BonusPerson, factories.BonusPersonFactory, api_exposed=False)
 register(BonusResult, factories.BonusResultFactory, api_exposed=False)
 register(BonusReopen, factories.BonusReopenFactory, api_exposed=False)
+
+# Stage rules, part 2: an idle rule's once-per-stay record, never served; and
+# the notices, served by /api/pipeline-notices/ to their recipient only
+# (tests/test_stage_rules_part2.py).
+register(StageRuleFiring, factories.StageRuleFiringFactory, api_exposed=False)
+register(PipelineNotice, factories.PipelineNoticeFactory, api_exposed=False)

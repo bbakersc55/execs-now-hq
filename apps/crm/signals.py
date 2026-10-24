@@ -29,3 +29,41 @@ def reindex_on_save(sender, instance, created, update_fields=None, **kwargs):
     # In the same transaction as the write on purpose: if that rolls back so does
     # this, and the row it would have described no longer exists.
     reindex_contact(instance)
+
+
+# ------------------------------------------------ activity (stage rules, part 2)
+# An email either way, a note, a meeting and a finished task are activity on a
+# contact: an idle rule counts its days from the last of them. A stage move is
+# activity too, set by `pipeline.change_stage` itself.
+
+def _touch(contact_id, tenant_id):
+    if contact_id and tenant_id:
+        from apps.crm.services.stage_rules import touch
+
+        touch(contact_id, tenant_id)
+
+
+@receiver(post_save, sender="crm.EmailMessage", dispatch_uid="crm.activity_email")
+def activity_on_email(sender, instance, created, **kwargs):
+    if created:
+        thread = instance.thread
+        _touch(thread.contact_id if thread else None, instance.tenant_id)
+
+
+@receiver(post_save, sender="notes.Note", dispatch_uid="crm.activity_note")
+def activity_on_note(sender, instance, created, **kwargs):
+    if created:
+        _touch(instance.contact_id, instance.tenant_id)
+
+
+@receiver(post_save, sender="meetings.MeetingParticipant", dispatch_uid="crm.activity_meeting")
+def activity_on_meeting(sender, instance, created, **kwargs):
+    if created:
+        _touch(instance.contact_id, instance.tenant_id)
+
+
+@receiver(post_save, sender="crm.Task", dispatch_uid="crm.activity_task_done")
+def activity_on_task_done(sender, instance, created, update_fields=None, **kwargs):
+    if instance.status == instance.Status.DONE and (
+            created or update_fields is None or "status" in update_fields):
+        _touch(instance.contact_id, instance.tenant_id)

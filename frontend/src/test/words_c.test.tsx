@@ -33,23 +33,27 @@ beforeEach(() => vi.unstubAllGlobals());
 
 describe("stage rules, in the practice's words", () => {
   it("names the follow-up as the practice's task", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", mockApi({
       "/api/pipelines/": [{ id: "p", name: "Sales", kind: "sales", position: 0,
                             contact_count: 0, stages: [] }],
+      "/api/stage-automations/examples/": [],
       "/api/stage-automations/": [{
-        id: "r1", pipeline: "p", from_stage: null, to_stage: "s", action_type: "create_task",
-        task_title_template: "", task_due_offset_days: 3, task_client_visible: false,
-        email_template: null, send_by_offset_days: 7, is_active: true, summary: "Rule one" }],
+        id: "r1", pipeline: "p", trigger: "won", from_stage: null, to_stage: null, idle_days: null,
+        action_type: "create_task", task_title_template: "", task_due_offset_days: 3,
+        task_client_visible: false, task_for: "contact_owner", task_assignee: null,
+        email_template: null, send_by_offset_days: 7, move_to_stage: null, touch_cadence: "",
+        notice_text: "", is_active: true, position: 0, summary: "Rule one" }],
       "/api/email-templates/": [],
+      "/api/staff/": [],
     }));
     renderRoute(custom(<StageRules />));
-    expect(await screen.findByText(/An action is created immediately/)).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Create an action" })).toBeInTheDocument();
-    expect(screen.getByText("Action title")).toBeInTheDocument();
-    expect(screen.getByLabelText("Client can see this action")).toBeInTheDocument();
     expect(await screen.findByLabelText("Client can see the action: Rule one"))
       .toBeInTheDocument();
-    expect(screen.getByText("Client can see the action")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add a rule to Sales" }));
+    expect(screen.getByRole("option", { name: "Create an action" })).toBeInTheDocument();
+    expect(screen.getByText("Action title")).toBeInTheDocument();
+    expect(screen.getByText("Client can see this action")).toBeInTheDocument();
     expect(screen.queryByText(/\btasks?\b/i)).not.toBeInTheDocument();
   });
 });

@@ -1767,3 +1767,20 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
   flex-direction: column; gap: 8px; }
 .sc-feed-preview tr.sc-feed-kept td, .sc-feed-preview tr.sc-feed-open td { color: var(--sc-muted); }
 .sc-back-feed { margin-top: 6px; }
+
+/* Stage rules, part 2: a card per stage (StageRules.tsx). */
+.stage-cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 1rem; }
+.stage-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: .5rem; }
+.stage-card-head .stage-name { flex: 1 1 200px; min-width: 0; font-weight: 600; font-size: 1rem; }
+.stage-card-tools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.rule-list, .rule-examples { list-style: none; margin: 0 0 .5rem; padding: 0; }
+.rule-list li, .rule-examples li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); }
+.rule-list li:first-child, .rule-examples li:first-child { border-top: 0; }
+.rule-list li.off .rule-summary { opacity: .55; }
+.rule-summary, .rule-examples li > span { flex: 1 1 280px; min-width: 0; }
+.rule-tools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rule-form { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 0;
+  border-top: 1px dashed var(--line, #e5e7eb); }
+.rule-form .row.wrap { flex-wrap: wrap; }
+.notices li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

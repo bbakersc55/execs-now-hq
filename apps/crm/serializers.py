@@ -464,11 +464,35 @@ class CompanyLocationSerializer(serializers.ModelSerializer):
 class PipelineStageSerializer(serializers.ModelSerializer):
     # Derived from `semantic`; there is no second column to drift.
     is_terminal = serializers.BooleanField(read_only=True)
+    contacts = serializers.SerializerMethodField()
 
     class Meta:
         model = PipelineStage
         fields = ["id", "pipeline", "code", "label", "semantic", "position",
-                  "is_terminal"]
+                  "is_terminal", "contacts"]
+        extra_kwargs = {"code": {"required": False}, "position": {"required": False}}
+
+    def get_contacts(self, obj):
+        return obj.positions.count()
+
+    def create(self, validated_data):
+        """A stage added on the rules screen is named, not coded: its code is
+        made from the name, unique in its pipeline, and it goes last."""
+        from django.db.models import Max
+        from django.utils.text import slugify
+
+        pipeline = validated_data["pipeline"]
+        if not validated_data.get("code"):
+            base = slugify(validated_data.get("label") or "stage").replace("-", "_")[:28] or "stage"
+            code, n = base, 2
+            while PipelineStage.all_objects.filter(pipeline=pipeline, code=code).exists():
+                code, n = f"{base}_{n}", n + 1
+            validated_data["code"] = code
+        if "position" not in validated_data:
+            last = PipelineStage.all_objects.filter(pipeline=pipeline).aggregate(
+                n=Max("position"))["n"]
+            validated_data["position"] = 0 if last is None else last + 1
+        return super().create(validated_data)
 
 
 class PipelineSerializer(serializers.ModelSerializer):
@@ -507,53 +531,99 @@ class StageChangeSerializer(serializers.ModelSerializer):
 
 
 class StageAutomationSerializer(serializers.ModelSerializer):
+    """A stage rule (FR-1.10 to 1.14; part 2, 2026-10-24): a trigger on one
+    pipeline, and one action. Checked here so a rule that could never fire,
+    or fire into another pipeline, is refused in words."""
+
     summary = serializers.SerializerMethodField()
 
     class Meta:
         model = StageAutomation
         fields = [
-            "id", "pipeline", "from_stage", "to_stage", "action_type", "task_title_template",
-            "task_due_offset_days", "task_client_visible", "email_template",
-            "send_by_offset_days", "is_active", "summary",
+            "id", "pipeline", "trigger", "from_stage", "to_stage", "idle_days", "action_type",
+            "task_title_template", "task_due_offset_days", "task_client_visible", "task_for",
+            "task_assignee", "email_template", "send_by_offset_days", "move_to_stage",
+            "touch_cadence", "notice_text", "is_active", "position", "summary",
         ]
-        extra_kwargs = {"task_client_visible": {"required": False}}
+        extra_kwargs = {"task_client_visible": {"required": False},
+                        "to_stage": {"required": False}, "position": {"required": False}}
+
+    def validate(self, attrs):
+        from apps.crm.services import stage_rules
+        from apps.tenancy.models import Membership
+
+        merged = {f: getattr(self.instance, f) for f in (
+            "pipeline", "trigger", "from_stage", "to_stage", "idle_days", "action_type",
+            "task_title_template", "move_to_stage", "touch_cadence", "notice_text",
+            "task_for", "task_assignee", "email_template")} if self.instance else {}
+        merged.update(attrs)
+        get = merged.get
+        pipeline = get("pipeline")
+        trigger = get("trigger") or StageAutomation.Trigger.ENTERS
+        R = StageAutomation
+        for key in ("from_stage", "to_stage", "move_to_stage"):
+            stage = get(key)
+            if stage is not None and pipeline is not None and stage.pipeline_id != pipeline.pk:
+                raise serializers.ValidationError(
+                    {key: f"{stage.label} is on another pipeline; a rule stays on its own."})
+        if trigger in (R.Trigger.ENTERS, R.Trigger.IDLE) and get("to_stage") is None:
+            raise serializers.ValidationError({"to_stage": "Choose the stage."})
+        if trigger in (R.Trigger.WON, R.Trigger.LOST):
+            attrs["to_stage"] = None
+            attrs["from_stage"] = None
+        if trigger == R.Trigger.IDLE:
+            if not get("idle_days") or get("idle_days") < 1:
+                raise serializers.ValidationError({"idle_days": "How many days, 1 or more?"})
+            attrs["from_stage"] = None
+        action = get("action_type")
+        if action == R.Action.MOVE_STAGE:
+            target = get("move_to_stage")
+            if target is None:
+                raise serializers.ValidationError({"move_to_stage": "Choose where to move them."})
+            if trigger == R.Trigger.ENTERS and target == get("to_stage"):
+                raise serializers.ValidationError(
+                    {"move_to_stage": "They are already there when this rule fires."})
+        if action == R.Action.ENROLL_TOUCHES and get("touch_cadence") not in (
+                "", None, "monthly", "bimonthly", "quarterly"):
+            raise serializers.ValidationError(
+                {"touch_cadence": "Monthly, every two months or quarterly."})
+        if action == R.Action.NOTIFY and not (get("notice_text") or "").strip():
+            raise serializers.ValidationError({"notice_text": "Say what the notice says."})
+        if action == R.Action.CREATE_TASK and not (get("task_title_template") or "").strip():
+            raise serializers.ValidationError({"task_title_template": "Give the task a title."})
+        if action == R.Action.DRAFT_EMAIL and get("email_template") is None:
+            raise serializers.ValidationError({"email_template": "Choose a template."})
+        if get("task_for") == R.For.MEMBER:
+            who = get("task_assignee")
+            if who is None or not Membership.all_objects.filter(
+                    tenant_id=pipeline.tenant_id, user=who, revoked_at__isnull=True,
+                    role__in=("FF", "CF", "VA")).exists():
+                raise serializers.ValidationError(
+                    {"task_assignee": "Choose someone on the practice's team."})
+        for key in ("task_title_template", "notice_text"):
+            try:
+                stage_rules.check_fields(get(key) or "")
+            except stage_rules.RuleRefused as exc:
+                raise serializers.ValidationError({key: str(exc)}) from exc
+        return attrs
 
     def create(self, validated_data):
         """A new rule is internal unless the FF says otherwise — except on a
-        sales `won` stage, whose task is for the new client. Only the default
-        differs: whatever the FF sent is kept."""
+        sales `won` stage (or a won rule), whose task is for the new client.
+        Only the default differs: whatever the FF sent is kept."""
         if "task_client_visible" not in validated_data:
-            stage = validated_data["to_stage"]
-            validated_data["task_client_visible"] = (
-                stage.semantic == StageSemantic.WON
-                and stage.pipeline.kind == Pipeline.Kind.SALES
-            )
+            stage = validated_data.get("to_stage")
+            pipeline = validated_data["pipeline"]
+            validated_data["task_client_visible"] = pipeline.kind == Pipeline.Kind.SALES and (
+                validated_data.get("trigger") == StageAutomation.Trigger.WON
+                or (stage is not None and stage.semantic == StageSemantic.WON))
         return super().create(validated_data)
 
     def get_summary(self, obj):
         """FR-1.13 — a plain-English summary of each rule."""
-        where = f" in {obj.pipeline.name}"
-        trigger = (
-            f"When a contact reaches {obj.to_stage.label}{where}"
-            if obj.from_stage is None
-            else f"When a contact moves from {obj.from_stage.label} "
-                 f"to {obj.to_stage.label}{where}"
-        )
-        if obj.action_type == StageAutomation.Action.CREATE_TASK:
-            due = (
-                f" due in {obj.task_due_offset_days} days"
-                if obj.task_due_offset_days is not None else ""
-            )
-            seen = ("the client can see it" if obj.task_client_visible
-                    else "internal, hidden from the client")
-            from apps.tenancy import words
+        from apps.crm.services import stage_rules
 
-            task = words.of(obj.tenant).task
-            return f"{trigger}, create {task} '{obj.task_title_template}'{due} ({seen})."
-        return (
-            f"{trigger}, draft an email into the Outbox for approval "
-            f"(expires after {obj.send_by_offset_days} days)."
-        )
+        return stage_rules.summary(obj)
 
 
 class EmailTemplateSerializer(serializers.ModelSerializer):

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { GettingStarted } from "../components/GettingStarted";
+import { PipelineNotices } from "../components/PipelineNotices";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { Dashboard as Board, Me, Pipeline, aiPausedMessage, api } from "../lib/api";
@@ -277,6 +278,9 @@ export function Dashboard({ me }: { me: Me }) {
 
       {/* P2: the practice owner's Getting started list, until it is all done. */}
       {me.role === "FF" && <GettingStarted />}
+
+      {/* Stage rules' notices to this person (part 2), when there are any. */}
+      <PipelineNotices />
 
       {board.data.ai_paused && (
         <Banner kind="warn">

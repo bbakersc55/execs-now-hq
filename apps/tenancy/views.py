@@ -17,12 +17,14 @@ from apps.tenancy.roles import role_label
 class MembershipSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
     full_name = serializers.CharField(source="user.full_name", read_only=True)
+    #: The person, for choosing whom a stage rule's task is for.
+    user = serializers.UUIDField(source="user_id", read_only=True)
     is_active = serializers.SerializerMethodField()
     role_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Membership
-        fields = ["id", "email", "full_name", "role", "role_label", "invited_at",
+        fields = ["id", "user", "email", "full_name", "role", "role_label", "invited_at",
                   "revoked_at", "is_active"]
 
     def get_is_active(self, obj):

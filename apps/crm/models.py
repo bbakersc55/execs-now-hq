@@ -429,6 +429,13 @@ class ContactPipelinePosition(TenantScopedModel):
         PipelineStage, on_delete=models.PROTECT, related_name="positions"
     )
     entered_at = models.DateTimeField(auto_now_add=True)
+    #: When they entered the stage they are in now (stage rules, part 2). Set
+    #: by every move; older rows have none and fall back to their last move
+    #: into this stage (`stage_rules.stay_started`).
+    stage_entered_at = models.DateTimeField(null=True, blank=True)
+    #: The last activity on the contact: an email either way, a note, a
+    #: meeting, a finished task or a stage move (`stage_rules.touch`).
+    last_activity_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "contact_pipeline_position"
@@ -601,6 +608,21 @@ class StageAutomation(TenantScopedModel):
     class Action(models.TextChoices):
         CREATE_TASK = "create_task", "Create a task"
         DRAFT_EMAIL = "draft_email", "Draft an email into the Outbox"
+        # Stage rules, part 2 (owner, 2026-10-24).
+        MOVE_STAGE = "move_stage", "Move to another stage"
+        ENROLL_TOUCHES = "enroll_touches", "Put on referral touches"
+        NOTIFY = "notify", "Send a notice"
+
+    class Trigger(models.TextChoices):
+        ENTERS = "enters", "Enters the stage"
+        IDLE = "idle", "Has sat in the stage with no activity"
+        WON = "won", "Is won"
+        LOST = "lost", "Is lost"
+
+    class For(models.TextChoices):
+        CONTACT_OWNER = "contact_owner", "The contact's owner"
+        PRACTICE_OWNER = "practice_owner", "The practice owner"
+        MEMBER = "member", "A team member"
 
     # FR-1.10 — rules are per pipeline. A "becomes Qualified" rule on the sales
     # pipeline must not fire for the referral pipeline's own Qualified stage.
@@ -610,8 +632,27 @@ class StageAutomation(TenantScopedModel):
     from_stage = models.ForeignKey(
         PipelineStage, null=True, blank=True, on_delete=models.CASCADE, related_name="+"
     )  # null = any
-    to_stage = models.ForeignKey(PipelineStage, on_delete=models.CASCADE, related_name="+")
+    #: The stage the rule is on: entered, or sat in. None for won and lost,
+    #: which are the pipeline's, whichever stage means them.
+    to_stage = models.ForeignKey(PipelineStage, null=True, blank=True,
+                                 on_delete=models.CASCADE, related_name="+")
     action_type = models.CharField(max_length=16, choices=Action.choices)
+    trigger = models.CharField(max_length=8, choices=Trigger.choices, default=Trigger.ENTERS,
+                               db_default=Trigger.ENTERS)
+    #: For `idle`: how many days with no activity, counted from the later of
+    #: entering the stage and the last activity. Fires once per stay.
+    idle_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: Whom a task or a notice is for.
+    task_for = models.CharField(max_length=16, choices=For.choices, default=For.CONTACT_OWNER,
+                                db_default=For.CONTACT_OWNER)
+    task_assignee = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
+    move_to_stage = models.ForeignKey(PipelineStage, null=True, blank=True,
+                                      on_delete=models.CASCADE, related_name="+")
+    #: For `enroll_touches`: monthly, bimonthly or quarterly; blank keeps theirs.
+    touch_cadence = models.CharField(max_length=12, blank=True, default="", db_default="")
+    notice_text = models.CharField(max_length=255, blank=True, default="", db_default="")
+    position = models.PositiveSmallIntegerField(default=0, db_default=0)
 
     task_title_template = models.CharField(max_length=255, blank=True, default="")
     task_due_offset_days = models.IntegerField(null=True, blank=True)
@@ -630,6 +671,51 @@ class StageAutomation(TenantScopedModel):
 
     class Meta(TenantScopedModel.Meta):
         db_table = "stage_automation"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(trigger__in=["won", "lost"]) | models.Q(to_stage__isnull=False),
+                name="stage_automation_stage_rule_has_a_stage"),
+            models.CheckConstraint(
+                condition=~models.Q(trigger="idle") | models.Q(idle_days__gte=1),
+                name="stage_automation_idle_has_days"),
+        ]
+
+
+class StageRuleFiring(TenantScopedModel):
+    """An idle rule fired for one stay: never again for the same one."""
+
+    rule = models.ForeignKey(StageAutomation, on_delete=models.CASCADE, related_name="firings")
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="+")
+    pipeline = models.ForeignKey(Pipeline, on_delete=models.CASCADE, related_name="+")
+    stay_started_at = models.DateTimeField()
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "stage_rule_firing"
+        constraints = [
+            models.UniqueConstraint(fields=["rule", "contact", "stay_started_at"],
+                                    name="stage_rule_firing_once_per_stay"),
+        ]
+
+
+class PipelineNotice(TenantScopedModel):
+    """A stage rule's notice to a person: on Home until dismissed, and in one
+    email a day when there are any (`stage_rules.send_notice_emails`)."""
+
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                  related_name="+")
+    contact = models.ForeignKey(Contact, null=True, blank=True, on_delete=models.CASCADE,
+                                related_name="+")
+    pipeline = models.ForeignKey(Pipeline, null=True, blank=True, on_delete=models.SET_NULL,
+                                 related_name="+")
+    rule = models.ForeignKey(StageAutomation, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="+")
+    text = models.CharField(max_length=500)
+    emailed_at = models.DateTimeField(null=True, blank=True)
+    dismissed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "pipeline_notice"
+        ordering = ["-created_at"]
 
 
 # ------------------------------------------------------- threading (carve-back)
@@ -890,6 +976,8 @@ class OutboxMessage(TenantScopedModel):
         MAGIC_LINK = "magic_link", "Magic link"
         NOTE_PIN_RESET = "note_pin_reset", "Note PIN reset"
         CLIENT_ACTIVITY = "client_activity", "Client activity notice"
+        # Stage rules' notices, once a day, to the practice's own people.
+        PIPELINE_NOTICES = "pipeline_notices", "Pipeline notices"
         # To the practice's own people: digests are ready, about to miss
         # their time, or missed it. Never to a client; never a digest's text.
         DIGEST_REMINDER = "digest_reminder", "Digest reminder"
@@ -925,7 +1013,7 @@ class OutboxMessage(TenantScopedModel):
         Producer.STRATEGY_PDF, Producer.MAGIC_LINK, Producer.NOTE_PIN_RESET,
         # Internal, to the practice's own people: no approval gate applies, but
         # it is in the Outbox because every message that left is (FR-1.15).
-        Producer.CLIENT_ACTIVITY,
+        Producer.CLIENT_ACTIVITY, Producer.PIPELINE_NOTICES,
         # Likewise internal: "your prospect finished the form" goes to the
         # fractional who is about to run the call (AC-4.3).
         Producer.PRECALL_COMPLETE,

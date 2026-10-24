@@ -392,6 +392,26 @@ class StageAutomationFactory(TenantScopedFactory):
     action_type = "create_task"
 
 
+class StageRuleFiringFactory(TenantScopedFactory):
+    class Meta:
+        model = "crm.StageRuleFiring"
+
+    tenant = factory.SubFactory(TenantFactory)
+    rule = factory.SubFactory(StageAutomationFactory, tenant=factory.SelfAttribute("..tenant"))
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    pipeline = factory.SelfAttribute("rule.pipeline")
+    stay_started_at = factory.LazyFunction(timezone.now)
+
+
+class PipelineNoticeFactory(TenantScopedFactory):
+    class Meta:
+        model = "crm.PipelineNotice"
+
+    tenant = factory.SubFactory(TenantFactory)
+    recipient = factory.SubFactory(UserFactory)
+    text = "A notice"
+
+
 class EmailThreadFactory(TenantScopedFactory):
     class Meta:
         model = EmailThread

@@ -703,3 +703,28 @@ def _budget_counts(world) -> dict:
         "questions waiting": PersonalQuestion.objects.filter(ledger=ledger,
                                                              state="open").count(),
     }
+
+
+def stage_rules(world: World) -> None:
+    """Stage rules, part 2: a few of the starter rules on each pipeline, made
+    after every move the seed makes so none of them fires during it, and one
+    notice waiting for the owner on Home."""
+    from apps.crm.models import ContactPipelinePosition, PipelineNotice, StageAutomation
+    from apps.crm.services import pipeline, stage_rules as rules
+
+    keep = {"first_call", "prospecting_quiet", "decision_quiet", "won_kickoff",
+            "partner_touches", "nurturing_quiet"}
+    for pipe in (pipeline.sales_pipeline(world.tenant), pipeline.referral_pipeline(world.tenant)):
+        for example in rules.examples_for(pipe):
+            if example["key"] in keep:
+                StageAutomation.objects.create(tenant=world.tenant, pipeline=pipe,
+                                               **example["fields"])
+    waiting = ContactPipelinePosition.objects.filter(
+        pipeline__kind="sales", stage__semantic="qualified").select_related(
+        "contact", "stage", "pipeline").order_by("contact__last_name").first()
+    if waiting is not None:
+        c = waiting.contact
+        PipelineNotice.objects.create(
+            tenant=world.tenant, recipient=world.owner, contact=c, pipeline=waiting.pipeline,
+            text=f"{c.first_name} {c.last_name} has been in {waiting.stage.label} 12 days "
+                 "with no activity")

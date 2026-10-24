@@ -787,6 +787,31 @@ class PipelineStageViewSet(TenantStaffViewSet):
             )
         instance.delete()
 
+    @action(detail=False, methods=["post"])
+    def order(self, request):
+        """Stage rules, part 2: the stage cards in a new order. `ids` is every
+        stage of one pipeline, first to last."""
+        pipeline_row = Pipeline.objects.filter(pk=request.data.get("pipeline")).first()
+        if pipeline_row is None:
+            raise ValidationError("Choose a pipeline.")
+        ids = [str(i) for i in (request.data.get("ids") or [])]
+        stages = {str(s.pk): s for s in PipelineStage.objects.filter(pipeline=pipeline_row)}
+        if sorted(ids) != sorted(stages):
+            raise ValidationError("Send every stage of the pipeline, in the new order.")
+        with transaction.atomic():
+            for position, stage_id in enumerate(ids):
+                stage = stages[stage_id]
+                if stage.position != position:
+                    stage.position = position
+                    stage.save(update_fields=["position", "updated_at"])
+        AuditEvent.objects.create(
+            tenant=request.tenant, actor=request.user, verb="pipeline.stages_reordered",
+            target_type="pipeline", target_id=pipeline_row.pk,
+            payload={"order": [stages[i].label for i in ids]})
+        return Response(crm_serializers.PipelineStageSerializer(
+            PipelineStage.objects.filter(pipeline=pipeline_row).order_by("position"),
+            many=True).data)
+
     @staticmethod
     def _validate(pipeline_row):
         """FR-1.6 — a sales pipeline must keep exactly one `won` stage."""
@@ -884,9 +909,70 @@ class StageAutomationViewSet(TenantStaffViewSet):
     permission_classes = [crm_perms.IsTenantStaff, crm_perms.IsFF]
 
     def get_queryset(self):
-        qs = StageAutomation.objects.select_related("from_stage", "to_stage", "pipeline")
+        qs = StageAutomation.objects.select_related(
+            "from_stage", "to_stage", "pipeline", "move_to_stage", "email_template",
+            "task_assignee").order_by("position", "created_at")
         pipeline_ref = self.request.query_params.get("pipeline")
         return qs.filter(pipeline_id=pipeline_ref) if pipeline_ref else qs
+
+    @action(detail=False, methods=["get", "post"])
+    def examples(self, request):
+        """Stage rules, part 2: the starter rules, one click each. GET lists
+        what this pipeline can take; POST {pipeline, key} adds one."""
+        from apps.crm.services import stage_rules
+
+        ref = request.query_params.get("pipeline") if request.method == "GET" \
+            else request.data.get("pipeline")
+        pipeline_row = Pipeline.objects.filter(pk=ref).first() if ref else None
+        if pipeline_row is None:
+            raise ValidationError("Choose a pipeline.")
+        offered = stage_rules.examples_for(pipeline_row)
+        if request.method == "GET":
+            return Response([{k: v for k, v in e.items() if k != "fields"} for e in offered])
+        example = next((e for e in offered if e["key"] == request.data.get("key")), None)
+        if example is None:
+            raise ValidationError("That example isn't offered for this pipeline.")
+        rule = StageAutomation.objects.create(
+            tenant=request.tenant, pipeline=pipeline_row, **example["fields"])
+        AuditEvent.objects.create(
+            tenant=request.tenant, actor=request.user, verb="stage_rule.example_added",
+            target_type="pipeline", target_id=pipeline_row.pk,
+            payload={"key": example["key"], "rule": str(rule.pk)})
+        return Response(self.get_serializer(rule).data, status=status.HTTP_201_CREATED)
+
+
+class PipelineNoticeViewSet(viewsets.GenericViewSet):
+    """Stage rules' notices to the person asking, for Home. Each person sees
+    their own and dismisses their own."""
+
+    permission_classes = [crm_perms.IsTenantStaff]
+
+    def get_queryset(self):
+        from apps.crm.models import PipelineNotice
+
+        return PipelineNotice.objects.filter(recipient=self.request.user,
+                                             dismissed_at__isnull=True) \
+            .select_related("contact", "pipeline")
+
+    def list(self, request):
+        return Response([{
+            "id": str(n.pk), "text": n.text, "created_at": n.created_at.isoformat(),
+            "contact": str(n.contact_id) if n.contact_id else None,
+            "contact_name": f"{n.contact.first_name} {n.contact.last_name}".strip()
+            if n.contact_id else "",
+            "pipeline": n.pipeline.name if n.pipeline_id else "",
+        } for n in self.get_queryset()[:50]])
+
+    @action(detail=True, methods=["post"])
+    def dismiss(self, request, pk=None):
+        from django.utils import timezone
+
+        notice = self.get_queryset().filter(pk=pk).first() if _is_uuid(str(pk)) else None
+        if notice is None:
+            raise Http404
+        notice.dismissed_at = timezone.now()
+        notice.save(update_fields=["dismissed_at", "updated_at"])
+        return Response({"dismissed": True})
 
 
 class OutboxViewSet(viewsets.ReadOnlyModelViewSet):

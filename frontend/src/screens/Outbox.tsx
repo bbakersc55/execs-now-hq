@@ -167,7 +167,7 @@ export function Outbox() {
           </p>
           <p className="muted small">What lands here, and from where:</p>
           <ul className="muted small">
-            <li><strong>Stage automations</strong> — a rule with “draft an email” queues one
+            <li><strong>Stage rules</strong> — a rule with “draft an email” queues one
               when a contact reaches its stage.</li>
             <li><strong>Referral touches</strong> — drafted 3 days before each partner's due
               date, or on demand with <em>Draft touch now</em> on the contact.</li>

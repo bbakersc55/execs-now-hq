@@ -31,6 +31,26 @@ truth; this covers what they don't, and what changed since 9/30.
   `https://www.googleapis.com/auth/spreadsheets.readonly` added to both OAuth
   clients' consent screens (Internal and External), then "Reconnect Google"
   on a scorecard tile.
+- **Stage rules, part 2 (pipeline plan of 10/20; migration `crm 0045`,
+  additive: two tables, `stage_rule_firing` and `pipeline_notice`; new
+  columns on `stage_automation` and `contact_pipeline_position`; and
+  `stage_automation.to_stage_id` loses NOT NULL, because won and lost rules
+  have no stage).** Settings → Stage rules is one card per stage: rename,
+  reorder, add, remove (refused while it holds contacts), and the stage's
+  rules; won and lost are the pipeline's own card. Triggers: enters (from
+  any or a named stage), sat N days with no activity (`crm.stage_rules_daily`
+  at 7:00, once per stay), won, lost. Actions: a task (merge fields, due in N
+  days, for the contact's owner, the practice owner or a named member), a
+  draft email, a move, referral touches at a cadence, a notice (Home, and one
+  email a day). Loop guard: a rule's move runs the next stage's rules but not
+  their moves. `apps/crm/services/stage_rules.py` holds it all;
+  `stage_entered_at` and `last_activity_at` are kept by `change_stage` and by
+  signals on email, notes, meetings and finished tasks (older positions fall
+  back to their last move into the stage, so there is no backfill). The
+  starter rules are one-click examples on the screen, found by the seeded
+  stage codes; **the plan of 10/20 was not in the repo, so the examples are
+  proposed afresh** (listed in `stage_rules.EXAMPLES`). At the release:
+  `crm 0045` by the runbook, then R5b (`crm.stage_rules_daily` is new).
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

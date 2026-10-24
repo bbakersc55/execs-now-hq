@@ -85,12 +85,18 @@ def validate_pipeline(pipeline):
 # -------------------------------------------------------------- stage moves
 
 @transaction.atomic
-def change_stage(contact, to_stage, *, actor=None, reason="", run_automations=True):
+def change_stage(contact, to_stage, *, actor=None, reason="", run_automations=True,
+                 from_rule=False):
     """FR-1.7 + FR-1.6a — move a contact within ONE pipeline.
 
     Creates the position if the contact was not in that pipeline yet, which is
-    how a contact joins a second pipeline.
+    how a contact joins a second pipeline. The move starts a new stay
+    (`stage_entered_at`) and is activity on the contact (stage rules, part 2).
+    `from_rule`: a stage rule made this move, so the new stage's rules run but
+    not their own moves (the loop guard).
     """
+    from apps.crm.services import stage_rules
+
     pipeline = to_stage.pipeline
     position = position_for(contact, pipeline)
     from_stage = position.stage if position else None
@@ -98,13 +104,17 @@ def change_stage(contact, to_stage, *, actor=None, reason="", run_automations=Tr
     if from_stage is not None and from_stage.pk == to_stage.pk:
         return None
 
+    now = timezone.now()
     if position is None:
         position = ContactPipelinePosition.all_objects.create(
-            tenant=contact.tenant, contact=contact, pipeline=pipeline, stage=to_stage
+            tenant=contact.tenant, contact=contact, pipeline=pipeline, stage=to_stage,
+            stage_entered_at=now, last_activity_at=now,
         )
     else:
         position.stage = to_stage
-        position.save(update_fields=["stage", "updated_at"])
+        position.stage_entered_at = now
+        position.save(update_fields=["stage", "stage_entered_at", "updated_at"])
+    stage_rules.touch(contact.pk, contact.tenant_id, now)
 
     change = StageChange.all_objects.create(
         tenant=contact.tenant, contact=contact, pipeline=pipeline,
@@ -127,7 +137,8 @@ def change_stage(contact, to_stage, *, actor=None, reason="", run_automations=Tr
 
     referrals.after_stage_change(contact, to_stage, actor=actor, quiet=not run_automations)
     if run_automations:
-        run_stage_automations(contact, from_stage, to_stage, actor=actor)
+        stage_rules.run_on_move(contact, from_stage, to_stage, actor=actor,
+                                allow_moves=not from_rule)
     return change
 
 
@@ -198,27 +209,17 @@ def apply_client_invariant(contact, to_stage, *, actor=None):
 
 
 def run_stage_automations(contact, from_stage, to_stage, *, actor=None):
-    """FR-1.10-1.14, scoped to the pipeline the move happened in.
+    """FR-1.10-1.14, scoped to the pipeline the move happened in. Since part 2
+    the rules live in `stage_rules`; this stays for its callers.
 
     `create_task` fires immediately and is NOT gated by a review queue: it is
     deterministic, tenant-configured, and has no effect outside the app
     (assumption F3). `draft_email` only ever produces a pending_approval Outbox
     row — it never sends.
     """
-    from apps.crm.services.outbox import queue_stage_email
+    from apps.crm.services import stage_rules
 
-    rules = StageAutomation.all_objects.filter(
-        tenant=contact.tenant, pipeline=to_stage.pipeline, to_stage=to_stage,
-        is_active=True,
-    ).filter(models_q_from_stage(from_stage))
-
-    results = []
-    for rule in rules:
-        if rule.action_type == StageAutomation.Action.CREATE_TASK:
-            results.append(_create_task(contact, rule, actor=actor))
-        elif rule.action_type == StageAutomation.Action.DRAFT_EMAIL:
-            results.append(queue_stage_email(contact, rule, actor=actor))
-    return results
+    return stage_rules.run_on_move(contact, from_stage, to_stage, actor=actor)
 
 
 def from_stage_id_equal(a, b):
@@ -234,57 +235,8 @@ def models_q_from_stage(from_stage):
 
 
 def _create_task(contact, rule, *, actor=None):
-    """FR-1.11 — fires immediately, no approval.
+    """FR-1.11 — fires immediately, no approval (assumption F3). Now made by
+    `stage_rules.create_task`, with merge fields and whom it is for."""
+    from apps.crm.services import stage_rules
 
-    Deliberately NOT gated by a review queue (assumption F3): a rule the tenant
-    configured, creating an internal task from a template, is deterministic and
-    has no effect outside the app. Anything that reaches a client's inbox is a
-    different matter and stays behind the Outbox.
-
-    Made through `work.services.create_task`, like every other task (owner,
-    2026-09-28): until then this path wrote no CREATED update, so a rule's task
-    opened on an empty history, and it never had a client company, so it was
-    hidden even when the contact worked for a client. It now files the task
-    under the contact's company **when that company is a client company**.
-    Whether the client sees it is the rule's own setting (`task_client_visible`,
-    internal by default), and never without a client company to see it through.
-    The company is re-read rather than taken from `contact.company`: moving a
-    contact to `client` marks their company a client company in this same
-    transaction, just before the rules run.
-    """
-    from apps.crm.models import Company
-    from apps.tenancy.context import tenant_context
-    from apps.work import services as work_services
-    from apps.work.models import TaskUpdate
-
-    due = None
-    if rule.task_due_offset_days is not None:
-        due = (timezone.now() + timezone.timedelta(days=rule.task_due_offset_days)).date()
-
-    client_company = None
-    if contact.company_id:
-        client_company = Company.all_objects.filter(
-            pk=contact.company_id, tenant=contact.tenant,
-            is_client_company=True, deleted_at__isnull=True,
-        ).first()
-
-    # A stage move can come from a request or from a job; bind the contact's
-    # tenant either way, because the shared service uses the scoped manager.
-    with tenant_context(contact.tenant_id):
-        task = work_services.create_task(
-            tenant=contact.tenant, actor=actor, role=None,
-            source=TaskUpdate.Source.STAGE_AUTOMATION, source_id=rule.pk,
-            title=rule.task_title_template or "Follow up",
-            due_date=due,
-            owner=contact.owner,
-            contact=contact,
-            client_company=client_company,
-            is_client_visible=rule.task_client_visible and client_company is not None,
-            source_automation=rule,
-        )
-    AuditEvent.all_objects.create(
-        tenant=contact.tenant, actor=actor, verb="task.created_by_rule",
-        target_type="task", target_id=task.pk,
-        payload={"contact_id": str(contact.pk), "rule_id": str(rule.pk)},
-    )
-    return task
+    return stage_rules.create_task(contact, rule, actor=actor)

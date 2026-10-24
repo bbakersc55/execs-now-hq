@@ -41,6 +41,10 @@ SCHEDULES = [
     ("crm.expire_outbox", "apps.crm.tasks.expire_outbox", Schedule.HOURLY, None, None),
     # FR-1.33: contact full-text search reads a stored vector nothing else writes.
     ("crm.reindex_search", "apps.crm.tasks.reindex_search", Schedule.HOURLY, None, None),
+    # Stage rules, part 2: idle rules (once per stay) and the day's notices
+    # email, at the practice's 7:00. Safe to run twice: a stay fires once and
+    # a notice is emailed once.
+    ("crm.stage_rules_daily", "apps.crm.tasks.stage_rules_daily", Schedule.DAILY, None, 7),
     # Module 3 — one tick: quiet windows, generation, expiry, sending, and the
     # client-activity notice. FR-3.23's timing lives in the code, not here, so
     # a tenant's own send day and hour govern it.

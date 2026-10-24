@@ -68,3 +68,18 @@ def poll_inbound(tenant_id: str) -> dict:
             return inbound_poll.poll(tenant)
         except inbound_poll.NotConnected as exc:
             return {"connected": False, "detail": str(exc)}
+
+
+@unattended_job("crm.stage_rules_daily")
+def stage_rules_daily(tenant_id: str) -> dict:
+    """Stage rules, part 2: fire the idle rules (once per stay), then send
+    each person one email of the day's notices, if they have any. Makes no
+    Claude call and sends nothing to a contact: a rule's email is a draft."""
+    from apps.crm.services import stage_rules
+    from apps.tenancy.models import Tenant
+
+    with tenant_context(tenant_id):
+        tenant = Tenant.objects.get(pk=tenant_id)
+        fired = stage_rules.check_idle(tenant)
+        emailed = stage_rules.send_notice_emails(tenant)
+    return {"fired": fired, "emailed": emailed}

@@ -18,6 +18,7 @@ router.register("contact-types", views.ContactTypeViewSet, basename="contact-typ
 router.register("service-categories", views.ServiceCategoryViewSet, basename="service-category")
 router.register("contact-tags", views.ContactTagViewSet, basename="contact-tag")
 router.register("stage-automations", views.StageAutomationViewSet, basename="stage-automation")
+router.register("pipeline-notices", views.PipelineNoticeViewSet, basename="pipeline-notice")
 router.register("outbox", views.OutboxViewSet, basename="outbox")
 router.register("dev-allowlist", views.DevSendAllowlistViewSet,
                 basename="dev-allowlist")
