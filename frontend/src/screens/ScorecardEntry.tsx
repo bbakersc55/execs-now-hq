@@ -5,7 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { Banner } from "../components/ui";
 import { Me, api } from "../lib/api";
 import {
-  BulkSheet, CADENCE_NOUN, Cadence, EntryForm, EntryKpi, fmt, targetText, unitLabel,
+  BulkSheet, CADENCE_NOUN, Cadence, EntryForm, EntryKpi, fmt, parsePasted, targetText, unitLabel,
 } from "../lib/scorecard";
 import { useWords } from "../lib/words";
 import { scorecardPath } from "./Scorecard";
@@ -97,9 +97,14 @@ export function ScorecardEntry({ me }: { me: Me }) {
           <label htmlFor="sc-period" className="sc-muted">Period</label>
           <select id="sc-period" className="sc-select" value={day || f.period.day}
             onChange={(e) => { setDay(e.target.value); setValues({}); setErrors({}); setNote(null); }}>
-            {f.choices.map((c, i) => (
-              <option key={c.day} value={c.day}>
-                {c.label.charAt(0).toUpperCase() + c.label.slice(1)}{i === 0 && f.period.open ? " (open)" : ""}</option>
+            {monthGroups(f.choices).map(([month, weeks]) => (
+              <optgroup key={month} label={month}>
+                {weeks.map((c) => (
+                  <option key={c.day} value={c.day}>
+                    {c.label.charAt(0).toUpperCase() + c.label.slice(1)}
+                    {c.day === f.choices[0].day && f.period.open ? " (open)" : ""}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
           <button className="linklike" onClick={() => setBulk(!bulk)}>
@@ -223,6 +228,59 @@ export function ScorecardEntry({ me }: { me: Me }) {
   );
 }
 
+/** The single-period dropdown's weeks under the month each starts in, so
+ *  January 2025 is as easy to find as in the catch-up table's From. */
+function monthGroups(choices: EntryForm["choices"]) {
+  const groups: [string, EntryForm["choices"]][] = [];
+  for (const c of choices) {
+    const month = c.month ?? "";
+    if (groups.length && groups[groups.length - 1][0] === month) groups[groups.length - 1][1].push(c);
+    else groups.push([month, [c]]);
+  }
+  return groups;
+}
+
+/** Rows pasted onto the catch-up table, from a spreadsheet or a CSV file
+ *  (part 3's "CSV paste"). A row that starts with a KPI's name (or "name ·
+ *  person") goes to that KPI; a heading row whose cells are period labels
+ *  places the columns; otherwise the cells fill right and down from the cell
+ *  pasted into. A row of only words with no numbers (a heading) is left out.
+ *  What lands in a cell is checked by Save, as a typed value is. */
+export function pasteInto(s: BulkSheet, at: { line: number; period: number }, text: string) {
+  const rows = parsePasted(text).filter((r) => r.some((c) => c !== ""));
+  const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
+  const lineNames = s.lines.map((l) => [norm(l.name), norm(`${l.name} · ${l.person}`),
+    norm(`${l.name}, ${l.person}`), norm(l.person)]);
+  const periodLabels = s.periods.map((p) => norm(p.label));
+  const numeric = (c: string) => /\d/.test(c);
+  let columns: (number | null)[] | null = null;
+  const out: Record<string, string> = {};
+  let line = at.line;
+  let placed = 0;
+  for (const row of rows) {
+    const asLabels = row.map((c) => periodLabels.indexOf(norm(c)));
+    if (asLabels.filter((i) => i >= 0).length >= Math.max(1, Math.min(2, row.length - 1))) {
+      columns = asLabels.map((i) => (i >= 0 ? i : null));
+      continue;
+    }
+    const named = lineNames.findIndex((names) => row[0] !== "" && names.includes(norm(row[0])));
+    if (!row.some(numeric) && named < 0) continue;
+    const target = named >= 0 ? named : line;
+    const cells = named >= 0 || (columns && columns[0] === null) ? row.slice(1) : row;
+    const offset = named >= 0 || (columns && columns[0] === null) ? 1 : 0;
+    if (target >= s.lines.length) break;
+    const l = s.lines[target];
+    cells.forEach((value, i) => {
+      const p = columns ? columns[i + offset] : at.period + i;
+      if (p === null || p === undefined || p < 0 || p >= s.periods.length) return;
+      out[`${l.id}|${s.periods[p].start}|${l.membership ?? ""}`] = value;
+      placed += 1;
+    });
+    line = target + 1;
+  }
+  return { values: out, placed };
+}
+
 /** Periods across, KPIs down, for catching up; the same rules as the form. */
 function BulkTable({ companyId }: { companyId: string }) {
   const qc = useQueryClient();
@@ -278,6 +336,10 @@ function BulkTable({ companyId }: { companyId: string }) {
               ))}
             </select>
           )}
+          <button type="button" className="ghost small" disabled={!s || s.earlier == null}
+            onClick={() => { if (s?.earlier) { setFrom(s.earlier); setValues({}); } }}>← Earlier</button>
+          <button type="button" className="ghost small" disabled={!s || s.later == null}
+            onClick={() => { if (s && s.later != null) { setFrom(s.later); setValues({}); } }}>Later →</button>
         </div>
       </div>
       {note && <div role={note.kind === "ok" ? "status" : "alert"}><Banner kind={note.kind}>{note.text}</Banner></div>}
@@ -287,17 +349,27 @@ function BulkTable({ companyId }: { companyId: string }) {
             <table className="sc-entry-table">
               <thead><tr><th scope="col">KPI</th>{s.periods.map((p) => <th key={p.start} scope="col">{p.label}</th>)}</tr></thead>
               <tbody>
-                {s.lines.map((l) => (
+                {s.lines.map((l, li) => (
                   <tr key={`${l.id}-${l.membership ?? ""}`}>
                     <th scope="row">{l.name}{l.person && <span className="sc-muted"> · {l.person}</span>}</th>
-                    {l.cells.map((c) => {
+                    {l.cells.map((c, pi) => {
                       const key = keyOf(l.id, c.period_start, l.membership);
                       return (
                         <td key={c.period_start}>
                           <input type="text" inputMode="decimal" className={errors[key] ? "bad" : ""}
                             aria-label={`${l.name}${l.person ? `, ${l.person}` : ""}, ${c.period_start}`}
                             value={values[key] ?? (c.value === null ? "" : String(c.value))}
-                            onChange={(e) => setValues({ ...values, [key]: e.target.value })} />
+                            onChange={(e) => setValues({ ...values, [key]: e.target.value })}
+                            onPaste={(e) => {
+                              const text = e.clipboardData.getData("text");
+                              if (!/[\t\n,]/.test(text.trim())) return;   // one value: an ordinary paste
+                              e.preventDefault();
+                              const got = pasteInto(s, { line: li, period: pi }, text);
+                              setValues({ ...values, ...got.values });
+                              setNote({ kind: got.placed ? "ok" : "bad", text: got.placed
+                                ? `Pasted ${got.placed} value${got.placed === 1 ? "" : "s"}. Check them, then Save readings.`
+                                : "Nothing in that paste fits this table." });
+                            }} />
                           {errors[key] && <div className="sc-field-error" role="alert">{errors[key]}</div>}
                         </td>
                       );
@@ -307,6 +379,8 @@ function BulkTable({ companyId }: { companyId: string }) {
               </tbody>
             </table>
           </div>
+          <p className="sc-muted">Paste rows copied from a spreadsheet or a CSV file into any cell: a row
+            that starts with a name in the table goes to that row, and a heading row of periods places the columns.</p>
           <div className="sc-entry-actions">
             <button className="sc-save" disabled={save.isPending} onClick={() => save.mutate(
               Object.entries(values).filter(([, v]) => v.trim() !== "").map(([k, v]) => {

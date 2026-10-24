@@ -29,8 +29,19 @@ from .models import Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange
 
 LIMIT = Decimal("1e12")
 #: How far back the period pickers reach: two years of each cadence (Bryan,
-#: 2026-10-23). Entering further back is allowed; the pickers stop here.
+#: 2026-10-23), and never short of January 2025 (Bryan, 2026-10-24: any month
+#: back to then can be chosen, next year too). Entering further back is
+#: allowed; the pickers stop here.
 REACH = {P.DAILY: 731, P.WEEKLY: 105, P.MONTHLY: 24, P.QUARTERLY: 8}
+FLOOR = date(2025, 1, 1)
+
+
+def reach(today, cadence, week_start="monday") -> list:
+    """The periods the pickers offer, newest first: back to the earlier of
+    two years ago and the period January 1, 2025 is in."""
+    rolling = P.last_n(today, cadence, REACH[cadence], week_start)[0]
+    first = min(rolling, P.start_of(FLOOR, cadence, week_start))
+    return list(reversed(P.starts_between(first, today, cadence, week_start)))
 
 
 class ReadingRefused(ValueError):
@@ -145,8 +156,11 @@ def form(reader, scorecard, day: date, today: date) -> dict:
                    "label": P.long_label(weekly, P.WEEKLY),
                    "closes": P.end_of(weekly, P.WEEKLY).isoformat(),
                    "open": not P.closed(weekly, P.WEEKLY, today)},
-        "choices": [{"day": s.isoformat(), "label": P.long_label(s, P.WEEKLY)}
-                    for s in reversed(P.last_n(today, P.WEEKLY, REACH[P.WEEKLY], week_start))],
+        # Grouped by the month each week starts in, so a month is found as
+        # easily here as in the catch-up table's From.
+        "choices": [{"day": s.isoformat(), "label": P.long_label(s, P.WEEKLY),
+                     "month": P.long_label(s.replace(day=1), P.MONTHLY)}
+                    for s in reach(today, P.WEEKLY, week_start)],
         "kpis": kpis,
         "progress": progress(reader, scorecard, starts_for_week=weekly),
     }
@@ -311,15 +325,33 @@ def bulk(reader, scorecard, cadence, count, today, first=None) -> dict:
                            "value": num(found[(kpi.pk, s, member)].value)
                            if (kpi.pk, s, member) in found else None} for s in starts],
             })
-    reach = list(reversed(P.last_n(today, cadence, REACH[cadence], week_start)))
+    offered = reach(today, cadence, week_start)
+    earliest = offered[-1]
+    latest_first = P.last_n(today, cadence, count, week_start)[0]
+    earlier = later = None
+    if starts and starts[0] > earliest:
+        earlier = starts[0]
+        for _ in range(count):
+            earlier = P.previous_start(earlier, cadence, week_start)
+        earlier = max(earlier, earliest)
+    if starts and starts[0] < latest_first:
+        later = starts[0]
+        for _ in range(count):
+            later = P.next_start(later, cadence)
+        later = min(later, latest_first)
     return {"cadence": cadence, "periods": [{"start": s.isoformat(),
                                               "label": P.short_label(s, cadence)}
                                              for s in starts], "lines": lines,
             "from": starts[0].isoformat() if starts else None,
-            "earliest": reach[-1].isoformat(),
+            "earliest": earliest.isoformat(),
+            # Earlier / Later step a table's width at a time; "" for later is
+            # the latest periods.
+            "earlier": earlier.isoformat() if earlier else None,
+            "later": None if later is None else
+            ("" if later == latest_first else later.isoformat()),
             # The "From" picker's periods, newest first; a daily one is a date field.
             "choices": [] if cadence == P.DAILY else
-            [{"start": s.isoformat(), "label": P.long_label(s, cadence)} for s in reach]}
+            [{"start": s.isoformat(), "label": P.long_label(s, cadence)} for s in offered]}
 
 
 # ---------------------------------------------------------------- reminders

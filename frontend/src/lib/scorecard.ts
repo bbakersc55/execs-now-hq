@@ -171,7 +171,8 @@ export interface EntryKpi extends KpiDef {
 
 export interface EntryForm {
   period: { day: string; week_start: string; label: string; closes: string; open: boolean };
-  choices: { day: string; label: string }[];
+  /** Weeks, newest first, each with the month it starts in for grouping. */
+  choices: { day: string; label: string; month?: string }[];
   kpis: EntryKpi[];
   progress: { id: string; name: string; state: "in" | "waiting" | "yours"; owner: string }[];
   notices: Notice[];
@@ -186,6 +187,8 @@ export interface BulkSheet {
    *  periods newest first (empty for daily, which takes a date). */
   from?: string | null; earliest?: string;
   choices?: { start: string; label: string }[];
+  /** Where Earlier and Later go: a first period, "" for the latest, null for nowhere. */
+  earlier?: string | null; later?: string | null;
 }
 
 export interface ReadingHistory {
@@ -287,3 +290,67 @@ export function unitLabel(def: Pick<KpiDef, "kind" | "duration_unit" | "rating_s
 
 export const isoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Part 3: a KPI's Google Sheet feed, as the mapping screen gets it. */
+export interface FeedConfig {
+  spreadsheet_id: string; spreadsheet_name: string; tab: string; mode: "column" | "cell";
+  refresh: "hourly" | "daily"; active: boolean;
+  date_column: string; date_header: string; value_column: string; value_header: string;
+  name_column: string; name_header: string; header_row: number | null; cell: string;
+  people: Record<string, string>; last_run_at: string | null; last_success_at: string | null;
+  last_error: string; account: string;
+}
+
+export interface FeedState {
+  google: { ready: boolean; account: string; connected: boolean; reconnect: boolean };
+  kpi: { id: string; name: string; per_person: boolean; cadence: Cadence; cadence_noun: string;
+    people: { id: string; name: string }[] };
+  feed: FeedConfig | null;
+}
+
+export interface SheetGrid {
+  spreadsheet_id: string; title: string; tabs: { title: string; id: number }[]; tab: string;
+  rows: string[][]; more_rows: number; header_row: number | null; account: string;
+}
+
+export interface FeedPreview {
+  header_row: number | null;
+  periods: { start: string; label: string; person: string; value: number; had: number | null;
+    what: "new" | "update" | "same" | "kept" | "open"; says: string; rows: number[] }[];
+  more: number;
+  counts: Record<"new" | "update" | "same" | "kept" | "open", number>;
+  skipped: { row: number; why: string }[]; skipped_more: number;
+  unmatched: { name: string; rows: number }[];
+  cell?: { ref: string; value: number | null; period: string; closes: string };
+}
+
+/** 0 -> A, 25 -> Z, 26 -> AA: a sheet's column letters. */
+export function columnLetter(index: number): string {
+  let out = "";
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) out = String.fromCharCode(65 + ((n - 1) % 26)) + out;
+  return out;
+}
+
+/** Rows pasted from a spreadsheet or a CSV file: tabs if there are any,
+ *  else commas, with quoted cells kept whole. */
+export function parsePasted(text: string): string[][] {
+  const lines = text.replace(/\r\n?/g, "\n").replace(/\n+$/, "").split("\n");
+  const tabbed = lines.some((l) => l.includes("\t"));
+  return lines.map((line) => {
+    if (tabbed) return line.split("\t").map((c) => c.trim());
+    const cells: string[] = [];
+    let cell = ""; let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (quoted) {
+        if (ch === '"' && line[i + 1] === '"') { cell += '"'; i++; }
+        else if (ch === '"') quoted = false;
+        else cell += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === ",") { cells.push(cell.trim()); cell = ""; }
+      else cell += ch;
+    }
+    cells.push(cell.trim());
+    return cells;
+  });
+}

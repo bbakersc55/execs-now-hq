@@ -550,6 +550,16 @@ Mountain), every other schedule re-timed, nothing else created. Production's
 data was not read beyond that check. Lessons, now in the table: R3's list stops at ten; R4 goes to the
 owner the moment `WAITING` shows.
 
+**Observed at Release 22 (2026-10-23 UTC, 1 migration, `scorecard 0003`,
+additive: M5 part 2, bonus plans; also the scorecard fixes since):** `main`
+fast-forwarded to `708f85e`. R4: `scorecard 0003` applied by hand in the
+waiting worker at 15:33 UTC, OK; **the worker waited about 13 minutes** for
+it. **Web's build timed out again** (R4 came after its six minutes), so R6
+was the deploy by commit; `/healthz` 200 afterwards. R5b did not apply: the
+release adds no scheduled job. Times as reported by the owner; R1's dump
+name and the push time were not recorded here. Third release running where
+web gave up waiting: R4 still lands later than six minutes after the push.
+
 ---
 
 ## Part A — the owner's steps, in order

@@ -516,4 +516,49 @@ describe("catching up on any past period (Bryan, 2026-10-23)", () => {
     expect(picker).toHaveAttribute("type", "date");
     await waitFor(() => expect(picker).toHaveAttribute("min", "2024-10-22"));
   });
+
+  it("Earlier steps the table back a width at a time", async () => {
+    const user = userEvent.setup();
+    const sheet = { cadence: "monthly", lines: [], periods: [{ start: "2026-05-01", label: "May 2026" }],
+      from: "2026-05-01", earliest: "2024-11-01", earlier: "2025-11-01", later: null, choices: [] };
+    const fetchMock = mockApi({ "GET /api/scorecard/bulk/": sheet, "GET /api/scorecard/entry/": FORM });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ScorecardEntry me={aMe({ role: "ECC", client_company: "c1" })} />);
+    await user.click(await screen.findByRole("button", { name: "Catch up on several weeks" }));
+    expect(await screen.findByRole("button", { name: "Later →" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "← Earlier" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.includes("from=2025-11-01"))).toBe(true));
+  });
+
+  it("rows pasted from a spreadsheet fill the table, by KPI name and by period heading", async () => {
+    const user = userEvent.setup();
+    const sheet = { cadence: "weekly", from: null, earliest: "2024-10-21", choices: [],
+      periods: [{ start: "2026-10-05", label: "Oct 5" }, { start: "2026-10-12", label: "Oct 12" }],
+      lines: [
+        { ...tile({ id: "k1", name: "Guest rating" }), membership: null, person: "",
+          cells: [{ period_start: "2026-10-05", value: null }, { period_start: "2026-10-12", value: null }] },
+        { ...tile({ id: "k2", name: "Occupancy" }), membership: null, person: "",
+          cells: [{ period_start: "2026-10-05", value: null }, { period_start: "2026-10-12", value: null }] }] };
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/bulk/": sheet, "GET /api/scorecard/entry/": FORM }));
+    renderRoute(<ScorecardEntry me={aMe({ role: "ECC", client_company: "c1" })} />);
+    await user.click(await screen.findByRole("button", { name: "Catch up on several weeks" }));
+    const first = await screen.findByLabelText("Guest rating, 2026-10-05");
+    await user.click(first);
+    await user.paste("KPI\tOct 5\tOct 12\nOccupancy\t81%\t84%\nGuest rating\t4.5\t4.7");
+    expect(screen.getByLabelText("Occupancy, 2026-10-05")).toHaveValue("81%");
+    expect(screen.getByLabelText("Occupancy, 2026-10-12")).toHaveValue("84%");
+    expect(screen.getByLabelText("Guest rating, 2026-10-12")).toHaveValue("4.7");
+    expect(screen.getByRole("status")).toHaveTextContent("Pasted 4 values");
+  });
+
+  it("a CSV paste with no names fills right and down from the cell", async () => {
+    const { pasteInto } = await import("./ScorecardEntry");
+    const sheet = { cadence: "weekly", lines: [
+      { ...tile({ id: "k1", name: "A" }), membership: null, person: "", cells: [] },
+      { ...tile({ id: "k2", name: "B" }), membership: null, person: "", cells: [] }],
+      periods: [{ start: "p1", label: "P1" }, { start: "p2", label: "P2" }, { start: "p3", label: "P3" }] };
+    const got = pasteInto(sheet as never, { line: 0, period: 1 }, '"1,200",3\n4,"5"\n');
+    expect(got.values).toEqual({ "k1|p2|": "1,200", "k1|p3|": "3", "k2|p2|": "4", "k2|p3|": "5" });
+  });
 });
+

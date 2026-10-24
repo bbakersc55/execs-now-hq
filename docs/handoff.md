@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-22 UTC**, after Release 21 and M5 part 2. **The next session starts at
-"2026-10-22: Release 21, and M5 part 2" just below, then "Where things
+2026-10-23 UTC**, after Release 22. **The next session starts at
+"2026-10-23: Release 22" just below, then "2026-10-22: Release 21, and M5
+part 2", then "Where things
 stand (2026-10-21)", then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
 and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
@@ -11,6 +12,17 @@ brought up to date on 10/5; where it and a newer section disagree, the newer
 holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
+
+## 2026-10-23: Release 22
+
+- **Release 22 is live**: `main` at `708f85e`, `scorecard 0003` (bonus
+  plans, additive) applied by hand in the waiting worker at 15:33 UTC on
+  10/23, OK. The worker waited about 13 minutes; web's build timed out
+  waiting and was deployed by commit; `/healthz` 200. No new scheduled
+  jobs, so no `ensure_schedules`. It carried M5 part 2 (bonus plans) and
+  the scorecard fixes (a KPI made only by Save, edit and archive from the
+  tile, Percent ratios, catch up from any period). Runbook, "Observed at
+  Release 22".
 
 ## 2026-10-22: Release 21, and M5 part 2
 

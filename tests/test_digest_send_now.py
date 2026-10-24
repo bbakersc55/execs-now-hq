@@ -61,6 +61,13 @@ def make_late(tenant, digest):
     return digest
 
 
+def six_days_on(tenant, at):
+    """The same local time six days later. A database datetime comes back in
+    UTC, and six days of UTC across a clock change (November 1, 2026) lands an
+    hour off the practice's Draft on, so the drafter would find nothing due."""
+    return at.astimezone(digest_service.zone(tenant)) + timedelta(days=6)
+
+
 def bodies(dev_outbox):
     return [m.body for m in dev_outbox]
 
@@ -123,7 +130,8 @@ def test_a_late_digest_can_still_be_sent_by_hand(
     assert digest_service.owed_to(recipient.pk, tenant=seeded_tenant,
                                   cadence=Cadence.WEEKLY) == []
     move(task, ff, S.DONE, "Second week.")
-    following = generate_weekly(seeded_tenant, now=digest.send_window_at + timedelta(days=6))
+    following = generate_weekly(seeded_tenant,
+                                now=six_days_on(seeded_tenant, digest.send_window_at))
     assert "First week." not in following[0].body_text
     assert "Second week." in following[0].body_text
 
@@ -138,7 +146,8 @@ def test_a_late_digest_folds_into_the_next_draft_and_then_cannot_be_sent(
     move(task, ff, S.DONE, "Second week.")
 
     # Six days on: the next cycle's Draft on has come.
-    following = generate_weekly(seeded_tenant, now=digest.send_window_at + timedelta(days=6))
+    following = generate_weekly(seeded_tenant,
+                                now=six_days_on(seeded_tenant, digest.send_window_at))
 
     digest.refresh_from_db()
     assert digest.state == Digest.State.EXPIRED and digest.items.count() == 0
@@ -497,7 +506,7 @@ def test_send_now_wins_the_race_with_the_next_draft(
     claims alone, and drafts only the new work."""
     with tenant_context(seeded_tenant.pk):
         digest = _late_digest_with_new_work(seeded_tenant, ff, company, recipient, project)
-        next_cycle = digest.send_window_at + timedelta(days=6)
+        next_cycle = six_days_on(seeded_tenant, digest.send_window_at)
     holding, release, errors = threading.Event(), threading.Event(), []
     real_send = digest_service.send
 
@@ -542,7 +551,7 @@ def test_the_next_draft_wins_the_race_with_send_now(
     nothing. Both weeks are in the new draft, once."""
     with tenant_context(seeded_tenant.pk):
         digest = _late_digest_with_new_work(seeded_tenant, ff, company, recipient, project)
-        next_cycle = digest.send_window_at + timedelta(days=6)
+        next_cycle = six_days_on(seeded_tenant, digest.send_window_at)
     holding, release, errors, refusals = threading.Event(), threading.Event(), [], []
     real_fold = digest_service._enter_dead_state
 

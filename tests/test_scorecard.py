@@ -141,7 +141,7 @@ def sc(seeded_tenant, ff, api):
                                       entered_at=timezone.now())
         KpiReading.objects.create(tenant=tenant, kpi=kpis["lead"], period_start=week,
                                   value=777001, entered_by=ff.user, entered_at=timezone.now())
-    return {"tenant": tenant, "company": company, "who": who, "practice": practice,
+    return {"tenant": tenant, "company": company, "who": who, "practice": practice, "card": card,
             "api": api, "kpis": kpis, "week": week, "teams": {"ops": ops, "sales": sales},
             "pages": {"weekly": weekly, "leaders": leaders, "ops": ops_page, "each": each}}
 
@@ -1106,7 +1106,7 @@ def test_the_catch_up_table_starts_from_any_past_period_and_the_pickers_reach_tw
     client = sc["api"].as_(sc["practice"]["ff"])
     url = f"{B}bulk/?company={sc['company'].pk}&cadence=weekly&count=6"
     latest = client.get(url).json()
-    assert len(latest["periods"]) == 6 and len(latest["choices"]) == 105
+    assert len(latest["periods"]) == 6 and len(latest["choices"]) >= 105
     earliest = date.fromisoformat(latest["earliest"])
     assert (timezone.localdate() - earliest).days >= 2 * 365
     old = sc["week"] - timedelta(weeks=60)
@@ -1120,4 +1120,35 @@ def test_the_catch_up_table_starts_from_any_past_period_and_the_pickers_reach_tw
     assert daily["choices"] == [] and daily["earliest"]
     assert client.get(f"{url}&from=not-a-date").status_code == 400
     form = client.get(f"{B}entry/?company={sc['company'].pk}").json()
-    assert len(form["choices"]) == 105
+    assert len(form["choices"]) >= 105
+
+
+def test_the_pickers_reach_january_2025_whatever_today_is_and_step_a_table_at_a_time(sc):
+    """Bryan, 2026-10-24: any month back to January 2025 can be chosen, for a
+    monthly KPI too; the single-period dropdown reaches as far, by month."""
+    for today in (date(2026, 10, 24), date(2028, 6, 15)):
+        months = readings.reach(today, P.MONTHLY)
+        assert months[-1] <= date(2025, 1, 1) and months[0] == today.replace(day=1)
+        weeks = readings.reach(today, P.WEEKLY)
+        assert weeks[-1] <= date(2025, 1, 1)
+        quarters = readings.reach(today, P.QUARTERLY)
+        assert quarters[-1] <= date(2025, 1, 1)
+
+    client = sc["api"].as_(sc["practice"]["ff"])
+    with tenant_context(sc["tenant"].pk):
+        setup.create_kpi(sc["card"], {"name": "Monthly revenue", "kind": "money",
+                                      "cadence": "monthly", "page": str(sc["pages"]["weekly"].pk)},
+                         sc["practice"]["ff"].user)
+    url = f"{B}bulk/?company={sc['company'].pk}&cadence=monthly&count=6"
+    latest = client.get(url).json()
+    labels = [c["label"] for c in latest["choices"]]
+    assert "January 2025" in labels
+    assert latest["later"] is None and latest["earlier"]
+    january = client.get(f"{url}&from=2025-01-01").json()
+    assert [p["label"] for p in january["periods"]][:2] == ["Jan 2025", "Feb 2025"]
+    assert any(line["name"] == "Monthly revenue" for line in january["lines"])
+    assert january["later"] == "2025-07-01"
+    # Earlier from January 2025 stops at the earliest offered, never before it.
+    assert january["earlier"] is None or january["earlier"] >= latest["earliest"]
+    form = client.get(f"{B}entry/?company={sc['company'].pk}").json()
+    assert "January 2025" in {c["month"] for c in form["choices"]}
