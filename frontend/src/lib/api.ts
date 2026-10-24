@@ -183,6 +183,10 @@ export interface Contact {
   /** Pipeline board only: the company's name, "" when there is none. */
   company_name?: string;
   owner: string | null;
+  /** R3b: a partner's general discipline and specialties. */
+  discipline?: "" | "cmo" | "cfo" | "coo" | "chro" | "other";
+  discipline_label?: string;
+  specialties?: string[];
   pipeline_positions: PipelinePosition[];
   source: string;
   background: string;
@@ -2585,4 +2589,13 @@ export interface NmiEvent {
   amount_cents: number; happened_at: string; transaction_id: string;
   outcome: "matched" | "unmatched"; note: string; invoice: string | null;
   invoice_number: string; reviewed: boolean;
+}
+
+/** R3: an introduction the practice made, as either contact's page shows it. */
+export interface Introduction {
+  id: string; on: string; note: string; made_by: string;
+  partner: { id: string; name: string; company: string; discipline: string };
+  to: { id: string; name: string; company: string; discipline: string };
+  outcome: "" | "no_reply" | "met" | "client" | "not_fit"; outcome_label: string;
+  draft_state: string;
 }

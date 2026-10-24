@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { BulkBar } from "../components/BulkBar";
+import { DISCIPLINES } from "../components/Introductions";
 import {
   Avatar, Chip, FilterBar, PageHead, SearchField, Sheet, SortHeader, Sort, sorted,
   useRowLink,
@@ -28,6 +29,12 @@ export function Contacts({ me }: { me: Me }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [typeFilter, setTypeFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
+  // R3b: a partner found by what they do.
+  const [disciplineFilter, setDisciplineFilter] = useState("");
+  const [specialtyFilter, setSpecialtyFilter] = useState("");
+  const specialties = useQuery<{ specialty: string; contacts: number }[]>({
+    queryKey: ["specialties"], queryFn: () => api.get("/api/contacts/specialties/"),
+  });
   const [composing, setComposing] = useState(false);
   // `template` is the one copied from, if any: its first-name fallback applies.
   const [draft, setDraft] = useState<{ subject: string; body_text: string; template?: string }>(
@@ -68,7 +75,9 @@ export function Contacts({ me }: { me: Me }) {
   // behind a filter you cannot see is how people mail the wrong list.
   const rows = base.filter((c) =>
     (!typeFilter || c.type_codes.includes(typeFilter))
-    && (!stageFilter || (c.pipeline_positions ?? []).some((p) => p.stage === stageFilter)));
+    && (!stageFilter || (c.pipeline_positions ?? []).some((p) => p.stage === stageFilter))
+    && (!disciplineFilter || c.discipline === disciplineFilter)
+    && (!specialtyFilter || (c.specialties ?? []).some((s) => s.toLowerCase() === specialtyFilter.toLowerCase())));
 
   const shown = sorted(rows, sort, (c) => ({
     name: `${c.last_name} ${c.first_name}`.trim(),
@@ -105,7 +114,7 @@ export function Contacts({ me }: { me: Me }) {
   return (
     <>
       <PageHead title="Contacts"
-        sub="Everyone the practice deals with. Search covers names, titles and background."
+        sub="Everyone the practice deals with. Search covers names, titles, background, and what partners do."
         action={!adding && (
           <span className="row tight">
             {/* Merge is FF and VA (matrix 4.5), so the way in is too. */}
@@ -159,14 +168,27 @@ export function Contacts({ me }: { me: Me }) {
               </optgroup>
             ))}
           </select>
+          <select aria-label="Filter by discipline" value={disciplineFilter}
+            onChange={(e) => { setDisciplineFilter(e.target.value); setPicked([]); }}>
+            <option value="">Any discipline</option>
+            {Object.entries(DISCIPLINES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          {(specialties.data ?? []).length > 0 && (
+            <select aria-label="Filter by specialty" value={specialtyFilter}
+              onChange={(e) => { setSpecialtyFilter(e.target.value); setPicked([]); }}>
+              <option value="">Any specialty</option>
+              {specialties.data!.map((s) => <option key={s.specialty} value={s.specialty}>{s.specialty} ({s.contacts})</option>)}
+            </select>
+          )}
         </div>
       </div>
 
       {/* Chips, not bare dropdowns: what is narrowing the list is stated, and
           clearing one is a click rather than a hunt through a menu. */}
-      {(typeFilter || stageFilter || active) && (
+      {(typeFilter || stageFilter || disciplineFilter || specialtyFilter || active) && (
         <FilterBar onClearAll={() => {
-          setTypeFilter(""); setStageFilter(""); setTerm(""); setPicked([]);
+          setTypeFilter(""); setStageFilter(""); setDisciplineFilter(""); setSpecialtyFilter("");
+          setTerm(""); setPicked([]);
         }}>
           {active && <Chip label={`Search: ${active}`}
             onClear={() => setTerm("")} />}
@@ -175,6 +197,10 @@ export function Contacts({ me }: { me: Me }) {
             onClear={() => { setTypeFilter(""); setPicked([]); }} />}
           {stageFilter && <Chip label={`Stage: ${stageLabel(pipelines.data, stageFilter)}`}
             onClear={() => { setStageFilter(""); setPicked([]); }} />}
+          {disciplineFilter && <Chip label={`Discipline: ${DISCIPLINES[disciplineFilter]}`}
+            onClear={() => { setDisciplineFilter(""); setPicked([]); }} />}
+          {specialtyFilter && <Chip label={`Specialty: ${specialtyFilter}`}
+            onClear={() => { setSpecialtyFilter(""); setPicked([]); }} />}
         </FilterBar>
       )}
 

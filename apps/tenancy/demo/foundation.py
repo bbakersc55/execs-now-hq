@@ -764,3 +764,41 @@ def stage_rules(world: World) -> None:
             tenant=world.tenant, recipient=world.owner, contact=c, pipeline=waiting.pipeline,
             text=f"{c.first_name} {c.last_name} has been in {waiting.stage.label} 12 days "
                  "with no activity")
+
+
+#: R3b: what a few partners do (fictional).
+WHAT_THEY_DO = {
+    "Winkle": ("cfo", ["Cash flow", "Fundraising", "SaaS metrics"]),
+    "Martin": ("cfo", ["Month-end close", "Cash flow"]),
+    "Flenderson": ("chro", ["Handbooks", "Hiring process"]),
+    "Flax": ("chro", ["Culture", "Hiring process", "Performance reviews"]),
+    "Lemon": ("cmo", ["Go to market", "Social media ads", "Brand positioning"]),
+}
+
+
+def introductions(world: World) -> None:
+    """R3 and R3b: disciplines and specialties for a few partners, and two
+    introductions: one partner to another (met), one partner to a prospect
+    (drafts waiting in the Outbox)."""
+    from apps.crm.models import Contact
+    from apps.crm.services import introductions as intros
+
+    by_last = {p.last_name: p for p in world.partners}
+    for last, (discipline, specialties) in WHAT_THEY_DO.items():
+        partner = by_last.get(last)
+        if partner is not None:
+            Contact.objects.filter(pk=partner.pk).update(discipline=discipline,
+                                                         specialties=specialties)
+    lemon, winkle = by_last.get("Lemon"), by_last.get("Winkle")
+    prospect = next(iter(world.prospects.values()), None)
+    if lemon is None or winkle is None:
+        return
+    try:
+        row, _ = intros.introduce(winkle, lemon, actor=world.owner,
+                                  note="Both work with growing SaaS companies.")
+        intros.set_outcome(row, "met", actor=world.owner)
+        if prospect is not None and prospect.primary_email:
+            intros.introduce(lemon, prospect, actor=world.owner,
+                             note="They're planning a launch next quarter.")
+    except intros.IntroductionRefused:
+        pass

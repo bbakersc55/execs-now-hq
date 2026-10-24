@@ -61,6 +61,25 @@ def as_typed(term):
     return typed
 
 
+def specialty_matches(term):
+    """R3b: contacts with a specialty containing the words typed ("social"
+    finds "Social media ads"), or whose discipline is named ("CFO",
+    "fractional cfo")."""
+    from django.db.models import CharField, Exists, Func, OuterRef
+
+    term = (term or "").strip()
+    if not term:
+        return Q(pk__in=[])
+    found = Contact.all_objects.filter(pk=OuterRef("pk")).annotate(
+        joined=Func("specialties", Value(" | "), function="array_to_string",
+                    output_field=CharField())).filter(
+        joined__icontains=term)
+    named = term.casefold().replace("fractional", "").strip()
+    disciplines = [code for code, label in Contact.Discipline.choices
+                   if named and code != "other" and (named == code or named == label.casefold())]
+    return Q(Exists(found)) | Q(discipline__in=disciplines)
+
+
 def search(tenant, term, *, limit=50):
     """Returns {"contacts": [...], "companies": [...]}. Tenant-scoped by the
     manager; the explicit tenant filter is belt and braces."""
@@ -70,7 +89,8 @@ def search(tenant, term, *, limit=50):
     query = SearchQuery(term, search_type="websearch")
     contacts = list(
         Contact.objects.filter(deleted_at__isnull=True)
-        .filter(Q(search_vector=query) | Q(tags__contains=[term]) | as_typed(term))
+        .filter(Q(search_vector=query) | Q(tags__contains=[term]) | as_typed(term)
+                | specialty_matches(term))
         # A row that matched on a typed prefix has no full-text rank at all
         # (ts_rank of an unindexed vector is null), and null sorts first under
         # DESC in Postgres — which would put the weakest matches on top.

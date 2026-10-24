@@ -240,7 +240,8 @@ def _merge_referrals(tenant, survivor, absorbed, note):
         held = Referral.all_objects.filter(
             tenant=tenant, prospect=survivor, pipeline_id=row.pipeline_id,
             direction=row.direction).exists()
-        if not held:
+        # An introduction (outbound) is one of many; it always moves.
+        if not held or row.direction == Referral.Direction.OUTBOUND:
             Referral.all_objects.filter(pk=row.pk).update(prospect=survivor)
             note("referral", 1)
         else:

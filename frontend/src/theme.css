@@ -1797,3 +1797,17 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .follow-up-offer { border-left: 4px solid #F58220; margin-bottom: 1rem; }
 .follow-up-line td { font-size: .9rem; padding-top: 0; }
 .nmi-events li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* R3 and R3b: what a partner does, and introductions (Introductions.tsx). */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill.chip { display: inline-flex; align-items: center; gap: 4px; }
+.chip-x { all: unset; cursor: pointer; padding: 0 2px; line-height: 1; }
+.chip-x:focus-visible { outline: 2px solid #F58220; }
+.what-they-do-form, .intro-form { display: flex; flex-direction: column; gap: 6px; }
+.intro-form { margin-bottom: .75rem; }
+.intro-list { list-style: none; margin: 0; padding: 0; }
+.intro-list li { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+  gap: 8px; padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); }
+.intro-list li:first-child { border-top: 0; }
+.intro-list li > div { flex: 1 1 220px; min-width: 0; }
+.intro-list select { flex: 0 0 auto; max-width: 100%; }

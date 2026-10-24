@@ -6,6 +6,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { EnrolledIn } from "../components/EnrolledIn";
 import { ContactCommitments } from "../components/ContactCommitments";
 import { ReferralsCard, ReferredByRow } from "../components/Referrals";
+import { IntroductionsCard, WhatTheyDo } from "../components/Introductions";
 import { GrantPortalAccess } from "../components/GrantPortalAccess";
 import { Banner, Card, Empty, Field, PageLinks, Pill, when } from "../components/ui";
 import { AddContact } from "./AddContact";
@@ -312,6 +313,9 @@ export function ContactDetail({ me }: { me: Me }) {
           </Card>
 
           <ReferralsCard contactId={c.id} partner={c.type_codes.includes("referral_partner")} />
+          {/* R3b and R3: what a partner does, and the introductions made. */}
+          {c.type_codes.includes("referral_partner") && <WhatTheyDo contact={c} />}
+          <IntroductionsCard contact={c} partner={c.type_codes.includes("referral_partner")} />
         </div>
 
         <div>

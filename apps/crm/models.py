@@ -254,6 +254,20 @@ class Contact(TenantScopedModel):
     # Postgres text[] with a GIN index, per the data model. Postgres is settled
     # for this project; nothing here is designed for backend neutrality.
     tags = ArrayField(models.CharField(max_length=64), default=list, blank=True)
+
+    class Discipline(models.TextChoices):
+        CMO = "cmo", "Fractional CMO"
+        CFO = "cfo", "Fractional CFO"
+        COO = "coo", "Fractional COO"
+        CHRO = "chro", "Fractional CHRO"
+        OTHER = "other", "Other"
+
+    #: R3b (owner, 2026-10-22): a referral partner's general discipline, and
+    #: several specialties in the practice's own words ("Go to market", …),
+    #: both searchable from Contacts. Separate from campaign tags.
+    discipline = models.CharField(max_length=8, choices=Discipline.choices, blank=True,
+                                  default="", db_default="")
+    specialties = ArrayField(models.CharField(max_length=60), default=list, blank=True)
     # As on a company (2026-10-12): shown as links, never read.
     linkedin_url = models.URLField(max_length=500, blank=True, default="")
     alignable_url = models.URLField(max_length=500, blank=True, default="")
@@ -510,6 +524,14 @@ class Referral(TenantScopedModel):
         WON = "won", "Won"
         LOST = "lost", "Lost"
 
+    class IntroOutcome(models.TextChoices):
+        """R3: how an outbound introduction went, set by the practice."""
+
+        NO_REPLY = "no_reply", "No reply"
+        MET = "met", "Met"
+        CLIENT = "client", "Became a client"
+        NOT_A_FIT = "not_fit", "Not a fit"
+
     direction = models.CharField(max_length=10, choices=Direction.choices,
                                  default=Direction.INBOUND, db_default=Direction.INBOUND)
     referrer = models.ForeignKey(Contact, on_delete=models.CASCADE,
@@ -524,6 +546,13 @@ class Referral(TenantScopedModel):
     fee_terms = models.CharField(max_length=255, blank=True, default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
+    #: R3, outbound only: the outcome the practice sets, and the introduction
+    #: drafted to the partner (the other person's is beside it in the Outbox).
+    intro_outcome = models.CharField(max_length=10, choices=IntroOutcome.choices, blank=True,
+                                     default="", db_default="")
+    intro_outcome_at = models.DateTimeField(null=True, blank=True)
+    outbox_message = models.ForeignKey("OutboxMessage", null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "referral"
@@ -589,6 +618,7 @@ class EmailTemplateUse(TenantScopedModel):
         THANKS_RECORDED = "thanks_recorded", "Thank-you when a referral is recorded"
         THANKS_WON = "thanks_won", "Thank-you when the prospect is won"
         THANKS_LOST = "thanks_lost", "Thank-you when the prospect is lost"
+        INTRODUCTION = "introduction", "An introduction to a referral partner"
 
     use = models.CharField(max_length=32, choices=Use.choices)
     template = models.ForeignKey(EmailTemplate, on_delete=models.PROTECT, related_name="uses")
@@ -1070,6 +1100,8 @@ class OutboxMessage(TenantScopedModel):
         PIPELINE_NOTICES = "pipeline_notices", "Pipeline notices"
         # A step of a stage's follow-up (pipeline part 3): outreach, for approval.
         FOLLOW_UP = "follow_up", "Follow-up"
+        # R3: an introduction the practice makes, one draft to each person.
+        INTRODUCTION = "introduction", "Introduction"
         # To the practice's own people: digests are ready, about to miss
         # their time, or missed it. Never to a client; never a digest's text.
         DIGEST_REMINDER = "digest_reminder", "Digest reminder"

@@ -55,6 +55,8 @@ BY_PRODUCER = {
     P.MANUAL: CORRESPONDENCE,
     # One person thanking one person for an introduction.
     P.REFERRAL_THANKS: CORRESPONDENCE,
+    # One person introducing two people to each other.
+    P.INTRODUCTION: CORRESPONDENCE,
     P.CAMPAIGN: MARKETING,
     P.DIGEST: UPDATES,
     P.CLIENT_ACTIVITY: UPDATES,

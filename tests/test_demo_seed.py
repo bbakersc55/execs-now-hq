@@ -264,7 +264,11 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
 
         credited = {(f"{r.prospect.first_name} {r.prospect.last_name}",
                      f"{r.referrer.first_name} {r.referrer.last_name}", r.outcome)
-                    for r in Referral.objects.select_related("prospect", "referrer")}
+                    for r in Referral.objects.filter(direction="inbound")
+                    .select_related("prospect", "referrer")}
+        # R3: two introductions, partner to partner (met) and partner to prospect.
+        assert sorted((r.referrer.last_name, r.intro_outcome) for r in Referral.objects.filter(
+            direction="outbound").select_related("referrer")) == [("Lemon", ""), ("Winkle", "met")]
         assert credited == {("Wiley Coyote", "Ben Wyatt", "won"),
                             ("Eldon Tyrell", "Ben Wyatt", "lost"),
                             ("Selina Kyle", "Ben Wyatt", ""),

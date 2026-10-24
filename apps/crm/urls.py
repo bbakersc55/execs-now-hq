@@ -11,6 +11,7 @@ router.register("campaigns", views_campaigns.CampaignViewSet, basename="campaign
 router.register("leave-requests", views_inbound.LeaveRequestViewSet, basename="leave-request")
 router.register("sending-queue", views_queue.SendingQueueView, basename="sending-queue")
 router.register("referrals", views_referrals.ReferralViewSet, basename="referral")
+router.register("introductions", views_referrals.IntroductionViewSet, basename="introduction")
 router.register("companies", views.CompanyViewSet, basename="company")
 router.register("pipelines", views.PipelineViewSet, basename="pipeline")
 router.register("pipeline-stages", views.PipelineStageViewSet, basename="pipeline-stage")

@@ -176,6 +176,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         comms.everything(world)
         scorecard(world)
         foundation.stage_rules(world)
+        foundation.introductions(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the
         # demo's own content is written without Claude.

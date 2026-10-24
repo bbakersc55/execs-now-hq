@@ -158,6 +158,9 @@ class ContactSerializer(serializers.ModelSerializer):
 
     #: Who referred them into the sales pipeline (owner, 2026-10-20), and on
     #: create, the contact to record as having referred them.
+    discipline_label = serializers.SerializerMethodField()
+    specialties = serializers.ListField(child=serializers.CharField(max_length=200, allow_blank=True),
+                                        required=False)
     referred_by = serializers.SerializerMethodField()
     referrer = serializers.UUIDField(required=False, allow_null=True, write_only=True)
 
@@ -208,8 +211,21 @@ class ContactSerializer(serializers.ModelSerializer):
             "referral_fee_terms", "referral_cadence", "referral_touch_mode",
             "referral_template", "referral_next_touch_at", "referral_onboarded_at", "referral_enrolled",
             "merged_into", "created_at", "updated_at",
+            # R3b: what a partner does.
+            "discipline", "discipline_label", "specialties",
         ]
         read_only_fields = ["merged_into", "referral_onboarded_at"]
+
+    def get_discipline_label(self, obj):
+        return obj.get_discipline_display() if obj.discipline else ""
+
+    def validate_specialties(self, value):
+        from apps.crm.services import introductions
+
+        try:
+            return introductions.clean_specialties(value)
+        except introductions.IntroductionRefused as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
     def validate(self, attrs):
         if not (attrs.get("first_name") or attrs.get("last_name")
@@ -267,9 +283,20 @@ class ContactSerializer(serializers.ModelSerializer):
 
         if validated_data.get("company") is None and company_name:
             validated_data["company"] = _company_by_name(tenant, company_name)
+        before = (instance.discipline, list(instance.specialties or []))
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.save()
+        if (instance.discipline, list(instance.specialties or [])) != before:
+            # R3b: what a partner does, on Activity.
+            from apps.tenancy.models import AuditEvent
+
+            AuditEvent.all_objects.create(
+                tenant=tenant, actor=self.context["request"].user,
+                verb="contact.specialties_changed", target_type="contact",
+                target_id=instance.pk,
+                payload={"discipline": instance.discipline,
+                         "specialties": list(instance.specialties or [])})
 
         if emails is not None:
             instance.emails.all().delete()

@@ -35,6 +35,13 @@ FIELDS = (
     ("ProspectName", "Who they referred (thank-yous)"),
     ("FlyerNote", "A line saying the flyer is attached (new partner's email)"),
     ("PayLink", "The invoice's payment link (invoice emails)"),
+    # R3: an introduction, written to one person about the other.
+    ("OtherName", "Who they're being introduced to (introductions)"),
+    ("OtherFirstName", "Their first name (introductions)"),
+    ("OtherCompany", "Their company (introductions)"),
+    ("OtherDiscipline", "Their discipline, like Fractional CMO (introductions)"),
+    ("OtherSpecialties", "Their specialties (introductions)"),
+    ("IntroNote", "Why you're introducing them (introductions)"),
 )
 NAMES = tuple(name for name, _ in FIELDS)
 _FIELD = re.compile(r"\{([A-Za-z][A-Za-z ]*)\}")
@@ -47,6 +54,9 @@ ONLY_IN = {
     "ProspectName": "only in referral thank-yous",
     "FlyerNote": "only in a new partner's first email",
     "PayLink": "only in invoice emails",
+    "OtherName": "only in introductions", "OtherFirstName": "only in introductions",
+    "OtherCompany": "only in introductions", "OtherDiscipline": "only in introductions",
+    "OtherSpecialties": "only in introductions", "IntroNote": "only in introductions",
 }
 
 #: What a preview shows when no one is chosen: a visible placeholder.
@@ -56,6 +66,9 @@ PLACEHOLDERS = {
     "PracticeNews": "[What you're working on lately]", "FeeTerms": "[Fee terms]",
     "ProspectName": "[Who they referred]", "FlyerNote": "[The flyer line]",
     "PayLink": "[The invoice's payment link]",
+    "OtherName": "[Who they're meeting]", "OtherFirstName": "[Their first name]",
+    "OtherCompany": "[Their company]", "OtherDiscipline": "[Their discipline]",
+    "OtherSpecialties": "[Their specialties]", "IntroNote": "[Why you're introducing them]",
 }
 
 
@@ -89,6 +102,8 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
         "FeeTerms": (contact.referral_fee_terms or "").strip() if contact else "",
         "ProspectName": "",
         "FlyerNote": "",
+        "OtherName": "", "OtherFirstName": "", "OtherCompany": "", "OtherDiscipline": "",
+        "OtherSpecialties": "", "IntroNote": "",
         **extra,
     }
 
@@ -96,7 +111,8 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
 #: The fields whose whole line goes when they have nothing to say ("{PracticeNews}",
 #: "…arrangement: {FeeTerms}.", "{FlyerNote}", "Pay here: {PayLink}"). Any other
 #: field with no value reads as blank where it stands, and its line stays.
-LINE_FIELDS = ("PracticeNews", "FeeTerms", "FlyerNote", "PayLink")
+LINE_FIELDS = ("PracticeNews", "FeeTerms", "FlyerNote", "PayLink", "OtherCompany",
+               "OtherDiscipline", "OtherSpecialties", "IntroNote")
 
 
 def render(text: str, values: dict, *, fallback: str = DEFAULT_FALLBACK,

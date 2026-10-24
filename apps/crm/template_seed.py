@@ -67,6 +67,18 @@ ORIGINALS = {
     ),
 }
 
+ORIGINALS["introduction"] = (
+    "Introduction",
+    "Introducing {OtherName}",
+    "Hi {FirstName},\n\n"
+    "I'd like to introduce you to {OtherName}.\n"
+    "They're with {OtherCompany}.\n"
+    "They work as a {OtherDiscipline}.\n"
+    "Their focus: {OtherSpecialties}.\n"
+    "{IntroNote}\n\n"
+    "I think the two of you should talk. I'll let you take it from here.",
+)
+
 #: use -> the original it starts on.
 USES = {
     "referral_touch": "referral_touch",
@@ -74,6 +86,7 @@ USES = {
     "thanks_recorded": "thanks_recorded",
     "thanks_won": "thanks_won",
     "thanks_lost": "thanks_lost",
+    "introduction": "introduction",
 }
 
 

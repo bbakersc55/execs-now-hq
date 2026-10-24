@@ -101,7 +101,23 @@ class ContactViewSet(TenantStaffViewSet):
         ).annotate(referral_enrolled_annotated=Exists(Enrollment.objects.filter(
             contact=OuterRef("pk"), program=Enrollment.Program.REFERRAL_TOUCHES,
             ended_at__isnull=True)))
+        # R3b: find a partner by what they do.
+        params = self.request.query_params
+        if params.get("discipline"):
+            qs = qs.filter(discipline=params["discipline"])
+        if params.get("specialty"):
+            from apps.crm.services.search import specialty_matches
+
+            qs = qs.filter(specialty_matches(params["specialty"]))
         return crm_perms.contact_queryset_for(self.request, qs)
+
+    @action(detail=False, methods=["get"])
+    def specialties(self, request):
+        """R3b: every specialty already used in the practice, most used first,
+        for suggesting as one is typed."""
+        from apps.crm.services import introductions
+
+        return Response(introductions.used_specialties(request.tenant.pk))
 
     # ---------------------------------------------------------- enrolment
 

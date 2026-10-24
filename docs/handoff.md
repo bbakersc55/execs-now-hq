@@ -65,6 +65,21 @@ truth; this covers what they don't, and what changed since 9/30.
 - **P4 §4, the NMI read-back (migration `billing 0010`, additive: `nmi_event`).**
   See the billing spec §4, "As built". New daily job `billing.read_back_nmi`:
   R5b at the release.
+- **R3, outbound introductions, and R3b's specialties (migration `crm 0047`,
+  additive: columns on `contact` and `referral`).** `apps/crm/services/
+  introductions.py`, routes `/api/introductions/`. An introduction is an
+  outbound `referral` row (referrer = the partner, prospect = the other
+  contact, on the referral pipeline) with date, note, who made it and the
+  outcome the practice sets (no reply, met, became a client, not a fit). It
+  drafts the library's new "Introduction" template (merge fields `{OtherName}`,
+  `{OtherCompany}`, `{OtherDiscipline}`, `{OtherSpecialties}`, `{IntroNote}`)
+  **to each of the two, as two drafts**: one email with both on it needs the
+  send path to carry a second recipient past its guards (dev allowlist, demo
+  redirect, each person's unsubscribes), which it does not yet. The template is
+  seeded into a practice's library the first time it is wanted. Specialties:
+  a discipline (fractional CMO, CFO, COO, CHRO, other) and free-text phrases,
+  suggested from those used; Contacts filters by both and the search box finds
+  them. Activity: introductions, outcomes, specialty changes, follow-ups.
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

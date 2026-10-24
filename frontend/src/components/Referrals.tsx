@@ -37,11 +37,13 @@ export function referrerChoices(contacts: Contact[], typed: string, excludeId?: 
       || fullName(a).localeCompare(fullName(b)));
 }
 
-export function ReferrerPicker({ value, onChange, excludeId, autoFocus }: {
+export function ReferrerPicker({ value, onChange, excludeId, autoFocus, label = "Referred by" }: {
   value: { id: string; name: string } | null;
   onChange: (picked: { id: string; name: string } | null) => void;
   excludeId?: string;
   autoFocus?: boolean;
+  /** What the box is called to a screen reader. */
+  label?: string;
 }) {
   const listId = useId();
   const [typed, setTyped] = useState("");
@@ -63,7 +65,7 @@ export function ReferrerPicker({ value, onChange, excludeId, autoFocus }: {
     : [];
   return (
     <div className="referrer-picker">
-      <input value={typed} autoFocus={autoFocus} aria-label="Referred by"
+      <input value={typed} autoFocus={autoFocus} aria-label={label}
         aria-controls={listId} placeholder="Type a name or email"
         onChange={(e) => setTyped(e.target.value)} />
       {typed.trim() && (

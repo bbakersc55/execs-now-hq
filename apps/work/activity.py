@@ -71,6 +71,13 @@ AUDIT = {
     # Campaign follow-through (owner, 2026-10-19), and enrolling by hand.
     "enrollment.started": ("pipeline", "put {target} on referral touches"),
     "campaign.enrolment_skipped": ("pipeline", "did not put {target} on referral touches"),
+    # R3: introductions, and what a partner does.
+    "introduction.made": ("pipeline", "made an introduction for {target}"),
+    "introduction.outcome": ("pipeline", "set how {target}'s introduction went"),
+    "contact.specialties_changed": ("pipeline", "changed what {target} does"),
+    # Pipeline part 3: a stage's follow-up.
+    "follow_up.started": ("pipeline", "started a follow-up for {target}"),
+    "follow_up.stopped": ("pipeline", "a follow-up for {target} stopped"),
     "import.committed": ("import", "committed a CSV import"),
     "import.rolled_back": ("import", "rolled back a CSV import"),
     "portal.access_granted": ("portal", "gave {target} access to the portal"),
