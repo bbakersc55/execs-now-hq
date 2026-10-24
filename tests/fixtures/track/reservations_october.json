@@ -1,0 +1,7 @@
+{"_embedded": {"reservations": [
+  {"id": 5001, "status": "Checked Out", "unitId": 101, "arrivalDate": "2026-09-28", "departureDate": "2026-10-03", "nights": 5, "bookedAt": "2026-08-01T12:00:00-06:00", "guestBreakdown": {"grossRent": "1000.00", "netRent": "900.00"}},
+  {"id": 5002, "status": "Checked Out", "unitId": 101, "arrivalDate": "2026-10-10", "departureDate": "2026-10-14", "nights": 4, "bookedAt": "2026-10-02T09:00:00-06:00", "guestBreakdown": {"grossRent": "800.00"}},
+  {"id": 5003, "status": "Confirmed", "unitId": 102, "arrivalDate": "2026-10-29", "departureDate": "2026-11-04", "nights": 6, "bookedAt": "2026-10-05T09:00:00-06:00", "guestBreakdown": {"grossRent": "1,200.00"}},
+  {"id": 5004, "status": "Cancelled", "unitId": 102, "arrivalDate": "2026-10-15", "departureDate": "2026-10-20", "nights": 5, "bookedAt": "2026-10-06T09:00:00-06:00", "guestBreakdown": {"grossRent": "750.00"}},
+  {"id": 5005, "status": "Hold", "unitId": 102, "arrivalDate": "2026-10-21", "departureDate": "2026-10-22", "nights": 1, "bookedAt": "2026-10-07T09:00:00-06:00", "guestBreakdown": {"grossRent": "150.00"}}
+ ]}, "page_count": 1, "page_size": 100, "total_items": 5, "page": 1}

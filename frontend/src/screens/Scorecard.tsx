@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { BonusArea, bonusLead } from "../components/ScorecardBonus";
 import { SheetFeedModal } from "../components/ScorecardFeed";
+import { TrackFeedModal } from "../components/ScorecardTrack";
 import { KpiEditModal } from "../components/ScorecardSetup";
 import { ScorecardTile } from "../components/ScorecardTiles";
 import { Banner } from "../components/ui";
@@ -45,6 +46,7 @@ export function Scorecard({ me }: { me: Me }) {
   const [editKpi, setEditKpi] = useState<string | null>(null);
   // Part 3: a KPI's Google Sheet feed, from its tile (Details → Feed from a sheet).
   const [feedKpi, setFeedKpi] = useState<string | null>(null);
+  const [trackKpi, setTrackKpi] = useState<string | null>(null);
   const [search, setSearch] = useSearchParams();
   // "Reconnect Google" is a browser redirect; its outcome comes back here.
   useEffect(() => {
@@ -174,6 +176,10 @@ export function Scorecard({ me }: { me: Me }) {
 
       <PageTabs b={b} onPick={setPage} bonus={null} onBonus={setBonus} />
       {managed && <Banner kind={managed.kind}>{managed.text}</Banner>}
+      {trackKpi && (
+        <TrackFeedModal companyId={companyId} kpiId={trackKpi} onClose={() => setTrackKpi(null)}
+          onSaved={(text) => { setTrackKpi(null); setManaged({ kind: "ok", text }); }} />
+      )}
       {feedKpi && (
         <SheetFeedModal companyId={companyId} kpiId={feedKpi} onClose={() => setFeedKpi(null)}
           onSaved={(text) => { setFeedKpi(null); setManaged({ kind: "ok", text }); }} />
@@ -192,7 +198,7 @@ export function Scorecard({ me }: { me: Me }) {
           {tiles.length === 0 && <p className="sc-empty">No {w.kpis} on this page yet.</p>}
           {tiles.map((t) => <ScorecardTile key={t.id} t={t} manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
-            onFeed: () => setFeedKpi(t.id),
+            onFeed: () => setFeedKpi(t.id), onTrack: () => setTrackKpi(t.id),
             busy: archive.isPending } : undefined} />)}
         </div>
       )}

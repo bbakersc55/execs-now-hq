@@ -336,6 +336,8 @@ export interface TileManage {
   onEdit: () => void; onArchive: () => void; busy?: boolean;
   /** Part 3: set up or change the KPI's Google Sheet feed. */
   onFeed?: () => void;
+  /** Part 4: its Track PMS measure. */
+  onTrack?: () => void;
 }
 
 function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
@@ -370,7 +372,10 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
       </table>
       {open && <HistoryList reading={open} def={t} />}
       <div className="sc-muted">
-        {latest ? (latest.source === "sheet"
+        {latest ? (latest.source === "track"
+          ? <>Latest worked out from Track
+            {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
+          : latest.source === "sheet"
           ? <>Latest read from the Google Sheet
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
           : <>Latest entered by {latest.entered_by || "someone"}
@@ -394,7 +399,10 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
                 onClick={manage.onEdit}>Edit</button>
               {manage.onFeed && !t.computed && (
                 <button type="button" className="ghost small" aria-label={`Sheet feed for ${t.name}`}
-                  onClick={manage.onFeed}>{t.feed ? "Sheet feed" : "Feed from a sheet"}</button>)}
+                  onClick={manage.onFeed}>{t.feed?.kind === "sheet" ? "Sheet feed" : "Feed from a sheet"}</button>)}
+              {manage.onTrack && !t.computed && !t.per_person && (
+                <button type="button" className="ghost small" aria-label={`Track measure for ${t.name}`}
+                  onClick={manage.onTrack}>{t.feed?.kind === "track" ? "Track measure" : "Feed from Track"}</button>)}
               <button type="button" className="ghost small" aria-label={`Archive ${t.name}`}
                 onClick={() => setArchiving(true)}>Archive</button>
             </>

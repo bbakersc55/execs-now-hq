@@ -246,8 +246,16 @@ def feed_of(kpi, reader):
     last read failed only for the practice and the KPI's reading owner."""
     from django.core.exceptions import ObjectDoesNotExist
 
-    from .feeds import source_text
+    from .feeds import source_text, track_source_text
 
+    told = reader is not None and (reader.sets_up or kpi.reading_owner_id == reader.user_id)
+    try:
+        track_feed = kpi.track_feed
+    except ObjectDoesNotExist:
+        track_feed = None
+    if track_feed is not None and track_feed.active:
+        return {"kind": "track", "text": track_source_text(track_feed),
+                "error": track_feed.last_error if told else ""}
     try:
         feed = kpi.sheet_feed
     except ObjectDoesNotExist:
@@ -415,7 +423,7 @@ def visible_pages(reader, scorecard):
                  .select_related("team"))
     kpis = list(Kpi.objects.filter(scorecard=scorecard, archived_at__isnull=True)
                 .select_related("page", "page__team", "audience_team", "reading_owner",
-                                "sheet_feed",
+                                "sheet_feed", "track_feed",
                                 "source_a__page__team", "source_a__audience_team",
                                 "source_b__page__team", "source_b__audience_team"))
     by_page = defaultdict(list)

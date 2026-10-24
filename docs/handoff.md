@@ -80,6 +80,10 @@ truth; this covers what they don't, and what changed since 9/30.
   a discipline (fractional CMO, CFO, COO, CHRO, other) and free-text phrases,
   suggested from those used; Contacts filters by both and the search box finds
   them. Activity: introductions, outcomes, specialty changes, follow-ups.
+- **M5 part 4, the Track PMS feed (migration `scorecard 0005`, additive: two
+  tables).** Spec, "Part 4 as built", has the arithmetic and the list of what
+  is unverified against a live Track account. No new schedule: it rides the
+  hourly `scorecard.read_feeds`, once a day per measure.
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

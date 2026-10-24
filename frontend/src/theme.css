@@ -1811,3 +1811,7 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .intro-list li:first-child { border-top: 0; }
 .intro-list li > div { flex: 1 1 220px; min-width: 0; }
 .intro-list select { flex: 0 0 auto; max-width: 100%; }
+
+/* M5 part 4: Track PMS (ScorecardTrack.tsx). */
+.track-state, .track-form, .track-feed { display: flex; flex-direction: column; gap: 6px; }
+.track-form input, .track-feed select { max-width: 100%; }

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from apps.scorecard import views, views_bonus, views_feeds
+from apps.scorecard import views, views_bonus, views_feeds, views_track
 
 urlpatterns = [
     path("scorecard/", views.BoardView.as_view(), name="scorecard"),
@@ -34,6 +34,13 @@ urlpatterns = [
     path("scorecard/feeds/preview/", views_feeds.FeedPreviewView.as_view(),
          name="scorecard-feed-preview"),
     path("scorecard/feeds/run/", views_feeds.FeedRunView.as_view(), name="scorecard-feed-run"),
+    path("scorecard/track/connection/", views_track.TrackConnectionView.as_view(),
+         name="scorecard-track-connection"),
+    path("scorecard/track/connection/test/", views_track.TrackTestView.as_view(),
+         name="scorecard-track-test"),
+    path("scorecard/track/options/", views_track.TrackOptionsView.as_view(),
+         name="scorecard-track-options"),
+    path("scorecard/track/feed/", views_track.TrackFeedView.as_view(), name="scorecard-track-feed"),
     path("scorecard/bonus/", views_bonus.BonusView.as_view(), name="scorecard-bonus"),
     path("scorecard/bonus/payroll/", views_bonus.PayrollView.as_view(),
          name="scorecard-bonus-payroll"),

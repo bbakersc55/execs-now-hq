@@ -384,7 +384,7 @@ def cell_period(kpi, week_start, today):
 
 # ------------------------------------------------------------- what it would do
 
-def outcome(kpi, plan_values: dict, today, week_start) -> list[dict]:
+def outcome(kpi, plan_values: dict, today, week_start, source=None) -> list[dict]:
     """For each period the read gives, what writing it would do: new, an
     update of the feed's own earlier reading, the same, kept as typed by
     hand, or waiting for the period to close."""
@@ -401,7 +401,7 @@ def outcome(kpi, plan_values: dict, today, week_start) -> list[dict]:
             what = "open"
         elif have is None:
             what = "new"
-        elif have.source != have.Source.SHEET:
+        elif have.source != (source or have.Source.SHEET):   # another feed's, or the hand's
             what = "kept"
         elif have.value == value:
             what = "same"
@@ -418,7 +418,7 @@ WHAT_SAYS = {"new": "New reading", "update": "Replaces the sheet's earlier value
 
 
 @transaction.atomic
-def write(feed, results, now=None) -> dict:
+def write(feed, results, now=None, source=None) -> dict:
     """Write what `outcome` said: new and update rows only. Nothing typed by
     hand is touched and nothing is deleted."""
     from .models import KpiReading, KpiReadingChange
@@ -434,7 +434,7 @@ def write(feed, results, now=None) -> dict:
                     reading = KpiReading.all_objects.create(
                         tenant_id=kpi.tenant_id, kpi=kpi, period_start=r["start"],
                         membership_id=r["member"], value=r["value"],
-                        source=KpiReading.Source.SHEET, entered_at=now)
+                        source=source or KpiReading.Source.SHEET, entered_at=now)
             except Exception:                              # typed by hand meanwhile
                 counts["new"] -= 1
                 counts["kept"] += 1
@@ -444,7 +444,7 @@ def write(feed, results, now=None) -> dict:
         elif r["what"] == "update":
             reading = KpiReading.all_objects.select_for_update().get(
                 kpi=kpi, period_start=r["start"], membership_id=r["member"])
-            if reading.source != KpiReading.Source.SHEET:   # the hand won meanwhile
+            if reading.source != (source or KpiReading.Source.SHEET):   # the hand won meanwhile
                 counts["update"] -= 1
                 counts["kept"] += 1
                 continue

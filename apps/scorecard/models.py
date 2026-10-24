@@ -144,6 +144,7 @@ class Kpi(TenantScopedModel):
     class Feed(models.TextChoices):
         HAND = "hand", "By hand"
         SHEET = "sheet", "Google Sheet"
+        TRACK = "track", "Track PMS"
 
     class Formula(models.TextChoices):
         """A computed KPI, one step only (spec, "Computed KPIs"): two other
@@ -277,6 +278,7 @@ class KpiReading(TenantScopedModel):
     class Source(models.TextChoices):
         HAND = "hand", "By hand"
         SHEET = "sheet", "Google Sheet"
+        TRACK = "track", "Track PMS"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()
@@ -555,3 +557,58 @@ class BonusReopen(TenantScopedModel):
     class Meta(TenantScopedModel.Meta):
         db_table = "bonus_reopen"
         ordering = ["created_at"]
+
+
+class TrackConnection(TenantScopedModel):
+    """A client company's Track PMS account (M5 part 4): its Track address,
+    and the API key and secret, entered by the practice owner and stored
+    encrypted with the same environment key as every `tenant_secret`. They
+    are on this row, not in `tenant_secret`, because that table holds one
+    secret of a kind per practice (or per person) and a practice has a Track
+    account per client company. Write-only: the practice never sees them
+    again, only the key's last four. Read only for this company's KPIs."""
+
+    company = models.OneToOneField("crm.Company", on_delete=models.CASCADE,
+                                   related_name="track_connection")
+    domain = models.CharField(max_length=200)
+    key_ciphertext = models.BinaryField(null=True, blank=True)
+    secret_ciphertext = models.BinaryField(null=True, blank=True)
+    key_last4 = models.CharField(max_length=4, blank=True, default="", db_default="")
+    #: The last "Test connection": when, whether Track accepted it, what it said.
+    checked_at = models.DateTimeField(null=True, blank=True)
+    check_ok = models.BooleanField(null=True, blank=True)
+    check_detail = models.TextField(blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "track_connection"
+
+
+class KpiTrackFeed(TenantScopedModel):
+    """A KPI read from its company's Track account (M5 part 4): one measure
+    from the menu (`track.MEASURES`), for the company's total, one property
+    (`unit_id`) or one Track user (`assignee_id`). Computed per closed period
+    on the worker, daily, by the Sheets feed's rules: never over a reading
+    typed by hand, never deleting, one notice when a read fails."""
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="track_feed")
+    measure = models.CharField(max_length=24)
+    unit_id = models.CharField(max_length=20, blank=True, default="", db_default="")
+    unit_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    assignee_id = models.CharField(max_length=20, blank=True, default="", db_default="")
+    active = models.BooleanField(default=True, db_default=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="", db_default="")
+    error_since = models.DateTimeField(null=True, blank=True)
+    last_counts = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_track_feed"
+        constraints = [
+            models.CheckConstraint(condition=Q(unit_id="") | Q(assignee_id=""),
+                                   name="kpi_track_feed_one_scope"),
+        ]

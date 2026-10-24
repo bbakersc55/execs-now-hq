@@ -22,6 +22,7 @@ def remind_missing(tenant_id: str) -> int:
 # The worker's own. It makes no Claude call.
 @unattended_job("scorecard.read_feeds")
 def read_feeds(tenant_id: str) -> dict:
+    # Also part 4: a Track feed's readings, once a day each, rate-limit aware.
     """M5 part 3: every hour, read the practice's sheet feeds that are due
     (hourly ones, daily ones a day after their last read, a cell feed as its
     period closes). It writes readings for closed periods only, never over
@@ -31,4 +32,8 @@ def read_feeds(tenant_id: str) -> dict:
 
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
-        return feeds.run_due(tenant.pk, board.today_for(tenant))
+        today = board.today_for(tenant)
+        sheets_done = feeds.run_due(tenant.pk, today)
+        # Part 4: each Track feed once a day, on the same hourly pass.
+        track_done = feeds.run_due_track(tenant.pk, today)
+        return {"sheets": sheets_done, "track": track_done}

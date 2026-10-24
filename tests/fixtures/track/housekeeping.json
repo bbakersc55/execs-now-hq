@@ -1,0 +1,5 @@
+{"_embedded": {"nodes": [
+  {"id": 300, "status": "completed", "unitId": 101, "userId": 21, "createdAt": "2026-10-03", "scheduledAt": "2026-10-03", "completedAt": "2026-10-04"},
+  {"id": 301, "status": "not-started", "unitId": 102, "userId": 21, "createdAt": "2026-10-28", "scheduledAt": "2026-10-29"},
+  {"id": 302, "status": "pending", "unitId": 101, "userId": 22, "createdAt": "2026-10-30", "scheduledAt": "2026-11-02"}
+ ]}, "page_count": 1, "page_size": 100, "total_items": 3, "page": 1}

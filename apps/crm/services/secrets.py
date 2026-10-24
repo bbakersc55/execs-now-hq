@@ -23,6 +23,18 @@ def encrypt(value: str) -> bytes:
     return _cipher().encrypt(value.encode())
 
 
+def decrypt(ciphertext) -> str:
+    """'' for nothing stored, or a value encrypted under a key since lost. For
+    a credential kept on its own row (a company's Track key), not in
+    `tenant_secret`."""
+    if not ciphertext:
+        return ""
+    try:
+        return _cipher().decrypt(bytes(ciphertext)).decode()
+    except (InvalidToken, ValueError, TypeError):
+        return ""
+
+
 def write_secret(*, tenant, kind, value, user=None):
     from apps.tenancy.models import TenantSecret
 

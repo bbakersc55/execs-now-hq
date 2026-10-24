@@ -64,7 +64,7 @@ export interface KpiDef {
   computed: string;
   /** Part 3: where a fed KPI's readings come from, and why its last read
    *  failed (only for the practice and the reading owner). */
-  feed?: { kind: "sheet"; text: string; error: string } | null;
+  feed?: { kind: "sheet" | "track"; text: string; error: string } | null;
 }
 
 export interface Tile extends KpiDef {

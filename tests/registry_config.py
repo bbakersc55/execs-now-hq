@@ -52,7 +52,7 @@ from apps.finance.models import (
     FinanceMonthClose, FinanceReconciliation, FinanceRule, FinanceSettings,
 )
 from apps.scorecard.models import (
-    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, Scorecard,
+    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection,
     ScorecardPage,
 )
 from apps.tenancy.registry import register
@@ -321,3 +321,8 @@ register(FollowUpRunStep, factories.FollowUpRunStepFactory, api_exposed=False)
 # P4 §4: what the NMI read-back found, the practice owner's alone
 # (/api/nmi-events/, tests/test_nmi_read_back.py).
 register(NmiEvent, factories.NmiEventFactory, api_exposed=False)
+
+# M5 part 4: a company's Track connection and a KPI's Track measure, served by
+# /api/scorecard/track/ through `access.company_for` (tests/test_scorecard_track.py).
+register(TrackConnection, factories.TrackConnectionFactory, api_exposed=False)
+register(KpiTrackFeed, factories.KpiTrackFeedFactory, api_exposed=False)

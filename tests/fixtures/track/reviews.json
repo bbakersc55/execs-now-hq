@@ -1,0 +1,6 @@
+{"_embedded": {"channel_reviews": [
+  {"id": 77, "unitId": 101, "overAllRating": "5", "createdAt": "2026-10-03", "channelReviews": [{"reviewCreatedAt": "2026-10-05T10:00:00Z", "reviewStatus": "review_published"}]},
+  {"id": 78, "unitId": 102, "overAllRating": "4", "channelReviews": [{"reviewerSubmittedAt": "2026-10-20T10:00:00Z", "reviewStatus": "review_submitted"}]},
+  {"id": 79, "unitId": 101, "overAllRating": null, "channelReviews": [{"reviewCreatedAt": "2026-10-21T10:00:00Z"}]},
+  {"id": 80, "unitId": 101, "overAllRating": "3", "channelReviews": [{"reviewCreatedAt": "2026-09-21T10:00:00Z"}]}
+ ]}, "page_count": 1, "page_size": 100, "total_items": 4, "page": 1}

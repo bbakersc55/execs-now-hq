@@ -1629,3 +1629,23 @@ class NmiEventFactory(TenantScopedFactory):
     amount_cents = 1000
     happened_at = factory.LazyFunction(timezone.now)
     outcome = "unmatched"
+
+
+# --- M5 part 4: Track PMS ---
+
+class TrackConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.TrackConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    domain = "acme.trackhs.com"
+
+
+class KpiTrackFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiTrackFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    measure = "occupancy"
