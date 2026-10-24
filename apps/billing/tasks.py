@@ -57,3 +57,17 @@ def charge_subscription(tenant_id: str) -> dict:
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
         return subscriptions.run(tenant)
+
+
+@unattended_job("billing.read_back_nmi")
+def read_back_nmi(tenant_id: str) -> dict:
+    """P4 §4: the last week of the practice's NMI account, read once a day.
+    Refunds, voids and chargebacks made in NMI's portal are recorded against
+    their payment; anything unmatched is flagged for the practice owner. It
+    charges nothing and changes no invoice's money."""
+    from apps.billing import readback
+    from apps.tenancy.models import Tenant
+
+    with tenant_context(tenant_id):
+        tenant = Tenant.objects.get(pk=tenant_id)
+        return readback.read_back(tenant)

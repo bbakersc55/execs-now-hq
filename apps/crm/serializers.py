@@ -285,13 +285,20 @@ class ContactSerializer(serializers.ModelSerializer):
         return sorted(link.contact_type.code for link in obj.type_links.all())
 
     def get_pipeline_positions(self, obj):
+        from apps.crm.services import follow_ups
+
+        # Part 3: the follow-up running in each pipeline, as a line to show.
+        runs = {r.stage.pipeline_id: follow_ups.line_for(r) for r in follow_ups.running(obj)}
         return [
             {
                 "pipeline": str(p.pipeline_id), "pipeline_name": p.pipeline.name,
                 "pipeline_kind": p.pipeline.kind,
                 "stage": str(p.stage_id), "stage_code": p.stage.code,
                 "stage_label": p.stage.label, "semantic": p.stage.semantic,
-                "entered_at": p.entered_at,
+                # Since they entered the stage they are in (part 2); older
+                # rows have only when they joined the pipeline.
+                "entered_at": p.stage_entered_at or p.entered_at,
+                "follow_up": runs.get(p.pipeline_id),
             }
             for p in sorted(
                 obj.pipeline_positions.all(), key=lambda p: p.pipeline.position
@@ -589,6 +596,12 @@ class StageAutomationSerializer(serializers.ModelSerializer):
                 {"touch_cadence": "Monthly, every two months or quarterly."})
         if action == R.Action.NOTIFY and not (get("notice_text") or "").strip():
             raise serializers.ValidationError({"notice_text": "Say what the notice says."})
+        if action == R.Action.START_FOLLOW_UP and trigger in (R.Trigger.ENTERS, R.Trigger.IDLE):
+            from apps.crm.services import follow_ups
+
+            if follow_ups.follow_up_of(get("to_stage")) is None:
+                raise serializers.ValidationError({"action_type": (
+                    f"{get('to_stage').label} has no follow-up yet: set one on its card first.")})
         if action == R.Action.CREATE_TASK and not (get("task_title_template") or "").strip():
             raise serializers.ValidationError({"task_title_template": "Give the task a title."})
         if action == R.Action.DRAFT_EMAIL and get("email_template") is None:

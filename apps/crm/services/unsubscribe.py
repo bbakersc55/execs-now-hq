@@ -51,6 +51,7 @@ BY_PRODUCER = {
     P.REFERRAL_TOUCH: MARKETING,
     P.REFERRAL_ONBOARDING: MARKETING,
     P.STAGE_RULE: MARKETING,
+    P.FOLLOW_UP: MARKETING,
     P.MANUAL: CORRESPONDENCE,
     # One person thanking one person for an introduction.
     P.REFERRAL_THANKS: CORRESPONDENCE,
@@ -170,6 +171,13 @@ def suppression_for(message):
                        address=(message.to_address or "").lower()).first()
 
 
+def suppressed_for_marketing(contact) -> bool:
+    """Whether the contact has left marketing (a follow-up checks before each step)."""
+    return EmailSuppression.all_objects.filter(
+        tenant_id=contact.tenant_id, contact=contact, category=MARKETING,
+        lifted_at__isnull=True).exists()
+
+
 def refusal(message) -> str:
     """Why the Outbox will not send this, in words for the queue; "" if it will."""
     row = suppression_for(message)
@@ -233,7 +241,9 @@ def unsubscribe(data: dict, *, category=None, message_id=None,
             warning=f"Suppressed: the recipient unsubscribed from {LABELS[category]}.",
             updated_at=timezone.now())
     if contact is not None and category == MARKETING:
-        from apps.crm.services import campaigns
+        from apps.crm.services import campaigns, follow_ups
+
+        follow_ups.stop_all(contact, reason="unsubscribed")
 
         for program in enrollment.PROGRAMS.values:
             enrollment.unenroll(contact, program, actor=None,

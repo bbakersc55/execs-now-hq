@@ -34,6 +34,12 @@ const SEMANTIC_HINT: Record<string, string> = {
   parked: "still yours, just not active",
 };
 
+/** What a move into a stage with a follow-up offers (pipeline part 3). */
+interface FollowUpOffer {
+  contact: string; name: string; stage: string; stage_label: string; steps: number;
+  question: string; detail: string;
+}
+
 export function Pipeline() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string>("");
@@ -41,6 +47,13 @@ export function Pipeline() {
   const [target, setTarget] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
+  // Pipeline part 3: "Start the <stage> follow-up?" after a move, default No.
+  const [offer, setOffer] = useState<FollowUpOffer | null>(null);
+  const startFollowUp = useMutation({
+    mutationFn: (o: FollowUpOffer) => api.post(`/api/contacts/${o.contact}/follow-up/`, { stage: o.stage }),
+    onSuccess: (_d, o) => { setOffer(null); setNote(`The ${o.stage_label} follow-up has started. Its first email will wait in the Outbox for approval.`); },
+    onError: (e: Error) => { setOffer(null); setNote(e.message); },
+  });
   const [dragging, setDragging] = useState<Contact | null>(null);
   const [over, setOver] = useState<string>("");
   const [query, setQuery] = useState("");
@@ -77,7 +90,8 @@ export function Pipeline() {
 
   const move = useMutation({
     mutationFn: (vars: { id: string; stage: string; reason: string }) =>
-      api.post<{ thanks_drafted?: { to: string; label: string } | null }>(
+      api.post<{ thanks_drafted?: { to: string; label: string } | null;
+        follow_up_offer?: Omit<FollowUpOffer, "contact" | "name"> | null }>(
         `/api/contacts/${vars.id}/change-stage/`, { stage: vars.stage, reason: vars.reason }),
     onSuccess: (d, vars) => {
       qc.invalidateQueries({ queryKey: ["board"] });
@@ -94,6 +108,9 @@ export function Pipeline() {
           : "Stage updated. Any matching automations for this pipeline have fired.") + thanks
       );
       setMoving(null); setReason("");
+      const who = columns.flatMap((c) => c.contacts).find((x) => x.id === vars.id);
+      setOffer(d?.follow_up_offer ? { ...d.follow_up_offer, contact: vars.id,
+        name: who ? `${who.first_name} ${who.last_name}`.trim() : "them" } : null);
     },
   });
 
@@ -171,6 +188,19 @@ export function Pipeline() {
       </div>
 
       {note && <Banner kind="ok">{note}</Banner>}
+      {offer && (
+        <div className="card follow-up-offer" role="dialog" aria-label={offer.question}>
+          <strong>{offer.question}</strong>
+          <p className="small muted" style={{ margin: ".25rem 0 .5rem" }}>
+            For {offer.name}: {offer.detail}. Each email waits in the Outbox for approval, and it stops
+            if they write back, move on or unsubscribe.</p>
+          <div className="row">
+            <button autoFocus className="ghost" style={{ flex: "0 0 auto" }} onClick={() => setOffer(null)}>No</button>
+            <button className="primary" style={{ flex: "0 0 auto" }} disabled={startFollowUp.isPending}
+              onClick={() => startFollowUp.mutate(offer)}>Start it</button>
+          </div>
+        </div>
+      )}
 
       {board.isError && (
         <Banner kind="bad">The board could not be loaded. Reload the page to try again.</Banner>

@@ -10,5 +10,6 @@ router.register("portal-invoices", views.PortalInvoiceViewSet, basename="portal-
 router.register("payment-account", views.PaymentAccountView, basename="payment-account")
 router.register("portal-autopay", views.PortalAutopayView, basename="portal-autopay")
 router.register("subscription", views.SubscriptionView, basename="subscription")
+router.register("nmi-events", views.NmiEventViewSet, basename="nmi-event")
 
 urlpatterns = router.urls

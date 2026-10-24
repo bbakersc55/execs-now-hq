@@ -24,6 +24,14 @@ export function ContactDetail({ me }: { me: Me }) {
   const [editing, setEditing] = useState(false);
   const [lookingForDupes, setLookingForDupes] = useState(false);
 
+  // Pipeline part 3: Stop withdraws any follow-up email still waiting.
+  const stopFollowUp = useMutation({
+    mutationFn: (run: string) => api.post(`/api/contacts/${id}/follow-up/`, { stop: run }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contact", id] });
+      qc.invalidateQueries({ queryKey: ["outbox"] });
+    },
+  });
   const contact = useQuery<Contact>({
     queryKey: ["contact", id], queryFn: () => api.get<Contact>(`/api/contacts/${id}/`),
   });
@@ -136,6 +144,16 @@ export function ContactDetail({ me }: { me: Me }) {
                         </Pill>
                       </td>
                       <td className="muted small">{when(p.entered_at)}</td>
+                    </tr>
+                  ))}
+                  {(c.pipeline_positions ?? []).filter((p) => p.follow_up).map((p) => (
+                    <tr key={`${p.pipeline}-follow-up`} className="follow-up-line">
+                      <td colSpan={3}>
+                        <span>{p.follow_up!.text}</span>{" "}
+                        <button className="ghost small" disabled={stopFollowUp.isPending}
+                          aria-label={`Stop the ${p.follow_up!.stage_label} follow-up`}
+                          onClick={() => stopFollowUp.mutate(p.follow_up!.id)}>Stop</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

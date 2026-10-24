@@ -77,6 +77,10 @@ SCHEDULES = [
     # 9:00; a failed charge once more the next day; card-expiry notices.
     # Safe to run twice: an attempt made today is never made again.
     ("billing.run_autopay", "apps.billing.tasks.run_autopay", Schedule.DAILY, None, 9),
+    # P4 §4: the daily read-back of the practice's NMI account, at 6:00:
+    # refunds and chargebacks made in NMI's portal. Read-only; safe to run
+    # twice (an action is recorded once).
+    ("billing.read_back_nmi", "apps.billing.tasks.read_back_nmi", Schedule.DAILY, None, 6),
     # P4 part 5: the practice's own subscription, charged by the app on the
     # 1st (a missed day catches up), and a lost answer looked up. The one job
     # a suspended practice keeps: paying is what lifts the suspension.

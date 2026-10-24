@@ -16,7 +16,7 @@ from apps.crm.models import (
     GmailConnection,
     ImportBatch, Pipeline,
     ImportMappingProfile, ImportRow, OutboxAttachment, OutboxMessage,
-    PipelineNotice, PipelineStage, Referral, ServiceCategory, StageAutomation, StageChange,
+    FollowUp, FollowUpRun, FollowUpRunStep, FollowUpStep, PipelineNotice, PipelineStage, Referral, ServiceCategory, StageAutomation, StageChange,
     StageRuleFiring, Task,
 )
 from apps.notes.models import Note, NoteFolder, NotePinUnlock
@@ -42,6 +42,7 @@ from apps.tenancy.models import (
 )
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
+    NmiEvent,
     AutopayConsent, ClientPaymentMethod, PaymentAccount, PaymentAttempt, PracticeInvoice,
     PracticeInvoiceLine, PracticeSubscription, PracticeSubscriptionAddon,
 )
@@ -309,3 +310,14 @@ register(BonusReopen, factories.BonusReopenFactory, api_exposed=False)
 # (tests/test_stage_rules_part2.py).
 register(StageRuleFiring, factories.StageRuleFiringFactory, api_exposed=False)
 register(PipelineNotice, factories.PipelineNoticeFactory, api_exposed=False)
+
+# Pipeline part 3: a stage's follow-up and each contact's run through it,
+# served by /api/pipeline-stages/<id>/follow-up/ and the contact's own page
+# (tests/test_follow_ups.py).
+register(FollowUp, factories.FollowUpFactory, api_exposed=False)
+register(FollowUpStep, factories.FollowUpStepFactory, api_exposed=False)
+register(FollowUpRun, factories.FollowUpRunFactory, api_exposed=False)
+register(FollowUpRunStep, factories.FollowUpRunStepFactory, api_exposed=False)
+# P4 §4: what the NMI read-back found, the practice owner's alone
+# (/api/nmi-events/, tests/test_nmi_read_back.py).
+register(NmiEvent, factories.NmiEventFactory, api_exposed=False)

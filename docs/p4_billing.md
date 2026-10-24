@@ -298,6 +298,23 @@ chargeback is recorded on the invoice and shown to the practice owner, a day
 late at most. A charge whose answer was lost (a timeout) is left "unknown"
 and settled by the same read-back, so nothing is recorded twice.
 
+**As built (2026-10-24, `apps/billing/readback.py`, job `billing.read_back_nmi`
+at the practice's 6:00).** v5 has no search, so the read-back lists the last
+seven days of actions through the classic Query API (`start_date`/`end_date`,
+read-only, the same private key, as A13's lookup). Each action the app did not
+make becomes one `nmi_event` (once: transaction, action and time): a refund,
+void or chargeback is matched to its payment by NMI's transaction id (or the
+original one, for a refund NMI lists as its own transaction), then by our
+reference, and recorded against it; anything unmatched, a charge made in NMI's
+portal included, is flagged. The practice owner sees them on Invoices ("From
+NMI: please look", Mark as seen) and on the invoice. **It changes no invoice's
+money:** what a refund or chargeback means for the balance is recorded by hand.
+Subscription charges ("sub-…") are the platform's and are left out even where
+a practice shares the platform's keys. Only practice accounts are read so far;
+the platform account's own read-back is not built. **Not proved against NMI:**
+the sandbox cannot make a chargeback, so the action names a live account uses
+for one (`chargeback` is assumed) are checked at the first real one.
+
 ## 5. Data model
 
 A new app, `apps/billing`. Every table is practice-scoped (`tenant_id`,
@@ -315,7 +332,7 @@ go through one module (`apps/platform/billing.py`), as `stats.py` does.
 | `practice_subscription_addon` | `id`, `tenant_id`, `subscription_id`, `addon_id`, `added_at`, `charged_from` (the next period's start, D4), `removed_at` |
 | `practice_invoice` | `id`, `tenant_id`, `number`, `period_start`, `period_end`, `subtotal_cents`, `tax_cents`, `total_cents`, `amount_paid_cents`, `status` (`open / paid / void / refunded`), `issued_at`, `due_at`, `paid_at`, `nmi_transaction_id`, `pdf_id` → `stored_file` |
 | `practice_invoice_line` | `id`, `tenant_id`, `invoice_id`, `position`, `description`, `amount_cents`, `addon_id` (null for the base) |
-| `nmi_event` *(platform)* | `id`, `event_id` (unique with the account), `account` (`platform` or a practice id), `type`, `reference`, `received_at`, `processed_at`, `outcome`, `error`. **No card data and no body beyond what is listed.** |
+| `nmi_event` *(built 2026-10-24 as a practice table, `tenant_id` and fail-closed, since only practice accounts are read back; see §4)* | `id`, `event_id` (unique with the account), `account` (`platform` or a practice id), `type`, `reference`, `received_at`, `processed_at`, `outcome`, `error`. **No card data and no body beyond what is listed.** |
 | `tenant` (add) | `status` gains **`suspended`**; `suspended_at`, `suspension_reason` |
 
 ### 5.2 Client invoicing

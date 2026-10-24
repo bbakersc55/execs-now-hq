@@ -146,7 +146,29 @@ def _run(rule, contact, *, actor=None, allow_moves=True):
         return enroll(contact, rule, actor=actor)
     if kind == R.Action.NOTIFY:
         return notify(contact, rule)
+    if kind == R.Action.START_FOLLOW_UP:
+        return start_follow_up(contact, rule, actor=actor)
     return None
+
+
+def start_follow_up(contact, rule, *, actor=None):
+    """Part 3: the stage's follow-up, started without asking. The stage is
+    the rule's own; for won and lost, wherever the contact now is."""
+    from apps.crm.services import follow_ups, pipeline
+
+    stage = rule.to_stage
+    if stage is None:
+        position = pipeline.position_for(contact, rule.pipeline)
+        stage = position.stage if position else None
+    try:
+        run, _ = follow_ups.start(contact, stage, actor=actor, via="rule")
+    except follow_ups.FollowUpRefused as exc:
+        AuditEvent.all_objects.create(
+            tenant_id=contact.tenant_id, actor=actor, verb="stage_rule.follow_up_skipped",
+            target_type="contact", target_id=contact.pk,
+            payload={"rule": str(rule.pk), "why": str(exc)})
+        return None
+    return run
 
 
 # ------------------------------------------------------------- actions
@@ -382,6 +404,8 @@ def summary(rule) -> str:
     if kind == R.Action.ENROLL_TOUCHES:
         return (f"{when}, put them on referral touches"
                 f"{', ' + rule.touch_cadence.replace('bimonthly', 'every two months') if rule.touch_cadence else ''}.")
+    if kind == R.Action.START_FOLLOW_UP:
+        return f"{when}, start the stage's follow-up without asking."
     return f"{when}, tell {who}: “{rule.notice_text}”."
 
 

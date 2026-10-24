@@ -426,6 +426,14 @@ function Payments({ invoice: i, owner, busy, onPay, onRemove }: {
           That is more than the {dollars(i.balance_cents)} still owed.</p>
       )}
       {!owner && open && <p className="small muted">The practice owner records payments.</p>}
+      {(i.nmi_events ?? []).length > 0 && (
+        <div className="nmi-events" aria-label="From NMI">
+          <strong className="small">From NMI</strong>
+          <ul className="small">
+            {i.nmi_events!.map((e) => <li key={e.id}><Pill kind={e.kind === "chargeback" ? "bad" : "warn"}>{e.kind_label}</Pill> {e.note}</li>)}
+          </ul>
+        </div>
+      )}
     </Card>
   );
 }

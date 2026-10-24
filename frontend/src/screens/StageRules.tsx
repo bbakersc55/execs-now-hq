@@ -8,7 +8,7 @@ import { Pipeline, Stage, StaffMember, api } from "../lib/api";
 import { useWords } from "../lib/words";
 
 type Trigger = "enters" | "idle" | "won" | "lost";
-type Action = "create_task" | "draft_email" | "move_stage" | "enroll_touches" | "notify";
+type Action = "create_task" | "draft_email" | "move_stage" | "enroll_touches" | "notify" | "start_follow_up";
 type For = "contact_owner" | "practice_owner" | "member";
 
 export interface Rule {
@@ -21,7 +21,9 @@ export interface Rule {
   summary: string;
 }
 interface Template { id: string; name: string; subject: string; kind: string; }
-interface Example { key: string; summary: string; added: boolean }
+interface Example { key: string; summary: string; added: boolean; kind?: "rule" | "follow_up" }
+interface FollowUpStep { position: number; template: string; template_name: string; days_after: number }
+interface FollowUp { id: string; stage: string; is_active: boolean; running: number; steps: FollowUpStep[] }
 type StaffWithUser = StaffMember & { user?: string };
 
 const MERGE = "{FirstName} {LastName} {Company} {Stage} {Pipeline} {DaysInStage} {Owner}";
@@ -211,7 +213,95 @@ function StageCard({ stage, pipeline, stages, rules, first, last, onUp, onDown, 
       </div>
       <RuleList rules={rules} onChanged={onChanged} onNote={onNote} />
       <RuleForm pipeline={pipeline} stages={stages} stage={stage} onSaved={onChanged} onNote={onNote} />
+      <FollowUpCard stage={stage} onNote={onNote} />
     </section>
+  );
+}
+
+/**
+ * Pipeline part 3: the stage's one follow-up, two or three emails from the
+ * template library, each N days after the previous one was sent. Moving
+ * someone into the stage asks whether to start it (default No); a rule can
+ * start it without asking. Each step waits in the Outbox for approval.
+ */
+function FollowUpCard({ stage, onNote }: {
+  stage: Stage; onNote: (n: { kind: string; text: string } | null) => void;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [rows, setRows] = useState<{ template: string; days_after: number }[]>([]);
+  const current = useQuery<{ follow_up: FollowUp | null }>({
+    queryKey: ["follow-up", stage.id],
+    queryFn: () => api.get<{ follow_up: FollowUp | null }>(`/api/pipeline-stages/${stage.id}/follow-up/`),
+  });
+  const templates = useQuery<Template[]>({
+    queryKey: ["templates"], queryFn: () => api.get<Template[]>("/api/email-templates/"), enabled: editing,
+  });
+  const done = (text: string) => {
+    setEditing(false); onNote({ kind: "ok", text });
+    qc.invalidateQueries({ queryKey: ["follow-up", stage.id] });
+    qc.invalidateQueries({ queryKey: ["rule-examples"] });
+  };
+  const save = useMutation({
+    mutationFn: () => api.put(`/api/pipeline-stages/${stage.id}/follow-up/`, { steps: rows, is_active: true }),
+    onSuccess: () => done(`${stage.label}'s follow-up is saved. Moving someone in will ask whether to start it.`),
+    onError: (e: Error) => onNote({ kind: "bad", text: e.message }),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.del(`/api/pipeline-stages/${stage.id}/follow-up/`),
+    onSuccess: () => done(`${stage.label}'s follow-up is removed; any running were stopped.`),
+    onError: (e: Error) => onNote({ kind: "bad", text: e.message }),
+  });
+  const f = current.data?.follow_up ?? null;
+  const open = () => {
+    setRows(f ? f.steps.map((s) => ({ template: s.template, days_after: s.days_after }))
+      : [{ template: "", days_after: 3 }, { template: "", days_after: 7 }]);
+    setEditing(true);
+  };
+  return (
+    <div className="follow-up" role="group" aria-label={`Follow-up for ${stage.label}`}>
+      <div className="follow-up-head">
+        <strong>Follow-up</strong>
+        {f ? (
+          <span className="small muted">{f.steps.length} emails{f.running ? ` · ${f.running} running` : ""}</span>
+        ) : <span className="small muted">None. Moving someone in asks nothing.</span>}
+        {!editing && <button className="ghost small" aria-label={`${f ? "Change" : "Set up"} the ${stage.label} follow-up`}
+          onClick={open}>{f ? "Change" : "Set up"}</button>}
+      </div>
+      {f && !editing && (
+        <ol className="follow-up-steps">
+          {f.steps.map((s) => (
+            <li key={s.position}>“{s.template_name}”, {s.days_after} days after {s.position === 1 ? "it starts" : "the one before is sent"}</li>
+          ))}
+        </ol>
+      )}
+      {editing && (
+        <div className="follow-up-form">
+          {rows.map((r, i) => (
+            <div key={i} className="row wrap">
+              <span className="small">Step {i + 1}</span>
+              <select aria-label={`Step ${i + 1} template`} value={r.template}
+                onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, template: e.target.value } : x)))}>
+                <option value="">Choose a template…</option>
+                {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <input type="number" min={1} aria-label={`Step ${i + 1} days after`} value={r.days_after}
+                onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, days_after: Number(e.target.value) } : x)))} />
+              <span className="small muted">days after {i === 0 ? "it starts" : "step " + i + " is sent"}</span>
+              {rows.length > 2 && <button className="ghost small" aria-label={`Remove step ${i + 1}`}
+                onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button>}
+            </div>
+          ))}
+          <div className="row">
+            {rows.length < 3 && <button className="ghost small" onClick={() => setRows([...rows, { template: "", days_after: 14 }])}>+ A third step</button>}
+            <button className="primary small" disabled={save.isPending || rows.some((r) => !r.template)}
+              onClick={() => save.mutate()}>Save follow-up</button>
+            <button className="ghost small" onClick={() => setEditing(false)}>Cancel</button>
+            {f && <button className="danger small" disabled={remove.isPending} onClick={() => remove.mutate()}>Remove follow-up</button>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -364,6 +454,7 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
             <option value="move_stage">Move them to another stage</option>
             <option value="enroll_touches">Put them on referral touches</option>
             <option value="notify">Send a notice</option>
+            <option value="start_follow_up">Start the stage's follow-up, without asking</option>
           </select>
         </Field>
       </div>

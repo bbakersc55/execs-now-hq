@@ -9,7 +9,7 @@ import { Modal, PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
   Company, Contact, Invoice, InvoiceLine, InvoiceList, InvoiceRow, InvoiceSchedule,
-  InvoiceSettingsData, Me, api,
+  InvoiceSettingsData, Me, NmiEvent, api,
 } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
 
@@ -78,6 +78,8 @@ export function Invoices({ me }: { me: Me }) {
           {owner && <> <Link to="/settings/invoices">Invoice settings</Link></>}</>}
         action={<button className="primary" onClick={() => setWriting(true)}>
           New invoice</button>} />
+
+      {owner && <FromNmi />}
 
       {writing && <NewInvoice clients={clients} owner={owner}
         preset={filters.company} onClose={() => setWriting(false)} />}
@@ -466,6 +468,44 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
           practice={practice.data} onCancel={() => setOpen("")}
           onDone={() => { done(); setOpen(""); }} />
       )}
+    </Card>
+  );
+}
+
+/**
+ * P4 §4: what the daily read-back found in the practice's NMI account that
+ * the app did not do: refunds, voids and chargebacks made in NMI's portal
+ * (recorded against their payment), and anything it couldn't match. The
+ * practice owner's only. Nothing here changes an invoice's money.
+ */
+function FromNmi() {
+  const qc = useQueryClient();
+  const events = useQuery<NmiEvent[]>({
+    queryKey: ["nmi-events"], queryFn: () => api.get<NmiEvent[]>("/api/nmi-events/?open=1"),
+  });
+  const seen = useMutation({
+    mutationFn: (id: string) => api.post(`/api/nmi-events/${id}/seen/`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["nmi-events"] }),
+  });
+  const rows = events.data ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <Card title="From NMI: please look">
+      <p className="small muted" style={{ marginTop: 0 }}>Found in your NMI account by the daily check. The
+        invoices' balances are not changed by these: record what each means by hand.</p>
+      <ul className="moves nmi-events">
+        {rows.map((e) => (
+          <li key={e.id}>
+            <span>
+              <Pill kind={e.outcome === "unmatched" ? "bad" : "warn"}>
+                {e.outcome === "unmatched" ? `Unmatched ${e.kind_label.toLowerCase()}` : e.kind_label}</Pill>{" "}
+              {e.invoice ? <Link to={`/invoices/${e.invoice}`}>{e.note}</Link> : e.note}
+            </span>
+            <button className="ghost small" aria-label={`Mark as seen: ${e.note}`} disabled={seen.isPending}
+              onClick={() => seen.mutate(e.id)}>Mark as seen</button>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

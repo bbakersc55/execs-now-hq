@@ -81,5 +81,9 @@ def stage_rules_daily(tenant_id: str) -> dict:
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
         fired = stage_rules.check_idle(tenant)
+        # Part 3: each follow-up's next step, on its day, into the Outbox.
+        from apps.crm.services import follow_ups
+
+        steps = follow_ups.advance(tenant)
         emailed = stage_rules.send_notice_emails(tenant)
-    return {"fired": fired, "emailed": emailed}
+    return {"fired": fired, "emailed": emailed, "follow_ups": steps}

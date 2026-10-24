@@ -16,7 +16,7 @@ from __future__ import annotations
 import itertools
 
 from apps.billing.gateway import (
-    Account, Billing, ConnectionResult, GatewayError, GatewayRefused, GatewayUnreachable,
+    Account, Action, Billing, ConnectionResult, GatewayError, GatewayRefused, GatewayUnreachable,
     Transaction, VaultRecord, refuse_card_fields,
 )
 
@@ -37,6 +37,9 @@ class StubGateway:
         self.lookup_unreachable = False
         #: The expiry the next stored card has, MMYY.
         self.vault_card_exp = "1029"
+        #: (account label, Action): what the read-back lists, newest last.
+        self.actions: list[tuple[str, Action]] = []
+        self.actions_unreachable = False
 
     @classmethod
     def shared(cls) -> "StubGateway":
@@ -85,6 +88,7 @@ class StubGateway:
         tid = str(next(self._ids))
         self.sales[tid] = {"account": account.label, "amount_cents": amount_cents,
                            "refunded_cents": 0, "reference": reference, "approved": approved}
+        self._act(account.label, tid, "sale", amount_cents, reference, success=approved)
         if lost:
             raise GatewayUnreachable("NMI did not answer.")
         return Transaction(id=tid, approved=approved,
@@ -104,6 +108,7 @@ class StubGateway:
         if amount_cents <= 0 or sale["refunded_cents"] + amount_cents > sale["amount_cents"]:
             raise GatewayError("Refund amount may not exceed the transaction balance")
         sale["refunded_cents"] += amount_cents
+        self._act(account.label, transaction_id, "refund", amount_cents, sale["reference"])
         return Transaction(id=str(next(self._ids)), approved=True, status="pendingsettlement",
                            response_code="100", response_text="SUCCESS",
                            amount_cents=-amount_cents, card_type="Visa", last4="1111",
@@ -129,6 +134,45 @@ class StubGateway:
             if sale["account"] == account.label and sale["reference"] == reference:
                 return self.get_transaction(account, tid)
         return None
+
+    def _act(self, label, tid, kind, amount_cents, reference="", *, at=None, original="",
+             success=True):
+        from django.utils import timezone
+
+        self.actions.append((label, Action(
+            transaction_id=tid, action_type=kind, amount_cents=amount_cents,
+            at=at or timezone.now(), reference=reference, original_transaction_id=original,
+            success=success)))
+
+    def actions_between(self, account: Account, start, end) -> list:
+        self._record("actions_between", account, {"start": str(start), "end": str(end)})
+        if self.actions_unreachable:
+            raise GatewayUnreachable("NMI's lookup did not answer.")
+        return [a for label, a in self.actions if label == account.label and start <= a.at <= end]
+
+    # What someone does in NMI's own portal, for the read-back's tests.
+    def portal_refund(self, account: Account, transaction_id: str, amount_cents: int, *,
+                      at=None, separate=False):
+        sale = self.sales[transaction_id]
+        sale["refunded_cents"] += amount_cents
+        if separate:                     # a refund as its own transaction, pointing back
+            self._act(account.label, str(next(self._ids)), "refund", amount_cents,
+                      sale["reference"], at=at, original=transaction_id)
+        else:
+            self._act(account.label, transaction_id, "refund", amount_cents, sale["reference"],
+                      at=at)
+
+    def portal_chargeback(self, account: Account, transaction_id: str, amount_cents: int, *,
+                          at=None):
+        self._act(account.label, transaction_id, "chargeback", amount_cents,
+                  self.sales[transaction_id]["reference"], at=at)
+
+    def portal_sale(self, account: Account, amount_cents: int, *, reference="", at=None) -> str:
+        tid = str(next(self._ids))
+        self.sales[tid] = {"account": account.label, "amount_cents": amount_cents,
+                           "refunded_cents": 0, "reference": reference, "approved": True}
+        self._act(account.label, tid, "sale", amount_cents, reference, at=at)
+        return tid
 
     def vault_add(self, account: Account, *, payment_token: str,
                   billing: Billing) -> VaultRecord:

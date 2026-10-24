@@ -307,6 +307,9 @@ export interface PipelinePosition {
   stage_label: string;
   semantic: StageSemantic;
   entered_at: string;
+  /** Pipeline part 3: the stage's follow-up, while it runs. */
+  follow_up?: { id: string; stage: string; stage_label: string; step: number; of: number;
+    next_on: string | null; waiting: boolean; text: string } | null;
 }
 
 export interface OutboxMessage {
@@ -1664,6 +1667,8 @@ export interface Invoice extends InvoiceRow {
   bill_to: { name?: string; company?: string; email?: string; address?: string };
   has_pdf: boolean; sent_at: string | null; voided_at: string | null; void_reason: string;
   lines: InvoiceLine[]; payments: InvoicePayment[]; merge_fields: string[];
+  /** P4 §4: refunds, voids and chargebacks made in NMI's portal against it. */
+  nmi_events?: NmiEvent[];
   /** Auto-pay will charge it: the practice's line, and what the email says. */
   autopay?: { line: string; email_line: string } | null;
   /** Where its payments are entered in the books, "" for what its kind
@@ -2572,4 +2577,12 @@ export interface LeaveRequest {
   id: string; subject: string; from_address: string; received_at: string | null;
   said: string; contact: { id: string; name: string } | null;
   answered: { subject: string; producer: string; sent_at: string | null } | null;
+}
+
+/** P4 §4: what the daily read-back found in the practice's NMI account. */
+export interface NmiEvent {
+  id: string; kind: "refund" | "void" | "chargeback" | "sale" | "other"; kind_label: string;
+  amount_cents: number; happened_at: string; transaction_id: string;
+  outcome: "matched" | "unmatched"; note: string; invoice: string | null;
+  invoice_number: string; reviewed: boolean;
 }

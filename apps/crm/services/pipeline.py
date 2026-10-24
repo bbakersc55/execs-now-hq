@@ -115,6 +115,11 @@ def change_stage(contact, to_stage, *, actor=None, reason="", run_automations=Tr
         position.stage_entered_at = now
         position.save(update_fields=["stage", "stage_entered_at", "updated_at"])
     stage_rules.touch(contact.pk, contact.tenant_id, now)
+    # Part 3: a follow-up belongs to its stage; leaving the stage stops it.
+    from apps.crm.services import follow_ups
+
+    follow_ups.stop_all(contact, reason="moved", actor=actor, pipeline=pipeline,
+                        except_stage=to_stage)
 
     change = StageChange.all_objects.create(
         tenant=contact.tenant, contact=contact, pipeline=pipeline,

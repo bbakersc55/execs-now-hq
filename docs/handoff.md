@@ -51,6 +51,20 @@ truth; this covers what they don't, and what changed since 9/30.
   stage codes; **the plan of 10/20 was not in the repo, so the examples are
   proposed afresh** (listed in `stage_rules.EXAMPLES`). At the release:
   `crm 0045` by the runbook, then R5b (`crm.stage_rules_daily` is new).
+- **Pipeline part 3, a stage's follow-up (migration `crm 0046`, additive:
+  four tables).** `apps/crm/services/follow_ups.py`. A stage carries one
+  follow-up of two or three steps (library template, N days after the one
+  before was sent); the move asks "Start the <stage> follow-up?" (No first),
+  and a rule action starts it without asking. Each step is drafted once
+  (`follow_up_run_step` unique pair) on its day by `crm.stage_rules_daily`,
+  into the Outbox for approval (producer `follow_up`, marketing). It stops on
+  an inbound email, a move, an unsubscribe, a step expired or refused, or
+  Stop on the contact's page, withdrawing a waiting draft. Starters: Proposal
+  Given (3, 7 days) and New Partner (5, 20), each adding two templates to
+  the library. No new schedule.
+- **P4 §4, the NMI read-back (migration `billing 0010`, additive: `nmi_event`).**
+  See the billing spec §4, "As built". New daily job `billing.read_back_nmi`:
+  R5b at the release.
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

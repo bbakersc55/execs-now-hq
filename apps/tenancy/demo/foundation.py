@@ -719,6 +719,42 @@ def stage_rules(world: World) -> None:
             if example["key"] in keep:
                 StageAutomation.objects.create(tenant=world.tenant, pipeline=pipe,
                                                **example["fields"])
+    # Part 3: the two follow-up starters, and one prospect part-way through
+    # the proposal one (its first email waiting in the Outbox).
+    from apps.crm.models import FollowUpRun
+    from apps.crm.services import follow_ups
+
+    sales = pipeline.sales_pipeline(world.tenant)
+    for pipe, key in ((sales, "proposal_follow_up_sequence"),
+                      (pipeline.referral_pipeline(world.tenant), "new_partner_follow_up_sequence")):
+        try:
+            follow_ups.add_starter(pipe, key, actor=world.owner)
+        except follow_ups.FollowUpRefused:
+            pass
+    proposal = ContactPipelinePosition.objects.filter(
+        pipeline=sales, stage__code="proposal_given").select_related("contact", "stage").first()
+    if proposal is not None and proposal.contact.primary_email:
+        try:
+            run, _ = follow_ups.start(proposal.contact, proposal.stage, actor=world.owner,
+                                      via="asked")
+            FollowUpRun.objects.filter(pk=run.pk).update(next_on=world.today)
+            follow_ups.advance(world.tenant, world.today)
+        except follow_ups.FollowUpRefused:
+            pass
+
+    # P4 §4: what a read-back finds, shown on Invoices for the owner: a charge
+    # made in NMI's portal that no invoice made. The demo has no NMI account,
+    # so this one is written, not read.
+    from apps.billing.models import NmiEvent
+
+    NmiEvent.objects.create(
+        tenant=world.tenant, event_id="demo-portal-sale", kind="sale", action_type="sale",
+        transaction_id="10248311", amount_cents=45000, outcome="unmatched",
+        happened_at=moment(world.today - timedelta(days=2), 15, 20),
+        note=(f"A charge of $450.00 made in NMI on {world.today - timedelta(days=2):%b} "
+              f"{(world.today - timedelta(days=2)).day} that no invoice here made "
+              "(NMI transaction 10248311)."))
+
     waiting = ContactPipelinePosition.objects.filter(
         pipeline__kind="sales", stage__semantic="qualified").select_related(
         "contact", "stage", "pipeline").order_by("contact__last_name").first()

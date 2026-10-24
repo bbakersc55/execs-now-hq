@@ -277,13 +277,45 @@ class ContactViewSet(TenantStaffViewSet):
             contact, stage, actor=request.user, reason=request.data.get("reason", "")
         )
         contact.refresh_from_db()
+        from apps.crm.services import follow_ups
+
         return Response({
+            # Part 3: "Start the <stage> follow-up?", unless a rule started it.
+            "follow_up_offer": follow_ups.offer(contact, stage) if change is not None else None,
             "contact": self.get_serializer(contact).data,
             "changed": change is not None,
             # A referred prospect won or lost: the thank-you this move drafted,
             # so the board can say where it is (finding T2, 2026-10-22).
             "thanks_drafted": _thanks_drafted(contact, change),
         })
+
+    @action(detail=True, methods=["post"], url_path="follow-up")
+    def follow_up(self, request, pk=None):
+        """Part 3: {stage} starts that stage's follow-up (the move's question
+        answered yes); {stop: run id} stops one, withdrawing a waiting draft."""
+        from apps.crm.models import FollowUpRun
+        from apps.crm.services import follow_ups
+
+        contact = self.get_object()
+        if request.data.get("stop"):
+            run = follow_ups.running(contact).filter(pk=request.data["stop"]).first() \
+                if _is_uuid(str(request.data["stop"])) else None
+            if run is None:
+                return Response({"detail": "That follow-up isn't running."}, status=400)
+            follow_ups.stop(run, reason="stopped", actor=request.user)
+        else:
+            ref = str(request.data.get("stage") or "")
+            stage = PipelineStage.objects.filter(pk=ref).first() if _is_uuid(ref) else None
+            if stage is None:
+                return Response({"detail": "Unknown stage."}, status=400)
+            try:
+                follow_ups.start(contact, stage, actor=request.user, via="asked")
+            except follow_ups.FollowUpRefused as exc:
+                return Response({"detail": str(exc)}, status=400)
+        contact.refresh_from_db()
+        return Response({"contact": self.get_serializer(contact).data,
+                         "running": FollowUpRun.all_objects.filter(
+                             contact=contact, status=FollowUpRun.Status.ACTIVE).count()})
 
     @action(detail=True, methods=["post"], url_path="add-type")
     def add_type(self, request, pk=None):
@@ -812,6 +844,35 @@ class PipelineStageViewSet(TenantStaffViewSet):
             PipelineStage.objects.filter(pipeline=pipeline_row).order_by("position"),
             many=True).data)
 
+    @action(detail=True, methods=["get", "put", "delete"], url_path="follow-up")
+    def follow_up(self, request, pk=None):
+        """Part 3: the stage's follow-up. PUT {steps: [{template, days_after}],
+        is_active}; DELETE removes it (stopping nothing already running is
+        not allowed: runs are stopped first, their drafts withdrawn)."""
+        from apps.crm.models import FollowUp
+        from apps.crm.services import follow_ups
+
+        stage = self.get_object()
+        if request.method == "GET":
+            return Response({"follow_up": follow_ups.describe(stage)})
+        if request.method == "DELETE":
+            found = FollowUp.objects.filter(stage=stage).first()
+            if found is not None:
+                for run in found.runs.filter(status="active"):
+                    follow_ups.stop(run, reason="stopped", actor=request.user)
+                found.delete()
+                AuditEvent.objects.create(
+                    tenant=request.tenant, actor=request.user, verb="follow_up.removed",
+                    target_type="pipeline_stage", target_id=stage.pk,
+                    payload={"stage": stage.label})
+            return Response({"follow_up": None})
+        try:
+            follow_ups.save(stage, request.data.get("steps") or [], actor=request.user,
+                            is_active=request.data.get("is_active", True) is not False)
+        except follow_ups.FollowUpRefused as exc:
+            raise ValidationError(str(exc)) from exc
+        return Response({"follow_up": follow_ups.describe(stage)})
+
     @staticmethod
     def _validate(pipeline_row):
         """FR-1.6 — a sales pipeline must keep exactly one `won` stage."""
@@ -926,9 +987,27 @@ class StageAutomationViewSet(TenantStaffViewSet):
         pipeline_row = Pipeline.objects.filter(pk=ref).first() if ref else None
         if pipeline_row is None:
             raise ValidationError("Choose a pipeline.")
+        from apps.crm.services import follow_ups
+
         offered = stage_rules.examples_for(pipeline_row)
+        sequences = follow_ups.starters_for(pipeline_row)
         if request.method == "GET":
-            return Response([{k: v for k, v in e.items() if k != "fields"} for e in offered])
+            return Response([{**{k: v for k, v in e.items() if k != "fields"}, "kind": "rule"}
+                             for e in offered]
+                            + [{"key": s["key"], "summary": s["summary"], "added": s["added"],
+                                "kind": "follow_up", "stage": str(s["stage"].pk)}
+                               for s in sequences])
+        if request.data.get("key") in follow_ups.STARTERS:
+            try:
+                found = follow_ups.add_starter(pipeline_row, request.data["key"],
+                                               actor=request.user)
+            except follow_ups.FollowUpRefused as exc:
+                raise ValidationError(str(exc)) from exc
+            AuditEvent.objects.create(
+                tenant=request.tenant, actor=request.user, verb="follow_up.example_added",
+                target_type="pipeline", target_id=pipeline_row.pk,
+                payload={"key": request.data["key"]})
+            return Response(follow_ups.describe(found.stage), status=status.HTTP_201_CREATED)
         example = next((e for e in offered if e["key"] == request.data.get("key")), None)
         if example is None:
             raise ValidationError("That example isn't offered for this pipeline.")

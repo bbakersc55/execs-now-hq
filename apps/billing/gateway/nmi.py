@@ -34,7 +34,7 @@ import xml.etree.ElementTree as ET
 import requests
 
 from apps.billing.gateway import (
-    Account, Billing, ConnectionResult, GatewayError, GatewayRefused, GatewayUnreachable,
+    Account, Action, Billing, ConnectionResult, GatewayError, GatewayRefused, GatewayUnreachable,
     LiveCallsRefused, Transaction, VaultRecord, live_calls_allowed, refuse_card_fields,
     to_cents, to_dollars,
 )
@@ -134,6 +134,45 @@ class NmiGateway:
                 last4=_last4(node.findtext("cc_number", "")),
                 reference=node.findtext("order_id", ""))
         return None
+
+    def actions_between(self, account: Account, start, end) -> list:
+        """Every action on the account's transactions between two moments:
+        sales, refunds, voids, chargebacks, whoever made them (this app or
+        NMI's portal). Read-only, through the Query API like the lookup,
+        because v5 has no search (A13). Nothing is charged."""
+        from datetime import datetime, timezone as tz
+
+        form = {"start_date": start.astimezone(tz.utc).strftime("%Y%m%d%H%M%S"),
+                "end_date": end.astimezone(tz.utc).strftime("%Y%m%d%H%M%S")}
+        refuse_card_fields(form)
+        data = urllib.parse.urlencode({"security_key": account.private_key, **form})
+        status, text = self._call(account, "POST", account.query_url, data, "query",
+                                  {"Content-Type": "application/x-www-form-urlencoded"})
+        if status >= 300:
+            raise GatewayUnreachable(f"NMI's lookup answered {status}.")
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            raise GatewayUnreachable("NMI's lookup answer could not be read.") from None
+        error = root.findtext("error_response")
+        if error:
+            raise GatewayError(account.scrub(error.strip()))
+        out = []
+        for node in root.findall("transaction"):
+            tid = node.findtext("transaction_id", "")
+            for action in node.findall("action"):
+                when = action.findtext("date", "")
+                try:
+                    at = datetime.strptime(when, "%Y%m%d%H%M%S").replace(tzinfo=tz.utc)
+                except ValueError:
+                    continue
+                out.append(Action(
+                    transaction_id=tid, action_type=(action.findtext("action_type") or "").lower(),
+                    amount_cents=abs(to_cents(action.findtext("amount") or 0)), at=at,
+                    reference=node.findtext("order_id", "") or "",
+                    original_transaction_id=node.findtext("original_transaction_id", "") or "",
+                    success=action.findtext("success", "1") == "1"))
+        return out
 
     def vault_add(self, account: Account, *, payment_token: str,
                   billing: Billing) -> VaultRecord:

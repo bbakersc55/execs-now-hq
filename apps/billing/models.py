@@ -591,3 +591,59 @@ class PracticeInvoiceLine(TenantScopedModel):
     class Meta(TenantScopedModel.Meta):
         db_table = "practice_invoice_line"
         ordering = ["position"]
+
+
+class NmiEvent(TenantScopedModel):
+    """What the daily read-back (P4 §4) found in a practice's NMI account that
+    this app did not do itself: a refund, a void or a chargeback made in NMI's
+    portal (recorded against the payment it matches), or anything it could
+    not match (flagged for the practice owner). Once per action at NMI: the
+    `event_id` is the transaction, the action and its time. Nothing here
+    charges, refunds or changes an invoice's money; the practice owner acts
+    on what it shows. No card data.
+
+    The spec had this as a platform table; it is the practice's, because only
+    practice accounts are read back so far (the platform account's
+    subscription charges are told apart by their "sub-" reference and left
+    out of a practice's read-back)."""
+
+    class Kind(models.TextChoices):
+        REFUND = "refund", "Refund"
+        VOID = "void", "Void"
+        CHARGEBACK = "chargeback", "Chargeback"
+        SALE = "sale", "Charge"
+        OTHER = "other", "Other"
+
+    class Outcome(models.TextChoices):
+        MATCHED = "matched", "Recorded against its payment"
+        UNMATCHED = "unmatched", "Couldn't be matched"
+
+    event_id = models.CharField(max_length=120)
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    #: NMI's own word for it ("refund", "chargeback", "void", "sale", …).
+    action_type = models.CharField(max_length=40)
+    transaction_id = models.CharField(max_length=40)
+    original_transaction_id = models.CharField(max_length=40, blank=True, default="",
+                                               db_default="")
+    reference = models.CharField(max_length=60, blank=True, default="", db_default="")
+    amount_cents = models.BigIntegerField()
+    happened_at = models.DateTimeField()
+    payment = models.ForeignKey(ClientPayment, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name="nmi_events")
+    invoice = models.ForeignKey(ClientInvoice, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name="nmi_events")
+    outcome = models.CharField(max_length=10, choices=Outcome.choices)
+    note = models.TextField(blank=True, default="", db_default="")
+    #: The practice owner has looked at it ("Mark as seen").
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "nmi_event"
+        ordering = ["-happened_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "event_id"], name="nmi_event_once"),
+            models.CheckConstraint(condition=Q(amount_cents__gte=0),
+                                   name="nmi_event_amount_not_negative"),
+        ]

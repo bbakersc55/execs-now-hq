@@ -1575,3 +1575,57 @@ class BonusReopenFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     plan = factory.SubFactory(BonusPlanFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+# --- Pipeline part 3: follow-ups; P4 §4: the NMI read-back ---
+
+class FollowUpFactory(TenantScopedFactory):
+    class Meta:
+        model = "crm.FollowUp"
+
+    tenant = factory.SubFactory(TenantFactory)
+    stage = factory.SubFactory(PipelineStageFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class FollowUpStepFactory(TenantScopedFactory):
+    class Meta:
+        model = "crm.FollowUpStep"
+
+    tenant = factory.SubFactory(TenantFactory)
+    follow_up = factory.SubFactory(FollowUpFactory, tenant=factory.SelfAttribute("..tenant"))
+    position = 1
+    template = factory.SubFactory(EmailTemplateFactory, tenant=factory.SelfAttribute("..tenant"))
+    days_after = 3
+
+
+class FollowUpRunFactory(TenantScopedFactory):
+    class Meta:
+        model = "crm.FollowUpRun"
+
+    tenant = factory.SubFactory(TenantFactory)
+    follow_up = factory.SubFactory(FollowUpFactory, tenant=factory.SelfAttribute("..tenant"))
+    contact = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"))
+    stage = factory.SelfAttribute("follow_up.stage")
+
+
+class FollowUpRunStepFactory(TenantScopedFactory):
+    class Meta:
+        model = "crm.FollowUpRunStep"
+
+    tenant = factory.SubFactory(TenantFactory)
+    run = factory.SubFactory(FollowUpRunFactory, tenant=factory.SelfAttribute("..tenant"))
+    position = 1
+
+
+class NmiEventFactory(TenantScopedFactory):
+    class Meta:
+        model = "billing.NmiEvent"
+
+    tenant = factory.SubFactory(TenantFactory)
+    event_id = factory.Sequence(lambda n: f"{9000 + n}:refund:20261020120000")
+    kind = "refund"
+    action_type = "refund"
+    transaction_id = factory.Sequence(lambda n: str(9000 + n))
+    amount_cents = 1000
+    happened_at = factory.LazyFunction(timezone.now)
+    outcome = "unmatched"

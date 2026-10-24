@@ -1784,3 +1784,16 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
   border-top: 1px dashed var(--line, #e5e7eb); }
 .rule-form .row.wrap { flex-wrap: wrap; }
 .notices li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Pipeline part 3: a stage's follow-up (StageRules.tsx), the move's question
+   (Pipeline.tsx), the contact's line. P4 §4: what NMI's read-back found. */
+.follow-up { border-top: 1px dashed var(--line, #e5e7eb); margin-top: .5rem; padding-top: .5rem; }
+.follow-up-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.follow-up-steps { margin: .35rem 0 0; padding-left: 1.25rem; font-size: .9rem; }
+.follow-up-form { display: flex; flex-direction: column; gap: 6px; margin-top: .4rem; }
+.follow-up-form .row.wrap { flex-wrap: wrap; align-items: center; gap: 6px; }
+.follow-up-form input[type="number"] { width: 5rem; flex: 0 0 auto; }
+.follow-up-form select { flex: 1 1 200px; min-width: 0; }
+.follow-up-offer { border-left: 4px solid #F58220; margin-bottom: 1rem; }
+.follow-up-line td { font-size: .9rem; padding-top: 0; }
+.nmi-events li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }

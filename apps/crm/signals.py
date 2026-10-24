@@ -48,6 +48,14 @@ def activity_on_email(sender, instance, created, **kwargs):
     if created:
         thread = instance.thread
         _touch(thread.contact_id if thread else None, instance.tenant_id)
+        # Pipeline part 3: the contact sending any email stops their follow-ups.
+        if instance.direction == "inbound" and thread is not None and thread.contact_id:
+            from apps.crm.models import Contact
+            from apps.crm.services import follow_ups
+
+            contact = Contact.all_objects.filter(pk=thread.contact_id).first()
+            if contact is not None:
+                follow_ups.stop_all(contact, reason="replied")
 
 
 @receiver(post_save, sender="notes.Note", dispatch_uid="crm.activity_note")

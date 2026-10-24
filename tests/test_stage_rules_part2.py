@@ -366,7 +366,8 @@ def test_starter_examples_are_one_click_and_found_by_stage_code(seeded_tenant, s
         f"/api/stage-automations/examples/?pipeline={sales.pk}").json()]
     assert "prospecting_quiet" in keys and "proposal_follow_up" not in keys
     partner = client.get(f"/api/stage-automations/examples/?pipeline={referrals.pk}").json()
-    assert {e["key"] for e in partner} == {"partner_touches", "active_referrer", "nurturing_quiet"}
+    assert {e["key"] for e in partner if e["kind"] == "rule"} == {
+        "partner_touches", "active_referrer", "nurturing_quiet"}
     assert post(client, "/api/stage-automations/examples/", {"pipeline": str(sales.pk),
                                                             "key": "partner_touches"}
                 ).status_code == 400

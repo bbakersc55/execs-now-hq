@@ -126,6 +126,10 @@ HANDLED_RELATIONS = {
     "finance_import_row.payee_contact",
     # Who referred whom: `_merge_referrals`.
     "referral.referrer", "referral.prospect",
+    # Pipeline part 3: the absorbed record's running follow-ups stop (their
+    # waiting drafts withdrawn) and stay with it as history; the survivor's
+    # carry on. A merged-away record sends nothing.
+    "follow_up_run.contact",
 }
 
 
@@ -146,9 +150,12 @@ def _merge_later_tables(tenant, survivor, absorbed, *, actor=None) -> dict:
         CampaignRecipient, Company, Contact, ContactPipelinePosition, EmailSuppression,
         Enrollment,
     )
+    from apps.crm.services import follow_ups
     from apps.meetings.models import Commitment, MeetingParticipant
     from apps.strategy.models import StrategySession
     from apps.work.models import Digest, Stakeholder
+
+    follow_ups.stop_all(absorbed, reason="stopped", actor=actor)
 
     counts: dict[str, int] = {}
 

@@ -128,6 +128,21 @@ class Transaction:
 
 
 @dataclass(frozen=True)
+class Action:
+    """One thing that happened to a transaction at NMI, for the daily
+    read-back (§4): a sale, a refund, a void, a chargeback… as NMI's Query
+    API lists it. Amounts are positive cents; `kind` says which way."""
+
+    transaction_id: str
+    action_type: str
+    amount_cents: int
+    at: object                      # an aware datetime
+    reference: str = ""
+    original_transaction_id: str = ""
+    success: bool = True
+
+
+@dataclass(frozen=True)
 class VaultRecord:
     id: str
     last4: str

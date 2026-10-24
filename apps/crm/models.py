@@ -612,6 +612,8 @@ class StageAutomation(TenantScopedModel):
         MOVE_STAGE = "move_stage", "Move to another stage"
         ENROLL_TOUCHES = "enroll_touches", "Put on referral touches"
         NOTIFY = "notify", "Send a notice"
+        # Part 3: start the stage's follow-up without asking.
+        START_FOLLOW_UP = "start_follow_up", "Start the stage's follow-up"
 
     class Trigger(models.TextChoices):
         ENTERS = "enters", "Enters the stage"
@@ -678,6 +680,94 @@ class StageAutomation(TenantScopedModel):
             models.CheckConstraint(
                 condition=~models.Q(trigger="idle") | models.Q(idle_days__gte=1),
                 name="stage_automation_idle_has_days"),
+        ]
+
+
+class FollowUp(TenantScopedModel):
+    """A stage's one follow-up (pipeline part 3, S3's "Enroll in X?"): two or
+    three emails from the template library, each a number of days after the
+    previous one was sent. Moving someone into the stage asks whether to
+    start it; a stage rule can start it without asking."""
+
+    stage = models.OneToOneField(PipelineStage, on_delete=models.CASCADE,
+                                 related_name="follow_up")
+    is_active = models.BooleanField(default=True, db_default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "follow_up"
+
+
+class FollowUpStep(TenantScopedModel):
+    """One email of a follow-up: which template, and how many days after the
+    previous step was sent (after the start, for the first)."""
+
+    follow_up = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name="steps")
+    position = models.PositiveSmallIntegerField()
+    template = models.ForeignKey(EmailTemplate, on_delete=models.PROTECT, related_name="+")
+    days_after = models.PositiveSmallIntegerField()
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "follow_up_step"
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(fields=["follow_up", "position"],
+                                    name="follow_up_step_one_per_position"),
+            models.CheckConstraint(condition=models.Q(position__gte=1) & models.Q(position__lte=3),
+                                   name="follow_up_step_one_to_three"),
+        ]
+
+
+class FollowUpRun(TenantScopedModel):
+    """One contact going through a stage's follow-up. It stops when they send
+    any email, move to another stage, unsubscribe, a step expires unsent, or
+    someone presses Stop; stopping withdraws a draft still waiting."""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Running"
+        FINISHED = "finished", "Finished"
+        STOPPED = "stopped", "Stopped"
+
+    follow_up = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name="runs")
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="follow_ups")
+    stage = models.ForeignKey(PipelineStage, on_delete=models.CASCADE, related_name="+")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE,
+                              db_default=Status.ACTIVE)
+    started_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    #: "asked" (the move's question), "rule" (a stage rule), or "example".
+    started_via = models.CharField(max_length=10, blank=True, default="", db_default="")
+    #: The day the next step is drafted; none while a step waits to be sent.
+    next_on = models.DateField(null=True, blank=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    stopped_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    stop_reason = models.CharField(max_length=24, blank=True, default="", db_default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "follow_up_run"
+        constraints = [
+            models.UniqueConstraint(fields=["follow_up", "contact"],
+                                    condition=models.Q(status="active"),
+                                    name="follow_up_run_one_running"),
+        ]
+
+
+class FollowUpRunStep(TenantScopedModel):
+    """A step drafted for one run: once, ever (the unique pair)."""
+
+    run = models.ForeignKey(FollowUpRun, on_delete=models.CASCADE, related_name="drafted")
+    position = models.PositiveSmallIntegerField()
+    outbox_message = models.ForeignKey("OutboxMessage", null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "follow_up_run_step"
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(fields=["run", "position"],
+                                    name="follow_up_run_step_drafted_once"),
         ]
 
 
@@ -978,6 +1068,8 @@ class OutboxMessage(TenantScopedModel):
         CLIENT_ACTIVITY = "client_activity", "Client activity notice"
         # Stage rules' notices, once a day, to the practice's own people.
         PIPELINE_NOTICES = "pipeline_notices", "Pipeline notices"
+        # A step of a stage's follow-up (pipeline part 3): outreach, for approval.
+        FOLLOW_UP = "follow_up", "Follow-up"
         # To the practice's own people: digests are ready, about to miss
         # their time, or missed it. Never to a client; never a digest's text.
         DIGEST_REMINDER = "digest_reminder", "Digest reminder"

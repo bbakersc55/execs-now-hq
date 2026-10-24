@@ -12,15 +12,17 @@ import csv
 
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
+from django.utils import timezone
 from rest_framework import permissions, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.ratelimit import client_ip
-from apps.billing import money, services
+from apps.billing import money, readback, services
 from apps.billing.models import (
-    ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, PaymentAttempt,
+    ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, NmiEvent,
+    PaymentAttempt,
 )
 from apps.crm import permissions as crm_perms
 from apps.crm.models import Company, Contact, OutboxMessage
@@ -118,6 +120,9 @@ def represent(invoice, role=None) -> dict:
             "removed_by": _person(p.removed_by),
         } for p in payments],
         "merge_fields": list(services.MERGE_FIELDS),
+        # P4 §4: refunds, voids and chargebacks NMI's portal made against it.
+        "nmi_events": [readback.represent(e) for e in
+                       NmiEvent.all_objects.filter(invoice=invoice).order_by("happened_at")],
         # Whether auto-pay will charge it, for the practice to see on the page.
         "autopay": autopay.for_practice(invoice),
     }
@@ -591,6 +596,41 @@ class ScheduleViewSet(BillingViewSet):
         if schedule is None:
             raise Http404
         return self._save(request, schedule)
+
+
+class NmiEventViewSet(BillingViewSet):
+    """P4 §4: what the daily read-back found in the practice's NMI account.
+    The practice owner's alone, like the account itself (12.1): a list, and
+    "Mark as seen". It changes no money."""
+
+    def list(self, request):
+        if (refused := self._owner()):
+            return refused
+        rows = NmiEvent.objects.select_related("invoice").order_by("-happened_at")
+        if request.query_params.get("open"):
+            rows = rows.filter(reviewed_at__isnull=True)
+        return Response([readback.represent(e) for e in rows[:100]])
+
+    @action(detail=True, methods=["post"])
+    def seen(self, request, pk=None):
+        if (refused := self._owner()):
+            return refused
+        event = NmiEvent.objects.filter(pk=pk).first() if _uuid(pk) else None
+        if event is None:
+            raise Http404
+        event.reviewed_at, event.reviewed_by = timezone.now(), request.user
+        event.save(update_fields=["reviewed_at", "reviewed_by", "updated_at"])
+        return Response(readback.represent(event))
+
+
+def _uuid(value) -> bool:
+    import uuid
+
+    try:
+        uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 class PortalInvoiceViewSet(viewsets.ViewSet):
