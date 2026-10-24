@@ -237,7 +237,26 @@ def definition(kpi, *, reader=None) -> dict:
         "owner_id": str(kpi.reading_owner_id) if kpi.reading_owner_id else None,
         "computed": formula_text(kpi),
         "may_enter": reader.may_enter(kpi) if reader else False,
+        "feed": feed_of(kpi, reader),
     }
+
+
+def feed_of(kpi, reader):
+    """Where a fed KPI's readings come from, for the tile's back. Why its
+    last read failed only for the practice and the KPI's reading owner."""
+    from django.core.exceptions import ObjectDoesNotExist
+
+    from .feeds import source_text
+
+    try:
+        feed = kpi.sheet_feed
+    except ObjectDoesNotExist:
+        return None
+    if feed is None or not feed.active:
+        return None
+    told = reader is not None and (reader.sets_up or kpi.reading_owner_id == reader.user_id)
+    return {"kind": "sheet", "text": source_text(feed),
+            "error": feed.last_error if told else ""}
 
 
 def _person_series(kpi, targets, readings):
@@ -396,6 +415,7 @@ def visible_pages(reader, scorecard):
                  .select_related("team"))
     kpis = list(Kpi.objects.filter(scorecard=scorecard, archived_at__isnull=True)
                 .select_related("page", "page__team", "audience_team", "reading_owner",
+                                "sheet_feed",
                                 "source_a__page__team", "source_a__audience_team",
                                 "source_b__page__team", "source_b__audience_team"))
     by_page = defaultdict(list)

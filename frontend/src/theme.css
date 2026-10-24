@@ -1742,3 +1742,28 @@ td.bn-ok, td.bn-behind, td.bn-off { font-weight: 600; }
 /* A KPI managed from its tile's back (Details → Edit, Archive), practice only. */
 .sc-back-manage { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
                   border-top: 1px solid var(--sc-line-soft); padding-top: 10px; }
+
+/* M5 part 3: a KPI's Google Sheet feed (ScorecardFeed.tsx). */
+.sc-feed { display: flex; flex-direction: column; gap: 12px; }
+.sc-feed-step { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.sc-feed-row { display: flex; align-items: center; gap: 8px; }
+.sc-feed-row.wrap { flex-direction: row; flex-wrap: wrap; }
+.sc-feed-row input[type="text"] { flex: 1; min-width: 0; }
+.sc-feed-modes { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.sc-feed-modes legend { float: left; margin-right: 8px; padding: 0; }
+.sc-feed-modes label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.sc-feed-grid { max-height: 360px; overflow: auto; border: 1px solid var(--sc-line); border-radius: 8px; }
+.sc-feed-grid table { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+.sc-feed-grid th, .sc-feed-grid td { border: 1px solid var(--sc-line-soft); padding: 3px 6px;
+  white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.sc-feed-grid thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+.sc-feed-grid tbody th { color: var(--sc-muted); font-weight: 500; background: #fff; }
+.sc-feed-grid tr.header td { font-weight: 700; background: var(--sc-line-soft); }
+.sc-feed-grid th.picked, .sc-feed-grid td.picked { background: rgba(245, 130, 32, 0.14); }
+.sc-feed-tag { display: block; font-size: 10px; font-weight: 700; color: #F58220; text-transform: uppercase; }
+button.sc-feed-cell { all: unset; display: block; min-width: 2em; min-height: 1.2em; cursor: pointer; }
+button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
+.sc-feed-preview { border-top: 1px solid var(--sc-line); padding-top: 10px; display: flex;
+  flex-direction: column; gap: 8px; }
+.sc-feed-preview tr.sc-feed-kept td, .sc-feed-preview tr.sc-feed-open td { color: var(--sc-muted); }
+.sc-back-feed { margin-top: 6px; }

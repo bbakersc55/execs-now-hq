@@ -56,13 +56,18 @@ TIER2_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 #: (`docs/05_dev_environment.md`).
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
+#: M5 part 3 reads a client's spreadsheet into a KPI. Read-only, and asked
+#: for only when a practice sets up a sheet feed ("Reconnect Google").
+SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
-def scopes_for(*, drive: bool = False, inbound: bool = False) -> list[str]:
+
+def scopes_for(*, drive: bool = False, inbound: bool = False,
+               sheets: bool = False) -> list[str]:
     """Each restricted scope is asked for **separately** and only when its
     feature is turned on: a practice that never collects replies should never
     be asked to let the app read its mail."""
     return (TIER1_SCOPES + (DRIVE_SCOPES if drive else [])
-            + (TIER2_SCOPES if inbound else []))
+            + (TIER2_SCOPES if inbound else []) + (SHEETS_SCOPES if sheets else []))
 
 STATE_SESSION_KEY = "gmail_oauth_state"
 #: Which screen started the consent, so Google's redirect lands back on it.
@@ -71,6 +76,7 @@ STATE_SESSION_KEY = "gmail_oauth_state"
 RETURN_SESSION_KEY = "gmail_oauth_return"
 DRIVE_SESSION_KEY = "gmail_oauth_drive"
 INBOUND_SESSION_KEY = "gmail_oauth_inbound"
+SHEETS_SESSION_KEY = "gmail_oauth_sheets"
 
 RETURN_PATHS = {"email": "/settings/email", "meetings": "/meetings"}
 
@@ -78,7 +84,7 @@ RETURN_PATHS = {"email": "/settings/email", "meetings": "/meetings"}
 def beyond_sending(payload: dict) -> list[str]:
     """The scopes in this grant that read something: mail or Drive. The demo
     stores no token that carries one."""
-    return sorted(set(granted_scopes(payload)) & set(TIER2_SCOPES + DRIVE_SCOPES))
+    return sorted(set(granted_scopes(payload)) & set(TIER2_SCOPES + DRIVE_SCOPES + SHEETS_SCOPES))
 
 
 def drive_granted(payload: dict) -> bool:
@@ -88,6 +94,24 @@ def drive_granted(payload: dict) -> bool:
 
 def inbound_granted(payload: dict) -> bool:
     return set(TIER2_SCOPES) <= set(granted_scopes(payload))
+
+
+def sheets_granted(payload: dict) -> bool:
+    return set(SHEETS_SCOPES) <= set(granted_scopes(payload))
+
+
+def return_path(where: str) -> str:
+    """The screen a consent goes back to. "scorecard:<company id>" is the
+    company's scorecard, where a sheet feed asked for the Sheets scope."""
+    kind, _, company = (where or "").partition(":")
+    if kind == "scorecard" and company:
+        import uuid
+
+        try:
+            return f"/companies/{uuid.UUID(company)}/scorecard"
+        except ValueError:
+            pass
+    return RETURN_PATHS.get(where, RETURN_PATHS["email"])
 
 
 class GmailOAuthError(Exception):
@@ -134,7 +158,7 @@ def workspace_domain(email: str) -> str:
 
 def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
                       drive: bool = False, inbound: bool = False, tenant=None,
-                      send_only: bool = False) -> str:
+                      send_only: bool = False, sheets: bool = False) -> str:
     """The consent URL.
 
     `login_hint` + `hd` exist because the browser, not the app, chooses which
@@ -151,7 +175,7 @@ def authorization_url(state: str, *, login_hint: str = "", hd: str = "",
         "client_id": client_for(tenant)[0],
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": " ".join(scopes_for(drive=drive, inbound=inbound)),
+        "scope": " ".join(scopes_for(drive=drive, inbound=inbound, sheets=sheets)),
         "access_type": "offline",
         "prompt": "select_account consent",
         "include_granted_scopes": "true",

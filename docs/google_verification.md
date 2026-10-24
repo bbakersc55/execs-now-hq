@@ -30,6 +30,7 @@ ready to paste. **[app]** is code; that's mine, in P2.
 | `gmail.settings.basic` | Reading the send-as list, to confirm the practice alias before any send | **Restricted**, I believe: annual security assessment |
 | `gmail.readonly` | Collecting client replies to threads the app started (Module 6) | **Restricted**: annual security assessment |
 | `drive.readonly` | Reading the meeting-notes folder (Module 5) | **Restricted**: annual security assessment |
+| `spreadsheets.readonly` | Reading a client's spreadsheet into a scorecard KPI (M5 part 3, the Google Sheet feed) | **Sensitive**, I believe: review, no security assessment. Added 2026-10-24; goes into the next submission |
 
 **Disclosure the review will look for:** Drive meeting notes are sent to
 Anthropic's Claude API for parsing. That is a transfer of Google user data to a
@@ -131,6 +132,16 @@ in the app, why nothing narrower works, and what the user sees.
 > gmail.readonly is the narrowest available. The app never lists, searches or
 > reads any other thread, and the consent screen inside the app states this
 > before the user grants it.
+
+**`spreadsheets.readonly`**
+> Optional, and requested separately only when a practice sets up a
+> scorecard feed from a Google Sheet ("Reconnect Google"). The practice's
+> client shares one spreadsheet with the practice's Google account; the app
+> reads the tab the practice chose, on the hour or once a day, and turns its
+> dates and numbers into the KPI readings shown on the client's scorecard. A
+> preview shows every reading it would make before anything is saved. The
+> app never writes to a spreadsheet, and reads only the ones a practice has
+> set up a feed on. No spreadsheet content is sent to Claude.
 
 **`drive.readonly`**
 > Optional, and requested separately only when the user turns on meeting

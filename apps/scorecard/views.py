@@ -17,6 +17,8 @@ POST  /api/scorecard/pages/order/                         {company, ids}
 POST  /api/scorecard/kpis/   PATCH /kpis/<id>/   POST /kpis/<id>/archive|restore/
 POST  /api/scorecard/kpis/order/                          {page, ids}
 POST  /api/scorecard/starters/                            {company, key}
+
+The Google Sheet feed's routes (part 3) are in `views_feeds.py`.
 """
 
 from __future__ import annotations

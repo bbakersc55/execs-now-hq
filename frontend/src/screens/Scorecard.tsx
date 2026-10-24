@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { BonusArea, bonusLead } from "../components/ScorecardBonus";
+import { SheetFeedModal } from "../components/ScorecardFeed";
 import { KpiEditModal } from "../components/ScorecardSetup";
 import { ScorecardTile } from "../components/ScorecardTiles";
 import { Banner } from "../components/ui";
@@ -42,6 +43,17 @@ export function Scorecard({ me }: { me: Me }) {
   const [bonus, setBonus] = useState<BonusViewKey | null>(null);
   // The practice edits or archives a KPI from its tile (Details → Edit).
   const [editKpi, setEditKpi] = useState<string | null>(null);
+  // Part 3: a KPI's Google Sheet feed, from its tile (Details → Feed from a sheet).
+  const [feedKpi, setFeedKpi] = useState<string | null>(null);
+  const [search, setSearch] = useSearchParams();
+  // "Reconnect Google" is a browser redirect; its outcome comes back here.
+  useEffect(() => {
+    const connected = search.get("sheets_connected");
+    const failed = search.get("sheets_error");
+    if (connected) setManaged({ kind: "ok", text: `Google is reconnected for ${connected}, with read-only access to Sheets. Open a tile's Details, then "Feed from a sheet".` });
+    if (failed) setManaged({ kind: "bad", text: failed });
+    if (connected || failed) setSearch({}, { replace: true });
+  }, [search, setSearch]);
   const [managed, setManaged] = useState<{ kind: string; text: string } | null>(null);
   const archive = useMutation({
     mutationFn: (t: Tile) => api.post(`/api/scorecard/kpis/${t.id}/archive/`, {}),
@@ -67,6 +79,9 @@ export function Scorecard({ me }: { me: Me }) {
   if (board.isError) return <Banner kind="bad">{(board.error as Error).message}</Banner>;
   const b = board.data;
   if (!b) return <p>{ready ? `Loading the ${w.scorecard}…` : ""}</p>;
+  // A missing reading asks for a number; a failing feed says what went wrong (part 3).
+  const waiting = (b.notices ?? []).filter((n) => n.kind !== "feed");
+  const failing = (b.notices ?? []).filter((n) => n.kind === "feed");
   const base = scorecardPath(me, companyId);
   const practice = !(me.role === "FCC" || me.role === "ECC");
 
@@ -141,16 +156,28 @@ export function Scorecard({ me }: { me: Me }) {
         </div>
       </div>
 
-      {(b.notices ?? []).length > 0 && (
+      {waiting.length > 0 && (
         <div className="sc-notice" role="status">
           <strong>Waiting on you:</strong>{" "}
-          {b.notices!.map((n) => `${n.kpi}, ${n.text.charAt(0).toLowerCase()}${n.text.slice(1)}`).join("; ")}.
+          {waiting.map((n) => `${n.kpi}, ${n.text.charAt(0).toLowerCase()}${n.text.slice(1)}`).join("; ")}.
           {" "}<Link to={`${base}/enter`}>Enter readings</Link>
+        </div>
+      )}
+      {failing.length > 0 && (
+        <div className="sc-notice" role="alert">
+          {failing.map((n) => (
+            <div key={n.kpi_id}><strong>{n.kpi}'s sheet couldn't be read.</strong> {n.text} Its last
+              readings are kept.</div>
+          ))}
         </div>
       )}
 
       <PageTabs b={b} onPick={setPage} bonus={null} onBonus={setBonus} />
       {managed && <Banner kind={managed.kind}>{managed.text}</Banner>}
+      {feedKpi && (
+        <SheetFeedModal companyId={companyId} kpiId={feedKpi} onClose={() => setFeedKpi(null)}
+          onSaved={(text) => { setFeedKpi(null); setManaged({ kind: "ok", text }); }} />
+      )}
       {editKpi && (
         <KpiEditModal companyId={companyId} kpiId={editKpi} onClose={() => setEditKpi(null)}
           onSaved={(text) => {
@@ -165,6 +192,7 @@ export function Scorecard({ me }: { me: Me }) {
           {tiles.length === 0 && <p className="sc-empty">No {w.kpis} on this page yet.</p>}
           {tiles.map((t) => <ScorecardTile key={t.id} t={t} manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
+            onFeed: () => setFeedKpi(t.id),
             busy: archive.isPending } : undefined} />)}
         </div>
       )}

@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-23 UTC**, after Release 22. **The next session starts at
-"2026-10-23: Release 22" just below, then "2026-10-22: Release 21, and M5
+2026-10-24 UTC**, after M5 part 3. **The next session starts at
+"2026-10-24: catch-up reach, and M5 part 3" just below, then "2026-10-23:
+Release 22", then "2026-10-22: Release 21, and M5
 part 2", then "Where things
 stand (2026-10-21)", then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
 stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
@@ -12,6 +13,26 @@ brought up to date on 10/5; where it and a newer section disagree, the newer
 holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
+
+## 2026-10-24: catch-up reach, and M5 part 3 (on `dev`, not released)
+
+- **Catch-up reach (`a9c4e94`).** The May 2026 limit seen on production was
+  not reproduced: production's bundle is `dev`'s, and locally a monthly KPI's
+  From reached November 2024. The pickers now reach back to the earlier of
+  two years and January 2025, the table has Earlier and Later, and the
+  single-period dropdown groups its weeks by month. Bryan to say whether
+  production still stops at May 2026 after the next release.
+- **M5 part 3, the Google Sheet feed (migration `scorecard 0004`, additive:
+  one table, `kpi_feed`).** `sheets.py` (reading a grid), `feeds.py` (the
+  connection, preview, run, notices), `views_feeds.py` (routes under
+  `/api/scorecard/feeds/`). Spec, "Part 3 as built", has the choices. **At
+  the release:** the migration by the runbook, then R5b (`ensure_schedules`:
+  one new job, `scorecard.read_feeds`). **Before anyone uses it:** the scope
+  `https://www.googleapis.com/auth/spreadsheets.readonly` added to both OAuth
+  clients' consent screens (Internal and External), then "Reconnect Google"
+  on a scorecard tile.
+- **Digest race tests** add six days in local time; they had failed in UTC
+  across the November 1 clock change.
 
 ## 2026-10-23: Release 22
 

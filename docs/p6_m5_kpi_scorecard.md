@@ -223,3 +223,20 @@ Choices the spec left open, made in the build, for Bryan to confirm or change:
 - **Closing** is for the practice owner, associates and the client owner, once the period's last day is over. Confirming a recompute after a correction is the client owner's alone.
 - **Assistants** see the bonus tables with achievement and no dollar amounts.
 - **The spreadsheet** is an .xlsx with two sheets, "Payroll" and "Readings and tiers", written without a new dependency.
+
+## Part 3 as built (October 24, 2026)
+
+The Google Sheet feed and CSV paste, built to "Feeds" above. Choices the spec left open, made in the build, for Bryan to confirm or change:
+
+- **Setting a feed up** is on the tile: Details, then "Feed from a sheet" (practice owner and associates, as for the rest of setup). The spreadsheet is picked by pasting its address, then its tab from a list; listing a person's spreadsheets would need Drive's permission, and the Sheets permission alone can't.
+- **A column is remembered by its heading and its letter.** It is found by its heading, so a column inserted in the sheet moves nothing; a heading that disappears fails the read with its name ("The sheet 'Weekly numbers' (tab 'Data') has no column called Occupancy"). The heading row is found by itself (the first of the top 20 rows with two words in it and a date below) and can be changed on the screen.
+- **What a row must hold:** a date in the date column (typed as people type them: 10/19/2026, 2026-10-19, Oct 19, 2026, October 2026, Q4 2026, "Week of 10/19/2026", or a spreadsheet's day number) and a number in the value column ($1,234, (1,200), 82%, 3.5 hrs). Blank rows are skipped silently; a row with words where the date or number should be is listed in the preview as left out, and why. The number is checked against the KPI's kind as a typed one is.
+- **Several rows in one period** (daily rows feeding a weekly KPI) combine by the KPI's roll-up: summed, averaged, or the last.
+- **Per person:** the name column is matched to the people the KPI tracks by full name, email, or a first name only one of them has; names that match no one are listed in the preview, where each can be pointed at a person or left out.
+- **Cell mode** reads its cell at each period's close: the first read after a period has ended stores that period's reading, and it is not changed by later reads. A period that had already closed when the feed was set up is not given the cell's number. Consequence to know: a client who types last week's number on Monday morning, after the close, has it read before they type it if the feed reads at midnight; column mode does not have this problem.
+- **Updates:** a feed's own reading follows the sheet when the sheet's number changes (the history keeps every value); one typed by hand is never touched, and a feed's reading corrected by hand becomes a hand reading from then on. A feed never deletes.
+- **A failed read** keeps every reading and shows the reading owner one notice ("Occupancy's sheet couldn't be read", with the reason), on the scorecard, until a read succeeds; the practice sees the reason on the tile's back. It is not emailed or put in a digest.
+- **The schedule** is one hourly job per practice (`scorecard.read_feeds`); a daily feed is read when its last read is 23 hours old, and a cell feed as soon as a period has closed without its reading.
+- **CSV paste:** rows copied from a spreadsheet or a CSV file can be pasted into any cell of the catch-up table. A row starting with a KPI's name goes to that KPI; a heading row of period labels places the columns; otherwise the values fill right and down from the cell.
+- **The demo** never reads a Google account, so its feed screen says so; CSV paste works there.
+

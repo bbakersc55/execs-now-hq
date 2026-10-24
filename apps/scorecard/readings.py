@@ -270,8 +270,10 @@ def save(reader, scorecard, rows, today: date) -> dict:
                                             changed_by=user)
             reading.value, reading.entered_by, reading.entered_at = value, user, now
             reading.times_changed += 1
+            # Typed over a feed's number: the hand wins from now on (spec, "Feeds").
+            reading.source = KpiReading.Source.HAND
             reading.save(update_fields=["value", "entered_by", "entered_at",
-                                        "times_changed", "updated_at"])
+                                        "times_changed", "source", "updated_at"])
             changed += 1
     return {"saved": saved, "changed": changed, "errors": {}}
 
@@ -393,7 +395,7 @@ def _missing(kpi, start) -> bool:
 
 def notices(request, company=None) -> list:
     """The reminders waiting on the person asking: reading owners asked for
-    a number that is still not in."""
+    a number that is still not in, and told when their KPI's feed failed."""
     rows = (KpiReminder.objects.filter(recipient_id=request.user.pk,
                                        kpi__archived_at__isnull=True)
             .select_related("kpi", "kpi__scorecard__company"))
@@ -403,10 +405,12 @@ def notices(request, company=None) -> list:
     for r in rows.order_by("-period_start"):
         if not _missing(r.kpi, r.period_start):
             continue
-        out.append({"kpi": r.kpi.name, "kpi_id": str(r.kpi_id),
+        out.append({"kind": "reminder", "kpi": r.kpi.name, "kpi_id": str(r.kpi_id),
                     "company": r.kpi.scorecard.company.name,
                     "company_id": str(r.kpi.scorecard.company_id),
                     "period_start": r.period_start.isoformat(),
                     "text": f"No reading yet for {P.long_label(r.period_start, r.kpi.cadence)}",
                     "reminded_at": r.created_at.isoformat()})
-    return out
+    from .feeds import notices_for
+
+    return out + notices_for(request.user, company)

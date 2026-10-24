@@ -89,6 +89,10 @@ SCHEDULES = [
     # Safe to run twice: a period is reminded once.
     ("scorecard.remind_missing", "apps.scorecard.tasks.remind_missing",
      Schedule.DAILY, None, 8),
+    # M5 part 3: the Google Sheet feeds. Hourly; each feed's own refresh
+    # (hourly or daily) decides whether this pass reads it. A no-op for a
+    # practice with no feed.
+    ("scorecard.read_feeds", "apps.scorecard.tasks.read_feeds", Schedule.HOURLY, None, None),
 ]
 
 

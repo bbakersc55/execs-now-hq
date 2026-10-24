@@ -36,7 +36,7 @@ TRANSPORT_LABELS = {
 def _spa_url(where="email", **params):
     """Back into the SPA, on the screen the consent was started from."""
     root = dj_settings.APP_ROOT_URL.rstrip("/")
-    path = gmail_oauth.RETURN_PATHS.get(where, gmail_oauth.RETURN_PATHS["email"])
+    path = gmail_oauth.return_path(where)
     query = f"?{urlencode(params)}" if params else ""
     return f"{root}{path}{query}"
 
@@ -170,6 +170,7 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         # keys behind that send the next ordinary connect to the wrong screen.
         request.session[gmail_oauth.RETURN_SESSION_KEY] = "email"
         request.session[gmail_oauth.DRIVE_SESSION_KEY] = False
+        request.session[gmail_oauth.SHEETS_SESSION_KEY] = False
         email = request.user.email
         # FR-6.3g — Tier 2 is **opt-in per connect**, never folded in. A
         # practice that does not collect replies is never asked to let the app
@@ -284,6 +285,7 @@ def gmail_callback(request):
     where = request.session.pop(gmail_oauth.RETURN_SESSION_KEY, "email")
     drive_wanted = bool(request.session.pop(gmail_oauth.DRIVE_SESSION_KEY, False))
     inbound_wanted = bool(request.session.pop(gmail_oauth.INBOUND_SESSION_KEY, False))
+    sheets_wanted = bool(request.session.pop(gmail_oauth.SHEETS_SESSION_KEY, False))
 
     membership = getattr(request, "membership", None)
     if membership is None or membership.role not in ("FF", "CF"):
@@ -384,6 +386,14 @@ def gmail_callback(request):
             "Consent was granted without permission to read mail, so replies "
             "cannot be collected. Sending still works. Connect again and leave "
             "every box ticked."), gmail_connected=email_address))
+    if sheets_wanted:
+        # Sending is stored and working either way; only Sheets can be missing.
+        if not gmail_oauth.sheets_granted(tokens):
+            return HttpResponseRedirect(_spa_url(where, sheets_error=(
+                "Consent was granted without access to Google Sheets, so the spreadsheet "
+                "cannot be read. Sending mail still works. Reconnect Google and leave "
+                "every box ticked.")))
+        return HttpResponseRedirect(_spa_url(where, sheets_connected=email_address))
     if where == "meetings":
         params = {"drive_connected": email_address}
         if warning:

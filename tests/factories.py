@@ -1479,6 +1479,18 @@ class KpiReadingChangeFactory(TenantScopedFactory):
     value = 10
 
 
+class KpiFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    spreadsheet_id = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcd"
+    tab = "Data"
+    date_column = "A"
+    value_column = "B"
+
+
 class KpiReminderFactory(TenantScopedFactory):
     class Meta:
         model = "scorecard.KpiReminder"

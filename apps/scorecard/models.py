@@ -143,6 +143,7 @@ class Kpi(TenantScopedModel):
 
     class Feed(models.TextChoices):
         HAND = "hand", "By hand"
+        SHEET = "sheet", "Google Sheet"
 
     class Formula(models.TextChoices):
         """A computed KPI, one step only (spec, "Computed KPIs"): two other
@@ -275,6 +276,7 @@ class KpiReading(TenantScopedModel):
 
     class Source(models.TextChoices):
         HAND = "hand", "By hand"
+        SHEET = "sheet", "Google Sheet"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()
@@ -335,6 +337,78 @@ class KpiReminder(TenantScopedModel):
         constraints = [
             models.UniqueConstraint(fields=["kpi", "period_start"], name="kpi_reminder_once"),
         ]
+
+
+class KpiFeed(TenantScopedModel):
+    """Where a KPI's readings come from when not by hand (M5 part 3, spec
+    "Feeds"): a Google Sheet, read through the practice's Google connection
+    in column mode (a date column, a value column and, per person, a name
+    column) or cell mode (one cell, read at each period's close). A column is
+    remembered by its heading as well as its letter, so a column inserted in
+    the sheet moves nothing, and a heading that disappears is said by name.
+
+    Stopping a feed keeps it here (inactive) and keeps every reading it made."""
+
+    class Mode(models.TextChoices):
+        COLUMN = "column", "By column"
+        CELL = "cell", "One cell"
+
+    class Refresh(models.TextChoices):
+        HOURLY = "hourly", "Every hour"
+        DAILY = "daily", "Once a day"
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="sheet_feed")
+    #: The practice's Google connection it reads through. Checked against
+    #: the feed's practice before every read (`feeds.client_for`).
+    connection = models.ForeignKey("crm.GmailConnection", null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    spreadsheet_id = models.CharField(max_length=128)
+    spreadsheet_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    tab = models.CharField(max_length=200)
+    mode = models.CharField(max_length=8, choices=Mode.choices, default=Mode.COLUMN,
+                            db_default=Mode.COLUMN)
+    refresh = models.CharField(max_length=8, choices=Refresh.choices, default=Refresh.DAILY,
+                               db_default=Refresh.DAILY)
+    date_column = models.CharField(max_length=3, blank=True, default="", db_default="")
+    date_header = models.CharField(max_length=200, blank=True, default="", db_default="")
+    value_column = models.CharField(max_length=3, blank=True, default="", db_default="")
+    value_header = models.CharField(max_length=200, blank=True, default="", db_default="")
+    name_column = models.CharField(max_length=3, blank=True, default="", db_default="")
+    name_header = models.CharField(max_length=200, blank=True, default="", db_default="")
+    #: The row of headings, counted from 0; none when the data starts at the top.
+    header_row = models.PositiveSmallIntegerField(null=True, blank=True)
+    cell = models.CharField(max_length=12, blank=True, default="", db_default="")
+    #: A cell feed's first period: the one open when it was set up. A period
+    #: that had closed by then is never given the cell's later number.
+    cell_from = models.DateField(null=True, blank=True)
+    #: Names in the sheet chosen on the mapping screen: name -> membership id.
+    people = models.JSONField(default=dict, blank=True)
+    active = models.BooleanField(default=True, db_default=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    #: What went wrong at the last read, in the reading owner's words; blank
+    #: once a read succeeds. `error_since` is when this failure began.
+    last_error = models.TextField(blank=True, default="", db_default="")
+    error_since = models.DateTimeField(null=True, blank=True)
+    last_counts = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_feed"
+        constraints = [
+            models.CheckConstraint(condition=~Q(mode="cell") | ~Q(cell=""),
+                                   name="kpi_feed_cell_mode_has_a_cell"),
+        ]
+
+    def config(self) -> dict:
+        """The mapping, as `feeds.clean` gives it."""
+        return {"spreadsheet_id": self.spreadsheet_id, "tab": self.tab, "mode": self.mode,
+                "refresh": self.refresh, "spreadsheet_name": self.spreadsheet_name,
+                "date_column": self.date_column, "date_header": self.date_header,
+                "value_column": self.value_column, "value_header": self.value_header,
+                "name_column": self.name_column, "name_header": self.name_header,
+                "header_row": self.header_row, "cell": self.cell, "people": self.people or {}}
 
 
 # ---------------------------------------------------------------- bonus plans

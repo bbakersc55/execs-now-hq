@@ -62,6 +62,9 @@ export interface KpiDef {
   owner: string; owner_id: string | null; may_enter: boolean;
   /** A computed KPI's formula in words ("Revenue ÷ Bookings"); "" otherwise. */
   computed: string;
+  /** Part 3: where a fed KPI's readings come from, and why its last read
+   *  failed (only for the practice and the reading owner). */
+  feed?: { kind: "sheet"; text: string; error: string } | null;
 }
 
 export interface Tile extends KpiDef {
@@ -73,8 +76,10 @@ export interface Tile extends KpiDef {
 }
 
 export interface Notice {
+  /** A missing reading, or a feed whose last read failed (part 3). */
+  kind?: "reminder" | "feed";
   kpi: string; kpi_id: string; company: string; company_id: string;
-  period_start: string; text: string; reminded_at: string;
+  period_start: string | null; text: string; reminded_at: string | null;
 }
 
 export interface Board {
@@ -302,7 +307,7 @@ export interface FeedConfig {
 }
 
 export interface FeedState {
-  google: { ready: boolean; account: string; connected: boolean; reconnect: boolean };
+  google: { ready: boolean; account: string; connected: boolean; reconnect: boolean; refusal: string };
   kpi: { id: string; name: string; per_person: boolean; cadence: Cadence; cadence_noun: string;
     people: { id: string; name: string }[] };
   feed: FeedConfig | null;

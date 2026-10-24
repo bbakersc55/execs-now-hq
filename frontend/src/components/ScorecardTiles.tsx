@@ -332,7 +332,11 @@ function Leaderboard({ t }: { t: Tile }) {
 }
 
 /** What the practice owner and associates can do to a KPI from its tile. */
-export interface TileManage { onEdit: () => void; onArchive: () => void; busy?: boolean }
+export interface TileManage {
+  onEdit: () => void; onArchive: () => void; busy?: boolean;
+  /** Part 3: set up or change the KPI's Google Sheet feed. */
+  onFeed?: () => void;
+}
 
 function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
   const [open, setOpen] = useState<string | null>(null);
@@ -343,6 +347,8 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
       <div className="sc-back-note">
         {t.note ? <><strong>How it's measured.</strong> {t.note}</> : "No note on how it's measured."}
         {t.computed && <div>Worked out each period from {t.computed}.</div>}
+        {t.feed && <div className="sc-back-feed">{t.feed.text}.
+          {t.feed.error && <div className="sc-field-error"><strong>Last read failed:</strong> {t.feed.error}</div>}</div>}
       </div>
       <table className="sc-back-table">
         <thead><tr><th>Period</th><th className="money">Reading</th><th>Status</th></tr></thead>
@@ -364,9 +370,12 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
       </table>
       {open && <HistoryList reading={open} def={t} />}
       <div className="sc-muted">
-        {latest ? <>Latest entered by {latest.entered_by || "someone"}
-          {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}
-          {latest.source === "hand" ? ", by hand" : latest.source ? `, from ${latest.source}` : ""}.</>
+        {latest ? (latest.source === "sheet"
+          ? <>Latest read from the Google Sheet
+            {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
+          : <>Latest entered by {latest.entered_by || "someone"}
+            {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}
+            {latest.source === "hand" ? ", by hand" : latest.source ? `, from ${latest.source}` : ""}.</>)
           : "No readings yet."}
       </div>
       {manage && (
@@ -383,6 +392,9 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
             <>
               <button type="button" className="small" aria-label={`Edit ${t.name}`}
                 onClick={manage.onEdit}>Edit</button>
+              {manage.onFeed && !t.computed && (
+                <button type="button" className="ghost small" aria-label={`Sheet feed for ${t.name}`}
+                  onClick={manage.onFeed}>{t.feed ? "Sheet feed" : "Feed from a sheet"}</button>)}
               <button type="button" className="ghost small" aria-label={`Archive ${t.name}`}
                 onClick={() => setArchiving(true)}>Archive</button>
             </>
