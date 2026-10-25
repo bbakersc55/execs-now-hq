@@ -89,8 +89,15 @@ truth; this covers what they don't, and what changed since 9/30.
   additive: `kpi_app_feed`).** Spec, "My practice". `Company.objects` hides
   the practice's row; `all_objects` does not, and the three name lookups
   that use it skip it. The demo seed gives Summit one with seven KPIs.
-- **Phone width:** every table in `main` scrolls inside its own box below
-  700px (`theme.css`), checked at 390 on each screen with a table.
+- **Phone width (below 700px, `theme.css`):** every table in `main` scrolls
+  inside its own box, keeping normal word breaks; single-column grids are
+  `minmax(0, 1fr)` (plain `1fr` held the settings, contact and company pages
+  open at their widest table); cards, sections and row children may shrink;
+  tab bars scroll; long words outside tables break; the bulk-action bar's
+  buttons wrap. Swept at 390 in headless Chrome over 72 views (every app
+  route, a company, a contact, an invoice, both scorecards and their Grid
+  view, the catch-up table, and the portal as a client owner): none scrolls
+  sideways; 27 of them have tables.
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

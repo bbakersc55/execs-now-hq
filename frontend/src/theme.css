@@ -1824,3 +1824,32 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
   main table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   main .sc-scroll table, main .sc-feed-grid table { display: table; }
 }
+@media (max-width: 700px) {
+  /* A single column is `minmax(0, 1fr)`: plain `1fr` won't shrink below its
+     widest content (a table), which held whole pages open sideways. */
+  .settings, .record-cols, .record-cols.span { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: minmax(0, 1fr); }
+  .facts dt { margin-top: var(--s2); }
+  /* Cards, sections and the children of rows and columns may shrink. */
+  main .card, main section, main li, main .row > *, main .spread > *,
+  main [class*="-cols"] > * { min-width: 0; }
+  main .row.tight > * { flex: 0 1 auto; }
+  main .spread { flex-wrap: wrap; }
+  /* Long words and file names break rather than push the page wider. */
+  main p, main span, main a, main dd, main li, main td { overflow-wrap: anywhere; }
+  /* Tab bars and the scorecard's controls scroll or wrap in their own box. */
+  main .tabs { overflow-x: auto; }
+  main .sc-controls { flex-wrap: wrap; }
+  main .sc-controls select { max-width: 100%; }
+}
+@media (max-width: 700px) {
+  main .sc-head > *, main .sc-controls { min-width: 0; max-width: 100%; }
+  main .sc-controls select { width: 100%; }
+  main .pill { white-space: normal; }
+}
+@media (max-width: 700px) {
+  /* Inside a table words break as usual, so the table keeps readable columns
+     and scrolls in its box rather than breaking every word into letters. */
+  main table td, main table th, main table span, main table a, main table p,
+  main table li, main table div { overflow-wrap: normal; }
+}
