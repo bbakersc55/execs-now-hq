@@ -12,13 +12,29 @@ from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 
+from apps.tenancy.managers import TenantManager
 from apps.tenancy.models import TenantScopedModel
 
 
 # ---------------------------------------------------------------- companies
 
+class PracticeHiddenManager(TenantManager):
+    """Companies as everyone means them: the practice's own row (its
+    scorecard's holder, `is_practice`) is never one of them."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_practice=False)
+
+
 class Company(TenantScopedModel):
     name = models.CharField(max_length=200, db_index=True)
+    #: The practice itself (M5, "My practice"): one hidden row per practice
+    #: that holds the practice's own scorecard, so the scorecard tables serve
+    #: it unchanged. Never a client, never listed, never matched by name; only
+    #: `all_objects` and the scorecard's `practice.practice_company` see it.
+    is_practice = models.BooleanField(default=False, db_default=False)
+
+    objects = PracticeHiddenManager()
     industry = models.CharField(max_length=120, blank=True, default="")
     address = models.JSONField(null=True, blank=True)
     # Their own pages on the two networks the practice works from (owner,
@@ -46,6 +62,10 @@ class Company(TenantScopedModel):
     class Meta(TenantScopedModel.Meta):
         db_table = "company"
         verbose_name_plural = "companies"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"], condition=models.Q(is_practice=True),
+                                    name="company_one_practice_row"),
+        ]
 
     def __str__(self):
         return self.name

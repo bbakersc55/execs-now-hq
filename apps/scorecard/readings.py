@@ -411,6 +411,7 @@ def notices(request, company=None) -> list:
                     "period_start": r.period_start.isoformat(),
                     "text": f"No reading yet for {P.long_label(r.period_start, r.kpi.cadence)}",
                     "reminded_at": r.created_at.isoformat()})
-    from .feeds import notices_for, track_notices_for
+    from .feeds import app_notices_for, notices_for, track_notices_for
 
-    return out + notices_for(request.user, company) + track_notices_for(request.user, company)
+    return (out + notices_for(request.user, company) + track_notices_for(request.user, company)
+            + app_notices_for(request.user, company))

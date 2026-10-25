@@ -72,8 +72,12 @@ def send(message):
     OutboxMessage.all_objects.filter(pk=message.pk).update(state=S.SENT, sent_at=timezone.now())
 
 
-def day(n):
-    return timezone.localdate() + timedelta(days=n)
+def day(n, tenant=None):
+    """n days from today where the practice is (the follow-up's own clock)."""
+    from apps.tenancy.models import Tenant
+
+    tenant = tenant or Tenant.objects.order_by("created_at").first()
+    return follow_ups._today(tenant) + timedelta(days=n)
 
 
 # ---------------------------------------------------------------- the offer
@@ -141,7 +145,7 @@ def test_each_step_is_drafted_once_on_its_day_and_waits_for_the_one_before_to_se
     send(first)
     follow_ups.advance(t, day(3))
     run.refresh_from_db()
-    assert run.next_on == timezone.localdate() + timedelta(days=7)    # counted from the send
+    assert run.next_on == day(7)                                     # counted from the send
     assert follow_ups.advance(t, run.next_on)["drafted"] == 1
     send(drafts(c)[1])
     follow_ups.advance(t, day(3))

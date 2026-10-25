@@ -1815,3 +1815,12 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 /* M5 part 4: Track PMS (ScorecardTrack.tsx). */
 .track-state, .track-form, .track-feed { display: flex; flex-direction: column; gap: 6px; }
 .track-form input, .track-feed select { max-width: 100%; }
+
+/* Phone width (owner, 2026-10-24): every table in the app and the portal
+   either fits or scrolls inside its own box, and the page never scrolls
+   sideways. A table becomes its own horizontal scroll box; one already inside
+   a scroll box (.sc-scroll, the sheet grid) stays a table. */
+@media (max-width: 700px) {
+  main table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  main .sc-scroll table, main .sc-feed-grid table { display: table; }
+}

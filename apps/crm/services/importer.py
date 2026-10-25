@@ -719,7 +719,7 @@ def _company_for(tenant, values):
     if not name:
         return None
     company, _ = Company.all_objects.get_or_create(
-        tenant=tenant, name=name, defaults={"deleted_at": None}
+        tenant=tenant, name=name, is_practice=False, defaults={"deleted_at": None}
     )
     return company
 

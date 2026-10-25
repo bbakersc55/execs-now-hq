@@ -57,6 +57,19 @@ def _live_kpis(page):
     return Kpi.all_objects.filter(page=page, archived_at__isnull=True)
 
 
+def _money_feed(kpi) -> bool:
+    """A KPI read "From this app" with a money measure (invoices, cash)."""
+    from django.core.exceptions import ObjectDoesNotExist
+
+    from .practice import is_money
+
+    try:
+        feed = kpi.app_feed
+    except ObjectDoesNotExist:
+        return False
+    return feed.active and is_money(feed.measure)
+
+
 def _tracked(kpi) -> set:
     from .models import KpiPerson
 
@@ -90,6 +103,13 @@ class Reader:
             self.only_looks = False
             self.managed_teams = set()
         self._managed_people = None
+        #: The practice's own scorecard ("My practice"): its audiences are the
+        #: practice's people. The practice owner sees everything; an associate
+        #: what isn't the owner's alone, with every row; an assistant what is
+        #: for everyone, and their own rows.
+        self.on_practice = bool(getattr(company, "is_practice", False))
+        if self.on_practice:
+            self.sees_all = self.role in (Role.FF, Role.CF)
 
     # --- who they are ---------------------------------------------------------
 
@@ -114,6 +134,16 @@ class Reader:
     # --- what they see ----------------------------------------------------------
 
     def _audience_allows(self, audience, team, *, per_person=False):
+        if self.on_practice:
+            if self.role == Role.FF:
+                return True
+            if audience in ("everyone", "page"):
+                return True
+            if audience == "leadership":
+                return self.role == Role.CF
+            if audience == "each_person":
+                return per_person
+            return False                                   # the owner's alone, or a team
         if self.sees_all:
             return True
         if audience in ("everyone", "page"):
@@ -139,6 +169,8 @@ class Reader:
 
     def sees_kpi(self, kpi) -> bool:
         page = kpi.page
+        if self.on_practice and self.role != Role.FF and _money_feed(kpi):
+            return False                         # the practice's money: the owner's alone
         if page.archived_at is not None and not self.is_practice:
             return False
         if not self._audience_allows(page.audience, page.team, per_person=kpi.per_person):
@@ -248,6 +280,10 @@ def company_for(request, company_id):
             raise Http404
         company = crm_perms.company_queryset_for(
             request, Company.objects.filter(pk=company_id, deleted_at__isnull=True)).first()
+        if company is None:
+            # The practice's own scorecard: every practice user reaches it.
+            company = Company.all_objects.filter(pk=company_id, tenant_id=membership.tenant_id,
+                                                 is_practice=True).first()
     else:
         company = None
     if company is None:

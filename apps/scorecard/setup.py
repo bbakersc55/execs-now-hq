@@ -81,6 +81,10 @@ def _page_fields(company, data, page=None) -> dict:
         audience = data.get("audience") or Audience.EVERYONE
         if audience not in Audience.values:
             raise SetupError("Choose who sees the page.", "audience")
+        if company.is_practice and audience == Audience.TEAM:
+            raise SetupError("The practice's scorecard has no teams.", "audience")
+        if not company.is_practice and audience == Audience.OWNER:
+            raise SetupError("Choose who sees the page.", "audience")
         out["audience"] = audience
         out["team"] = _team(company, data.get("team")) if audience == Audience.TEAM else None
     return out
@@ -159,14 +163,15 @@ def _choice(data, key, choices, default, label):
 
 def _owner(company, user_id):
     """A reading owner is someone at the practice or a portal user of the
-    company."""
+    company (on the practice's own scorecard: someone at the practice)."""
     from apps.tenancy.models import CLIENT_ROLES, Membership
 
     if not user_id:
         return None
     rows = Membership.objects.filter(user_id=user_id, revoked_at__isnull=True)
     for m in rows:
-        if m.role not in CLIENT_ROLES or m.client_company_id == company.pk:
+        if m.role not in CLIENT_ROLES or (m.client_company_id == company.pk
+                                          and not company.is_practice):
             return m.user
     raise SetupError("The reading owner is someone at the practice or at the company.",
                      "reading_owner")
@@ -176,6 +181,13 @@ def _people(company, ids):
     from apps.tenancy.models import CLIENT_ROLES, Membership
 
     ids = [str(i) for i in (ids or [])]
+    if company.is_practice:
+        # The practice's own scorecard tracks the practice's people.
+        found = list(Membership.objects.filter(pk__in=ids, revoked_at__isnull=True)
+                     .exclude(role__in=CLIENT_ROLES))
+        if len(found) != len(set(ids)):
+            raise SetupError("Each person tracked is someone at the practice.", "people")
+        return found
     found = list(Membership.objects.filter(pk__in=ids, client_company=company,
                                            role__in=CLIENT_ROLES, revoked_at__isnull=True))
     if len(found) != len(set(ids)):
@@ -250,6 +262,9 @@ def clean_kpi(scorecard, data, kpi=None) -> dict:
         raise SetupError("The Leaderboard and My row tiles are for per-person KPIs.", "tile")
     audience = _choice(merged, "audience", Kpi.KpiAudience.values,
                        current("audience", "page"), "who sees it")
+    if (audience == "team" and company.is_practice) or (audience == "owner"
+                                                       and not company.is_practice):
+        raise SetupError("Choose who sees it.", "audience")
     if audience == "each_person" and not out["per_person"]:
         raise SetupError("Each person sees their own is for per-person KPIs.", "audience")
     out["audience"] = audience

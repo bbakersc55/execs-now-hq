@@ -496,3 +496,81 @@ def track_notices_for(user, company=None) -> list:
              "text": f.last_error,
              "reminded_at": f.error_since.isoformat() if f.error_since else None}
             for f in rows.order_by("-error_since")]
+
+
+# ------------------------------------------------------------- From this app
+
+def run_app(feed, today, *, now=None) -> dict:
+    """The practice's own data into its scorecard, by the Sheets feed's rules."""
+    from . import practice
+    from .models import KpiAppFeed, KpiReading
+
+    now = now or timezone.now()
+    kpi = feed.kpi
+    try:
+        values = practice.plan_for(feed, today)
+        results = sheets.outcome(kpi, values, today, kpi.scorecard.week_start,
+                                 source=KpiReading.Source.APP)
+        if feed.measure in practice.SNAPSHOT:
+            # Read at the close and kept, as a cell is.
+            results = [dict(r, what="same") if r["what"] == "update" else r for r in results]
+        counts = sheets.write(feed, results, now, source=KpiReading.Source.APP)
+    except practice.MeasureRefused as exc:
+        message = str(exc)
+        if feed.last_error != message:
+            feed.last_error, feed.error_since = message, now
+        KpiAppFeed.all_objects.filter(pk=feed.pk).update(
+            last_run_at=now, last_error=feed.last_error, error_since=feed.error_since,
+            updated_at=now)
+        return {"ok": False, "error": message}
+    feed.last_error, feed.error_since, feed.last_success_at = "", None, now
+    KpiAppFeed.all_objects.filter(pk=feed.pk).update(
+        last_run_at=now, last_success_at=now, last_error="", error_since=None,
+        last_counts=counts, updated_at=now)
+    if kpi.feed != Kpi.Feed.APP:
+        Kpi.all_objects.filter(pk=kpi.pk).update(feed=Kpi.Feed.APP)
+    return {"ok": True, **counts}
+
+
+def run_due_app(tenant_id, today, *, now=None) -> dict:
+    """Once a day per measure, for one practice's own scorecard only."""
+    from .models import KpiAppFeed
+
+    now = now or timezone.now()
+    ran = failed = 0
+    for feed in KpiAppFeed.all_objects.filter(
+            tenant_id=tenant_id, active=True, kpi__archived_at__isnull=True,
+            kpi__scorecard__company__is_practice=True).select_related(
+            "kpi", "kpi__scorecard", "kpi__scorecard__company",
+            "kpi__scorecard__company__tenant"):
+        if feed.last_run_at is not None and now - feed.last_run_at < DAILY_AFTER:
+            continue
+        result = run_app(feed, today, now=now)
+        ran += 1
+        failed += int(not result["ok"])
+    return {"ran": ran, "failed": failed}
+
+
+def app_source_text(feed) -> str:
+    from . import practice
+
+    label = practice.MEASURES.get(feed.measure, (feed.measure,))[0]
+    if feed.param_label:
+        label = f"{label}: {feed.param_label}"
+    return f"From this app: {label}, worked out once a day"
+
+
+def app_notices_for(user, company=None) -> list:
+    from .models import KpiAppFeed
+
+    rows = KpiAppFeed.objects.filter(active=True, kpi__archived_at__isnull=True,
+                                     kpi__reading_owner_id=user.pk).exclude(last_error="") \
+        .select_related("kpi", "kpi__scorecard__company")
+    if company is not None:
+        rows = rows.filter(kpi__scorecard__company=company)
+    return [{"kind": "feed", "kpi": f.kpi.name, "kpi_id": str(f.kpi_id),
+             "company": f.kpi.scorecard.company.name,
+             "company_id": str(f.kpi.scorecard.company_id), "period_start": None,
+             "text": f.last_error,
+             "reminded_at": f.error_since.isoformat() if f.error_since else None}
+            for f in rows.order_by("-error_since")]

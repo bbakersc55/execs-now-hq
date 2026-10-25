@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { BonusArea, bonusLead } from "../components/ScorecardBonus";
 import { SheetFeedModal } from "../components/ScorecardFeed";
 import { TrackFeedModal } from "../components/ScorecardTrack";
+import { AppFeedModal } from "../components/ScorecardApp";
 import { KpiEditModal } from "../components/ScorecardSetup";
 import { ScorecardTile } from "../components/ScorecardTiles";
 import { Banner } from "../components/ui";
@@ -47,6 +48,7 @@ export function Scorecard({ me }: { me: Me }) {
   // Part 3: a KPI's Google Sheet feed, from its tile (Details → Feed from a sheet).
   const [feedKpi, setFeedKpi] = useState<string | null>(null);
   const [trackKpi, setTrackKpi] = useState<string | null>(null);
+  const [appKpi, setAppKpi] = useState<string | null>(null);
   const [search, setSearch] = useSearchParams();
   // "Reconnect Google" is a browser redirect; its outcome comes back here.
   useEffect(() => {
@@ -93,7 +95,9 @@ export function Scorecard({ me }: { me: Me }) {
         <ScorecardHead b={b} me={me} practice={practice} />
         {b.may_set_up
           ? <StartCard companyId={companyId}
-            onPick={(k) => navigate(`/companies/${companyId}?starter=${encodeURIComponent(k.key)}#scorecard-setup`)} />
+            onPick={(k) => navigate(b.practice
+              ? `/scorecard/practice/setup?starter=${encodeURIComponent(k.key)}#scorecard-setup`
+              : `/companies/${companyId}?starter=${encodeURIComponent(k.key)}#scorecard-setup`)} />
           : <div className="sc-tile"><p className="sc-empty">There is no {w.scorecard} here yet.</p></div>}
       </div>
     );
@@ -176,6 +180,10 @@ export function Scorecard({ me }: { me: Me }) {
 
       <PageTabs b={b} onPick={setPage} bonus={null} onBonus={setBonus} />
       {managed && <Banner kind={managed.kind}>{managed.text}</Banner>}
+      {appKpi && (
+        <AppFeedModal companyId={companyId} kpiId={appKpi} onClose={() => setAppKpi(null)}
+          onSaved={(text) => { setAppKpi(null); setManaged({ kind: "ok", text }); }} />
+      )}
       {trackKpi && (
         <TrackFeedModal companyId={companyId} kpiId={trackKpi} onClose={() => setTrackKpi(null)}
           onSaved={(text) => { setTrackKpi(null); setManaged({ kind: "ok", text }); }} />
@@ -198,7 +206,9 @@ export function Scorecard({ me }: { me: Me }) {
           {tiles.length === 0 && <p className="sc-empty">No {w.kpis} on this page yet.</p>}
           {tiles.map((t) => <ScorecardTile key={t.id} t={t} manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
-            onFeed: () => setFeedKpi(t.id), onTrack: () => setTrackKpi(t.id),
+            onFeed: () => setFeedKpi(t.id),
+            // The practice's own scorecard reads this app, a client's reads Track.
+            ...(b.practice ? { onApp: () => setAppKpi(t.id) } : { onTrack: () => setTrackKpi(t.id) }),
             busy: archive.isPending } : undefined} />)}
         </div>
       )}
@@ -217,7 +227,10 @@ export function Scorecard({ me }: { me: Me }) {
 function ScorecardHead({ b, me, practice }: { b: Board; me: Me; practice: boolean }) {
   return (
     <div className="sc-context">
-      {practice
+      {practice && b.practice
+        ? <>My practice
+          {b.may_set_up && <> · <Link to="/scorecard/practice/setup">Set up</Link></>}</>
+        : practice
         ? <><Link to={`/companies/${b.company.id}`}>{b.company.name}</Link>
           {b.may_set_up && <> · <Link to={`/companies/${b.company.id}#scorecard-setup`}>Set up</Link></>}</>
         : <>{b.company.name} · Signed in as {me.full_name || me.email}

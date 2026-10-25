@@ -211,9 +211,11 @@ class SetupView(Base):
         scorecard = board.scorecard_for(company)
         staff = Membership.objects.filter(role__in=(Role.FF, Role.CF, Role.VA),
                                           revoked_at__isnull=True).select_related("user")
-        portal_people = portal.access_rows(company)
+        # The practice's own scorecard: its people are the practice's.
+        portal_people = [] if company.is_practice else portal.access_rows(company)
         out = {
             "company": {"id": str(company.pk), "name": company.name},
+            "practice": company.is_practice,
             "exists": scorecard is not None,
             "week_start": scorecard.week_start if scorecard else "monday",
             "pages": [], "kpis": [],
@@ -224,7 +226,8 @@ class SetupView(Base):
                 + [{"id": str(m.user_id), "name": board.name_of(m.user), "side": "client"}
                    for m in portal_people], key=lambda r: (r["side"], r["name"].lower())),
             "people": sorted([{"id": str(m.pk), "name": board.name_of(m.user)}
-                              for m in portal_people], key=lambda r: r["name"].lower()),
+                              for m in (staff if company.is_practice else portal_people)],
+                             key=lambda r: r["name"].lower()),
             "starters": setup.starters(),
         }
         if scorecard is not None:

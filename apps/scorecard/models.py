@@ -50,6 +50,8 @@ class Audience(models.TextChoices):
     LEADERSHIP = "leadership", "Senior leadership and up"
     TEAM = "team", "One team"
     EACH_PERSON = "each_person", "Each person sees their own"
+    #: The practice's own scorecard only: the practice owner alone.
+    OWNER = "owner", "The practice owner only"
 
 
 class ScorecardPage(TenantScopedModel):
@@ -121,6 +123,7 @@ class Kpi(TenantScopedModel):
         LEADERSHIP = "leadership", "Senior leadership and up"
         TEAM = "team", "One team"
         EACH_PERSON = "each_person", "Each person sees their own"
+        OWNER = "owner", "The practice owner only"
 
     class DurationUnit(models.TextChoices):
         DAYS = "days", "Days"
@@ -145,6 +148,7 @@ class Kpi(TenantScopedModel):
         HAND = "hand", "By hand"
         SHEET = "sheet", "Google Sheet"
         TRACK = "track", "Track PMS"
+        APP = "app", "From this app"
 
     class Formula(models.TextChoices):
         """A computed KPI, one step only (spec, "Computed KPIs"): two other
@@ -279,6 +283,7 @@ class KpiReading(TenantScopedModel):
         HAND = "hand", "By hand"
         SHEET = "sheet", "Google Sheet"
         TRACK = "track", "Track PMS"
+        APP = "app", "From this app"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()
@@ -612,3 +617,26 @@ class KpiTrackFeed(TenantScopedModel):
             models.CheckConstraint(condition=Q(unit_id="") | Q(assignee_id=""),
                                    name="kpi_track_feed_one_scope"),
         ]
+
+
+class KpiAppFeed(TenantScopedModel):
+    """A KPI of the practice's own scorecard read "From this app": one measure
+    of the practice's own data (`practice.MEASURES`), per closed period, once
+    a day on the worker, by the Sheets feed's rules."""
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="app_feed")
+    measure = models.CharField(max_length=24)
+    #: For "prospects in a stage": the stage's id.
+    param = models.CharField(max_length=40, blank=True, default="", db_default="")
+    param_label = models.CharField(max_length=120, blank=True, default="", db_default="")
+    active = models.BooleanField(default=True, db_default=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="", db_default="")
+    error_since = models.DateTimeField(null=True, blank=True)
+    last_counts = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_app_feed"

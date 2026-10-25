@@ -50,7 +50,7 @@ describe("the practice's Scorecard menu", () => {
       }
     });
 
-  it("is not in an assistant's menu", async () => {
+  it("is in an assistant's menu, for My practice (2026-10-24)", async () => {
     const { App } = await import("../App");
     vi.stubGlobal("fetch", mockApi({
       "GET /api/me": aMe({ role: "VA" }),
@@ -60,7 +60,16 @@ describe("the practice's Scorecard menu", () => {
     renderRoute(<App />, { path: "*", route: "/tasks" });
     const nav = await screen.findByRole("navigation");
     await waitFor(() => expect(within(nav).getAllByRole("link").length).toBeGreaterThan(3));
-    expect(within(nav).queryByRole("link", { name: /Scorecard/ })).toBeNull();
+    expect(within(nav).getByRole("link", { name: /Scorecard/ })).toBeInTheDocument();
+  });
+
+  it("shows an assistant My practice and not the clients' list", async () => {
+    const fetchMock = mockApi({ "GET /api/scorecard/practice/": { id: "pr1", name: "Executives Now" } });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ScorecardCompanies me={aMe({ role: "VA" })} />);
+    expect(await screen.findByRole("link", { name: /Open my practice/ })).toHaveAttribute(
+      "href", "/companies/pr1/scorecard");
+    expect(fetchMock.calls.some((c) => c.url.includes("/api/scorecard/companies/"))).toBe(false);
   });
 });
 

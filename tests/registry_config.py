@@ -52,7 +52,7 @@ from apps.finance.models import (
     FinanceMonthClose, FinanceReconciliation, FinanceRule, FinanceSettings,
 )
 from apps.scorecard.models import (
-    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection,
+    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection, KpiAppFeed,
     ScorecardPage,
 )
 from apps.tenancy.registry import register
@@ -326,3 +326,7 @@ register(NmiEvent, factories.NmiEventFactory, api_exposed=False)
 # /api/scorecard/track/ through `access.company_for` (tests/test_scorecard_track.py).
 register(TrackConnection, factories.TrackConnectionFactory, api_exposed=False)
 register(KpiTrackFeed, factories.KpiTrackFeedFactory, api_exposed=False)
+
+# M5, "My practice": a KPI of the practice's own scorecard read "From this
+# app", served by /api/scorecard/app-feed/ (tests/test_scorecard_practice.py).
+register(KpiAppFeed, factories.KpiAppFeedFactory, api_exposed=False)

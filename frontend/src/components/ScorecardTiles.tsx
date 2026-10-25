@@ -338,6 +338,8 @@ export interface TileManage {
   onFeed?: () => void;
   /** Part 4: its Track PMS measure. */
   onTrack?: () => void;
+  /** "My practice": a measure "From this app". */
+  onApp?: () => void;
 }
 
 function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
@@ -372,7 +374,10 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
       </table>
       {open && <HistoryList reading={open} def={t} />}
       <div className="sc-muted">
-        {latest ? (latest.source === "track"
+        {latest ? (latest.source === "app"
+          ? <>Latest worked out from this app
+            {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
+          : latest.source === "track"
           ? <>Latest worked out from Track
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
           : latest.source === "sheet"
@@ -400,6 +405,9 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
               {manage.onFeed && !t.computed && (
                 <button type="button" className="ghost small" aria-label={`Sheet feed for ${t.name}`}
                   onClick={manage.onFeed}>{t.feed?.kind === "sheet" ? "Sheet feed" : "Feed from a sheet"}</button>)}
+              {manage.onApp && !t.computed && !t.per_person && (
+                <button type="button" className="ghost small" aria-label={`From this app for ${t.name}`}
+                  onClick={manage.onApp}>{t.feed?.kind === "app" ? "From this app" : "Read from this app"}</button>)}
               {manage.onTrack && !t.computed && !t.per_person && (
                 <button type="button" className="ghost small" aria-label={`Track measure for ${t.name}`}
                   onClick={manage.onTrack}>{t.feed?.kind === "track" ? "Track measure" : "Feed from Track"}</button>)}

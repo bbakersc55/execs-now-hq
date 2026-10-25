@@ -246,9 +246,16 @@ def feed_of(kpi, reader):
     last read failed only for the practice and the KPI's reading owner."""
     from django.core.exceptions import ObjectDoesNotExist
 
-    from .feeds import source_text, track_source_text
+    from .feeds import app_source_text, source_text, track_source_text
 
     told = reader is not None and (reader.sets_up or kpi.reading_owner_id == reader.user_id)
+    try:
+        app_feed = kpi.app_feed
+    except ObjectDoesNotExist:
+        app_feed = None
+    if app_feed is not None and app_feed.active:
+        return {"kind": "app", "text": app_source_text(app_feed),
+                "error": app_feed.last_error if told else ""}
     try:
         track_feed = kpi.track_feed
     except ObjectDoesNotExist:
@@ -423,7 +430,7 @@ def visible_pages(reader, scorecard):
                  .select_related("team"))
     kpis = list(Kpi.objects.filter(scorecard=scorecard, archived_at__isnull=True)
                 .select_related("page", "page__team", "audience_team", "reading_owner",
-                                "sheet_feed", "track_feed",
+                                "sheet_feed", "track_feed", "app_feed",
                                 "source_a__page__team", "source_a__audience_team",
                                 "source_b__page__team", "source_b__audience_team"))
     by_page = defaultdict(list)
@@ -442,6 +449,8 @@ def build(reader, scorecard, page_id, win, today) -> dict:
         or (shown[0] if shown else None)
     out = {
         "company": {"id": str(scorecard.company_id), "name": scorecard.company.name},
+        # "My practice": the practice's own scorecard.
+        "practice": scorecard.company.is_practice,
         "week_start": week_start,
         "window": {"key": win.key, "label": win.label, "first": win.first.isoformat(),
                    "last": win.last.isoformat(), "text": window_text(win, today, week_start)},

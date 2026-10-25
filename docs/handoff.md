@@ -84,6 +84,13 @@ truth; this covers what they don't, and what changed since 9/30.
   tables).** Spec, "Part 4 as built", has the arithmetic and the list of what
   is unverified against a live Track account. No new schedule: it rides the
   hourly `scorecard.read_feeds`, once a day per measure.
+- **My practice, and "From this app" (migrations `crm 0048`, additive: the
+  `company.is_practice` flag and its one-per-practice index; `scorecard 0006`,
+  additive: `kpi_app_feed`).** Spec, "My practice". `Company.objects` hides
+  the practice's row; `all_objects` does not, and the three name lookups
+  that use it skip it. The demo seed gives Summit one with seven KPIs.
+- **Phone width:** every table in `main` scrolls inside its own box below
+  700px (`theme.css`), checked at 390 on each screen with a table.
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

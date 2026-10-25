@@ -198,7 +198,12 @@ def advance(tenant, today=None) -> dict:
                 continue
             if run.next_on is None:
                 sent = (message.sent_at or message.updated_at)
-                run.next_on = sent.date() + timedelta(days=steps[last.position].days_after)
+                # The day it was sent where the practice is, not in UTC.
+                from zoneinfo import ZoneInfo
+
+                zone = ZoneInfo(tenant.timezone) if getattr(tenant, "timezone", "") else None
+                sent_day = sent.astimezone(zone).date() if zone else sent.date()
+                run.next_on = sent_day + timedelta(days=steps[last.position].days_after)
                 Run.all_objects.filter(pk=run.pk).update(next_on=run.next_on,
                                                          updated_at=timezone.now())
         if run.next_on is None or run.next_on > today:

@@ -1649,3 +1649,12 @@ class KpiTrackFeedFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
     measure = "occupancy"
+
+
+class KpiAppFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiAppFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    measure = "new_leads"

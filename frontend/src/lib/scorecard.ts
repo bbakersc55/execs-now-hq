@@ -64,7 +64,7 @@ export interface KpiDef {
   computed: string;
   /** Part 3: where a fed KPI's readings come from, and why its last read
    *  failed (only for the practice and the reading owner). */
-  feed?: { kind: "sheet" | "track"; text: string; error: string } | null;
+  feed?: { kind: "sheet" | "track" | "app"; text: string; error: string } | null;
 }
 
 export interface Tile extends KpiDef {
@@ -84,6 +84,8 @@ export interface Notice {
 
 export interface Board {
   exists: boolean;
+  /** The practice's own scorecard ("My practice"). */
+  practice?: boolean;
   company: { id: string; name: string };
   week_start?: "monday" | "sunday";
   window: { key: WindowKey; label: string; first: string; last: string; text: string };
@@ -224,6 +226,8 @@ export interface Starter {
 
 export interface SetupState {
   company: { id: string; name: string };
+  /** The practice's own scorecard ("My practice"). */
+  practice?: boolean;
   exists: boolean;
   week_start: "monday" | "sunday";
   pages: SetupPage[];

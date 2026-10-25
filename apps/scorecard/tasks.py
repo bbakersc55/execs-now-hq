@@ -36,4 +36,6 @@ def read_feeds(tenant_id: str) -> dict:
         sheets_done = feeds.run_due(tenant.pk, today)
         # Part 4: each Track feed once a day, on the same hourly pass.
         track_done = feeds.run_due_track(tenant.pk, today)
-        return {"sheets": sheets_done, "track": track_done}
+        # And the practice's own scorecard, "From this app", once a day each.
+        app_done = feeds.run_due_app(tenant.pk, today)
+        return {"sheets": sheets_done, "track": track_done, "app": app_done}

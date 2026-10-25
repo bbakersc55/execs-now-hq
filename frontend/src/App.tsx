@@ -49,6 +49,7 @@ import { Pipeline } from "./screens/Pipeline";
 import { ReferralSettings } from "./screens/ReferralSettings";
 import { EmailTemplates } from "./screens/EmailTemplates";
 import { StageRules } from "./screens/StageRules";
+import { PracticeScorecardSetup } from "./screens/PracticeScorecard";
 import { Staff } from "./screens/Staff";
 import { Vendors } from "./screens/Vendors";
 import { Activity } from "./screens/Activity";
@@ -156,7 +157,7 @@ const NAV: NavItem[] = [
   { to: "/report", label: "Value report", roles: TENANT , icon: BarChart3 },
   // Every client's scorecard from one place (Bryan, 2026-10-22); the company
   // page's link stays.
-  { to: "/scorecard", label: (w) => w.Scorecard, roles: ["FF", "CF"], icon: Gauge },
+  { to: "/scorecard", label: (w) => w.Scorecard, roles: ["FF", "CF", "VA"], icon: Gauge },
   // P4A. Not an assistant's: no financials (matrix 13.4a).
   { to: "/invoices", label: "Invoices", roles: ["FF", "CF"], icon: Receipt },
   // P5. The practice owner's only (matrix 13.1, 13.6–13.10).
@@ -373,8 +374,9 @@ export function App() {
             <Route path="/companies/:id/scorecard" element={<Scorecard me={me} />} />
             <Route path="/companies/:id/scorecard/enter" element={<ScorecardEntry me={me} />} />
             {/* ...and the portal's own. */}
-            <Route path="/scorecard" element={me.role === "FF" || me.role === "CF"
-              ? <ScorecardCompanies /> : <Scorecard me={me} />} />
+            <Route path="/scorecard" element={me.role === "FF" || me.role === "CF" || me.role === "VA"
+              ? <ScorecardCompanies me={me} /> : <Scorecard me={me} />} />
+            <Route path="/scorecard/practice/setup" element={<PracticeScorecardSetup me={me} />} />
             <Route path="/scorecard/enter" element={<ScorecardEntry me={me} />} />
             <Route path="/vendors" element={<Vendors />} />
             <Route path="/sending-queue" element={<SendingQueue me={me} />} />

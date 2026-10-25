@@ -802,3 +802,37 @@ def introductions(world: World) -> None:
                              note="They're planning a launch next quarter.")
     except intros.IntroductionRefused:
         pass
+
+
+def practice_scorecard(world: World) -> None:
+    """"My practice" for Summit: the practice's own numbers, read from the
+    demo's own data (its pipeline, introductions, invoices and tasks), worked
+    out once now as the worker would each day."""
+    from apps.scorecard import feeds, setup
+    from apps.scorecard.models import KpiAppFeed
+    from apps.scorecard.practice import practice_company
+
+    holder = practice_company(world.tenant)
+    card = setup.ensure(holder, world.owner)
+    page = card.pages.get()
+    page.name = "Our practice"
+    page.save(update_fields=["name", "updated_at"])
+    money = setup.create_page(card, {"name": "Money", "audience": "owner"}, world.owner)
+    plan = [
+        ("New leads", "count", "new_leads", page, 8),
+        ("Won", "count", "won", page, 2),
+        ("Close rate", "percent", "close_rate", page, 40),
+        ("Introductions made", "count", "introductions_made", page, 2),
+        ("Tasks completed", "count", "tasks_completed", page, 30),
+        ("Invoices sent", "count", "invoices_sent", money, 6),
+        ("Average days to pay", "number", "days_to_pay", money, 20),
+    ]
+    for name, kind, measure, where, target in plan:
+        kpi = setup.create_kpi(card, {
+            "name": name, "kind": kind, "cadence": "monthly",
+            "rollup": "average" if kind in ("percent", "number") else "sum",
+            "target_value": target, "direction": "lower" if measure == "days_to_pay" else "higher",
+            "page": str(where.pk), "reading_owner": str(world.owner.pk)}, world.owner)
+        feed = KpiAppFeed.objects.create(tenant=world.tenant, kpi=kpi, measure=measure,
+                                         created_by=world.owner)
+        feeds.run_app(feed, world.today)

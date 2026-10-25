@@ -15,6 +15,13 @@ const AUDIENCE: Record<string, string> = {
 };
 const KPI_AUDIENCE: Record<string, string> = { page: "Same as its page", ...AUDIENCE };
 delete KPI_AUDIENCE.everyone;
+/** "My practice": the practice's own people, and no teams. */
+const PRACTICE_AUDIENCE: Record<string, string> = {
+  everyone: "Everyone at the practice", leadership: "The practice owner and associates",
+  each_person: "Each person sees their own", owner: "The practice owner only",
+};
+const PRACTICE_KPI_AUDIENCE: Record<string, string> = { page: "Same as its page", ...PRACTICE_AUDIENCE };
+delete PRACTICE_KPI_AUDIENCE.everyone;
 const KINDS = { number: "Number", percent: "Percent", money: "Money", count: "Count",
   duration: "Duration", rating: "Rating" };
 const DIRECTIONS = { higher: "Higher is better", lower: "Lower is better", range: "Within a range" };
@@ -112,7 +119,7 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
           const ids = kpis.map((k) => k.id);
           return (
             <div key={page.id} className="sc-setup-page">
-              <PageLine page={page} teams={s.teams} first={pi === 0} last={pi === livePages.length - 1}
+              <PageLine page={page} teams={s.teams} practice={!!s.practice} first={pi === 0} last={pi === livePages.length - 1}
                 empty={kpis.length === 0}
                 onSave={(body, done) => act.mutate({ method: "patch", url: `/api/scorecard/pages/${page.id}/`, body, done })}
                 onMove={(dir) => {
@@ -215,8 +222,8 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
   );
 }
 
-function PageLine({ page, teams, first, last, empty, onSave, onMove, onArchive }: {
-  page: SetupPage; teams: SetupState["teams"]; first: boolean; last: boolean; empty: boolean;
+function PageLine({ page, teams, practice = false, first, last, empty, onSave, onMove, onArchive }: {
+  page: SetupPage; teams: SetupState["teams"]; practice?: boolean; first: boolean; last: boolean; empty: boolean;
   onSave: (body: Record<string, unknown>, done?: string) => void; onMove: (dir: number) => void;
   onArchive: () => void;
 }) {
@@ -228,7 +235,7 @@ function PageLine({ page, teams, first, last, empty, onSave, onMove, onArchive }
       <select aria-label={`Who sees ${page.name}`} value={page.audience}
         onChange={(e) => onSave({ audience: e.target.value, team: e.target.value === "team" ? teams[0]?.id : null },
           "Who sees the page is saved.")}>
-        {Object.entries(AUDIENCE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        {Object.entries(practice ? PRACTICE_AUDIENCE : AUDIENCE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
       </select>
       {page.audience === "team" && (
         <select aria-label={`Team for ${page.name}`} value={page.team ?? ""}
@@ -347,7 +354,7 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
         {choice("tile", "Tile", TILES)}
         {!d.formula && choice("reading_owner", "Reading owner", Object.fromEntries([["", "Nobody yet"],
           ...state.owners.map((o) => [o.id, `${o.name}${o.side === "practice" ? " (practice)" : ""}`])]))}
-        {choice("audience", "Who sees it", KPI_AUDIENCE)}
+        {choice("audience", "Who sees it", state.practice ? PRACTICE_KPI_AUDIENCE : KPI_AUDIENCE)}
         {d.audience === "team" && choice("audience_team", "Team",
           Object.fromEntries(state.teams.map((t) => [t.id, t.name])))}
         {choice("strategy_component", "Strategy component", COMPONENTS)}

@@ -54,7 +54,7 @@ def _company_by_name(tenant, name):
     exist to avoid, and a hand-typed name is no different.
     """
     existing = Company.all_objects.filter(
-        tenant=tenant, name__iexact=name, deleted_at__isnull=True
+        tenant=tenant, name__iexact=name, deleted_at__isnull=True, is_practice=False
     ).first()
     if existing is not None:
         return existing
@@ -423,7 +423,7 @@ class CompanySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A company needs a name.")
         tenant = self.context["request"].tenant
         clash = Company.all_objects.filter(
-            tenant=tenant, name__iexact=name, deleted_at__isnull=True
+            tenant=tenant, name__iexact=name, deleted_at__isnull=True, is_practice=False
         ).exclude(pk=getattr(self.instance, "pk", None)).first()
         if clash is not None:
             raise serializers.ValidationError(

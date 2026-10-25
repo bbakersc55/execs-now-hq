@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty } from "../components/ui";
-import { api } from "../lib/api";
+import { Me, api } from "../lib/api";
 import { useWords } from "../lib/words";
+import { usePracticeScorecard } from "./PracticeScorecard";
 
 export interface ScorecardCompany {
   id: string; name: string; kpis: number; has_scorecard: boolean;
@@ -17,19 +18,31 @@ export interface ScorecardCompany {
  * client" on the company page; one without offers "Start one", which is the
  * setup on that company's page.
  */
-export function ScorecardCompanies() {
+export function ScorecardCompanies({ me }: { me?: Me }) {
   const w = useWords();
+  // An assistant has My practice, not the clients' list.
+  const clients = me?.role !== "VA";
   const list = useQuery<ScorecardCompany[]>({
     queryKey: ["scorecard-companies"],
     queryFn: () => api.get<ScorecardCompany[]>("/api/scorecard/companies/"),
+    enabled: clients,
   });
   const rows = list.data ?? [];
+  const mine = usePracticeScorecard();
   return (
     <>
       <PageHead title={w.Scorecards}
-        sub={`Choose a client to open their ${w.scorecard}.`} />
+        sub={`Your practice's own ${w.scorecard}, and each client's.`} />
+      {mine.data && (
+        <Card title="My practice">
+          <p className="small muted" style={{ marginTop: 0 }}>The practice's own numbers: leads, proposals, wins,
+            introductions, invoices, cash and {w.tasks}, worked out from this app or entered by hand.</p>
+          <Link className="btn small" to={`/companies/${mine.data.id}/scorecard`}
+            aria-label={`Open my practice's ${w.scorecard}`}>Open</Link>
+        </Card>
+      )}
       {list.isError && <Banner kind="bad">{(list.error as Error).message}</Banner>}
-      <Card>
+      {clients && <Card>
         {!list.data ? <p className="muted">Loading…</p> : rows.length === 0
           ? <Empty>No clients yet.</Empty> : (
             <table aria-label="Clients">
@@ -51,7 +64,7 @@ export function ScorecardCompanies() {
               </tbody>
             </table>
           )}
-      </Card>
+      </Card>}
     </>
   );
 }
