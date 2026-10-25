@@ -1,9 +1,10 @@
 """A stage's follow-up (pipeline part 3, owner, 2026-10-24; S3's "Enroll in
 X?").
 
-A stage carries at most one follow-up of two or three steps, each "template X
-from the library, N days after the previous step was sent" (the first, N days
-after the start). Moving someone into the stage asks "Start the <stage>
+A stage carries at most one follow-up of two or three steps: the first is
+drafted the moment it starts (owner, 2026-10-24: so Stop can be seen
+withdrawing it), and each after it is "template X from the library, N days
+after the previous step was sent", drafted by the daily job. Moving someone into the stage asks "Start the <stage>
 follow-up?", default No; a stage rule can start it without asking.
 
 **Each step is a draft.** On its day it goes into the Outbox and waits for
@@ -82,17 +83,19 @@ def offer(contact, stage) -> dict | None:
     return {"stage": str(stage.pk), "stage_label": stage.label, "steps": len(steps),
             "question": f"Start the {stage.label} follow-up?",
             "detail": ", then ".join(
-                f"“{s.template.name}” {s.days_after} days after "
-                f"{'the start' if s.position == 1 else 'the one before is sent'}" for s in steps)}
+                f"“{s.template.name}” when it starts" if s.position == 1 else
+                f"“{s.template.name}” {s.days_after} days after the one before is sent"
+                for s in steps)}
 
 
 # ------------------------------------------------------------- start and stop
 
 @transaction.atomic
 def start(contact, stage, *, actor=None, via="asked"):
-    """Start the stage's follow-up for a contact sitting in it. Starting one
-    already running changes nothing."""
-    from apps.crm.services import pipeline
+    """Start the stage's follow-up for a contact sitting in it, its first
+    step drafted into the Outbox now. Starting one already running changes
+    nothing."""
+    from apps.crm.services import pipeline, unsubscribe
 
     found = follow_up_of(stage)
     if found is None:
@@ -105,16 +108,20 @@ def start(contact, stage, *, actor=None, via="asked"):
     existing = running(contact).filter(follow_up=found).first()
     if existing is not None:
         return existing, False
-    first = FollowUpStep.all_objects.filter(follow_up=found).order_by("position").first()
+    if unsubscribe.suppressed_for_marketing(contact):
+        raise FollowUpRefused(f"{contact.first_name} has unsubscribed.")
+    first = FollowUpStep.all_objects.filter(follow_up=found).select_related(
+        "template").order_by("position").first()
     run = Run.all_objects.create(
         tenant_id=contact.tenant_id, follow_up=found, contact=contact, stage=stage,
-        started_by=actor, started_via=via,
-        next_on=_today(contact.tenant) + timedelta(days=first.days_after))
+        started_by=actor, started_via=via, next_on=_today(contact.tenant))
     AuditEvent.all_objects.create(
         tenant_id=contact.tenant_id, actor=actor, verb="follow_up.started",
         target_type="contact", target_id=contact.pk,
         payload={"stage": stage.label, "pipeline": stage.pipeline.name, "via": via,
                  "run": str(run.pk), "first_on": run.next_on.isoformat()})
+    draft_step(run, first)
+    run.refresh_from_db()
     return run, True
 
 
@@ -280,6 +287,7 @@ def line_for(run) -> dict:
 @transaction.atomic
 def save(stage, steps, *, actor=None, is_active=True):
     """Set a stage's follow-up: two or three steps of [{template, days_after}].
+    The first step is drafted when it starts, so its days are kept as 0.
     Changing it leaves runs already going on the steps they were drafted
     from, and reads the new ones for what is still to come."""
     from apps.crm.models import EmailTemplate
@@ -293,6 +301,9 @@ def save(stage, steps, *, actor=None, is_active=True):
             if _uuid(raw.get("template")) else None
         if template is None:
             raise FollowUpRefused(f"Choose a template for step {i}.")
+        if i == 1:
+            rows.append((i, template, 0))
+            continue
         try:
             days = int(raw.get("days_after"))
         except (TypeError, ValueError):
@@ -343,7 +354,7 @@ def _uuid(value) -> bool:
 #: added to the practice's library as ordinary editable templates.
 STARTERS = {
     "proposal_follow_up_sequence": {
-        "stage": "proposal_given", "days": (3, 7),
+        "stage": "proposal_given", "days": (0, 7),
         "templates": [
             ("Proposal follow-up 1", "Checking in on the proposal",
              "Hi {FirstName},\n\nI wanted to check that the proposal reached you and see "
@@ -354,7 +365,7 @@ STARTERS = {
              "the scope needs adjusting, tell me what would work better and I'll revise it."),
         ]},
     "new_partner_follow_up_sequence": {
-        "stage": "new_partner", "days": (5, 20),
+        "stage": "new_partner", "days": (0, 20),
         "templates": [
             ("New partner follow-up 1", "Good to connect",
              "Hi {FirstName},\n\nThanks again for making time to connect. I'd like to know "
@@ -378,7 +389,7 @@ def starters_for(pipeline) -> list[dict]:
         out.append({"key": key, "stage": stage, "added": FollowUp.all_objects.filter(
             stage=stage).exists(),
             "summary": f"When someone enters {stage.label}, offer a follow-up: "
-                       f"“{names[0]}” {days[0]} days after the start, then “{names[1]}” "
+                       f"“{names[0]}” drafted when it starts, then “{names[1]}” "
                        f"{days[1]} days after that one is sent."})
     return out
 

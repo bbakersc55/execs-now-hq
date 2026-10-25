@@ -118,6 +118,10 @@ describe("the invoices list", () => {
     // A draft shows no balance: nothing is owed on it yet.
     const draft = screen.getByRole("link", { name: "Draft" }).closest("tr") as HTMLElement;
     expect(within(draft).getAllByText("$6,800.00")).toHaveLength(1);
+    // At phone width each invoice is a card, each fact under its name.
+    expect(draft.closest("table")).toHaveClass("cards-on-phone");
+    expect([...draft.querySelectorAll("td[data-label]")].map((td) => td.getAttribute("data-label")))
+      .toEqual(["Client", "To", "Issued", "Due", "Total", "Balance", "Status"]);
   });
 
   it("filters by status and client, and downloads exactly what is listed", async () => {

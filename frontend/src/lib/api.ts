@@ -187,6 +187,10 @@ export interface Contact {
   discipline?: "" | "cmo" | "cfo" | "coo" | "chro" | "other";
   discipline_label?: string;
   specialties?: string[];
+  /** How an introduction speaks of them: "he", "she", or "" (they). */
+  pronouns?: "" | "he" | "she";
+  /** "How I'd introduce them": a line or two in the practice's words. */
+  intro_blurb?: string;
   pipeline_positions: PipelinePosition[];
   source: string;
   background: string;

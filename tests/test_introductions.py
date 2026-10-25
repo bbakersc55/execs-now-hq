@@ -50,7 +50,8 @@ def cast(seeded_tenant, ff, types):
     t = seeded_tenant
     acme = CompanyFactory(tenant=t, name="Acme")
     maya = person(t, "Maya", "Chen", owner=ff.user, partner=True, types=types,
-                  discipline="cmo", specialties=["Go to market", "Social media ads"])
+                  discipline="cmo", specialties=["Go to market", "Social media ads"],
+                  pronouns="she", intro_blurb="Maya has launched more products than anyone I know.")
     ravi = person(t, "Ravi", "Patel", owner=ff.user, partner=True, types=types,
                   discipline="cfo", specialties=["Cash flow", "Fundraising"])
     dana = person(t, "Dana", "Reyes", owner=ff.user, company=acme)
@@ -78,15 +79,22 @@ def test_an_introduction_is_recorded_and_drafted_to_both_for_approval(cast, ff, 
     assert set(drafts) == {cast["maya"].pk, cast["dana"].pk}
     assert all(m.state == OutboxMessage.State.PENDING_APPROVAL for m in drafts.values())
     to_maya, to_dana = drafts[cast["maya"].pk], drafts[cast["dana"].pk]
-    assert to_maya.subject == "Introducing Dana Reyes"
-    assert "Hi Maya," in to_maya.body_text and "They're with Acme." in to_maya.body_text
-    assert "Dana is launching a new product line" in to_maya.body_text
-    # Dana has no discipline or specialties: those lines are left out.
-    assert "work as" not in to_maya.body_text and "Their focus" not in to_maya.body_text
-    assert to_dana.subject == "Introducing Maya Chen"
-    assert "They work as a Fractional CMO." in to_dana.body_text
-    assert "Their focus: Go to market, Social media ads." in to_dana.body_text
-    assert "with" not in to_dana.body_text.split("Their focus")[0]   # Maya has no company
+    # Dana's pronouns aren't set: they. Maya's are she, with her blurb.
+    assert to_maya.subject == "Someone I'd like you to meet: Dana Reyes"
+    body = to_maya.body_text
+    assert "Hi Maya," in body and "really enjoy knowing them." in body
+    assert "You'll find them at Acme." in body
+    assert "Dana is launching a new product line" in body
+    assert "so they'll be glad to hear from you" in body
+    # Dana has no specialties and no blurb: those lines are left out.
+    assert "work focuses on" not in body
+    assert to_dana.subject == "Someone I'd like you to meet: Maya Chen"
+    body = to_dana.body_text
+    assert "really enjoy knowing her." in body
+    assert "Maya has launched more products than anyone I know." in body
+    assert "Her work focuses on Go to market, Social media ads." in body   # capitalised
+    assert "so she'll be glad to hear from you" in body
+    assert "You'll find" not in body                                      # Maya has no company
     # Activity, on both contacts.
     assert AuditEvent.all_objects.filter(verb="introduction.made").count() == 2
 
@@ -219,3 +227,41 @@ def test_another_practice_never_sees_or_reaches_them(cast, ff, api):
     assert b.get("/api/contacts/specialties/").json() == []
     assert b.get("/api/contacts/?specialty=social").json() == []
     assert b.get("/api/contacts/search/?q=fundraising").json()["contacts"] == []
+
+
+def test_pronouns_and_how_id_introduce_them_are_set_on_the_contact_page(cast, ff, api):
+    """Bryan, 2026-10-24: every contact has pronouns (he, she, or unset, which
+    reads as they) and "How I'd introduce them", on Activity when changed."""
+    url = f"/api/contacts/{cast['dana'].pk}/"
+    saved = patch(api.as_(ff), url, {"pronouns": "he", "intro_blurb": "  Dana builds teams.  "})
+    assert saved.status_code == 200
+    assert (saved.json()["pronouns"], saved.json()["intro_blurb"]) == ("he", "Dana builds teams.")
+    assert AuditEvent.all_objects.filter(verb="contact.introduction_words_changed").count() == 1
+    assert patch(api.as_(ff), url, {"pronouns": "it"}).status_code == 400
+    assert patch(api.as_(ff), url, {"intro_blurb": "x" * 601}).status_code == 400
+    # Unset again reads as they.
+    assert patch(api.as_(ff), url, {"pronouns": ""}).json()["pronouns"] == ""
+
+
+def test_the_pronoun_and_blurb_fields_work_for_both_people(cast):
+    """{HeShe} {HimHer} {HisHer} {Blurb} {Specialties} for the person written
+    to, the Other* ones for who they're meeting; a pronoun that starts a
+    sentence gets its capital; a line whose fact is missing goes."""
+    from apps.crm.services import templates
+
+    maya, dana = cast["maya"], cast["dana"]
+    text = ("{HeShe} said yes. Ask {HimHer} about {HisHer} plans.\n{Blurb}\n"
+            "Specialties: {Specialties}\n{OtherHeShe}'ll call; {OtherHisHer} card: {OtherBlurb}")
+    values = introductions._values(maya, dana, Referral(note=""), None)
+    assert templates.render(text, values) == (
+        "She said yes. Ask her about her plans.\n"
+        "Maya has launched more products than anyone I know.\n"
+        "Specialties: Go to market, Social media ads")         # Dana has no blurb: line gone
+    dana.pronouns, dana.intro_blurb = "he", "Dana builds teams."
+    values = introductions._values(maya, dana, Referral(note=""), None)
+    assert templates.render("{OtherHeShe}'ll call; {OtherHisHer} card: {OtherBlurb}", values) == \
+        "He'll call; his card: Dana builds teams."
+    # Unset reads as they; outside an introduction the Other* pronouns are they.
+    plain = templates.values_for(dana.__class__(first_name="Sam"), tenant=cast["t"])
+    assert (plain["HeShe"], plain["HimHer"], plain["HisHer"]) == ("they", "them", "their")
+    assert templates.unknown_fields(text) == []

@@ -177,6 +177,9 @@ function StageCard({ stage, pipeline, stages, rules, first, last, onUp, onDown, 
 }) {
   const [label, setLabel] = useState(stage.label);
   const [removing, setRemoving] = useState(false);
+  // A refusal shows on the card, beside its Remove: the page's banner is
+  // out of sight from a card lower down.
+  const [refusal, setRefusal] = useState("");
   const rename = useMutation({
     mutationFn: () => api.patch(`/api/pipeline-stages/${stage.id}/`, { label: label.trim() }),
     onSuccess: () => { onNote({ kind: "ok", text: `Renamed to ${label.trim()}.` }); onChanged(); },
@@ -185,8 +188,16 @@ function StageCard({ stage, pipeline, stages, rules, first, last, onUp, onDown, 
   const remove = useMutation({
     mutationFn: () => api.del(`/api/pipeline-stages/${stage.id}/`),
     onSuccess: () => { onNote({ kind: "ok", text: `${stage.label} is removed, with its rules.` }); onChanged(); },
-    onError: (e: Error) => { setRemoving(false); onNote({ kind: "bad", text: e.message }); },
+    onError: (e: Error) => { setRemoving(false); setRefusal(e.message); },
   });
+  const askRemove = () => {
+    const held = stage.contacts ?? 0;
+    if (held > 0) {
+      setRefusal(`${stage.label} still holds ${held} ${held === 1 ? "contact" : "contacts"}. Move them to another stage first.`);
+      return;
+    }
+    setRefusal(""); setRemoving(true);
+  };
   const save = () => { if (label.trim() && label.trim() !== stage.label) rename.mutate(); };
   const meaning = { won: "Won", lost: "Lost", parked: "Parked", entry: "Where people start" } as Record<string, string>;
   return (
@@ -207,10 +218,11 @@ function StageCard({ stage, pipeline, stages, rules, first, last, onUp, onDown, 
               <button className="ghost small" onClick={() => setRemoving(false)}>Keep</button>
             </>
           ) : (
-            <button className="ghost small" aria-label={`Remove ${stage.label}`} onClick={() => setRemoving(true)}>Remove</button>
+            <button className="ghost small" aria-label={`Remove ${stage.label}`} onClick={askRemove}>Remove</button>
           )}
         </span>
       </div>
+      {refusal && <div role="alert"><Banner kind="bad">{refusal}</Banner></div>}
       <RuleList rules={rules} onChanged={onChanged} onNote={onNote} />
       <RuleForm pipeline={pipeline} stages={stages} stage={stage} onSaved={onChanged} onNote={onNote} />
       <FollowUpCard stage={stage} onNote={onNote} />
@@ -255,7 +267,7 @@ function FollowUpCard({ stage, onNote }: {
   const f = current.data?.follow_up ?? null;
   const open = () => {
     setRows(f ? f.steps.map((s) => ({ template: s.template, days_after: s.days_after }))
-      : [{ template: "", days_after: 3 }, { template: "", days_after: 7 }]);
+      : [{ template: "", days_after: 0 }, { template: "", days_after: 7 }]);
     setEditing(true);
   };
   return (
@@ -271,7 +283,7 @@ function FollowUpCard({ stage, onNote }: {
       {f && !editing && (
         <ol className="follow-up-steps">
           {f.steps.map((s) => (
-            <li key={s.position}>“{s.template_name}”, {s.days_after} days after {s.position === 1 ? "it starts" : "the one before is sent"}</li>
+            <li key={s.position}>“{s.template_name}”, {s.position === 1 ? "drafted when it starts" : `${s.days_after} days after the one before is sent`}</li>
           ))}
         </ol>
       )}
@@ -285,9 +297,11 @@ function FollowUpCard({ stage, onNote }: {
                 <option value="">Choose a template…</option>
                 {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
-              <input type="number" min={1} aria-label={`Step ${i + 1} days after`} value={r.days_after}
-                onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, days_after: Number(e.target.value) } : x)))} />
-              <span className="small muted">days after {i === 0 ? "it starts" : "step " + i + " is sent"}</span>
+              {i === 0 ? <span className="small muted">drafted into the Outbox when it starts</span> : <>
+                <input type="number" min={1} aria-label={`Step ${i + 1} days after`} value={r.days_after}
+                  onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, days_after: Number(e.target.value) } : x)))} />
+                <span className="small muted">days after step {i} is sent</span>
+              </>}
               {rows.length > 2 && <button className="ghost small" aria-label={`Remove step ${i + 1}`}
                 onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button>}
             </div>

@@ -149,17 +149,17 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
           && " Free one, or raise the seat count, before granting another."}
       </p>
       {a.people.length === 0 ? <Empty>Nobody from this company can sign in yet.</Empty> : (
-        <div className="table-fit"><table>
+        <div className="table-fit"><table className="cards-on-phone">
           <thead><tr><th>Person</th><th>Role</th><th></th></tr></thead>
           <tbody>
             {a.people.map((p) => (
               <tr key={p.id}>
-                <td>{p.name}<div className="when">{p.email}</div>
+                <td className="card-title">{p.name}<div className="when">{p.email}</div>
                   {/* P7-10: their level, where "Client team member" used to be all
                       that was said. Set on the Teams card below. */}
                   <div className="when">{levelLine(p)}</div>
                   <div className="when">{invitationLine(p)}</div></td>
-                <td>
+                <td data-label="Role">
                   {/* Shows their level, not "Client team member": the level
                       itself is set on the Teams card below. */}
                   <select aria-label={`Role for ${p.name}`} value={p.role} className="role-pick"
@@ -180,7 +180,7 @@ export function PortalAccessCard({ me, company }: { me: Me; company: Company }) 
                     ))}
                   </select>
                 </td>
-                <td><div className="access-actions">
+                <td className="card-actions"><div className="access-actions">
                   {/* FR-3.42 — see exactly what they see; no email while acting. */}
                   {!me.acting && <div className="access-act"><ActAsButton membership={p.id} name={p.name} /></div>}
                   {/* A fresh link for the same access: nobody is revoked to get one. */}

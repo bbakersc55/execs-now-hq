@@ -42,6 +42,17 @@ FIELDS = (
     ("OtherDiscipline", "Their discipline, like Fractional CMO (introductions)"),
     ("OtherSpecialties", "Their specialties (introductions)"),
     ("IntroNote", "Why you're introducing them (introductions)"),
+    # How each person is spoken of (owner, 2026-10-24): pronouns from the
+    # contact's page (unset reads as they), their specialties, and "How I'd
+    # introduce them". A pronoun that starts a sentence gets its capital.
+    ("HeShe", "He, she or they"), ("HimHer", "Him, her or them"),
+    ("HisHer", "His, her or their"),
+    ("Specialties", "Their specialties"),
+    ("Blurb", "How you'd introduce them (their contact page)"),
+    ("OtherHeShe", "He, she or they, for who they're meeting (introductions)"),
+    ("OtherHimHer", "Him, her or them, for who they're meeting (introductions)"),
+    ("OtherHisHer", "His, her or their, for who they're meeting (introductions)"),
+    ("OtherBlurb", "How you'd introduce who they're meeting (introductions)"),
 )
 NAMES = tuple(name for name, _ in FIELDS)
 _FIELD = re.compile(r"\{([A-Za-z][A-Za-z ]*)\}")
@@ -57,6 +68,8 @@ ONLY_IN = {
     "OtherName": "only in introductions", "OtherFirstName": "only in introductions",
     "OtherCompany": "only in introductions", "OtherDiscipline": "only in introductions",
     "OtherSpecialties": "only in introductions", "IntroNote": "only in introductions",
+    "OtherHeShe": "only in introductions", "OtherHimHer": "only in introductions",
+    "OtherHisHer": "only in introductions", "OtherBlurb": "only in introductions",
 }
 
 #: What a preview shows when no one is chosen: a visible placeholder.
@@ -69,7 +82,22 @@ PLACEHOLDERS = {
     "OtherName": "[Who they're meeting]", "OtherFirstName": "[Their first name]",
     "OtherCompany": "[Their company]", "OtherDiscipline": "[Their discipline]",
     "OtherSpecialties": "[Their specialties]", "IntroNote": "[Why you're introducing them]",
+    "HeShe": "[he/she/they]", "HimHer": "[him/her/them]", "HisHer": "[his/her/their]",
+    "Specialties": "[Their specialties]", "Blurb": "[How you'd introduce them]",
+    "OtherHeShe": "[he/she/they]", "OtherHimHer": "[him/her/them]",
+    "OtherHisHer": "[his/her/their]", "OtherBlurb": "[How you'd introduce who they're meeting]",
 }
+
+#: A contact's pronouns as (HeShe, HimHer, HisHer); unset reads as they.
+PRONOUNS = {"he": ("he", "him", "his"), "she": ("she", "her", "her"),
+            "": ("they", "them", "their")}
+PRONOUN_FIELDS = ("HeShe", "HimHer", "HisHer", "OtherHeShe", "OtherHimHer", "OtherHisHer")
+
+
+def pronoun_values(contact, prefix="") -> dict:
+    he, him, his = PRONOUNS.get(getattr(contact, "pronouns", "") or "", PRONOUNS[""]) \
+        if contact is not None else PRONOUNS[""]
+    return {f"{prefix}HeShe": he, f"{prefix}HimHer": him, f"{prefix}HisHer": his}
 
 
 class TemplateRefused(Exception):
@@ -104,6 +132,10 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
         "FlyerNote": "",
         "OtherName": "", "OtherFirstName": "", "OtherCompany": "", "OtherDiscipline": "",
         "OtherSpecialties": "", "IntroNote": "",
+        **pronoun_values(contact),
+        "Specialties": ", ".join(contact.specialties or []) if contact else "",
+        "Blurb": (contact.intro_blurb or "").strip() if contact else "",
+        **pronoun_values(None, "Other"), "OtherBlurb": "",
         **extra,
     }
 
@@ -112,7 +144,8 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
 #: "…arrangement: {FeeTerms}.", "{FlyerNote}", "Pay here: {PayLink}"). Any other
 #: field with no value reads as blank where it stands, and its line stays.
 LINE_FIELDS = ("PracticeNews", "FeeTerms", "FlyerNote", "PayLink", "OtherCompany",
-               "OtherDiscipline", "OtherSpecialties", "IntroNote")
+               "OtherDiscipline", "OtherSpecialties", "IntroNote", "Specialties", "Blurb",
+               "OtherBlurb")
 
 
 def render(text: str, values: dict, *, fallback: str = DEFAULT_FALLBACK,
@@ -130,12 +163,26 @@ def render(text: str, values: dict, *, fallback: str = DEFAULT_FALLBACK,
         got = values.get(name, "")
         return fallback if name == "FirstName" and not got else got
 
+    def merge(m, line):
+        name = m.group(1)
+        if name not in NAMES:
+            return m.group(0)
+        got = value(name)
+        if name in PRONOUN_FIELDS and got:
+            # "She'd be glad…": a pronoun that starts a sentence is capitalised.
+            before = line[:m.start()].rstrip()
+            if not before or before[-1] in ".!?":
+                got = got[0].upper() + got[1:]
+        return got
+
     def line_of(line, dropping):
         known = [f for f in _FIELD.findall(line) if f in NAMES]
-        merged = _FIELD.sub(lambda m: value(m.group(1)) if m.group(1) in NAMES
-                            else m.group(0), line)
-        if (dropping and known and all(f in LINE_FIELDS for f in known)
-                and not any(value(f) for f in known)):
+        merged = _FIELD.sub(lambda m: merge(m, line), line)
+        # A pronoun always has a value but says nothing on its own, so it
+        # doesn't hold open a line whose facts are missing.
+        facts = [f for f in known if f not in PRONOUN_FIELDS]
+        if (dropping and facts and all(f in LINE_FIELDS for f in facts)
+                and not any(value(f) for f in facts)):
             return None
         return merged
 

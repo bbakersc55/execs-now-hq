@@ -65,7 +65,8 @@ export function AddContact({ me, onDone, existing }: {
 
   const stages = pipelines.data?.find((p) => p.id === pipelineId)?.stages ?? [];
 
-  const staff = useQuery<{ id: string; full_name: string; email: string }[]>({
+  // The owner is a person (their user), not their place in the practice.
+  const staff = useQuery<{ id: string; user: string; full_name: string; email: string; is_active: boolean }[]>({
     queryKey: ["staff"], queryFn: () => api.get("/api/staff/"),
     enabled: editing && me.role === "FF",
   });
@@ -315,8 +316,8 @@ export function AddContact({ me, onDone, existing }: {
             <select value={form.owner} aria-label="Owner"
               onChange={(e) => setForm({ ...form, owner: e.target.value })}>
               <option value="">— unassigned —</option>
-              {(staff.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
+              {(staff.data ?? []).filter((u) => u.is_active || u.user === form.owner).map((u) => (
+                <option key={u.id} value={u.user}>{u.full_name || u.email}</option>
               ))}
             </select>
           </Field>

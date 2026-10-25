@@ -256,12 +256,12 @@ export function ClientTeamsCard({ me, company }: {
               A client owner’s own settings are set by <PracticeName />.</>
           : <>To check what someone sees, use “View portal as…” beside their name above.</>}
       </p>
-      <table aria-label="Teams">
+      <table aria-label="Teams" className="cards-on-phone">
         <thead><tr><th>Team</th><th>Holds</th><th>People</th><th></th></tr></thead>
         <tbody>
           {data.teams.map((team) => (
             <tr key={team.id}>
-              <td>
+              <td className="card-title">
                 {renaming?.id === team.id ? (
                   <form onSubmit={(e) => { e.preventDefault(); rename.mutate(renaming); }}>
                     <input aria-label={`New name for ${team.name}`} value={renaming.name}
@@ -275,10 +275,10 @@ export function ClientTeamsCard({ me, company }: {
                   <>{team.name}{team.is_default && <span className="muted"> · the default</span>}</>
                 )}
               </td>
-              <td className="small">{w.count(team.projects, "project")},{" "}
+              <td data-label="Holds" className="small">{w.count(team.projects, "project")},{" "}
                 {team.open_tasks} open {team.open_tasks === 1 ? w.task : w.tasks}</td>
-              <td className="small">{team.people.length}</td>
-              <td>
+              <td data-label="People" className="small">{team.people.length}</td>
+              <td className="card-actions">
                 <button className="ghost small" aria-label={`Rename ${team.name}`}
                   onClick={() => setRenaming({ id: team.id, name: team.name })}>Rename</button>{" "}
                 {!team.is_default && (

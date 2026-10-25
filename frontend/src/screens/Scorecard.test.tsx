@@ -530,6 +530,22 @@ describe("catching up on any past period (Bryan, 2026-10-23)", () => {
     await waitFor(() => expect(fetchMock.calls.some((c) => c.url.includes("from=2025-11-01"))).toBe(true));
   });
 
+  it("the cadence menu offers only the cadences there is something to enter in", async () => {
+    // Bryan, 2026-10-24: monthly and quarterly showed blank on a scorecard
+    // with only weekly KPIs; they aren't offered there now.
+    const user = userEvent.setup();
+    const weekly = { cadence: "weekly", cadences: ["weekly", "monthly"], from: null,
+      earliest: "2024-10-21", choices: [], periods: [{ start: "2026-10-12", label: "Oct 12" }],
+      lines: [{ ...tile({ id: "k1", name: "Guest rating" }), membership: null, person: "",
+        cells: [{ period_start: "2026-10-12", value: null }] }] };
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/bulk/": weekly, "GET /api/scorecard/entry/": FORM }));
+    renderRoute(<ScorecardEntry me={aMe({ role: "ECC", client_company: "c1" })} />);
+    await user.click(await screen.findByRole("button", { name: "Catch up on several weeks" }));
+    const menu = await screen.findByLabelText("Cadence");
+    await waitFor(() => expect(within(menu).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["Weekly", "Monthly"]));
+  });
+
   it("rows pasted from a spreadsheet fill the table, by KPI name and by period heading", async () => {
     const user = userEvent.setup();
     const sheet = { cadence: "weekly", from: null, earliest: "2024-10-21", choices: [],

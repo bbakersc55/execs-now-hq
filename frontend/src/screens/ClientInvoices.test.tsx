@@ -44,6 +44,11 @@ describe("paying an invoice in the portal (P4 part 2)", () => {
     expect(screen.queryByRole("button", { name: "Pay invoice INV-0003" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Pay invoice INV-0004" })).toBeNull();
     expect(screen.getByText("Payment being checked")).toBeInTheDocument();
+    // At phone width each invoice is a card, each fact under its name.
+    const row = screen.getByText("INV-0007").closest("tr") as HTMLElement;
+    expect(row.closest("table")).toHaveClass("cards-on-phone");
+    expect([...row.querySelectorAll("td[data-label]")].map((td) => td.getAttribute("data-label")))
+      .toEqual(["Issued", "Due", "Total", "Still owed", "Status"]);
   });
 
   it("mounts NMI's fields with the practice's key, says Test mode, and pays with the token",

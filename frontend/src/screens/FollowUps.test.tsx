@@ -16,7 +16,7 @@ const DANA = aContact({ id: "dana", first_name: "Dana", last_name: "Reyes",
   pipeline_positions: [{ ...aContact().pipeline_positions[0], pipeline: "p-sales" }] });
 const OFFER = { stage: QUAL.id, stage_label: QUAL.label, steps: 2,
   question: `Start the ${QUAL.label} follow-up?`,
-  detail: "“Proposal 1” 3 days after the start, then “Proposal 2” 7 days after the one before is sent" };
+  detail: "“Proposal 1” when it starts, then “Proposal 2” 7 days after the one before is sent" };
 
 describe("the move's question", () => {
   beforeEach(() => vi.unstubAllGlobals());
@@ -87,8 +87,12 @@ describe("the follow-up on a stage card", () => {
     await user.click(await screen.findByRole("button", { name: "Set up the Proposal Given follow-up" }));
     await user.selectOptions(await screen.findByLabelText("Step 1 template"), "t1");
     await user.selectOptions(screen.getByLabelText("Step 2 template"), "t2");
+    // Step 1 is drafted when it starts: it has no days of its own.
+    expect(screen.queryByLabelText("Step 1 days after")).toBeNull();
+    expect(screen.getByText("drafted into the Outbox when it starts")).toBeInTheDocument();
+    expect(screen.getByLabelText("Step 2 days after")).toHaveValue(7);
     await user.click(screen.getByRole("button", { name: "Save follow-up" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PUT")?.body).toEqual({
-      steps: [{ template: "t1", days_after: 3 }, { template: "t2", days_after: 7 }], is_active: true }));
+      steps: [{ template: "t1", days_after: 0 }, { template: "t2", days_after: 7 }], is_active: true }));
   });
 });

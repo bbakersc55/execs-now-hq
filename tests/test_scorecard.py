@@ -1152,3 +1152,42 @@ def test_the_pickers_reach_january_2025_whatever_today_is_and_step_a_table_at_a_
     assert january["earlier"] is None or january["earlier"] >= latest["earliest"]
     form = client.get(f"{B}entry/?company={sc['company'].pk}").json()
     assert "January 2025" in {c["month"] for c in form["choices"]}
+
+
+@pytest.mark.django_db
+def test_earlier_keeps_the_rows_for_monthly_and_quarterly_and_the_menu_offers_what_there_is(sc):
+    """Bryan, 2026-10-24: Earlier showed blank for monthly and quarterly. The
+    earlier table carries the same rows, a cell per earlier period, and the
+    cadence menu offers only the cadences that have something to enter."""
+    client = sc["api"].as_(sc["practice"]["ff"])
+    base = f"{B}bulk/?company={sc['company'].pk}&count=6"
+    before = client.get(f"{base}&cadence=weekly").json()["cadences"]
+    assert "monthly" not in before and "quarterly" not in before
+    with tenant_context(sc["tenant"].pk):
+        for name, cadence in (("Monthly revenue", "monthly"), ("Quarterly NPS", "quarterly")):
+            setup.create_kpi(sc["card"], {"name": name, "kind": "number", "cadence": cadence,
+                                          "page": str(sc["pages"]["weekly"].pk)},
+                             sc["practice"]["ff"].user)
+    for cadence, name in (("monthly", "Monthly revenue"), ("quarterly", "Quarterly NPS")):
+        latest = client.get(f"{base}&cadence={cadence}").json()
+        assert {"weekly", cadence} <= set(latest["cadences"])
+        step = latest["earlier"]
+        assert step and step in {c["start"] for c in latest["choices"]}
+        earlier = client.get(f"{base}&cadence={cadence}&from={step}").json()
+        assert earlier["periods"][0]["start"] == step
+        # Earlier, though never before the earliest offered (a quarterly
+        # table may overlap the latest one when it reaches January 2025).
+        assert earlier["periods"][0]["start"] < latest["periods"][0]["start"]
+        assert len(earlier["periods"]) == 6
+        line = next(l for l in earlier["lines"] if l["name"] == name)
+        assert [c["period_start"] for c in line["cells"]] == [p["start"] for p in earlier["periods"]]
+
+
+@pytest.mark.django_db
+def test_a_computed_kpi_is_never_listed_as_waiting(sc):
+    """Bryan, 2026-10-24: Enter readings' side panel listed Revenue Per Order
+    as "Waiting". A computed KPI has no reading to wait for."""
+    computed_world(sc)
+    form = sc["api"].as_(sc["practice"]["ff"]).get(f"{B}entry/?company={sc['company'].pk}").json()
+    names = [p["name"] for p in form["progress"]]
+    assert "Revenue" in names and "Revenue per booking" not in names

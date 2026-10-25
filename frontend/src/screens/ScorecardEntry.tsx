@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Banner } from "../components/ui";
@@ -282,6 +282,10 @@ export function pasteInto(s: BulkSheet, at: { line: number; period: number }, te
 }
 
 /** Periods across, KPIs down, for catching up; the same rules as the form. */
+const CADENCES: { value: Cadence; label: string }[] = [
+  { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }];
+
 function BulkTable({ companyId }: { companyId: string }) {
   const qc = useQueryClient();
   const [cadence, setCadence] = useState<Cadence>("weekly");
@@ -312,6 +316,14 @@ function BulkTable({ companyId }: { companyId: string }) {
     },
   });
   const s = sheet.data;
+  // The menu offers the cadences this person has something to enter in;
+  // when the one showing has nothing, the first that has.
+  const offered = s?.cadences ?? CADENCES.map((c) => c.value);
+  useEffect(() => {
+    if (s?.cadences?.length && !s.cadences.includes(cadence)) {
+      setCadence(s.cadences[0]); setFrom(""); setValues({});
+    }
+  }, [s, cadence]);
   return (
     <section className="sc-tile" aria-label="Catch up">
       <div className="sc-entry-title-row">
@@ -319,8 +331,9 @@ function BulkTable({ companyId }: { companyId: string }) {
         <div className="sc-controls">
           <select aria-label="Cadence" className="sc-select" value={cadence}
             onChange={(e) => { setCadence(e.target.value as Cadence); setFrom(""); setValues({}); }}>
-            <option value="daily">Daily</option><option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option>
+            {CADENCES.filter((c) => c.value === cadence || offered.includes(c.value)).map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
           </select>
           <label htmlFor="sc-bulk-from" className="sc-muted">From</label>
           {cadence === "daily" ? (

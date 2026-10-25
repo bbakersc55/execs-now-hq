@@ -187,6 +187,8 @@ export interface EntryForm {
 
 export interface BulkSheet {
   cadence: Cadence;
+  /** The cadences this person has something to enter in. */
+  cadences?: Cadence[];
   periods: { start: string; label: string }[];
   lines: (KpiDef & { membership: string | null; person: string;
     cells: { period_start: string; value: number | null }[] })[];

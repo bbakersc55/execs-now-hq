@@ -515,3 +515,28 @@ def test_a_stage_mapping_without_a_pipeline_is_a_row_error(seeded_tenant, sales,
         )
         assert batch.counts["error"] == 1
         assert "no pipeline was named" in batch.rows.first().error_text
+
+
+@pytest.mark.django_db
+def test_a_stage_people_have_moved_through_is_refused_in_words_not_a_500(
+    seeded_tenant, sales, stages, ff, api
+):
+    """Its history keeps it (`stage_change` protects it): say so."""
+    contact = _contact(seeded_tenant)
+    pipeline.change_stage(contact, stages["qualified"], actor=ff.user)
+    pipeline.change_stage(contact, stages["prospecting"], actor=ff.user)
+    response = api.as_(ff).delete(f"/api/pipeline-stages/{stages['qualified'].pk}/")
+    assert response.status_code == 400
+    assert "history keeps it" in str(response.json())
+    assert PipelineStage.all_objects.filter(pk=stages["qualified"].pk).exists()
+
+
+@pytest.mark.django_db
+def test_removing_an_unused_stage_is_recorded(seeded_tenant, sales, ff, api):
+    from apps.tenancy.models import AuditEvent
+
+    spare = PipelineStageFactory(tenant=seeded_tenant, pipeline=sales, code="spare",
+                                 label="Spare", position=99)
+    assert api.as_(ff).delete(f"/api/pipeline-stages/{spare.pk}/").status_code == 204
+    event = AuditEvent.all_objects.get(verb="pipeline.stage_removed")
+    assert event.payload == {"stage": "Spare"}

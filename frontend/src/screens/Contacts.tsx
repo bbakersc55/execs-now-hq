@@ -259,7 +259,7 @@ export function Contacts({ me }: { me: Me }) {
             No contacts{active ? " match that search" : " yet — add one above, or import a CSV"}.
           </Empty>
         ) : (
-          <table className="records">
+          <table className="records cards-on-phone">
             <thead>
               <tr>
                 <th></th>
@@ -274,14 +274,14 @@ export function Contacts({ me }: { me: Me }) {
             <tbody>
               {shown.map((c) => (
                 <tr key={c.id} {...rowLink(`/contacts/${c.id}`)}>
-                  <td>
+                  <td className="card-pick">
                     <input type="checkbox" checked={picked.includes(c.id)}
                       aria-label={`Select ${c.first_name} ${c.last_name}`}
                       onChange={(e) => setPicked(e.target.checked
                         ? [...picked, c.id]
                         : picked.filter((x) => x !== c.id))} />
                   </td>
-                  <td>
+                  <td className="card-title">
                     <span className="named">
                       <Avatar name={`${c.first_name} ${c.last_name}`} />
                       {/* The row opens the record and so does the name, which
@@ -290,8 +290,8 @@ export function Contacts({ me }: { me: Me }) {
                       <Link className="rowname" to={`/contacts/${c.id}`}>{c.first_name} {c.last_name}</Link>
                     </span>
                   </td>
-                  <td className="muted">{c.title || "—"}</td>
-                  <td className="small">
+                  <td data-label="Title" className="muted">{c.title || "—"}</td>
+                  <td data-label="Stage" className="small">
                     {(c.pipeline_positions ?? []).length === 0 ? "—" : c.pipeline_positions.map((p) => (
                       <div key={p.pipeline}>
                         <Pill>{p.stage_label}</Pill>{" "}
@@ -299,9 +299,9 @@ export function Contacts({ me }: { me: Me }) {
                       </div>
                     ))}
                   </td>
-                  <td>{c.type_codes.map((t) => <Pill key={t}>{t.replace(/_/g, " ")}</Pill>)}</td>
-                  <td className="mono">{emailOf(c)}</td>
-                  <td className="rowactions">
+                  <td data-label="Types">{c.type_codes.map((t) => <Pill key={t}>{t.replace(/_/g, " ")}</Pill>)}</td>
+                  <td data-label="Email" className="mono">{emailOf(c)}</td>
+                  <td className="rowactions card-actions">
                     <button className="small" onClick={() => setPeek(c)}
                       aria-label={`Peek at ${c.first_name} ${c.last_name}`}>
                       Peek

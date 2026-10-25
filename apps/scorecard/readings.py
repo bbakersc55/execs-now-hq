@@ -180,12 +180,15 @@ def default_day(reader, scorecard, today: date) -> date:
 
 def progress(reader, scorecard, *, starts_for_week):
     """"This week, across the company": which KPIs are in, and whose they
-    are. Only KPIs the reader sees, and never a colleague's value."""
+    are. Only KPIs the reader sees, and never a colleague's value. A
+    computed KPI has no reading to wait for, so it isn't listed."""
     from .board import visible_pages
 
     out = []
     for _, kpis in visible_pages(reader, scorecard):
         for kpi in kpis:
+            if kpi.is_computed:
+                continue
             start = P.start_of(starts_for_week, kpi.cadence, scorecard.week_start)
             has = KpiReading.objects.filter(kpi=kpi, period_start=start)
             if kpi.per_person:
@@ -307,8 +310,8 @@ def bulk(reader, scorecard, cadence, count, today, first=None) -> dict:
             start = P.next_start(start, cadence)
     else:
         starts = P.last_n(today, cadence, count, week_start)
-    entries = [(p, k, r) for p, k, r in _visible_entries(reader, scorecard)
-               if k.cadence == cadence]
+    every = _visible_entries(reader, scorecard)
+    entries = [(p, k, r) for p, k, r in every if k.cadence == cadence]
     found = {(r.kpi_id, r.period_start, r.membership_id): r for r in
              KpiReading.objects.filter(kpi_id__in=[k.pk for _, k, _ in entries],
                                        period_start__in=starts)}
@@ -341,7 +344,11 @@ def bulk(reader, scorecard, cadence, count, today, first=None) -> dict:
         for _ in range(count):
             later = P.next_start(later, cadence)
         later = min(later, latest_first)
-    return {"cadence": cadence, "periods": [{"start": s.isoformat(),
+    has = {k.cadence for _, k, _ in every}
+    return {"cadence": cadence,
+            # The cadences this person has something to enter in, for the menu.
+            "cadences": [c for c in Kpi.Cadence.values if c in has],
+            "periods": [{"start": s.isoformat(),
                                               "label": P.short_label(s, cadence)}
                                              for s in starts], "lines": lines,
             "from": starts[0].isoformat() if starts else None,

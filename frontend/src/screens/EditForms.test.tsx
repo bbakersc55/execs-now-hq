@@ -31,7 +31,9 @@ describe("Edit contact", () => {
       "/api/companies/": [aCompany({ id: "co-1", name: "Acme Holdings" })],
       "/api/contact-types/": CONTACT_TYPES,
       "/api/pipelines/": PIPELINES,
-      "/api/staff/": [{ id: "u-cf", full_name: "Dana CF", email: "cf@x.invalid" }],
+      // A membership's own id differs from its person's: the owner is the person.
+      "/api/staff/": [{ id: "m-cf", user: "u-cf", full_name: "Dana CF", email: "cf@x.invalid", is_active: true },
+        { id: "m-gone", user: "u-gone", full_name: "Gone VA", email: "gone@x.invalid", is_active: false }],
       "PATCH /api/contacts/dana/": (body: unknown) => ({ status: 200, body }),
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -111,6 +113,8 @@ describe("Edit contact", () => {
 
     await waitFor(() => expect(patched(fetchMock)).toBeTruthy());
     expect(patched(fetchMock)?.body).toMatchObject({ owner: "u-cf" });
+    // Someone no longer at the practice isn't offered.
+    expect(screen.queryByRole("option", { name: "Gone VA" })).not.toBeInTheDocument();
   });
 
   it("hides the owner field from a VA and never sends one", async () => {

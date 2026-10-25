@@ -123,6 +123,10 @@ class ContactPhoneSerializer(serializers.ModelSerializer):
         fields = ["id", "number", "is_primary"]
 
 
+#: "How I'd introduce them": a line or two.
+INTRO_BLURB_LONGEST = 600
+
+
 class ContactSerializer(serializers.ModelSerializer):
     """FR-1.1/1.2 — reads flat, writes nested.
 
@@ -212,12 +216,19 @@ class ContactSerializer(serializers.ModelSerializer):
             "referral_template", "referral_next_touch_at", "referral_onboarded_at", "referral_enrolled",
             "merged_into", "created_at", "updated_at",
             # R3b: what a partner does.
-            "discipline", "discipline_label", "specialties",
+            "discipline", "discipline_label", "specialties", "pronouns", "intro_blurb",
         ]
         read_only_fields = ["merged_into", "referral_onboarded_at"]
 
     def get_discipline_label(self, obj):
         return obj.get_discipline_display() if obj.discipline else ""
+
+    def validate_intro_blurb(self, value):
+        value = (value or "").strip()
+        if len(value) > INTRO_BLURB_LONGEST:
+            raise serializers.ValidationError(
+                f"Keep it to {INTRO_BLURB_LONGEST} characters: a line or two.")
+        return value
 
     def validate_specialties(self, value):
         from apps.crm.services import introductions
@@ -284,9 +295,19 @@ class ContactSerializer(serializers.ModelSerializer):
         if validated_data.get("company") is None and company_name:
             validated_data["company"] = _company_by_name(tenant, company_name)
         before = (instance.discipline, list(instance.specialties or []))
+        intro_before = (instance.pronouns, instance.intro_blurb)
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.save()
+        if (instance.pronouns, instance.intro_blurb) != intro_before:
+            from apps.tenancy.models import AuditEvent
+
+            AuditEvent.all_objects.create(
+                tenant=tenant, actor=self.context["request"].user,
+                verb="contact.introduction_words_changed", target_type="contact",
+                target_id=instance.pk,
+                payload={"pronouns": instance.get_pronouns_display() or "they",
+                         "intro_blurb": instance.intro_blurb})
         if (instance.discipline, list(instance.specialties or [])) != before:
             # R3b: what a partner does, on Activity.
             from apps.tenancy.models import AuditEvent

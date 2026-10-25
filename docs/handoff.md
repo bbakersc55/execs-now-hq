@@ -98,6 +98,37 @@ truth; this covers what they don't, and what changed since 9/30.
   route, a company, a contact, an invoice, both scorecards and their Grid
   view, the catch-up table, and the portal as a client owner): none scrolls
   sideways; 27 of them have tables.
+- **Demo findings on the Oct 24 builds (migration `crm 0049`, additive: two
+  columns on `contact`).** The demo was already on the tip of `dev`; the three
+  missing seed items mean its last reseed never ran on that build.
+  (1) Catch-up: the cadence menu offers only the cadences the person has KPIs
+  in (`cadences` on `/api/scorecard/bulk/`), switching to the first if the
+  one showing has none. Earlier itself was not reproduced blank: on the laptop
+  and against the demo's own data it steps monthly and quarterly back with
+  their rows. (2) A stage card's Remove refuses on the card itself, at once
+  when it holds contacts; the server also refuses a stage people have moved
+  through (its `stage_change` history protected it with a 500); a removal is
+  on Activity (`pipeline.stage_removed`). (3) The contact owner picker sent the
+  membership's id; it sends the person (`user`), and offers only current
+  staff. (4) A follow-up drafts step 1 the moment it starts; step 1 has no
+  days of its own (stored 0); the job drafts the rest. Starters: Proposal
+  Given (at the start, then 7 days), New Partner (at the start, then 20).
+  (5) Enter readings' side panel leaves computed KPIs out. (6) Below 700px,
+  tables marked `cards-on-phone` show each row as a card with its facts
+  labelled (`data-label`): Contacts, the company page's People, Portal access
+  and Teams, both Invoices screens and Recurring invoices. Every other table
+  that scrolls sideways gets a drawn bar above it (`components/
+  TopScrollbars.tsx`, one instance in the shell; phones hide native
+  scrollbars until a box moves). (7) Every contact has pronouns (he, she,
+  unset reads as they) and "How I'd introduce them" on the "What they do"
+  card, now on every contact page. Merge fields `{HeShe}` `{HimHer}`
+  `{HisHer}` `{Specialties}` `{Blurb}` for the person written to and
+  `{OtherHeShe}` `{OtherHimHer}` `{OtherHisHer}` `{OtherBlurb}` for who
+  they're meeting; a pronoun starting a sentence is capitalised, and a
+  pronoun no longer holds open a line whose facts are missing. The
+  Introduction original is rewritten warmly; a practice's existing copy
+  keeps its words (the library never rewrites one) and shows "Restore the
+  original" for the new ones.
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

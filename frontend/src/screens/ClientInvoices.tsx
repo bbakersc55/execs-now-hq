@@ -46,25 +46,25 @@ export function ClientInvoices() {
       <Card>
         {!rows.data ? <p>Loading your invoices…</p> : list.length === 0
           ? <Empty>No invoices yet.</Empty> : (
-            <table>
+            <table className="cards-on-phone">
               <thead><tr><th>Number</th><th>Issued</th><th>Due</th>
                 <th className="money">Total</th><th className="money">Still owed</th>
                 <th>Status</th><th /></tr></thead>
               <tbody>
                 {list.map((row) => (
                   <tr key={row.id}>
-                    <td><strong>{row.number}</strong></td>
-                    <td>{longDate(row.issue_date)}</td>
-                    <td>{longDate(row.due_date)}</td>
-                    <td className="money">{dollars(row.total_cents)}</td>
-                    <td className="money">{row.status === "void" ? "" : dollars(row.balance_cents)}</td>
-                    <td>
+                    <td className="card-title"><strong>{row.number}</strong></td>
+                    <td data-label="Issued">{longDate(row.issue_date)}</td>
+                    <td data-label="Due">{longDate(row.due_date)}</td>
+                    <td data-label="Total" className="money">{dollars(row.total_cents)}</td>
+                    <td data-label="Still owed" className="money">{row.status === "void" ? "" : dollars(row.balance_cents)}</td>
+                    <td data-label="Status">
                       <Pill kind={row.status === "paid" ? "ok" : row.status === "void" ? "" : "warn"}>
                         {row.status === "sent" ? "Open" : row.status_label}</Pill>
                       {row.overdue && <> <Pill kind="bad">Due {longDate(row.due_date)}</Pill></>}
                       {row.payment_in_progress && <> <Pill kind="warn">Payment being checked</Pill></>}
                     </td>
-                    <td className="money">
+                    <td className="money card-actions">
                       <div className="row tight" style={{ justifyContent: "flex-end" }}>
                         {row.can_pay && (
                           <button className="primary small" aria-label={`Pay invoice ${row.number}`}

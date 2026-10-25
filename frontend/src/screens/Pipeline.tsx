@@ -51,7 +51,10 @@ export function Pipeline() {
   const [offer, setOffer] = useState<FollowUpOffer | null>(null);
   const startFollowUp = useMutation({
     mutationFn: (o: FollowUpOffer) => api.post(`/api/contacts/${o.contact}/follow-up/`, { stage: o.stage }),
-    onSuccess: (_d, o) => { setOffer(null); setNote(`The ${o.stage_label} follow-up has started. Its first email will wait in the Outbox for approval.`); },
+    onSuccess: (_d, o) => {
+      setOffer(null); qc.invalidateQueries({ queryKey: ["outbox"] });
+      setNote(`The ${o.stage_label} follow-up has started. Its first email is in the Outbox, waiting for approval.`);
+    },
     onError: (e: Error) => { setOffer(null); setNote(e.message); },
   });
   const [dragging, setDragging] = useState<Contact | null>(null);

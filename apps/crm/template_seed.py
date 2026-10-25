@@ -67,16 +67,20 @@ ORIGINALS = {
     ),
 }
 
+#: Warm, and right whoever it is (owner, 2026-10-24): each line that names a
+#: fact goes when the fact is missing, and the pronouns read he, she or they.
 ORIGINALS["introduction"] = (
     "Introduction",
-    "Introducing {OtherName}",
+    "Someone I'd like you to meet: {OtherName}",
     "Hi {FirstName},\n\n"
-    "I'd like to introduce you to {OtherName}.\n"
-    "They're with {OtherCompany}.\n"
-    "They work as a {OtherDiscipline}.\n"
-    "Their focus: {OtherSpecialties}.\n"
+    "I'd love to introduce you to {OtherName}. I've wanted the two of you to meet for a "
+    "while, and I think you'll really enjoy knowing {OtherHimHer}.\n\n"
+    "{OtherBlurb}\n"
+    "You'll find {OtherHimHer} at {OtherCompany}.\n"
+    "{OtherHisHer} work focuses on {OtherSpecialties}.\n"
     "{IntroNote}\n\n"
-    "I think the two of you should talk. I'll let you take it from here.",
+    "I've told {OtherFirstName} about you too, so {OtherHeShe}'ll be glad to hear from you. "
+    "I'll step back and let you two take it from here.",
 )
 
 #: use -> the original it starts on.

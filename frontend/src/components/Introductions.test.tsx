@@ -65,7 +65,21 @@ describe("introductions (R3)", () => {
     await user.selectOptions(screen.getByLabelText("Discipline"), "coo");
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toEqual(
-      { discipline: "coo", specialties: ["Social media ads"] }));
+      { discipline: "coo", specialties: ["Social media ads"], pronouns: "", intro_blurb: "" }));
+  });
+
+  it("sets pronouns and how I'd introduce them, unset reading as they", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({ "PATCH /api/contacts/dana/": DANA, "/api/contacts/specialties/": [] });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<WhatTheyDo contact={DANA} />);
+    expect(screen.getByText("They/them (not set)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    await user.selectOptions(screen.getByLabelText("Pronouns"), "she");
+    await user.type(screen.getByLabelText("How I'd introduce them"), "Dana builds teams that last.");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toMatchObject(
+      { pronouns: "she", intro_blurb: "Dana builds teams that last." }));
   });
 });
 

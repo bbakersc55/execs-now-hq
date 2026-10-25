@@ -121,19 +121,19 @@ export function CompanyDetail({ me }: { me: Me }) {
       <div className="record-cols span">
         <Card title={`People (${theirs.length})`}>
           {theirs.length === 0 ? <Empty>No contacts at this company.</Empty> : (
-            <table>
+            <table className="cards-on-phone">
               <thead><tr><th>Name</th><th>Title</th><th>Stage</th>{maySetPrimary && <th></th>}</tr></thead>
               <tbody>
                 {theirs.map((p) => (
                   <tr key={p.id} {...rowLink(`/contacts/${p.id}`)}>
-                    <td>
+                    <td className="card-title">
                       <Link className="rowname" to={`/contacts/${p.id}`}>{p.first_name} {p.last_name}</Link>
                       {c.primary_contact === p.id && <> <Pill>primary contact</Pill></>}
                     </td>
-                    <td className="muted">{p.title || "—"}</td>
-                    <td className="small">{positionsLabel(p.pipeline_positions)}</td>
+                    <td data-label="Title" className="muted">{p.title || "—"}</td>
+                    <td data-label="Stage" className="small">{positionsLabel(p.pipeline_positions)}</td>
                     {maySetPrimary && (
-                      <td>
+                      <td className="card-actions">
                         {c.primary_contact !== p.id && (
                           <button className="ghost small wraps" disabled={setPrimary.isPending}
                             aria-label={`Set ${p.first_name} ${p.last_name} as primary contact`}

@@ -833,6 +833,17 @@ class PipelineStageViewSet(TenantStaffViewSet):
                 f"exactly one stage marked won. Mark another stage won before "
                 f"removing “{instance.label}”."
             )
+        # A stage someone has been moved into or out of is in their history,
+        # which the database keeps; say so rather than letting a 500 explain it.
+        if StageChange.objects.filter(Q(to_stage=instance) | Q(from_stage=instance)).exists():
+            raise ValidationError(
+                f"People have moved through “{instance.label}”, and their history keeps "
+                "it. Rename it, or move it to the end, instead."
+            )
+        AuditEvent.objects.create(
+            tenant=self.request.tenant, actor=self.request.user, verb="pipeline.stage_removed",
+            target_type="pipeline", target_id=instance.pipeline_id,
+            payload={"stage": instance.label})
         instance.delete()
 
     @action(detail=False, methods=["post"])

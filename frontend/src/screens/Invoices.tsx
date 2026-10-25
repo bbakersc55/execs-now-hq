@@ -131,7 +131,7 @@ export function Invoices({ me }: { me: Me }) {
         {!data ? <p>Loading the invoices…</p> : data.invoices.length === 0 ? (
           <Empty>{filtered ? "No invoice matches." : "No invoices yet."}</Empty>
         ) : (
-          <table>
+          <table className="cards-on-phone">
             <thead>
               <tr><th>Number</th><th>Client</th><th>Addressed to</th><th>Issued</th>
                 <th>Due</th><th className="money">Total</th><th className="money">Balance</th>
@@ -140,18 +140,18 @@ export function Invoices({ me }: { me: Me }) {
             <tbody>
               {data.invoices.map((row) => (
                 <tr key={row.id} {...rowLink(`/invoices/${row.id}`)}>
-                  <td><Link className="rowname" to={`/invoices/${row.id}`}>
+                  <td className="card-title"><Link className="rowname" to={`/invoices/${row.id}`}>
                     {row.number || "Draft"}</Link>
                     {row.from_schedule && row.status === "draft"
                       && <> <Pill>from a schedule</Pill></>}</td>
-                  <td>{row.client_company?.name ?? <span className="muted">Not a client</span>}</td>
-                  <td>{row.contact.name}</td>
-                  <td>{longDate(row.issue_date)}</td>
-                  <td>{longDate(row.due_date)}</td>
-                  <td className="money">{dollars(row.total_cents)}</td>
-                  <td className="money">{row.status === "draft" || row.status === "void"
+                  <td data-label="Client">{row.client_company?.name ?? <span className="muted">Not a client</span>}</td>
+                  <td data-label="To">{row.contact.name}</td>
+                  <td data-label="Issued">{longDate(row.issue_date)}</td>
+                  <td data-label="Due">{longDate(row.due_date)}</td>
+                  <td data-label="Total" className="money">{dollars(row.total_cents)}</td>
+                  <td data-label="Balance" className="money">{row.status === "draft" || row.status === "void"
                     ? "" : dollars(row.balance_cents)}</td>
-                  <td><StatusPill row={row} /></td>
+                  <td data-label="Status"><StatusPill row={row} /></td>
                 </tr>
               ))}
             </tbody>
@@ -426,7 +426,7 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
       </p>
       {rows.length === 0 && !open && <Empty>No recurring invoices.</Empty>}
       {rows.length > 0 && (
-        <table>
+        <table className="cards-on-phone">
           <thead><tr><th>Client</th><th>Addressed to</th><th>Day</th><th>Terms</th>
             <th>Next draft</th>
             <th className="money">Each month</th>
@@ -434,22 +434,22 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
-                <td>{row.client_company.name}</td>
-                <td>{row.contact.name}</td>
-                <td>{row.day_of_month}</td>
-                <td>{row.terms_label}
+                <td className="card-title">{row.client_company.name}</td>
+                <td data-label="To">{row.contact.name}</td>
+                <td data-label="Day">{row.day_of_month}</td>
+                <td data-label="Terms">{row.terms_label}
                   {row.terms_days === null && <span className="muted"> · the practice's</span>}</td>
-                <td>{row.is_active ? longDate(row.next_on) : <Pill>paused</Pill>}</td>
-                <td className="money">{dollars(row.total_cents)}</td>
+                <td data-label="Next draft">{row.is_active ? longDate(row.next_on) : <Pill>paused</Pill>}</td>
+                <td data-label="Each month" className="money">{dollars(row.total_cents)}</td>
                 {owner && (
-                  <td>
+                  <td data-label="In your books">
                     <IncomeCategoryPicker kind="recurring" value={row.income_category ?? ""}
                       disabled={recategorize.isPending}
                       label={`Income category for ${row.client_company.name}'s recurring invoice`}
                       onChange={(id) => recategorize.mutate({ row, id })} />
                   </td>
                 )}
-                <td className="money">
+                <td className="money card-actions">
                   <button className="ghost small" disabled={!!open}
                     aria-label={`Edit the recurring invoice for ${row.client_company.name}`}
                     onClick={() => setOpen(row.id)}>Edit</button>{" "}

@@ -288,6 +288,17 @@ class Contact(TenantScopedModel):
     discipline = models.CharField(max_length=8, choices=Discipline.choices, blank=True,
                                   default="", db_default="")
     specialties = ArrayField(models.CharField(max_length=60), default=list, blank=True)
+
+    class Pronouns(models.TextChoices):
+        HE = "he", "He/him"
+        SHE = "she", "She/her"
+
+    #: How an introduction speaks of them (owner, 2026-10-24): he, she, or
+    #: unset, which reads as they. And a line or two in the practice's words,
+    #: "How I'd introduce them", for the Introduction template.
+    pronouns = models.CharField(max_length=4, choices=Pronouns.choices, blank=True,
+                                default="", db_default="")
+    intro_blurb = models.TextField(blank=True, default="", db_default="")
     # As on a company (2026-10-12): shown as links, never read.
     linkedin_url = models.URLField(max_length=500, blank=True, default="")
     alignable_url = models.URLField(max_length=500, blank=True, default="")

@@ -1,9 +1,9 @@
 """Pipeline part 3: a stage's follow-up (S3's "Enroll in X?").
 
-Two or three steps, each a library template N days after the previous one
-was sent; offered when someone moves into the stage (default No), started
-without asking by a stage rule; each step drafted into the Outbox once, on
-its day, for approval; stopped by any email from the contact, a move, an
+Two or three steps: the first drafted the moment it starts, each after it a
+library template N days after the previous one was sent; offered when
+someone moves into the stage (default No), started without asking by a stage
+rule; each step drafted into the Outbox once for approval; stopped by any email from the contact, a move, an
 unsubscribe, a step expiring or refused unsent, or Stop, with a waiting draft
 withdrawn. Isolation and roles.
 """
@@ -95,7 +95,10 @@ def test_moving_in_offers_the_follow_up_and_starts_nothing_until_asked(setup, ff
     line = next(p for p in started.json()["contact"]["pipeline_positions"]
                 if p["follow_up"])["follow_up"]
     assert line["step"] == 1 and line["of"] == 3
-    assert line["text"] == f"Follow-up: step 1 of 3, next on {day(3):%B} {day(3).day}"
+    # Step 1 is drafted at once, not by the next day's job.
+    assert line["text"] == "Follow-up: step 1 of 3, waiting for approval in the Outbox"
+    [first] = drafts(c)
+    assert first.state == S.PENDING_APPROVAL and first.subject == "Hi Ada"
     # Asked again, nothing doubles.
     post(api.as_(ff), f"/api/contacts/{c.pk}/follow-up/", {"stage": str(setup["stage"].pk)})
     assert Run.all_objects.filter(contact=c).count() == 1
@@ -109,7 +112,8 @@ def test_a_stage_rule_starts_it_without_asking(setup, sales, ff):
                            action_type=StageAutomation.Action.START_FOLLOW_UP)
     c = moved_in(setup, ff)
     run = Run.all_objects.get(contact=c)
-    assert run.started_via == "rule" and run.next_on == day(3)
+    assert run.started_via == "rule" and run.next_on is None
+    assert [d.subject for d in drafts(c)] == ["Hi Ada"]
     assert follow_ups.offer(c, setup["stage"]) is None
 
 
@@ -130,9 +134,8 @@ def test_each_step_is_drafted_once_on_its_day_and_waits_for_the_one_before_to_se
     t = setup["t"]
     c = moved_in(setup, ff)
     follow_ups.start(c, setup["stage"], actor=ff.user)
-    assert follow_ups.advance(t, day(2))["drafted"] == 0
-    assert follow_ups.advance(t, day(3))["drafted"] == 1
-    assert follow_ups.advance(t, day(3))["drafted"] == 0              # once, however often
+    assert len(drafts(c)) == 1                                        # step 1, at the start
+    assert follow_ups.advance(t, day(0))["drafted"] == 0              # once, however often
     assert follow_ups.advance(t, day(30))["drafted"] == 0             # waits for its send
     [first] = drafts(c)
     assert first.state == S.PENDING_APPROVAL and first.subject == "Hi Ada"
@@ -143,13 +146,15 @@ def test_each_step_is_drafted_once_on_its_day_and_waits_for_the_one_before_to_se
         follow_up=setup["follow_up"], position=1))
     assert FollowUpRunStep.all_objects.filter(run=run).count() == 1
     send(first)
-    follow_ups.advance(t, day(3))
+    follow_ups.advance(t, day(0))
     run.refresh_from_db()
     assert run.next_on == day(7)                                     # counted from the send
+    assert follow_ups.advance(t, day(6))["drafted"] == 0
     assert follow_ups.advance(t, run.next_on)["drafted"] == 1
     send(drafts(c)[1])
-    follow_ups.advance(t, day(3))
+    follow_ups.advance(t, day(0))
     run.refresh_from_db()
+    assert run.next_on == day(10)
     assert follow_ups.advance(t, run.next_on)["drafted"] == 1
     send(drafts(c)[2])
     assert follow_ups.advance(t, day(60))["finished"] == 1
@@ -162,7 +167,6 @@ def test_each_step_is_drafted_once_on_its_day_and_waits_for_the_one_before_to_se
 def started_with_a_waiting_draft(setup, ff, name="Ada"):
     c = moved_in(setup, ff, name)
     follow_ups.start(c, setup["stage"], actor=ff.user)
-    follow_ups.advance(setup["t"], day(3))
     [draft] = drafts(c)
     assert draft.state == S.PENDING_APPROVAL
     return c, draft
@@ -235,6 +239,33 @@ def test_stop_on_the_contacts_page_withdraws_the_waiting_draft(setup, ff, api):
     assert follow_ups.advance(setup["t"], day(60))["drafted"] == 0
 
 
+def test_started_from_the_board_its_draft_is_there_for_stop_to_withdraw(setup, ff, api):
+    """The owner's check (2026-10-24): start from the board, see step 1 in the
+    Outbox at once, press Stop, see it withdrawn, all without the daily job."""
+    c = person(setup["t"], ff)
+    client = api.as_(ff)
+    post(client, f"/api/contacts/{c.pk}/change-stage/", {"stage": str(setup["stage"].pk)})
+    post(client, f"/api/contacts/{c.pk}/follow-up/", {"stage": str(setup["stage"].pk)})
+    outbox_ids = {m["id"] for m in client.get("/api/outbox/").json()}
+    [draft] = drafts(c)
+    assert str(draft.pk) in outbox_ids
+    run = Run.all_objects.get(contact=c)
+    post(client, f"/api/contacts/{c.pk}/follow-up/", {"stop": str(run.pk)})
+    draft.refresh_from_db()
+    assert draft.state == S.REJECTED and "it was stopped" in draft.warning
+
+
+def test_an_unsubscribed_contact_is_not_started(setup, ff):
+    from apps.crm.services import unsubscribe
+
+    c = moved_in(setup, ff)
+    unsubscribe.unsubscribe({"t": str(setup["t"].pk), "c": str(c.pk)},
+                            category=unsubscribe.MARKETING)
+    with pytest.raises(follow_ups.FollowUpRefused, match="unsubscribed"):
+        follow_ups.start(c, setup["stage"], actor=ff.user)
+    assert drafts(c) == [] and not Run.all_objects.filter(contact=c).exists()
+
+
 # ---------------------------------------------------------------- setting it up
 
 def test_the_follow_up_card_saves_two_or_three_steps(setup, stages, ff, api):
@@ -250,7 +281,7 @@ def test_the_follow_up_card_saves_two_or_three_steps(setup, stages, ff, api):
                        content_type="application/json")
     assert saved.status_code == 200
     assert [(s["template_name"], s["days_after"]) for s in saved.json()["follow_up"]["steps"]] == [
-        ("Proposal 1", 2), ("Proposal 2", 5)]
+        ("Proposal 1", 0), ("Proposal 2", 5)]                       # step 1: at the start
     assert client.delete(url).status_code == 200
     assert client.get(url).json() == {"follow_up": None}
     for role in ("CF", "VA"):
@@ -263,14 +294,15 @@ def test_the_two_starters_are_one_click_examples(seeded_tenant, sales, referrals
     client = api.as_(ff)
     offered = client.get(f"/api/stage-automations/examples/?pipeline={sales.pk}").json()
     proposal = next(e for e in offered if e["key"] == "proposal_follow_up_sequence")
-    assert proposal["kind"] == "follow_up" and "3 days" in proposal["summary"]
+    assert proposal["kind"] == "follow_up" and "drafted when it starts" in proposal["summary"]
+    assert "7 days after that one is sent" in proposal["summary"]
     made = post(client, "/api/stage-automations/examples/",
                 {"pipeline": str(sales.pk), "key": "proposal_follow_up_sequence"})
     assert made.status_code == 201
-    assert [s["days_after"] for s in made.json()["steps"]] == [3, 7]
+    assert [s["days_after"] for s in made.json()["steps"]] == [0, 7]
     partner = post(client, "/api/stage-automations/examples/",
                    {"pipeline": str(referrals.pk), "key": "new_partner_follow_up_sequence"})
-    assert [s["days_after"] for s in partner.json()["steps"]] == [5, 20]
+    assert [s["days_after"] for s in partner.json()["steps"]] == [0, 20]
     names = {s["template_name"] for s in partner.json()["steps"]}
     assert names == {"New partner follow-up 1", "New partner follow-up 2"}
     # On the wrong pipeline it isn't offered.

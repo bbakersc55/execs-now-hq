@@ -120,6 +120,8 @@ def _values(recipient, other, referral, actor):
         "OtherCompany": company, "OtherDiscipline": discipline_label(other),
         "OtherSpecialties": ", ".join(other.specialties or []),
         "IntroNote": (referral.note or "").strip(),
+        **templates.pronoun_values(other, "Other"),
+        "OtherBlurb": (other.intro_blurb or "").strip(),
     })
     return values
 

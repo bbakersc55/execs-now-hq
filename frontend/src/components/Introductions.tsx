@@ -19,12 +19,17 @@ const OUTCOMES: Record<string, string> = {
  * specialties in the practice's own words, suggested from the ones already
  * used. Searchable from Contacts.
  */
+/** Unset reads as they, in an introduction and here. */
+const PRONOUNS: Record<string, string> = { "": "They/them (not set)", he: "He/him", she: "She/her" };
+
 export function WhatTheyDo({ contact }: { contact: Contact }) {
   const qc = useQueryClient();
   const listId = useId();
   const [editing, setEditing] = useState(false);
   const [discipline, setDiscipline] = useState(contact.discipline ?? "");
   const [chips, setChips] = useState<string[]>(contact.specialties ?? []);
+  const [pronouns, setPronouns] = useState(contact.pronouns ?? "");
+  const [blurb, setBlurb] = useState(contact.intro_blurb ?? "");
   const [typed, setTyped] = useState("");
   const [error, setError] = useState("");
   const used = useQuery<{ specialty: string; contacts: number }[]>({
@@ -32,7 +37,8 @@ export function WhatTheyDo({ contact }: { contact: Contact }) {
   });
   const save = useMutation({
     mutationFn: () => api.patch(`/api/contacts/${contact.id}/`, {
-      discipline, specialties: typed.trim() ? [...chips, typed.trim()] : chips }),
+      discipline, specialties: typed.trim() ? [...chips, typed.trim()] : chips,
+      pronouns, intro_blurb: blurb }),
     onSuccess: () => {
       setEditing(false); setTyped(""); setError("");
       qc.invalidateQueries({ queryKey: ["contact", contact.id] });
@@ -49,7 +55,8 @@ export function WhatTheyDo({ contact }: { contact: Contact }) {
   return (
     <Card title="What they do" actions={!editing && (
       <button className="ghost small" onClick={() => {
-        setDiscipline(contact.discipline ?? ""); setChips(contact.specialties ?? []); setEditing(true); }}>
+        setDiscipline(contact.discipline ?? ""); setChips(contact.specialties ?? []);
+        setPronouns(contact.pronouns ?? ""); setBlurb(contact.intro_blurb ?? ""); setEditing(true); }}>
         Change</button>)}>
       {!editing ? (
         <>
@@ -57,6 +64,10 @@ export function WhatTheyDo({ contact }: { contact: Contact }) {
           {(contact.specialties ?? []).length > 0 ? (
             <div className="chips">{contact.specialties!.map((s) => <Pill key={s}>{s}</Pill>)}</div>
           ) : <p className="small muted">No specialties yet. Add the phrases they use for their work.</p>}
+          <p className="small"><span className="muted">Pronouns:</span> {PRONOUNS[contact.pronouns ?? ""]}</p>
+          {contact.intro_blurb
+            ? <p className="small"><span className="muted">How I'd introduce them:</span> {contact.intro_blurb}</p>
+            : <p className="small muted">No introduction written yet: a line or two an introduction can use.</p>}
         </>
       ) : (
         <div className="what-they-do-form">
@@ -80,6 +91,15 @@ export function WhatTheyDo({ contact }: { contact: Contact }) {
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(); } }} />
             <button type="button" className="ghost small" style={{ flex: "0 0 auto" }} onClick={add}>Add</button>
           </div>
+          <label className="small" htmlFor={`${listId}-p`}>Pronouns</label>
+          <select id={`${listId}-p`} value={pronouns} onChange={(e) => setPronouns(e.target.value as typeof pronouns)}>
+            {Object.entries(PRONOUNS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <label className="small" htmlFor={`${listId}-b`}>How I'd introduce them</label>
+          <textarea id={`${listId}-b`} rows={3} maxLength={600} value={blurb}
+            placeholder="Leslie is the CFO I call when a growing company's cash needs a plan."
+            onChange={(e) => setBlurb(e.target.value)} />
+          <span className="small muted">Introductions use these: {"{OtherHeShe}"}, {"{OtherHimHer}"}, {"{OtherHisHer}"} and {"{OtherBlurb}"}.</span>
           <datalist id={`${listId}-used`}>
             {(used.data ?? []).filter((u) => !chips.includes(u.specialty)).map((u) =>
               <option key={u.specialty} value={u.specialty} />)}

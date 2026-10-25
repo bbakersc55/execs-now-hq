@@ -1853,3 +1853,47 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
   main table td, main table th, main table span, main table a, main table p,
   main table li, main table div { overflow-wrap: normal; }
 }
+@media (max-width: 700px) {
+  /* Rows as cards (Bryan, 2026-10-24): a list whose columns are facts about
+     one thing (an invoice, a contact) reads down a card at phone width, each
+     fact under its column's name (`data-label`), not across a cramped row. */
+  main table.cards-on-phone { display: block; overflow: visible; }
+  main table.cards-on-phone thead { display: none; }
+  main table.cards-on-phone tbody { display: flex; flex-direction: column; gap: var(--s2); }
+  main table.cards-on-phone tr {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--s2);
+    row-gap: 2px; padding: var(--s3); border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface);
+  }
+  main table.cards-on-phone td {
+    display: block; grid-column: 1 / -1; padding: 0; border: 0; text-align: left;
+    overflow-wrap: anywhere;
+  }
+  main table.cards-on-phone td[data-label] {
+    display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: var(--s2);
+    justify-items: start;
+  }
+  main table.cards-on-phone td[data-label]::before {
+    content: attr(data-label); color: var(--muted); font-size: var(--t-12);
+  }
+  main table.cards-on-phone td.card-pick { grid-column: 1; align-self: start; }
+  main table.cards-on-phone td.card-pick + td.card-title { grid-column: 2; }
+  main table.cards-on-phone td.card-title { font-size: var(--t-14); font-weight: 600; margin-bottom: var(--s1); }
+  main table.cards-on-phone td.card-title .when { font-weight: 400; }
+  main table.cards-on-phone td.card-actions { margin-top: var(--s2); }
+  main table.cards-on-phone td.card-actions > .row { justify-content: flex-start !important; flex-wrap: wrap; }
+  main table.cards-on-phone td:empty, main table.cards-on-phone td[data-label]:empty { display: none; }
+
+  /* A wide table's scrollbar at the top of its box as well
+     (components/TopScrollbars.tsx), so it is in reach without scrolling to
+     the table's end. */
+  .top-scroll { display: flex; align-items: center; gap: var(--s2); max-width: 100%;
+                margin-bottom: var(--s1); }
+  .top-scroll-track { position: relative; flex: 1; min-width: 0; height: 18px;
+                      border-radius: 999px; background: var(--line); touch-action: none;
+                      cursor: pointer; }
+  .top-scroll-thumb { position: absolute; top: 3px; left: 0; height: 12px;
+                      border-radius: 999px; background: var(--navy-300); }
+  .top-scroll-hint { flex: none; font-size: var(--t-12); color: var(--muted); }
+  .top-scroll.at-end .top-scroll-hint { visibility: hidden; }
+}

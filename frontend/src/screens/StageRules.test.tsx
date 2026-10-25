@@ -79,9 +79,24 @@ describe("stage rules, part 2: one card per stage", () => {
     await user.type(screen.getByLabelText("New stage name"), "Discovery");
     await user.click(screen.getByRole("button", { name: "Add stage" }));
     await waitFor(() => expect(sent(fetchMock, "POST", "/api/pipeline-stages/")).toMatchObject({ label: "Discovery" }));
+    // Bryan, 2026-10-24: the refusal shows on the card itself, at once, and
+    // nothing is asked of the server.
     await user.click(screen.getByRole("button", { name: "Remove Prospecting" }));
-    await user.click(screen.getByRole("button", { name: "Remove" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("still holds 3 contacts");
+    const prospecting = screen.getByRole("region", { name: "Stage Prospecting" });
+    expect(await within(prospecting).findByRole("alert")).toHaveTextContent(
+      "Prospecting still holds 3 contacts. Move them to another stage first.");
+    expect(within(prospecting).queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(fetchMock.calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("shows the server's refusal on the stage's own card", async () => {
+    const user = userEvent.setup();
+    show({ "DELETE /api/pipeline-stages/s-qual/": () => ({ status: 400,
+      body: ["People have moved through “Qualified”, and their history keeps it."] }) });
+    await user.click(await screen.findByRole("button", { name: "Remove Qualified" }));
+    const qualified = screen.getByRole("region", { name: "Stage Qualified" });
+    await user.click(within(qualified).getByRole("button", { name: "Remove" }));
+    expect(await within(qualified).findByRole("alert")).toHaveTextContent("history keeps it");
   });
 
   it("adds a rule for sitting idle that moves the contact", async () => {

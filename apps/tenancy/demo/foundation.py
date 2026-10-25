@@ -721,7 +721,6 @@ def stage_rules(world: World) -> None:
                                                **example["fields"])
     # Part 3: the two follow-up starters, and one prospect part-way through
     # the proposal one (its first email waiting in the Outbox).
-    from apps.crm.models import FollowUpRun
     from apps.crm.services import follow_ups
 
     sales = pipeline.sales_pipeline(world.tenant)
@@ -735,10 +734,7 @@ def stage_rules(world: World) -> None:
         pipeline=sales, stage__code="proposal_given").select_related("contact", "stage").first()
     if proposal is not None and proposal.contact.primary_email:
         try:
-            run, _ = follow_ups.start(proposal.contact, proposal.stage, actor=world.owner,
-                                      via="asked")
-            FollowUpRun.objects.filter(pk=run.pk).update(next_on=world.today)
-            follow_ups.advance(world.tenant, world.today)
+            follow_ups.start(proposal.contact, proposal.stage, actor=world.owner, via="asked")
         except follow_ups.FollowUpRefused:
             pass
 
@@ -767,12 +763,21 @@ def stage_rules(world: World) -> None:
 
 
 #: R3b: what a few partners do (fictional).
+#: With their pronouns and how Summit would introduce them (owner,
+#: 2026-10-24); a prospect is left unset, so an introduction reads "they".
 WHAT_THEY_DO = {
-    "Winkle": ("cfo", ["Cash flow", "Fundraising", "SaaS metrics"]),
-    "Martin": ("cfo", ["Month-end close", "Cash flow"]),
-    "Flenderson": ("chro", ["Handbooks", "Hiring process"]),
-    "Flax": ("chro", ["Culture", "Hiring process", "Performance reviews"]),
-    "Lemon": ("cmo", ["Go to market", "Social media ads", "Brand positioning"]),
+    "Winkle": ("cfo", ["Cash flow", "Fundraising", "SaaS metrics"], "she",
+               "Leslie is the CFO I call when a growing company's cash needs a plan. She makes "
+               "the numbers make sense to founders, and she's calm in a fundraise."),
+    "Martin": ("cfo", ["Month-end close", "Cash flow"], "she",
+               "Angela runs the tightest month-end close I know."),
+    "Flenderson": ("chro", ["Handbooks", "Hiring process"], "he",
+                   "Toby writes handbooks people actually read."),
+    "Flax": ("chro", ["Culture", "Hiring process", "Performance reviews"], "she",
+             "Holly helps small teams hire well and keep the people they hire."),
+    "Lemon": ("cmo", ["Go to market", "Social media ads", "Brand positioning"], "she",
+              "Liz has launched more products than anyone I know, and she's generous with "
+              "what she's learned."),
 }
 
 
@@ -784,11 +789,13 @@ def introductions(world: World) -> None:
     from apps.crm.services import introductions as intros
 
     by_last = {p.last_name: p for p in world.partners}
-    for last, (discipline, specialties) in WHAT_THEY_DO.items():
+    for last, (discipline, specialties, pronouns, blurb) in WHAT_THEY_DO.items():
         partner = by_last.get(last)
         if partner is not None:
-            Contact.objects.filter(pk=partner.pk).update(discipline=discipline,
-                                                         specialties=specialties)
+            Contact.objects.filter(pk=partner.pk).update(
+                discipline=discipline, specialties=specialties, pronouns=pronouns,
+                intro_blurb=blurb)
+            partner.refresh_from_db()
     lemon, winkle = by_last.get("Lemon"), by_last.get("Winkle")
     prospect = next(iter(world.prospects.values()), None)
     if lemon is None or winkle is None:

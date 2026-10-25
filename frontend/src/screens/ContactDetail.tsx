@@ -314,7 +314,7 @@ export function ContactDetail({ me }: { me: Me }) {
 
           <ReferralsCard contactId={c.id} partner={c.type_codes.includes("referral_partner")} />
           {/* R3b and R3: what a partner does, and the introductions made. */}
-          {c.type_codes.includes("referral_partner") && <WhatTheyDo contact={c} />}
+          <WhatTheyDo contact={c} />
           <IntroductionsCard contact={c} partner={c.type_codes.includes("referral_partner")} />
         </div>
 

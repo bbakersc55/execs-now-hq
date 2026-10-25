@@ -87,6 +87,7 @@ import { Report } from "./screens/Report";
 import { Tasks } from "./screens/Tasks";
 import { Work } from "./screens/Work";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
+import { TopScrollbars } from "./components/TopScrollbars";
 
 
 /**
@@ -346,6 +347,7 @@ export function App() {
           the page's own width, so it runs the whole way across. */}
       <ActingBanner me={me} />
       <main>
+        <TopScrollbars />
         <DemoBanner me={me} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
