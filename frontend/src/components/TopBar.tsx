@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { KeyboardEvent, ReactNode, useEffect, useRef, useState } from "react";
 
 import { Link } from "react-router-dom";
@@ -18,22 +18,36 @@ import { Avatar } from "./shell";
  * naming who is signed in, and (through the profile menu) Settings. It also
  * holds the one thing the app never had: a way to sign out.
  */
-export function TopBar({ me, practice, collapsed, onToggleSidebar, feedback }: {
+export function TopBar({ me, practice, collapsed, onToggleSidebar, feedback, phone }: {
   me: Me;
   /** The practice's name, for the menu's header. */
   practice: string;
   collapsed: boolean; onToggleSidebar: () => void;
   /** Staff in a practice send feedback; clients and the Practices area do not. */
   feedback: boolean;
+  /** At phone width there is no sidebar: the bar shows the practice's logo or
+   *  name, and a menu button that opens the navigation as a drawer. */
+  phone?: { open: boolean; onOpen: () => void; brand: ReactNode };
 }) {
   return (
-    <header className="topbar" aria-label="Top bar">
-      <button className="icon-button"
-        aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
-        onClick={onToggleSidebar}>
-        {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.75} />
-          : <PanelLeftClose size={18} strokeWidth={1.75} />}
-      </button>
+    <header className={phone ? "topbar phone" : "topbar"} aria-label="Top bar">
+      {phone ? (
+        <div className="left">
+          <button className="icon-button" aria-label="Open the menu"
+            aria-haspopup="dialog" aria-expanded={phone.open} aria-controls="app-menu"
+            onClick={phone.onOpen}>
+            <Menu size={20} strokeWidth={1.75} />
+          </button>
+          <div className="topbar-brand">{phone.brand}</div>
+        </div>
+      ) : (
+        <button className="icon-button"
+          aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
+          onClick={onToggleSidebar}>
+          {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.75} />
+            : <PanelLeftClose size={18} strokeWidth={1.75} />}
+        </button>
+      )}
       <div className="right">
         {feedback && <FeedbackButton />}
         <ProfileMenu me={me} practice={practice} />

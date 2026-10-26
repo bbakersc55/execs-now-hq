@@ -40,7 +40,15 @@ def reach(today, cadence, week_start="monday") -> list:
     """The periods the pickers offer, newest first: back to the earlier of
     two years ago and the period January 1, 2025 is in."""
     rolling = P.last_n(today, cadence, REACH[cadence], week_start)[0]
-    first = min(rolling, P.start_of(FLOOR, cadence, week_start))
+    # A count alone falls short on the first days of a week: 105 weeks back
+    # from a Monday is 728 days, not two years. The period holding the date
+    # two years ago is offered too.
+    try:
+        two_years = today.replace(year=today.year - 2)
+    except ValueError:  # February 29
+        two_years = today.replace(year=today.year - 2, day=28)
+    first = min(rolling, P.start_of(two_years, cadence, week_start),
+                P.start_of(FLOOR, cadence, week_start))
     return list(reversed(P.starts_between(first, today, cadence, week_start)))
 
 

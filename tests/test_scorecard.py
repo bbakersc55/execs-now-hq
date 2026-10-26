@@ -1102,6 +1102,15 @@ def test_a_percent_ratio_is_a_percentage_everywhere(seeded_tenant, ff, api):
     assert point["value"] == pytest.approx(0.934)
 
 
+def test_the_pickers_reach_two_years_on_any_weekday():
+    """105 weeks back from a Monday is 728 days: the week holding the date two
+    years ago is offered as well (failed the suite on Monday 2026-10-26)."""
+    from apps.scorecard.readings import reach
+    for today in [date(2026, 10, 26) + timedelta(days=n) for n in range(7)] + [date(2028, 2, 29)]:
+        for cadence in ("weekly", "monthly", "quarterly", "daily"):
+            assert (today - reach(today, cadence)[-1]).days >= 2 * 365, (today, cadence)
+
+
 def test_the_catch_up_table_starts_from_any_past_period_and_the_pickers_reach_two_years(sc):
     client = sc["api"].as_(sc["practice"]["ff"])
     url = f"{B}bulk/?company={sc['company'].pk}&cadence=weekly&count=6"

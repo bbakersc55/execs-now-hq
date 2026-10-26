@@ -129,6 +129,20 @@ truth; this covers what they don't, and what changed since 9/30.
   Introduction original is rewritten warmly; a practice's existing copy
   keeps its words (the library never rewrites one) and shows "Restore the
   original" for the new ones.
+- **Phone top bar and drawer (860px and below, 2026-10-26).** The sidebar no
+  longer stacks above the page: the top bar (navy, like the sidebar) holds the
+  menu button, the practice's logo or name, Feedback and the profile menu, and
+  the menu opens as a drawer over the page (`#app-menu`), closed by its ×,
+  Escape, the gray, or choosing a page. Staff and portal alike. Swept at 390
+  in headless Chrome as the practice owner (every nav screen, a contact, a
+  company, Profile, Settings) and as a client owner (every portal screen):
+  the page starts at 56px, under the bar, and none scrolls sideways. Seen
+  there, not fixed: on the portal's Our work, a project row under a goal
+  breaks its name one letter per line.
+- **The scorecard pickers' two years, on a Monday.** The gate failed on
+  Monday 10/26: 105 weekly periods back from a Monday is 728 days, so the
+  week holding the date two years ago was not offered. `reach()` now always
+  includes that period; a test runs it on every weekday and on February 29.
 - **Digest race tests** add six days in local time; they had failed in UTC
   across the November 1 clock change.
 

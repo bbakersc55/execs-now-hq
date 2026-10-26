@@ -1268,11 +1268,34 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
 .comment.shared { border-left-color: var(--orange); }
 
 @media (max-width: 860px) {
-  .layout, .layout.collapsed { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; }
+  .layout, .layout.collapsed { grid-template-columns: minmax(0, 1fr); }
   main { padding: var(--s6) var(--s4) var(--s8); }
   .page-head { flex-direction: column; }
 }
+
+/* Phone width (owner, 2026-10-26): the sidebar is a drawer over the page,
+   opened from the top bar's menu button, and the page starts at the top. The
+   top bar wears the sidebar's colour so a logo drawn for it still shows. */
+.layout.phone .sidebar {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 51; height: auto;
+  width: min(300px, 86vw); box-shadow: var(--shadow);
+}
+.layout.phone .sidebar[hidden] { display: none; }
+.layout.phone .sidebar .brand { flex-wrap: nowrap; align-items: flex-start; }
+.layout.phone .sidebar .brand .practice { display: none; }
+.drawer-close { margin-left: auto; color: #fff; flex-shrink: 0; }
+.drawer-close:hover:not(:disabled) { background: rgba(255, 255, 255, .1); color: #fff; }
+.drawer-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, .45); z-index: 50; }
+.topbar.phone { background: var(--navy); border-bottom-color: transparent; color: #fff;
+                padding: 0 var(--s3) 0 var(--s2); }
+.topbar.phone .left { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.topbar.phone .icon-button { color: #fff; }
+.topbar.phone .icon-button:hover:not(:disabled) { background: rgba(255, 255, 255, .1); color: #fff; }
+.topbar-brand { min-width: 0; display: flex; align-items: center; }
+.topbar-brand img { max-height: 28px; max-width: 160px; }
+.topbar-brand .wordmark { font-size: var(--t-16); font-weight: 650; color: #fff;
+                          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar.phone .right { flex-shrink: 0; }
 
 
 /* The email, as it will send, above the button that sends it (incident,

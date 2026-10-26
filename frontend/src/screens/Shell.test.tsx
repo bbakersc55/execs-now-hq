@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,9 +134,10 @@ describe("the sidebar on a narrow window", () => {
 
   /** jsdom has no layout, so `matchMedia` is the seam — which is also the
    *  seam the real thing uses. */
-  function atWidth(narrow: boolean) {
+  function atWidth(width: number) {
     vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: narrow, media: query,
+      matches: width <= Number(/max-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity),
+      media: query,
       addEventListener: () => {}, removeEventListener: () => {},
       addListener: () => {}, removeListener: () => {}, onchange: null,
       dispatchEvent: () => false,
@@ -145,7 +146,7 @@ describe("the sidebar on a narrow window", () => {
 
   it("collapses itself when the window is narrow", async () => {
     const { App } = await import("../App");
-    atWidth(true);
+    atWidth(1000);
     stubApp();
     renderRoute(<App />, { path: "*", route: "/tasks" });
 
@@ -155,11 +156,76 @@ describe("the sidebar on a narrow window", () => {
 
   it("leaves a wide window expanded", async () => {
     const { App } = await import("../App");
-    atWidth(false);
+    atWidth(1440);
     stubApp();
     renderRoute(<App />, { path: "*", route: "/tasks" });
 
     expect(await screen.findByRole("button", { name: "Collapse the menu" }))
       .toBeInTheDocument();
+  });
+});
+
+describe("the menu at phone width", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: 390 <= Number(/max-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity),
+      media: query,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, onchange: null,
+      dispatchEvent: () => false,
+    }));
+  });
+
+  const menu = () => document.getElementById("app-menu")!;
+
+  it("is a top bar with the practice's name, and the menu stays shut", async () => {
+    const { App } = await import("../App");
+    stubApp();
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+
+    const open = await screen.findByRole("button", { name: "Open the menu" });
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("banner", { name: "Top bar" }))
+      .toHaveTextContent("Executives Now");
+    expect(menu()).not.toBeVisible();
+    expect(screen.queryByRole("button", { name: "Collapse the menu" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Your account/ })).toBeInTheDocument();
+  });
+
+  it("opens as a drawer, and closes by its button, Escape and the gray", async () => {
+    const user = userEvent.setup();
+    const { App } = await import("../App");
+    stubApp();
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+
+    const open = await screen.findByRole("button", { name: "Open the menu" });
+    await user.click(open);
+    expect(menu()).toBeVisible();
+    expect(open).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("dialog", { name: "Menu" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close the menu" }));
+    expect(menu()).not.toBeVisible();
+
+    await user.click(open);
+    await user.keyboard("{Escape}");
+    expect(menu()).not.toBeVisible();
+
+    await user.click(open);
+    await user.click(document.querySelector(".drawer-backdrop")!);
+    expect(menu()).not.toBeVisible();
+    expect(document.querySelector(".drawer-backdrop")).toBeNull();
+  });
+
+  it("closes when a page is chosen from it", async () => {
+    const user = userEvent.setup();
+    const { App } = await import("../App");
+    stubApp();
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+
+    await user.click(await screen.findByRole("button", { name: "Open the menu" }));
+    await user.click(within(menu()).getByRole("link", { name: "Contacts" }));
+    await waitFor(() => expect(menu()).not.toBeVisible());
   });
 });

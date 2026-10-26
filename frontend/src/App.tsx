@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-  Receipt, Landmark, Users, Gauge } from "lucide-react";
+  Receipt, Landmark, Users, Gauge, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 
@@ -98,15 +98,23 @@ import { TopScrollbars } from "./components/TopScrollbars";
  * the row and no bucket), and an `<img>` that fails draws a broken-image icon
  * beside its alt. A failed load falls back to the same styled name.
  */
-export function BrandMark({ logo, name }: { logo: string; name: string }) {
+export function BrandMark({ logo, name, inline = false }: {
+  logo: string; name: string;
+  /** In the phone top bar the name is not the page's heading. */
+  inline?: boolean;
+}) {
   const [failed, setFailed] = useState("");
   if (logo && failed !== logo) {
     return <img src={logo} alt={name} onError={() => setFailed(logo)} />;
   }
-  return <h1 className="wordmark">{name}</h1>;
+  return inline ? <span className="wordmark">{name}</span>
+    : <h1 className="wordmark">{name}</h1>;
 }
 
 const TENANT = ["FF", "CF", "VA"];
+
+/** Where the sidebar gives way to the top bar's menu button and drawer. */
+const PHONE_WIDTH = 860;
 
 const CLIENT = ["FCC", "ECC"];
 
@@ -248,7 +256,21 @@ export function App() {
   // Narrow windows collapse it; widening gives it back. The remembered choice
   // is never overwritten, so a deliberate collapse survives both.
   const narrow = useNarrowWindow();
-  const collapsed = chosen || narrow;
+  // Phone width (owner, 2026-10-26): no sidebar at all. The top bar carries
+  // the brand and a menu button, and the menu opens as a drawer over the page,
+  // so every page starts at the top rather than a screen of icons down.
+  const phone = useNarrowWindow(PHONE_WIDTH);
+  const [drawer, setDrawer] = useState(false);
+  const collapsed = !phone && (chosen || narrow);
+  // A link followed in the drawer is a page left: the drawer goes with it.
+  useEffect(() => { setDrawer(false); }, [location.pathname]);
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setDrawer(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [drawer]);
+  useEffect(() => { if (!phone) setDrawer(false); }, [phone]);
   const wordmark = (staff ? brand?.product_name : brand?.display_name) ?? "";
   const palette = brand?.palette;
 
@@ -309,13 +331,20 @@ export function App() {
 
   return (
     <WordsProvider pairs={platform ? null : me.words}>
-    <div className={collapsed ? "layout collapsed" : "layout"}>
-      <aside className="sidebar">
+    <div className={["layout", collapsed && "collapsed", phone && "phone",
+                     drawer && "drawer-open"].filter(Boolean).join(" ")}>
+      {phone && drawer && (
+        <div className="drawer-backdrop" aria-hidden="true" onClick={() => setDrawer(false)} />)}
+      <aside id="app-menu" className="sidebar" aria-label="Menu"
+        {...(phone ? { role: "dialog", "aria-modal": drawer, hidden: !drawer } : {})}>
         <div className="brand">
           <BrandMark logo={staff ? "" : brand?.logo_url ?? ""} name={wordmark} />
           {/* P1: staff see which practice they are in, under the product. */}
           {staff && brand?.display_name && (
             <div className="practice" aria-label="Practice">{brand.display_name}</div>)}
+          {phone && (
+            <button className="icon-button drawer-close" aria-label="Close the menu"
+              onClick={() => setDrawer(false)}><X size={18} /></button>)}
         </div>
         {/* Its own block, above the New note button: inside the brand block it
             overflowed under the button and the dropdown could not be reached. */}
@@ -339,6 +368,10 @@ export function App() {
       <div className="content">
       {/* UI 3: who is signed in, Collapse and Feedback live in the bar now. */}
       <TopBar me={me} practice={brand?.display_name ?? ""} collapsed={collapsed}
+        phone={phone ? { open: drawer, onOpen: () => setDrawer(true),
+                         brand: <BrandMark logo={staff ? "" : brand?.logo_url ?? ""}
+                                  name={staff ? brand?.display_name || wordmark : wordmark} inline /> }
+          : undefined}
         // On a narrow window the toggle expands over the content rather than
         // fighting the width: the choice it writes is still the manual one.
         onToggleSidebar={() => setCollapsed(!chosen)}
