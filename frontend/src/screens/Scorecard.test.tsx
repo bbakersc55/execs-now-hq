@@ -595,3 +595,95 @@ describe("catching up on any past period (Bryan, 2026-10-23)", () => {
   });
 });
 
+
+describe("the scorecard's ties into the rest of the app (M5)", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    try { localStorage.clear(); } catch { /* private window */ }
+  });
+
+  const OFF = tile({ id: "k9", name: "Delivery rate", off_track_run: 3, may_make_task: true,
+    offer_task: true, open_task: null, component: "process",
+    task_draft: { title: "Delivery rate: Off track 3 weeks running", description: "From the scorecard." } });
+
+  it("three periods Off track offer a task unprompted, and Make a task references the KPI", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/tasks/": () => ({ status: 201, body: { id: "t1", title: "Delivery rate: Off track 3 weeks running" } }),
+      "GET /api/scorecard/": { ...BOARD, kpis: [OFF, tile({ id: "k1", may_make_task: true })] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    const offered = await screen.findByRole("region", { name: "Delivery rate" });
+    expect(within(offered).getByText(/Off track 3 weeks running/)).toBeInTheDocument();
+    // A KPI that isn't three periods Off track offers nothing on its front.
+    const quiet = screen.getByRole("region", { name: "Occupancy" });
+    expect(within(quiet).queryByRole("button", { name: /Make a task/ })).toBeNull();
+    await user.click(within(offered).getByRole("button", { name: "Make a task for Delivery rate" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body).toMatchObject({
+      title: "Delivery rate: Off track 3 weeks running", kpi: "k9" }));
+    expect(await screen.findByText(/made: Delivery rate: Off track 3 weeks running/)).toBeInTheDocument();
+  });
+
+  it("an open task made from the KPI is shown instead of the offer", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, kpis: [
+      { ...OFF, offer_task: false, open_task: { id: "t1", title: "Chase deliveries" } }] } }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    const t = await screen.findByRole("region", { name: "Delivery rate" });
+    expect(within(t).getByRole("link", { name: "Chase deliveries" })).toHaveAttribute("href", "/tasks/t1");
+    expect(within(t).queryByRole("button", { name: /Make a task/ })).toBeNull();
+  });
+
+  it("groups the tiles by strategy component when asked, and remembers it", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, kpis: [
+      OFF, tile({ id: "k1", component: "traction" }), tile({ id: "k3", name: "Untagged", component: "" })] } }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    await user.click(await screen.findByLabelText("Group by component"));
+    const groups = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(groups).toEqual(["Process", "Traction", "No component"]);
+    expect(within(screen.getByRole("region", { name: "Process" }))
+      .getByRole("region", { name: "Delivery rate" })).toBeInTheDocument();
+    expect(localStorage.getItem("sc-group-by-component")).toBe("true");
+  });
+
+  it("explains the scorecard and drafts the weekly note, priced as estimates, for the practice", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/scorecard/ai/": { text: "Deliveries slipped; the notes suggest a short-staffed week." },
+      "GET /api/scorecard/ai/": { explain_estimate_usd: "0.0312", note_estimate_usd: "0.0420",
+        used_today: 2, cap: 20, refused: "" },
+      "GET /api/scorecard/setup/": { exists: true, pages: [], kpis: [] },
+      "GET /api/scorecard/": { ...BOARD, may_set_up: true },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+      route: "/companies/c1/scorecard" });
+    const explain = await screen.findByRole("button", { name: "Explain this scorecard (about $0.03)" });
+    expect(screen.getByRole("button", { name: "Draft the weekly note (about $0.04)" })).toBeInTheDocument();
+    expect(screen.getByText("2 of 20 used today.")).toBeInTheDocument();
+    expect(screen.getByText(/nothing about bonuses are sent/)).toBeInTheDocument();
+    await user.click(explain);
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+      .toEqual({ company: "c1", purpose: "explain" }));
+    expect(await screen.findByRole("note", { name: "Explanation" })).toHaveTextContent("Deliveries slipped");
+  });
+
+  it("says why it can't be pressed, and shows no buttons to a client", async () => {
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/scorecard/ai/": { explain_estimate_usd: "0.03", note_estimate_usd: "0.04",
+        used_today: 20, cap: 20, refused: "That is today's 20 for the scorecard." },
+      "GET /api/scorecard/setup/": { exists: true, pages: [], kpis: [] },
+      "GET /api/scorecard/": { ...BOARD, may_set_up: true },
+    }));
+    const view = renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+      route: "/companies/c1/scorecard" });
+    expect(await screen.findByText("That is today's 20 for the scorecard.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Explain this scorecard/ })).toBeNull();
+    view.unmount();
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": BOARD }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    await screen.findByRole("region", { name: "Occupancy" });
+    expect(screen.queryByText("Ask Claude")).toBeNull();
+  });
+});

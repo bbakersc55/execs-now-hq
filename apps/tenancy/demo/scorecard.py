@@ -15,7 +15,9 @@ one closed:
 
 One reading was corrected after it was entered, so its history shows, and
 Andy's rating for the week just closed is missing, so his manager has a
-reminder waiting.
+reminder waiting. Overtime fell as the work landed and crept back up the last
+three weeks, Off track each, so its tile offers a task; the "Deliver the next
+day" goal shows On-time delivery on its card (M5 ties).
 
 Part 2 adds Revenue per order (Revenue ÷ Orders shipped, computed), each
 rep's Sales booked, and the **Sales floor bonus**: $600 a month on Sales
@@ -174,8 +176,11 @@ def scorecard(world) -> dict:
         enter(kpis["orders"], week, int(380 + 50 * lift + roll.randrange(-30, 30)), dwight)
         enter(kpis["revenue"], week,
               round(season * (0.9 + 0.12 * lift + roll.uniform(-0.06, 0.06)), -2), michael)
-        enter(kpis["overtime"], week, int(52 - 16 * lift + roll.randrange(-4, 5)),
-              world.owner)
+        # The fall rush: overtime fell as the work landed, then crept back up
+        # the last three weeks, Off track each, so the tile offers a task.
+        late = i - (len(starts) - 3)
+        enter(kpis["overtime"], week, 46 + 2 * late + roll.randrange(0, 2) if late >= 0
+              else int(52 - 16 * lift + roll.randrange(-4, 5)), world.owner)
         for pk, (member, skill) in reps.items():
             rr = dice("rep", pk, week)
             enter(kpis["calls"], week, int(60 * skill + 6 * lift + rr.randrange(-8, 9)),
@@ -203,6 +208,13 @@ def scorecard(world) -> dict:
 
     plans = bonus_plans(world, card, kpis, team, starts)
 
+    # M5 ties: the next-day delivery goal shows its KPI on its card.
+    from apps.work.models import Goal
+
+    Goal.objects.filter(client_company=company, title="Deliver the next day").update(
+        kpi=kpis["delivery"])
+    scorecard_digest = _scorecard_digest(world, company, owner_member)
+
     # Part 3: orders arrive from the warehouse's sheet. The demo never reads
     # Google (and has no worker), so the feed is shown, not run: its readings
     # are marked as the sheet's, and last week's correction stays by hand.
@@ -222,7 +234,44 @@ def scorecard(world) -> dict:
             "scorecard KPIs": Kpi.objects.filter(scorecard=card).count(),
             "scorecard readings": made,
             "scorecard reminders": KpiReminder.objects.filter(kpi__scorecard=card).count(),
-            "scorecard team": len(team)}
+            "scorecard team": len(team),
+            "scorecard digest waiting": scorecard_digest}
+
+
+def _scorecard_digest(world, company, owner_member) -> int:
+    """M5 ties: Michael's weekly digest, drafted once the scorecard exists, so
+    a visitor sees its Scorecard section on Digests. The news in it is the
+    Friday late-delivery review's first result."""
+    from django.utils import timezone
+
+    from apps.crm.models import Task
+    from apps.work import digests, services as work
+    from apps.work.models import Cadence, Goal, Stakeholder
+
+    goal = Goal.objects.filter(client_company=company, title="Deliver the next day").first()
+    contact = owner_member.contact
+    task = Task.objects.filter(project__goal=goal, title="Review late deliveries every Friday",
+                               deleted_at__isnull=True).first() if goal else None
+    if goal is None or contact is None or task is None:
+        return 0
+    now = timezone.now()
+    with at(now - timedelta(days=8)):
+        if not Stakeholder.objects.filter(contact=contact, goal=goal).exists():
+            Stakeholder.objects.create(tenant=world.tenant, contact=contact, goal=goal,
+                                       cadence=Cadence.WEEKLY)
+    with at(now - timedelta(hours=2)):
+        work.add_narrative(task, actor=world.owner, role="FF",
+                           line="The first Friday review found two routes running late; "
+                                "both are redrawn for next week.")
+    window = digests.next_window(world.tenant, Cadence.WEEKLY, now)
+    start, end = digests.period_for(world.tenant, Cadence.WEEKLY, window)
+    made = digests.generate(tenant=world.tenant, contact=contact, cadence=Cadence.WEEKLY,
+                            period_start=start, period_end=end, send_window_at=window,
+                            until=now)
+    if made is not None and made.state in digests.UNSENT_DRAFTS \
+            and "Scorecard" not in made.body_text:
+        made = digests.regenerate(made)              # drafted before the scorecard was
+    return int(made is not None)
 
 
 def bonus_plans(world, card, kpis, team, starts) -> int:

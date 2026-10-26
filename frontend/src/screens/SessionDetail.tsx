@@ -320,7 +320,7 @@ export function SessionDetail({ me }: { me: Me }) {
               focused={data.format === "focused" || data.format === "v3"}
               onDraft={() => act.mutate({ suffix: "draft-rows/" })}
               onConsolidate={() => act.mutate({ suffix: "consolidate/" })}
-              busy={act.isPending} onChanged={refresh} />
+              busy={act.isPending} onChanged={refresh} kpis={data.kpi_choices ?? null} />
           )}
           {section.questions.map((question) => (
             <QuestionRow key={question.key} question={question}
@@ -619,8 +619,10 @@ function AddMapRow({ sessionId, full, onAdded }: {
 }
 
 function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate, busy,
-  onChanged, sessionId }: {
+  onChanged, sessionId, kpis = null }: {
   sessionId: string;
+  /** M5: the company's KPIs a move can name; null for a prospect with no company. */
+  kpis?: { id: string; name: string }[] | null;
   tray: MapRow[]; map: MapRow[]; mayRun: boolean; focused?: boolean;
   onDraft: () => void; onConsolidate: () => void; busy: boolean; onChanged: () => void;
 }) {
@@ -762,9 +764,17 @@ function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate
                 <option value={60}>60</option>
                 <option value={90}>90</option>
               </select>
+              {kpis && kpis.length > 0 && (
+                <select aria-label={`KPI it moves, for ${row.bottleneck}`} value={row.kpi ?? ""}
+                  onChange={(e) => edit.mutate({ row: row.id, body: { kpi: e.target.value || null } })}>
+                  <option value="">KPI it moves: none</option>
+                  {kpis.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+                </select>
+              )}
             </div>
           ) : (
-            <p className="small muted">{row.measurable} · {row.horizon} days</p>
+            <p className="small muted">{row.measurable} · {row.horizon} days
+              {row.kpi_name ? ` · moves ${row.kpi_name}` : ""}</p>
           )}
         </div>
       ))}

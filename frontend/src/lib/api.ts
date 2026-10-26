@@ -593,6 +593,13 @@ export type MeasurableKind = "numeric" | "qualitative" | "none" | null;
 
 /** A goal or a project. `status` is what to show; `status_override` is what a
  *  person set by hand, and `status_is_derived` says which you are looking at. */
+/** M5 ties: a goal's KPI as the reader may see it. */
+export interface GoalKpi {
+  kpi: string; name: string; value: number | null; value_text: string; target_text: string;
+  status: string | null; status_label: string; period: string; whose: string;
+  off_track_run: number;
+}
+
 export interface WorkParent {
   id: string;
   kind: "goal" | "project";
@@ -631,6 +638,9 @@ export interface WorkParent {
   target_value?: string | null;
   horizon_days?: number | null;
   outcome_statement?: string;
+  /** M5 ties, on a goal only: its KPI's latest reading and status, when the
+   *  reader may see that KPI. */
+  kpi?: GoalKpi | null;
   /** P7 phase 4, for a client user: what they may do with it, and why not
    *  once where they may not. Absent for the practice, whose screens decide
    *  by role. */
@@ -1016,6 +1026,8 @@ export interface MapRow {
   /** Drafted from the call notes, and the passage it rests on, word for word.
    *  Sent only to the practice owner and an associate on their own prospect. */
   from_call_notes?: boolean; source_passage?: string;
+  /** M5: the scorecard KPI this move is meant to move. */
+  kpi?: string | null; kpi_name?: string;
 }
 
 /** §8's tray (owner, 2026-09-21). A pro or a con on one of the two paths;
@@ -1111,6 +1123,8 @@ export interface StrategySessionRow {
   sections?: StrategySection[];
   answers?: StrategyAnswerRow[];
   map_rows?: MapRow[];
+  /** M5: the company's KPIs a move can name; null with no company. */
+  kpi_choices?: { id: string; name: string }[] | null;
   /** The notes of the call, attached as context for Claude's drafts. Absent
    *  when there are none, and for anyone they are not shown to. */
   call_notes?: { source: string; source_label: string; title: string; characters: number;

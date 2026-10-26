@@ -199,6 +199,10 @@ class Goal(WorkItem):
     # FR-4.31 — the back-link to the map row this goal came from.
     source_map_row = models.ForeignKey("strategy.StrategyMapRow", null=True, blank=True,
                                        on_delete=models.SET_NULL, related_name="+")
+    #: M5: the scorecard KPI whose latest reading and status the goal's card
+    #: shows, the company's own; shown only to someone who may see that KPI.
+    kpi = models.ForeignKey("scorecard.Kpi", null=True, blank=True,
+                            on_delete=models.SET_NULL, related_name="goals")
 
     # --- Module 4B ---------------------------------------------------------
     #

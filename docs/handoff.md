@@ -30,6 +30,15 @@ truth; this covers what they don't, and what changed since 9/30.
   hourly `scorecard.read_feeds`, once a day per measure. **One feed a KPI is
   now kept in one place** (`feeds.stop_other_feeds`): before, setting a
   sheet or a Track measure left a "From this app" feed running beside it.
+- **M5 ties (migrations `crm 0050`, `work 0011`, `strategy 0020`, additive:
+  one nullable column each, `kpi_id`; on `dev`, not released).** Spec, "The
+  ties as built". A goal's KPI on its card and in the portal, the scorecard
+  grouped by component, a map row's KPI carried to its goal, the digest's
+  Scorecard section, "Make a task" and the nudge after three periods Off
+  track, and Claude's "Explain this scorecard" and "Draft the weekly note".
+  The demo seed links "Deliver the next day" to On-time delivery, has
+  Overtime Off track the last three weeks, and drafts Michael Scott's weekly
+  digest after the scorecard, so its Scorecard section shows on Digests.
 
 ## 2026-10-24: catch-up reach, and M5 part 3 (released at Release 23)
 

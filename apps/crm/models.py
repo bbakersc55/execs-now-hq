@@ -1491,6 +1491,11 @@ class Task(TenantScopedModel):
     client_company = models.ForeignKey(
         Company, null=True, blank=True, on_delete=models.SET_NULL, related_name="tasks",
     )
+    #: The scorecard KPI it was made from ("Make a task" on a tile, M5).
+    kpi = models.ForeignKey(
+        "scorecard.Kpi", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tasks",
+    )
     # The app user doing the work. A client user may only be assigned, or
     # assign, within their own company (FR-3.9).
     assignee = models.ForeignKey(

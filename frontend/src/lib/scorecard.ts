@@ -67,10 +67,19 @@ export interface KpiDef {
   feed?: { kind: "sheet" | "track" | "app" | "hubspot"; text: string; error: string } | null;
 }
 
+/** The six strategy components a KPI can serve, in the order they're read. */
+export const COMPONENTS = { "": "None", vision: "Vision", people: "People", data: "Data",
+  issues: "Issues", process: "Process", traction: "Traction" } as const;
+
 export interface Tile extends KpiDef {
   shape: Shape; summary: Summary | null; delta: Delta | null; spark: Point[];
   history: Point[]; rows: PersonRow[]; total: boolean; total_label?: string;
   each_target?: number | null;
+  /** M5 ties: "Make a task", offered unprompted after three periods Off
+   *  track, and the open task already made from it. */
+  off_track_run?: number; may_make_task?: boolean; offer_task?: boolean;
+  open_task?: { id: string; title: string } | null;
+  task_draft?: { title: string; description: string };
   /** The grid's columns are the window's own periods, with its roll-up beside. */
   history_is_window?: boolean;
 }

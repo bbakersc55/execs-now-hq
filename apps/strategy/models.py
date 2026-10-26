@@ -509,6 +509,10 @@ class StrategyMapRow(TenantScopedModel):
     #: never on the PDF, never to the prospect, never to an assistant.
     from_call_notes = models.BooleanField(default=False, db_default=False)
     source_passage = models.TextField(blank=True, default="", db_default="")
+    #: M5: the scorecard KPI this 30/60/90 move is meant to move, the
+    #: session's company's own. Carried to the goal it becomes.
+    kpi = models.ForeignKey("scorecard.Kpi", null=True, blank=True,
+                            on_delete=models.SET_NULL, related_name="+")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "strategy_map_row"

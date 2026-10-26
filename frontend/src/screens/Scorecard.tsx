@@ -9,12 +9,14 @@ import { TrackFeedModal } from "../components/ScorecardTrack";
 import { AppFeedModal } from "../components/ScorecardApp";
 import { KpiEditModal } from "../components/ScorecardSetup";
 import { ScorecardTile } from "../components/ScorecardTiles";
-import { Banner } from "../components/ui";
+import { AiGate } from "../components/DemoVisitor";
+import { Banner, Card } from "../components/ui";
 import { Me, api } from "../lib/api";
 import {
-  BONUS_VIEW_LABEL, Board, BonusViewKey, CADENCE_LABEL, Cadence, Point, STATUS_LABEL, Starter,
-  StarterKpi, Tile, WINDOWS, WindowKey, fmt,
+  BONUS_VIEW_LABEL, Board, BonusViewKey, CADENCE_LABEL, COMPONENTS, Cadence, Point, STATUS_LABEL,
+  Starter, StarterKpi, Tile, WINDOWS, WindowKey, fmt,
 } from "../lib/scorecard";
+import { useRemembered } from "../lib/remembered";
 import { useWords } from "../lib/words";
 
 type View = "tiles" | "grid" | "meeting";
@@ -61,6 +63,19 @@ export function Scorecard({ me }: { me: Me }) {
     if (connected || failed) setSearch({}, { replace: true });
   }, [search, setSearch]);
   const [managed, setManaged] = useState<{ kind: string; text: string } | null>(null);
+  // M5 ties: the scorecard grouped by the strategy component each KPI serves.
+  const [grouped, setGrouped] = useRemembered("sc-group-by-component", false);
+  // M5 ties: "Make a task" on a tile, referencing the KPI.
+  const makeTask = useMutation({
+    mutationFn: (t: Tile) => api.post<{ id: string; title: string }>("/api/tasks/", {
+      ...(t.task_draft ?? { title: `Look into ${t.name}`, description: "" }),
+      client_company: companyId, kpi: t.id }),
+    onSuccess: (task) => {
+      setManaged({ kind: "ok", text: `${w.Task} made: ${task.title}.` });
+      qc.invalidateQueries({ queryKey: ["scorecard", companyId] });
+    },
+    onError: (e: Error) => setManaged({ kind: "bad", text: e.message }),
+  });
   const archive = useMutation({
     mutationFn: (t: Tile) => api.post(`/api/scorecard/kpis/${t.id}/archive/`, {}),
     onSuccess: (_r, t) => {
@@ -207,18 +222,47 @@ export function Scorecard({ me }: { me: Me }) {
           }} />
       )}
 
-      {view === "grid" ? <Grid tiles={tiles} b={b} /> : (
-        <div className="sc-grid">
-          {tiles.length === 0 && <p className="sc-empty">No {w.kpis} on this page yet.</p>}
-          {tiles.map((t) => <ScorecardTile key={t.id} t={t} manage={b.may_set_up ? {
+      {b.may_set_up && view === "tiles" && <AskClaude companyId={companyId} />}
+
+      {view === "grid" ? <Grid tiles={tiles} b={b} /> : (() => {
+        const drawn = (list: Tile[]) => list.map((t) => <ScorecardTile key={t.id} t={t}
+          task={{ onMake: (x) => makeTask.mutate(x), busy: makeTask.isPending }}
+          manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
             onFeed: () => setFeedKpi(t.id),
             // The practice's own scorecard reads this app, a client's reads Track or HubSpot.
             ...(b.practice ? { onApp: () => setAppKpi(t.id) }
               : { onTrack: () => setTrackKpi(t.id), onHubSpot: () => setHubspotKpi(t.id) }),
-            busy: archive.isPending } : undefined} />)}
-        </div>
-      )}
+            busy: archive.isPending } : undefined} />);
+        const tagged = tiles.some((t) => t.component);
+        return (
+          <>
+            {tagged && view === "tiles" && (
+              <label className="row tight small sc-group-toggle">
+                <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} />
+                Group by component
+              </label>
+            )}
+            {grouped && tagged ? (
+              ([...Object.entries(COMPONENTS).filter(([key]) => key), ["", "No component"]] as
+                [string, string][])
+                .map(([key, label]) => [label, tiles.filter((t) => (t.component || "") === key)] as const)
+                .filter(([, list]) => list.length > 0)
+                .map(([label, list]) => (
+                  <section key={label} className="sc-component" aria-label={label}>
+                    <h2 className="sc-component-head">{label}</h2>
+                    <div className="sc-grid">{drawn(list)}</div>
+                  </section>
+                ))
+            ) : (
+              <div className="sc-grid">
+                {tiles.length === 0 && <p className="sc-empty">No {w.kpis} on this page yet.</p>}
+                {drawn(tiles)}
+              </div>
+            )}
+          </>
+        );
+      })()}
       {view === "meeting" && (
         <Meeting b={b} onExit={() => setView("tiles")} onPage={setPage} />
       )}
@@ -481,3 +525,65 @@ export function StartCard({ companyId, onPick, compact = false }: {
 }
 
 
+
+
+interface AiStatus { explain_estimate_usd: string; note_estimate_usd: string; used_today: number;
+  cap: number; refused: string }
+
+const price = (usd: string | undefined) => `about $${Number(usd ?? 0).toFixed(2)}`;
+
+/** M5 ties: "Explain this scorecard" and "Draft the weekly note", with Claude on
+ *  the practice's key. Nothing is sent until a button is pressed; the note is
+ *  a draft to copy, never saved or sent from here. */
+function AskClaude({ companyId }: { companyId: string }) {
+  const w = useWords();
+  const qc = useQueryClient();
+  const status = useQuery<AiStatus>({
+    queryKey: ["scorecard-ai", companyId],
+    queryFn: () => api.get<AiStatus>(`/api/scorecard/ai/?company=${companyId}`),
+  });
+  const [answer, setAnswer] = useState<{ purpose: string; text: string } | null>(null);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const ask = useMutation({
+    mutationFn: (purpose: "explain" | "note") =>
+      api.post<{ text: string }>("/api/scorecard/ai/", { company: companyId, purpose })
+        .then((r) => ({ purpose, text: r.text })),
+    onSuccess: (r) => { setAnswer(r); setError(""); setCopied(false); },
+    onError: (e: Error) => setError(e.message),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["scorecard-ai", companyId] }),
+  });
+  const s = status.data;
+  return (
+    <Card title="Ask Claude">
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Claude reads this {w.scorecard}'s totals, targets and notes, and the last meeting's notes. No one's own
+        numbers and nothing about bonuses are sent. Nothing is sent until you press.</p>
+      {error && <Banner kind="bad">{error}</Banner>}
+      {s?.refused ? <p className="small muted">{s.refused}</p> : (
+        <div className="row tight sc-ai-buttons">
+          <AiGate>
+            <button className="small" disabled={!s || ask.isPending} onClick={() => ask.mutate("explain")}>
+              {ask.isPending && ask.variables === "explain" ? "Asking Claude…"
+                : `Explain this ${w.scorecard} (${price(s?.explain_estimate_usd)})`}</button>
+            <button className="small" disabled={!s || ask.isPending} onClick={() => ask.mutate("note")}>
+              {ask.isPending && ask.variables === "note" ? "Asking Claude…"
+                : `Draft the weekly note (${price(s?.note_estimate_usd)})`}</button>
+          </AiGate>
+          {s && <span className="small muted">{s.used_today} of {s.cap} used today.</span>}
+        </div>
+      )}
+      {answer && (
+        <div className="banner info sc-ai-answer" role="note"
+          aria-label={answer.purpose === "note" ? "The weekly note, drafted" : "Explanation"}>
+          <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{answer.text}</p>
+          {answer.purpose === "note" && (
+            <button className="ghost small" onClick={() => {
+              navigator.clipboard?.writeText(answer.text).then(() => setCopied(true)).catch(() => {});
+            }}>{copied ? "Copied" : "Copy the draft"}</button>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}

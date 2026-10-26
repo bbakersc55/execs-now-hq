@@ -484,6 +484,7 @@ def build(reader, scorecard, page_id, win, today) -> dict:
         # The grid draws this window's own periods, and its roll-up beside
         # them (the tile's value), when the window holds more than one.
         t["history_is_window"] = len(P.periods_in(win, k.cadence, today, week_start)) >= 2
+    _task_ties(reader, kpis, tiles, today)
     out["kpis"] = tiles
     out["counts"] = counts(tiles)
     summaries = [t["summary"] for t in tiles if t.get("summary") and
@@ -495,6 +496,48 @@ def build(reader, scorecard, page_id, win, today) -> dict:
         out["window"]["text"] = f"{label[0].upper()}{label[1:]} · this week's readings " \
                                 "aren't in yet"
     return out
+
+
+def _task_ties(reader, kpis, tiles, today):
+    """M5 ties: "Make a task" on a tile, offered unprompted after three
+    periods Off track, and the open task already made from it, if this reader
+    can see that task. A client company's scorecard only."""
+    from .ties import OFF_TRACK_RUN, off_track_run, task_description, task_title
+
+    may = _may_make_task(reader)
+    open_tasks = _open_tasks(reader, kpis) if may else {}
+    for t, k in zip(tiles, kpis):
+        run = off_track_run(t, today)
+        t["off_track_run"] = run
+        t["may_make_task"] = may
+        t["offer_task"] = may and run >= OFF_TRACK_RUN and k.pk not in open_tasks
+        t["open_task"] = open_tasks.get(k.pk)
+        if may:
+            t["task_draft"] = {"title": task_title(k, t, today),
+                               "description": task_description(k, t, today)}
+
+
+def _may_make_task(reader) -> bool:
+    from apps.work import permissions as work_perms
+
+    if reader.on_practice or reader.only_looks:
+        return False
+    if reader.is_client:
+        return work_perms.client_may_create(reader.request, "task")
+    return True
+
+
+def _open_tasks(reader, kpis) -> dict:
+    from apps.crm.models import Task
+    from apps.work import permissions as work_perms
+
+    found = {}
+    rows = work_perms.task_queryset_for(reader.request, Task.objects.filter(
+        kpi_id__in=[k.pk for k in kpis], deleted_at__isnull=True).exclude(
+        status__in=[Task.Status.DONE, Task.Status.CANCELLED])).order_by("-created_at")
+    for task in rows:
+        found.setdefault(task.kpi_id, {"id": str(task.pk), "title": task.title})
+    return found
 
 
 def counts(tiles) -> dict:

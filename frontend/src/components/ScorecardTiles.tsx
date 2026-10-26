@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../lib/api";
 import {
@@ -344,7 +345,26 @@ export interface TileManage {
   onHubSpot?: () => void;
 }
 
-function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
+/** M5 ties: the task a KPI's tile offers, and the one already made. */
+export interface TileTask { onMake: (t: Tile) => void; busy?: boolean }
+
+function TaskLine({ t, task, front }: { t: Tile; task?: TileTask; front: boolean }) {
+  if (t.open_task) {
+    return <div className="sc-task">Task: <Link to={`/tasks/${t.open_task.id}`}>{t.open_task.title}</Link></div>;
+  }
+  if (!task || !t.may_make_task) return null;
+  if (front && !t.offer_task) return null;
+  const unit = CADENCE_NOUN[t.cadence] ?? "period";
+  return (
+    <div className={front ? "sc-task sc-task-offer" : "sc-task"}>
+      {front && <span>Off track {t.off_track_run} {unit}s running. </span>}
+      <button type="button" className="small" disabled={task.busy}
+        aria-label={`Make a task for ${t.name}`} onClick={() => task.onMake(t)}>Make a task</button>
+    </div>
+  );
+}
+
+function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTask }) {
   const [open, setOpen] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const latest = [...t.history].reverse().find((p) => p.value !== null);
@@ -375,6 +395,7 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
         </tbody>
       </table>
       {open && <HistoryList reading={open} def={t} />}
+      <TaskLine t={t} task={task} front={false} />
       <div className="sc-muted">
         {latest ? (latest.source === "app"
           ? <>Latest worked out from this app
@@ -450,8 +471,8 @@ export function HistoryList({ reading, def }: { reading: string; def: KpiDef }) 
 }
 
 /** One KPI's tile. `large` is the Meeting view's bigger type. */
-export function ScorecardTile({ t, large = false, actions, manage }: {
-  t: Tile; large?: boolean; actions?: ReactNode; manage?: TileManage;
+export function ScorecardTile({ t, large = false, actions, manage, task }: {
+  t: Tile; large?: boolean; actions?: ReactNode; manage?: TileManage; task?: TileTask;
 }) {
   const [flipped, setFlipped] = useState(false);
   const s = t.summary;
@@ -466,10 +487,11 @@ export function ScorecardTile({ t, large = false, actions, manage }: {
             ? `${t.direction === "lower" ? "keep under" : "target"} ${fmt(t, t.each_target)} each` : ""}</span>
           : <StatusPill status={s?.status ?? null} />}
       </div>
-      {flipped ? <Back t={t} manage={manage} /> : (
+      {flipped ? <Back t={t} manage={manage} task={task} /> : (
         <>
           <Body t={t} />
           {s && <Missing s={s} />}
+          <TaskLine t={t} task={task} front />
         </>
       )}
       <div className="sc-tile-foot">

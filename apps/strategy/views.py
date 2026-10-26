@@ -869,7 +869,19 @@ class MapRowViewSet(StrategyViewSet):
             return refused
         serializer = strategy_serializers.MapRowSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        for field, value in serializer.validated_data.items():
+        data = dict(serializer.validated_data)
+        if data.get("kpi") is not None:
+            # M5: only a KPI of the session's own company's scorecard.
+            from apps.scorecard.models import Kpi
+
+            data["kpi"] = Kpi.objects.filter(
+                pk=data["kpi"], archived_at__isnull=True,
+                scorecard__company_id=row.session.company_id).first() \
+                if row.session.company_id else None
+            if data["kpi"] is None:
+                return Response({"kpi": "That KPI isn't on this company's scorecard."},
+                                status=400)
+        for field, value in data.items():
             setattr(row, field, value)
         row.save()
         if row.state == StrategyMapRow.State.ACCEPTED:
@@ -963,7 +975,8 @@ class MapRowViewSet(StrategyViewSet):
             state=StrategyMapRow.State.ACCEPTED,
             position=data.get("position", StrategyMapRow.objects.filter(
                 session=session).count()),
-            **{k: v for k, v in data.items() if k != "position"})
+            # A new row names its KPI by an edit, where the company is checked.
+            **{k: v for k, v in data.items() if k not in ("position", "kpi")})
         style.record_row(row)            # written by them: their style, as an edit is
         AuditEvent.all_objects.create(
             tenant=request.tenant, actor=request.user, verb="strategy.map_row_added",

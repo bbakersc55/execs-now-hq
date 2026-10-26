@@ -51,6 +51,10 @@ def represent_map_row(row, *, private=False) -> dict:
         # it against the originals before accepting it.
         "merged_from": _merged_from(row),
     }
+    # M5: the KPI this move is meant to move. A key only when it names one,
+    # so every other row is represented exactly as before.
+    if row.kpi_id:
+        out["kpi"], out["kpi_name"] = str(row.kpi_id), row.kpi.name
     if row.added_by_id:
         by = row.added_by
         out["added_by"] = (by.full_name or by.email) if by else ""
@@ -188,8 +192,16 @@ def represent_session(session, *, include_financial=True, full=False,
     payload["must_ask"] = services.must_ask_outstanding(session)
     payload["map_rows"] = [represent_map_row(row, private=private) for row in
                            StrategyMapRow.objects.filter(session=session)
-                           .select_related("added_by")
+                           .select_related("added_by", "kpi")
                            .order_by("position", "created_at")]
+    # M5: a move can name the KPI it is meant to move, from the company's
+    # scorecard. None for a prospect with no company, empty with no KPIs.
+    from apps.scorecard import ties
+
+    # Absent with none to offer, so a session without them reads as before.
+    choices = ties.kpi_choices(session.company) if session.company_id else []
+    if choices:
+        payload["kpi_choices"] = choices
     # The call notes (owner, 2026-10-08): the practice owner's and an
     # associate's on their own prospect. Absent, not empty, for anyone else,
     # and for a session with none.
@@ -275,6 +287,7 @@ class MapRowSerializer(serializers.Serializer):
     measurable = serializers.CharField(required=False, allow_blank=True, max_length=255)
     mechanics_note = serializers.CharField(required=False, allow_blank=True)
     position = serializers.IntegerField(required=False, min_value=0)
+    kpi = serializers.UUIDField(required=False, allow_null=True)
 
 
 ANSWER_FIELDS = ("question_key", "value", "fractional_note")

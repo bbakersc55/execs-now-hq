@@ -9,6 +9,7 @@ import {
 import { TeamFilter, useTeamFilter } from "../components/ClientTeams";
 import { PortalCreate } from "../components/PortalCreate";
 import { PortalViewSwitch, usePortalView } from "../components/PortalView";
+import { GoalKpiLine } from "../components/GoalKpi";
 import { HierarchyNote, StaffCreate } from "../components/StaffCreate";
 import { StatusPill } from "../components/StatusPill";
 import { Avatar, PageHead, useRowLink } from "../components/shell";
@@ -290,6 +291,8 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
             {goal.measurable && goal.measurable_kind === "numeric" && (
               <p className="tiny muted" style={{ margin: 0 }}>{goal.measurable}</p>
             )}
+            {/* M5: its KPI's latest reading and status, for whoever may see it. */}
+            <GoalKpiLine kpi={goal.kpi} />
             {/* Completion is present and subordinate, never the headline. */}
             {collapsed && count > 0 && (
               <p className="tiny muted" style={{ margin: "var(--s1) 0 0" }}>

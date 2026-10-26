@@ -5,7 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Modal } from "./shell";
 import { Banner, Card } from "./ui";
 import { Company, Me, api } from "../lib/api";
-import { SetupKpi, SetupPage, SetupState, Starter, StarterKpi, fmt } from "../lib/scorecard";
+import { COMPONENTS, SetupKpi, SetupPage, SetupState, Starter, StarterKpi, fmt } from "../lib/scorecard";
 import { useWords } from "../lib/words";
 import { StartCard } from "../screens/Scorecard";
 
@@ -30,8 +30,6 @@ const ROLLUPS = { sum: "Sum", average: "Average", last: "Last" };
 const TILES = { number_trend: "Number with trend", gauge: "Gauge", progress: "Progress",
   bars: "Bars by period", line: "Line", status: "Status", leaderboard: "Leaderboard",
   my_row: "My row" };
-const COMPONENTS = { "": "None", vision: "Vision", people: "People", data: "Data",
-  issues: "Issues", process: "Process", traction: "Traction" };
 const FORMULAS = { sum: "first + second", difference: "first − second",
   ratio: "first ÷ second", average: "average of the two" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

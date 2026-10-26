@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { TeamField } from "../components/ClientTeams";
 import { CommentsPanel } from "../components/CommentsPanel";
+import { GoalKpiCard } from "../components/GoalKpi";
 import { StakeholdersPanel } from "../components/StakeholdersPanel";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
@@ -117,6 +118,9 @@ export function WorkParentDetail({ me, kind }: { me: Me; kind: "goal" | "project
           {e.target_date && ` · target ${e.target_date}`} · created {when(e.created_at)}
         </p>
       </Card>
+
+      {/* M5: the KPI the goal's card shows. */}
+      {kind === "goal" && <GoalKpiCard me={me} goal={e} />}
 
       {isTenant && (editing
         ? <EditDetails entity={e} kind={kind} onClose={() => setEditing(false)}

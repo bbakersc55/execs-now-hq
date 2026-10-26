@@ -192,7 +192,7 @@ class GoalViewSet(WorkViewSet):
     fields = PARENT_FIELDS + [
         "measurable_kind", "measurable", "measurable_unit", "how_we_will_know",
         "direction", "baseline_value", "baseline_at", "target_value", "horizon_days",
-        "outcome_statement",
+        "outcome_statement", "kpi",
     ]
 
     def _represent(self, entity):

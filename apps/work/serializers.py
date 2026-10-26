@@ -88,7 +88,7 @@ def represent_checklist_item(item: TaskChecklistItem) -> dict:
 
 def represent_task(task: Task, *, request) -> dict:
     may_edit = work_perms.may_write(request, task)
-    return {
+    out = {
         "id": str(task.pk),
         "title": task.title,
         "description": task.description,
@@ -122,6 +122,10 @@ def represent_task(task: Task, *, request) -> dict:
                            else work_perms.why_not_task(request, task)),
         "may_set_visibility": crm_perms.role_of(request) not in CLIENT_ROLES,
     }
+    # M5: the scorecard KPI it was made from; a key only when there is one.
+    if task.kpi_id:
+        out["kpi"] = str(task.kpi_id)
+    return out
 
 
 def _team_names(request) -> dict:
@@ -190,6 +194,12 @@ def _staff_team(serializer, attrs, company, *, follows_project=False):
         attrs["client_team"] = team
 
 
+def _goal_kpi(goal, request):
+    from apps.scorecard import ties
+
+    return ties.goal_kpi(request, goal) if request is not None else None
+
+
 def represent_parent(entity, *, request, kind: str) -> dict:
     data = {
         "id": str(entity.pk),
@@ -225,6 +235,10 @@ def represent_parent(entity, *, request, kind: str) -> dict:
             "horizon_days": entity.horizon_days,
             "outcome_statement": entity.outcome_statement,
         })
+        # M5: its KPI's latest reading and status, as this reader may see it
+        # (null when they may not). A key only on a goal that links one.
+        if entity.kpi_id:
+            data["kpi"] = _goal_kpi(entity, request)
     if kind == "project":
         data.update({
             "goal": str(entity.goal_id) if entity.goal_id else None,
@@ -335,8 +349,28 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
                                             required=False, allow_null=True)
     horizon_days = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     outcome_statement = serializers.CharField(required=False, allow_blank=True)
+    # M5: the scorecard KPI the goal's card shows, its company's own.
+    kpi = serializers.UUIDField(required=False, allow_null=True)
+
+    def _kpi_of(self, attrs):
+        """The KPI asked for, as a row: live, and on the goal's own company's
+        scorecard. Anything else is "not available", in words."""
+        from apps.scorecard.models import Kpi
+
+        company = attrs.get("client_company", getattr(self.instance, "client_company_id",
+                                                     None))
+        company_id = getattr(company, "pk", company)
+        kpi = Kpi.objects.filter(pk=attrs["kpi"], archived_at__isnull=True).select_related(
+            "scorecard").first()
+        if kpi is None or company_id is None or kpi.scorecard.company_id != company_id:
+            raise serializers.ValidationError({
+                "kpi": f"That {_words(self).kpi} isn't on this company's "
+                       f"{_words(self).scorecard}."})
+        return kpi
 
     def validate(self, attrs):
+        if attrs.get("kpi") is not None:
+            attrs["kpi"] = self._kpi_of(attrs)
         if self.instance is None and not (attrs.get("title") or "").strip():
             raise serializers.ValidationError(
                 {"title": f"{_a(_words(self).a_goal)} needs a title."})
@@ -368,6 +402,7 @@ class GoalSerializer(ScopedFieldsMixin, serializers.Serializer):
 
 
 class ProjectSerializer(GoalSerializer):
+    kpi = None                       # a goal's alone
     goal = serializers.UUIDField(required=False, allow_null=True)
     start_date = serializers.DateField(required=False, allow_null=True)
     client_team = serializers.UUIDField(required=False, allow_null=True)
@@ -404,10 +439,29 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
     client_team = serializers.UUIDField(required=False, allow_null=True)
     # FR-3.16 — prompted, never forced. Not a model field.
     client_facing_line = serializers.CharField(required=False, allow_blank=True)
+    # M5: "Make a task" on a tile. Set when the task is made, never after.
+    kpi = serializers.UUIDField(required=False, allow_null=True)
 
     def validate_project(self, value):
         return self._scoped(Project, value, work_perms.project_queryset_for,
                             deleted_at__isnull=True)
+
+    def validate_kpi(self, value):
+        """A KPI the person making the task may see on its scorecard, and
+        nothing else: "not available", in words, as any other link."""
+        from apps.scorecard.access import Reader
+        from apps.scorecard.models import Kpi
+
+        if value is None:
+            return None
+        request = self.context["request"]
+        kpi = Kpi.objects.filter(pk=value, archived_at__isnull=True).select_related(
+            "scorecard__company", "page__team", "audience_team",
+            "source_a__page__team", "source_b__page__team").first()
+        if kpi is None or not Reader(request, kpi.scorecard.company).sees_kpi(kpi):
+            raise serializers.ValidationError(
+                f"That {_words(self).kpi} is not available to you.")
+        return kpi
 
     def validate_goal(self, value):
         return self._scoped(Goal, value, work_perms.goal_queryset_for,
@@ -449,6 +503,16 @@ class TaskSerializer(ScopedFieldsMixin, serializers.Serializer):
         if self.instance is None and not (attrs.get("title") or "").strip():
             raise serializers.ValidationError(
                 {"title": f"{_a(_words(self).a_task)} needs a title."})
+        if self.instance is not None:
+            attrs.pop("kpi", None)               # named when made, never moved
+        elif attrs.get("kpi") is not None:
+            company = attrs.get("client_company")
+            if company is None and work_perms.is_client(self.context["request"]):
+                company = self.context["request"].membership.client_company
+            if company is None or attrs["kpi"].scorecard.company_id != company.pk:
+                raise serializers.ValidationError({
+                    "kpi": f"{_a(_words(self).a_task)} made from a {_words(self).kpi} is "
+                           f"for that {_words(self).kpi}'s own company."})
         # Checked against what the task WILL hold, not just what was sent, so a
         # PATCH naming one parent cannot join it to the one already stored. The
         # database carries the same rule (task_one_parent_not_both); this is the

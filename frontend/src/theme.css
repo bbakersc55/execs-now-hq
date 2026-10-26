@@ -1923,3 +1923,22 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
   .top-scroll-hint { flex: none; font-size: var(--t-12); color: var(--muted); }
   .top-scroll.at-end .top-scroll-hint { visibility: hidden; }
 }
+
+/* M5 ties (spec, "How it ties into the rest of the app"). A goal's KPI on its
+   card and page: its name, the latest reading, the target, status, period. */
+.goal-kpi { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s2);
+            margin: var(--s1) 0 0; font-size: var(--t-13); }
+.goal-kpi-name { font-weight: 600; color: var(--text); }
+.goal-kpi-value { font-size: var(--t-14); }
+/* A tile's task: the offer after three periods Off track, and the open one. */
+.sc-task { margin-top: var(--s2); font-size: 13px; color: var(--muted); display: flex;
+           flex-wrap: wrap; align-items: center; gap: 4px var(--s2); }
+.sc-task-offer { color: var(--sc-off-ink, var(--bad)); }
+/* The scorecard grouped by strategy component. */
+.sc-group-toggle { margin: 0 0 var(--s3); }
+.sc-component { margin-bottom: var(--s6); }
+.sc-component-head { font-size: var(--t-14); font-weight: 650; text-transform: uppercase;
+                     letter-spacing: .05em; color: var(--muted); margin: 0 0 var(--s2); }
+.sc-ai-buttons { flex-wrap: wrap; }
+.sc-ai-answer { margin-top: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
+                align-items: flex-start; }

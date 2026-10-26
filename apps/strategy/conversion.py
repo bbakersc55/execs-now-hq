@@ -192,6 +192,10 @@ def convert(session, *, choices, actor=None, role=None):
                 baseline_at=choice.get("baseline_at")
                 or (timezone.localdate() if baseline is not None else None),
                 target_value=_number(choice.get("target_value")),
+                # M5: the KPI the move was meant to move, when it is still
+                # this company's.
+                kpi=row.kpi if row.kpi_id and row.kpi.archived_at is None
+                and row.kpi.scorecard.company_id == session.company_id else None,
                 direction=(choice.get("direction") or ""),
                 horizon_days=row.horizon,
             )))

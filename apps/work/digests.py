@@ -609,7 +609,7 @@ def _groups(owed, w=practice_words.DEFAULT):
     return [sections[k] for k in section_order]
 
 
-def digest_text(narrative, sections, waiting=None) -> str:
+def digest_text(narrative, sections, waiting=None, scorecard=None) -> str:
     """The text/plain part, from the same sections as the HTML."""
     parts = [narrative.strip()] if narrative else []
     for section in sections:
@@ -627,10 +627,35 @@ def digest_text(narrative, sections, waiting=None) -> str:
                 if item["sentence"]:
                     lines.append(f"    “{item['sentence']}”")
             parts.append("\n".join(lines))
+    if scorecard:
+        lines = [scorecard["heading"]]
+        for title, key in SCORECARD_PARTS:
+            if scorecard[key]:
+                lines.append(f"  {title}")
+                lines += [f"  - {line}" for line in scorecard[key]]
+        parts.append("\n".join(lines))
     if waiting:
         parts.append("\n".join([waiting["heading"]]
                                + [f"  - {line}" for line in waiting["lines"]]))
     return "\n\n".join(parts).strip()
+
+
+#: The client digest's Scorecard section (M5), in this order.
+SCORECARD_PARTS = (("Readings", "readings"), ("What changed", "changes"),
+                   ("Not in yet", "missing"))
+
+
+def scorecard_section(tenant, contact, waiting):
+    """M5: the Scorecard section, read as the contact's own sign-in reads the
+    scorecard (`apps.scorecard.ties`). "Since last time" is since the last
+    digest this contact was sent was drafted."""
+    from apps.scorecard import ties
+
+    last = (Digest.objects.filter(contact=contact, state=Digest.State.SENT)
+            .order_by("-period_end").values_list("period_end", flat=True).first())
+    if last is not None:
+        last = timezone.localtime(last, zone(tenant))
+    return ties.digest_section(tenant, contact, since=last, waiting=waiting)
 
 
 def _waiting(lines, w) -> dict | None:
@@ -641,7 +666,7 @@ def _waiting(lines, w) -> dict | None:
             "lines": [text for _, text in lines]}
 
 
-def render(digest, owed, *, narrative="", scorecard_lines=()):
+def render(digest, owed, *, narrative="", scorecard_lines=(), scorecard=None):
     """`(text, html_content)` — narrative first, then updates grouped by task.
 
     The HTML is content only; `email_for` puts it in the layout at send time, so
@@ -654,9 +679,12 @@ def render(digest, owed, *, narrative="", scorecard_lines=()):
     w = practice_words.of(digest.tenant)
     sections = _groups(owed, w)
     waiting = _waiting(scorecard_lines, w)
+    parts = [{"title": title, "lines": scorecard[key]} for title, key in SCORECARD_PARTS
+             if scorecard and scorecard[key]]
     html = render_to_string("email/digest_content.html", email_layout.template_context(
-        digest.tenant, narrative=narrative, sections=sections, words=w, waiting=waiting))
-    return digest_text(narrative, sections, waiting), html
+        digest.tenant, narrative=narrative, sections=sections, words=w, waiting=waiting,
+        scorecard={"heading": scorecard["heading"], "parts": parts} if scorecard else None))
+    return digest_text(narrative, sections, waiting, scorecard), html
 
 
 # -------------------------------------------------------------- generation
@@ -703,8 +731,9 @@ def generate(*, tenant, contact, cadence, period_start, period_end, send_window_
     from apps.scorecard import digest as scorecard_digest
 
     waiting = scorecard_digest.lines_for(tenant, contact, digest)
-    digest.body_text, digest.body_html = render(digest, owed, narrative=narrative,
-                                                scorecard_lines=waiting)
+    digest.body_text, digest.body_html = render(
+        digest, owed, narrative=narrative, scorecard_lines=waiting,
+        scorecard=scorecard_section(tenant, contact, waiting))
     scorecard_digest.claim(digest, waiting)
     # FR-3.26/3.27: held means pending. Unheld and deterministic needs no
     # human, so it is pre-approved and will go at its window.
@@ -922,8 +951,9 @@ def regenerate(digest, *, actor=None):
     from apps.scorecard import digest as scorecard_digest
 
     waiting = scorecard_digest.lines_for(digest.tenant, digest.contact, digest)
-    digest.body_text, digest.body_html = render(digest, owed, narrative=narrative,
-                                                scorecard_lines=waiting)
+    digest.body_text, digest.body_html = render(
+        digest, owed, narrative=narrative, scorecard_lines=waiting,
+        scorecard=scorecard_section(digest.tenant, digest.contact, waiting))
     scorecard_digest.claim(digest, waiting)
     digest.is_stale = False
     digest.stale_reason = ""

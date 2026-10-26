@@ -461,3 +461,35 @@ def has_scorecard(request) -> bool:
     if scorecard is None:
         return False
     return bool(board.visible_pages(Reader(request, scorecard.company), scorecard))
+
+
+class ScorecardAiView(Base):
+    """GET  /api/scorecard/ai/?company=     what the two buttons say before a press
+    POST /api/scorecard/ai/                {company, purpose: explain | note}
+
+    The practice owner's and associates' (spec, Claude), on the practice's key."""
+
+    PURPOSES = {"explain": "scorecard_explain", "note": "scorecard_weekly_note"}
+
+    def get(self, request):
+        from . import ai
+
+        reader = _reader(request, request.query_params.get("company"))
+        if (refusal := _refuse_setup(reader)):
+            return refusal
+        return Response(ai.status(request.tenant))
+
+    def post(self, request):
+        from . import ai
+
+        reader = _reader(request, request.data.get("company"))
+        if (refusal := _refuse_setup(reader)):
+            return refusal
+        scorecard = board.scorecard_for(reader.company)
+        if scorecard is None:
+            return Response({"detail": "This company has no scorecard yet."}, status=404)
+        purpose = self.PURPOSES.get(str(request.data.get("purpose") or ""))
+        try:
+            return Response(ai.ask(reader, scorecard, purpose, _today(request)))
+        except ai.ScorecardAiRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)

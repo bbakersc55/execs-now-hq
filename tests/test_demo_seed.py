@@ -249,7 +249,10 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         # Each kind of owner an action can have; "" is the practice's own.
         assert {"client", "prospect", "vendor", "third_party", ""} <= owner_kinds
         waiting = Digest.objects.filter(state="pending")
-        assert 3 <= waiting.count() <= 4
+        assert 4 <= waiting.count() <= 5
+        # M5 ties: Michael's, drafted after the scorecard, carries its section.
+        michael = waiting.get(contact__first_name="Michael", contact__last_name="Scott")
+        assert "Scorecard\n  Readings" in michael.body_text
         assert set(waiting.values_list("cadence", flat=True)) == {"weekly", "every_update"}
         assert Digest.objects.filter(state="sent").count() >= 10
         assert Campaign.objects.count() == 2
