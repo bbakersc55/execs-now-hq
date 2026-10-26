@@ -1658,3 +1658,22 @@ class KpiAppFeedFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
     measure = "new_leads"
+
+
+# --- M5 part 5: HubSpot ---
+
+class HubSpotConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.HubSpotConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class KpiHubSpotFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiHubSpotFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    measure = "deals_won"

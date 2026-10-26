@@ -38,4 +38,7 @@ def read_feeds(tenant_id: str) -> dict:
         track_done = feeds.run_due_track(tenant.pk, today)
         # And the practice's own scorecard, "From this app", once a day each.
         app_done = feeds.run_due_app(tenant.pk, today)
-        return {"sheets": sheets_done, "track": track_done, "app": app_done}
+        # Part 5: each HubSpot feed once a day, rate-limit aware.
+        hubspot_done = feeds.run_due_hubspot(tenant.pk, today)
+        return {"sheets": sheets_done, "track": track_done, "app": app_done,
+                "hubspot": hubspot_done}

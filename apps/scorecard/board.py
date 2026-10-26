@@ -246,9 +246,16 @@ def feed_of(kpi, reader):
     last read failed only for the practice and the KPI's reading owner."""
     from django.core.exceptions import ObjectDoesNotExist
 
-    from .feeds import app_source_text, source_text, track_source_text
+    from .feeds import app_source_text, hubspot_source_text, source_text, track_source_text
 
     told = reader is not None and (reader.sets_up or kpi.reading_owner_id == reader.user_id)
+    try:
+        hubspot_feed = kpi.hubspot_feed
+    except ObjectDoesNotExist:
+        hubspot_feed = None
+    if hubspot_feed is not None and hubspot_feed.active:
+        return {"kind": "hubspot", "text": hubspot_source_text(hubspot_feed),
+                "error": hubspot_feed.last_error if told else ""}
     try:
         app_feed = kpi.app_feed
     except ObjectDoesNotExist:
@@ -430,7 +437,7 @@ def visible_pages(reader, scorecard):
                  .select_related("team"))
     kpis = list(Kpi.objects.filter(scorecard=scorecard, archived_at__isnull=True)
                 .select_related("page", "page__team", "audience_team", "reading_owner",
-                                "sheet_feed", "track_feed", "app_feed",
+                                "sheet_feed", "track_feed", "app_feed", "hubspot_feed",
                                 "source_a__page__team", "source_a__audience_team",
                                 "source_b__page__team", "source_b__audience_team"))
     by_page = defaultdict(list)

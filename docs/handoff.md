@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-24 UTC**, after M5 part 3. **The next session starts at
-"2026-10-24: catch-up reach, and M5 part 3" just below, then "2026-10-23:
+2026-10-26 UTC**, after Release 23 and M5 part 5. **The next session
+starts at "2026-10-26: Release 23, and M5 part 5" just below, then
+"2026-10-24: catch-up reach, and M5 part 3", then "2026-10-23:
 Release 22", then "2026-10-22: Release 21, and M5
 part 2", then "Where things
 stand (2026-10-21)", then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
@@ -14,7 +15,23 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## 2026-10-24: catch-up reach, and M5 part 3 (on `dev`, not released)
+## 2026-10-26: Release 23, and M5 part 5
+
+- **Release 23 is live**: `main` at `32479ca`, nine additive migrations
+  applied by the runbook in the waiting worker, all OK (`billing 0010`,
+  `crm 0045`–`0049`, `scorecard 0004`–`0006`); the three new jobs made by
+  `ensure_schedules`; web came up by itself; push to worker running 4 min
+  20 s. It carried everything from stage rules part 2 to the phone top bar
+  below. Runbook, "Observed at Release 23".
+- **M5 part 5, the HubSpot feed (migration `scorecard 0007`, additive: two
+  tables, `hubspot_connection` and `kpi_hubspot_feed`; on `dev`, not
+  released).** Spec, "Part 5 as built", has the arithmetic and what is
+  unverified against a live HubSpot account. No new schedule: it rides the
+  hourly `scorecard.read_feeds`, once a day per measure. **One feed a KPI is
+  now kept in one place** (`feeds.stop_other_feeds`): before, setting a
+  sheet or a Track measure left a "From this app" feed running beside it.
+
+## 2026-10-24: catch-up reach, and M5 part 3 (released at Release 23)
 
 - **Catch-up reach (`a9c4e94`).** The May 2026 limit seen on production was
   not reproduced: production's bundle is `dev`'s, and locally a monthly KPI's

@@ -340,6 +340,8 @@ export interface TileManage {
   onTrack?: () => void;
   /** "My practice": a measure "From this app". */
   onApp?: () => void;
+  /** Part 5: its HubSpot measure. */
+  onHubSpot?: () => void;
 }
 
 function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
@@ -377,6 +379,9 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
         {latest ? (latest.source === "app"
           ? <>Latest worked out from this app
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
+          : latest.source === "hubspot"
+          ? <>Latest worked out from HubSpot
+            {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
           : latest.source === "track"
           ? <>Latest worked out from Track
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
@@ -411,6 +416,9 @@ function Back({ t, manage }: { t: Tile; manage?: TileManage }) {
               {manage.onTrack && !t.computed && !t.per_person && (
                 <button type="button" className="ghost small" aria-label={`Track measure for ${t.name}`}
                   onClick={manage.onTrack}>{t.feed?.kind === "track" ? "Track measure" : "Feed from Track"}</button>)}
+              {manage.onHubSpot && !t.computed && !t.per_person && (
+                <button type="button" className="ghost small" aria-label={`HubSpot measure for ${t.name}`}
+                  onClick={manage.onHubSpot}>{t.feed?.kind === "hubspot" ? "HubSpot measure" : "Feed from HubSpot"}</button>)}
               <button type="button" className="ghost small" aria-label={`Archive ${t.name}`}
                 onClick={() => setArchiving(true)}>Archive</button>
             </>

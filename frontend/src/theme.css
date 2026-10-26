@@ -1838,6 +1838,9 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 /* M5 part 4: Track PMS (ScorecardTrack.tsx). */
 .track-state, .track-form, .track-feed { display: flex; flex-direction: column; gap: 6px; }
 .track-form input, .track-feed select { max-width: 100%; }
+/* M5 part 5: HubSpot (ScorecardHubSpot.tsx) reuses Track's layout. */
+.hubspot-scopes { margin: 0; padding-left: var(--s6); }
+.hubspot-scopes code { overflow-wrap: anywhere; }
 
 /* Phone width (owner, 2026-10-24): every table in the app and the portal
    either fits or scrolls inside its own box, and the page never scrolls

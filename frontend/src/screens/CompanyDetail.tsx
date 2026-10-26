@@ -13,6 +13,7 @@ import { ClientTeamsCard } from "../components/ClientTeams";
 import { CompanyCommitments } from "../components/ContactCommitments";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
 import { ScorecardSetup } from "../components/ScorecardSetup";
+import { HubSpotConnectionCard } from "../components/ScorecardHubSpot";
 import { TrackConnectionCard } from "../components/ScorecardTrack";
 import { useWords } from "../lib/words";
 
@@ -160,6 +161,7 @@ export function CompanyDetail({ me }: { me: Me }) {
       {/* M5 part 1: the practice sets the client's scorecard up here. */}
       <ScorecardSetup me={me} company={c} />
       {(me.role === "FF" || me.role === "CF") && <TrackConnectionCard me={me} companyId={c.id} />}
+      {(me.role === "FF" || me.role === "CF") && <HubSpotConnectionCard me={me} companyId={c.id} />}
 
       {/* Promises made in meetings, open and done (2026-10-20). */}
       <CompanyCommitments companyId={c.id} />

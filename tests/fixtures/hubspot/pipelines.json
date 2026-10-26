@@ -1,0 +1,132 @@
+{
+ "results": [
+  {
+   "id": "default",
+   "label": "Sales Pipeline",
+   "displayOrder": 0,
+   "archived": false,
+   "createdAt": "2025-01-10T17:00:00.000Z",
+   "updatedAt": "2025-01-10T17:00:00.000Z",
+   "stages": [
+    {
+     "id": "appointmentscheduled",
+     "label": "Appointment scheduled",
+     "displayOrder": 0,
+     "metadata": {
+      "isClosed": "false",
+      "probability": "0.2"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    },
+    {
+     "id": "qualifiedtobuy",
+     "label": "Qualified to buy",
+     "displayOrder": 1,
+     "metadata": {
+      "isClosed": "false",
+      "probability": "0.4"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    },
+    {
+     "id": "presentationscheduled",
+     "label": "Presentation scheduled",
+     "displayOrder": 2,
+     "metadata": {
+      "isClosed": "false",
+      "probability": "0.6"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    },
+    {
+     "id": "closedwon",
+     "label": "Closed won",
+     "displayOrder": 3,
+     "metadata": {
+      "isClosed": "true",
+      "probability": "1.0"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    },
+    {
+     "id": "closedlost",
+     "label": "Closed lost",
+     "displayOrder": 4,
+     "metadata": {
+      "isClosed": "false",
+      "probability": "0.0"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    }
+   ]
+  },
+  {
+   "id": "71234",
+   "label": "Renewals",
+   "displayOrder": 1,
+   "archived": false,
+   "createdAt": "2025-03-02T17:00:00.000Z",
+   "updatedAt": "2025-03-02T17:00:00.000Z",
+   "stages": [
+    {
+     "id": "1001",
+     "label": "Renewal open",
+     "displayOrder": 0,
+     "metadata": {
+      "isClosed": "false",
+      "probability": "0.5"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    },
+    {
+     "id": "1002",
+     "label": "Renewed",
+     "displayOrder": 1,
+     "metadata": {
+      "isClosed": "true",
+      "probability": "1.0"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    },
+    {
+     "id": "1003",
+     "label": "Churned",
+     "displayOrder": 2,
+     "metadata": {
+      "isClosed": "true",
+      "probability": "0.0"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": false
+    },
+    {
+     "id": "1004",
+     "label": "Old stage",
+     "displayOrder": 3,
+     "metadata": {
+      "isClosed": "false",
+      "probability": "0.3"
+     },
+     "createdAt": "2025-01-10T17:00:00.000Z",
+     "updatedAt": "2025-01-10T17:00:00.000Z",
+     "archived": true
+    }
+   ]
+  }
+ ]
+}

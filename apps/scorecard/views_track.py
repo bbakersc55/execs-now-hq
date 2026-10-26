@@ -191,10 +191,8 @@ class TrackFeedView(Base):
         if not TrackConnection.objects.filter(company=reader.company).exists():
             return Response({"detail": f"{reader.company.name} has no Track connection yet."},
                             status=409)
-        # A KPI has one feed: switching to Track stops its sheet (readings kept).
-        from .models import KpiFeed
-
-        KpiFeed.objects.filter(kpi=kpi).update(active=False, updated_at=timezone.now())
+        # A KPI has one feed: switching to Track stops the others (readings kept).
+        feeds.stop_other_feeds(kpi, Kpi.Feed.TRACK)
         feed, made = KpiTrackFeed.all_objects.update_or_create(
             kpi=kpi, defaults={"tenant_id": kpi.tenant_id, "measure": measure, "unit_id": unit,
                                "unit_name": str(request.data.get("unit_name") or "")[:200]

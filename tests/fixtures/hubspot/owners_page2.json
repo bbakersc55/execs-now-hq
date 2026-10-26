@@ -1,0 +1,23 @@
+{
+ "results": [
+  {
+   "id": "503",
+   "email": "cy@alpine.example",
+   "type": "PERSON",
+   "firstName": "Cy",
+   "lastName": "Gone",
+   "userId": null,
+   "userIdIncludingInactive": 9503,
+   "createdAt": "2025-01-10T17:00:00.000Z",
+   "updatedAt": "2025-06-01T17:00:00.000Z",
+   "archived": true,
+   "teams": [
+    {
+     "id": "88",
+     "name": "Sales",
+     "primary": true
+    }
+   ]
+  }
+ ]
+}

@@ -560,6 +560,23 @@ release adds no scheduled job. Times as reported by the owner; R1's dump
 name and the push time were not recorded here. Third release running where
 web gave up waiting: R4 still lands later than six minutes after the push.
 
+**Observed at Release 23 (2026-10-26 UTC, 9 migrations, all additive:
+`billing 0010`, `crm 0045`–`0049`, `scorecard 0004`–`0006`; ten commits,
+from stage rules part 2 to the phone top bar):** R1: the 08:00 run's dump
+(`execsnowhq_prod_20261026_080242`, 3.9 MB) and one the owner ran by hand
+first with the run-now mutation (`…_153629`, 15:36:32). R2: `main`
+fast-forwarded to `32479ca`, pushed 15:39:15. R3: the worker `WAITING`
+15:42:17, listing exactly the nine. **R4 run by Claude**, `railway ssh
+--service qcluster -- python manage.py migrate`, 15:42:38–55, all OK (3 min
+23 s after the push, inside web's six minutes). R5: `migrations current`
+15:43:28, cluster running 15:43:35. R5b: `ensure_schedules` created the
+three new jobs (`crm.stage_rules_daily` 07:00 and `billing.read_back_nmi`
+06:00 Mountain, `scorecard.read_feeds` hourly); the owner's re-run showed
+every job as "updated" for both practices, nothing missing. R6: nothing to
+do: the push's own web deployment came up by itself (SUCCESS), `/healthz`
+200 at 15:43:36. **Push to worker running: 4 min 20 s.** The first release
+since 20 where web did not give up waiting: R4 followed `WAITING` at once.
+
 ---
 
 ## Part A — the owner's steps, in order

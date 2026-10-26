@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { BonusArea, bonusLead } from "../components/ScorecardBonus";
 import { SheetFeedModal } from "../components/ScorecardFeed";
+import { HubSpotFeedModal } from "../components/ScorecardHubSpot";
 import { TrackFeedModal } from "../components/ScorecardTrack";
 import { AppFeedModal } from "../components/ScorecardApp";
 import { KpiEditModal } from "../components/ScorecardSetup";
@@ -48,6 +49,7 @@ export function Scorecard({ me }: { me: Me }) {
   // Part 3: a KPI's Google Sheet feed, from its tile (Details → Feed from a sheet).
   const [feedKpi, setFeedKpi] = useState<string | null>(null);
   const [trackKpi, setTrackKpi] = useState<string | null>(null);
+  const [hubspotKpi, setHubspotKpi] = useState<string | null>(null);
   const [appKpi, setAppKpi] = useState<string | null>(null);
   const [search, setSearch] = useSearchParams();
   // "Reconnect Google" is a browser redirect; its outcome comes back here.
@@ -188,6 +190,10 @@ export function Scorecard({ me }: { me: Me }) {
         <TrackFeedModal companyId={companyId} kpiId={trackKpi} onClose={() => setTrackKpi(null)}
           onSaved={(text) => { setTrackKpi(null); setManaged({ kind: "ok", text }); }} />
       )}
+      {hubspotKpi && (
+        <HubSpotFeedModal companyId={companyId} kpiId={hubspotKpi} onClose={() => setHubspotKpi(null)}
+          onSaved={(text) => { setHubspotKpi(null); setManaged({ kind: "ok", text }); }} />
+      )}
       {feedKpi && (
         <SheetFeedModal companyId={companyId} kpiId={feedKpi} onClose={() => setFeedKpi(null)}
           onSaved={(text) => { setFeedKpi(null); setManaged({ kind: "ok", text }); }} />
@@ -207,8 +213,9 @@ export function Scorecard({ me }: { me: Me }) {
           {tiles.map((t) => <ScorecardTile key={t.id} t={t} manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
             onFeed: () => setFeedKpi(t.id),
-            // The practice's own scorecard reads this app, a client's reads Track.
-            ...(b.practice ? { onApp: () => setAppKpi(t.id) } : { onTrack: () => setTrackKpi(t.id) }),
+            // The practice's own scorecard reads this app, a client's reads Track or HubSpot.
+            ...(b.practice ? { onApp: () => setAppKpi(t.id) }
+              : { onTrack: () => setTrackKpi(t.id), onHubSpot: () => setHubspotKpi(t.id) }),
             busy: archive.isPending } : undefined} />)}
         </div>
       )}

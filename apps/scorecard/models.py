@@ -149,6 +149,7 @@ class Kpi(TenantScopedModel):
         SHEET = "sheet", "Google Sheet"
         TRACK = "track", "Track PMS"
         APP = "app", "From this app"
+        HUBSPOT = "hubspot", "HubSpot"
 
     class Formula(models.TextChoices):
         """A computed KPI, one step only (spec, "Computed KPIs"): two other
@@ -284,6 +285,7 @@ class KpiReading(TenantScopedModel):
         SHEET = "sheet", "Google Sheet"
         TRACK = "track", "Track PMS"
         APP = "app", "From this app"
+        HUBSPOT = "hubspot", "HubSpot"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()
@@ -640,3 +642,56 @@ class KpiAppFeed(TenantScopedModel):
 
     class Meta(TenantScopedModel.Meta):
         db_table = "kpi_app_feed"
+
+
+class HubSpotConnection(TenantScopedModel):
+    """A client company's HubSpot account (M5 part 5): a private app's access
+    token, entered by the practice owner and encrypted on this row, as a
+    Track key is (`tenant_secret` holds one secret of a kind per practice;
+    a practice has a HubSpot account per client company). Write-only: the
+    practice never sees it again, only its last four. Read only for this
+    company's KPIs."""
+
+    company = models.OneToOneField("crm.Company", on_delete=models.CASCADE,
+                                   related_name="hubspot_connection")
+    token_ciphertext = models.BinaryField(null=True, blank=True)
+    token_last4 = models.CharField(max_length=4, blank=True, default="", db_default="")
+    #: The last "Test connection": when, whether HubSpot accepted it, what it said.
+    checked_at = models.DateTimeField(null=True, blank=True)
+    check_ok = models.BooleanField(null=True, blank=True)
+    check_detail = models.TextField(blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "hubspot_connection"
+
+
+class KpiHubSpotFeed(TenantScopedModel):
+    """A KPI read from its company's HubSpot account (M5 part 5): one measure
+    from the menu (`hubspot.MEASURES`), for the total or one HubSpot owner
+    (`owner_id`), and for pipeline value one deal stage or every open one
+    (`stage_id`). Computed per closed period on the worker, daily, by the
+    Sheets feed's rules."""
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="hubspot_feed")
+    measure = models.CharField(max_length=24)
+    owner_id = models.CharField(max_length=24, blank=True, default="", db_default="")
+    owner_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    stage_id = models.CharField(max_length=64, blank=True, default="", db_default="")
+    stage_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    active = models.BooleanField(default=True, db_default=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="", db_default="")
+    error_since = models.DateTimeField(null=True, blank=True)
+    last_counts = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_hubspot_feed"
+        constraints = [
+            models.CheckConstraint(condition=Q(stage_id="") | Q(measure="pipeline_value"),
+                                   name="kpi_hubspot_feed_stage_only_for_pipeline"),
+        ]

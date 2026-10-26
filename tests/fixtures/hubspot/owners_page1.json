@@ -1,0 +1,48 @@
+{
+ "results": [
+  {
+   "id": "501",
+   "email": "ana@alpine.example",
+   "type": "PERSON",
+   "firstName": "Ana",
+   "lastName": "Ruiz",
+   "userId": 9501,
+   "userIdIncludingInactive": 9501,
+   "createdAt": "2025-01-10T17:00:00.000Z",
+   "updatedAt": "2025-06-01T17:00:00.000Z",
+   "archived": false,
+   "teams": [
+    {
+     "id": "88",
+     "name": "Sales",
+     "primary": true
+    }
+   ]
+  },
+  {
+   "id": "502",
+   "email": "ben@alpine.example",
+   "type": "PERSON",
+   "firstName": "Ben",
+   "lastName": "Ode",
+   "userId": 9502,
+   "userIdIncludingInactive": 9502,
+   "createdAt": "2025-01-10T17:00:00.000Z",
+   "updatedAt": "2025-06-01T17:00:00.000Z",
+   "archived": false,
+   "teams": [
+    {
+     "id": "88",
+     "name": "Sales",
+     "primary": true
+    }
+   ]
+  }
+ ],
+ "paging": {
+  "next": {
+   "after": "2",
+   "link": "?after=2"
+  }
+ }
+}

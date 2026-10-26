@@ -1,0 +1,28 @@
+[
+ {
+  "id": "401",
+  "properties": {
+   "hs_object_id": "401",
+   "createdate": "2026-10-14T16:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "hs_timestamp": "2026-10-14T16:00:00.000Z",
+   "hubspot_owner_id": "501"
+  },
+  "createdAt": "2026-10-14T16:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "402",
+  "properties": {
+   "hs_object_id": "402",
+   "createdate": "2026-11-03T16:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "hs_timestamp": "2026-11-03T16:00:00.000Z",
+   "hubspot_owner_id": "501"
+  },
+  "createdAt": "2026-11-03T16:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ }
+]

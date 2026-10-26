@@ -52,7 +52,8 @@ from apps.finance.models import (
     FinanceMonthClose, FinanceReconciliation, FinanceRule, FinanceSettings,
 )
 from apps.scorecard.models import (
-    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection, KpiAppFeed,
+    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection,
+    HubSpotConnection, KpiHubSpotFeed, KpiAppFeed,
     ScorecardPage,
 )
 from apps.tenancy.registry import register
@@ -330,3 +331,9 @@ register(KpiTrackFeed, factories.KpiTrackFeedFactory, api_exposed=False)
 # M5, "My practice": a KPI of the practice's own scorecard read "From this
 # app", served by /api/scorecard/app-feed/ (tests/test_scorecard_practice.py).
 register(KpiAppFeed, factories.KpiAppFeedFactory, api_exposed=False)
+
+# M5 part 5: a company's HubSpot connection and a KPI's HubSpot measure, served
+# by /api/scorecard/hubspot/ through `access.company_for`
+# (tests/test_scorecard_hubspot.py).
+register(HubSpotConnection, factories.HubSpotConnectionFactory, api_exposed=False)
+register(KpiHubSpotFeed, factories.KpiHubSpotFeedFactory, api_exposed=False)

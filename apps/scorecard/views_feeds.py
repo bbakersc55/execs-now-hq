@@ -91,12 +91,8 @@ class FeedsView(Base):
                 and before.spreadsheet_id == config["spreadsheet_id"]
             cell_from = before.cell_from if same else \
                 P.start_of(today, kpi.cadence, kpi.scorecard.week_start)
-        # A KPI has one feed: switching to a sheet stops its Track measure.
-        from django.utils import timezone
-
-        from .models import KpiTrackFeed
-
-        KpiTrackFeed.objects.filter(kpi=kpi).update(active=False, updated_at=timezone.now())
+        # A KPI has one feed: switching to a sheet stops the others.
+        feeds.stop_other_feeds(kpi, Kpi.Feed.SHEET)
         feed, made = KpiFeed.all_objects.update_or_create(
             kpi=kpi, defaults={**config, "tenant_id": kpi.tenant_id, "cell_from": cell_from,
                                "connection": connection, "active": True,

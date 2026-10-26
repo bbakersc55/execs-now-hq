@@ -76,8 +76,6 @@ class AppFeedView(Base):
     def put(self, request):
         from apps.crm.models import PipelineStage
 
-        from .models import KpiFeed, KpiTrackFeed
-
         reader, kpi = _kpi(request, request.data)
         if (refusal := _refuse_setup(reader)):
             return refusal
@@ -94,8 +92,7 @@ class AppFeedView(Base):
                 return Response({"param": "Choose a stage of the Sales pipeline."}, status=400)
             param, label = str(stage.pk), stage.label
         # One feed a KPI: the others stop, their readings kept.
-        KpiFeed.objects.filter(kpi=kpi).update(active=False, updated_at=timezone.now())
-        KpiTrackFeed.objects.filter(kpi=kpi).update(active=False, updated_at=timezone.now())
+        feeds.stop_other_feeds(kpi, Kpi.Feed.APP)
         feed, made = KpiAppFeed.all_objects.update_or_create(
             kpi=kpi, defaults={"tenant_id": kpi.tenant_id, "measure": measure, "param": param,
                                "param_label": label, "active": True, "last_error": "",

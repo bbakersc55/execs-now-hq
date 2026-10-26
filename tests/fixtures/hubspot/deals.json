@@ -1,0 +1,126 @@
+[
+ {
+  "id": "9001",
+  "properties": {
+   "hs_object_id": "9001",
+   "createdate": "2026-10-03T15:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "appointmentscheduled",
+   "amount": "1000",
+   "hubspot_owner_id": "501",
+   "pipeline": "default"
+  },
+  "createdAt": "2026-10-03T15:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "9002",
+  "properties": {
+   "hs_object_id": "9002",
+   "createdate": "2026-10-10T18:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "qualifiedtobuy",
+   "amount": "2500.50",
+   "hubspot_owner_id": "502",
+   "pipeline": "default"
+  },
+  "createdAt": "2026-10-10T18:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "9003",
+  "properties": {
+   "hs_object_id": "9003",
+   "createdate": "2026-09-20T18:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "closedwon",
+   "amount": "4000",
+   "closedate": "2026-10-12T20:00:00.000Z",
+   "hubspot_owner_id": "501",
+   "pipeline": "default"
+  },
+  "createdAt": "2026-09-20T18:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "9004",
+  "properties": {
+   "hs_object_id": "9004",
+   "createdate": "2026-10-05T18:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "closedlost",
+   "amount": "1500",
+   "closedate": "2026-10-20T20:00:00.000Z",
+   "hubspot_owner_id": "502",
+   "pipeline": "default"
+  },
+  "createdAt": "2026-10-05T18:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "9005",
+  "properties": {
+   "hs_object_id": "9005",
+   "createdate": "2026-08-01T18:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "1002",
+   "amount": "900",
+   "closedate": "2026-11-01T05:30:00.000Z",
+   "hubspot_owner_id": "502",
+   "pipeline": "71234"
+  },
+  "createdAt": "2026-08-01T18:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "9006",
+  "properties": {
+   "hs_object_id": "9006",
+   "createdate": "2026-10-01T05:30:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "1001",
+   "amount": "800",
+   "hubspot_owner_id": "501",
+   "pipeline": "71234"
+  },
+  "createdAt": "2026-10-01T05:30:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "9007",
+  "properties": {
+   "hs_object_id": "9007",
+   "createdate": "2026-08-15T18:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "closedwon",
+   "amount": "700",
+   "closedate": "2026-09-15T20:00:00.000Z",
+   "hubspot_owner_id": "501",
+   "pipeline": "default"
+  },
+  "createdAt": "2026-08-15T18:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ },
+ {
+  "id": "9008",
+  "properties": {
+   "hs_object_id": "9008",
+   "createdate": "2026-10-15T18:00:00.000Z",
+   "hs_lastmodifieddate": "2026-11-02T16:00:00.000Z",
+   "dealstage": "presentationscheduled",
+   "amount": null,
+   "hubspot_owner_id": null,
+   "pipeline": "default"
+  },
+  "createdAt": "2026-10-15T18:00:00.000Z",
+  "updatedAt": "2026-11-02T16:00:00.000Z",
+  "archived": false
+ }
+]
