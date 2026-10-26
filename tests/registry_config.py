@@ -337,3 +337,11 @@ register(KpiAppFeed, factories.KpiAppFeedFactory, api_exposed=False)
 # (tests/test_scorecard_hubspot.py).
 register(HubSpotConnection, factories.HubSpotConnectionFactory, api_exposed=False)
 register(KpiHubSpotFeed, factories.KpiHubSpotFeedFactory, api_exposed=False)
+
+# The Notices list and browser notifications (2026-10-26): each person's own,
+# served by /api/notify/ for the person signed in (tests/test_notify.py).
+from apps.notify.models import Notice, PushPreference, PushSubscription  # noqa: E402
+
+register(Notice, factories.NoticeFactory, api_exposed=False)
+register(PushSubscription, factories.PushSubscriptionFactory, api_exposed=False)
+register(PushPreference, factories.PushPreferenceFactory, api_exposed=False)

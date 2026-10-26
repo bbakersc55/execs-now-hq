@@ -83,6 +83,22 @@ ORIGINALS["introduction"] = (
     "I'll step back and let you two take it from here.",
 )
 
+#: The same warmth in one email to both (owner, 2026-10-26): each introduced
+#: to the other, in turn. {FirstName} is the partner it was made from.
+ORIGINALS["introduction_both"] = (
+    "Introduction, one email to both",
+    "Introducing {FirstName} and {OtherFirstName}",
+    "Hi {FirstName} and {OtherFirstName},\n\n"
+    "I've wanted the two of you to meet for a while, so here you both are, in one email.\n\n"
+    "{FirstName}, meet {OtherName}. {OtherBlurb}\n"
+    "{OtherHisHer} work focuses on {OtherSpecialties}.\n\n"
+    "{OtherFirstName}, meet {FirstName} {LastName}. {Blurb}\n"
+    "{HisHer} work focuses on {Specialties}.\n"
+    "{IntroNote}\n\n"
+    "I think you'll really enjoy knowing each other. I'll step back and let you two take "
+    "it from here.",
+)
+
 #: use -> the original it starts on.
 USES = {
     "referral_touch": "referral_touch",
@@ -91,6 +107,7 @@ USES = {
     "thanks_won": "thanks_won",
     "thanks_lost": "thanks_lost",
     "introduction": "introduction",
+    "introduction_both": "introduction_both",
 }
 
 

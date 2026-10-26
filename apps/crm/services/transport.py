@@ -290,7 +290,7 @@ class GmailTransport:
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
-             inline_images=(), from_address="", headers=None):
+             inline_images=(), from_address="", headers=None, also_to=()):
         from config import environment
 
         demo = environment.is_demo()
@@ -299,7 +299,7 @@ class GmailTransport:
             # whatever asked for this send, nothing leaves the demo for any
             # address but its redirect, or from any address but its own.
             redirect = environment.demo_redirect(tenant)
-            if not redirect or (to_address or "").strip().lower() != redirect:
+            if not redirect or (to_address or "").strip().lower() != redirect or also_to:
                 raise TransportUnavailable(
                     "The demo sends only to its redirect address. This message was "
                     "addressed to someone else and was not sent.")
@@ -317,7 +317,7 @@ class GmailTransport:
         own = bool(from_address) and from_address.lower() == connection.email_address.lower()
         message_id = message_id_for(tenant, thread)
         mime = build_mime(
-            to_address=to_address,
+            to_address=", ".join([to_address, *also_to]),
             from_address=(connection.email_address if own and not demo
                           else connection.send_as_address or tenant.from_address),
             subject=subject, body_text=body_text, message_id=message_id,
@@ -421,14 +421,14 @@ class DevOutboxTransport:
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
-             inline_images=(), from_address="", headers=None):
+             inline_images=(), from_address="", headers=None, also_to=()):
         from django.core.mail import EmailMultiAlternatives
 
         message_id = message_id_for(tenant, thread)
         sender = from_address or tenant.from_address
         email = EmailMultiAlternatives(
             subject=subject, body=body_text, from_email=sender,
-            to=[to_address],
+            to=[to_address, *also_to],
             headers={"Message-ID": message_id, THREAD_HEADER: thread.thread_token,
                      **({"In-Reply-To": in_reply_to} if in_reply_to else {}),
                      **(headers or {})},

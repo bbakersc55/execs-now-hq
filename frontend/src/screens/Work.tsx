@@ -18,6 +18,7 @@ import {
   GoalOrderProposal, GoalProposal, Me, Task, TaskUpdateRow, WorkParent, api,
 } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
+import { figure, unitAfter } from "../lib/figures";
 import { useRemembered } from "../lib/remembered";
 import { useWords } from "../lib/words";
 
@@ -283,9 +284,9 @@ function GoalBranch({ goal, projects, tasks, allTasks, collapsed, onToggle }: {
                 screen the practice reads (FR-4B.18). */}
             {goal.measurable_kind === "numeric" && goal.baseline_value !== null && (
               <p className="measure-line">
-                {goal.baseline_value}<span className="to">→</span>
-                {goal.target_value ?? "—"}
-                {goal.measurable_unit && <span className="unit">{goal.measurable_unit}</span>}
+                {figure(goal.baseline_value, goal.measurable_unit)}<span className="to">→</span>
+                {figure(goal.target_value, goal.measurable_unit) || "—"}
+                {unitAfter(goal.measurable_unit) && <span className="unit">{unitAfter(goal.measurable_unit)}</span>}
               </p>
             )}
             {goal.measurable && goal.measurable_kind === "numeric" && (

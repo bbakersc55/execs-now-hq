@@ -337,3 +337,21 @@ def _visitor_row(pk):
     from apps.tenancy.demo import visitors
 
     return next(r for r in visitors.rows() if r["id"] == str(pk))
+
+
+class PlatformNmiEventView(APIView):
+    """POST /api/platform/nmi-events/<id>/seen: the platform owner has looked at
+    what the platform's NMI read-back found (owner, 2026-10-26). The billing
+    service answers; this names no practice model."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def post(self, request, pk):
+        from django.http import Http404
+
+        from apps.platform import billing
+
+        seen = billing.mark_nmi_event_seen(pk, user=request.user)
+        if seen is None:
+            raise Http404
+        return Response(seen)

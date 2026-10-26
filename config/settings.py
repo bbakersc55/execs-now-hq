@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "apps.finance",
     "apps.personal",
     "apps.scorecard",
+    "apps.notify",
 ]
 
 MIDDLEWARE = [
@@ -331,6 +332,14 @@ NMI_LIVE_CALLS = env.bool("NMI_LIVE_CALLS", default=False)
 if NMI_ENVIRONMENT == "live" and IS_LOCAL:
     raise RuntimeError("NMI_ENVIRONMENT is live on a localhost server. Live NMI keys "
                        "belong only in production.")
+
+# --- Browser notifications (Web Push, 2026-10-26) ---
+# The server's VAPID key pair: `manage.py make_vapid_keys` prints a new one.
+# Unset, browser notifications say they aren't set up here; the Notices list
+# works either way. The subject is how a push service reaches the sender.
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="").strip()
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="").strip()
+VAPID_SUBJECT = env("VAPID_SUBJECT", default="mailto:info@getexecutivesnow.com").strip()
 
 # --- Google ---
 GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="execs-now-hq")

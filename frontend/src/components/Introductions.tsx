@@ -126,6 +126,8 @@ export function IntroductionsCard({ contact, partner }: { contact: Contact; part
   const [making, setMaking] = useState(false);
   const [to, setTo] = useState<{ id: string; name: string } | null>(null);
   const [note, setNote] = useState("");
+  // Two drafts, one to each (the default), or one email to both (owner, 2026-10-26).
+  const [together, setTogether] = useState(false);
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
   const rows = useQuery<{ introductions: Introduction[]; counts: { made: number; became_client: number };
     counts_text: string }>({
@@ -137,10 +139,12 @@ export function IntroductionsCard({ contact, partner }: { contact: Contact; part
     qc.invalidateQueries({ queryKey: ["outbox"] });
   };
   const make = useMutation({
-    mutationFn: () => api.post("/api/introductions/", { partner: contact.id, to: to!.id, note }),
+    mutationFn: () => api.post("/api/introductions/", { partner: contact.id, to: to!.id, note, together }),
     onSuccess: () => {
-      setMessage({ kind: "ok", text: `Introduction recorded. A draft to each of ${contact.first_name} and ${to!.name} is waiting in the Outbox for approval.` });
-      setMaking(false); setTo(null); setNote(""); refresh();
+      setMessage({ kind: "ok", text: together
+        ? `Introduction recorded. One email to both ${contact.first_name} and ${to!.name} is waiting in the Outbox for approval.`
+        : `Introduction recorded. A draft to each of ${contact.first_name} and ${to!.name} is waiting in the Outbox for approval.` });
+      setMaking(false); setTo(null); setNote(""); setTogether(false); refresh();
     },
     onError: (e: Error) => setMessage({ kind: "bad", text: e.message }),
   });
@@ -160,7 +164,15 @@ export function IntroductionsCard({ contact, partner }: { contact: Contact; part
         <div className="intro-form" role="group" aria-label={`Introduce ${contact.first_name} to someone`}>
           <ReferrerPicker value={to} onChange={setTo} excludeId={contact.id} autoFocus label="Introduce to" />
           <textarea aria-label="Why you're introducing them" rows={2} value={note}
-            placeholder="Why the two should talk (it goes in both emails)" onChange={(e) => setNote(e.target.value)} />
+            placeholder={together ? "Why the two should talk (it goes in the email)"
+              : "Why the two should talk (it goes in both emails)"} onChange={(e) => setNote(e.target.value)} />
+          <fieldset className="intro-how">
+            <legend className="small">Send it as</legend>
+            <label className="row tight small"><input type="radio" name={`intro-how-${contact.id}`}
+              checked={!together} onChange={() => setTogether(false)} />Two emails, one to each</label>
+            <label className="row tight small"><input type="radio" name={`intro-how-${contact.id}`}
+              checked={together} onChange={() => setTogether(true)} />One email to both</label>
+          </fieldset>
           <div className="row">
             <button className="primary small" style={{ flex: "0 0 auto" }} disabled={!to || make.isPending}
               onClick={() => make.mutate()}>Draft the introduction</button>

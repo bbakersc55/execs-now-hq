@@ -214,6 +214,7 @@ def scorecard(world) -> dict:
     Goal.objects.filter(client_company=company, title="Deliver the next day").update(
         kpi=kpis["delivery"])
     scorecard_digest = _scorecard_digest(world, company, owner_member)
+    _review_session(world, company, owner_member, kpis)
 
     # Part 3: orders arrive from the warehouse's sheet. The demo never reads
     # Google (and has no worker), so the feed is shown, not run: its readings
@@ -236,6 +237,39 @@ def scorecard(world) -> dict:
             "scorecard reminders": KpiReminder.objects.filter(kpi__scorecard=card).count(),
             "scorecard team": len(team),
             "scorecard digest waiting": scorecard_digest}
+
+
+def _review_session(world, company, owner_member, kpis) -> None:
+    """Dunder Mifflin's quarterly review, held last week: three moves on the
+    map, two naming the KPI they're meant to move, so a visitor sees "KPI it
+    moves" (owner, 2026-10-26). Made after the scorecard, whose KPIs it names."""
+    from apps.strategy.models import StrategyMapRow, StrategySession
+
+    from .sessions import _start, _state
+
+    template = (world.extra.get("templates") or [None])[0]
+    contact = owner_member.contact
+    if template is None or contact is None:
+        return
+    began = moment(world.today - timedelta(days=6), 14, 0)
+    with at(began - timedelta(days=6)):
+        call = _start(world, contact, template, began)
+    with at(began + timedelta(minutes=55)):
+        _state(call.session, StrategySession.State.COMPLETE, started_at=began,
+               current_section="strategy_map",
+               current_section_at=began + timedelta(minutes=25))
+        accepted = StrategyMapRow.State.ACCEPTED
+        call.row(0, "Overtime back under 40",
+                 "Overtime crept back up with the fall rush; the warehouse needs a second "
+                 "shift lead before November.", "Darryl", 30, "Overtime hours a week",
+                 accepted, kpi=kpis["overtime"])
+        call.row(1, "Every order on the morning truck",
+                 "On-time delivery is a point short of target; the late ones are the "
+                 "orders entered after 3.", "Dwight", 60, "On-time delivery",
+                 accepted, kpi=kpis["delivery"])
+        call.row(2, "A second supplier for cardstock",
+                 "One supplier for cardstock has stopped two weeks of orders this year.",
+                 "Michael", 90, "Weeks short of cardstock", accepted)
 
 
 def _scorecard_digest(world, company, owner_member) -> int:

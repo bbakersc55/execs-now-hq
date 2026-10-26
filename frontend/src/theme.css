@@ -548,8 +548,12 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
   margin: 0; border-radius: 0; border-width: 0 0 1px; align-items: center;
   flex-wrap: wrap; gap: var(--s2) var(--s4); padding: var(--s2) var(--gutter);
 }
+/* The bar's sentence and button are siblings in the banner's body. */
+.acting-bar .banner-body { display: flex; align-items: center; flex-wrap: wrap;
+                           gap: var(--s2) var(--s4); }
 .acting-bar .banner .says { flex: 1 1 32ch; min-width: 0; }
 .acting-bar .banner button { flex: 0 0 auto; white-space: nowrap; }
+.banner-body { flex: 1 1 auto; min-width: 0; }
 .banner.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
 .banner.bad { background: var(--bad-bg); border-color: var(--bad-line); color: var(--bad); }
 .banner.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
@@ -1828,6 +1832,8 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .chip-x:focus-visible { outline: 2px solid #F58220; }
 .what-they-do-form, .intro-form { display: flex; flex-direction: column; gap: 6px; }
 .intro-form { margin-bottom: .75rem; }
+.intro-how { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px var(--s4); }
+.intro-how legend { padding: 0; margin-bottom: 2px; }
 .intro-list { list-style: none; margin: 0; padding: 0; }
 .intro-list li { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
   gap: 8px; padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); }
@@ -1942,3 +1948,35 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .sc-ai-buttons { flex-wrap: wrap; }
 .sc-ai-answer { margin-top: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
                 align-items: flex-start; }
+
+/* The Notices list and browser notifications (2026-10-26). */
+.notices { position: relative; }
+.notices-button { position: relative; }
+.notices-count { position: absolute; top: -2px; right: -4px; min-width: 16px; height: 16px;
+                 padding: 0 4px; border-radius: 8px; background: var(--orange); color: #fff;
+                 font-size: 10px; line-height: 16px; font-weight: 700; text-align: center; }
+.notices-panel { position: absolute; right: 0; top: calc(100% + var(--s2)); z-index: 40;
+                 width: min(360px, calc(100vw - 2 * var(--s4))); max-height: 70vh; overflow-y: auto;
+                 background: var(--surface); border: 1px solid var(--line);
+                 border-radius: var(--radius); box-shadow: var(--shadow); padding: var(--s3);
+                 color: var(--text); }
+.notices-head { display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: var(--s2); }
+.notices-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.notices-list li button { width: 100%; text-align: left; display: flex; flex-direction: column;
+                          align-items: flex-start; justify-content: flex-start; gap: 2px; padding: var(--s2); border: 0; border-radius: var(--radius-sm);
+                          background: transparent; min-height: 0; height: auto; color: var(--text); }
+.notices-list li button:hover:not(:disabled) { background: var(--hover); }
+.notices-list li.unread .notices-title::before { content: ""; display: inline-block; width: 7px;
+  height: 7px; border-radius: 50%; background: var(--orange); margin-right: 6px; vertical-align: 1px; }
+.notices-title { font-weight: 600; font-size: var(--t-14); }
+.notices-list li button, .notices-list li button span { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 860px) {
+  /* Under the top bar, across the screen: the bell sits mid-bar on a phone. */
+  .notices-panel { position: fixed; top: calc(var(--topbar-h) + var(--s1)); left: var(--s3);
+                   right: var(--s3); width: auto; max-height: calc(100vh - var(--topbar-h) - var(--s6)); }
+}
+.topbar.phone .notices-button { color: #fff; }
+.push-kinds { border: 0; padding: 0; margin: var(--s3) 0 0; display: flex; flex-direction: column;
+              gap: 4px; }
+.push-kinds legend { padding: 0; margin-bottom: 2px; font-weight: 600; }

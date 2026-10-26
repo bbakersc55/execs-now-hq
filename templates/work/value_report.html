@@ -81,10 +81,10 @@
       {% if block.measure.kind == "numeric" and block.measure.current %}
         <div class="measure">
           <div class="figures">
-            {{ block.measure.baseline.value|default:"—" }}<span class="to">→</span>
-            <strong>{{ block.measure.current.value }}</strong>
-            {% if block.measure.target %}<span class="to">→</span>{{ block.measure.target }}{% endif %}
-            {% if block.measure.unit %}<span class="muted">{{ block.measure.unit }}</span>{% endif %}
+            {{ block.measure.baseline.text|default:"—" }}<span class="to">→</span>
+            <strong>{{ block.measure.current.text }}</strong>
+            {% if block.measure.target %}<span class="to">→</span>{{ block.measure.target_text }}{% endif %}
+            {% if block.measure.unit_after %}<span class="muted">{{ block.measure.unit_after }}</span>{% endif %}
           </div>
           <div class="muted">
             {{ block.measure.measurable }}

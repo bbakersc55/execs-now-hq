@@ -19,3 +19,9 @@ def set_amount(tenant, amount_cents, *, actor) -> None:
     from apps.billing import subscriptions
 
     subscriptions.set_amount(tenant, amount_cents, actor=actor)
+
+
+def mark_nmi_event_seen(pk, *, user):
+    from apps.billing import readback
+
+    return readback.mark_platform_seen(pk, user=user)

@@ -638,6 +638,14 @@ class NmiEvent(TenantScopedModel):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                     on_delete=models.SET_NULL, related_name="+")
+    #: Read from the platform's own account (owner, 2026-10-26): a refund, void
+    #: or chargeback of a practice's subscription charge, on that practice's
+    #: row and its subscription invoice; or something there that matches none,
+    #: on the platform owner's own practice. The platform owner's to look at,
+    #: in the Practices area; never in a practice's own list.
+    platform = models.BooleanField(default=False, db_default=False)
+    practice_invoice = models.ForeignKey("billing.PracticeInvoice", null=True, blank=True,
+                                         on_delete=models.SET_NULL, related_name="+")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "nmi_event"

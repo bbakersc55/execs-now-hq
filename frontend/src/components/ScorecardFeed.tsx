@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Modal } from "./shell";
 import { Banner } from "./ui";
 import { api } from "../lib/api";
-import { FeedPreview, FeedState, SheetGrid, columnLetter } from "../lib/scorecard";
+import { FeedPreview, FeedState, SheetGrid, columnLetter, fmt } from "../lib/scorecard";
 
 type Mode = "column" | "cell";
 type Pick = "date" | "value" | "name";
@@ -279,6 +279,9 @@ function Preview({ p, kpi, people, setPeople }: {
       </section>
     );
   }
+  // By the KPI's kind, as every reading is shown (owner, 2026-10-26).
+  const shown = (v: number | string | null) => v === null || v === undefined ? "—"
+    : kpi.kind ? fmt({ kind: kpi.kind, duration_unit: kpi.duration_unit ?? "" }, Number(v)) : String(v);
   return (
     <section className="sc-feed-preview" aria-label="What it would make">
       <p role="status"><strong>{c.new} new reading{c.new === 1 ? "" : "s"}</strong>
@@ -297,9 +300,9 @@ function Preview({ p, kpi, people, setPeople }: {
                 <tr key={`${r.start}-${r.person}`} className={`sc-feed-${r.what}`}>
                   <td>{r.label.charAt(0).toUpperCase() + r.label.slice(1)}</td>
                   {kpi.per_person && <td>{r.person}</td>}
-                  <td className="money">{r.value}</td>
+                  <td className="money">{shown(r.value)}</td>
                   <td>{r.rows.join(", ")}</td>
-                  <td>{r.says}{r.what === "kept" && r.had !== null ? ` (${r.had})` : ""}</td>
+                  <td>{r.says}{r.what === "kept" && r.had !== null ? ` (${shown(r.had)})` : ""}</td>
                 </tr>
               ))}
             </tbody>

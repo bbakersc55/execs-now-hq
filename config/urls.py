@@ -44,6 +44,7 @@ urlpatterns = [
     path("api/", include("apps.strategy.urls")),
     path("api/", include("apps.meetings.urls")),
     path("api/", include("apps.platform.urls")),
+    path("api/", include("apps.notify.urls")),
     path("api/", include("apps.billing.urls")),
     path("api/", include("apps.finance.urls")),
     path("api/", include("apps.personal.urls")),
@@ -72,6 +73,8 @@ urlpatterns = [
     # C3.3: GET renders a confirmation page; only POST consumes the token.
     path("auth/magic/<str:token>", account_views.magic_link_landing, name="magic-landing"),
     path("healthz", spa.healthz, name="healthz"),
+    # Browser notifications' service worker, at the root so it serves every page.
+    path("sw.js", spa.service_worker, name="service-worker"),
     # P4 part 1: the token proof, laptop and sandbox only (404 elsewhere).
     path("dev/nmi-proof", billing_proof.proof_page, name="nmi-proof"),
     path("dev/nmi-proof/run", billing_proof.proof_run, name="nmi-proof-run"),

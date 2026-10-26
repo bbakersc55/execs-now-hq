@@ -40,8 +40,28 @@ describe("introductions (R3)", () => {
     await user.type(screen.getByLabelText("Why you're introducing them"), "Both in logistics.");
     await user.click(screen.getByRole("button", { name: "Draft the introduction" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body).toEqual(
-      { partner: "maya", to: "dana", note: "Both in logistics." }));
+      { partner: "maya", to: "dana", note: "Both in logistics.", together: false }));
     expect(await screen.findByRole("status")).toHaveTextContent("A draft to each of Maya and Dana Reyes");
+  });
+
+  it("can draft one email to both instead of two", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/introductions/": { ...INTRO, drafts: 1 },
+      "/api/introductions/": { introductions: [], counts: { made: 0, became_client: 0 }, counts_text: "" },
+      "/api/contacts/": [MAYA, DANA],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<IntroductionsCard contact={MAYA} partner />);
+    await user.click(await screen.findByRole("button", { name: "Introduce to…" }));
+    expect(screen.getByLabelText("Two emails, one to each")).toBeChecked();
+    await user.type(screen.getByLabelText("Introduce to"), "dana");
+    await user.click(await screen.findByRole("option", { name: /Dana Reyes/ }));
+    await user.click(screen.getByLabelText("One email to both"));
+    await user.click(screen.getByRole("button", { name: "Draft the introduction" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body).toEqual(
+      { partner: "maya", to: "dana", note: "", together: true }));
+    expect(await screen.findByRole("status")).toHaveTextContent("One email to both Maya and Dana Reyes");
   });
 
   it("isn't shown on a non-partner's page with none", async () => {

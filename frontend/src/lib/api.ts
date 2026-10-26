@@ -328,6 +328,8 @@ export interface OutboxMessage {
   label?: string;
   to_contact: string | null;
   to_address: string;
+  /** A second recipient on the same email: an introduction to both. */
+  also_to_address?: string;
   from_address: string;
   subject: string;
   body_text: string;
@@ -773,9 +775,11 @@ export interface GoalMeasure {
   unit: string;
   how_we_will_know: string;
   direction: "" | "up_is_good" | "down_is_good";
-  baseline: { value: string | null; at: string | null };
-  current: { value: string; at: string; note: string } | null;
+  baseline: { value: string | null; text?: string; at: string | null };
+  current: { value: string; text?: string; at: string; note: string } | null;
   target: string | null;
+  /** How a person reads them: "54%", not "54.0000"; the unit when it isn't on them. */
+  target_text?: string; unit_after?: string;
   movement: "" | "better" | "worse" | "level";
   reading_count: number;
   /** From three readings up, a dated baseline counting as one (ruling D). */

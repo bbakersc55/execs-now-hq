@@ -69,6 +69,8 @@ NEEDS: tuple[Need, ...] = (
          "writing the product's tab icons from its mark (manage.py build_favicons)"),
     Need("pypdf", "pypdf",
          "importing a PDF bank statement: its pages, and a scan told from one with text"),
+    Need("pywebpush", "pywebpush",
+         "browser notifications: sending a notice to a person's browsers by Web Push"),
 )
 
 

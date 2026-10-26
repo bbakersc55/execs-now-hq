@@ -40,6 +40,43 @@ truth; this covers what they don't, and what changed since 9/30.
   Overtime Off track the last three weeks, and drafts Michael Scott's weekly
   digest after the scorecard, so its Scorecard section shows on Digests.
 
+## 2026-10-26, later: polish, and browser notifications (on `dev`, not released)
+
+- **Polish.** A goal's figures read as said ("54% → 90%", "$1,200", "1,250.5";
+  `apps/work/figures.py` and `lib/figures.ts`; the API keeps its decimals),
+  and the sheet preview shows readings by the KPI's kind. A banner's words
+  are one body, so a link in its sentence no longer breaks into fragments at
+  phone width (every banner; the acting bar keeps its sentence and button).
+  The demo seeds Dunder Mifflin's quarterly review, whose map names
+  Overtime and On-time delivery. **An introduction can be one email to both**
+  (the Introduce form's "Send it as"; library template "Introduction, one
+  email to both"): the outbox carries a second recipient (`crm 0051`), and
+  every check is made per address: the dev allow-list (real only when both
+  are listed), unsubscribes (either stops it), and the demo, which sends only
+  to its redirect and whose Gmail transport refuses a second address.
+  **The platform's NMI read-back** (`billing 0011`): the practice owner's own
+  practice's daily `read_back_nmi` also reads the platform account; a refund,
+  void or chargeback of a subscription charge lands on that practice's row
+  against its subscription invoice, a "sub-" action matching none on the
+  platform owner's practice; both in the Practices area with Mark as seen,
+  never in a practice's own list.
+- **Browser notifications** (`apps/notify`, `notify 0001`: `notice`,
+  `push_subscription`, `push_preference`). **The Notices list (the bell in
+  the top bar, practice and portal) is the source of truth**: a stage rule's
+  notice, a reading waiting on someone, a message on work shared with the
+  client (the practice's to the client's people who see it; a client's to
+  the practice people on the work, else the owner and assigned associates),
+  and a mention ("@Full Name", or "@First" when one person has it, told only
+  to someone who can see the comment). Profile, "Notify me in the browser":
+  one Web Push subscription per browser, only to a browser push service's
+  own address; every kind a switch; pushed at once after commit (the demo has
+  no worker), never on a demo visitor's copy, never while acting. **New
+  dependency `pywebpush==1.14.1`** (with `http_ece`, `py-vapid`, `six`):
+  1.14 is the last on `requests` rather than `aiohttp`. **Needs VAPID keys per
+  environment** (`manage.py make_vapid_keys`; `.env.example`); unset, Profile
+  says it isn't set up and the Notices list works regardless. The laptop's
+  `.env` has its own pair. Not yet: "@" has no name suggestions as it is typed.
+
 ## 2026-10-24: catch-up reach, and M5 part 3 (released at Release 23)
 
 - **Catch-up reach (`a9c4e94`).** The May 2026 limit seen on production was

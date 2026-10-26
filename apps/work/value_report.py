@@ -30,6 +30,7 @@ from django.utils import timezone
 
 from apps.crm.models import Task
 from apps.work import milestones as milestone_service
+from apps.work.figures import figure, unit_after
 from apps.work import permissions as work_perms
 from apps.work import status as status_service
 from apps.work.models import (
@@ -109,10 +110,15 @@ def measure_block(goal, *, for_client: bool = False) -> dict:
         "direction": goal.direction,
         "baseline": {"value": str(goal.baseline_value) if goal.baseline_value is not None
                      else None,
+                     "text": figure(goal.baseline_value, goal.measurable_unit),
                      "at": goal.baseline_at.isoformat() if goal.baseline_at else None},
         "current": {"value": str(current.value), "at": current.measured_at.isoformat(),
+                    "text": figure(current.value, goal.measurable_unit),
                     "note": current.note} if current else None,
         "target": str(goal.target_value) if goal.target_value is not None else None,
+        # How a person reads them (owner, 2026-10-26): "54%", not "54.0000".
+        "target_text": figure(goal.target_value, goal.measurable_unit),
+        "unit_after": unit_after(goal.measurable_unit),
         "movement": _movement(goal, current),
         "reading_count": count,
         # Ruling 9 — from three up, and below that baseline → current as text.

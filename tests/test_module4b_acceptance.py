@@ -239,7 +239,8 @@ def test_ac_4b_6_the_chart_appears_at_three_readings_and_the_baseline_is_one(
 
     # The PDF agrees with the screen, because both read the same decision.
     pdf = api.as_(ff).get(f"/api/value-report/{goal.pk}/pdf/?as=html").content.decode()
-    assert "<svg" not in pdf and "14.0000" in pdf and "11.0000" in pdf
+    # Figures as a person reads them (owner, 2026-10-26): "14", not "14.0000".
+    assert "<svg" not in pdf and "14" in pdf and "11" in pdf and "14.0000" not in pdf
 
     reading(goal, 8, days_ago=10)
     measure = api.as_(ff).get(f"/api/value-report/{goal.pk}/").json()["measure"]

@@ -100,7 +100,7 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
                    from_address=None, sent_via="postmark", thread=None,
                    source_type="", source_id=None, attachments=(),
                    deliver_body_text=None, force_direct=False, deliver_body_html=None,
-                   category=None):
+                   category=None, also_to_contact=None, also_to_address=""):
     """Single entry point. Nothing else in the codebase writes an OutboxMessage.
 
     `deliver_body_text` is for one-time links (magic links, PIN resets): it is
@@ -148,6 +148,8 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
         category=category or unsubscribe.category_for(producer),
         to_contact=to_contact,
         to_address=to_address,
+        also_to_contact=also_to_contact,
+        also_to_address=also_to_address or "",
         from_address=from_address,
         subject=subject,
         body_text=body_text,
@@ -275,6 +277,11 @@ def expire_due(tenant, *, now=None):
 
 # --------------------------------------------------------------- delivery
 
+def recipients_of(message) -> list[str]:
+    """Every address the message is for, the first first."""
+    return [a for a in (message.to_address, message.also_to_address) if a]
+
+
 def _suppress_if_unsubscribed(message, *, actor=None) -> str:
     """Owner, 2026-09-28 — the Outbox refuses a category the recipient left,
     and says why. The row is kept, marked suppressed with the reason."""
@@ -360,9 +367,10 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     if _suppress_if_unsubscribed(message, actor=actor):
         return message
 
-    dev_real = settings.IS_LOCAL and is_real_send_allowed(
-        message.to_address, message.tenant
-    )
+    # One check per address (owner, 2026-10-26): real mail leaves a laptop
+    # only when every address on it is on the allow-list.
+    dev_real = settings.IS_LOCAL and all(
+        is_real_send_allowed(address, message.tenant) for address in recipients_of(message))
     # The demo sends only through its redirect (owner, 2026-10-08). Where it
     # can, the one address below replaces the recipient before anything is
     # built; where it cannot (no redirect set, no connection of its own, or
@@ -426,6 +434,8 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     result = transport.send(
         tenant=message.tenant,
         to_address=demo_to or message.to_address,
+        # The demo's redirect is its only address: a second one never goes.
+        also_to=() if demo_to else tuple(recipients_of(message)[1:]),
         subject=message.subject,
         body_text=text_part,
         body_html=html_part,
@@ -456,7 +466,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
             provider=result["provider"],
             provider_message_id=result.get("provider_message_id", ""),
             from_address=message.from_address,
-            to_addresses=[message.to_address], subject=message.subject,
+            to_addresses=recipients_of(message), subject=message.subject,
             body_text=message.body_text, contact=message.to_contact,
             sent_at=message.sent_at,
             message_id_header=result.get("message_id_header", ""),
@@ -478,6 +488,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         target_type="outbox_message", target_id=message.pk,
         payload={
             "producer": message.producer, "to": message.to_address,
+            **({"also_to": message.also_to_address} if message.also_to_address else {}),
             "dev_real_send": dev_real, "via": result["provider"],
             **({"demo_redirect": demo_to} if demo_to else {}),
         },

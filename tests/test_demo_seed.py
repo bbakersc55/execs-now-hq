@@ -202,7 +202,11 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert StrategySection.objects.filter(kind="custom").count() == 1
         by_state = dict(StrategySession.objects.values_list("state")
                         .annotate(n=Count("id")))
-        assert by_state == {"draft": 1, "in_call": 1, "complete": 2, "converted": 1}
+        assert by_state == {"draft": 1, "in_call": 1, "complete": 3, "converted": 1}
+        # M5 ties: Dunder Mifflin's review names the KPIs its moves are to move.
+        review = StrategySession.objects.get(company__name="Dunder Mifflin Paper")
+        assert set(review.map_rows.exclude(kpi=None).values_list("kpi__name", flat=True)) \
+            == {"Overtime hours", "On-time delivery"}
         assert StrategySessionPrep.objects.get().state == "ready"
         live = StrategySession.objects.get(state="in_call")
         assert StrategyMapRow.objects.filter(session=live, state="proposed").count() >= 2
@@ -255,6 +259,10 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert "Scorecard\n  Readings" in michael.body_text
         assert set(waiting.values_list("cadence", flat=True)) == {"weekly", "every_update"}
         assert Digest.objects.filter(state="sent").count() >= 10
+        # The Notices list (2026-10-26): the stage rule's notice is on the owner's.
+        from apps.notify.models import Notice
+
+        assert Notice.objects.filter(kind="notice").exists()
         assert Campaign.objects.count() == 2
         assert CampaignRecipient.objects.filter(outbox_message__state="sent").count() >= 15
         assert UnmatchedInbound.objects.filter(state="pending").count() == 2

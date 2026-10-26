@@ -606,7 +606,8 @@ class NmiEventViewSet(BillingViewSet):
     def list(self, request):
         if (refused := self._owner()):
             return refused
-        rows = NmiEvent.objects.select_related("invoice").order_by("-happened_at")
+        rows = NmiEvent.objects.filter(platform=False).select_related("invoice") \
+            .order_by("-happened_at")
         if request.query_params.get("open"):
             rows = rows.filter(reviewed_at__isnull=True)
         return Response([readback.represent(e) for e in rows[:100]])
@@ -615,7 +616,7 @@ class NmiEventViewSet(BillingViewSet):
     def seen(self, request, pk=None):
         if (refused := self._owner()):
             return refused
-        event = NmiEvent.objects.filter(pk=pk).first() if _uuid(pk) else None
+        event = NmiEvent.objects.filter(pk=pk, platform=False).first() if _uuid(pk) else None
         if event is None:
             raise Http404
         event.reviewed_at, event.reviewed_by = timezone.now(), request.user

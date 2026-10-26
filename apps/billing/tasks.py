@@ -70,4 +70,11 @@ def read_back_nmi(tenant_id: str) -> dict:
 
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
-        return readback.read_back(tenant)
+        counts = readback.read_back(tenant)
+        # The platform's own account, once a day: on the platform owner's
+        # practice's run (owner, 2026-10-26).
+        from apps.billing import subscriptions
+
+        if subscriptions.is_owners_practice(tenant):
+            counts["platform"] = readback.read_back_platform()
+        return counts

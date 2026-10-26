@@ -22,7 +22,10 @@ export function Card({ title, children, actions, tone }: {
 }
 
 export function Banner({ kind = "info", children }: { kind?: string; children: ReactNode }) {
-  return <div className={`banner ${kind}`}>{children}</div>;
+  // One body, so a sentence with a link in it flows as a sentence: as flex
+  // items, the words and the link were columns, and at phone width the link
+  // broke into fragments (owner, 2026-10-26).
+  return <div className={`banner ${kind}`}><div className="banner-body">{children}</div></div>;
 }
 
 export function Pill({ kind = "", children }: { kind?: string; children: ReactNode }) {

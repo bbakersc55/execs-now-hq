@@ -8,9 +8,11 @@ no reply, met, became a client, not a fit.
 
 Making one drafts the introduction from the library's "Introduction" template
 **to each of the two**, each draft introducing the other, into the Outbox for
-approval. (One email with both on it needs the send path to carry a second
-recipient past its guards: the dev allowlist, the demo's redirect and each
-person's unsubscribes. It does not yet, so it is two drafts.)
+approval; or, chosen on the Introduce form, **one email to both** from
+"Introduction, one email to both" (owner, 2026-10-26). That one email carries
+its second recipient past every guard with a check of its own: the dev
+allow-list, the demo's redirect and each person's unsubscribes
+(`outbox.recipients_of`).
 
 Specialties: a partner's general **discipline** (fractional CMO, CFO, COO,
 CHRO, other) and several **specialties** in the practice's own words.
@@ -26,6 +28,7 @@ from apps.tenancy.models import AuditEvent
 
 OUT = Referral.Direction.OUTBOUND
 USE = "introduction"
+USE_BOTH = "introduction_both"
 SOURCE_TYPE = "introduction"
 SEND_BY_DAYS = 14
 #: How many specialties a contact carries, and how long each may be.
@@ -136,18 +139,19 @@ def compose(template, recipient, other, referral, actor):
     return subject, templates.with_signature(body, recipient.tenant, actor)
 
 
-def template_for(tenant):
-    """The practice's introduction template. `for_use` seeds it the first time
-    it is wanted; the library never rewrites one already there."""
+def template_for(tenant, together=False):
+    """The practice's introduction template, or its one-email-to-both one.
+    `for_use` seeds it the first time it is wanted; the library never rewrites
+    one already there."""
     from apps.crm.services import templates
 
-    return templates.for_use(tenant, USE)
+    return templates.for_use(tenant, USE_BOTH if together else USE)
 
 
 @transaction.atomic
-def introduce(partner, other, *, actor, note="", on=None):
+def introduce(partner, other, *, actor, note="", on=None, together=False):
     """Record an introduction from `partner`'s page to `other`, and draft it
-    to each of them for approval."""
+    to each of them for approval, or, `together`, as one email to both."""
     from apps.crm.services import outbox, pipeline
 
     if partner.pk == other.pk:
@@ -168,10 +172,22 @@ def introduce(partner, other, *, actor, note="", on=None):
         pipeline=referral_pipeline, referred_on=on or timezone.localdate(),
         note=(note or "").strip()[:2000], created_by=actor,
         fee_terms=(partner.referral_fee_terms or "")[:255])
-    template = template_for(partner.tenant)
     send_by = timezone.now() + timezone.timedelta(days=SEND_BY_DAYS)
     drafts = []
-    for recipient, about in ((partner, other), (other, partner)):
+    if together:
+        if partner.primary_email.strip().lower() == other.primary_email.strip().lower():
+            raise IntroductionRefused("They share one email address, so one email to both "
+                                      "would reach one inbox. Send two instead.")
+        subject, body = compose(template_for(partner.tenant, together=True), partner, other,
+                                row, actor)
+        drafts.append(outbox.create_message(
+            tenant=partner.tenant, producer=OutboxMessage.Producer.INTRODUCTION,
+            to_contact=partner, to_address=partner.primary_email,
+            also_to_contact=other, also_to_address=other.primary_email, subject=subject,
+            body_text=body, actor=actor, send_by=send_by, source_type=SOURCE_TYPE,
+            source_id=row.pk))
+    template = template_for(partner.tenant)
+    for recipient, about in (() if together else ((partner, other), (other, partner))):
         subject, body = compose(template, recipient, about, row, actor)
         drafts.append(outbox.create_message(
             tenant=partner.tenant, producer=OutboxMessage.Producer.INTRODUCTION,
@@ -185,7 +201,8 @@ def introduce(partner, other, *, actor, note="", on=None):
             tenant_id=partner.tenant_id, actor=actor, verb="introduction.made",
             target_type="contact", target_id=target.pk,
             payload={"introduction": str(row.pk), "partner": full_name(partner),
-                     "to": full_name(other), "drafts": [str(d.pk) for d in drafts]})
+                     "to": full_name(other), "drafts": [str(d.pk) for d in drafts],
+                     "together": bool(together)})
     return row, drafts
 
 

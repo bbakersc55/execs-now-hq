@@ -1677,3 +1677,35 @@ class KpiHubSpotFeedFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
     measure = "deals_won"
+
+
+# --- The Notices list and browser notifications (2026-10-26) ---
+
+class NoticeFactory(TenantScopedFactory):
+    class Meta:
+        model = "notify.Notice"
+
+    tenant = factory.SubFactory(TenantFactory)
+    recipient = factory.SubFactory(UserFactory)
+    kind = "notice"
+    title = "Pipeline"
+    text = "Something to know"
+
+
+class PushSubscriptionFactory(TenantScopedFactory):
+    class Meta:
+        model = "notify.PushSubscription"
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+    endpoint = factory.Sequence(lambda n: f"https://fcm.googleapis.com/fcm/send/{n}")
+    p256dh = "p" * 80
+    auth = "a" * 22
+
+
+class PushPreferenceFactory(TenantScopedFactory):
+    class Meta:
+        model = "notify.PushPreference"
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)

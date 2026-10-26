@@ -766,7 +766,8 @@ class OutboxMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = OutboxMessage
         fields = [
-            "id", "state", "producer", "label", "to_contact", "to_address", "from_address",
+            "id", "state", "producer", "label", "to_contact", "to_address", "also_to_address",
+            "from_address",
             "subject", "body_text", "body_html", "is_ai_generated", "warning",
             "send_by", "approved_by", "approved_at", "sent_at", "sent_via",
             "dev_real_send", "delivery", "attachments", "sender_options",
@@ -814,17 +815,24 @@ class OutboxMessageSerializer(serializers.ModelSerializer):
 
         if not dj_settings.IS_LOCAL:
             return {"target": "real", "label": "Real delivery", "is_local_build": False}
-        real = is_real_send_allowed(obj.to_address, obj.tenant)
+        from apps.crm.services.outbox import recipients_of
+
+        # One check per address: real only when every one is on the list.
+        addresses = recipients_of(obj)
+        off = [a for a in addresses if not is_real_send_allowed(a, obj.tenant)]
+        real = not off
+        named = " and ".join(addresses)
         return {
             "target": "real" if real else "dev",
             "label": "Real delivery" if real else "Dev mailbox (Mailpit)",
             "is_local_build": True,
             "detail": (
-                f"{obj.to_address} is on this build's allow-list, so approving "
-                "this sends a real email to a real person."
+                f"{named} {'is' if len(addresses) == 1 else 'are'} on this build's "
+                "allow-list, so approving this sends a real email to a real person."
                 if real else
-                f"{obj.to_address} is not on this build's allow-list, so this "
-                "goes to Mailpit and never reaches them."
+                f"{' and '.join(off)} {'is' if len(off) == 1 else 'are'} not on this "
+                "build's allow-list, so this goes to Mailpit and never reaches "
+                f"{'them' if len(addresses) == 1 else 'either of them'}."
             ),
         }
 

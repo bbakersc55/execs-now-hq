@@ -18,6 +18,7 @@ interface QueueItem {
   label: string;
   to_name: string;
   to_address: string;
+  also_to_address?: string;
   from_address: string;
   subject: string;
   created_at: string;
@@ -206,7 +207,7 @@ function Detail({ item, mayApprove, busy, onAct, onSaved }: {
       }>
       <p className="small muted">
         From {p?.from || item.from_address} · to {item.to_name ? `${item.to_name} ` : ""}
-        &lt;{p?.to || item.to_address}&gt; · sends {item.sends}
+        &lt;{p?.to || item.to_address}&gt;{item.also_to_address ? <> and &lt;{item.also_to_address}&gt;</> : null} · sends {item.sends}
       </p>
       {item.warning && <Banner kind="warn">{item.warning}</Banner>}
       {!mayApprove && (

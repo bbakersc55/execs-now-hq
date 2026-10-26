@@ -153,4 +153,100 @@ def represent(event) -> dict:
             "transaction_id": event.transaction_id, "outcome": event.outcome,
             "note": event.note, "invoice": str(event.invoice_id) if event.invoice_id else None,
             "invoice_number": event.invoice.number if event.invoice_id else "",
+            # The platform's read-back: the subscription invoice it was against.
+            "practice_invoice_number": (event.practice_invoice.number
+                                        if event.practice_invoice_id else ""),
             "reviewed": event.reviewed_at is not None}
+
+
+# ------------------------------------------------- the platform's own account
+
+def read_back_platform(*, now=None) -> dict:
+    """The platform account's last week (owner, 2026-10-26): what happened to
+    the practices' subscription charges in NMI's portal. A refund, void or
+    chargeback of a subscription charge is recorded on that practice's row,
+    against its subscription invoice; a "sub-" action that matches no invoice
+    is flagged on the platform owner's own practice. Anything else on the
+    account (a practice sharing the platform's keys) is that practice's
+    read-back's, not this one's. Read-only, and it changes no invoice's money.
+    Run once a day from the platform owner's practice's own read-back."""
+    from apps.billing.models import PracticeInvoice
+    from apps.billing.subscriptions import owners_practice
+
+    now = now or timezone.now()
+    try:
+        account = gw.platform_account()
+        actions = gw.gateway().actions_between(account, now - timedelta(days=DAYS_BACK), now)
+    except gw.GatewayError as exc:
+        return {"read": 0, "matched": 0, "flagged": 0, "skipped": str(exc)[:200]}
+    home = owners_practice()
+    counts = {"read": len(actions), "matched": 0, "flagged": 0, "skipped": ""}
+    for action in actions:
+        if action.action_type in QUIET or not action.success:
+            continue
+        kind = KINDS.get(action.action_type, NmiEvent.Kind.OTHER)
+        ids = [i for i in (action.transaction_id, action.original_transaction_id) if i]
+        invoice = PracticeInvoice.all_objects.filter(nmi_transaction_id__in=ids) \
+            .select_related("tenant").first() if ids else None
+        ours = action.reference.startswith("sub-")
+        if invoice is None and ours and action.reference[4:]:
+            invoice = PracticeInvoice.all_objects.filter(
+                pk=action.reference[4:]).first() if _uuid(action.reference[4:]) else None
+        if kind == NmiEvent.Kind.SALE:
+            if invoice is not None or not ours:
+                continue                      # our own charge, or a practice's sale
+        elif invoice is None and not ours:
+            continue                          # a practice's refund on shared keys
+        tenant = invoice.tenant if invoice is not None else home
+        if tenant is None:
+            continue
+        outcome = NmiEvent.Outcome.MATCHED if invoice is not None else NmiEvent.Outcome.UNMATCHED
+        try:
+            with transaction.atomic():
+                row = NmiEvent.all_objects.create(
+                    tenant=tenant, event_id=f"platform:{event_id(action)}"[:120], kind=kind,
+                    action_type=action.action_type[:40], transaction_id=action.transaction_id,
+                    original_transaction_id=action.original_transaction_id,
+                    reference=action.reference[:60], amount_cents=action.amount_cents,
+                    happened_at=action.at, platform=True, practice_invoice=invoice,
+                    outcome=outcome, note=_platform_words(kind, action, invoice))
+        except IntegrityError:
+            continue                          # read on an earlier day
+        counts["matched" if invoice is not None else "flagged"] += 1
+        AuditEvent.all_objects.create(
+            tenant=tenant, verb=f"billing.platform_nmi_{kind}_{outcome}",
+            target_type="nmi_event", target_id=row.pk,
+            payload={"transaction": action.transaction_id, "amount_cents": action.amount_cents,
+                     "practice_invoice": str(invoice.pk) if invoice else None})
+    return counts
+
+
+def _platform_words(kind, action, invoice) -> str:
+    amount = f"${action.amount_cents / 100:,.2f}"
+    when = f"{action.at:%b} {action.at.day}"
+    if invoice is not None:
+        what = {"refund": "Refunded", "void": "Voided", "chargeback": "Charged back"}.get(
+            kind, "Changed")
+        return (f"{what} {amount} in NMI on {when}, against subscription invoice "
+                f"{invoice.number}. The invoice's balance is not changed by this: record "
+                "what it means by hand.")
+    return (f"A {action.action_type or 'change'} of {amount} in NMI on {when} with a "
+            f"subscription reference ({action.reference}) that matches no subscription "
+            f"invoice (NMI transaction {action.transaction_id}).")
+
+
+def platform_open(tenant) -> list[dict]:
+    """The platform owner's list for one practice: what the platform read-back
+    found against it and nobody has marked as seen."""
+    return [represent(e) for e in NmiEvent.all_objects.filter(
+        tenant=tenant, platform=True, reviewed_at__isnull=True).order_by("-happened_at")[:20]]
+
+
+def mark_platform_seen(pk, *, user) -> dict | None:
+    """The platform owner has looked at one of the platform read-back's events."""
+    event = NmiEvent.all_objects.filter(pk=pk, platform=True).first()
+    if event is None:
+        return None
+    event.reviewed_at, event.reviewed_by = timezone.now(), user
+    event.save(update_fields=["reviewed_at", "reviewed_by", "updated_at"])
+    return represent(event)

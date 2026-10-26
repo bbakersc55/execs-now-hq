@@ -756,10 +756,14 @@ def stage_rules(world: World) -> None:
         "contact", "stage", "pipeline").order_by("contact__last_name").first()
     if waiting is not None:
         c = waiting.contact
-        PipelineNotice.objects.create(
+        row = PipelineNotice.objects.create(
             tenant=world.tenant, recipient=world.owner, contact=c, pipeline=waiting.pipeline,
             text=f"{c.first_name} {c.last_name} has been in {waiting.stage.label} 12 days "
                  "with no activity")
+        # On the owner's Notices list too, as a stage rule's notice is (2026-10-26).
+        from apps.notify import producers
+
+        producers.pipeline_notice(row)
 
 
 #: R3b: what a few partners do (fictional).

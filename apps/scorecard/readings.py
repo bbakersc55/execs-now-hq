@@ -392,10 +392,15 @@ def remind(tenant, today: date) -> int:
                 continue
             if not _missing(kpi, start):
                 continue
-            _, created = KpiReminder.all_objects.get_or_create(
+            reminder, created = KpiReminder.all_objects.get_or_create(
                 kpi=kpi, period_start=start,
                 defaults={"tenant_id": kpi.tenant_id, "recipient_id": kpi.reading_owner_id})
             made += int(created)
+            if created:
+                # On the reading owner's Notices list (owner, 2026-10-26).
+                from apps.notify import producers
+
+                producers.reading_reminder(reminder)
     return made
 
 

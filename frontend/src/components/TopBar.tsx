@@ -9,6 +9,7 @@ import { settingsFor } from "../screens/Settings";
 import { roleLabel } from "../lib/roles";
 import { ActAsColleague } from "./ActAs";
 import { FeedbackButton } from "./FeedbackButton";
+import { NoticesBell } from "./Notifications";
 import { Avatar } from "./shell";
 
 /**
@@ -49,6 +50,9 @@ export function TopBar({ me, practice, collapsed, onToggleSidebar, feedback, pho
         </button>
       )}
       <div className="right">
+        {/* The Notices list (owner, 2026-10-26): a practice's people and its
+            clients alike; the Practices area has none of its own. */}
+        {me.area !== "platform" && <NoticesBell />}
         {feedback && <FeedbackButton />}
         <ProfileMenu me={me} practice={practice} />
       </div>

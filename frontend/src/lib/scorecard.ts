@@ -324,7 +324,9 @@ export interface FeedConfig {
 export interface FeedState {
   google: { ready: boolean; account: string; connected: boolean; reconnect: boolean; refusal: string };
   kpi: { id: string; name: string; per_person: boolean; cadence: Cadence; cadence_noun: string;
-    people: { id: string; name: string }[] };
+    people: { id: string; name: string }[];
+    /** Readings shown by the KPI's kind ("82%", "$1,200"), not as stored. */
+    kind?: Kind; duration_unit?: string };
   feed: FeedConfig | null;
 }
 

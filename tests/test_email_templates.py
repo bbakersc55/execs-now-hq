@@ -61,7 +61,8 @@ def test_a_new_practice_gets_the_built_in_library_once(seeded_tenant):
                   .values_list("use", flat=True)) == sorted(template_seed.USES)
     assert use(seeded_tenant, "thanks_won").original == "thanks_won"
     assert template_seed.seed_tenant(seeded_tenant) == []
-    assert rows.count() == 6                # five from 10/20, and R3's Introduction
+    # five from 10/20, R3's Introduction, and its one-email-to-both (10/26)
+    assert rows.count() == 7
     touch = rows.get(original="referral_touch")
     assert "{Signature}" not in touch.body and "Bryan" not in touch.body
 
@@ -74,7 +75,7 @@ def test_the_dry_run_writes_nothing_and_says_what_it_would_do(tenant_a, capsys):
 
     call_command("seed_email_templates", "--dry-run")
     out = capsys.readouterr().out
-    assert "Other Practice (other-practice): 12 change(s)" in out
+    assert "Other Practice (other-practice): 14 change(s)" in out
     assert "use “Our hello” for referral_onboarding" in out
     assert "the same words): 1" in out and "Dry run: nothing was written." in out
     assert not EmailTemplate.all_objects.filter(tenant=other).exclude(original="").exists()

@@ -70,6 +70,18 @@ def is_owners_practice(tenant) -> bool:
                                          user__is_platform_owner=True).exists()
 
 
+def owners_practice():
+    """The platform owner's own practice: where the platform's read-back
+    files what matches no practice (owner, 2026-10-26)."""
+    from apps.tenancy.models import Membership
+
+    found = (Membership.all_objects.filter(role="FF", revoked_at__isnull=True,
+                                           user__is_platform_owner=True,
+                                           tenant__demo_visitor__isnull=True)
+             .select_related("tenant").order_by("created_at").first())
+    return found.tenant if found else None
+
+
 def subscription_for(tenant) -> PracticeSubscription:
     row = PracticeSubscription.all_objects.filter(tenant=tenant).first()
     owners = is_owners_practice(tenant)
@@ -560,6 +572,8 @@ def _failure_notice(invoice_id) -> None:
 def platform_summary(tenant) -> dict:
     """For the Practices screen (`apps/platform/billing.py`): amounts, dates
     and states only; never the card's details beyond "on file"."""
+    from apps.billing import readback
+
     row = subscription_for(tenant)
     open_ = list(PracticeInvoice.all_objects.filter(tenant=tenant, status=I.OPEN)
                  .order_by("issued_at"))
@@ -573,6 +587,9 @@ def platform_summary(tenant) -> dict:
         "oldest_open_days": (timezone.now() - oldest).days if oldest else None,
         "eligible_for_suspension": eligible_for_suspension(tenant),
         "suspended_at": tenant.suspended_at.isoformat() if tenant.suspended_at else None,
+        # What the platform's NMI read-back found against this practice's
+        # subscription (or, on the owner's own, matched nothing) and is unseen.
+        "nmi_events": readback.platform_open(tenant),
     }
 
 

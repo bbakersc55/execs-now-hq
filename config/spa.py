@@ -93,3 +93,19 @@ def healthz(request):
     with connection.cursor() as cursor:
         cursor.execute("SELECT 1")
     return JsonResponse({"ok": True})
+
+
+def service_worker(request):
+    """`/sw.js` (2026-10-26): the built bundle's copy, at the root so its scope
+    is the whole app. Never cached, so a release reaches every browser."""
+    from django.http import HttpResponse, HttpResponseNotFound
+
+    for base in (Path(settings.STATIC_ROOT), settings.BASE_DIR / "frontend" / "dist",
+                 settings.BASE_DIR / "frontend" / "public"):
+        path = base / "sw.js"
+        if path.is_file():
+            response = HttpResponse(path.read_text(), content_type="application/javascript")
+            response["Cache-Control"] = "no-cache"
+            response["Service-Worker-Allowed"] = "/"
+            return response
+    return HttpResponseNotFound("No service worker.", content_type="text/plain")

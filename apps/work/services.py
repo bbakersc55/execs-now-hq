@@ -130,6 +130,10 @@ def add_comment(entity, *, author, role, body, visibility=None):
         **updates.target_kwargs(entity),
     )
     updates.record_comment(comment, role=role)
+    # Notices (owner, 2026-10-26): a client-facing message, and any mention.
+    from apps.notify import producers
+
+    producers.comment(comment, author=author, role=role)
     return comment
 
 

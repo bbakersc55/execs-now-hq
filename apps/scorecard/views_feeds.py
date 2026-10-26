@@ -65,6 +65,7 @@ class FeedsView(Base):
             "google": feeds.connection_state(request.tenant.pk, request.user),
             "kpi": {"id": str(kpi.pk), "name": kpi.name, "per_person": kpi.per_person,
                     "cadence": kpi.cadence, "cadence_noun": P.noun(kpi.cadence),
+                    "kind": kpi.kind, "duration_unit": kpi.duration_unit,
                     "people": people},
             "feed": _feed_payload(feed),
         })

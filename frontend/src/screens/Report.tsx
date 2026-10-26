@@ -12,6 +12,7 @@ import {
   ValueReport, ValueReportExport, WorkParent, api,
 } from "../lib/api";
 import { usePracticeName } from "../lib/branding";
+import { figure, unitAfter } from "../lib/figures";
 import { useWords } from "../lib/words";
 import { AiGate } from "../components/DemoVisitor";
 
@@ -451,11 +452,11 @@ function Measure({ block }: { block: GoalBlock }) {
   return (
     <div className="measure">
       <p className="figures" style={{ margin: ".2rem 0" }}>
-        <span className="muted">{m.baseline.value ?? "—"}</span>
+        <span className="muted">{m.baseline.text || figure(m.baseline.value, m.unit) || "—"}</span>
         <span className="muted"> → </span>
-        <strong>{m.current.value}</strong>
-        {m.target && <><span className="muted"> → </span>{m.target}</>}
-        {m.unit && <span className="small muted"> {m.unit}</span>}
+        <strong>{m.current.text || figure(m.current.value, m.unit)}</strong>
+        {m.target && <><span className="muted"> → </span>{m.target_text || figure(m.target, m.unit)}</>}
+        {unitAfter(m.unit) && <span className="small muted"> {unitAfter(m.unit)}</span>}
         {m.movement && <> <Pill kind={m.movement === "worse" ? "warn" : ""}>
           {m.movement}</Pill></>}
       </p>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { BrowserNotifications } from "../components/Notifications";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field } from "../components/ui";
 import { api } from "../lib/api";
@@ -85,6 +86,7 @@ export function Profile() {
           {p.client_company_name && <><dt>Company</dt><dd>{p.client_company_name}</dd></>}
         </dl>
       </Card>
+      {p.practice && <BrowserNotifications editable={p.editable} />}
     </div>
   );
 }

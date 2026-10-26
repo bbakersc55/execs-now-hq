@@ -58,7 +58,11 @@ class SendingQueueView(viewsets.ViewSet):
             "category": unsubscribe.category_of(m),
             "label": (referrals.label_of(m) if m.producer == OutboxMessage.Producer.REFERRAL_THANKS
                       else m.get_producer_display()),
-            "to_name": _name(m.to_contact), "to_address": m.to_address,
+            "to_name": _name(m.to_contact) + (f" and {_name(m.also_to_contact)}"
+                                              if m.also_to_address else ""),
+            "to_address": m.to_address,
+            # A second recipient on the same email (an introduction to both).
+            "also_to_address": m.also_to_address,
             "from_address": m.from_address, "subject": m.subject,
             "created_at": m.created_at.isoformat(),
             "expires_at": m.send_by.isoformat() if m.send_by else None,

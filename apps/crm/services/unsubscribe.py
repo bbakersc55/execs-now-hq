@@ -161,16 +161,23 @@ def apply(message, html: str, text: str, *, personal: bool) -> tuple[str, str]:
 # --------------------------------------------------------------- suppression
 
 def suppression_for(message):
-    """The open suppression that stops this message, if any."""
+    """The open suppression that stops this message, if any. Asked of each
+    address it is for: one person's unsubscribe stops an email to two."""
     category = category_of(message)
     if category in UNLISTED:
         return None
     rows = EmailSuppression.all_objects.filter(tenant_id=message.tenant_id,
                                                category=category, lifted_at__isnull=True)
-    if message.to_contact_id:
-        return rows.filter(contact_id=message.to_contact_id).first()
-    return rows.filter(contact__isnull=True,
-                       address=(message.to_address or "").lower()).first()
+    for contact_id, address in ((message.to_contact_id, message.to_address),
+                                (getattr(message, "also_to_contact_id", None),
+                                 getattr(message, "also_to_address", ""))):
+        if not (contact_id or address):
+            continue
+        found = (rows.filter(contact_id=contact_id).first() if contact_id else
+                 rows.filter(contact__isnull=True, address=(address or "").lower()).first())
+        if found is not None:
+            return found
+    return None
 
 
 def suppressed_for_marketing(contact) -> bool:
@@ -185,8 +192,9 @@ def refusal(message) -> str:
     row = suppression_for(message)
     if row is None:
         return ""
-    who = (f"{message.to_contact.first_name} {message.to_contact.last_name}".strip()
-           if message.to_contact_id else message.to_address)
+    person = row.contact if row.contact_id else None
+    who = (f"{person.first_name} {person.last_name}".strip() if person is not None
+           else row.address or message.to_address)
     return (f"Not sent: {who} unsubscribed from {LABELS[row.category]} on "
             f"{timezone.localdate(row.created_at):%Y-%m-%d}.")
 

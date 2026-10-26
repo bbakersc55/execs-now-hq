@@ -29,6 +29,8 @@ export interface PracticeRow {
     status: string; not_billed: boolean; amount_cents: number; plan_cents: number;
     overridden: boolean; card_on_file: boolean; open_cents: number;
     oldest_open_days: number | null; eligible_for_suspension: boolean;
+    /** What the platform's NMI read-back found against its subscription, unseen. */
+    nmi_events?: { id: string; kind_label: string; note: string; happened_at: string }[];
     suspended_at: string | null;
   };
 }
@@ -100,6 +102,11 @@ export function Practices({ me }: { me?: Me }) {
       done(`${row.display_name} is set up. Its owner has not been invited yet.`);
     },
     onError: failed,
+  });
+  // The platform's NMI read-back, per practice (owner, 2026-10-26).
+  const seen = useMutation({
+    mutationFn: (id: string) => api.post(`/api/platform/nmi-events/${id}/seen`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-practices"] }),
   });
   const act = useMutation({
     mutationFn: ({ id, action }: { id: string;
@@ -248,6 +255,13 @@ export function Practices({ me }: { me?: Me }) {
                   {p.subscription?.eligible_for_suspension && p.status !== "suspended" && (
                     <Banner kind="warn">Overdue 30+ days: suspend?</Banner>
                   )}
+                  {(p.subscription?.nmi_events ?? []).map((e) => (
+                    <Banner key={e.id} kind="warn">
+                      <strong>From NMI: {e.kind_label}.</strong> {e.note}{" "}
+                      <button className="small" disabled={seen.isPending}
+                        onClick={() => seen.mutate(e.id)}>Mark as seen</button>
+                    </Banner>
+                  ))}
                   <div className="row tight">
                     {editing !== p.id && (
                       <button className="ghost" onClick={() => {

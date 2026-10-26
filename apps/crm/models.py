@@ -650,6 +650,7 @@ class EmailTemplateUse(TenantScopedModel):
         THANKS_WON = "thanks_won", "Thank-you when the prospect is won"
         THANKS_LOST = "thanks_lost", "Thank-you when the prospect is lost"
         INTRODUCTION = "introduction", "An introduction to a referral partner"
+        INTRODUCTION_BOTH = "introduction_both", "An introduction, one email to both"
 
     use = models.CharField(max_length=32, choices=Use.choices)
     template = models.ForeignKey(EmailTemplate, on_delete=models.PROTECT, related_name="uses")
@@ -1193,6 +1194,13 @@ class OutboxMessage(TenantScopedModel):
         Contact, null=True, blank=True, on_delete=models.SET_NULL, related_name="outbox_messages"
     )
     to_address = models.EmailField()  # resolved at creation; survives contact edits
+    #: A second recipient on the same email (owner, 2026-10-26: an introduction
+    #: to both people at once). Every check the first address gets, this one
+    #: gets too: the dev allow-list, the demo's redirect, unsubscribes.
+    also_to_contact = models.ForeignKey(
+        Contact, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    also_to_address = models.EmailField(blank=True, default="", db_default="")
     from_address = models.EmailField()
     subject = models.CharField(max_length=255)
     body_html = models.TextField(blank=True, default="")

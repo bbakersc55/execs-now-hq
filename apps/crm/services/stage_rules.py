@@ -295,9 +295,14 @@ def notify(contact, rule):
         return None
     text = merged(rule.notice_text, contact, rule) or \
         f"{contact.first_name} {contact.last_name}".strip()
-    return PipelineNotice.all_objects.create(
+    row = PipelineNotice.all_objects.create(
         tenant_id=contact.tenant_id, recipient=who, contact=contact,
         pipeline_id=rule.pipeline_id, rule=rule, text=text[:500])
+    # On the person's Notices list too, and so to their browser if they asked.
+    from apps.notify import producers
+
+    producers.pipeline_notice(row)
+    return row
 
 
 # ------------------------------------------------------------- the daily job

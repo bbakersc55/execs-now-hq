@@ -126,7 +126,8 @@ class IntroductionViewSet(viewsets.ViewSet):
         other = _contact(request, request.data.get("to"), "to")
         try:
             row, drafts = introductions.introduce(
-                partner, other, actor=request.user, note=request.data.get("note") or "")
+                partner, other, actor=request.user, note=request.data.get("note") or "",
+                together=request.data.get("together") in (True, "true", "1", 1))
         except introductions.IntroductionRefused as exc:
             raise ValidationError({"to": str(exc)})
         return Response({**introductions.represent(row), "drafts": len(drafts)}, status=201)

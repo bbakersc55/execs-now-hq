@@ -36,7 +36,8 @@ describe("the acting-as banner (FR-3.42)", () => {
     renderRoute(<ActingBanner me={aMe({ acting: ACTING })} />);
     const bar = screen.getByRole("status", { name: "Acting as" });
     expect(bar).toHaveClass("acting-bar");
-    const banner = bar.firstElementChild!;
+    // The banner's one body (components/ui.tsx), which holds the two.
+    const banner = bar.querySelector(".banner-body")!;
     // Two children and no more: text that takes the room, a button that keeps
     // its width. That is what lets it sit on one line and break in one place.
     expect([...banner.children].map((el) => el.tagName)).toEqual(["SPAN", "BUTTON"]);
