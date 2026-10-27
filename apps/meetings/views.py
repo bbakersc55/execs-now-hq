@@ -584,19 +584,19 @@ class ProposalViewSet(MeetingViewSetBase):
                                       MeetingProposal.State.PARTIALLY_ACTIONED])
         elif state == "archived":
             # Dismissed, newest first — where a dismissal is undone.
-            return Response([meeting_serializers.represent_proposal(p) for p in
+            return Response([meeting_serializers.represent_proposal(p, request=request) for p in
                              qs.filter(state=MeetingProposal.State.DISMISSED)
                              .select_related("dismissed_by")
                              .order_by("-dismissed_at")[:200]])
         elif state != "all":
             qs = qs.filter(state=state)
-        return Response([meeting_serializers.represent_proposal(p)
+        return Response([meeting_serializers.represent_proposal(p, request=request)
                          for p in qs.order_by("-created_at")[:200]])
 
     def retrieve(self, request, pk=None):
         proposal = self.load(pk)
         folding.fold(proposal)
-        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+        return Response(meeting_serializers.represent_proposal(proposal, full=True, request=request))
 
     def partial_update(self, request, pk=None):
         """The summary is reviewed with the proposal (R11a, FR-5.8b)."""
@@ -610,7 +610,7 @@ class ProposalViewSet(MeetingViewSetBase):
             fields.append("summary_discarded")
         if fields:
             proposal.save(update_fields=fields + ["updated_at"])
-        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+        return Response(meeting_serializers.represent_proposal(proposal, full=True, request=request))
 
     @action(detail=True, methods=["post"])
     def dismiss(self, request, pk=None):
@@ -641,7 +641,7 @@ class ProposalViewSet(MeetingViewSetBase):
         except approval.ApprovalRefused as exc:
             return Response({"detail": str(exc), **exc.extra}, status=exc.status)
         proposal.refresh_from_db()
-        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+        return Response(meeting_serializers.represent_proposal(proposal, full=True, request=request))
 
     @action(detail=True, methods=["post"])
     def restore(self, request, pk=None):
@@ -651,7 +651,7 @@ class ProposalViewSet(MeetingViewSetBase):
             dismissal.restore(proposal, actor=request.user)
         except approval.ApprovalRefused as exc:
             return Response({"detail": str(exc)}, status=exc.status)
-        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+        return Response(meeting_serializers.represent_proposal(proposal, full=True, request=request))
 
     @action(detail=True, methods=["post"])
     def ignore(self, request, pk=None):
@@ -686,7 +686,7 @@ class ProposalViewSet(MeetingViewSetBase):
                               if proposal.state == MeetingProposal.State.PENDING
                               else proposal.state)
             proposal.save(update_fields=["state", "updated_at"])
-        return Response(meeting_serializers.represent_proposal(proposal, full=True))
+        return Response(meeting_serializers.represent_proposal(proposal, full=True, request=request))
 
     @action(detail=True, methods=["post"])
     def reparse(self, request, pk=None):
@@ -700,7 +700,7 @@ class ProposalViewSet(MeetingViewSetBase):
         if fresh is None:
             return Response({"detail": "The re-parse failed. The old proposal stands "
                                        "and the call is on AI usage."}, status=502)
-        return Response(meeting_serializers.represent_proposal(fresh, full=True),
+        return Response(meeting_serializers.represent_proposal(fresh, full=True, request=request),
                         status=201)
 
 
@@ -719,7 +719,8 @@ class ProposalItemViewSet(MeetingViewSetBase):
         if proposal is not None:
             folding.fold(proposal)
         items = meeting_perms.items_for(request).filter(proposal_id=proposal_id)
-        return Response([meeting_serializers.represent_item(item) for item in items])
+        return Response([meeting_serializers.represent_item(item, request=request)
+                         for item in items])
 
     def load_item(self, pk):
         if not _is_uuid(pk):
@@ -746,6 +747,9 @@ class ProposalItemViewSet(MeetingViewSetBase):
                 # FR-5.8a — the meeting appears on every approved participant's
                 # timeline, and is created once.
                 approval.create_meeting(item.proposal, actor=request.user)
+            elif item.kind == ProposalItem.Kind.READING:
+                approval.approve_reading(item, actor=request.user, request=request,
+                                         choice=request.data or {})
             elif item.kind == ProposalItem.Kind.ACTION_ITEM:
                 # By owner (2026-09-28): the practice's is a task; someone
                 # else's is a commitment with the confirmed outcome.
@@ -761,7 +765,7 @@ class ProposalItemViewSet(MeetingViewSetBase):
             target_type="proposal_item", target_id=item.pk,
             payload={"kind": item.kind, "created": item.created_record_type})
         item.refresh_from_db()
-        return Response(meeting_serializers.represent_item(item), status=201)
+        return Response(meeting_serializers.represent_item(item, request=request), status=201)
 
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):

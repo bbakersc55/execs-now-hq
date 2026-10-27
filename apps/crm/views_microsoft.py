@@ -26,7 +26,7 @@ from rest_framework.response import Response
 
 from apps.crm import permissions as crm_perms
 from apps.crm.models import MicrosoftConnection
-from apps.crm.services import graph, microsoft_oauth, secrets, transport
+from apps.crm.services import graph, microsoft_oauth, outbox, secrets, transport
 from apps.tenancy.models import AuditEvent, SecretKind, Tenant
 
 PROVIDERS = dict(Tenant.MailProvider.choices)
@@ -170,6 +170,8 @@ class MailProviderView(viewsets.ViewSet):
         if wanted not in PROVIDERS:
             return Response({"provider": "Choose Gmail or Microsoft 365."}, status=400)
         previous = tenant.mail_provider
+        if wanted != previous and (waiting := outbox.switch_refusal(tenant)):
+            return Response({"detail": waiting}, status=409)
         if wanted != previous:
             tenant.mail_provider = wanted
             tenant.save(update_fields=["mail_provider", "updated_at"])

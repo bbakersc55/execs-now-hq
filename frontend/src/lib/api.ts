@@ -1560,9 +1560,12 @@ export interface ProposalItem {
   candidates?: ContactCandidate[] | null;
   /** Everyone an action item's owner could be, for a pending one. */
   owner_candidates?: ContactCandidate[] | null;
-  kind: "participant" | "action_item" | "deliverable";
+  kind: "participant" | "action_item" | "deliverable" | "reading";
   state: "pending" | "approved" | "rejected";
   source_excerpt: string;
+  /** A proposed reading as the scorecard holds it now, for one still waiting
+   *  (2026-10-27): whether you may enter it, and the period's current value. */
+  reading?: { may_enter: boolean; current_label: string } | null;
   position: number;
   created_record_type: string;
   created_record_id: string | null;
@@ -1596,6 +1599,10 @@ export interface ProposalItem {
     /** Claude's reading (2026-10-20): something the practice promised the
      *  client. Pre-ticks "Promised to <company>". */
     promised_to_client?: boolean;
+    /** A stated value, proposed as a KPI reading (2026-10-27). */
+    measure?: string; stated_value?: string; kpi_id?: string; kpi_name?: string;
+    company_id?: string; company_name?: string; period_start?: string;
+    period_label?: string; value?: string; value_label?: string;
   };
   /** The owner's contact, by name, when the notes' owner matched one. */
   owner_contact_name?: string;

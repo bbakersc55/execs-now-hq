@@ -1217,3 +1217,54 @@ describe("the notes folder on OneDrive", () => {
     expect(await screen.findByRole("button", { name: /Documents/ })).toBeInTheDocument();
   });
 });
+
+describe("a number the notes state, for the scorecard (2026-10-27)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const READING = {
+    id: "r1", kind: "reading" as const, state: "pending" as const,
+    source_excerpt: "Scrap ran at 3.1% last week.", position: 0,
+    created_record_type: "", created_record_id: null, actioned_at: null,
+    payload: { measure: "scrap", stated_value: "3.1%", kpi_id: "k1", kpi_name: "Scrap rate",
+               company_id: "co1", company_name: "Acme Fasteners",
+               period_start: "2026-10-19", period_label: "Week of Oct 19, 2026",
+               value: "3.1000", value_label: "3.1%" },
+  };
+
+  function withReading(reading: object) {
+    const proposal = aProposal({ items: [{ ...READING, ...reading }] });
+    return show({
+      [`GET /api/meeting-proposals/${ID}/`]: proposal,
+      "POST /api/proposal-items/r1/approve/": { id: "r1" },
+    });
+  }
+
+  it("shows the KPI, the company, the period and the sentence, and enters it as corrected",
+    async () => {
+      const user = userEvent.setup();
+      const fetchMock = withReading({ reading: { may_enter: true, current_label: "4%" } });
+      await user.click(await screen.findByRole("button", { name: "Review" }));
+      expect(await screen.findByText("Numbers for the scorecard")).toBeInTheDocument();
+      expect(screen.getByText(/Scrap rate: 3.1%/)).toHaveTextContent(
+        "Acme Fasteners · Week of Oct 19, 2026");
+      expect(screen.getByText("“Scrap ran at 3.1% last week.”")).toBeInTheDocument();
+      expect(screen.getByText(/already has 4% for this period/)).toBeInTheDocument();
+      const box = screen.getByRole("textbox", { name: "Value for Scrap rate" });
+      await user.clear(box);
+      await user.type(box, "3.2");
+      await user.click(screen.getByRole("button", { name: "Enter on the scorecard" }));
+      await waitFor(() => {
+        const posted = fetchMock.calls.find((c) => c.url.endsWith("/r1/approve/"));
+        expect(posted?.body).toEqual({ value: "3.2" });
+      });
+    });
+
+  it("offers only Not a reading to someone who may not enter it", async () => {
+    const user = userEvent.setup();
+    withReading({ reading: { may_enter: false, current_label: "" } });
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    expect(await screen.findByText(/Only someone who enters Scrap rate's/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Enter on the scorecard" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Not a reading" })).toBeInTheDocument();
+  });
+});

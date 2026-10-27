@@ -1270,6 +1270,13 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
            margin-bottom: var(--s3); }
 .comment.internal { border-left-color: var(--line-strong); background: var(--hover); }
 .comment.shared { border-left-color: var(--orange); }
+/* "@" suggestions under a comment box (2026-10-27). */
+.mention-wrap { position: relative; }
+.mention-options { position: absolute; z-index: 20; left: 0; top: 100%; min-width: 14rem;
+  max-width: 100%; margin: 2px 0 0; padding: 4px 0; list-style: none; background: var(--surface);
+  border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.mention-options li { padding: 6px var(--s3); cursor: pointer; }
+.mention-options li.active, .mention-options li:hover { background: var(--hover); }
 
 @media (max-width: 860px) {
   .layout, .layout.collapsed { grid-template-columns: minmax(0, 1fr); }

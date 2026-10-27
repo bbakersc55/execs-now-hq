@@ -109,6 +109,22 @@ def _candidates(entity):
     return staff, clients
 
 
+def mentionable(kind, entity, *, author, visibility) -> list[dict]:
+    """Who "@" may suggest in a comment on this work (owner, 2026-10-27): the
+    people a mention would tell, by the same rules as `comment` below (the
+    work's people, each only when they could see a comment of this
+    visibility), the writer left out, and only those with a name to type."""
+    staff, clients = _candidates(entity)
+    seen_as = SimpleNamespace(visibility=visibility)
+    out = []
+    for m in staff + clients:
+        full = (getattr(m.user, "full_name", "") or "").strip()
+        if m.user_id == author.pk or not full or not sees(kind, entity, m, seen_as):
+            continue
+        out.append({"id": str(m.user_id), "name": full})
+    return sorted(out, key=lambda row: row["name"].lower())
+
+
 def mentioned(body: str, people) -> list:
     """The people "@Full Name" names, and "@First" where the first name is one
     person's alone. Case is ignored; a name must end at a word's end."""

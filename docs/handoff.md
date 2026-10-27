@@ -17,6 +17,21 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
+## 2026-10-27, late night: one-click unsubscribe, @ suggestions, readings from meetings (on `dev`)
+
+- **List-Unsubscribe** goes out on one line, as given: Python had folded a
+  long one-click URL into encoded-words, which Gmail and Outlook do not read,
+  so neither showed one-click unsubscribe. Both transports send the same
+  MIME (`transport.MAIL_POLICY`); tests read the raw header as sent.
+- **"@" suggestions** in a comment box on a task, project or goal (a report's
+  goals included): only the people a mention would tell, for the
+  visibility being written (`/api/comments/mentionable/`).
+- **Readings from meetings** (`docs/p6_m5_kpi_scorecard.md`, last section):
+  `meetings 0010`, no-op. The demo's Acme operations review proposes last
+  week's scrap rate; Acme now has a small scorecard.
+- **The mail switch waits for an empty Outbox**, refusing with the count, on
+  Settings → Email and in the Practices area.
+
 ## 2026-10-27, night: the demo's calendar, and straight-to-Google sign-in (on `dev`)
 
 - **The demo's calendar** is never shown as connected, and Disconnect and

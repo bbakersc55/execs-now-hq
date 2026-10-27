@@ -635,3 +635,18 @@ def test_the_platform_owner_sets_up_a_microsoft_practice(ms, settings):
     settings.MICROSOFT_CLIENT_ID = ""
     with pytest.raises(platform_mail.PlatformMailUnavailable, match="Sign in with Microsoft"):
         platform_mail.send_invitation(tenant, actor=owner)
+
+
+@pytest.mark.django_db
+def test_the_practices_area_switch_waits_for_an_empty_outbox_too(seeded_tenant):
+    from apps.platform import provisioning
+
+    from .factories import OutboxMessageFactory
+
+    OutboxMessageFactory(tenant=seeded_tenant, state="approved")
+    with pytest.raises(provisioning.ProvisioningRefused) as refused:
+        provisioning.update_identity(seeded_tenant, mail_provider="microsoft")
+    assert "The Outbox has 1 message waiting" in refused.value.errors["mail_provider"]
+    seeded_tenant.refresh_from_db()
+    assert seeded_tenant.mail_provider == "google"
+    provisioning.update_identity(seeded_tenant, mail_provider="google")   # no change: fine

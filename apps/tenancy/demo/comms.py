@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from .clock import at, moment
+from .scorecard import SCRAP_STATED
 
 
 def everything(world) -> None:
@@ -50,8 +51,8 @@ def _meetings(world) -> None:
     plan = [
         ("Acme Fasteners weekly operations review", 1,
          "Weekly review with Acme. Second shift ran the new changeover standard on three "
-         "nights. Wiley wants the late-order huddle moved to 7:15. Marvin will send the "
-         "scrap tags for the week.",
+         "nights. Scrap ran at 3.1% last week. Wiley wants the late-order huddle moved to "
+         "7:15. Marvin will send the scrap tags for the week.",
          [_person(_who(world, "Acme Fasteners"), "client"),
           _person(_who(world, "Acme Fasteners", 1), "client")],
          [("Send this week's scrap tags", "Marvin Martian", "other", "client", 3, ""),
@@ -162,6 +163,12 @@ def _meetings(world) -> None:
                               "due_date": (today + timedelta(days=days)).isoformat(),
                               "excerpt": first}
                              for text, who, side, kind, days, _ in actions],
+            # Stated numbers (2026-10-27): the operations review's scrap rate,
+            # proposed as a reading of Acme's KPI.
+            "measurements": [{"measure": "scrap", "value": SCRAP_STATED,
+                              "period": {"kind": "week", "which": "last", "date": None},
+                              "excerpt": "Scrap ran at 3.1% last week."}]
+            if "operations review" in title else [],
             "deliverables": [{"text": text, "owner": who,
                               "due_date": (today + timedelta(days=days)).isoformat(),
                               "excerpt": first}

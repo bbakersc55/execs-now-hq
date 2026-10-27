@@ -201,7 +201,10 @@ Sheets feeds still come through a Google connection if one is there.
   it the spec's way. The switch says what it means before it happens
   (nothing sends until the other is connected and its address passes;
   replies are collected only for conversations the new transport starts)
-  and deletes nothing, so switching back needs no reconnect. The demo and a
+  and deletes nothing, so switching back needs no reconnect. **It waits for an
+  empty Outbox** (owner, 2026-10-27): with drafts, items waiting for approval,
+  or approved ones not yet sent, it is refused with their count, here and in
+  the Practices area alike (`outbox.switch_refusal`). The demo and a
   visitor's copy show the choice and refuse it: the demo's promise rides on
   its one Gmail connection.
 - **D3, the address check:** as recommended, a test send read back from Sent

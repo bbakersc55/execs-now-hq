@@ -50,6 +50,46 @@ REVENUE_BY_MONTH = {1: 48000, 2: 48000, 3: 50000, 4: 50000, 5: 50000, 6: 50000, 
                     8: 52000, 9: 56000, 10: 60000, 11: 64000, 12: 66000}
 
 
+#: Acme's small scorecard (2026-10-27): the KPI its weekly operations review
+#: states a value for, so the meeting queue proposes a reading.
+OPS_COMPANY = "Acme Fasteners"
+SCRAP = "Scrap rate"
+#: What the review's notes say, and the week before it, left for the queue.
+SCRAP_STATED = "3.1%"
+
+
+def operations(world):
+    """Acme Fasteners' scorecard: scrap rate, weekly, six closed weeks of it
+    entered and last week's left for the operations review to propose."""
+    from apps.scorecard import periods as P
+    from apps.scorecard import setup
+    from apps.scorecard.models import KpiReading, KpiReadingChange
+
+    company = world.companies[OPS_COMPANY]
+    review_day = world.today - timedelta(days=1)
+    proposed = P.previous_start(P.start_of(review_day, P.WEEKLY), P.WEEKLY)
+    first = proposed - timedelta(weeks=6)
+    with at(moment(first - timedelta(days=3), 10, 0)):
+        card = setup.ensure(company, world.owner)
+        page = card.pages.get()
+        kpi = setup.create_kpi(card, {
+            "name": SCRAP, "kind": "percent", "cadence": "weekly", "rollup": "average",
+            "direction": "lower", "target_value": 3, "tile": "number_trend",
+            "reading_owner": str(world.owner.pk), "page": str(page.pk),
+            "strategy_component": "process",
+            "note": "Scrapped parts ÷ parts made, from the scrap tags"}, world.owner)
+    for i, week in enumerate(P.starts_between(first, proposed - timedelta(days=1), P.WEEKLY)):
+        value = Decimal(str(round(4.6 - 0.2 * i + dice("scrap", week).uniform(-0.2, 0.2), 1)))
+        with at(moment(P.end_of(week, P.WEEKLY) + timedelta(days=1), 9, 15)):
+            reading = KpiReading.objects.create(
+                tenant_id=kpi.tenant_id, kpi=kpi, period_start=week, value=value,
+                entered_by=world.owner, entered_at=moment(
+                    P.end_of(week, P.WEEKLY) + timedelta(days=1), 9, 15))
+            KpiReadingChange.objects.create(tenant_id=kpi.tenant_id, reading=reading,
+                                            value=value, changed_by=world.owner)
+    return kpi
+
+
 def scorecard(world) -> dict:
     """Make it. Returns counts, for the seed's own summary."""
     from apps.scorecard import periods as P

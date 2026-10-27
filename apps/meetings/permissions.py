@@ -114,4 +114,45 @@ def items_for(request, queryset=None):
     queryset = ProposalItem.objects.all() if queryset is None else queryset
     if crm_perms.role_of(request) in CLIENT_ROLES:
         return queryset.none()
-    return queryset.filter(proposal__in=proposals_for(request))
+    return queryset.filter(proposal__in=proposals_for(request)).exclude(
+        pk__in=unseen_readings(request))
+
+
+def reading_kpi(request, item):
+    """(kpi, reader) for a proposed reading, as this person reads its
+    scorecard, or (None, None) when the KPI is gone or not theirs to see."""
+    from django.http import Http404
+
+    from apps.scorecard.access import Reader, company_for
+    from apps.scorecard.models import Kpi
+
+    kpi = (Kpi.objects.filter(pk=(item.payload or {}).get("kpi_id"), archived_at__isnull=True)
+           .select_related("scorecard", "page", "page__team", "audience_team").first())
+    if kpi is None:
+        return None, None
+    try:
+        company = company_for(request, kpi.scorecard.company_id)
+    except Http404:
+        return None, None
+    reader = Reader(request, company)
+    return (kpi, reader) if reader.sees_kpi(kpi) else (None, None)
+
+
+def unseen_readings(request) -> set:
+    """Proposed readings of a KPI this person could not see on its scorecard
+    (2026-10-27): absent for them, as the KPI is everywhere else. A decided
+    one stays, so the record of who confirmed what does not change. Worked
+    out once a request."""
+    cached = getattr(request, "_unseen_readings", None)
+    if cached is not None:
+        return cached
+    hidden = set()
+    for item in ProposalItem.objects.filter(kind=ProposalItem.Kind.READING,
+                                            state=ProposalItem.State.PENDING):
+        if reading_kpi(request, item)[0] is None:
+            hidden.add(item.pk)
+    try:
+        request._unseen_readings = hidden
+    except AttributeError:                              # pragma: no cover - a stand-in
+        pass
+    return hidden

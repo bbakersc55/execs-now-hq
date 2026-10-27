@@ -26,6 +26,7 @@ from __future__ import annotations
 import base64
 import uuid
 from email.message import EmailMessage as MimeMessage
+from email.policy import EmailPolicy
 
 import requests
 from django.conf import settings
@@ -71,10 +72,35 @@ def token_from_message_id(value: str) -> str:
     return local.split(".", 1)[0] if "." in local else ""
 
 
+#: Headers written on one line as given, never folded. Python folds a header
+#: longer than 78 characters, and a URL with no space in it can only be folded
+#: into RFC 2047 encoded-words ("=?utf-8?q?=3Chttps=3A//..."), which no mail
+#: client reads as a URL: Gmail and Outlook then show no one-click
+#: unsubscribe. A one-click URL is ASCII and well under RFC 5322's 998.
+UNFOLDED = frozenset({"list-unsubscribe", "list-unsubscribe-post"})
+
+
+class _MailPolicy(EmailPolicy):
+    def fold(self, name, value):
+        if name.lower() in UNFOLDED:
+            return f"{name}: {value}{self.linesep}"
+        return super().fold(name, value)
+
+    def fold_binary(self, name, value):
+        if name.lower() in UNFOLDED:
+            return f"{name}: {value}{self.linesep}".encode("ascii")
+        return super().fold_binary(name, value)
+
+
+#: The default policy, but for `UNFOLDED`; every other header and the body as
+#: before.
+MAIL_POLICY = _MailPolicy()
+
+
 def build_mime(*, to_address, from_address, subject, body_text,
                message_id, thread_token, in_reply_to="", references="",
                attachments=(), body_html="", inline_images=(), headers=None):
-    mime = MimeMessage()
+    mime = MimeMessage(policy=MAIL_POLICY)
     mime["To"] = to_address
     mime["From"] = from_address
     mime["Subject"] = subject

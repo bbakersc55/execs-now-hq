@@ -329,6 +329,9 @@ class ProposalItem(TenantScopedModel):
         PARTICIPANT = "participant", "Participant"
         ACTION_ITEM = "action_item", "Action item"
         DELIVERABLE = "deliverable", "Deliverable"
+        #: A KPI's value the notes state, for its period (2026-10-27,
+        #: `measures.py`): entered on the scorecard only when approved.
+        READING = "reading", "Reading"
 
     class State(models.TextChoices):
         PENDING = "pending", "Pending"

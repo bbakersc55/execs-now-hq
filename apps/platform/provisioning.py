@@ -155,8 +155,13 @@ def update_identity(tenant, *, legal_name=None, display_name=None, domain=None,
     if mail_provider is not None:
         if mail_provider not in Tenant.MailProvider.values:
             errors["mail_provider"] = "Choose Gmail or Microsoft 365."
-        else:
-            tenant.mail_provider = mail_provider
+        elif mail_provider != tenant.mail_provider:
+            from apps.crm.services import outbox
+
+            if refusal := outbox.switch_refusal(tenant):
+                errors["mail_provider"] = refusal
+            else:
+                tenant.mail_provider = mail_provider
     if pricing_program is not None:
         if pricing_program.strip() not in PRICING_PROGRAMS or not pricing_program.strip():
             errors["pricing_program"] = "Choose interchange-plus or dual pricing."

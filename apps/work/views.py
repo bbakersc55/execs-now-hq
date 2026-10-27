@@ -689,6 +689,27 @@ class CommentViewSet(WorkViewSet):
         return Response([work_serializers.represent_comment(c)
                          for c in qs.order_by("created_at")[:LIST_LIMIT]])
 
+    @action(detail=False, methods=["get"])
+    def mentionable(self, request):
+        """The names "@" suggests for a comment on one piece of work: those a
+        mention would tell, for the visibility being written (a client's is
+        always shared). Out of scope is a 404, as for the list."""
+        from apps.notify import producers
+        from apps.work.models import Comment
+
+        asked = {field: request.query_params.get(field)
+                 for field in ("task", "project", "goal")
+                 if request.query_params.get(field)}
+        if len(asked) != 1 or not _is_uuid(next(iter(asked.values()))):
+            return Response({"detail": "Ask for one piece of work, by id."}, status=400)
+        field, value = next(iter(asked.items()))
+        entity = self._target(request, {field: value})
+        visibility = (Comment.Visibility.SHARED if work_perms.is_client(request)
+                      or request.query_params.get("visibility") == "shared"
+                      else Comment.Visibility.INTERNAL)
+        return Response(producers.mentionable(field, entity, author=request.user,
+                                              visibility=visibility))
+
     def create(self, request):
         serializer = work_serializers.CommentSerializer(data=request.data,
                                                          context={"request": request})

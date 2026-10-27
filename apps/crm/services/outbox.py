@@ -255,6 +255,19 @@ def reject(message, *, actor):
     return message
 
 
+def switch_refusal(tenant) -> str:
+    """Why a practice's mail may not change transport now, or "": nothing may
+    be waiting that could still go out through one nobody chose for it."""
+    waiting = OutboxMessage.all_objects.filter(
+        tenant=tenant, state__in=[S.DRAFT, S.PENDING_APPROVAL, S.APPROVED]).count()
+    if not waiting:
+        return ""
+    return (f"The Outbox has {waiting} message{'' if waiting == 1 else 's'} waiting "
+            "(drafts, waiting for approval, or approved and not yet sent). Send or "
+            "reject them first, so none goes out through a transport nobody chose "
+            "for it.")
+
+
 def expire_due(tenant, *, now=None):
     """FR-1.18 — an item that reaches its send-by without approval EXPIRES.
 

@@ -306,3 +306,43 @@ def test_a_reading_reminder_is_told_to_its_owner(world):
     [notice] = Notice.all_objects.filter(recipient=owner.user, kind="reading")
     assert notice.text.startswith("Deliveries: no reading yet for")
     assert notice.url == "/scorecard/enter"
+
+
+# ------------------------------------------- "@" suggestions (2026-10-27)
+
+def mentionable(world, who, visibility="internal", task=None):
+    task = task or world["task"]
+    return world["api"].as_(world["who"][who]).get(
+        f"/api/comments/mentionable/?task={task.pk}&visibility={visibility}")
+
+
+def names(response):
+    assert response.status_code == 200, response.content
+    return [row["name"] for row in response.json()]
+
+
+def test_suggestions_are_who_a_mention_would_tell(world):
+    """An internal comment: the practice's people only, never the writer. A
+    shared one: the client's people of the work's company too; never another
+    company's."""
+    assert names(mentionable(world, "ff")) == ["Val Assistant"]
+    assert names(mentionable(world, "ff", "shared")) == ["Olive Owner", "Val Assistant"]
+    assert "Otto Outsider" not in names(mentionable(world, "va", "shared"))
+
+
+def test_a_clients_suggestions_are_for_a_shared_comment_whatever_they_ask(world):
+    assert names(mentionable(world, "owner", "internal")) == ["Fran Founder", "Val Assistant"]
+
+
+def test_suggestions_for_work_one_cannot_see_are_a_404(world):
+    assert mentionable(world, "outsider").status_code == 404
+
+
+def test_suggestions_never_cross_practices(world, api):
+    from .factories import TenantFactory
+
+    other = TenantFactory()
+    stranger = MembershipFactory(tenant=other, role="FF")
+    assert api.as_(stranger).get(
+        f"/api/comments/mentionable/?task={world['task'].pk}").status_code == 404
+    assert mentionable(world, "ff", "shared").json()[0].keys() == {"id", "name"}

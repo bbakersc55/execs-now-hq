@@ -5,7 +5,7 @@ from __future__ import annotations
 from apps.meetings.models import MeetingProposal, ProposalItem
 
 
-def represent_item(item) -> dict:
+def represent_item(item, request=None) -> dict:
     return {
         "id": str(item.pk),
         "kind": item.kind,
@@ -34,7 +34,28 @@ def represent_item(item) -> dict:
         # Who a promise is to, for the "Promised to <company>" tick
         # (2026-10-20). Only for a task line still waiting.
         "promised_to": _promised_to(item),
+        # A proposed reading, as the scorecard holds it now (2026-10-27).
+        "reading": _reading(item, request),
     }
+
+
+def _reading(item, request):
+    """Whether this person may enter it, and what the period holds now, so
+    confirming one over an earlier value is a choice, not a surprise."""
+    if item.kind != ProposalItem.Kind.READING or request is None \
+            or item.state != ProposalItem.State.PENDING:
+        return None
+    from apps.meetings import permissions as meeting_perms
+    from apps.scorecard.bonus import fmt
+    from apps.scorecard.models import KpiReading
+
+    kpi, reader = meeting_perms.reading_kpi(request, item)
+    if kpi is None:
+        return None
+    held = KpiReading.objects.filter(kpi=kpi, period_start=item.payload.get("period_start"),
+                                     membership__isnull=True).first()
+    return {"may_enter": reader.may_enter(kpi),
+            "current_label": fmt(kpi, held.value) if held is not None else ""}
 
 
 def _seat(contact_id):
@@ -156,7 +177,7 @@ def _promised_to(item):
     return {"id": str(company.pk), "name": company.name} if company else None
 
 
-def represent_proposal(proposal, *, full=False) -> dict:
+def represent_proposal(proposal, *, full=False, request=None) -> dict:
     payload = {
         "id": str(proposal.pk),
         "state": proposal.state,
@@ -178,14 +199,19 @@ def represent_proposal(proposal, *, full=False) -> dict:
         } if proposal.state == MeetingProposal.State.DISMISSED else None),
         "counts": {},
     }
-    items = list(ProposalItem.objects.filter(proposal=proposal))
+    items = ProposalItem.objects.filter(proposal=proposal)
+    if request is not None:
+        from apps.meetings import permissions as meeting_perms
+
+        items = meeting_perms.items_for(request, items)
+    items = list(items)
     payload["counts"] = {
         "pending": sum(1 for i in items if i.state == ProposalItem.State.PENDING),
         "approved": sum(1 for i in items if i.state == ProposalItem.State.APPROVED),
         "rejected": sum(1 for i in items if i.state == ProposalItem.State.REJECTED),
     }
     if full:
-        payload["items"] = [represent_item(item) for item in items]
+        payload["items"] = [represent_item(item, request=request) for item in items]
         # The document itself, so a reviewer can read past the excerpt.
         payload["source_text"] = proposal.source_file.text
     return payload

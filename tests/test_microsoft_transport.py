@@ -212,6 +212,40 @@ def test_a_switch_names_one_of_the_two(seeded_tenant, ff, api, ms):
 
 
 @pytest.mark.django_db
+def test_a_switch_waits_for_an_empty_outbox_and_says_how_many(seeded_tenant, ff, api, ms):
+    """Nothing waiting may go out through a transport nobody chose for it.
+    Sent, rejected, expired and suppressed rows are history, not waiting; and
+    another practice's queue is not this one's."""
+    for state in ("draft", "pending_approval", "approved"):
+        OutboxMessageFactory(tenant=seeded_tenant, state=state)
+    for state in ("sent", "rejected", "expired", "suppressed"):
+        OutboxMessageFactory(tenant=seeded_tenant, state=state)
+    OutboxMessageFactory(tenant=TenantFactory(), state="pending_approval")
+
+    response = api.as_(ff).post(SWITCH, {"provider": "microsoft"},
+                                content_type="application/json")
+    assert response.status_code == 409
+    assert "The Outbox has 3 messages waiting" in response.json()["detail"]
+    seeded_tenant.refresh_from_db()
+    assert seeded_tenant.mail_provider == "google"
+
+    OutboxMessage.all_objects.filter(tenant=seeded_tenant, state__in=[
+        "draft", "approved"]).update(state="rejected")
+    response = api.as_(ff).post(SWITCH, {"provider": "microsoft"},
+                                content_type="application/json")
+    assert "The Outbox has 1 message waiting" in response.json()["detail"]
+
+    OutboxMessage.all_objects.filter(tenant=seeded_tenant).update(state="sent")
+    response = api.as_(ff).post(SWITCH, {"provider": "microsoft"},
+                                content_type="application/json")
+    assert response.status_code == 200 and response.json()["provider"] == "microsoft"
+    # Choosing the one it already has is no switch, waiting or not.
+    OutboxMessageFactory(tenant=seeded_tenant, state="draft")
+    assert api.as_(ff).post(SWITCH, {"provider": "microsoft"},
+                            content_type="application/json").status_code == 200
+
+
+@pytest.mark.django_db
 def test_switching_deletes_no_connection(seeded_tenant, ff, api, ms):
     gmail = GmailConnectionFactory(tenant=seeded_tenant, user=ff.user)
     microsoft = MicrosoftConnectionFactory(tenant=seeded_tenant, user=ff.user)
@@ -585,6 +619,15 @@ def test_marketing_carries_the_one_click_unsubscribe_headers(ms_practice, ff, ms
     mime = _mime_sent(ms)
     assert mime["List-Unsubscribe"].startswith("<") and "/one-click>" in mime["List-Unsubscribe"]
     assert mime["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    # Exactly as sent, unparsed: one line each, no encoded-words.
+    drafts = [c for c in ms.of("POST", "/me/messages") if c["url"].endswith("/me/messages")]
+    head = base64.b64decode(drafts[0]["data"]).split(b"\n\n", 1)[0].decode("ascii")
+    lines = head.splitlines()
+    with tenant_context(ms_practice.pk):
+        from apps.crm.services import unsubscribe
+        expected = unsubscribe.headers_for(message)["List-Unsubscribe"]
+    assert f"List-Unsubscribe: {expected}" in lines
+    assert "List-Unsubscribe-Post: List-Unsubscribe=One-Click" in lines
 
 
 @pytest.mark.django_db

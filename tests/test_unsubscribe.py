@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from apps.crm.models import EmailSuppression, OutboxMessage
 from apps.crm.services import email_layout, enrollment, outbox, referral, unsubscribe
+from apps.tenancy.context import tenant_context
 from apps.tenancy.models import AuditEvent
 from apps.work import digests as digest_service
 from apps.work.models import Digest
@@ -314,6 +315,64 @@ def test_the_gmail_mime_carries_them_too(seeded_tenant):
                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"})
     assert mime["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
     assert mime["List-Unsubscribe"].endswith("/one-click>")
+
+
+LONG = ("<https://app.getexecutivesnow.com/api/unsubscribe/"
+        "eyJrIjoibWFya2V0aW5nIiwidCI6IjEyMzQ1Njc4OTAifQ.aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"
+        "-_aBcDeFgHiJkLmNoP/one-click>")
+
+
+def header_lines(raw: bytes) -> list[str]:
+    """The message's header block as sent, line by line, unparsed: a parser
+    would decode encoded-words and hide exactly what a mail client sees."""
+    return raw.split(b"\n\n", 1)[0].decode("ascii").splitlines()
+
+
+def test_the_one_click_headers_go_out_exactly_on_one_line_each():
+    """2026-10-27: a long one-click URL was folded into encoded-words, which
+    Gmail and Outlook do not read as a URL. Both transports send this MIME."""
+    from apps.crm.services import transport
+
+    assert len(LONG) > 78
+    mime = transport.build_mime(
+        to_address="a@x.invalid", from_address="b@x.invalid", subject="s", body_text="t",
+        message_id="<m@x>", thread_token="tok",
+        headers={"List-Unsubscribe": LONG, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"})
+    lines = header_lines(mime.as_bytes())
+    assert f"List-Unsubscribe: {LONG}" in lines
+    assert "List-Unsubscribe-Post: List-Unsubscribe=One-Click" in lines
+    assert not any("=?" in line for line in lines if line.lower().startswith("list-"))
+    assert str(mime).splitlines().count(f"List-Unsubscribe: {LONG}") == 1
+
+
+@pytest.mark.django_db
+def test_gmail_sends_the_exact_one_click_headers(seeded_tenant, ff, settings):
+    import base64
+    from unittest import mock
+
+    from django.utils import timezone
+
+    from apps.crm.services import transport
+
+    from .factories import GmailConnectionFactory
+
+    GmailConnectionFactory(
+        tenant=seeded_tenant, user=ff.user, email_address="bryan@getexecutivesnow.com",
+        scopes=["gmail.send", "gmail.settings.basic"], send_as_address="info@getexecutivesnow.com",
+        send_as_verified_at=timezone.now())
+    contact = _contact(seeded_tenant)
+    settings.DEV_REAL_SEND_ALLOWLIST = ["maria@partner.invalid"]
+    sent = mock.Mock(ok=True, status_code=200)
+    sent.json.return_value = {"id": "m1", "threadId": "t1"}
+    with tenant_context(seeded_tenant.pk), \
+            mock.patch.object(transport, "access_token_for", return_value="tok"), \
+            mock.patch("apps.crm.services.transport.requests.post", return_value=sent) as post:
+        message = _draft(seeded_tenant, contact, P.REFERRAL_TOUCH, force_direct=True)
+        expected = unsubscribe.headers_for(message)["List-Unsubscribe"]
+    raw = base64.urlsafe_b64decode(post.call_args.kwargs["json"]["raw"])
+    lines = header_lines(raw)
+    assert f"List-Unsubscribe: {expected}" in lines
+    assert "List-Unsubscribe-Post: List-Unsubscribe=One-Click" in lines
 
 
 @pytest.mark.django_db

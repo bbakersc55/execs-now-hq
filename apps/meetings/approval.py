@@ -605,6 +605,35 @@ def create_meeting(proposal, *, actor) -> Meeting:
     return meeting
 
 
+def approve_reading(item, *, actor, request, choice: dict):
+    """A stated value, entered on the scorecard (2026-10-27): through the
+    scorecard's own entry, as this person, so who may enter it, the period
+    and the value are its rules, and an earlier value is kept in the
+    reading's history. The value may be corrected before confirming."""
+    from apps.meetings import permissions as meeting_perms
+    from apps.scorecard import readings
+    from apps.scorecard.models import KpiReading
+
+    kpi, reader = meeting_perms.reading_kpi(request, item)
+    if kpi is None:
+        raise ApprovalRefused("That KPI is gone from the scorecard, or isn't one you can "
+                              "see. Reject this one.", status=409)
+    if not reader.may_enter(kpi):
+        raise ApprovalRefused("You can't enter readings for this KPI. Its reading owner, "
+                              "the practice owner or an associate can.", status=403)
+    period = item.payload.get("period_start")
+    value = str(choice.get("value") or "").strip() or item.payload.get("value")
+    with transaction.atomic():
+        result = readings.save(reader, kpi.scorecard,
+                               [{"kpi": str(kpi.pk), "period_start": period, "value": value}],
+                               timezone.localdate())
+        if result["errors"]:
+            raise ApprovalRefused(next(iter(result["errors"].values())))
+        reading = KpiReading.objects.get(kpi=kpi, period_start=period, membership__isnull=True)
+        _mark(item, actor, "kpi_reading", reading.pk)
+    return reading
+
+
 # ------------------------------------------------------------------- the plumbing
 
 def _mark(item, actor, record_type, record_id):

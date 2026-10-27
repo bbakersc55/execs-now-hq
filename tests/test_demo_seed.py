@@ -252,6 +252,19 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
                        ProposalItem.objects.filter(kind="action_item")}
         # Each kind of owner an action can have; "" is the practice's own.
         assert {"client", "prospect", "vendor", "third_party", ""} <= owner_kinds
+        # The operations review proposes last week's scrap rate (2026-10-27),
+        # the week before it already on Acme's scorecard, last week not.
+        [reading] = ProposalItem.objects.filter(kind="reading")
+        assert reading.state == "pending"
+        assert reading.proposal.title == "Acme Fasteners weekly operations review"
+        assert (reading.payload["kpi_name"], reading.payload["value_label"],
+                reading.payload["company_name"]) == ("Scrap rate", "3.1%", "Acme Fasteners")
+        from apps.scorecard.models import KpiReading
+
+        assert not KpiReading.objects.filter(
+            kpi_id=reading.payload["kpi_id"], period_start=reading.payload["period_start"]
+        ).exists()
+        assert KpiReading.objects.filter(kpi_id=reading.payload["kpi_id"]).count() == 6
         waiting = Digest.objects.filter(state="pending")
         assert 4 <= waiting.count() <= 5
         # M5 ties: Michael's, drafted after the scorecard, carries its section.

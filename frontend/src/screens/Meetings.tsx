@@ -1249,6 +1249,82 @@ function ProposalDetail({ id, onChanged, setNote, me }: {
           </div>
         )
       ))}
+      {of("reading").length > 0 && (
+        <div style={{ marginTop: "var(--s4)" }}>
+          <h4>Numbers for the scorecard</h4>
+          {of("reading").map((item) => (
+            <ReadingRow key={item.id} item={item} onChanged={onChanged} setNote={setNote} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A value the notes state, proposed as a KPI reading (2026-10-27). Nothing
+ *  is entered until someone who may enter it confirms, and they may correct
+ *  the number first; an earlier value for the period is shown, and kept in
+ *  the reading's history if replaced. */
+function ReadingRow({ item, onChanged, setNote }: {
+  item: ProposalItem; onChanged: () => void; setNote: (text: string) => void;
+}) {
+  const payload = item.payload ?? {};
+  const [value, setValue] = useState(payload.stated_value ?? payload.value ?? "");
+  const act = useMutation({
+    mutationFn: ({ verb, body }: { verb: string; body?: object }) =>
+      api.post(`/api/proposal-items/${item.id}/${verb}/`, body),
+    onSuccess: () => onChanged(),
+    onError: (e: Error) => setNote(e.message),
+  });
+  const decided = item.state !== "pending";
+  const mayEnter = item.reading?.may_enter ?? false;
+  const current = item.reading?.current_label ?? "";
+  return (
+    <div className="card" style={{ opacity: decided ? 0.6 : 1 }}>
+      <div className="spread" style={{ alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontWeight: 550 }}>
+            {payload.kpi_name}: {payload.value_label}
+            <span className="muted" style={{ fontWeight: 400 }}>
+              {" "}· {payload.company_name} · {payload.period_label}</span>
+          </p>
+          {item.source_excerpt && (
+            <p className="tiny muted" style={{ margin: "2px 0 0", fontStyle: "italic" }}>
+              “{item.source_excerpt}”
+            </p>
+          )}
+          {!decided && current && (
+            <p className="tiny" style={{ margin: "2px 0 0" }}>
+              The scorecard already has {current} for this period. Confirming replaces it;
+              the earlier value stays in its history.
+            </p>
+          )}
+        </div>
+        {decided && <Pill kind={item.state === "approved" ? "ok" : ""}>{item.state}</Pill>}
+      </div>
+      {!decided && (
+        <div className="row tight" style={{ marginTop: "var(--s2)", alignItems: "flex-end" }}>
+          {mayEnter ? (
+            <>
+              <Field label="Value">
+                <input aria-label={`Value for ${payload.kpi_name}`} value={value}
+                  onChange={(e) => setValue(e.target.value)} style={{ width: "8rem" }} />
+              </Field>
+              <button className="primary small" disabled={act.isPending || !value.trim()}
+                onClick={() => act.mutate({ verb: "approve", body: { value } })}>
+                <Check size={14} /> Enter on the scorecard
+              </button>
+            </>
+          ) : (
+            <span className="small muted">Only someone who enters {payload.kpi_name}'s
+              readings can confirm this.</span>
+          )}
+          <button className="small" disabled={act.isPending}
+            onClick={() => act.mutate({ verb: "reject" })}>
+            <X size={14} /> Not a reading
+          </button>
+        </div>
+      )}
     </div>
   );
 }

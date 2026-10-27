@@ -8,11 +8,13 @@ Two constraints the prompt is written around:
 
 1. **Assert nothing the notes do not carry** — the same rule the digest and the
    strategy map work under (AC-3.5). No invented owners, no invented dates.
-2. **Extract participants and action items, and nothing else.** A promise to
-   the client is an action item flagged `promised_to_client` (2026-10-20); the
-   separate "deliverables" list is gone for new proposals (`folding.py`).
-   Decisions, risks and sentiment are out of scope for Beta and a model asked
-   for them will happily supply them.
+2. **Extract participants and action items, and nothing else** but the
+   numbers the notes state (2026-10-27): a measure's value for a period,
+   which the app proposes as a scorecard reading only when it names exactly
+   one KPI (`measures.py`). A promise to the client is an action item flagged
+   `promised_to_client` (2026-10-20); the separate "deliverables" list is
+   gone for new proposals (`folding.py`). Decisions, risks and sentiment are
+   out of scope for Beta and a model asked for them will happily supply them.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ You are reading the notes of one business meeting for a fractional operations \
 executive, and proposing what should be recorded. A person reviews everything \
 you propose; nothing you say is acted on by itself.
 
-Produce four things.
+Produce five things.
 
 1. "title" and "meeting_date" (YYYY-MM-DD) as the notes give them. If the notes \
 do not say, leave the date null — do not infer one from today.
@@ -63,6 +65,7 @@ the notes describe them. "promised_to_client": true when it is something the \
 practice promised the client, which the client is now waiting on; false \
 otherwise. **Each thing appears once**: a promise is an action item with that \
 flag, never a second line.
+5. "measurements": a number the notes state for something measured over a period ("occupancy was 78% last week", "we shipped 412 orders in September"). "measure" as the notes name it, "value" exactly as stated with its unit ("78%", "$12,400", "412"), and "period": {"kind": one of day, week, month, quarter; "which": "last" or "this" when the notes say so relative to the meeting, or "date" with "date" (YYYY-MM-DD) inside the period when the notes name it}. Only numbers the notes state; never one you work out, and nothing when the period is not said.
 
 **Every item carries "excerpt": the sentence from the notes it came from**, \
 copied exactly, so the reviewer can check it. An item you cannot quote is an \
@@ -70,13 +73,13 @@ item you invented — leave it out.
 
 **Assert nothing the notes do not carry.** No owner nobody named, no date \
 nobody agreed, no company nobody mentioned. Do not extract decisions, risks or \
-sentiment: participants and action items only.
+sentiment: participants, action items and stated measurements only.
 
 Reply with JSON only: {"title": "", "meeting_date": null, "summary": "", \
 "participants": [{"name": "", "email": "", "title": "", "company": "", \
 "contact_type": "", "excerpt": ""}], "action_items": [{"text": "", "owner": "", \
 "owner_side": "", "owner_kind": "", "promised_to_client": false, "due_date": null, \
-"excerpt": ""}]}. No prose around it, no markdown fence.
+"excerpt": ""}], "measurements": [{"measure": "", "value": "", "period": {"kind": "", "which": "", "date": null}, "excerpt": ""}]}. No prose around it, no markdown fence.
 
 Use American spelling."""
 
@@ -245,6 +248,20 @@ def _build(source_file, payload, call) -> MeetingProposal:
         made.append(ProposalItem.objects.create(
             tenant=tenant, proposal=proposal, kind=kind, position=position,
             source_excerpt=str(raw.get("excerpt") or "").strip(), payload=body))
+
+    # Stated numbers, as readings for someone to confirm (2026-10-27).
+    from apps.meetings import measures
+
+    raws = payload.get("measurements") or []
+    if raws:
+        participants = ProposalItem.objects.filter(proposal=proposal,
+                                                   kind=ProposalItem.Kind.PARTICIPANT)
+        for position, (excerpt, body) in enumerate(measures.propose(
+                tenant, raws, meeting_date=proposal.meeting_date,
+                company_ids=measures.company_ids_of(participants))):
+            ProposalItem.objects.create(
+                tenant=tenant, proposal=proposal, kind=ProposalItem.Kind.READING,
+                position=position, source_excerpt=excerpt, payload=body)
 
     source_file.state = MeetingSourceFile.State.PARSED
     source_file.error = ""

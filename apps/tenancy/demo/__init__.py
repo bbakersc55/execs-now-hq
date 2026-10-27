@@ -164,7 +164,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
     from apps.tenancy.context import tenant_context
 
     from . import calendar, comms, foundation, money, sessions, work
-    from .scorecard import scorecard
+    from .scorecard import operations, scorecard
 
     world = foundation.practice(ff_email=ff_email, ff_name=ff_name,
                                 oauth_client=oauth_client, today=today, visitor=visitor)
@@ -173,6 +173,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         money.history(world)
         sessions.strategy(world)
         work.engagements(world)
+        operations(world)        # before the meetings: one proposes a reading of it
         comms.everything(world)
         scorecard(world)
         foundation.stage_rules(world)
