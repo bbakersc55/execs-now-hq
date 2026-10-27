@@ -143,7 +143,10 @@ def branding(request):
     # The Practices area is a staff screen with no practice bound (P2).
     platform = getattr(request, "area", None) == "platform"
     staff = platform or (membership is not None and membership.role in STAFF_ROLES)
-    brand = tenant_branding(_branding_tenant(request), via=request.GET.get("via", ""))
+    from apps.accounts import microsoft_signin
+
+    tenant = _branding_tenant(request)
+    brand = tenant_branding(tenant, via=request.GET.get("via", ""))
     return JsonResponse({
         "display_name": brand["display_name"],
         "logo_url": brand["logo_url"],
@@ -159,6 +162,9 @@ def branding(request):
             "gray_light": PALETTE["gray_light"],
         },
         "product_name": PRODUCT_NAME if staff else None,
+        # The sign-in page's second button (2026-10-27): for the staff of a
+        # practice whose mail runs through Microsoft 365.
+        "microsoft_sign_in": microsoft_signin.offered(tenant),
     })
 
 

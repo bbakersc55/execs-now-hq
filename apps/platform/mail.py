@@ -89,7 +89,15 @@ def send_invitation(tenant, *, actor):
              .order_by("created_at").first())
     if owner is None:
         raise PlatformMailUnavailable("This practice has no practice owner to invite.")
-    if not gmail_oauth.is_configured(tenant):
+    if tenant.mail_provider == "microsoft":
+        from apps.crm.services import microsoft_oauth
+
+        if not microsoft_oauth.is_configured():
+            raise PlatformMailUnavailable(
+                "Sign in with Microsoft is not set up yet: the Entra app registration "
+                "(MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET) is not configured. Inviting "
+                "now would send someone a sign-in that cannot work.")
+    elif not gmail_oauth.is_configured(tenant):
         raise PlatformMailUnavailable(
             "Google sign-in for this practice is not set up yet: the External OAuth "
             "client is not configured (docs/google_verification.md, step 5). Inviting "
@@ -99,8 +107,11 @@ def send_invitation(tenant, *, actor):
     paragraphs = [
         f"{name} is set up in {PRODUCT_NAME}, and you are its practice owner.",
         # "Practice sign-in" is the heading on the sign-in page (SignedOut.tsx).
-        f"To sign in, go to {url}. Under Practice sign-in, enter {owner.user.email} and choose "
-        "Sign in with Google, using that same Google account.",
+        (f"To sign in, go to {url}. Under Practice sign-in, enter {owner.user.email} and "
+         "choose Sign in with Microsoft, using that same work account."
+         if tenant.mail_provider == "microsoft" else
+         f"To sign in, go to {url}. Under Practice sign-in, enter {owner.user.email} and "
+         "choose Sign in with Google, using that same Google account."),
         "The first time, you will be asked to read and accept the beta agreement. "
         "Then the Getting started list on your dashboard walks you through the rest: "
         "your branding, Gmail, your Anthropic key, your contacts, your team, your "

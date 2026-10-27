@@ -46,6 +46,7 @@ class PracticesView(APIView):
                 legal_name=data.get("legal_name", ""), display_name=data.get("display_name", ""),
                 domain=data.get("domain", ""), owner_email=data.get("owner_email", ""),
                 actor=request.user, pricing_program=data.get("pricing_program", ""),
+                mail_provider=data.get("mail_provider") or "google",
                 # Chosen at setup: required from the screen, optional to code.
                 pricing_required=True)
         except provisioning.ProvisioningRefused as exc:
@@ -77,7 +78,8 @@ class PracticeView(APIView):
                 tenant, legal_name=request.data.get("legal_name"),
                 display_name=request.data.get("display_name"),
                 domain=request.data.get("domain"),
-                pricing_program=request.data.get("pricing_program"))
+                pricing_program=request.data.get("pricing_program"),
+                mail_provider=request.data.get("mail_provider"))
             # P4 part 5: the monthly amount for this practice; null is the plan's.
             if "subscription_amount_cents" in request.data:
                 billing.set_amount(tenant, request.data["subscription_amount_cents"],

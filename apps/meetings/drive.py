@@ -109,6 +109,11 @@ class DriveFile:
     #: Exclusions match against these as well as the file's own name.
     root: str = ""
     path_names: list = field(default_factory=list)
+    #: "google", or "microsoft" for a OneDrive file (`onedrive.py`).
+    provider: str = "google"
+    #: OneDrive's own skip reason ("" to read it); None, as every Drive file
+    #: has, means `skip_reason(mime_type)` decides.
+    skip: str | None = None
 
 
 #: How far up a file's parents are followed looking for a watched folder.

@@ -1,0 +1,24 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization(id,verifiedDomains)",
+  "value": [
+    {
+      "id": "9188040d-6c67-4c5b-b112-36a304b66dad",
+      "verifiedDomains": [
+        {
+          "capabilities": "Email, OfficeCommunicationsOnline",
+          "isDefault": true,
+          "isInitial": false,
+          "name": "contoso.example",
+          "type": "Managed"
+        },
+        {
+          "capabilities": "Email, OfficeCommunicationsOnline",
+          "isDefault": false,
+          "isInitial": true,
+          "name": "contoso.onmicrosoft.com",
+          "type": "Managed"
+        }
+      ]
+    }
+  ]
+}

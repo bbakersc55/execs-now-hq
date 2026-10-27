@@ -52,6 +52,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     #: inside any practice (apps/platform/README in docs/p2…).
     is_platform_owner = models.BooleanField(default=False, db_default=False)
     last_login_at = models.DateTimeField(null=True, blank=True)
+    #: Sign in with Microsoft (2026-10-27): the work account first used to sign
+    #: in, by its directory and object ids. Bound once; a later sign-in must be
+    #: the same account, so an address recreated in another directory does not
+    #: inherit this one's access.
+    microsoft_directory_id = models.CharField(max_length=64, blank=True, default="",
+                                              db_default="")
+    microsoft_object_id = models.CharField(max_length=64, blank=True, default="",
+                                           db_default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

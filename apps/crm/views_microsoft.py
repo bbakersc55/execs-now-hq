@@ -53,9 +53,24 @@ def _demo_refusal(tenant) -> str:
     return ""
 
 
-def _spa_url(**params):
+def _spa_url(where="email", **params):
     root = dj_settings.APP_ROOT_URL.rstrip("/")
-    return f"{root}/settings/email" + (f"?{urlencode(params)}" if params else "")
+    path = "/meetings" if where == "meetings" else "/settings/email"
+    return f"{root}{path}" + (f"?{urlencode(params)}" if params else "")
+
+
+def consent_url(request, *, inbound=False, files=False, where="email") -> str:
+    """Start a consent: remember what was asked and where to come back to.
+    Shared by Settings → Email and the meeting queue's "Allow OneDrive
+    access" (`meetings.views`), which asks for collecting replies too when the
+    connection already holds it, so allowing OneDrive does not drop it."""
+    state = microsoft_oauth.new_state()
+    request.session[microsoft_oauth.STATE_SESSION_KEY] = state
+    request.session[microsoft_oauth.INBOUND_SESSION_KEY] = inbound
+    request.session[microsoft_oauth.FILES_SESSION_KEY] = files
+    request.session[microsoft_oauth.RETURN_SESSION_KEY] = where
+    return microsoft_oauth.authorization_url(state, login_hint=request.user.email,
+                                             inbound=inbound, files=files)
 
 
 def _my_connection(request):
@@ -190,13 +205,13 @@ class MicrosoftConnectionViewSet(viewsets.ViewSet):
             return Response({"detail": (
                 "Microsoft 365 isn't set up on this server yet, so there is nothing to "
                 "connect to. Contact support.")}, status=400)
-        state = microsoft_oauth.new_state()
-        inbound = bool(request.data.get("inbound"))
-        request.session[microsoft_oauth.STATE_SESSION_KEY] = state
-        request.session[microsoft_oauth.INBOUND_SESSION_KEY] = inbound
+        mine = _my_connection(request)
         return Response({
-            "authorization_url": microsoft_oauth.authorization_url(
-                state, login_hint=request.user.email, inbound=inbound),
+            # A ticked box asks for it, an unticked one leaves it out; OneDrive,
+            # granted from the meeting queue, is kept either way.
+            "authorization_url": consent_url(
+                request, inbound=bool(request.data.get("inbound")),
+                files=bool(mine and microsoft_oauth.files_granted(mine.scopes or []))),
             "redirect_uri": microsoft_oauth.redirect_uri(),
         })
 
@@ -284,42 +299,62 @@ def _consent_refusal(request) -> str:
 
 @require_http_methods(["GET"])
 def microsoft_callback(request):
-    """Microsoft's redirect target. Ends in the SPA, never in JSON."""
+    """Microsoft's redirect target. Ends in the SPA, never in JSON.
+
+    Three consents share it: connecting mail (Settings → Email), allowing
+    OneDrive (the meeting queue) and signing in, which is handed on by its
+    state to `apps.accounts.microsoft_signin`."""
+    from apps.accounts import microsoft_signin
+
+    if microsoft_signin.is_sign_in(request):
+        return microsoft_signin.callback(request)
     inbound_wanted = bool(request.session.pop(microsoft_oauth.INBOUND_SESSION_KEY, False))
+    files_wanted = bool(request.session.pop(microsoft_oauth.FILES_SESSION_KEY, False))
+    where = request.session.pop(microsoft_oauth.RETURN_SESSION_KEY, "email")
+    error_key = "drive_error" if where == "meetings" else "ms_error"
+
+    def refused(text):
+        return HttpResponseRedirect(_spa_url(where, **{error_key: text}))
+
     membership = getattr(request, "membership", None)
     if membership is None or membership.role not in ("FF", "CF"):
-        return HttpResponseRedirect(_spa_url(ms_error=(
-            "You are not signed in as the practice owner or an associate, so this "
-            "connection was not stored.")))
+        return refused("You are not signed in as the practice owner or an associate, so "
+                       "this connection was not stored.")
 
     expected = request.session.pop(microsoft_oauth.STATE_SESSION_KEY, None)
     supplied = request.GET.get("state")
     if not expected or not supplied or expected != supplied:
-        return HttpResponseRedirect(_spa_url(ms_error=(
-            "That consent did not match the request this browser started. Nothing was "
-            "stored. Click Connect Microsoft 365 again.")))
+        return refused("That consent did not match the request this browser started. "
+                       "Nothing was stored. Start again.")
     if request.GET.get("error"):
-        return HttpResponseRedirect(_spa_url(ms_error=_consent_refusal(request)))
+        return refused(_consent_refusal(request))
     tenant = membership.tenant
     if refusal := _demo_refusal(tenant):
-        return HttpResponseRedirect(_spa_url(ms_error=refusal))
+        return refused(refusal)
     code = request.GET.get("code", "")
     if not code:
-        return HttpResponseRedirect(_spa_url(
-            ms_error="Microsoft returned no authorization code. Nothing was stored."))
+        return refused("Microsoft returned no authorization code. Nothing was stored.")
 
     try:
-        tokens = microsoft_oauth.exchange_code(code, inbound=inbound_wanted)
+        tokens = microsoft_oauth.exchange_code(code, inbound=inbound_wanted,
+                                               files=files_wanted)
         missing = microsoft_oauth.missing_scopes(tokens)
         if missing:
-            return HttpResponseRedirect(_spa_url(ms_error=(
-                f"Consent was granted without {', '.join(missing)}. Nothing was stored. "
-                "Connect again and accept every permission.")))
+            return refused(f"Consent was granted without {', '.join(missing)}. Nothing was "
+                           "stored. Connect again and accept every permission.")
         email_address = microsoft_oauth.account(tokens["access_token"])
     except microsoft_oauth.MicrosoftOAuthError as exc:
-        return HttpResponseRedirect(_spa_url(ms_error=str(exc)))
+        return refused(str(exc))
 
     claims = microsoft_oauth.id_claims(tokens)
+    before = MicrosoftConnection.all_objects.filter(tenant=tenant, user=request.user).first()
+    # Adding OneDrive to the same account and address changes nothing about
+    # sending, so a check already passed stands; anything else earns it again,
+    # as Gmail's reconnect does.
+    keeps_check = (where == "meetings" and before is not None
+                   and before.email_address.lower() == email_address.lower()
+                   and before.send_as_verified_at is not None
+                   and before.send_as_address.lower() == tenant.from_address.lower())
     secret = secrets.write_secret(tenant=tenant, kind=SecretKind.MICROSOFT_REFRESH,
                                   value=tokens["refresh_token"], user=request.user)
     connection, _ = MicrosoftConnection.all_objects.update_or_create(
@@ -329,22 +364,31 @@ def microsoft_callback(request):
             "directory_id": str(claims.get("tid") or "")[:64],
             "scopes": microsoft_oauth.granted_scopes(tokens),
             "secret": secret,
-            # A reconnect earns the check again, as Gmail's does.
-            "send_as_verified_at": None,
-            "send_as_error": "",
+            **({} if keeps_check else {"send_as_verified_at": None, "send_as_error": ""}),
         },
     )
     AuditEvent.all_objects.create(
         tenant=tenant, actor=request.user, verb="microsoft.connected",
         target_type="microsoft_connection", target_id=connection.pk,
-        payload={"email_address": email_address},
+        payload={"email_address": email_address,
+                 **({"files": True} if files_wanted else {})},
     )
 
     warning = ""
-    try:
-        graph.verify_send_as(connection, tenant.from_address)
-    except transport.TransportUnavailable as exc:
-        warning = str(exc)
+    if not keeps_check:
+        try:
+            graph.verify_send_as(connection, tenant.from_address)
+        except transport.TransportUnavailable as exc:
+            warning = str(exc)
+    if where == "meetings":
+        if files_wanted and not microsoft_oauth.files_granted(tokens):
+            return refused("Consent was granted without access to your files, so the notes "
+                           "folder cannot be read. Sending mail still works. Allow OneDrive "
+                           "access again and accept every permission.")
+        params = {"drive_connected": email_address}
+        if warning:
+            params["drive_warning"] = warning
+        return HttpResponseRedirect(_spa_url("meetings", **params))
     if inbound_wanted and not microsoft_oauth.inbound_granted(tokens):
         warning = " ".join(filter(None, [warning, (
             "Consent was granted without permission to read mail, so replies cannot be "

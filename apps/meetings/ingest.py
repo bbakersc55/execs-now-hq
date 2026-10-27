@@ -34,8 +34,16 @@ class NotConnected(Exception):
     """No folder is being watched, so there is nothing to poll."""
 
 
+def provider_of(tenant) -> str:
+    """Whose files the notes come from: the practice's mail provider."""
+    return "microsoft" if getattr(tenant, "mail_provider", "google") == "microsoft" else "google"
+
+
 def watch_for(tenant):
-    return DriveWatch.objects.filter(tenant=tenant, is_active=True).first()
+    """The live watch, while its folder is on the practice's own provider: a
+    Google folder is not read for a practice that moved to Microsoft 365."""
+    return DriveWatch.objects.filter(tenant=tenant, is_active=True,
+                                     provider=provider_of(tenant)).first()
 
 
 def drive_connection(tenant):
@@ -50,11 +58,28 @@ def drive_connection(tenant):
     from apps.crm.models import GmailConnection
     from apps.crm.services.gmail_oauth import DRIVE_SCOPES
 
+    if provider_of(tenant) == "microsoft":
+        return _onedrive_connection(tenant)
     connections = list(GmailConnection.objects.filter(tenant=tenant))
     for connection in connections:
         if set(DRIVE_SCOPES) <= set(connection.scopes or []):
             return connection
     return None
+
+
+def _onedrive_connection(tenant):
+    """The practice owner's Microsoft 365 connection holding `Files.Read`,
+    else any staff one that does (as Drive prefers one holding its scope)."""
+    from apps.crm.models import MicrosoftConnection
+    from apps.crm.services import microsoft_oauth
+    from apps.tenancy.models import Membership
+
+    owners = set(Membership.all_objects.filter(tenant=tenant, role="FF", revoked_at__isnull=True)
+                 .values_list("user_id", flat=True))
+    held = [c for c in MicrosoftConnection.objects.filter(tenant=tenant)
+            if microsoft_oauth.files_granted(c.scopes or [])]
+    held.sort(key=lambda c: c.user_id not in owners)
+    return held[0] if held else None
 
 
 def client_for(tenant):
@@ -63,6 +88,17 @@ def client_for(tenant):
     from apps.crm.models import GmailConnection
 
     connection = drive_connection(tenant)
+    if provider_of(tenant) == "microsoft":
+        from apps.crm.models import MicrosoftConnection
+        from apps.meetings.onedrive import OneDriveClient
+
+        if connection is not None:
+            return OneDriveClient(connection)
+        if MicrosoftConnection.objects.filter(tenant=tenant).exists():
+            raise NotConnected(
+                "The connected Microsoft 365 account has not granted access to your files. "
+                "Allow OneDrive access on the meeting queue, then try again.")
+        raise NotConnected("No Microsoft 365 account is connected for this practice.")
     if connection is not None:
         return drive_service.DriveClient(connection)
     if GmailConnection.objects.filter(tenant=tenant).exists():
@@ -82,7 +118,11 @@ SEED_EXCLUSIONS = ("AoA", "Academy of America")
 
 
 def folders_for(watch) -> list:
-    """The watch's extra folders. The watch's own folder is not among them."""
+    """The watch's extra folders. The watch's own folder is not among them.
+    They are Google's (Google Meet, read at any depth): a OneDrive watch has
+    none, and a Google watch's stay where they are for switching back."""
+    if watch is not None and watch.provider == "microsoft":
+        return []
     return list(DriveWatchFolder.objects.filter(watch=watch, is_active=True))
 
 
@@ -215,7 +255,8 @@ def record(tenant, drive_file, *, folder=None,
     """
     if drive_file.trashed:
         return None, False
-    reason = drive_service.skip_reason(drive_file.mime_type)
+    reason = (drive_file.skip if drive_file.skip is not None
+              else drive_service.skip_reason(drive_file.mime_type))
     if excluded:
         reason = (f"Not read: \u201c{excluded}\u201d is on the exclusion list, "
                   "and this file's title or a folder it sits in matches it.")
@@ -229,6 +270,7 @@ def record(tenant, drive_file, *, folder=None,
             # (matrix §11, the CF's second limb).
             "drive_file_owner_email": drive_file.owner_email,
             "web_view_link": drive_file.web_view_link,
+            "provider": drive_file.provider,
             "state": (MeetingSourceFile.State.SKIPPED if reason
                       else MeetingSourceFile.State.RECORDED),
             "skip_reason": reason,
@@ -374,11 +416,21 @@ def health(tenant) -> dict:
     pending = MeetingSourceFile.objects.filter(
         state__in=[MeetingSourceFile.State.RECORDED, MeetingSourceFile.State.PARSING,
                    MeetingSourceFile.State.FAILED]).count()
+    microsoft = provider_of(tenant) == "microsoft"
+    if microsoft:
+        from apps.crm.models import MicrosoftConnection
+
+        account_connected = MicrosoftConnection.objects.filter(tenant=tenant).exists()
+    else:
+        account_connected = GmailConnection.objects.filter(tenant=tenant).exists()
     return {
+        # "google" (a Drive folder) or "microsoft" (a OneDrive folder).
+        "provider": "microsoft" if microsoft else "google",
         "connected": watch is not None,
         # The two steps of connecting, reported separately, because they fail
-        # separately and the screen has to say which one is not done.
-        "google_connected": GmailConnection.objects.filter(tenant=tenant).exists(),
+        # separately and the screen has to say which one is not done. On a
+        # Microsoft practice, "google_connected" is its Microsoft 365 account.
+        "google_connected": account_connected,
         "drive_access": connection is not None,
         "drive_account": connection.email_address if connection else "",
         "folder_id": watch.folder_id if watch else "",

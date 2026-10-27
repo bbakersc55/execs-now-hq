@@ -1,0 +1,13 @@
+{
+  "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "name": "Meetings",
+  "folder": {
+    "childCount": 5
+  },
+  "parentReference": {
+    "driveId": "b!drive",
+    "driveType": "business",
+    "id": "01ROOTAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "path": "/drive/root:"
+  }
+}

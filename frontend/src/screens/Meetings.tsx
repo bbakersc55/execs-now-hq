@@ -9,7 +9,7 @@ import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import {
   Backfill, BackfillPlan, ContactCandidate, DismissReason, DriveFolder, DriveHealth, FailedFile,
-  FolderPast, Me,
+  FolderPast, Me, OneDriveListing,
   MeetingProposal, PortalPerson, PortalSeat, Task, WatchFolder, WorkParent, asksToConfirm,
   ProposalItem, api,
 } from "../lib/api";
@@ -250,10 +250,15 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
         {health.last_error && <Banner kind="bad">{health.last_error}</Banner>}
         {!health.drive_access && (
           <Banner kind="bad">
-            The connected Google account no longer has Drive access, so this
-            folder cannot be read.
+            {health.provider === "microsoft"
+              ? "The connected Microsoft 365 account no longer has access to your files, so "
+                + "this folder cannot be read."
+              : "The connected Google account no longer has Drive access, so this folder "
+                + "cannot be read."}
             {mine && <> <button className="link" disabled={consent.isPending}
-              onClick={() => consent.mutate()}>Allow Drive access again</button>.</>}
+              onClick={() => consent.mutate()}>
+              {health.provider === "microsoft" ? "Allow OneDrive access again"
+                : "Allow Drive access again"}</button>.</>}
           </Banner>
         )}
       </Card>
@@ -261,7 +266,8 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
         <ExtraFolder key={folder.id} folder={folder} mine={mine} setProblem={setProblem} />
       ))}
       {health.files_failed > 0 && <FailedFiles setProblem={setProblem} />}
-      {mine && <AddFolder setNote={setNote} setProblem={setProblem} />}
+      {mine && health.provider !== "microsoft" && (
+        <AddFolder setNote={setNote} setProblem={setProblem} />)}
       <Exclusions health={health} mine={mine} setProblem={setProblem} />
       </>
     );
@@ -273,6 +279,14 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
         No notes folder is connected yet, so nothing is being read. The practice
         owner connects it.
       </Banner>
+    );
+  }
+
+  if (health.provider === "microsoft") {
+    return (
+      <OneDriveConnect health={health} consent={() => consent.mutate()}
+        consenting={consent.isPending} refresh={refresh} setNote={setNote}
+        setProblem={setProblem} />
     );
   }
 
@@ -346,6 +360,152 @@ function Folder({ health, me, refresh, setNote, setProblem, unread = 0 }: {
             )}
             <button className="primary" disabled={connect.isPending}
               onClick={() => connect.mutate()}>
+              {connect.isPending ? "Saving…" : "Watch this folder"}
+            </button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * The notes folder on OneDrive, for a practice on Microsoft 365 (2026-10-27).
+ * The same two steps as Drive's; the folder is chosen by browsing rather than
+ * by pasting a link, because a OneDrive link does not carry the folder's id.
+ */
+function OneDriveConnect({ health, consent, consenting, refresh, setNote, setProblem }: {
+  health: DriveHealth; consent: () => void; consenting: boolean; refresh: () => void;
+  setNote: (text: string) => void; setProblem: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [at, setAt] = useState("");
+  const [found, setFound] = useState<DriveFolder | null>(null);
+
+  const listing = useQuery<OneDriveListing>({
+    queryKey: ["onedrive-folders", at],
+    queryFn: () => api.get<OneDriveListing>(
+      `/api/drive-watch/onedrive-folders/${at ? `?folder=${encodeURIComponent(at)}` : ""}`),
+    enabled: health.drive_access,
+  });
+  const open = (id: string) => { setAt(id); setFound(null); };
+
+  const check = useMutation({
+    mutationFn: (id: string) => api.post<DriveFolder>("/api/drive-watch/check/", { folder: id }),
+    onSuccess: (data) => { setFound(data); setProblem(""); },
+    onError: (e: Error) => { setFound(null); setProblem(e.message); },
+  });
+  const connect = useMutation({
+    mutationFn: (id: string) => api.post<DriveHealth>("/api/drive-watch/", { folder: id }),
+    onSuccess: (data) => {
+      qc.setQueryData(["drive-watch"], data);
+      setFound(null);
+      setProblem("");
+      setNote(`Watching “${data.folder_name || data.folder_id}”. `
+        + "New notes there are read from now on.");
+      refresh();
+    },
+    onError: (e: Error) => setProblem(e.message),
+  });
+
+  const here = listing.data;
+  return (
+    <Card title="Connect your notes folder">
+      <p className="small muted">
+        Two steps, once. After this the folder is checked every ten minutes and
+        everything found lands here for you to approve.
+      </p>
+
+      <div className="connect-step">
+        <h4>1. Let the app read your OneDrive</h4>
+        {!health.google_connected ? (
+          <p className="small">
+            Connect your Microsoft 365 account first, on{" "}
+            <Link to="/settings/email">Email settings</Link>.
+          </p>
+        ) : health.drive_access ? (
+          <p className="small granted">
+            <Check size={14} /> Granted for {health.drive_account}.
+          </p>
+        ) : (
+          <>
+            <p className="small">
+              Microsoft will ask for read-only access to your files
+              (<code>Files.Read</code>). Sending mail as you is asked for again at the same
+              time and is not replaced.
+            </p>
+            <button className="primary" disabled={consenting} onClick={consent}>
+              <Link2 size={16} /> {consenting ? "Opening Microsoft…" : "Allow OneDrive access"}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="connect-step">
+        <h4>2. Choose the folder</h4>
+        {!health.drive_access ? (
+          <p className="small muted">Your OneDrive folders show here once access is allowed.</p>
+        ) : listing.isLoading ? (
+          <p className="small muted">Opening OneDrive…</p>
+        ) : listing.isError ? (
+          <Banner kind="bad">{(listing.error as Error).message}</Banner>
+        ) : here && (
+          <div className="onedrive-picker" aria-label="OneDrive folders">
+            <div className="row tight wrap onedrive-path">
+              <button className="link" disabled={here.is_root} onClick={() => open("")}>
+                OneDrive</button>
+              {here.path.map((name, i) => (
+                <span key={`${name}-${i}`} className="small">
+                  {" › "}{i === here.path.length - 1 ? <strong>{name}</strong> : name}
+                </span>
+              ))}
+            </div>
+            {!here.is_root && (
+              <button className="ghost small" onClick={() => open(here.parent_id)}>
+                ↑ Up one folder</button>
+            )}
+            {here.folders.length === 0 ? (
+              <p className="small muted">No folders in here.</p>
+            ) : (
+              <ul className="onedrive-folders">
+                {here.folders.map((folder) => (
+                  <li key={folder.id}>
+                    <button className="ghost" onClick={() => open(folder.id)}>
+                      <FolderOpen size={14} /> <span className="name">{folder.name}</span>
+                      <span className="muted small">{folder.items} item{folder.items === 1 ? "" : "s"}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="small muted">
+              {here.files} file{here.files === 1 ? "" : "s"} here, {here.readable} readable as
+              meeting notes. Teams and Copilot meeting notes (Loop), Word documents, .txt and
+              transcripts (.vtt) are read.
+            </p>
+            {!here.is_root && (
+              <button disabled={check.isPending} onClick={() => check.mutate(here.id)}>
+                {check.isPending ? "Looking…" : `Use “${here.name}”`}
+              </button>
+            )}
+          </div>
+        )}
+        {found && (
+          <div className="found-folder">
+            <p><strong>{found.name}</strong></p>
+            <p className="small muted">
+              {found.files}{found.truncated && "+"} file{found.files === 1 ? "" : "s"}
+              {" · "}{found.readable} readable as meeting notes
+              {found.in_subfolders ? ` · including ${found.in_subfolders} one level down` : ""}
+            </p>
+            {found.readable === 0 && (
+              <Banner kind="warn">
+                Nothing in there can be read as notes yet. Loop meeting notes, Word documents,
+                .txt and .vtt are read; PDFs and recordings are not.
+              </Banner>
+            )}
+            <button className="primary" disabled={connect.isPending}
+              onClick={() => connect.mutate(found.folder_id)}>
               {connect.isPending ? "Saving…" : "Watch this folder"}
             </button>
           </div>

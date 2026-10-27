@@ -1,0 +1,96 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)",
+  "value": [
+    {
+      "id": "01ROOTAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "root",
+      "folder": {
+        "childCount": 3
+      },
+      "root": {},
+      "parentReference": {
+        "driveId": "b!drive"
+      }
+    },
+    {
+      "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Meetings",
+      "folder": {
+        "childCount": 6
+      },
+      "parentReference": {
+        "id": "01ROOTAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "01NEWLOOPAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Pipeline review 2026-10-27 Meeting notes.loop",
+      "file": {
+        "mimeType": "application/octet-stream"
+      },
+      "cTag": "\"c:{NEWLOOP},4\"",
+      "eTag": "\"{NEWLOOP},6\"",
+      "createdDateTime": "2026-10-27T15:00:00Z",
+      "lastModifiedDateTime": "2026-10-27T16:05:00Z",
+      "webUrl": "https://contoso-my.sharepoint.com/new-loop",
+      "createdBy": {
+        "user": {
+          "email": "bryan@contoso.example",
+          "displayName": "Bryan Baker"
+        }
+      },
+      "parentReference": {
+        "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "driveId": "b!drive"
+      }
+    },
+    {
+      "id": "01NEWVTTAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Acme weekly 2026-10-27.vtt",
+      "file": {
+        "mimeType": "text/vtt"
+      },
+      "cTag": "\"c:{NEWVTT},1\"",
+      "createdDateTime": "2026-10-27T15:30:00Z",
+      "lastModifiedDateTime": "2026-10-27T16:00:00Z",
+      "parentReference": {
+        "id": "01SUBFAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "01NEWPDFAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Handout.pdf",
+      "file": {
+        "mimeType": "application/pdf"
+      },
+      "cTag": "\"c:{NEWPDF},1\"",
+      "createdDateTime": "2026-10-27T15:40:00Z",
+      "lastModifiedDateTime": "2026-10-27T15:40:00Z",
+      "parentReference": {
+        "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "01ELSEWHEREAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Personal plan 2026-10-27.docx",
+      "file": {
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      },
+      "cTag": "\"c:{ELSE},1\"",
+      "lastModifiedDateTime": "2026-10-27T15:00:00Z",
+      "parentReference": {
+        "id": "01DOCSAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "01GONEAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "deleted": {
+        "state": "deleted"
+      },
+      "parentReference": {
+        "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  ],
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/drive/root/delta?token=NEXT2"
+}

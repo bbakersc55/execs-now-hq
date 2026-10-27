@@ -17,6 +17,22 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
+## 2026-10-27, later: Sign in with Microsoft, and OneDrive notes (on `dev`, not released)
+
+- **Sign in with Microsoft** (`accounts 0005`, additive: two columns on
+  `app_user` binding the work account) for staff of a practice on Microsoft
+  365: invite-only like Google's, an address believed only on a verified
+  domain of the signer's own directory, one work account per user. The
+  sign-in page shows the second button where it applies. **The Practices
+  area now sets "Mail and sign-in"** per practice, so a Microsoft-only owner
+  can sign in from day one. Spec §9, "Sign in with Microsoft and OneDrive
+  notes, as built".
+- **Meeting notes from OneDrive** (`meetings 0009`, additive: `provider` on
+  `drive_watch` and `meeting_source_file`): the same pipeline through a
+  `OneDriveClient`; a folder picker on the meeting queue; Loop, Word, text and
+  `.vtt` read. **Needs `Files.Read`** on the app registration. §10 items
+  15–23 are what only a real tenant can confirm.
+
 ## 2026-10-27: Release 24, and Microsoft 365 mail
 
 - **Release 24 is live**: `main` at `778a72e`, seven additive migrations

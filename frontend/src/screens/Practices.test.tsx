@@ -52,7 +52,7 @@ describe("the Practices area (P2)", () => {
     expect(fetchMock.calls.find((c) => c.method === "POST")?.body).toEqual({
       legal_name: "Blue Sky Business Consulting LLC", display_name: "Blue Sky Business Consulting",
       domain: "blueskybizconsulting.com", owner_email: "shawn@bluesky.invalid",
-      pricing_program: "dual_pricing" });
+      pricing_program: "dual_pricing", mail_provider: "google" });
   });
 
   it("shows and changes a practice's pricing program", async () => {
@@ -74,7 +74,7 @@ describe("the Practices area (P2)", () => {
     await user.click(within(row).getByRole("button", { name: "Save" }));
     await screen.findByText("Executives Now updated.");
     expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toEqual({
-      legal_name: "", domain: "", pricing_program: "dual_pricing" });
+      legal_name: "", domain: "", pricing_program: "dual_pricing", mail_provider: "google" });
   });
 });
 
@@ -156,5 +156,29 @@ describe("P2 fixes (2026-10-03)", () => {
     const newNote = within(sidebar as HTMLElement).getByTitle("New note (n)");
     // DOCUMENT_POSITION_FOLLOWING: the button comes after the switch.
     expect(block.compareDocumentPosition(newNote) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("sets up a practice on Microsoft 365, whose staff sign in with Microsoft", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/platform/practices": (body: unknown) => ({ status: 201, body: {
+        ...EN, id: "3", display_name: "Contoso", status: "invited",
+        mail_provider: (body as { mail_provider: string }).mail_provider } }),
+      "GET /api/platform/practices": [EN, { ...EN, id: "4", display_name: "Fabrikam",
+                                           mail_provider: "microsoft" }],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Practices />);
+    const fabrikam = (await screen.findByText("Fabrikam")).closest("article")!;
+    expect(within(fabrikam).getByText(/Microsoft 365/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Legal name"), "Contoso LLC");
+    await user.type(screen.getByLabelText("Display name"), "Contoso");
+    await user.type(screen.getByLabelText("Domain"), "contoso.example");
+    await user.type(screen.getByLabelText("Owner's email"), "pat@contoso.example");
+    await user.selectOptions(screen.getByLabelText("Pricing program"), "Dual pricing");
+    await user.selectOptions(screen.getByLabelText("Mail and sign-in"), "Microsoft 365");
+    await user.click(screen.getByRole("button", { name: "Add practice" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+      .toMatchObject({ mail_provider: "microsoft" }));
   });
 });

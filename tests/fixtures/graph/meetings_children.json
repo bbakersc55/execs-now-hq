@@ -1,0 +1,48 @@
+{
+  "value": [
+    {
+      "id": "01LOOPAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Weekly ops sync 2026-10-20 Meeting notes.loop",
+      "file": {
+        "mimeType": "application/octet-stream"
+      },
+      "createdDateTime": "2026-10-20T15:00:00Z",
+      "cTag": "\"c:{LOOP},3\"",
+      "webUrl": "https://contoso-my.sharepoint.com/loop",
+      "parentReference": {
+        "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "01DOCXAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Dunder Mifflin review 2026-10-21.docx",
+      "file": {
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      },
+      "createdDateTime": "2026-10-21T16:00:00Z",
+      "cTag": "\"c:{DOCX},2\"",
+      "parentReference": {
+        "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "01PDFAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Slides.pdf",
+      "file": {
+        "mimeType": "application/pdf"
+      },
+      "createdDateTime": "2026-10-21T16:30:00Z",
+      "parentReference": {
+        "id": "01MEETAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "01SUBFAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Clients",
+      "folder": {
+        "childCount": 1
+      },
+      "createdDateTime": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

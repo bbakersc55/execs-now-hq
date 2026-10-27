@@ -7,6 +7,7 @@ refused the whole module, which is 403 on a route that exists for staff.
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from django.db.models import Q
@@ -29,6 +30,10 @@ from apps.meetings.models import (
     MeetingProposal, MeetingSourceFile, ProposalItem,
 )
 from apps.tenancy.models import AuditEvent
+
+#: A OneDrive item id: business ones are letters and digits, personal ones
+#: carry a "!" (D4648F06C91D9D3D!54927).
+ONEDRIVE_ID = re.compile(r"[A-Za-z0-9!_.-]{6,128}")
 
 
 def _as_date(value):
@@ -127,6 +132,10 @@ class DriveWatchViewSet(MeetingViewSetBase):
         recursive watch with no pattern would read everything in it.
         """
         self.require_founder(request)
+        if ingest.provider_of(request.tenant) == "microsoft":
+            return Response({"detail": (
+                "A OneDrive watch reads its folder and one level below it; further "
+                "folders are for Google Meet's notes.")}, status=409)
         watch = ingest.watch_for(request.tenant)
         if watch is None:
             return Response({"detail": "Connect the first folder before adding another."},
@@ -245,6 +254,8 @@ class DriveWatchViewSet(MeetingViewSetBase):
 
         if environment.is_demo():
             return Response({"detail": environment.DEMO_REFUSAL}, status=409)
+        if ingest.provider_of(request.tenant) == "microsoft":
+            return self._onedrive_consent(request)
         if not gmail_oauth.is_configured(request.tenant):
             return Response({"detail": (
                 "Google sign-in isn't configured on this server, so there is "
@@ -264,6 +275,43 @@ class DriveWatchViewSet(MeetingViewSetBase):
             "redirect_uri": gmail_oauth.redirect_uri(),
         })
 
+    def _onedrive_consent(self, request):
+        """Step one on Microsoft 365: `Files.Read` on the practice owner's work
+        account, with what the connection already holds asked for again."""
+        from apps.crm.models import MicrosoftConnection
+        from apps.crm.services import microsoft_oauth
+        from apps.crm.views_microsoft import consent_url
+
+        if not microsoft_oauth.is_configured():
+            return Response({"detail": (
+                "Microsoft 365 isn't set up on this server yet, so there is nothing to "
+                "connect to. Contact support.")}, status=400)
+        mine = MicrosoftConnection.objects.filter(user=request.user).first()
+        return Response({
+            "authorization_url": consent_url(
+                request, files=True, where="meetings",
+                inbound=bool(mine and microsoft_oauth.inbound_granted(mine.scopes or []))),
+            "redirect_uri": microsoft_oauth.redirect_uri(),
+        })
+
+    @action(detail=False, methods=["get"], url_path="onedrive-folders")
+    def onedrive_folders(self, request):
+        """The folder picker: one OneDrive folder (the root when none is
+        named) and the folders in it. Read live, saves nothing."""
+        self.require_founder(request)
+        if ingest.provider_of(request.tenant) != "microsoft":
+            return Response({"detail": "This practice's notes come from Google Drive."},
+                            status=409)
+        folder_id = request.query_params.get("folder") or ""
+        if folder_id and not ONEDRIVE_ID.fullmatch(folder_id):
+            return Response({"detail": "That is not a OneDrive folder."}, status=400)
+        try:
+            return Response(ingest.client_for(request.tenant).children(folder_id))
+        except ingest.NotConnected as exc:
+            return Response({"detail": str(exc)}, status=409)
+        except drive_service.DriveUnavailable as exc:
+            return Response({"detail": str(exc)}, status=400)
+
     @action(detail=False, methods=["post"], url_path="check")
     def check(self, request):
         """Step two, dry — read the folder and say what it is. Saves nothing."""
@@ -277,7 +325,14 @@ class DriveWatchViewSet(MeetingViewSetBase):
 
     def _describe(self, request, *, save: bool):
         raw = request.data.get("folder") or request.data.get("folder_id") or ""
-        folder_id = drive_service.folder_id_from(raw)
+        provider = ingest.provider_of(request.tenant)
+        if provider == "microsoft":
+            # Chosen in the picker, so an item id, never a pasted link.
+            folder_id = raw.strip() if ONEDRIVE_ID.fullmatch(raw.strip()) else ""
+            if not folder_id:
+                return Response({"detail": "Choose a OneDrive folder."}, status=400)
+        else:
+            folder_id = drive_service.folder_id_from(raw)
         if not folder_id:
             return Response({"detail": (
                 "That does not look like a Drive folder. Open the folder in "
@@ -307,11 +362,12 @@ class DriveWatchViewSet(MeetingViewSetBase):
         # A different folder means the old cursor describes a run we are no
         # longer doing; the same folder keeps its place, so reconnecting after
         # a disconnect picks up where it left off rather than replaying.
-        moved = watch is not None and watch.folder_id != folder_id
+        moved = watch is not None and (watch.folder_id != folder_id
+                                       or watch.provider != provider)
         watch, _ = DriveWatch.objects.update_or_create(
             tenant=request.tenant,
             defaults={"folder_id": folder_id, "folder_name": info.name,
-                      "is_active": True, "last_error": "",
+                      "provider": provider, "is_active": True, "last_error": "",
                       **({"page_token": ""} if moved or watch is None else {})},
         )
         AuditEvent.all_objects.create(
@@ -319,7 +375,8 @@ class DriveWatchViewSet(MeetingViewSetBase):
             target_type="drive_watch", target_id=watch.pk,
             payload={"folder_id": folder_id, "folder_name": info.name,
                      "files": info.files, "readable": info.readable,
-                     "cursor_reset": moved})
+                     "cursor_reset": moved,
+                     **({"provider": provider} if provider != "google" else {})})
         return Response({**ingest.health(request.tenant), "found": found}, status=201)
 
     @action(detail=False, methods=["get", "post"], url_path="backfill")

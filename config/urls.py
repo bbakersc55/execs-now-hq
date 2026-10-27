@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path, re_path
 
-from apps.accounts import google_external
+from apps.accounts import google_external, microsoft_signin
 from apps.accounts import views as account_views
 from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
@@ -29,6 +29,7 @@ urlpatterns = [
     # P2 D1: staff sign-in is email first; External practices sign in through
     # the second OAuth client. Declared BEFORE the allauth include.
     path("accounts/google/start", google_external.google_start, name="google-start"),
+    path("accounts/microsoft/start", microsoft_signin.start, name="microsoft-start"),
     path("accounts/google/external/callback", google_external.google_external_callback,
          name="google-external-callback"),
     path("accounts/", include("allauth.urls")),

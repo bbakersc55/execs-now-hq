@@ -1133,3 +1133,87 @@ describe("choosing who a participant or an owner is (owner, 2026-09-29)", () => 
     });
   });
 });
+
+/**
+ * OneDrive, for a practice on Microsoft 365 (2026-10-27): the same two steps,
+ * with the folder chosen by browsing.
+ */
+describe("the notes folder on OneDrive", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const ROOT = { id: "01ROOT", name: "OneDrive", is_root: true, path: [], parent_id: "",
+                 folders: [{ id: "01DOCS", name: "Documents", items: 4 },
+                           { id: "01MEET", name: "Meetings", items: 5 }],
+                 files: 1, readable: 0 };
+  const MEET = { id: "01MEET", name: "Meetings", is_root: false, path: ["Meetings"],
+                 parent_id: "01ROOT", folders: [{ id: "01CLI", name: "Clients", items: 1 }],
+                 files: 3, readable: 2 };
+
+  function onOneDrive(health: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+    // The most specific paths first: mockApi takes the first key a URL starts with.
+    const fetchMock = mockApi({
+      "GET /api/drive-watch/onedrive-folders/?folder=01MEET": MEET,
+      "GET /api/drive-watch/onedrive-folders/": ROOT,
+      "GET /api/drive-watch/backfill/": { folder: PAST, backfill: null },
+      "GET /api/drive-watch/": { ...UNCONNECTED, provider: "microsoft", ...health },
+      "GET /api/meeting-proposals/": [],
+      ...extra,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Meetings me={aMe()} />, { path: "/meetings", route: "/meetings" });
+    return fetchMock;
+  }
+
+  it("asks Microsoft for OneDrive access first", async () => {
+    const user = userEvent.setup();
+    const sentTo: string[] = [];
+    Object.defineProperty(window, "location", {
+      configurable: true, value: { set href(url: string) { sentTo.push(url); } } });
+    onOneDrive({ drive_access: false }, {
+      "POST /api/drive-watch/consent/": { authorization_url: "https://login.microsoftonline.test/c" },
+    });
+    expect(await screen.findByText("1. Let the app read your OneDrive")).toBeInTheDocument();
+    expect(screen.getByText(/folders show here once access is allowed/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Allow OneDrive access/ }));
+    await waitFor(() => expect(sentTo).toEqual(["https://login.microsoftonline.test/c"]));
+  });
+
+  it("points at Email settings when no Microsoft 365 account is connected", async () => {
+    onOneDrive({ google_connected: false, drive_access: false, drive_account: "" });
+    expect(await screen.findByText(/Connect your Microsoft 365 account first/)).toBeInTheDocument();
+  });
+
+  it("browses into a folder, checks it, then watches it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = onOneDrive({}, {
+      "POST /api/drive-watch/check/": { folder_id: "01MEET", name: "Meetings", files: 4,
+                                        readable: 3, truncated: false, in_subfolders: 1 },
+      "POST /api/drive-watch/": { ...HEALTH, provider: "microsoft", folder_name: "Meetings" },
+    });
+    // The root offers no "Use": OneDrive itself is not a notes folder.
+    expect(await screen.findByRole("button", { name: /Documents/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Use/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Meetings/ }));
+    expect(await screen.findByRole("button", { name: /Clients/ })).toBeInTheDocument();
+    expect(screen.getByText(/3 files here, 2 readable/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Use “Meetings”" }));
+    expect(await screen.findByText(/4 files · 3 readable as meeting notes/)).toBeInTheDocument();
+    expect(fetchMock.calls.find((c) => c.url.endsWith("/check/"))?.body)
+      .toEqual({ folder: "01MEET" });
+
+    await user.click(screen.getByRole("button", { name: "Watch this folder" }));
+    await waitFor(() => expect(screen.getByText(/Watching “Meetings”/)).toBeInTheDocument());
+    expect(fetchMock.calls.find((c) => c.method === "POST"
+      && c.url.endsWith("/api/drive-watch/"))?.body).toEqual({ folder: "01MEET" });
+  });
+
+  it("goes back up from a folder", async () => {
+    const user = userEvent.setup();
+    onOneDrive({});
+    await user.click(await screen.findByRole("button", { name: /Meetings/ }));
+    await user.click(await screen.findByRole("button", { name: /Up one folder/ }));
+    expect(await screen.findByRole("button", { name: /Documents/ })).toBeInTheDocument();
+  });
+});

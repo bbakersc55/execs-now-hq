@@ -16,6 +16,8 @@ export interface PracticeRow {
   created_at: string;
   archived_at: string | null;
   oauth_client: "internal" | "external";
+  /** Mail and staff sign-in (2026-10-27). */
+  mail_provider?: "google" | "microsoft";
   /** P4: how its own card processing is priced. "" for one made before. */
   pricing_program: "" | "interchange_plus" | "dual_pricing";
   staff_count: number;
@@ -36,7 +38,19 @@ export interface PracticeRow {
 }
 
 const EMPTY = { legal_name: "", display_name: "", domain: "", owner_email: "",
-                pricing_program: "" };
+                pricing_program: "", mail_provider: "google" };
+/** Mail and staff sign-in: a practice on Microsoft 365 signs in with Microsoft. */
+const MAIL: Record<string, string> = { google: "Gmail", microsoft: "Microsoft 365" };
+
+function MailSelect({ label, value, onChange }: {
+  label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+      {Object.entries(MAIL).map(([code, name]) => (
+        <option key={code} value={code}>{name}</option>))}
+    </select>
+  );
+}
 /** P4 (owner, 2026-10-21): chosen here at setup, read-only to the practice. */
 const PRICING: Record<string, string> = {
   interchange_plus: "Interchange-plus", dual_pricing: "Dual pricing" };
@@ -82,7 +96,8 @@ export function Practices({ me }: { me?: Me }) {
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ legal_name: "", domain: "", pricing_program: "" });
+  const [draft, setDraft] = useState({ legal_name: "", domain: "", pricing_program: "",
+                                       mail_provider: "google" });
 
   const list = useQuery<PracticeRow[]>({
     queryKey: ["platform-practices"],
@@ -190,6 +205,9 @@ export function Practices({ me }: { me?: Me }) {
                         <PricingSelect label={`Pricing program of ${p.display_name}`}
                           value={draft.pricing_program}
                           onChange={(v) => setDraft({ ...draft, pricing_program: v })} />
+                        <MailSelect label={`Mail and sign-in of ${p.display_name}`}
+                          value={draft.mail_provider}
+                          onChange={(v) => setDraft({ ...draft, mail_provider: v })} />
                         <button className="primary" disabled={save.isPending}
                           onClick={() => save.mutate(p.id)}>Save</button>
                         <button className="ghost" onClick={() => setEditing(null)}>Cancel</button>
@@ -197,6 +215,7 @@ export function Practices({ me }: { me?: Me }) {
                     ) : (
                       <div className="muted small">
                         {p.legal_name || "No legal name yet"} · {p.domain || "no domain yet"}
+                        {p.mail_provider === "microsoft" && " · Microsoft 365"}
                       </div>
                     )}
                     </div>
@@ -267,7 +286,8 @@ export function Practices({ me }: { me?: Me }) {
                       <button className="ghost" onClick={() => {
                         setEditing(p.id);
                         setDraft({ legal_name: p.legal_name, domain: p.domain,
-                                   pricing_program: p.pricing_program });
+                                   pricing_program: p.pricing_program,
+                                   mail_provider: p.mail_provider ?? "google" });
                       }}>Edit</button>
                     )}
                     {p.status === "invited" && (
@@ -333,6 +353,9 @@ export function Practices({ me }: { me?: Me }) {
           <Field label="Pricing program">
             <PricingSelect label="Pricing program" value={form.pricing_program}
               onChange={(v) => set({ pricing_program: v })} /></Field>
+          <Field label="Mail and sign-in">
+            <MailSelect label="Mail and sign-in" value={form.mail_provider}
+              onChange={(v) => set({ mail_provider: v })} /></Field>
         </div>
         <button className="primary" disabled={create.isPending || !form.legal_name.trim()
           || !form.display_name.trim() || !form.domain.trim() || !form.owner_email.trim()

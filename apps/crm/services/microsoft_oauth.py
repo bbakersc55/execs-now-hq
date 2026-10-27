@@ -42,11 +42,17 @@ SEND_SCOPES = ["openid", "email", "profile", "offline_access", "User.Read",
 #: mailbox**: Graph has no narrower grant, and the boundary is in
 #: `GraphReader`, which asks only for conversations the app stored.
 READ_SCOPES = ["Mail.Read"]
+#: Meeting notes from a OneDrive folder (2026-10-27). Read-only, and asked
+#: for only from the meeting queue, as Google's `drive.readonly` is.
+FILES_SCOPES = ["Files.Read"]
 #: The two without which nothing can be sent or checked.
 REQUIRED = ["Mail.Send", "Mail.ReadBasic"]
 
 STATE_SESSION_KEY = "microsoft_oauth_state"
 INBOUND_SESSION_KEY = "microsoft_oauth_inbound"
+FILES_SESSION_KEY = "microsoft_oauth_files"
+#: "email" (Settings → Email) or "meetings" (the meeting queue).
+RETURN_SESSION_KEY = "microsoft_oauth_return"
 
 
 class MicrosoftOAuthError(Exception):
@@ -70,11 +76,12 @@ def new_state() -> str:
     return secrets.token_urlsafe(24)
 
 
-def scopes_for(*, inbound: bool = False) -> list[str]:
-    return SEND_SCOPES + (READ_SCOPES if inbound else [])
+def scopes_for(*, inbound: bool = False, files: bool = False) -> list[str]:
+    return SEND_SCOPES + (READ_SCOPES if inbound else []) + (FILES_SCOPES if files else [])
 
 
-def authorization_url(state: str, *, login_hint: str = "", inbound: bool = False) -> str:
+def authorization_url(state: str, *, login_hint: str = "", inbound: bool = False,
+                      files: bool = False) -> str:
     """The consent URL. `prompt=select_account` so the right work account can
     be picked when the browser is signed in to several; Microsoft shows the
     consent screen by itself for anything not yet granted."""
@@ -83,7 +90,7 @@ def authorization_url(state: str, *, login_hint: str = "", inbound: bool = False
         "response_type": "code",
         "redirect_uri": redirect_uri(),
         "response_mode": "query",
-        "scope": " ".join(scopes_for(inbound=inbound)),
+        "scope": " ".join(scopes_for(inbound=inbound, files=files)),
         "state": state,
         "prompt": "select_account",
     }
@@ -116,7 +123,8 @@ def _refused(response, what: str) -> str:
     return f"Microsoft refused {what} ({response.status_code}){': ' + said if said else ''}."
 
 
-def exchange_code(code: str, *, inbound: bool = False) -> dict:
+def exchange_code(code: str, *, inbound: bool = False, files: bool = False,
+                  scopes=None) -> dict:
     """Authorization code -> tokens. Raises rather than returning a partial."""
     response = requests.post(_token_url(), data={
         "client_id": settings.MICROSOFT_CLIENT_ID,
@@ -124,7 +132,7 @@ def exchange_code(code: str, *, inbound: bool = False) -> dict:
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri(),
-        "scope": " ".join(scopes_for(inbound=inbound)),
+        "scope": " ".join(scopes or scopes_for(inbound=inbound, files=files)),
     }, timeout=20)
     if not response.ok:
         raise MicrosoftOAuthError(
@@ -132,7 +140,7 @@ def exchange_code(code: str, *, inbound: bool = False) -> dict:
             + f" Check that the app registration's redirect URI is {redirect_uri()} "
             "exactly, then connect again.")
     payload = response.json()
-    if not payload.get("refresh_token"):
+    if scopes is None and not payload.get("refresh_token"):
         raise MicrosoftOAuthError(
             "Microsoft returned no refresh token, so the connection would stop "
             "within the hour. Connect again; if it repeats, the app registration "
@@ -184,6 +192,12 @@ def inbound_granted(payload_or_scopes) -> bool:
     return holds(scopes, READ_SCOPES)
 
 
+def files_granted(payload_or_scopes) -> bool:
+    scopes = (granted_scopes(payload_or_scopes) if isinstance(payload_or_scopes, dict)
+              else payload_or_scopes)
+    return holds(scopes, FILES_SCOPES)
+
+
 def id_claims(payload: dict) -> dict:
     """The ID token's claims, unverified: it came straight from Microsoft's
     token endpoint over TLS in exchange for our own code, and nothing here
@@ -194,6 +208,18 @@ def id_claims(payload: dict) -> dict:
         return json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
     except (IndexError, ValueError):
         return {}
+
+
+def graph_get(access_token: str, path: str, params=None) -> dict:
+    """One read of Graph with a just-issued access token (sign-in's two)."""
+    try:
+        response = requests.get(f"{GRAPH}{path}", params=params, timeout=20,
+                                headers={"Authorization": f"Bearer {access_token}"})
+    except requests.RequestException as exc:
+        raise MicrosoftOAuthError(f"Microsoft could not be reached ({exc}).") from exc
+    if not response.ok:
+        raise MicrosoftOAuthError(f"Microsoft would not answer {path} ({response.status_code}).")
+    return response.json()
 
 
 def account(access_token: str) -> str:

@@ -14,6 +14,8 @@ export interface Branding {
   palette: { header: string; accent: string; on_header: string; on_accent: string;
              gray_dark: string; gray_light: string };
   product_name: string | null;
+  /** The sign-in page offers "Sign in with Microsoft" (2026-10-27). */
+  microsoft_sign_in?: boolean;
 }
 
 export function useBranding() {

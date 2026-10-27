@@ -66,4 +66,21 @@ describe("the signed-out screen (2026-09-30)", () => {
     await user.click(screen.getByRole("button", { name: "Email me a sign-in link" }));
     await waitFor(() => expect(screen.getByText(/Too many requests/)).toBeInTheDocument());
   });
+
+  it("offers Sign in with Microsoft beside Google where a practice is on Microsoft 365", () => {
+    respond(200, {});
+    render(<SignedOut practice="Contoso" microsoft />);
+    const google = screen.getByRole("button", { name: "Sign in with Google" });
+    const microsoft = screen.getByRole("button", { name: "Sign in with Microsoft" });
+    // One address field, two starts: each button sends it to its own.
+    expect(microsoft.closest("form")).toBe(google.closest("form"));
+    expect(microsoft).toHaveAttribute("formaction", "/accounts/microsoft/start");
+    expect(google.closest("form")).toHaveAttribute("action", "/accounts/google/start");
+  });
+
+  it("shows Google alone otherwise", () => {
+    respond(200, {});
+    render(<SignedOut practice="" />);
+    expect(screen.queryByRole("button", { name: "Sign in with Microsoft" })).not.toBeInTheDocument();
+  });
 });

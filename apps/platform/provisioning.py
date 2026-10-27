@@ -40,7 +40,7 @@ class ProvisioningRefused(ValueError):
 
 def provision_practice(*, legal_name: str, display_name: str, domain: str,
                        owner_email: str, actor, pricing_program: str = "",
-                       pricing_required: bool = False):
+                       pricing_required: bool = False, mail_provider: str = "google"):
     """One transaction: the practice, its structure, its owner. The invitation
     email is sent separately, after commit, and only when asked."""
     from apps.accounts.models import User
@@ -71,12 +71,18 @@ def provision_practice(*, legal_name: str, display_name: str, domain: str,
     pricing_program = (pricing_program or "").strip()
     if pricing_program not in PRICING_PROGRAMS or (pricing_required and not pricing_program):
         errors["pricing_program"] = "Choose interchange-plus or dual pricing."
+    mail_provider = (mail_provider or "google").strip()
+    if mail_provider not in Tenant.MailProvider.values:
+        errors["mail_provider"] = "Choose Gmail or Microsoft 365."
     if errors:
         raise ProvisioningRefused(errors)
 
     with transaction.atomic():
         tenant = Tenant.objects.create(
             pricing_program=pricing_program,
+            # Mail and staff sign-in (2026-10-27): a practice on Microsoft 365
+            # signs in with Microsoft from the first day.
+            mail_provider=mail_provider,
             name=display_name, legal_name=legal_name, email_display_name=display_name,
             domain=domain, slug=_unique_slug(display_name), status=Tenant.Status.INVITED,
             created_by=actor,
@@ -139,10 +145,18 @@ def unarchive(tenant, *, actor) -> None:
 
 
 def update_identity(tenant, *, legal_name=None, display_name=None, domain=None,
-                    pricing_program=None) -> None:
-    """The platform's own record of a practice: its names, domain and pricing
-    program."""
+                    pricing_program=None, mail_provider=None) -> None:
+    """The platform's own record of a practice: its names, domain, pricing
+    program, and whether its mail and staff sign-in are Gmail or Microsoft 365
+    (the practice owner can also switch mail, on Settings → Email)."""
+    from apps.tenancy.models import Tenant
+
     errors = {}
+    if mail_provider is not None:
+        if mail_provider not in Tenant.MailProvider.values:
+            errors["mail_provider"] = "Choose Gmail or Microsoft 365."
+        else:
+            tenant.mail_provider = mail_provider
     if pricing_program is not None:
         if pricing_program.strip() not in PRICING_PROGRAMS or not pricing_program.strip():
             errors["pricing_program"] = "Choose interchange-plus or dual pricing."

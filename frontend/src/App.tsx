@@ -307,7 +307,8 @@ export function App() {
   if (isLoading) return <main style={{ padding: "2rem" }}>Loading…</main>;
 
   if (isError || !me?.authenticated) {
-    return <SignedOut practice={brand?.display_name || ""} />;
+    return <SignedOut practice={brand?.display_name || ""}
+      microsoft={Boolean(brand?.microsoft_sign_in)} />;
   }
 
   // P2: a practice owner reads and accepts the beta agreement before anything

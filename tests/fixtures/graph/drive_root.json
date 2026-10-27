@@ -1,0 +1,13 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('x')/drive/root(id,name,folder,parentReference,root)/$entity",
+  "id": "01ROOTAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "name": "root",
+  "folder": {
+    "childCount": 3
+  },
+  "parentReference": {
+    "driveId": "b!drive",
+    "driveType": "business"
+  },
+  "root": {}
+}

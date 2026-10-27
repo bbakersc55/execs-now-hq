@@ -1,0 +1,16 @@
+{
+  "value": [
+    {
+      "id": "01VTTAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Acme kickoff 2026-10-22.vtt",
+      "file": {
+        "mimeType": "text/vtt"
+      },
+      "createdDateTime": "2026-10-22T17:00:00Z",
+      "cTag": "\"c:{VTT},1\"",
+      "parentReference": {
+        "id": "01SUBFAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  ]
+}

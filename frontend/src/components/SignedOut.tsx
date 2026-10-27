@@ -11,8 +11,14 @@ function csrfToken(): string {
  * The signed-out screen (2026-09-30): staff sign in with Google; a client
  * asks for a one-time link by email (C3, C4). The answer is the same whether
  * or not the address has access, so the form never says who is a client.
+ *
+ * `microsoft` (2026-10-27): the staff of a practice whose mail runs through
+ * Microsoft 365 sign in with Microsoft. Both buttons share the one address
+ * field; each sends it to its own start, which decides.
  */
-export function SignedOut({ practice }: { practice: string }) {
+export function SignedOut({ practice, microsoft = false }: {
+  practice: string; microsoft?: boolean;
+}) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -75,10 +81,15 @@ export function SignedOut({ practice }: { practice: string }) {
         <p className="small muted" style={{ marginTop: 0 }}>For consultants and their team</p>
         {/* Email first (P2 D1): the address decides which Google sign-in your
             practice uses. A plain GET form: the server answers with a redirect. */}
-        <form method="get" action="/accounts/google/start" className="row tight">
+        <form method="get" action="/accounts/google/start" className="row tight wrap">
           <input type="email" name="email" required aria-label="Your work email"
             placeholder="you@yourpractice.com" autoComplete="email" />
           <button className="btn" type="submit">Sign in with Google</button>
+          {microsoft && (
+            <button className="btn" type="submit" formAction="/accounts/microsoft/start">
+              Sign in with Microsoft
+            </button>
+          )}
         </form>
       </section>
     </main>

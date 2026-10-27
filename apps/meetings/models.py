@@ -32,7 +32,11 @@ class DriveWatch(TenantScopedModel):
 
     folder_id = models.CharField(max_length=128)
     folder_name = models.CharField(max_length=255, blank=True, default="")
-    #: Drive's `changes.list` cursor. **Advanced only after every file in a
+    #: Whose folder: Google Drive, or OneDrive for a practice on Microsoft 365
+    #: (2026-10-27). A watch is read only while it matches the practice's mail
+    #: provider; choosing a folder on the other points the same watch there.
+    provider = models.CharField(max_length=12, default="google", db_default="google")
+    #: Drive's `changes.list` cursor (OneDrive: the delta link). **Advanced only after every file in a
     #: page is durably recorded** (FR-5.2, FR-5.5).
     page_token = models.TextField(blank=True, default="")
     last_polled_at = models.DateTimeField(null=True, blank=True)
@@ -203,6 +207,8 @@ class MeetingSourceFile(TenantScopedModel):
 
     drive_file_id = models.CharField(max_length=128, db_index=True)
     drive_version = models.CharField(max_length=64)
+    #: Where it was read from: "google" (Drive) or "microsoft" (OneDrive).
+    provider = models.CharField(max_length=12, default="google", db_default="google")
     name = models.CharField(max_length=255)
     mime_type = models.CharField(max_length=120)
     #: **Load-bearing for permissions, not metadata.** It is the second limb of

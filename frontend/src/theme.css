@@ -1986,3 +1986,12 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
    and a row of choices or buttons wraps under itself. */
 .wrap-anywhere { overflow-wrap: anywhere; min-width: 0; }
 .row.wrap { flex-wrap: wrap; }
+
+/* The OneDrive folder picker (2026-10-27): a breadcrumb that wraps, and a
+   list of folders as full-width rows whose long names wrap at phone width. */
+.onedrive-picker { display: grid; gap: var(--s2, .5rem); }
+.onedrive-path { align-items: baseline; min-width: 0; overflow-wrap: anywhere; }
+.onedrive-folders { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.onedrive-folders button { width: 100%; display: flex; align-items: center; gap: .5rem;
+  text-align: left; min-width: 0; }
+.onedrive-folders .name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }

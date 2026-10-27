@@ -1365,6 +1365,9 @@ export interface FailedFile {
 }
 
 export interface DriveHealth {
+  /** "microsoft": the folder is on OneDrive, and "google_connected" means the
+   *  practice's Microsoft 365 account (2026-10-27). */
+  provider?: "google" | "microsoft";
   connected: boolean;
   google_connected: boolean;
   drive_access: boolean;
@@ -1475,6 +1478,19 @@ export interface DriveFolder {
   depth?: "one" | "any";
   name_pattern?: string;
   in_subfolders?: number;
+}
+
+/** GET /api/drive-watch/onedrive-folders/ — one OneDrive folder and the
+ *  folders in it, for the picker. */
+export interface OneDriveListing {
+  id: string;
+  name: string;
+  is_root: boolean;
+  path: string[];
+  parent_id: string;
+  folders: { id: string; name: string; items: number }[];
+  files: number;
+  readable: number;
 }
 
 /** One proposed thing. **Nothing here exists yet**: approving is what creates

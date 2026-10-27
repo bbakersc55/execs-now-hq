@@ -1,0 +1,15 @@
+{
+  "value": [
+    {
+      "id": "72f988bf-0000-0000-0000-2d7cd011db47",
+      "verifiedDomains": [
+        {
+          "isDefault": true,
+          "isInitial": true,
+          "name": "attacker.onmicrosoft.com",
+          "type": "Managed"
+        }
+      ]
+    }
+  ]
+}

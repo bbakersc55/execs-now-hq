@@ -71,6 +71,10 @@ NEEDS: tuple[Need, ...] = (
          "importing a PDF bank statement: its pages, and a scan told from one with text"),
     Need("pywebpush", "pywebpush",
          "browser notifications: sending a notice to a person's browsers by Web Push"),
+    Need("docx", "python-docx",
+         "reading a Word document of meeting notes from OneDrive"),
+    Need("lxml.html", "lxml",
+         "reading Teams and Copilot meeting notes (Loop, as HTML) from OneDrive"),
 )
 
 

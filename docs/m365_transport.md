@@ -251,6 +251,82 @@ unsubscribe may not show, on Gmail as on Microsoft. A one-line fix
 (serialising with a longer line limit) changes Gmail's bytes, so it waits for
 the owner.
 
+### Sign in with Microsoft and OneDrive notes, as built (2026-10-27)
+
+The owner's brief: D1 (staff sign-in) and D2 (OneDrive notes), finishing the
+Microsoft side.
+
+**Sign in with Microsoft** (`apps/accounts/microsoft_signin.py`, migration
+`accounts 0005`: two columns on `app_user`):
+
+- **The same rules as Google sign-in:** invite-only, no sign-ups. An address
+  must belong to a live staff member (practice owner, associate or assistant)
+  of a practice that is not archived and whose mail runs through Microsoft 365.
+  Clients keep magic links.
+- **Email first**, as Google's: the sign-in page's one address field, and a
+  second button beside "Sign in with Google", offered when the server has the
+  registration and the practice the page is for (or, knowing none, any
+  practice) is on Microsoft 365 (`/api/branding` `microsoft_sign_in`).
+- **Which address is believed:** Microsoft's `email` claim is not verified,
+  and any directory's administrator can put any address on their own user
+  (the "nOAuth" problem). An address counts only when it is the account's
+  mailbox address or sign-in name **and** its domain is a verified domain of
+  the account's own directory (Graph `/organization`, readable with
+  `User.Read`). The first sign-in binds the work account (directory and object
+  id) to the user; a later one from another account with the same address is
+  refused. Nothing is kept from a sign-in: no token, no connection.
+- **The same registration and redirect URI** as connecting mail; the callback
+  tells a sign-in from a connection by its state. Scopes: `openid email profile
+  User.Read`, nothing that reads mail or files.
+- **The Practices area** sets "Mail and sign-in" (Gmail or Microsoft 365) when
+  a practice is added or edited, so an owner with no Google account signs in
+  with Microsoft from the first day; the invitation names the right button and
+  is refused while the registration is not configured. D6 now reads: the
+  platform owner sets it at setup, and the practice owner can switch mail
+  afterwards on Settings → Email.
+
+**OneDrive notes** (`apps/meetings/onedrive.py`, migration `meetings 0009`:
+`provider` on `drive_watch` and `meeting_source_file`):
+
+- **The same pipeline.** `ingest.client_for` hands a Microsoft practice a
+  `OneDriveClient` with the Drive client's methods, so the poller, the cursor
+  discipline, exclusions, recording, the folder import, parsing (the same
+  prompt) and the queue are Google's code. A Microsoft practice's connection
+  needs `Files.Read`, asked for from the meeting queue's "Allow OneDrive
+  access", which asks again for what the connection already holds so
+  collecting replies is not dropped, and keeps a passed address check.
+- **Chosen by browsing**, not by pasting a link: a OneDrive or SharePoint
+  sharing link does not carry the folder's id. The picker walks from the root;
+  "Use" checks the folder (the same counts as Drive's, one level down) and
+  "Watch this folder" saves it.
+- **What is read:** Teams and Copilot meeting notes in Loop (`.loop`,
+  `.fluid`, converted by Graph's `?format=html`), Word (`.docx`, through
+  python-docx), `.txt`, `.md`, and Teams transcripts (`.vtt`, as "Speaker:
+  words"). PDFs, recordings, slides and spreadsheets are recorded as skipped
+  with the reason, as on Drive.
+- **The cursor** is the drive root's delta link: OneDrive for Business keeps
+  delta for a drive's root, not for a folder. Changed files are kept when
+  their parent is the watched folder or one below it.
+- **Notes still being written:** a file changed in the last 20 minutes holds
+  the cursor where it was, so the next poll reads it finished. A file edited
+  after it was read is recorded as skipped ("Changed after it was read"), not
+  read into a second proposal; Read again in the queue uses the new text.
+- **One watch a practice, on its provider.** A Google watch is not read for a
+  practice that moved to Microsoft 365, and choosing a OneDrive folder points
+  the same watch there with a fresh cursor (the Google folder's id is in the
+  audit event). Google Meet's extra folders stay as they were, for switching
+  back.
+
+**Tests** (`tests/test_microsoft_signin_onedrive.py`, 46): sign-in's rules
+(verified domains, no sign-ups, live staff of a live Microsoft practice only,
+one work account, one person), its isolation, and that Google's start and
+adapter behave as before; OneDrive's picker, roles, choosing, polling
+(recorded, skipped, outside the folder, deleted), the cursor held while notes
+are written, no second read of an edited file, the folder import's order, each
+format's text, a Loop page parsed into the same proposal, isolation between
+practices, the consent round trip, and that a Drive file, a Google watch and
+saving a Drive folder are as before.
+
 ## 10. What only a real Microsoft 365 tenant can confirm
 
 Each was built to Microsoft's reference and tested against fixtures shaped
@@ -299,4 +375,36 @@ Outbox message to an address on the laptop's allow-list, reply to it from
 another mail client, press "Check now" on Replies. Items 1–9 and 13–14 show
 on that one round; 10 needs an outside directory; 11 an attachment over
 3 MB; 12 replies from several kinds of sender.
+
+**Sign in with Microsoft and OneDrive notes (2026-10-27):**
+
+15. **`/organization` with `User.Read`.** That an ordinary user's token reads
+    their directory's `verifiedDomains` (the reference lists `User.Read` as
+    enough). Without it, nobody signs in, which fails safe.
+16. **The ID token's `oid` and `tid`** are present for every work account, so
+    the first sign-in can bind one.
+17. **One redirect URI for both flows.** That the registration accepts a
+    sign-in consent and a connection consent at the same callback (the state
+    tells them apart here).
+18. **Root delta on OneDrive for Business** returns changed items with
+    `parentReference.id` and `lastModifiedDateTime`, and `token=latest`
+    returns a delta link with no backlog.
+19. **Loop notes.** That Teams and Copilot meeting notes are `.loop` files in
+    the organizer's OneDrive, which folder they land in, and that
+    `GET /content?format=html` converts them (the reference lists HTML for
+    Loop). The fixture assumes headings, paragraphs, lists and a table.
+20. **How often a Loop page's `cTag` changes** while people type, and whether
+    20 minutes is the right wait. Too short reads half a page; too long only
+    delays the queue.
+21. **A transcript as a file.** Teams keeps transcripts with the recording,
+    not as a `.vtt` in a folder; a `.vtt` is read only when someone saves or
+    downloads one there.
+22. **Files.Read covers the folder chosen.** A folder shared with the owner
+    from someone else's OneDrive is not in their drive's delta.
+23. **Item ids** in `/me/drive/items/{id}` paths need no encoding for
+    business ids; personal ids carry a `!`.
+
+**The first real run for these:** sign in with Microsoft as a staff member of
+a Microsoft practice (15–17); hold one Teams meeting with Loop notes, choose
+its folder, wait for the poll (18–20); and save a `.vtt` there (21).
 
