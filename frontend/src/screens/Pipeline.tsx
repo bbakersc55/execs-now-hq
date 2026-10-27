@@ -6,6 +6,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { SearchField } from "../components/shell";
 import { Banner, Card, Empty, Pill } from "../components/ui";
 import { Board, Contact, Pipeline as PipelineType, api } from "../lib/api";
+import { AddToCalendar } from "../components/AddToCalendar";
+
+/** A stage rule's calendar event, offered on a move (2026-10-27). */
+interface CalendarOffer { rule: string; contact: string; title: string; date: string;
+                          minutes: number }
 
 function fullName(c: Contact) {
   return `${c.first_name} ${c.last_name}`.trim();
@@ -49,6 +54,9 @@ export function Pipeline() {
   const [note, setNote] = useState("");
   // Pipeline part 3: "Start the <stage> follow-up?" after a move, default No.
   const [offer, setOffer] = useState<FollowUpOffer | null>(null);
+  /** A stage rule's calendar event, asked of the person who moved the card
+   *  (2026-10-27; the owner's Prospecting → Follow Up Needed, Oct 5). */
+  const [eventOffers, setEventOffers] = useState<CalendarOffer[]>([]);
   const startFollowUp = useMutation({
     mutationFn: (o: FollowUpOffer) => api.post(`/api/contacts/${o.contact}/follow-up/`, { stage: o.stage }),
     onSuccess: (_d, o) => {
@@ -94,7 +102,8 @@ export function Pipeline() {
   const move = useMutation({
     mutationFn: (vars: { id: string; stage: string; reason: string }) =>
       api.post<{ thanks_drafted?: { to: string; label: string } | null;
-        follow_up_offer?: Omit<FollowUpOffer, "contact" | "name"> | null }>(
+        follow_up_offer?: Omit<FollowUpOffer, "contact" | "name"> | null;
+        calendar_offers?: CalendarOffer[] }>(
         `/api/contacts/${vars.id}/change-stage/`, { stage: vars.stage, reason: vars.reason }),
     onSuccess: (d, vars) => {
       qc.invalidateQueries({ queryKey: ["board"] });
@@ -114,6 +123,7 @@ export function Pipeline() {
       const who = columns.flatMap((c) => c.contacts).find((x) => x.id === vars.id);
       setOffer(d?.follow_up_offer ? { ...d.follow_up_offer, contact: vars.id,
         name: who ? `${who.first_name} ${who.last_name}`.trim() : "them" } : null);
+      setEventOffers(d?.calendar_offers ?? []);
     },
   });
 
@@ -204,6 +214,20 @@ export function Pipeline() {
           </div>
         </div>
       )}
+
+      {eventOffers.map((o) => (
+        <div key={o.rule} className="card follow-up-offer" role="dialog"
+          aria-label="Put it on your calendar?">
+          <strong>Put it on your calendar?</strong>
+          <p className="small muted" style={{ margin: ".25rem 0 .5rem" }}>
+            This stage's rule offers an event. Pick when; it goes on your own calendar, and
+            nobody is invited.</p>
+          <AddToCalendar open source="stage_rule" sourceId={o.rule} contact={o.contact}
+            date={o.date} title={o.title} minutes={o.minutes}
+            onDone={(said) => { setNote(said); setEventOffers((all) => all.filter((x) => x !== o)); }}
+            onCancel={() => setEventOffers((all) => all.filter((x) => x !== o))} />
+        </div>
+      ))}
 
       {board.isError && (
         <Banner kind="bad">The board could not be loaded. Reload the page to try again.</Banner>

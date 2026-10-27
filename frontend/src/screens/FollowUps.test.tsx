@@ -66,6 +66,60 @@ describe("the move's question", () => {
   });
 });
 
+describe("a stage rule's calendar event, asked on the move (2026-10-27)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  function board() {
+    return { pipeline: { ...SALES, stages: [ENTRY, QUAL] },
+      columns: [{ stage: ENTRY, count: 1, contacts: [DANA] }, { stage: QUAL, count: 0, contacts: [] }] };
+  }
+  const EVENT = { rule: "r-cal", contact: "dana", title: "Follow up with Dana", date: "2026-10-29",
+                  minutes: 45 };
+
+  async function moveDana(fetchMock: ReturnType<typeof mockApi>) {
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Pipeline />);
+    const card = (await screen.findByRole("link", { name: "Dana Reyes" })).closest(".contact-card") as HTMLElement;
+    const column = screen.getByRole("heading", { name: QUAL.label, level: 4 }).closest(".col") as HTMLElement;
+    const dataTransfer = { effectAllowed: "", setData: vi.fn(), getData: () => "dana" };
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.dragOver(column, { dataTransfer });
+    fireEvent.drop(column, { dataTransfer });
+  }
+
+  it("asks when, with the rule's title, day and length, and adds it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "/api/pipelines/p-sales/board/": board(), "/api/pipelines/": PIPELINES,
+      "POST /api/contacts/dana/change-stage/": { contact: DANA, changed: true,
+                                                  calendar_offers: [EVENT] },
+      "POST /api/calendar/add/": { status: 201, body: { title: EVENT.title, web_link: "" } },
+    });
+    await moveDana(fetchMock);
+    const ask = await screen.findByRole("dialog", { name: "Put it on your calendar?" });
+    expect(within(ask).getByLabelText("Event title")).toHaveValue("Follow up with Dana");
+    expect(within(ask).getByLabelText("Day")).toHaveValue("2026-10-29");
+    await user.click(within(ask).getByRole("button", { name: "Add it" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url === "/api/calendar/add/")?.body)
+      .toMatchObject({ source: "stage_rule", source_id: "r-cal", contact: "dana",
+                       date: "2026-10-29", minutes: 45 }));
+    expect(await screen.findByText(/is on your calendar/)).toBeInTheDocument();
+  });
+
+  it("Not now adds nothing", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "/api/pipelines/p-sales/board/": board(), "/api/pipelines/": PIPELINES,
+      "POST /api/contacts/dana/change-stage/": { contact: DANA, changed: true,
+                                                  calendar_offers: [EVENT] },
+    });
+    await moveDana(fetchMock);
+    await user.click(await screen.findByRole("button", { name: "Not now" }));
+    expect(screen.queryByRole("dialog", { name: "Put it on your calendar?" })).toBeNull();
+    expect(fetchMock.calls.some((c) => c.url.includes("/calendar/"))).toBe(false);
+  });
+});
+
 describe("the follow-up on a stage card", () => {
   beforeEach(() => vi.unstubAllGlobals());
 

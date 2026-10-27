@@ -8,7 +8,8 @@ import { Pipeline, Stage, StaffMember, api } from "../lib/api";
 import { useWords } from "../lib/words";
 
 type Trigger = "enters" | "idle" | "won" | "lost";
-type Action = "create_task" | "draft_email" | "move_stage" | "enroll_touches" | "notify" | "start_follow_up";
+type Action = "create_task" | "draft_email" | "move_stage" | "enroll_touches" | "notify" | "start_follow_up"
+  | "calendar_event";
 type For = "contact_owner" | "practice_owner" | "member";
 
 export interface Rule {
@@ -375,7 +376,7 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
     action_type: "create_task" as Action, task_title_template: "", task_due_offset_days: 3,
     task_client_visible: visibleByDefault(stage ? "enters" : "won", stage ?? undefined, pipeline),
     task_for: "contact_owner" as For, task_assignee: "", email_template: "", send_by_offset_days: 7,
-    move_to_stage: "", touch_cadence: "monthly", notice_text: "",
+    move_to_stage: "", touch_cadence: "monthly", notice_text: "", event_minutes: 30,
   };
   const [d, setD] = useState(blank);
   const set = (patch: Partial<typeof d>) => setD({ ...d, ...patch });
@@ -391,8 +392,11 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
       from_stage: d.trigger === "enters" && d.from_stage ? d.from_stage : null,
       idle_days: d.trigger === "idle" ? d.idle_days : null,
       action_type: d.action_type,
-      task_title_template: d.action_type === "create_task" ? d.task_title_template : "",
-      task_due_offset_days: d.action_type === "create_task" ? d.task_due_offset_days : null,
+      task_title_template: d.action_type === "create_task" || d.action_type === "calendar_event"
+        ? d.task_title_template : "",
+      task_due_offset_days: d.action_type === "create_task" || d.action_type === "calendar_event"
+        ? d.task_due_offset_days : null,
+      event_minutes: d.action_type === "calendar_event" ? d.event_minutes : null,
       task_client_visible: d.action_type === "create_task" && d.task_client_visible,
       task_for: d.task_for, task_assignee: d.task_for === "member" ? d.task_assignee || null : null,
       email_template: d.action_type === "draft_email" ? d.email_template || null : null,
@@ -469,6 +473,8 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
             <option value="enroll_touches">Put them on referral touches</option>
             <option value="notify">Send a notice</option>
             <option value="start_follow_up">Start the stage's follow-up, without asking</option>
+            {d.trigger === "enters" && (
+              <option value="calendar_event">Offer a calendar event, at a time I pick</option>)}
           </select>
         </Field>
       </div>
@@ -524,6 +530,25 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
             </select>
           </Field>
         )}
+        {d.action_type === "calendar_event" && (
+          <>
+            <Field label="Event title">
+              <input aria-label="Event title" value={d.task_title_template}
+                placeholder="Follow up with {FirstName} at {Company}"
+                onChange={(e) => set({ task_title_template: e.target.value })} />
+            </Field>
+            <Field label="Suggested in (days)">
+              <input type="number" min={0} aria-label="Suggested in (days)" value={d.task_due_offset_days}
+                onChange={(e) => set({ task_due_offset_days: Number(e.target.value) })} />
+            </Field>
+            <Field label="Length">
+              <select aria-label="Length" value={d.event_minutes}
+                onChange={(e) => set({ event_minutes: Number(e.target.value) })}>
+                {[15, 30, 45, 60, 90].map((m) => <option key={m} value={m}>{m} minutes</option>)}
+              </select>
+            </Field>
+          </>
+        )}
         {d.action_type === "notify" && (
           <>
             <Field label="The notice">
@@ -535,8 +560,13 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
           </>
         )}
       </div>
-      {(d.action_type === "create_task" || d.action_type === "notify") && (
+      {(d.action_type === "create_task" || d.action_type === "notify"
+        || d.action_type === "calendar_event") && (
         <p className="small muted" style={{ margin: 0 }}>Merge fields: {MERGE}</p>)}
+      {d.action_type === "calendar_event" && (
+        <p className="small muted" style={{ margin: 0 }}>Asked when someone moves a card here
+          on the board: they pick the day and time, and it goes on their own calendar. A move by
+          an import or another rule asks nobody, so nothing is added.</p>)}
       {d.action_type === "enroll_touches" && (
         <p className="small muted" style={{ margin: 0 }}>Only referral partners are put on touches; anyone already on
           them keeps their cadence.</p>)}

@@ -163,7 +163,7 @@ def build(*, ff_email: str = "", ff_name: str = "", oauth_client: str = "interna
 def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, visitor):
     from apps.tenancy.context import tenant_context
 
-    from . import comms, foundation, money, sessions, work
+    from . import calendar, comms, foundation, money, sessions, work
     from .scorecard import scorecard
 
     world = foundation.practice(ff_email=ff_email, ff_name=ff_name,
@@ -178,6 +178,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         foundation.stage_rules(world)
         foundation.introductions(world)
         foundation.practice_scorecard(world)
+        calendar.meetings(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the
         # demo's own content is written without Claude.

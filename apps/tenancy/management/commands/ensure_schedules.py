@@ -101,6 +101,10 @@ SCHEDULES = [
     # (hourly or daily) decides whether this pass reads it. A no-op for a
     # practice with no feed.
     ("scorecard.read_feeds", "apps.scorecard.tasks.read_feeds", Schedule.HOURLY, None, None),
+    # Calendar (2026-10-27): each person's connected calendar, a day back and
+    # two weeks ahead, read whole every fifteen minutes. A no-op for a
+    # practice with no calendar connected.
+    ("calendars.sync", "apps.calendars.tasks.sync_calendars", Schedule.MINUTES, 15, None),
 ]
 
 

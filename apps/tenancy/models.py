@@ -434,6 +434,8 @@ class SecretKind(models.TextChoices):
     NMI_PUBLIC_KEY = "nmi_public_key", "NMI public tokenization key"
     #: A practice on Microsoft 365 (docs/m365_transport.md).
     MICROSOFT_REFRESH = "microsoft_refresh", "Microsoft 365 refresh token"
+    #: A user's own calendar connection (2026-10-27), apart from mail's.
+    CALENDAR_REFRESH = "calendar_refresh", "Calendar refresh token"
 
 
 class TenantSecret(TenantScopedModel):

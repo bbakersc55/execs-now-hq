@@ -16,6 +16,34 @@ import { ScorecardSetup } from "../components/ScorecardSetup";
 import { HubSpotConnectionCard } from "../components/ScorecardHubSpot";
 import { TrackConnectionCard } from "../components/ScorecardTrack";
 import { useWords } from "../lib/words";
+import { MeetingList } from "../components/MeetingList";
+import { CalendarMeeting } from "../lib/api";
+
+/** The last 30 days and the next 14 of meetings whose attendees matched this
+ *  company, from any connected calendar in the practice. Nothing shows when
+ *  there are none: a company page is long enough. */
+function CompanyMeetings({ companyId }: { companyId: string }) {
+  const meetings = useQuery<CalendarMeeting[]>({
+    queryKey: ["calendar-company", companyId],
+    queryFn: () => api.get<CalendarMeeting[]>(`/api/calendar/company/${companyId}/`),
+  });
+  const rows = meetings.data ?? [];
+  if (!rows.length) return null;
+  const next = rows.filter((m) => !m.past);
+  const before = rows.filter((m) => m.past).reverse();
+  return (
+    <Card title="Meetings">
+      {next.length > 0 && <MeetingList events={next} withDay />}
+      {before.length > 0 && (
+        <>
+          <p className="small muted" style={{ margin: next.length ? ".75rem 0 .35rem" : "0 0 .35rem" }}>
+            Recent</p>
+          <MeetingList events={before} withDay />
+        </>
+      )}
+    </Card>
+  );
+}
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 
@@ -165,6 +193,8 @@ export function CompanyDetail({ me }: { me: Me }) {
 
       {/* Promises made in meetings, open and done (2026-10-20). */}
       <CompanyCommitments companyId={c.id} />
+      {/* Meetings with this company, on anyone's calendar (2026-10-27). */}
+      <CompanyMeetings companyId={c.id} />
 
       <div className="record-cols">
         <CallNotes me={me} company={id!} />

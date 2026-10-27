@@ -159,9 +159,12 @@ def remove_member(membership, *, actor=None):
     assignment_count = assignments.count()
     assignments.update(removed_at=now)
 
+    from apps.calendars.models import CalendarConnection
+
     connections = [
         *GmailConnection.all_objects.filter(tenant=tenant, user=membership.user),
         *MicrosoftConnection.all_objects.filter(tenant=tenant, user=membership.user),
+        *CalendarConnection.all_objects.filter(tenant=tenant, user=membership.user),
     ]
     connection_count = len(connections)
     for connection in connections:

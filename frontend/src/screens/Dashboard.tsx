@@ -11,14 +11,17 @@ import { GettingStarted } from "../components/GettingStarted";
 import { PipelineNotices } from "../components/PipelineNotices";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
-import { Dashboard as Board, Me, Pipeline, aiPausedMessage, api } from "../lib/api";
+import {
+  CalendarUpcoming, Dashboard as Board, Me, Pipeline, aiPausedMessage, api,
+} from "../lib/api";
+import { MeetingList } from "../components/MeetingList";
 import { useRemembered } from "../lib/remembered";
 import { Words, useWords } from "../lib/words";
 
 type Move = Board["pipeline"][number];
 
 const TILES = ["tasks", "digests", "pipeline", "goals", "waiting"] as const;
-const PANELS = ["due", "approval", "pipeline", "finances", "clients"] as const;
+const PANELS = ["meetings", "due", "approval", "pipeline", "finances", "clients"] as const;
 type TileId = (typeof TILES)[number];
 type PanelId = (typeof PANELS)[number];
 /** A block anywhere on the dashboard. Prefixed, because "pipeline" is both a
@@ -42,7 +45,7 @@ const tileNames = (w: Words): Record<TileId, string> => ({
   goals: `Open ${w.goals}`, waiting: "Waiting on others",
 });
 const PANEL_NAMES: Record<PanelId, string> = {
-  due: "Due by day", approval: "Waiting for approval", pipeline: "Pipeline",
+  meetings: "Today and tomorrow", due: "Due by day", approval: "Waiting for approval", pipeline: "Pipeline",
   finances: "Practice finances", clients: "Clients",
 };
 
@@ -256,6 +259,7 @@ export function Dashboard({ me }: { me: Me }) {
         )}
       </>
     ),
+    meetings: <MeetingsPanel />,
   };
 
   return (
@@ -506,9 +510,50 @@ function normalise(saved: Layout | LegacyLayout | null | undefined): Layout {
   top = keep(top);
   bottom = keep(bottom);
   for (const key of ALL_BLOCKS) {
-    if (!seen.has(key)) (key.startsWith("tile:") ? top : bottom).push(key);
+    if (seen.has(key)) continue;
+    // A layout saved before Home had meetings (2026-10-27) gets them first.
+    if (key === "panel:meetings") bottom.unshift(key);
+    else (key.startsWith("tile:") ? top : bottom).push(key);
   }
   return { top, bottom };
+}
+
+/**
+ * Today's and tomorrow's meetings on one's own calendar (2026-10-27), each
+ * with the contacts and companies it matched, linking to them. Its own call,
+ * so a calendar that is slow to answer never holds up the rest of Home.
+ */
+function MeetingsPanel() {
+  const upcoming = useQuery<CalendarUpcoming>({
+    queryKey: ["calendar-upcoming"],
+    queryFn: () => api.get<CalendarUpcoming>("/api/calendar/upcoming/"),
+  });
+  const data = upcoming.data;
+  return (
+    <Card title="Today and tomorrow"
+      actions={<Link className="small" to="/profile#calendar">Calendar <ArrowRight size={12} /></Link>}>
+      {upcoming.isLoading ? <p className="muted small">Loading…</p>
+        : !data ? <Empty>The calendar could not be read.</Empty>
+        : !data.connected && data.days.every((d) => d.events.length === 0) ? (
+          <Empty>
+            {data.refusal ? data.refusal : <>Connect your calendar in{" "}
+              <Link to="/profile#calendar">your Profile</Link> to see your meetings here.</>}
+          </Empty>
+        ) : (
+          <>
+            {data.last_error && <Banner kind="warn">{data.last_error}</Banner>}
+            {data.days.map((day) => (
+              <div key={day.date} className="meetings-day">
+                <h4>{day.label}</h4>
+                {day.events.length === 0
+                  ? <p className="small muted" style={{ margin: 0 }}>No meetings.</p>
+                  : <MeetingList events={day.events} zone={data.time_zone} />}
+              </div>
+            ))}
+          </>
+        )}
+    </Card>
+  );
 }
 
 function Tile({ label, value, note, icon: Icon, to, bad }: {

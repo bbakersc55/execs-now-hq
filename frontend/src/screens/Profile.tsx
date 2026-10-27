@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { BrowserNotifications } from "../components/Notifications";
+import { CalendarCard } from "./CalendarCard";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field } from "../components/ui";
 import { api } from "../lib/api";
@@ -21,7 +22,7 @@ export interface ProfileData {
  * every signed-in person, client users included. The sign-in email is shown
  * and cannot be changed here (D6).
  */
-export function Profile() {
+export function Profile({ staff = false }: { staff?: boolean }) {
   const qc = useQueryClient();
   const profile = useQuery<ProfileData>({
     queryKey: ["profile"], queryFn: () => api.get<ProfileData>("/api/me/profile"),
@@ -87,6 +88,8 @@ export function Profile() {
         </dl>
       </Card>
       {p.practice && <BrowserNotifications editable={p.editable} />}
+      {/* One's own calendar (2026-10-27): the practice's team only. */}
+      {staff && p.practice && <CalendarCard />}
     </div>
   );
 }

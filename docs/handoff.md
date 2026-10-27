@@ -17,6 +17,19 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
+## 2026-10-27, evening: Calendar (on `dev`, not released)
+
+- **Calendar** (`docs/calendar.md`; migrations `calendars 0001`, four
+  tables, `crm 0053`, one column, `tenancy 0023`, no-op; all additive). One
+  calendar per team member, Google or Microsoft by the practice's provider;
+  Home's "Today and tomorrow"; a company's Meetings; Add to calendar on a
+  dated task and a follow-up's next step; the stage rule "Offer a calendar
+  event", asked on the board's move. Event bodies are never read; attendee
+  addresses only match. **New schedule `calendars.sync`** (every 15 minutes):
+  R5b at the release. **Needs** `calendar.events` on both Google OAuth
+  clients (and the Calendar API enabled) and `Calendars.ReadWrite` on the
+  Entra registration.
+
 ## 2026-10-27, later: Sign in with Microsoft, and OneDrive notes (on `dev`, not released)
 
 - **Sign in with Microsoft** (`accounts 0005`, additive: two columns on

@@ -47,8 +47,9 @@ function aBoard(overrides: Partial<Board> = {}): Board {
   };
 }
 
-function show(board = aBoard(), me = aMe()) {
-  const fetchMock = mockApi({ "GET /api/dashboard/": board, "GET /api/pipelines/": PIPELINES });
+function show(board = aBoard(), me = aMe(), extra: Record<string, unknown> = {}) {
+  const fetchMock = mockApi({ "GET /api/dashboard/": board, "GET /api/pipelines/": PIPELINES,
+                              ...extra });
   vi.stubGlobal("fetch", fetchMock);
   renderRoute(<Dashboard me={me} />, { path: "/", route: "/" });
   return fetchMock;
@@ -207,11 +208,13 @@ describe("arranging the dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move Pipeline earlier" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
-    expect(panelOrder().slice(0, 3))
-      .toEqual(["Due by day", "Pipeline", "Waiting for approval"]);
+    // Today and tomorrow leads (2026-10-27); Pipeline moved above approval.
+    expect(panelOrder().slice(0, 4))
+      .toEqual(["Today and tomorrow", "Due by day", "Pipeline", "Waiting for approval"]);
     const saved = JSON.parse(
       localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
-    expect(saved.bottom.slice(0, 3)).toEqual(["panel:due", "panel:pipeline", "panel:approval"]);
+    expect(saved.bottom.slice(0, 4))
+      .toEqual(["panel:meetings", "panel:due", "panel:pipeline", "panel:approval"]);
   });
 
   it("moves a tile by dragging it onto another", async () => {
@@ -245,11 +248,12 @@ describe("arranging the dashboard", () => {
     show();
 
     await screen.findByRole("heading", { name: "Clients" });
-    expect(panelOrder()[0]).toBe("Clients");
+    // A layout saved before Home had meetings gets them first (2026-10-27).
+    expect(panelOrder().slice(0, 2)).toEqual(["Today and tomorrow", "Clients"]);
 
     fireEvent.click(screen.getByRole("button", { name: "Arrange" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset layout" }));
-    expect(panelOrder()[0]).toBe("Due by day");
+    expect(panelOrder().slice(0, 2)).toEqual(["Today and tomorrow", "Due by day"]);
   });
 
   it("adds a panel the saved order has never heard of, rather than hiding it", async () => {
@@ -259,7 +263,7 @@ describe("arranging the dashboard", () => {
     show();
 
     await screen.findByRole("heading", { name: "Practice finances" });
-    expect(panelOrder()[0]).toBe("Pipeline");
+    expect(panelOrder().slice(0, 2)).toEqual(["Today and tomorrow", "Pipeline"]);
     expect(screen.getByRole("link", { name: /Open goals/ })).toBeInTheDocument();
   });
 
@@ -278,8 +282,7 @@ describe("arranging the dashboard", () => {
     fireEvent.dragOver(due, { dataTransfer: transfer });
     fireEvent.drop(due, { dataTransfer: transfer });
     expect(rowKeys("top")).not.toContain("tile:goals");
-    expect(rowKeys("bottom")[0]).toBe("tile:goals");
-    expect(rowKeys("bottom")[1]).toBe("panel:due");
+    expect(rowKeys("bottom").slice(0, 3)).toEqual(["panel:meetings", "tile:goals", "panel:due"]);
   });
 
   it("drops a panel at the end of the top row", async () => {
@@ -313,7 +316,7 @@ describe("arranging the dashboard", () => {
     await screen.findByRole("heading", { name: "Clients" });
     fireEvent.click(screen.getByRole("button", { name: "Arrange" }));
     expect(rowKeys("top").slice(0, 2)).toEqual(["tile:goals", "tile:tasks"]);
-    expect(rowKeys("bottom").slice(0, 2)).toEqual(["panel:clients", "panel:due"]);
+    expect(rowKeys("bottom").slice(0, 3)).toEqual(["panel:meetings", "panel:clients", "panel:due"]);
   });
 
   it("keeps an assistant's hidden finances slot where it was saved", async () => {
@@ -324,7 +327,7 @@ describe("arranging the dashboard", () => {
     const saved = JSON.parse(
       localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
     expect(saved.bottom).toEqual(
-      ["panel:due", "panel:approval", "panel:pipeline", "panel:finances"]);
+      ["panel:meetings", "panel:due", "panel:approval", "panel:pipeline", "panel:finances"]);
     expect(screen.queryByRole("heading", { name: "Practice finances" })).not.toBeInTheDocument();
   });
 
@@ -334,7 +337,7 @@ describe("arranging the dashboard", () => {
     show();
 
     await screen.findByRole("heading", { name: "Clients" });
-    expect(panelOrder()[0]).toBe("Due by day");
+    expect(panelOrder().slice(0, 2)).toEqual(["Today and tomorrow", "Due by day"]);
   });
 });
 
@@ -431,5 +434,37 @@ describe("the dashboard's cash forecast line (P6 M2-11)", () => {
     show(aBoard({ finance: { ...finance, forecast: null } }));
     await screen.findByLabelText("This month in the books");
     expect(screen.queryByLabelText("The cash forecast's low point")).not.toBeInTheDocument();
+  });
+});
+
+/** Calendar (2026-10-27): today's and tomorrow's meetings, matched. */
+describe("today and tomorrow", () => {
+  beforeEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+
+  it("lists each day's meetings with their companies and contacts as links", async () => {
+    show(aBoard(), aMe(), { "GET /api/calendar/upcoming/": {
+      provider: "google", provider_label: "Google Calendar", configured: true, refusal: "",
+      connected: true, email_address: "bryan@x.test", connected_provider: "google",
+      last_synced_at: null, last_error: "", time_zone: "America/Denver",
+      days: [
+        { label: "Today", date: "2026-10-27", events: [{ id: "e1", title: "Weekly check-in",
+          starts_at: "2026-10-27T16:00:00Z", ends_at: "2026-10-27T16:45:00Z", all_day: false,
+          web_link: "", contacts: [{ id: "c1", name: "Dana Reyes" }],
+          companies: [{ id: "co1", name: "Acme" }] }] },
+        { label: "Tomorrow", date: "2026-10-28", events: [] }] } });
+    expect(await screen.findByText("Weekly check-in")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Acme" })).toHaveAttribute("href", "/companies/co1");
+    expect(screen.getByText("No meetings.")).toBeInTheDocument();
+  });
+
+  it("points at the Profile when nothing is connected", async () => {
+    show(aBoard(), aMe(), { "GET /api/calendar/upcoming/": {
+      provider: "google", provider_label: "Google Calendar", configured: true, refusal: "",
+      connected: false, email_address: "", connected_provider: "", last_synced_at: null,
+      last_error: "", time_zone: "America/Denver",
+      days: [{ label: "Today", date: "2026-10-27", events: [] },
+             { label: "Tomorrow", date: "2026-10-28", events: [] }] } });
+    expect(await screen.findByRole("link", { name: "your Profile" }))
+      .toHaveAttribute("href", "/profile#calendar");
   });
 });

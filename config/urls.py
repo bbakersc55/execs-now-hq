@@ -48,6 +48,7 @@ urlpatterns = [
     path("api/", include("apps.meetings.urls")),
     path("api/", include("apps.platform.urls")),
     path("api/", include("apps.notify.urls")),
+    path("api/", include("apps.calendars.urls")),
     path("api/", include("apps.billing.urls")),
     path("api/", include("apps.finance.urls")),
     path("api/", include("apps.personal.urls")),

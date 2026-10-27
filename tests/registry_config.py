@@ -345,6 +345,17 @@ from apps.crm.models import MicrosoftConnection  # noqa: E402
 
 register(MicrosoftConnection, factories.MicrosoftConnectionFactory)
 
+# Calendar (2026-10-27): each person's own connection; Home's events and a
+# company's are served by /api/calendar/ (tests/test_calendar.py).
+from apps.calendars.models import (  # noqa: E402
+    CalendarConnection, CalendarEntry, CalendarEvent, CalendarEventMatch,
+)
+
+register(CalendarConnection, factories.CalendarConnectionFactory, api_exposed=False)
+register(CalendarEvent, factories.CalendarEventFactory, api_exposed=False)
+register(CalendarEventMatch, factories.CalendarEventMatchFactory, api_exposed=False)
+register(CalendarEntry, factories.CalendarEntryFactory, api_exposed=False)
+
 # The Notices list and browser notifications (2026-10-26): each person's own,
 # served by /api/notify/ for the person signed in (tests/test_notify.py).
 from apps.notify.models import Notice, PushPreference, PushSubscription  # noqa: E402

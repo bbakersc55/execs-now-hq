@@ -16,6 +16,7 @@ import {
 } from "../lib/api";
 import { Words, useWords } from "../lib/words";
 import { NoteRow } from "./Notes";
+import { AddToCalendar } from "../components/AddToCalendar";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -283,6 +284,11 @@ export function TaskDetail({ me, taskId, onEdited, onDeleted }: {
         {t.client_company && !t.is_client_visible
           && <span className="pill bad">hidden from the client</span>}
       </p>
+      {/* Calendar (2026-10-27): the practice's team puts a dated task on
+          their own calendar, at a time they pick. */}
+      {isTenant && t.due_date && (
+        <AddToCalendar source="task" sourceId={t.id} date={t.due_date} title={t.title} />
+      )}
       {message && <Banner kind="bad">{message}</Banner>}
       {/* Said once (P7 §4.3): the practice's task, or another team's. */}
       {!t.may_edit && (

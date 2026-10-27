@@ -1,0 +1,113 @@
+{
+  "kind": "calendar#events",
+  "items": [
+    {
+      "id": "g-checkin",
+      "status": "confirmed",
+      "summary": "Weekly check-in, Acme",
+      "start": {
+        "dateTime": "2026-10-27T10:00:00-06:00"
+      },
+      "end": {
+        "dateTime": "2026-10-27T10:45:00-06:00"
+      },
+      "htmlLink": "https://www.google.com/calendar/event?eid=Z2NoZWNr",
+      "attendees": [
+        {
+          "email": "bryan@getexecutivesnow.com",
+          "self": true
+        },
+        {
+          "email": "dana@acme.invalid"
+        },
+        {
+          "email": "newperson@acme.invalid"
+        }
+      ],
+      "organizer": {
+        "email": "bryan@getexecutivesnow.com",
+        "self": true
+      }
+    },
+    {
+      "id": "g-domain",
+      "status": "confirmed",
+      "summary": "Intro with Initech",
+      "start": {
+        "dateTime": "2026-10-27T14:00:00-06:00"
+      },
+      "end": {
+        "dateTime": "2026-10-27T14:30:00-06:00"
+      },
+      "htmlLink": "https://www.google.com/calendar/event?eid=aW5pdA",
+      "attendees": [
+        {
+          "email": "peter@initech.invalid"
+        },
+        {
+          "email": "someone@gmail.com"
+        }
+      ]
+    },
+    {
+      "id": "g-private",
+      "status": "confirmed",
+      "visibility": "private",
+      "summary": "Doctor",
+      "start": {
+        "dateTime": "2026-10-27T16:00:00-06:00"
+      },
+      "end": {
+        "dateTime": "2026-10-27T17:00:00-06:00"
+      },
+      "attendees": [
+        {
+          "email": "dana@acme.invalid"
+        }
+      ]
+    },
+    {
+      "id": "g-cancelled",
+      "status": "cancelled",
+      "summary": "Moved",
+      "start": {
+        "dateTime": "2026-10-28T09:00:00-06:00"
+      },
+      "end": {
+        "dateTime": "2026-10-28T09:30:00-06:00"
+      }
+    },
+    {
+      "id": "g-internal",
+      "status": "confirmed",
+      "summary": "Team planning",
+      "start": {
+        "dateTime": "2026-10-28T15:00:00-06:00"
+      },
+      "end": {
+        "dateTime": "2026-10-28T15:30:00-06:00"
+      },
+      "attendees": [
+        {
+          "email": "casey@getexecutivesnow.com"
+        }
+      ]
+    },
+    {
+      "id": "g-allday",
+      "status": "confirmed",
+      "summary": "Acme offsite",
+      "start": {
+        "date": "2026-10-28"
+      },
+      "end": {
+        "date": "2026-10-29"
+      },
+      "attendees": [
+        {
+          "email": "dana@acme.invalid"
+        }
+      ]
+    }
+  ]
+}

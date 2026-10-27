@@ -676,6 +676,9 @@ class StageAutomation(TenantScopedModel):
         NOTIFY = "notify", "Send a notice"
         # Part 3: start the stage's follow-up without asking.
         START_FOLLOW_UP = "start_follow_up", "Start the stage's follow-up"
+        # Calendar (owner, 2026-10-05 and 2026-10-27): a calendar event at a
+        # time the person moving the card picks, asked on the move.
+        CALENDAR_EVENT = "calendar_event", "Offer a calendar event"
 
     class Trigger(models.TextChoices):
         ENTERS = "enters", "Enters the stage"
@@ -716,6 +719,9 @@ class StageAutomation(TenantScopedModel):
     #: For `enroll_touches`: monthly, bimonthly or quarterly; blank keeps theirs.
     touch_cadence = models.CharField(max_length=12, blank=True, default="", db_default="")
     notice_text = models.CharField(max_length=255, blank=True, default="", db_default="")
+    #: For `calendar_event`: how long the event is. Its title is
+    #: `task_title_template`, its suggested day `task_due_offset_days` ahead.
+    event_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
     position = models.PositiveSmallIntegerField(default=0, db_default=0)
 
     task_title_template = models.CharField(max_length=255, blank=True, default="")

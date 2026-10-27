@@ -598,7 +598,7 @@ class StageAutomationSerializer(serializers.ModelSerializer):
             "id", "pipeline", "trigger", "from_stage", "to_stage", "idle_days", "action_type",
             "task_title_template", "task_due_offset_days", "task_client_visible", "task_for",
             "task_assignee", "email_template", "send_by_offset_days", "move_to_stage",
-            "touch_cadence", "notice_text", "is_active", "position", "summary",
+            "touch_cadence", "notice_text", "event_minutes", "is_active", "position", "summary",
         ]
         extra_kwargs = {"task_client_visible": {"required": False},
                         "to_stage": {"required": False}, "position": {"required": False}}
@@ -650,6 +650,17 @@ class StageAutomationSerializer(serializers.ModelSerializer):
             if follow_ups.follow_up_of(get("to_stage")) is None:
                 raise serializers.ValidationError({"action_type": (
                     f"{get('to_stage').label} has no follow-up yet: set one on its card first.")})
+        if action == R.Action.CALENDAR_EVENT:
+            if trigger != R.Trigger.ENTERS:
+                raise serializers.ValidationError({"trigger": (
+                    "A calendar event is offered to the person moving the card, so it is for "
+                    "a contact entering a stage.")})
+            if not (get("task_title_template") or "").strip():
+                raise serializers.ValidationError({"task_title_template": "Give the event a title."})
+            minutes = get("event_minutes")
+            if minutes is not None and not 5 <= minutes <= 480:
+                raise serializers.ValidationError(
+                    {"event_minutes": "Between 5 minutes and 8 hours."})
         if action == R.Action.CREATE_TASK and not (get("task_title_template") or "").strip():
             raise serializers.ValidationError({"task_title_template": "Give the task a title."})
         if action == R.Action.DRAFT_EMAIL and get("email_template") is None:

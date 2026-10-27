@@ -651,8 +651,8 @@ def test_ac_2_9_the_retention_job_is_scheduled(seeded_tenant):
     # lookup of card payments NMI did not answer, P4 part 4's auto-pay,
     # part 5's subscription charge, M5's scorecard reminders, and M5 part
     # 3's hourly read of the sheet feeds, stage rules' daily pass, and P4 §4's
-    # daily NMI read-back.
-    assert Schedule.objects.count() == 18
+    # daily NMI read-back, and the calendars' fifteen-minute read (2026-10-27).
+    assert Schedule.objects.count() == 19
     assert Schedule.objects.filter(name=f"scorecard.read_feeds:{seeded_tenant.slug}",
                                    schedule_type=Schedule.HOURLY).exists()
     assert Schedule.objects.filter(

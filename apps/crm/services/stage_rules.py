@@ -148,7 +148,29 @@ def _run(rule, contact, *, actor=None, allow_moves=True):
         return notify(contact, rule)
     if kind == R.Action.START_FOLLOW_UP:
         return start_follow_up(contact, rule, actor=actor)
+    # CALENDAR_EVENT never runs by itself: it needs a time, so it is offered
+    # to the person who made the move (`calendar_offers`) and made when they
+    # pick one. A move with nobody to ask (an import, a rule) offers nothing.
     return None
+
+
+def calendar_offers(contact, from_stage, to_stage) -> list[dict]:
+    """The calendar events a move into `to_stage` offers: each rule's title
+    for this contact, a suggested day and a length. The screen asks."""
+    from datetime import timedelta
+
+    today = timezone.localdate()
+    offers = []
+    for rule in rules_on_move(to_stage.pipeline, from_stage, to_stage).filter(
+            action_type=R.Action.CALENDAR_EVENT):
+        days = rule.task_due_offset_days if rule.task_due_offset_days is not None else 1
+        offers.append({
+            "rule": str(rule.pk), "contact": str(contact.pk),
+            "title": merged(rule.task_title_template, contact, rule) or "Follow up",
+            "date": (today + timedelta(days=max(0, days))).isoformat(),
+            "minutes": rule.event_minutes or 30,
+        })
+    return offers
 
 
 def start_follow_up(contact, rule, *, actor=None):
@@ -411,6 +433,11 @@ def summary(rule) -> str:
                 f"{', ' + rule.touch_cadence.replace('bimonthly', 'every two months') if rule.touch_cadence else ''}.")
     if kind == R.Action.START_FOLLOW_UP:
         return f"{when}, start the stage's follow-up without asking."
+    if kind == R.Action.CALENDAR_EVENT:
+        days = rule.task_due_offset_days if rule.task_due_offset_days is not None else 1
+        return (f"{when}, offer a calendar event '{rule.task_title_template}' "
+                f"({rule.event_minutes or 30} minutes, suggested {days} "
+                f"day{'' if days == 1 else 's'} ahead) at a time the person moving them picks.")
     return f"{when}, tell {who}: “{rule.notice_text}”."
 
 

@@ -12,6 +12,7 @@ import { Banner, Card, Empty, Field, PageLinks, Pill, when } from "../components
 import { AddContact } from "./AddContact";
 import { Contact, EmailTemplate, Me, OutboxMessage, api } from "../lib/api";
 import { useWords } from "../lib/words";
+import { AddToCalendar } from "../components/AddToCalendar";
 
 interface TimelineEntry { kind: string; when: string; text: string; note_id?: string; locked?: boolean; }
 interface Duplicate { contact: Contact; match_reason: string; rank: number; }
@@ -154,6 +155,12 @@ export function ContactDetail({ me }: { me: Me }) {
                         <button className="ghost small" disabled={stopFollowUp.isPending}
                           aria-label={`Stop the ${p.follow_up!.stage_label} follow-up`}
                           onClick={() => stopFollowUp.mutate(p.follow_up!.id)}>Stop</button>
+                        {/* Calendar (2026-10-27): the next step's day, on one's calendar. */}
+                        {p.follow_up!.next_on && (
+                          <AddToCalendar source="follow_up" sourceId={p.follow_up!.id}
+                            date={p.follow_up!.next_on}
+                            title={`Follow up with ${c.first_name} ${c.last_name}`.trim()} />
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -21,7 +21,8 @@ from apps.crm.models import (
     ServiceCategory, StageAutomation, StageChange, StageSemantic, Task,
 )
 from apps.crm.services import (
-    clients, importer, merge, outbox, pipeline, referral, referrals, search, timeline,
+    clients, importer, merge, outbox, pipeline, referral, referrals, search, stage_rules,
+    timeline,
 )
 from apps.notes.serializers import represent_many as note_representations
 from apps.notes.views import search_notes
@@ -303,6 +304,9 @@ class ContactViewSet(TenantStaffViewSet):
             # A referred prospect won or lost: the thank-you this move drafted,
             # so the board can say where it is (finding T2, 2026-10-22).
             "thanks_drafted": _thanks_drafted(contact, change),
+            # Calendar (2026-10-27): a rule's event, at a time picked now.
+            "calendar_offers": stage_rules.calendar_offers(contact, change.from_stage, stage)
+            if change is not None else [],
         })
 
     @action(detail=True, methods=["post"], url_path="follow-up")

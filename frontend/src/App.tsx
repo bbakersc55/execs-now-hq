@@ -422,8 +422,10 @@ export function App() {
             <Route path="/outbox" element={<Outbox />} />
             <Route path="/import" element={<ImportDoor />} />
             <Route path="/import/contacts" element={<ImportWizard />} />
-            {/* Everyone signed in, client users included (UI 3 spec §5). */}
-            <Route path="/profile" element={<Profile />} />
+            {/* Everyone signed in, client users included (UI 3 spec §5). The
+                practice's team also connect their calendar there (2026-10-27). */}
+            <Route path="/profile" element={<Profile
+              staff={!!me.role && ["FF", "CF", "VA"].includes(me.role)} />} />
             {/* Settings: one page, the same addresses as before (UI 3, D4). */}
             <Route path="/settings" element={<Settings me={me} />} />
             <Route path="/settings/email"

@@ -1995,3 +1995,16 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .onedrive-folders button { width: 100%; display: flex; align-items: center; gap: .5rem;
   text-align: left; min-width: 0; }
 .onedrive-folders .name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+/* Calendar (2026-10-27): "Add to calendar" opens in place; Home's meetings
+   list each with its time, title and matched records, wrapping at 390. */
+.add-to-calendar.open { display: grid; gap: .5rem; padding: .5rem 0; }
+.add-to-calendar.open input[type="date"], .add-to-calendar.open input[type="time"] { width: auto; }
+.meetings-day + .meetings-day { margin-top: .75rem; }
+.meetings-day h4 { margin: 0 0 .35rem; font-size: var(--t-14, .875rem); }
+.meetings { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.meetings li { display: grid; grid-template-columns: 5.5rem 1fr; gap: .5rem; min-width: 0; }
+.meetings .when { font-variant-numeric: tabular-nums; color: var(--muted, #6D6E71); }
+.meetings .what { min-width: 0; overflow-wrap: anywhere; }
+.meetings .links { display: flex; flex-wrap: wrap; gap: .25rem .5rem; font-size: .85em; }
+.meetings li.past { opacity: .7; }

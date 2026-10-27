@@ -1,0 +1,6 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('x')/events/$entity",
+  "id": "AAMkAD-made=",
+  "subject": "Send the margin breakdown",
+  "webLink": "https://outlook.office365.com/owa/?itemid=AAMkAD-made"
+}

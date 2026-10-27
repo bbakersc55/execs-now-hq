@@ -485,6 +485,41 @@ export interface GmailStatus {
   verify_error?: string;
 }
 
+/** GET /api/calendar/ — one's own calendar connection (2026-10-27). */
+export interface CalendarStatus {
+  provider: "google" | "microsoft";
+  provider_label: string;
+  configured: boolean;
+  /** Why nothing can be connected here (the demo), or "". */
+  refusal: string;
+  connected: boolean;
+  email_address: string;
+  connected_provider: string;
+  last_synced_at: string | null;
+  last_error: string;
+}
+
+/** A meeting, with the contacts and companies its attendees matched. */
+export interface CalendarMeeting {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  all_day: boolean;
+  web_link: string;
+  contacts: { id: string; name: string }[];
+  companies: { id: string; name: string }[];
+  /** On a company's page: whose calendar, and whether it has passed. */
+  on_calendar_of?: string;
+  past?: boolean;
+}
+
+/** GET /api/calendar/upcoming/ — Home's today and tomorrow. */
+export interface CalendarUpcoming extends CalendarStatus {
+  days: { label: string; date: string; events: CalendarMeeting[] }[];
+  time_zone: string;
+}
+
 /** Which transport carries the practice's mail (docs/m365_transport.md, D6). */
 export interface MailProvider {
   provider: "google" | "microsoft";

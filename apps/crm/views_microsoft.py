@@ -306,8 +306,12 @@ def microsoft_callback(request):
     state to `apps.accounts.microsoft_signin`."""
     from apps.accounts import microsoft_signin
 
+    from apps.calendars import views as calendar_views
+
     if microsoft_signin.is_sign_in(request):
         return microsoft_signin.callback(request)
+    if calendar_views.is_calendar_consent(request):
+        return calendar_views.callback(request)
     inbound_wanted = bool(request.session.pop(microsoft_oauth.INBOUND_SESSION_KEY, False))
     files_wanted = bool(request.session.pop(microsoft_oauth.FILES_SESSION_KEY, False))
     where = request.session.pop(microsoft_oauth.RETURN_SESSION_KEY, "email")

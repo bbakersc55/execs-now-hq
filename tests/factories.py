@@ -467,6 +467,49 @@ class MicrosoftConnectionFactory(TenantScopedFactory):
     scopes = ["Mail.Send", "Mail.ReadBasic", "User.Read"]
 
 
+class CalendarConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "calendars.CalendarConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+    provider = "google"
+    email_address = factory.Sequence(lambda n: f"calendar{n}@example.invalid")
+
+
+class CalendarEventFactory(TenantScopedFactory):
+    class Meta:
+        model = "calendars.CalendarEvent"
+
+    tenant = factory.SubFactory(TenantFactory)
+    connection = factory.SubFactory(CalendarConnectionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    provider_event_id = factory.Sequence(lambda n: f"event-{n}")
+    title = "A meeting"
+    starts_at = factory.LazyFunction(timezone.now)
+    ends_at = factory.LazyAttribute(lambda o: o.starts_at + datetime.timedelta(minutes=30))
+
+
+class CalendarEventMatchFactory(TenantScopedFactory):
+    class Meta:
+        model = "calendars.CalendarEventMatch"
+
+    tenant = factory.SubFactory(TenantFactory)
+    event = factory.SubFactory(CalendarEventFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class CalendarEntryFactory(TenantScopedFactory):
+    class Meta:
+        model = "calendars.CalendarEntry"
+
+    tenant = factory.SubFactory(TenantFactory)
+    source_type = "task"
+    source_id = factory.Faker("uuid4", cast_to=None)
+    provider_event_id = factory.Sequence(lambda n: f"made-{n}")
+    title = "Added"
+    starts_at = factory.LazyFunction(timezone.now)
+
+
 class OutboxMessageFactory(TenantScopedFactory):
     class Meta:
         model = OutboxMessage
@@ -866,7 +909,7 @@ class StrategyStyleExampleFactory(TenantScopedFactory):
     proposed = "Claude's words"
     accepted = "The practice's words"
     source_type = "strategy_map_row"
-    source_id = factory.LazyFunction(__import__("uuid").uuid4)
+    source_id = factory.Faker("uuid4", cast_to=None)
 
 
 class StrategySessionPrepFactory(TenantScopedFactory):

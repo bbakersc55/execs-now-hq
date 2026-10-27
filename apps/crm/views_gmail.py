@@ -280,6 +280,12 @@ class GmailConnectionViewSet(viewsets.ViewSet):
 @require_http_methods(["GET"])
 def gmail_callback(request):
     """Google's redirect target. Ends in the SPA, never in JSON."""
+    from apps.calendars import views as calendar_views
+
+    # A calendar consent comes back here too (2026-10-27): told apart by its
+    # state, so the OAuth client needs no second redirect URI.
+    if calendar_views.is_calendar_consent(request):
+        return calendar_views.callback(request)
     # Popped first, before any early return, so every refusal below lands on
     # the screen the person was actually looking at.
     where = request.session.pop(gmail_oauth.RETURN_SESSION_KEY, "email")

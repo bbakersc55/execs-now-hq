@@ -1,0 +1,7 @@
+{
+  "access_token": "ya29.calendar-access",
+  "expires_in": 3599,
+  "refresh_token": "1//calendar-refresh",
+  "scope": "openid https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email",
+  "token_type": "Bearer"
+}

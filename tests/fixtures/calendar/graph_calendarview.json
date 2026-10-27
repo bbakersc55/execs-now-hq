@@ -1,0 +1,60 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('x')/calendarView(id,subject,start,end,isAllDay,isCancelled,sensitivity,webLink,attendees,organizer)",
+  "value": [
+    {
+      "id": "AAMkAD-checkin=",
+      "subject": "Weekly check-in, Acme",
+      "isAllDay": false,
+      "isCancelled": false,
+      "sensitivity": "normal",
+      "webLink": "https://outlook.office365.com/owa/?itemid=AAMkAD-checkin",
+      "start": {
+        "dateTime": "2026-10-27T16:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-27T16:45:00.0000000",
+        "timeZone": "UTC"
+      },
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "accepted"
+          },
+          "emailAddress": {
+            "name": "Dana Reyes",
+            "address": "Dana@Acme.invalid"
+          }
+        }
+      ],
+      "organizer": {
+        "emailAddress": {
+          "name": "Bryan Baker",
+          "address": "bryan@contoso.example"
+        }
+      }
+    },
+    {
+      "id": "AAMkAD-private=",
+      "subject": "Private",
+      "isAllDay": false,
+      "isCancelled": false,
+      "sensitivity": "private",
+      "start": {
+        "dateTime": "2026-10-27T18:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-27T19:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "attendees": [],
+      "organizer": {
+        "emailAddress": {
+          "address": "bryan@contoso.example"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "access_token": "ya29.x",
+  "expires_in": 3599,
+  "refresh_token": "1//x",
+  "scope": "openid https://www.googleapis.com/auth/userinfo.email",
+  "token_type": "Bearer"
+}
