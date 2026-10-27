@@ -591,6 +591,25 @@ scheduled job. R6: nothing to do: web's deployment SUCCESS by itself by
 30 s.** Browser notifications need production's own VAPID keys, set as
 Railway variables by the owner; until then Profile says they aren't set up.
 
+**Observed at Release 25 (2026-10-27 UTC, 8 migrations, all additive or
+no-op: `accounts 0005`, `tenancy 0022`–`0023`, `crm 0052`–`0053`,
+`calendars 0001`, `meetings 0009`–`0010`; six commits, from Microsoft 365
+mail to readings from meetings):** R1: the owner ran the backup by hand with
+the run-now mutation; gcloud's sign-in had expired, so the dump was read from
+`railway logs --service backup`, as at Release 19:
+`execsnowhq_prod_20261027_204736.sql.gz`, 4,178,389 bytes, 20:47:36. R2:
+`main` fast-forwarded `778a72e..e25ba88`, pushed 20:49:54. R3: the worker
+`WAITING` 20:51:31, listing exactly the eight. **R4 run by Claude**,
+20:51:45–56, all OK (1 min 51 s after the push). R5: `migrations current`
+20:52:07, cluster running 20:52:11. R5b: `ensure_schedules` created the one
+new job, `calendars.sync` (every 15 minutes), for both practices. R6: nothing
+to do: web's deployment SUCCESS by itself, the new code answering by
+20:52:46 (`/api/branding` carrying `microsoft_sign_in`), and
+`/accounts/google/start` going straight to Google's account chooser. **Push
+to worker running: 2 min 17 s.** Production already had the VAPID keys and
+the Google `calendar.events` scope; Microsoft 365 waits on the Entra
+registration's variables.
+
 ---
 
 ## Part A — the owner's steps, in order

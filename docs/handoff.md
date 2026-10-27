@@ -1,23 +1,67 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-27 UTC**, after Release 24 and the Microsoft 365 transport. **The
-next session starts at "2026-10-27: Release 24, and Microsoft 365 mail" just
-below, then "2026-10-26, later: polish, and browser notifications", then
-"2026-10-26: Release 23, and M5 part 5", then
-"2026-10-24: catch-up reach, and M5 part 3", then "2026-10-23:
-Release 22", then "2026-10-22: Release 21, and M5
-part 2", then "Where things
-stand (2026-10-21)", then "2026-10-19: M4 stop 4", then "2026-10-17, night: M4
-stop 3", "2026-10-17, evening: M4 stop 2", "2026-10-17", "2026-10-15, night"
-and "2026-10-15, evening".** Then "Release 12: the plan as it was" and
-"2026-10-13", which is the day in order. Everything from "Next" down was last
-brought up to date on 10/5; where it and a newer section disagree, the newer
-holds. Upload this at the start of the next chat with: "Read this handoff,
-then pick up where it leaves off." The specs in `docs/` are the source of
-truth; this covers what they don't, and what changed since 9/30.
+2026-10-27 UTC**, after Release 25. **The next session starts at
+"2026-10-27, late: Release 25, and where things stand" just below**, which
+sums up everything since Release 23; the dated sections after it have the
+detail. Then "2026-10-26: Release 23, and M5 part 5", "2026-10-24: catch-up
+reach, and M5 part 3", "2026-10-23: Release 22", "2026-10-22: Release 21,
+and M5 part 2", "Where things stand (2026-10-21)", and the older days in
+order. Everything from "Next" down was last brought up to date on 10/5;
+where it and a newer section disagree, the newer holds. Upload this at the
+start of the next chat with: "Read this handoff, then pick up where it
+leaves off." The specs in `docs/` are the source of truth; this covers what
+they don't, and what changed since 9/30.
 
-## 2026-10-27, late night: one-click unsubscribe, @ suggestions, readings from meetings (on `dev`)
+## 2026-10-27, late: Release 25, and where things stand
+
+- **Release 25 is live**: `main` at `e25ba88`, eight migrations applied by
+  the runbook in the waiting worker, all OK (`accounts 0005`, `tenancy
+  0022`–`0023`, `crm 0052`–`0053`, `calendars 0001`, `meetings`
+  `0009`–`0010`; additive or no-op); R5b created `calendars.sync` for both
+  practices; web came up by itself; push to worker running 2 min 17 s. R1 was
+  read from the backup service's log, gcloud's sign-in having expired.
+  Runbook, "Observed at Release 25". `dev` is ahead of `main` only by this
+  write-up.
+- **On production now, since Release 23:**
+  - *Release 24:* the HubSpot feed (M5 part 5), the M5 ties into the rest of
+    the app, the polish (figures as said, banners at phone width, one-email
+    introductions, the platform's NMI read-back) and browser notifications
+    with the Notices list.
+  - *Release 25:* Microsoft 365 as a practice's mail transport; Sign in with
+    Microsoft and meeting notes from OneDrive; the calendar (Home's "Today
+    and tomorrow", a company's Meetings, Add to calendar, the stage rule's
+    calendar event); practice sign-in straight to Google's account chooser
+    with the address optional and remembered; and the four small things:
+    one-click unsubscribe fixed (the `List-Unsubscribe` header was being
+    folded into encoded-words, on Gmail's path too), "@" name suggestions in
+    comment boxes, readings proposed from meeting notes, and the mail switch
+    waiting for an empty Outbox.
+- **Production's configuration:** the **VAPID keys and the Google
+  `calendar.events` scope are already on production** (owner, 2026-10-27),
+  so browser notifications and Google calendars can be used there.
+  **Microsoft 365 is not yet**: mail, Sign in with Microsoft, OneDrive notes
+  and Microsoft calendars all wait on the Entra app registration
+  (`MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`; delegated `Mail.*` per
+  `docs/m365_transport.md` §9, `Files.Read`, `Calendars.ReadWrite`,
+  `User.Read`); unset, each screen says it isn't set up.
+- **The demo fixes**, all on the demo since its 10/27 evening reseed: the
+  demo refuses calendar connections, disconnects and reads for every
+  practice, and never shows its seeded connection as anyone's (a Disconnect
+  there had removed the seeded meetings); calendar matching counts a client
+  with portal access as a client (the Acme check-in and review prep had
+  matched nothing); Acme Fasteners has a small scorecard, and its weekly
+  operations review proposes last week's scrap rate in the meeting queue.
+- **Only a real account can confirm:** the Microsoft side, `docs/m365_
+  transport.md` §10; the calendar, `docs/calendar.md` (11 points); a
+  reading proposed from a real meeting's notes (Claude's extraction is
+  untested against live notes); Gmail and Outlook showing one-click
+  unsubscribe on a real marketing send.
+- **Housekeeping:** `gcloud auth login` on the laptop, so the next R1 can
+  use the listing as written. The laptop's `execsnowhq_local` keeps an
+  archived "Contoso (check)" practice from the OneDrive check.
+
+## 2026-10-27, late night: one-click unsubscribe, @ suggestions, readings from meetings (released at Release 25)
 
 - **List-Unsubscribe** goes out on one line, as given: Python had folded a
   long one-click URL into encoded-words, which Gmail and Outlook do not read,
@@ -32,7 +76,7 @@ truth; this covers what they don't, and what changed since 9/30.
 - **The mail switch waits for an empty Outbox**, refusing with the count, on
   Settings → Email and in the Practices area.
 
-## 2026-10-27, night: the demo's calendar, and straight-to-Google sign-in (on `dev`)
+## 2026-10-27, night: the demo's calendar, and straight-to-Google sign-in (released at Release 25)
 
 - **The demo's calendar** is never shown as connected, and Disconnect and
   reading are refused there for every practice (a read or a disconnect had
@@ -45,7 +89,7 @@ truth; this covers what they don't, and what changed since 9/30.
   since the address picks its Google client.
 - **Calendar matching**: a client with portal access is matched as a client.
 
-## 2026-10-27, evening: Calendar (on `dev`, not released)
+## 2026-10-27, evening: Calendar (released at Release 25)
 
 - **Calendar** (`docs/calendar.md`; migrations `calendars 0001`, four
   tables, `crm 0053`, one column, `tenancy 0023`, no-op; all additive). One
@@ -58,7 +102,7 @@ truth; this covers what they don't, and what changed since 9/30.
   clients (and the Calendar API enabled) and `Calendars.ReadWrite` on the
   Entra registration.
 
-## 2026-10-27, later: Sign in with Microsoft, and OneDrive notes (on `dev`, not released)
+## 2026-10-27, later: Sign in with Microsoft, and OneDrive notes (released at Release 25)
 
 - **Sign in with Microsoft** (`accounts 0005`, additive: two columns on
   `app_user` binding the work account) for staff of a practice on Microsoft
@@ -74,16 +118,15 @@ truth; this covers what they don't, and what changed since 9/30.
   `.vtt` read. **Needs `Files.Read`** on the app registration. §10 items
   15–23 are what only a real tenant can confirm.
 
-## 2026-10-27: Release 24, and Microsoft 365 mail
+## 2026-10-27: Release 24, and Microsoft 365 mail (mail released at Release 25)
 
 - **Release 24 is live**: `main` at `778a72e`, seven additive migrations
   applied by the runbook in the waiting worker, all OK (`scorecard 0007`,
   `crm 0050`–`0051`, `work 0011`, `strategy 0020`, `billing 0011`,
   `notify 0001`); no new scheduled job, so no R5b; web came up by itself;
   push to worker running 2 min 30 s. It carried the HubSpot feed, the M5
-  ties, the polish and browser notifications below. **Production has no
-  VAPID keys yet**: until they are set, Profile says browser notifications
-  aren't set up there. Runbook, "Observed at Release 24".
+  ties, the polish and browser notifications below. Production had no
+  VAPID keys at the time; **they are set now** (owner, 2026-10-27). Runbook, "Observed at Release 24".
 - **Microsoft 365 as a practice's mail transport** (migrations `tenancy
   0022`, `crm 0052`, additive: `tenant.mail_provider`, the
   `microsoft_connection` table, a `graph_conversation_id` column on
@@ -100,7 +143,7 @@ truth; this covers what they don't, and what changed since 9/30.
   folds a long `List-Unsubscribe` into RFC 2047 encoded-words, so the header
   every marketing email carries may not be read as one by Gmail or Outlook
   (the one-click unsubscribe button). It is Gmail's path too, so it waits for
-  the owner's word.
+  the owner's word. *(Fixed in Release 25, at the owner's word.)*
 
 ## 2026-10-26: Release 23, and M5 part 5 (M5 part 5 released at Release 24)
 
@@ -162,7 +205,8 @@ truth; this covers what they don't, and what changed since 9/30.
   1.14 is the last on `requests` rather than `aiohttp`. **Needs VAPID keys per
   environment** (`manage.py make_vapid_keys`; `.env.example`); unset, Profile
   says it isn't set up and the Notices list works regardless. The laptop's
-  `.env` has its own pair. Not yet: "@" has no name suggestions as it is typed.
+  `.env` has its own pair. "@" name suggestions came in Release 25. **The
+  VAPID keys are on production** (owner, 2026-10-27).
 
 ## 2026-10-24: catch-up reach, and M5 part 3 (released at Release 23)
 
