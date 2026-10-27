@@ -36,13 +36,15 @@ PUBLIC_DOMAINS = {"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "
 def match(tenant, emails) -> tuple[set, set]:
     """(contact ids, company ids) for these addresses, in this practice."""
     from apps.crm.models import Company, CompanyDomain, ContactEmail
-    from apps.tenancy.models import Membership
+    from apps.tenancy.models import CLIENT_ROLES, Membership
 
     emails = {e.lower() for e in emails if e and "@" in e}
     if not emails:
         return set(), set()
+    # The practice's own team; a client with portal access is still a client.
     staff = {e.lower() for e in Membership.all_objects.filter(
-        tenant=tenant, revoked_at__isnull=True).values_list("user__email", flat=True)}
+        tenant=tenant, revoked_at__isnull=True).exclude(role__in=CLIENT_ROLES)
+        .values_list("user__email", flat=True)}
     emails -= staff
     contacts, companies, matched = set(), set(), set()
     for row in (ContactEmail.all_objects.filter(tenant=tenant, address__in=emails,

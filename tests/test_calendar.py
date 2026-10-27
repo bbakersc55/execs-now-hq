@@ -263,6 +263,17 @@ def test_matches_by_contact_then_by_domain_never_staff_or_public_mail(
 
 
 @pytest.mark.django_db
+def test_a_client_with_portal_access_is_still_a_client(seeded_tenant, acme):
+    """A client owner or team member holds a membership too; they are not the
+    practice's team, so neither they nor their company's domain is left out."""
+    member = MembershipFactory(tenant=seeded_tenant, role="FCC", client_company=acme["acme"])
+    member.user.__class__.objects.filter(pk=member.user_id).update(email="dana@acme.invalid")
+
+    assert sync.match(seeded_tenant, ["dana@acme.invalid", "lee@acme.invalid"]) == (
+        {acme["dana"].pk}, {acme["acme"].pk})
+
+
+@pytest.mark.django_db
 def test_no_attendee_address_is_kept(seeded_tenant, ff, google, acme):
     _sync(_connect(seeded_tenant, ff))
     fields = {f.name for m in (CalendarEvent, CalendarEventMatch) for f in m._meta.get_fields()}

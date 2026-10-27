@@ -43,7 +43,8 @@ owner's Prospecting → Follow Up Needed example (2026-10-05,
   are not kept.
 - **Matching:** an address held by a contact (and that contact's company);
   otherwise a company by the address's domain, never the practice's own
-  domain, a team member's, or a public mail domain (gmail.com, outlook.com and
+  domain, a team member's (a client with portal access is still a client), or a
+  public mail domain (gmail.com, outlook.com and
   the like).
 - **The window:** a day back to two weeks ahead, read whole every 15 minutes
   by the worker (`calendars.sync`, a new schedule) and by Home itself when the
@@ -79,7 +80,7 @@ new action, the board's question. The demo seeds the owner's calendar with
 four meetings today and tomorrow and one last week, matched to the cast, and
 connects nothing.
 
-Tests: `tests/test_calendar.py` (35): roles, isolation (one's own calendar,
+Tests: `tests/test_calendar.py` (36): roles, isolation (one's own calendar,
 matching inside the practice, a company one may see, a task in another
 practice, the callback's practice), reading (kept and dropped, matching,
 nothing of an address kept, the body never asked for, removal, a refused
