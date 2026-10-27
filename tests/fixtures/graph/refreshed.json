@@ -1,0 +1,7 @@
+{
+  "token_type": "Bearer",
+  "scope": "Mail.ReadBasic Mail.Send User.Read",
+  "expires_in": 4459,
+  "access_token": "eyJ0eXAiOi-access-2",
+  "refresh_token": "0.AAAA-refresh-2"
+}

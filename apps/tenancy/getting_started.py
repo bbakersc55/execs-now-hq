@@ -21,7 +21,9 @@ def items(tenant) -> list[dict]:
 
 
 def _all(tenant, t) -> list[dict]:
-    from apps.crm.models import Company, Contact, GmailConnection, ImportBatch
+    from apps.crm.models import (
+        Company, Contact, GmailConnection, ImportBatch, MicrosoftConnection,
+    )
     from apps.strategy.models import StrategyTemplate
     from apps.tenancy import words
     from apps.tenancy.models import Membership, TenantSecret
@@ -35,6 +37,11 @@ def _all(tenant, t) -> list[dict]:
         {"key": "gmail", "label": "Choose your practice address and connect Gmail",
          "to": "/settings/email",
          "done": GmailConnection.all_objects.filter(
+             tenant_id=t, send_as_verified_at__isnull=False).exists()}
+        if tenant.mail_provider != "microsoft" else
+        {"key": "gmail", "label": "Choose your practice address and connect Microsoft 365",
+         "to": "/settings/email",
+         "done": MicrosoftConnection.all_objects.filter(
              tenant_id=t, send_as_verified_at__isnull=False).exists()},
         {"key": "anthropic", "label": "Add your Anthropic key", "to": "/ai-usage",
          "done": TenantSecret.all_objects.filter(tenant_id=t,

@@ -1,0 +1,7 @@
+{
+  "error": "invalid_grant",
+  "error_description": "AADSTS70000: The provided value for the 'refresh_token' is not valid.\r\nTrace ID: 0000\r\nCorrelation ID: 0000",
+  "error_codes": [
+    70000
+  ]
+}

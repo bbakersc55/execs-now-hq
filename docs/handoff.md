@@ -1,8 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-26 UTC**, after Release 23 and M5 part 5. **The next session
-starts at "2026-10-26: Release 23, and M5 part 5" just below, then
+2026-10-27 UTC**, after Release 24 and the Microsoft 365 transport. **The
+next session starts at "2026-10-27: Release 24, and Microsoft 365 mail" just
+below, then "2026-10-26, later: polish, and browser notifications", then
+"2026-10-26: Release 23, and M5 part 5", then
 "2026-10-24: catch-up reach, and M5 part 3", then "2026-10-23:
 Release 22", then "2026-10-22: Release 21, and M5
 part 2", then "Where things
@@ -15,7 +17,35 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
-## 2026-10-26: Release 23, and M5 part 5
+## 2026-10-27: Release 24, and Microsoft 365 mail
+
+- **Release 24 is live**: `main` at `778a72e`, seven additive migrations
+  applied by the runbook in the waiting worker, all OK (`scorecard 0007`,
+  `crm 0050`–`0051`, `work 0011`, `strategy 0020`, `billing 0011`,
+  `notify 0001`); no new scheduled job, so no R5b; web came up by itself;
+  push to worker running 2 min 30 s. It carried the HubSpot feed, the M5
+  ties, the polish and browser notifications below. **Production has no
+  VAPID keys yet**: until they are set, Profile says browser notifications
+  aren't set up there. Runbook, "Observed at Release 24".
+- **Microsoft 365 as a practice's mail transport** (migrations `tenancy
+  0022`, `crm 0052`, additive: `tenant.mail_provider`, the
+  `microsoft_connection` table, a `graph_conversation_id` column on
+  `email_thread` and `unmatched_inbound`; on `dev`, not released). Built to
+  `docs/m365_transport.md` §§2–5 and 7, as built in its new §9, with every
+  assumption only a real Microsoft 365 tenant can confirm in §10. **One
+  transport a practice**, switched by the practice owner on Settings →
+  Email ("Mail goes through"); switching deletes nothing. Gmail's path is
+  unchanged (`tests/test_microsoft_transport.py`, last section). Not built:
+  OneDrive notes (§6), Sign in with Microsoft (D1). **Needs the Entra app
+  registration** (`MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`;
+  `.env.example`) before anyone can connect; unset, the screen says
+  Microsoft 365 isn't set up. **Found, not fixed:** `transport.build_mime`
+  folds a long `List-Unsubscribe` into RFC 2047 encoded-words, so the header
+  every marketing email carries may not be read as one by Gmail or Outlook
+  (the one-click unsubscribe button). It is Gmail's path too, so it waits for
+  the owner's word.
+
+## 2026-10-26: Release 23, and M5 part 5 (M5 part 5 released at Release 24)
 
 - **Release 23 is live**: `main` at `32479ca`, nine additive migrations
   applied by the runbook in the waiting worker, all OK (`billing 0010`,
@@ -40,7 +70,7 @@ truth; this covers what they don't, and what changed since 9/30.
   Overtime Off track the last three weeks, and drafts Michael Scott's weekly
   digest after the scorecard, so its Scorecard section shows on Digests.
 
-## 2026-10-26, later: polish, and browser notifications (on `dev`, not released)
+## 2026-10-26, later: polish, and browser notifications (released at Release 24)
 
 - **Polish.** A goal's figures read as said ("54% → 90%", "$1,200", "1,250.5";
   `apps/work/figures.py` and `lib/figures.ts`; the API keeps its decimals),
@@ -1340,7 +1370,7 @@ the cutover on 9/30.** Repo github.com/bbakersc55/execs-now-hq: work on
 | **Strategy document redesign** (S2) | **Built on `dev`, NOT released** (needs `strategy 0019`, `tenancy 0016`). P3 spec §10 |
 | **P6 M4** personal finance | **Spec** `docs/p6_m4_personal_finance.md`. **Stop 1 built on `dev`, NOT released** (needs `finance 0013–0015`, `personal 0001–0002`). Stops 2–4 not built |
 | P4 billing | **Spec written** (`docs/p4_billing.md`), ten decisions open, no code |
-| Microsoft 365 transport | **Spec written** (`docs/m365_transport.md`), seven decisions open, no code |
+| Microsoft 365 transport | **Mail transport built on `dev` 10/27** (`docs/m365_transport.md` §9–10); OneDrive notes and Microsoft sign-in not built |
 | Backlog, built 10/3, **released 10/3 (Release 3)** | dashboard blocks drag across rows; "Not duplicates" on Merge duplicates (migration `crm 0031`); remove an accepted diagnostic question |
 
 Tests on `dev` at the end of 10/5 (`9eac353`, with the digest schedule):

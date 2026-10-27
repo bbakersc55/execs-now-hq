@@ -142,10 +142,10 @@ def remove_member(membership, *, actor=None):
     """FR-0.8c — removal CASCADES.
 
     Sessions invalidated; for a CF every live client_assignment closed and the
-    Gmail connection deleted with its stored token. NOTHING they authored is
+    Gmail or Microsoft 365 connection deleted with its stored token. NOTHING they authored is
     removed: a departed CF's tasks, notes, and sent mail stay on the record.
     """
-    from apps.crm.models import GmailConnection
+    from apps.crm.models import GmailConnection, MicrosoftConnection
 
     tenant = membership.tenant
     now = timezone.now()
@@ -159,8 +159,11 @@ def remove_member(membership, *, actor=None):
     assignment_count = assignments.count()
     assignments.update(removed_at=now)
 
-    connections = GmailConnection.all_objects.filter(tenant=tenant, user=membership.user)
-    connection_count = connections.count()
+    connections = [
+        *GmailConnection.all_objects.filter(tenant=tenant, user=membership.user),
+        *MicrosoftConnection.all_objects.filter(tenant=tenant, user=membership.user),
+    ]
+    connection_count = len(connections)
     for connection in connections:
         if connection.secret_id:
             connection.secret.delete()  # the stored refresh token goes too

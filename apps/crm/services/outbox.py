@@ -382,7 +382,8 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     demo_to = _demo_recipient(message.tenant) if demo else ""
     use_real_transport = (bool(demo_to) if demo
                           else (not settings.IS_LOCAL) or dev_real)
-    transport = get_transport() if use_real_transport else DevOutboxTransport()
+    transport = (get_transport(tenant=message.tenant) if use_real_transport
+                 else DevOutboxTransport())
 
     thread = message.thread
     if thread is None:
@@ -481,6 +482,11 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         if result.get("gmail_thread_id") and not thread.gmail_thread_id:
             thread.gmail_thread_id = result["gmail_thread_id"]
             updates.insert(0, "gmail_thread_id")
+        # The same for Microsoft 365: its first send's conversation is the
+        # one replies are read from.
+        if result.get("graph_conversation_id") and not thread.graph_conversation_id:
+            thread.graph_conversation_id = result["graph_conversation_id"]
+            updates.insert(0, "graph_conversation_id")
         thread.save(update_fields=updates)
 
     AuditEvent.all_objects.create(

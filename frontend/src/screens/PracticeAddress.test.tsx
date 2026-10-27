@@ -118,8 +118,7 @@ describe("the practice address", () => {
     expect(question).toHaveTextContent(/send from it once it is in your Gmail Send mail as list/);
     expect(question).toHaveTextContent(/Replies sent to that inbox will not appear in client records/);
     expect(question).toHaveTextContent(/second account is planned and not built yet/);
-    expect(question).toHaveTextContent(/connects to Google only today/);
-    expect(question).toHaveTextContent(/Microsoft 365 inbox cannot be connected/);
+    expect(question).toHaveTextContent(/switches Mail goes through, above, to Microsoft 365/);
   });
 
   it("shows Gmail's answer when the new address is not on the account", async () => {

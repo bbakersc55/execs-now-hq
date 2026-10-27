@@ -147,6 +147,12 @@ GOOGLE_OAUTH_EXTERNAL_CLIENT_ID = env("GOOGLE_OAUTH_EXTERNAL_CLIENT_ID", default
 # On everywhere real; the test suite turns it off except where it is tested.
 BETA_AGREEMENT_REQUIRED = env.bool("BETA_AGREEMENT_REQUIRED", default=True)
 GOOGLE_OAUTH_EXTERNAL_CLIENT_SECRET = env("GOOGLE_OAUTH_EXTERNAL_CLIENT_SECRET", default="")
+# A practice on Microsoft 365 (docs/m365_transport.md): the Entra app
+# registration's values. Multi-tenant, work accounts only, so the authority is
+# "organizations"; a single directory's id narrows it for testing.
+MICROSOFT_CLIENT_ID = env("MICROSOFT_CLIENT_ID", default="").strip()
+MICROSOFT_CLIENT_SECRET = env("MICROSOFT_CLIENT_SECRET", default="").strip()
+MICROSOFT_AUTHORITY = env("MICROSOFT_AUTHORITY", default="organizations").strip() or "organizations"
 
 SOCIALACCOUNT_PROVIDERS = {
     "google": {

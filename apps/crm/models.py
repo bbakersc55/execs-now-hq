@@ -890,6 +890,10 @@ class EmailThread(TenantScopedModel):
     # Tier 2 match key (FR-6.6). Populated by Module 6; the column exists now so
     # Phase 1 sends can record it.
     gmail_thread_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    #: The same key for a practice on Microsoft 365: the Graph `conversationId`
+    #: its first send was given (docs/m365_transport.md §3).
+    graph_conversation_id = models.CharField(max_length=255, blank=True, default="",
+                                             db_default="", db_index=True)
     subject = models.CharField(max_length=255, blank=True, default="")
     last_message_at = models.DateTimeField(null=True, blank=True)
     # Module 6's cursor (FR-6.5). Not a Gmail historyId: that expires after
@@ -1029,6 +1033,42 @@ class GmailConnection(TenantScopedModel):
         db_table = "gmail_connection"
         constraints = [
             models.UniqueConstraint(fields=["tenant", "user"], name="gmail_connection_one_per_user")
+        ]
+
+
+class MicrosoftConnection(TenantScopedModel):
+    """A Microsoft 365 work account, for a practice whose mail provider is
+    Microsoft (docs/m365_transport.md). The twin of `GmailConnection`: FF and
+    CF each connect their own (H7), sending always, reading mail only when
+    "Also collect replies" was ticked.
+
+    `Mail.ReadBasic` rides with sending, because Graph has no send-as list:
+    the practice address is checked by a test send read back from Sent Items
+    (D3), and reading back who it was from needs a read of the message's
+    envelope, not its body.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="microsoft_connections"
+    )
+    email_address = models.EmailField()
+    #: The work account's own directory (Entra tenant id), for the record and
+    #: for the admin-consent link a practice's admin may need.
+    directory_id = models.CharField(max_length=64, blank=True, default="")
+    scopes = models.JSONField(default=list)
+    send_as_address = models.EmailField(blank=True, default="")
+    send_as_verified_at = models.DateTimeField(null=True, blank=True)
+    send_as_error = models.TextField(blank=True, default="")
+    last_poll_error = models.TextField(blank=True, default="")
+    secret = models.ForeignKey(
+        "tenancy.TenantSecret", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "microsoft_connection"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "user"],
+                                    name="microsoft_connection_one_per_user")
         ]
 
 
@@ -1295,6 +1335,8 @@ class UnmatchedInbound(TenantScopedModel):
     provider = models.CharField(max_length=16, default="gmail")
     provider_message_id = models.CharField(max_length=255, db_index=True)
     gmail_thread_id = models.CharField(max_length=120, blank=True, default="")
+    graph_conversation_id = models.CharField(max_length=255, blank=True, default="",
+                                             db_default="")
     from_address = models.EmailField(blank=True, default="")
     from_name = models.CharField(max_length=200, blank=True, default="")
     to_addresses = models.JSONField(default=list, blank=True)

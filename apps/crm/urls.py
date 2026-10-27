@@ -2,6 +2,7 @@ from rest_framework.routers import DefaultRouter
 
 from apps.crm import views, views_campaigns, views_queue
 from apps.crm import views_gmail
+from apps.crm import views_microsoft
 from apps.crm import views_inbound
 from apps.crm import views_referrals
 
@@ -36,5 +37,8 @@ router.register("unmatched-inbound", views_inbound.UnmatchedInboundViewSet,
                 basename="unmatched-inbound")
 router.register("gmail-connection", views_gmail.GmailConnectionViewSet,
                 basename="gmail-connection")
+router.register("microsoft-connection", views_microsoft.MicrosoftConnectionViewSet,
+                basename="microsoft-connection")
+router.register("mail-provider", views_microsoft.MailProviderView, basename="mail-provider")
 
 urlpatterns = router.urls

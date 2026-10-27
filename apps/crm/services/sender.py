@@ -31,8 +31,12 @@ def verified_addresses(tenant, user):
     `own` is empty unless that user has a Gmail connection whose alias is
     verified — which is the only state in which Gmail will accept either.
     """
+    from apps.crm.models import MicrosoftConnection
+    from apps.crm.services.transport import is_microsoft
+
     alias = tenant.from_address
-    connection = GmailConnection.all_objects.filter(tenant=tenant, user=user).first()
+    model = MicrosoftConnection if is_microsoft(tenant) else GmailConnection
+    connection = model.all_objects.filter(tenant=tenant, user=user).first()
     own = ""
     if connection is not None and connection.send_as_verified_at is not None:
         own = connection.email_address

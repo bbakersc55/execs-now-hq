@@ -37,6 +37,7 @@ from apps.crm.services import transport
 #: `matched_by`, so the history can say how a reply found its way home rather
 #: than presenting the connection as a fact.
 BY_THREAD_ID = "gmail_thread_id"
+BY_CONVERSATION = "graph_conversation_id"
 BY_IN_REPLY_TO = "in_reply_to"
 BY_HEADER = "thread_header"
 BY_SENDER = "sender_email"
@@ -48,6 +49,12 @@ MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 
 
 # --------------------------------------------------------------- reading a payload
+
+def provider_of(payload: dict) -> str:
+    """"gmail" for a Gmail payload, which never says; "microsoft" for one
+    `graph.GraphReader` reshaped, which always does."""
+    return payload.get("provider") or "gmail"
+
 
 def header(payload: dict, name: str) -> str:
     """One header, case-insensitively, from Gmail's list-of-pairs shape."""
@@ -173,6 +180,11 @@ def match(tenant, payload: dict):
         thread = EmailThread.objects.filter(gmail_thread_id=gmail_thread_id).first()
         if thread is not None:
             return thread, thread.contact, BY_THREAD_ID, ""
+    conversation_id = payload.get("conversationId") or ""
+    if conversation_id:
+        thread = EmailThread.objects.filter(graph_conversation_id=conversation_id).first()
+        if thread is not None:
+            return thread, thread.contact, BY_CONVERSATION, ""
 
     for field in ("In-Reply-To", "References"):
         thread = _thread_by_reference(tenant, header(payload, field))
@@ -196,6 +208,10 @@ def match(tenant, payload: dict):
             thread = (EmailThread.objects.filter(contact=row.contact, is_financial=False,
                                                  gmail_thread_id=gmail_thread_id).first()
                       if gmail_thread_id else None)
+            if thread is None and conversation_id:
+                thread = EmailThread.objects.filter(
+                    contact=row.contact, is_financial=False,
+                    graph_conversation_id=conversation_id).first()
             return thread, row.contact, BY_SENDER, ""
 
     if not address:
@@ -205,9 +221,9 @@ def match(tenant, payload: dict):
 
 # ------------------------------------------------------------------- ingesting
 
-def already_have(tenant, provider_message_id: str) -> bool:
+def already_have(tenant, provider_message_id: str, provider: str = "gmail") -> bool:
     return bool(provider_message_id) and (
-        EmailMessage.objects.filter(provider="gmail",
+        EmailMessage.objects.filter(provider=provider,
                                     provider_message_id=provider_message_id).exists()
         or UnmatchedInbound.objects.filter(
             provider_message_id=provider_message_id).exists())
@@ -238,7 +254,9 @@ def ingest_message(tenant, payload: dict, *, client=None) -> dict:
     second sighting of a message is the normal case, not the exception.
     """
     provider_message_id = payload.get("id") or ""
-    if already_have(tenant, provider_message_id):
+    provider = provider_of(payload)
+    conversation_id = payload.get("conversationId") or ""
+    if already_have(tenant, provider_message_id, provider):
         return {"outcome": "already_had", "message": None}
 
     thread, contact, how, why_not = match(tenant, payload)
@@ -249,9 +267,10 @@ def ingest_message(tenant, payload: dict, *, client=None) -> dict:
 
     if thread is None and contact is None:
         row = UnmatchedInbound.objects.create(
-            tenant=tenant, provider="gmail",
+            tenant=tenant, provider=provider,
             provider_message_id=provider_message_id,
             gmail_thread_id=payload.get("threadId") or "",
+            graph_conversation_id=conversation_id,
             from_address=from_address[:254], from_name=from_name[:200],
             to_addresses=[a for a in [parseaddr(header(payload, "To"))[1]] if a],
             subject=header(payload, "Subject")[:255],
@@ -268,11 +287,12 @@ def ingest_message(tenant, payload: dict, *, client=None) -> dict:
             contact=contact,
             client_company=contact.company if contact and contact.company_id else None,
             gmail_thread_id=payload.get("threadId") or "",
+            graph_conversation_id=conversation_id,
             subject=header(payload, "Subject")[:255],
         )
 
     message = EmailMessage.objects.create(
-        tenant=tenant, thread=thread, direction="inbound", provider="gmail",
+        tenant=tenant, thread=thread, direction="inbound", provider=provider,
         provider_message_id=provider_message_id,
         from_address=from_address[:254],
         to_addresses=[a for a in [parseaddr(header(payload, "To"))[1]] if a],
@@ -283,15 +303,19 @@ def ingest_message(tenant, payload: dict, *, client=None) -> dict:
         message_id_header=header(payload, "Message-ID")[:255],
         in_reply_to=header(payload, "In-Reply-To")[:255],
         references=header(payload, "References"),
-        gmail_message_id=provider_message_id,
+        gmail_message_id=provider_message_id if provider == "gmail" else "",
         gmail_thread_id=payload.get("threadId") or "",
     )
     _store_attachments(tenant, message, payload, client=client)
 
     if not thread.gmail_thread_id and payload.get("threadId"):
         thread.gmail_thread_id = payload["threadId"]
+    fields = ["gmail_thread_id", "last_message_at", "updated_at"]
+    if conversation_id and not thread.graph_conversation_id:
+        thread.graph_conversation_id = conversation_id
+        fields.insert(1, "graph_conversation_id")
     thread.last_message_at = received
-    thread.save(update_fields=["gmail_thread_id", "last_message_at", "updated_at"])
+    thread.save(update_fields=fields)
     # A reply to a marketing email that asks to leave is marked; nothing more.
     from apps.crm.services import leaving
 
@@ -379,11 +403,16 @@ def file_to_contact(row, *, contact, actor=None, thread=None, add_address=False)
         thread = (EmailThread.objects.filter(contact=contact, is_financial=False,
                                              gmail_thread_id=row.gmail_thread_id).first()
                   if row.gmail_thread_id else None)
+    if thread is None and row.graph_conversation_id:
+        thread = EmailThread.objects.filter(
+            contact=contact, is_financial=False,
+            graph_conversation_id=row.graph_conversation_id).first()
     if thread is None:
         thread = EmailThread.objects.create(
             tenant=tenant, thread_token=EmailThread.new_token(), contact=contact,
             client_company=contact.company if contact.company_id else None,
-            gmail_thread_id=row.gmail_thread_id, subject=row.subject)
+            gmail_thread_id=row.gmail_thread_id,
+            graph_conversation_id=row.graph_conversation_id, subject=row.subject)
 
     message = EmailMessage.objects.create(
         tenant=tenant, thread=thread, direction="inbound", provider=row.provider,
@@ -393,7 +422,7 @@ def file_to_contact(row, *, contact, actor=None, thread=None, add_address=False)
         body_stripped=row.body_stripped, raw=row.raw, contact=contact,
         matched_by="filed_by_hand", received_at=row.received_at,
         message_id_header=header(row.raw, "Message-ID")[:255],
-        gmail_message_id=row.provider_message_id,
+        gmail_message_id=row.provider_message_id if row.provider == "gmail" else "",
         gmail_thread_id=row.gmail_thread_id,
     )
     if add_address and row.from_address:

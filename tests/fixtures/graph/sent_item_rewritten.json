@@ -1,0 +1,16 @@
+{
+  "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AImmutable-1",
+  "isDraft": false,
+  "from": {
+    "emailAddress": {
+      "name": "Bryan Baker",
+      "address": "bryan@contoso.example"
+    }
+  },
+  "sender": {
+    "emailAddress": {
+      "name": "Bryan Baker",
+      "address": "bryan@contoso.example"
+    }
+  }
+}

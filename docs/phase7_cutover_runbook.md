@@ -577,6 +577,20 @@ do: the push's own web deployment came up by itself (SUCCESS), `/healthz`
 200 at 15:43:36. **Push to worker running: 4 min 20 s.** The first release
 since 20 where web did not give up waiting: R4 followed `WAITING` at once.
 
+**Observed at Release 24 (2026-10-27 UTC, 7 migrations, all additive:
+`scorecard 0007`, `crm 0050`–`0051`, `work 0011`, `strategy 0020`,
+`billing 0011`, `notify 0001`; four commits, from the HubSpot feed to
+browser notifications):** R1: the owner ran the backup by hand with the
+run-now mutation; `execsnowhq_prod_20261027_005253.sql.gz`, 4.0 MB, 00:52:56.
+R2: `main` fast-forwarded `32479ca..778a72e`, pushed 00:55:28. R3: the worker
+`WAITING` 00:57:20, listing exactly the seven. **R4 run by Claude**,
+00:57:31–39, all OK (2 min 3 s after the push). R5: `migrations current`
+00:57:55, cluster running 00:57:58. R5b: not needed, the release adds no
+scheduled job. R6: nothing to do: web's deployment SUCCESS by itself by
+00:58:30, `/healthz` 200 and `/sw.js` 200. **Push to worker running: 2 min
+30 s.** Browser notifications need production's own VAPID keys, set as
+Railway variables by the owner; until then Profile says they aren't set up.
+
 ---
 
 ## Part A — the owner's steps, in order

@@ -485,6 +485,38 @@ export interface GmailStatus {
   verify_error?: string;
 }
 
+/** Which transport carries the practice's mail (docs/m365_transport.md, D6). */
+export interface MailProvider {
+  provider: "google" | "microsoft";
+  label: string;
+  choices: { value: "google" | "microsoft"; label: string }[];
+  can_switch: boolean;
+  /** Why nothing can be switched or connected here (the demo), or "". */
+  refusal: string;
+  google_configured: boolean;
+  microsoft_configured: boolean;
+}
+
+/** One person's Microsoft 365 connection, and the practice's sending state. */
+export interface MicrosoftStatus {
+  provider: "google" | "microsoft";
+  connected: boolean;
+  email_address: string;
+  scopes: string[];
+  connected_at: string | null;
+  reads_mail: boolean;
+  alias: string;
+  alias_verified: boolean;
+  alias_verified_at: string | null;
+  send_as_error: string;
+  is_sending_connection: boolean;
+  practice_sending: { ok: boolean; detail: string; account: string };
+  configured: boolean;
+  refusal: string;
+  is_local_build: boolean;
+  verify_error?: string;
+}
+
 /** Module 2. A locked note the viewer has not unlocked arrives as a stub:
  *  the fields below `created_at` are absent, not empty (FR-2.11). */
 export interface NoteLinks {

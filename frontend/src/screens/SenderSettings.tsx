@@ -24,8 +24,9 @@ const PRODUCERS: { key: string; label: string; hint: string }[] = [
     hint: "Anything you compose yourself." },
 ];
 
-/** FR-1.15c/d — who app mail comes from, and how it signs off. */
-export function SenderSettings() {
+/** FR-1.15c/d — who app mail comes from, and how it signs off. `provider`
+ *  names the practice's transport (docs/m365_transport.md). */
+export function SenderSettings({ provider = "Gmail" }: { provider?: "Gmail" | "Microsoft 365" }) {
   const qc = useQueryClient();
   const [note, setNote] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export function SenderSettings() {
       {note && <Banner kind="ok">{note}</Banner>}
 
       <p className="muted small">
-        Both options are limited to <strong>verified send-as addresses</strong> — Gmail
+        Both options are limited to <strong>verified send-as addresses</strong> — {provider}
         refuses anything else, so offering a choice that failed at send time would be
         worse than not offering it.
       </p>
@@ -60,7 +61,7 @@ export function SenderSettings() {
       {!ownVerified && (
         <Banner kind="warn">
           Your own address is not a verified send-as address yet, so everything goes from
-          the practice alias. Connect Gmail and verify the alias above to unlock it.
+          the practice alias. Connect {provider} and verify the alias above to unlock it.
         </Banner>
       )}
 

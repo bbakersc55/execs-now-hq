@@ -1,0 +1,40 @@
+Received: from mail.acme.invalid (203.0.113.7) by SN6PR11MB0001.namprd11.prod.outlook.com
+Date: Tue, 27 Oct 2026 16:30:00 +0000
+From: Dana Reyes <dana@acme.invalid>
+To: Contoso Practice <info@contoso.example>
+Subject: Re: Your progress report
+Message-ID: <CAJ-reply-1@mail.acme.invalid>
+In-Reply-To: <SN6PR11MB0001.exchange-assigned@SN6PR11MB0001.namprd11.prod.outlook.com>
+References: <SN6PR11MB0001.exchange-assigned@SN6PR11MB0001.namprd11.prod.outlook.com>
+Thread-Topic: Your progress report
+Thread-Index: AQHZ1234
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset="windows-1252"
+Content-Transfer-Encoding: quoted-printable
+
+Thanks =96 the numbers look right. One question on the hiring plan.
+
+On Tue, 27 Oct 2026 at 15:00, Contoso Practice <info@contoso.example> wrote:
+> Here is this week's progress report.
+
+--inner
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>Thanks &ndash; the numbers look right. One question on the hiring plan.</p></body></html>
+
+--inner--
+
+--outer
+Content-Type: application/pdf; name="hiring-plan.pdf"
+Content-Disposition: attachment; filename="hiring-plan.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PC9UeXBlL0NhdGFsb2c+PgplbmRvYmoKdHJhaWxlcgo8PC9Sb290IDEgMCBSPj4KJSVFT0YK
+
+--outer--

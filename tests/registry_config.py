@@ -338,6 +338,13 @@ register(KpiAppFeed, factories.KpiAppFeedFactory, api_exposed=False)
 register(HubSpotConnection, factories.HubSpotConnectionFactory, api_exposed=False)
 register(KpiHubSpotFeed, factories.KpiHubSpotFeedFactory, api_exposed=False)
 
+# Microsoft 365 as a practice's mail (2026-10-27): each person's own, served
+# by /api/microsoft-connection/ for the person signed in
+# (tests/test_microsoft_transport.py).
+from apps.crm.models import MicrosoftConnection  # noqa: E402
+
+register(MicrosoftConnection, factories.MicrosoftConnectionFactory)
+
 # The Notices list and browser notifications (2026-10-26): each person's own,
 # served by /api/notify/ for the person signed in (tests/test_notify.py).
 from apps.notify.models import Notice, PushPreference, PushSubscription  # noqa: E402

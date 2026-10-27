@@ -85,7 +85,7 @@ class Command(BaseCommand):
         from apps.accounts.models import MagicLinkToken, User
         from apps.crm.models import (
             ContactEmail, ContactPhone, DevSendAllowlistEntry, EmailMessage, EmailSuppression,
-            GmailConnection, ImportRow, OutboxMessage, UnmatchedInbound,
+            GmailConnection, ImportRow, MicrosoftConnection, OutboxMessage, UnmatchedInbound,
         )
         from apps.meetings.models import ProposalItem
         from apps.strategy.models import StrategySession
@@ -167,8 +167,9 @@ class Command(BaseCommand):
             n += 1
         rows.append(("proposal_item participant emails", n, "rewritten"))
 
-        n = GmailConnection.all_objects.count()
+        n = GmailConnection.all_objects.count() + MicrosoftConnection.all_objects.count()
         GmailConnection.all_objects.all().delete()
+        MicrosoftConnection.all_objects.all().delete()
         secrets = TenantSecret.all_objects.count()
         TenantSecret.all_objects.all().delete()
         rows.append(("gmail_connection", n, f"deleted (and {secrets} tenant_secret rows, "

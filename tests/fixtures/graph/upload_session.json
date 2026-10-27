@@ -1,0 +1,8 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.uploadSession",
+  "uploadUrl": "https://outlook.office.com/api/v2.0/Users('x')/Messages('y')/AttachmentSessions('z')?authtoken=eyJhbGciOi-upload",
+  "expirationDateTime": "2026-10-27T17:00:00Z",
+  "nextExpectedRanges": [
+    "0-"
+  ]
+}

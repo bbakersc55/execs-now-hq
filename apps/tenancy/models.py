@@ -100,6 +100,12 @@ class Tenant(UUIDModel):
         #: sends but its subscription charge; no data is touched.
         SUSPENDED = "suspended", "Suspended"
 
+    class MailProvider(models.TextChoices):
+        """Who carries the practice's mail (docs/m365_transport.md, D6): one at
+        a time, and everything above the transport is the same for both."""
+        GOOGLE = "google", "Gmail"
+        MICROSOFT = "microsoft", "Microsoft 365"
+
     class OAuthClient(models.TextChoices):
         #: The Executives Now Workspace client (consent screen Internal).
         INTERNAL = "internal", "Executives Now Workspace"
@@ -123,6 +129,9 @@ class Tenant(UUIDModel):
     oauth_client = models.CharField(max_length=12, choices=OAuthClient.choices,
                                     default=OAuthClient.INTERNAL,
                                     db_default=OAuthClient.INTERNAL)
+    mail_provider = models.CharField(max_length=12, choices=MailProvider.choices,
+                                     default=MailProvider.GOOGLE,
+                                     db_default=MailProvider.GOOGLE)
     timezone = models.CharField(max_length=64, default="America/Denver")  # D4
     from_address = models.EmailField(default="info@getexecutivesnow.com")  # H2
     inbound_domain = models.CharField(
@@ -423,6 +432,8 @@ class SecretKind(models.TextChoices):
     #: P4: the practice's own NMI account (apps/billing/payment_accounts.py).
     NMI_PRIVATE_KEY = "nmi_private_key", "NMI private API key"
     NMI_PUBLIC_KEY = "nmi_public_key", "NMI public tokenization key"
+    #: A practice on Microsoft 365 (docs/m365_transport.md).
+    MICROSOFT_REFRESH = "microsoft_refresh", "Microsoft 365 refresh token"
 
 
 class TenantSecret(TenantScopedModel):

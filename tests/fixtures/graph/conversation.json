@@ -1,0 +1,29 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('bryan%40contoso.example')/messages(id,conversationId,internetMessageId,receivedDateTime,isDraft)",
+  "value": [
+    {
+      "@odata.etag": "W/\"a\"",
+      "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AImmutable-1",
+      "conversationId": "AAQkADNkNjAzZjVjLWJmODctNDgwYi1hYmZjLWQ0MmMwNjNlNGFmMgAQACOnversation1=",
+      "internetMessageId": "<SN6PR11MB0001.exchange-assigned@SN6PR11MB0001.namprd11.prod.outlook.com>",
+      "receivedDateTime": "2026-10-27T15:00:01Z",
+      "isDraft": false
+    },
+    {
+      "@odata.etag": "W/\"b\"",
+      "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AImmutable-reply",
+      "conversationId": "AAQkADNkNjAzZjVjLWJmODctNDgwYi1hYmZjLWQ0MmMwNjNlNGFmMgAQACOnversation1=",
+      "internetMessageId": "<CAJ-reply-1@mail.acme.invalid>",
+      "receivedDateTime": "2026-10-27T16:30:00Z",
+      "isDraft": false
+    },
+    {
+      "@odata.etag": "W/\"c\"",
+      "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AImmutable-draft",
+      "conversationId": "AAQkADNkNjAzZjVjLWJmODctNDgwYi1hYmZjLWQ0MmMwNjNlNGFmMgAQACOnversation1=",
+      "internetMessageId": "<unsent-draft@contoso.example>",
+      "receivedDateTime": "2026-10-27T17:00:00Z",
+      "isDraft": true
+    }
+  ]
+}

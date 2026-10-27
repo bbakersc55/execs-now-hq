@@ -171,8 +171,8 @@ export function PracticeAddress({ me, status, onSaved }: {
                 <li><strong>Replies sent to that inbox will not appear in client
                   records.</strong> The app reads only the Gmail account you connect.
                   Connecting a second account is planned and not built yet.</li>
-                <li>The app connects to Google only today. A Microsoft 365 inbox cannot
-                  be connected.</li>
+                <li>A practice on Microsoft 365 switches <em>Mail goes through</em>, above,
+                  to Microsoft 365 and connects it there instead.</li>
               </ul>
             </div>
           )}

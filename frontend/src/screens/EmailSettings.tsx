@@ -4,8 +4,9 @@ import { useSearchParams } from "react-router-dom";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
-import { GmailStatus, Me, api } from "../lib/api";
+import { GmailStatus, MailProvider, Me, api } from "../lib/api";
 import { DevAllowlist } from "./DevAllowlist";
+import { MailProviderCard, MicrosoftEmailSettings } from "./MicrosoftEmail";
 import { PracticeAddress } from "./PracticeAddress";
 import { SenderSettings } from "./SenderSettings";
 
@@ -26,8 +27,31 @@ function scopeLabel(scope: string) {
   return SCOPE_LABELS[scope] ?? scope.replace("https://www.googleapis.com/auth/", "");
 }
 
-/** Settings → Email. FF and CF only: a VA never reaches this route (H7). */
+/**
+ * Settings → Email. FF and CF only: a VA never reaches this route (H7).
+ *
+ * The practice's mail goes through one transport (docs/m365_transport.md,
+ * D6): Gmail's screen below, or Microsoft 365's. "Mail goes through" sits at
+ * the top of either. When the server cannot say which, it is Gmail's screen,
+ * as it always was.
+ */
 export function EmailSettings({ me }: { me: Me }) {
+  const provider = useQuery<MailProvider>({
+    queryKey: ["mail-provider"],
+    queryFn: () => api.get<MailProvider>("/api/mail-provider/"),
+    retry: false,
+  });
+  if (provider.isLoading) return <p className="muted">Loading…</p>;
+  const card = provider.data
+    ? <MailProviderCard provider={provider.data} />
+    : null;
+  if (provider.data?.provider === "microsoft") {
+    return <MicrosoftEmailSettings me={me} providerCard={card} />;
+  }
+  return <GmailEmailSettings me={me} providerCard={card} />;
+}
+
+function GmailEmailSettings({ me, providerCard }: { me: Me; providerCard: React.ReactNode }) {
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [note, setNote] = useState("");
@@ -110,6 +134,8 @@ export function EmailSettings({ me }: { me: Me }) {
 
       {note && <Banner kind="ok">{note}</Banner>}
       {problem && <Banner kind="bad">{problem}</Banner>}
+
+      {providerCard}
 
       {!s.oauth_configured && (
         <Banner kind="warn">

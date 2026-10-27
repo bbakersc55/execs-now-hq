@@ -110,7 +110,7 @@ def test_the_demo_sends_one_email_to_both_only_to_its_redirect(cast, ff, api, mo
 
     monkeypatch.setattr(environment, "is_demo", lambda: True)
     monkeypatch.setattr(outbox, "_demo_recipient", lambda tenant: "redirect@demo.invalid")
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: Capture())
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: Capture())
     with tenant_context(cast["t"].pk):
         outbox.approve(draft, actor=ff.user, role="FF")
     [kw] = sent

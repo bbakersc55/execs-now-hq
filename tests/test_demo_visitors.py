@@ -346,7 +346,7 @@ def test_everything_a_copy_sends_goes_to_its_visitor(copy, demo_connection, monk
         def send(self, **kw):
             sent.append(kw)
             return {"provider": "gmail", "provider_message_id": "x"}
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: Capture())
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: Capture())
     with tenant_context(copy.tenant.pk):
         contact = ContactFactory(tenant=copy.tenant, first_name="Bruce")
         outbox.create_message(tenant=copy.tenant, producer="magic_link",
@@ -384,7 +384,7 @@ def test_the_invitation_goes_to_the_visitor_with_the_link_unstored(copy, demo_co
         def send(self, **kw):
             sent.append(kw)
             return {"provider": "gmail", "provider_message_id": "x"}
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: Capture())
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: Capture())
     visitors.send_invitation(copy.visitor)
     copy.visitor.refresh_from_db()
     assert copy.visitor.invited_at is not None
@@ -459,7 +459,7 @@ def test_the_platform_owner_sends_the_invitation_again(copy, platform_owner, api
                                                        demo_connection, monkeypatch):
     from apps.crm.services import transport
 
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: SimpleNamespace(
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: SimpleNamespace(
         send=lambda **kw: {"provider": "gmail", "provider_message_id": "x"}))
     sent = practices_area(api, platform_owner).post(
         f"/api/platform/demo-visitors/{copy.visitor.pk}/invite")

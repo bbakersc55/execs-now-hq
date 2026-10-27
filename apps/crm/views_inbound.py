@@ -245,7 +245,7 @@ def health(tenant) -> dict:
         account = connection.email_address
     except inbound_poll.NotConnected as exc:
         can_read, detail, account = False, str(exc), ""
-    threads = EmailThread.objects.exclude(gmail_thread_id="")
+    threads = inbound_poll.watched(tenant)
     return {
         "can_read": can_read,
         "detail": detail,

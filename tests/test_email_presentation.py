@@ -415,7 +415,7 @@ def test_samples_send_one_of_each_producer_and_touch_no_engagement(
 ):
     settings.DEV_REAL_SEND_ALLOWLIST = ["owner@example.invalid"]
     fake = RecordingTransport()
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: fake)
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: fake)
 
     dry = io.StringIO()
     call_command("send_email_samples", "--to", "owner@example.invalid", "--dry-run", stdout=dry)
@@ -720,7 +720,7 @@ def test_the_four_personal_samples_send_from_the_owners_own_address(
                            send_as_address=seeded_tenant.from_address,
                            send_as_verified_at=timezone.now())
     fake = RecordingTransport()
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: fake)
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: fake)
 
     out = io.StringIO()
     call_command("send_email_samples", "--to", "owner@example.invalid", stdout=out)
@@ -742,7 +742,7 @@ def test_one_sample_can_be_sent_on_its_own(seeded_tenant, ff, settings, monkeypa
     """--only, for re-checking a single producer without mailing eight."""
     settings.DEV_REAL_SEND_ALLOWLIST = ["owner@example.invalid"]
     fake = RecordingTransport()
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: fake)
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: fake)
 
     out = io.StringIO()
     call_command("send_email_samples", "--to", "owner@example.invalid", "--only", "manual",

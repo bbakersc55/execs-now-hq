@@ -454,7 +454,17 @@ class DevOutboxTransport:
         }
 
 
-def get_transport(name=None):
+def is_microsoft(tenant) -> bool:
+    return getattr(tenant, "mail_provider", "google") == "microsoft"
+
+
+def get_transport(name=None, *, tenant=None):
+    """The practice's own transport: Microsoft 365 when that is its mail
+    provider (docs/m365_transport.md), otherwise exactly what it always was."""
+    if name is None and tenant is not None and is_microsoft(tenant):
+        from apps.crm.services.graph import GraphTransport
+
+        return GraphTransport()
     name = name or getattr(settings, "APP_MAIL_TRANSPORT", "gmail")
     if name == "postmark":
         return PostmarkTransport()

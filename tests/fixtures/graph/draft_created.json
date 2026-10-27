@@ -1,0 +1,45 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('bryan%40contoso.example')/messages/$entity",
+  "@odata.etag": "W/\"CQAAABYAAAA\"",
+  "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AImmutable-1",
+  "createdDateTime": "2026-10-27T15:00:00Z",
+  "lastModifiedDateTime": "2026-10-27T15:00:00Z",
+  "changeKey": "CQAAABYAAAA",
+  "categories": [],
+  "receivedDateTime": "2026-10-27T15:00:00Z",
+  "sentDateTime": "2026-10-27T15:00:00Z",
+  "hasAttachments": false,
+  "internetMessageId": "<SN6PR11MB0001.exchange-assigned@SN6PR11MB0001.namprd11.prod.outlook.com>",
+  "subject": "Your progress report",
+  "bodyPreview": "",
+  "importance": "normal",
+  "parentFolderId": "AAMkDrafts",
+  "conversationId": "AAQkADNkNjAzZjVjLWJmODctNDgwYi1hYmZjLWQ0MmMwNjNlNGFmMgAQACOnversation1=",
+  "conversationIndex": "AQHZ",
+  "isDeliveryReceiptRequested": false,
+  "isReadReceiptRequested": false,
+  "isRead": true,
+  "isDraft": true,
+  "webLink": "https://outlook.office365.com/owa/?ItemID=x",
+  "inferenceClassification": "focused",
+  "from": {
+    "emailAddress": {
+      "name": "Contoso Practice",
+      "address": "info@contoso.example"
+    }
+  },
+  "sender": {
+    "emailAddress": {
+      "name": "Contoso Practice",
+      "address": "info@contoso.example"
+    }
+  },
+  "toRecipients": [
+    {
+      "emailAddress": {
+        "name": "",
+        "address": "dana@acme.invalid"
+      }
+    }
+  ]
+}

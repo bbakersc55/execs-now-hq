@@ -1,6 +1,7 @@
 # Microsoft 365 as a practice's mail and files
 
-**Spec for owner review · no code · 2026-10-03**
+**Spec for owner review · 2026-10-03 · the transport built 2026-10-27 (§9;
+what only a real tenant can confirm, §10)**
 
 A practice on Microsoft 365 (Outlook, OneDrive, Teams) has no Google account.
 Today it couldn't sign in, send, collect replies or ingest meeting notes. This
@@ -172,3 +173,130 @@ and alias check; reply collection; OneDrive notes; Microsoft sign-in. Each
 step tested against Graph fakes at the boundary, like the Gmail and Drive
 fakes, and proved once against a real Microsoft 365 account before it's
 called done.
+
+## 9. The transport as built (2026-10-27)
+
+The owner's brief: the Microsoft 365 transport as a second mail transport
+beside Gmail, with the same Outbox, replies, threading, unsubscribe and
+allow-list rules, and one transport a practice with a clear switch. Built:
+§2's provider switch and connection, §3 sending, §4 the address check, §5
+replies. **Not built:** §6 OneDrive notes, D1 Sign in with Microsoft. A
+Microsoft practice's staff still sign in as they do today; meeting notes and
+Sheets feeds still come through a Google connection if one is there.
+
+| Piece | Where |
+|---|---|
+| `tenant.mail_provider` (`google` default, `microsoft`) | `tenancy 0022` |
+| `MicrosoftConnection` (one per person per practice, its refresh token in `tenant_secret` as `microsoft_refresh`), `graph_conversation_id` on `email_thread` and `unmatched_inbound` | `crm 0052` |
+| Consent, token exchange and refresh, the admin-consent link | `apps/crm/services/microsoft_oauth.py` |
+| `GraphTransport`, `GraphReader`, `verify_send_as`, `sending_connection_for` | `apps/crm/services/graph.py` |
+| Which transport: `transport.get_transport(tenant=…)` | `outbox._deliver` |
+| Settings → Email: "Mail goes through" and the Microsoft screen | `views_microsoft.py`, `MicrosoftEmail.tsx` |
+
+**Decisions taken, where the spec left them open:**
+
+- **D6, who switches:** the **practice owner**, on Settings → Email, not the
+  platform owner. The brief asked for "a clear switch" on the practice; the
+  spec recommended the platform owner. One permission to change if you want
+  it the spec's way. The switch says what it means before it happens
+  (nothing sends until the other is connected and its address passes;
+  replies are collected only for conversations the new transport starts)
+  and deletes nothing, so switching back needs no reconnect. The demo and a
+  visitor's copy show the choice and refuse it: the demo's promise rides on
+  its one Gmail connection.
+- **D3, the address check:** as recommended, a test send read back from Sent
+  Items, needing only **`Mail.ReadBasic`** (a message's envelope, no body)
+  beside `Mail.Send`, so reading the whole mailbox stays opt-in ("Also
+  collect replies", `Mail.Read`) as on Gmail. The account's own address
+  passes without a send. A refusal and a quiet rewrite to the account's own
+  address both fail it, and the screen says how an administrator allows the
+  address (Send as on a shared mailbox, or sending from aliases).
+- **Sending is MIME.** The same `build_mime` as Gmail builds the message; Graph
+  takes it as a draft (`POST /me/messages`, the MIME base64 as `text/plain`),
+  then `POST /me/messages/{id}/send`. So the headers (thread token,
+  Message-ID, In-Reply-To, List-Unsubscribe), the HTML and text parts and
+  the inline logo are what Gmail gets. A draft whose request would pass
+  3.5 MB is made without its attachments, which follow one by one (a POST
+  under 3 MB, an upload session above). A failed send deletes its draft.
+- **Immutable ids** (`Prefer: IdType="ImmutableId"`) on every call, so the
+  draft's id is the sent copy's.
+- **Replies** read `GET /me/messages?$filter=conversationId eq '…'` for each
+  conversation the app started, least recently polled first, on the same
+  tick; a message already filed or sent by the app is recognised from the
+  listing and its MIME is not fetched again. Each new one's MIME
+  (`/$value`) is reshaped into the payload `inbound` already reads, so
+  matching, unmatched handling, leave requests and attachments are Gmail's
+  code. A new match rule sits after Gmail's thread id: the Graph
+  conversation (`matched_by` `graph_conversation_id`).
+- **Throttling:** a 429 or 503 is waited out when Graph asks for 10 seconds
+  or less, twice at most; longer, the send fails with Graph's words.
+- **Refresh tokens rotate**; each new one is stored.
+
+**Tests** (`tests/test_microsoft_transport.py`, 72; fixtures in
+`tests/fixtures/graph/`, shaped from Microsoft's reference, none captured):
+role boundaries, isolation (connections, the switch, the conversations
+polled, the callback's practice), connect and its refusals, the address
+check's four outcomes, sending (MIME, headers, joint introductions, an
+associate's own address, the allow-list, suppression, throttling, the three
+attachment routes, the demo), replies (by conversation, by In-Reply-To,
+unmatched and filed, re-polled, deleted), and **the Gmail path unchanged**:
+a Gmail practice gets the Gmail transport, its send makes the same two
+requests with the same body, its replies are read and filed as before, and
+its settings payload has the same keys.
+
+**Found, not fixed:** `build_mime` folds a `List-Unsubscribe` longer than 78
+characters into RFC 2047 encoded-words (Python's default email policy). A
+mail client reading RFC 2369 may not decode those, so the one-click
+unsubscribe may not show, on Gmail as on Microsoft. A one-line fix
+(serialising with a longer line limit) changes Gmail's bytes, so it waits for
+the owner.
+
+## 10. What only a real Microsoft 365 tenant can confirm
+
+Each was built to Microsoft's reference and tested against fixtures shaped
+from it. None has been seen against a real tenant.
+
+1. **The MIME draft.** Graph takes our MIME (multipart/alternative inside
+   multipart/related with the inline logo, attachments) as a draft and
+   sends it as built. The reference documents MIME drafts; our particular
+   nesting is unproven.
+2. **Our headers survive.** Exchange keeps `X-Thread-Token`,
+   `List-Unsubscribe` and `List-Unsubscribe-Post` from the MIME. If it drops
+   them, a reply still matches by conversation or In-Reply-To, but the
+   one-click unsubscribe is lost on Microsoft.
+3. **The Message-ID.** Whether Exchange keeps the one we set or assigns its
+   own. Either works: the draft's `internetMessageId` is what is stored, and
+   the fixture assumes Exchange's own.
+4. **Threading.** A send carrying In-Reply-To and References joins its
+   conversation in Outlook. Replies are matched either way.
+5. **Immutable ids carry from draft to Sent Items**, so the read-back finds
+   the sent copy by the draft's id.
+6. **The `$filter` on `conversationId`** works without `$orderby` across all
+   folders, and stays fast on a large mailbox.
+7. **Sending as an alias.** The error code when it is refused
+   (`ErrorSendAsDenied` or `ErrorFromAddressNotPermitted`), and whether a
+   tenant without sending from aliases quietly rewrites the sender. The
+   read-back fails both; only the words differ.
+8. **The sent copy's timing.** Six looks a second apart is enough for the
+   copy to leave Drafts. Slower, the check says "check again in a minute".
+9. **The token response's `scope`.** Short names or full URLs; both are
+   handled. Whether the OpenID scopes are listed.
+10. **Consent.** The `AADSTS` errors for a directory that needs admin
+    approval, and that the admin-consent link with `organizations` works.
+    Until publisher verification (§7), most outside directories will need it.
+11. **The upload session.** The URL takes chunks without a bearer token, in
+    320 KiB multiples.
+12. **Inbound MIME.** What `$value` returns for mail from other systems:
+    character sets (windows-1252 is in the fixture), TNEF (`winmail.dat`)
+    from Outlook senders, inline images.
+13. **Throttling.** Graph's `Retry-After` on a 429 for one mailbox's send.
+14. **Refresh-token lifetime and rotation** (90 days, rolling), and a
+    revoked token's error (`invalid_grant`, AADSTS70000 in the fixture).
+
+**The first real run:** connect one work account with "Also collect
+replies", set the practice address to an alias, check it, approve one
+Outbox message to an address on the laptop's allow-list, reply to it from
+another mail client, press "Check now" on Replies. Items 1–9 and 13–14 show
+on that one round; 10 needs an outside directory; 11 an attachment over
+3 MB; 12 replies from several kinds of sender.
+

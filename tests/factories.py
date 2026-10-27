@@ -457,6 +457,16 @@ class GmailConnectionFactory(TenantScopedFactory):
     scopes = ["gmail.send"]
 
 
+class MicrosoftConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "crm.MicrosoftConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+    email_address = factory.Sequence(lambda n: f"m365-{n}@example.invalid")
+    scopes = ["Mail.Send", "Mail.ReadBasic", "User.Read"]
+
+
 class OutboxMessageFactory(TenantScopedFactory):
     class Meta:
         model = OutboxMessage

@@ -5,7 +5,7 @@ from apps.accounts import google_external
 from apps.accounts import views as account_views
 from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
-from apps.crm import views_gmail
+from apps.crm import views_gmail, views_microsoft
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
 from apps.crm import views_unsubscribe as crm_unsubscribe
@@ -24,6 +24,8 @@ urlpatterns = [
     # allauth's. Declared BEFORE the allauth include so the path is ours.
     path("accounts/gmail/callback", views_gmail.gmail_callback,
          name="gmail-callback"),
+    path("accounts/microsoft/callback", views_microsoft.microsoft_callback,
+         name="microsoft-callback"),
     # P2 D1: staff sign-in is email first; External practices sign in through
     # the second OAuth client. Declared BEFORE the allauth include.
     path("accounts/google/start", google_external.google_start, name="google-start"),

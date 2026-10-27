@@ -55,7 +55,7 @@ class RecordingTransport:
 @pytest.fixture
 def gmail(monkeypatch):
     fake = RecordingTransport()
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: fake)
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: fake)
     return fake
 
 
@@ -117,7 +117,7 @@ def test_a_reset_that_cannot_be_sent_says_so_and_leaves_no_token(seeded_tenant, 
         def send(self, **kwargs):
             raise transport.TransportUnavailable("No Gmail account is connected.")
 
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: Down())
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: Down())
     ff = MembershipFactory(tenant=seeded_tenant, role="FF",
                            user=UserFactory(email="owner@example.invalid"))
     settings.DEV_REAL_SEND_ALLOWLIST = ["owner@example.invalid"]
@@ -156,7 +156,7 @@ def test_a_magic_link_send_failure_keeps_the_response_opaque(seeded_tenant, fcc,
         def send(self, **kwargs):
             raise transport.TransportUnavailable("Gmail refused the stored credential.")
 
-    monkeypatch.setattr(transport, "get_transport", lambda name=None: Down())
+    monkeypatch.setattr(transport, "get_transport", lambda name=None, **_: Down())
     settings.DEV_REAL_SEND_ALLOWLIST = [fcc.user.email]
     known = Client().post("/auth/magic/request", {"email": fcc.user.email})
     unknown = Client().post("/auth/magic/request", {"email": "nobody@example.invalid"})

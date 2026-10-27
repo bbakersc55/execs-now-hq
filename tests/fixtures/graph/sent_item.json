@@ -1,0 +1,18 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('bryan%40contoso.example')/messages(from,sender,isDraft)/$entity",
+  "@odata.etag": "W/\"CQAAABYAAAB\"",
+  "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AImmutable-1",
+  "isDraft": false,
+  "from": {
+    "emailAddress": {
+      "name": "Contoso Practice",
+      "address": "info@contoso.example"
+    }
+  },
+  "sender": {
+    "emailAddress": {
+      "name": "Bryan Baker",
+      "address": "bryan@contoso.example"
+    }
+  }
+}
