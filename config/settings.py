@@ -184,7 +184,7 @@ LOGIN_REDIRECT_URL = APP_ROOT_URL
 LOGOUT_REDIRECT_URL = APP_ROOT_URL
 ACCOUNT_LOGOUT_REDIRECT_URL = APP_ROOT_URL
 ACCOUNT_SIGNUP_REDIRECT_URL = APP_ROOT_URL
-LOGIN_URL = "/accounts/google/login/"
+LOGIN_URL = "/accounts/google/start"
 
 # C3.5: 12-hour idle for tenant users; client sessions are extended on login.
 SESSION_COOKIE_AGE = 60 * 60 * 12

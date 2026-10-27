@@ -78,11 +78,16 @@ def _mine(request):
 def _status(request):
     tenant, mine = request.tenant, _mine(request)
     provider = provider_of(tenant)
+    refusal = _refusal(tenant)
+    if refusal:
+        # The demo's meetings hang off a connection the seed made; it is not
+        # anyone's calendar, so it is never shown as one, or offered to undo.
+        mine = None
     return {
         "provider": provider,
         "provider_label": "Microsoft 365" if provider == "microsoft" else "Google Calendar",
         "configured": providers.configured(provider, tenant),
-        "refusal": _refusal(tenant),
+        "refusal": refusal,
         "connected": mine is not None,
         "email_address": mine.email_address if mine else "",
         "connected_provider": mine.provider if mine else "",
@@ -131,6 +136,8 @@ class CalendarViewSet(viewsets.ViewSet):
     def disconnect(self, request):
         if _acting():
             return Response({"detail": ACTING}, status=403)
+        if refusal := _refusal(request.tenant):
+            return Response({"detail": refusal}, status=409)
         mine = _mine(request)
         if mine is None:
             return Response({"detail": "No calendar is connected."}, status=400)

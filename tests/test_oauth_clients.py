@@ -73,12 +73,29 @@ def test_exchange_and_refresh_use_the_client_that_issued_the_token(outside):
 
 # ------------------------------------------------------------------ the sign-in
 
+def _workspace(url, email=None) -> bool:
+    """Straight to Google's chooser with the Workspace client (allauth's
+    callback), the address only as a hint: no page of the app's in between."""
+    params = query(url)
+    return (url.startswith("https://accounts.google.com/")
+            and params["client_id"] != "external-id"
+            and params["redirect_uri"].endswith("/accounts/google/login/callback/")
+            and params["prompt"] == "select_account"
+            and params.get("login_hint") == email)
+
+
+@pytest.mark.django_db
+def test_no_address_goes_to_googles_chooser_with_no_hint(outside):
+    response = Client().get("/accounts/google/start", {"email": ""})
+    assert response.status_code == 302 and _workspace(response.url)
+
+
 @pytest.mark.django_db
 def test_executives_now_staff_and_unknown_addresses_go_to_the_workspace_sign_in(seeded_tenant):
     staff = _member(seeded_tenant, "VA")
     for email in (staff.user.email, "nobody@nowhere.invalid"):
         response = Client().get("/accounts/google/start", {"email": email})
-        assert response.status_code == 302 and response.url == "/accounts/google/login/"
+        assert response.status_code == 302 and _workspace(response.url, email)
 
 
 @pytest.mark.django_db
@@ -97,7 +114,7 @@ def test_outside_staff_go_to_the_external_client(outside):
 def test_an_outside_client_user_is_never_sent_to_google(outside):
     client_user = _member(outside, "FCC", ClientCompanyFactory(tenant=outside))
     response = Client().get("/accounts/google/start", {"email": client_user.user.email})
-    assert response.url == "/accounts/google/login/"   # and allauth refuses them there
+    assert _workspace(response.url, client_user.user.email)   # and allauth refuses them
 
 
 def _callback(browser, *, email, verified=True, state="s1"):

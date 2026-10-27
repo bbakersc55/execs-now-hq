@@ -14,7 +14,6 @@ token exchange and the id_token decode. Everything downstream is the live path.
 
 from __future__ import annotations
 
-import re
 import urllib.parse
 from unittest import mock
 
@@ -29,7 +28,7 @@ from . import registry_config  # noqa: F401
 from .factories import MembershipFactory, UserFactory
 
 CALLBACK = "/accounts/google/login/callback/"
-LOGIN = "/accounts/google/login/"
+START = "/accounts/google/start"
 
 
 def _google_claims(email, *, verified=True, sub="google-uid-12345"):
@@ -47,12 +46,11 @@ def _google_claims(email, *, verified=True, sub="google-uid-12345"):
 
 
 def _begin_login(client):
-    """Drive the real login view so allauth stores state in the session."""
-    page = client.get(LOGIN)
-    token = re.search(rb'name="csrfmiddlewaretoken" value="([^"]+)"', page.content)
-    response = client.post(
-        LOGIN, {"csrfmiddlewaretoken": token.group(1).decode()} if token else {}
-    )
+    """Drive the sign-in page's own start so allauth stores state in the
+    session: straight to Google, no page of allauth's in between (owner,
+    2026-10-27)."""
+    response = client.get(START, {"email": ""})
+    assert response.status_code == 302
     location = response["Location"]
     query = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)
     assert "accounts.google.com" in location

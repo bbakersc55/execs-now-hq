@@ -9,10 +9,19 @@ first: `google_start` takes the address, and
 
 - a live staff member of an External practice goes to the External client,
   here, with the address as the login hint;
-- everyone else (Executives Now staff, and any address the app does not
-  know) goes to the existing Workspace sign-in, exactly as before. An unknown
+- everyone else (Executives Now staff, any address the app does not know,
+  and no address at all) goes to the Workspace client's sign-in. An unknown
   address gets the same redirect as a Workspace one, so the form says nothing
   about who has access.
+
+**Straight to Google** (owner, 2026-10-27): both go to Google's account
+chooser from here, with the address, when given, only as the login hint.
+The Workspace client used to go by allauth's own GET page, a "Sign In Via
+Google, Continue" step in between; it is started here through allauth's
+provider instead, so its callback, adapter and invite-only rules are
+unchanged. allauth holds that page for a sign-in started by a plain link;
+this start is as safe as the External and Microsoft ones beside it, since
+the answer still has to carry the state stored in this browser's session.
 
 The callback admits only a verified Google address that matches a live staff
 membership of an External practice that is not archived. Clients never use
@@ -24,6 +33,8 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 import requests
+from allauth.socialaccount.adapter import get_adapter
+from allauth.socialaccount.providers.base.constants import AuthProcess
 from django.conf import settings
 from django.contrib.auth import login
 from django.http import HttpResponseRedirect
@@ -58,7 +69,7 @@ def google_start(request):
     email = (request.GET.get("email") or "").strip().lower()
     membership = _external_staff(email)
     if membership is None:
-        return HttpResponseRedirect("/accounts/google/login/")
+        return _workspace(request, email)
     client_id, _ = gmail_oauth.client_for(membership.tenant)
     if not client_id:
         return _refuse(request, "Google sign-in for your practice isn't set up yet. "
@@ -69,6 +80,15 @@ def google_start(request):
               "response_type": "code", "scope": SIGN_IN_SCOPES, "access_type": "online",
               "prompt": "select_account", "login_hint": email, "state": state}
     return HttpResponseRedirect(f"{gmail_oauth.AUTH_URL}?{urlencode(params)}")
+
+
+def _workspace(request, email: str):
+    """The Workspace client's sign-in, through allauth, at Google's chooser."""
+    provider = get_adapter(request).get_provider(request, "google")
+    params = {**provider.get_auth_params(), "prompt": "select_account"}
+    if email:
+        params["login_hint"] = email
+    return provider.redirect(request, process=AuthProcess.LOGIN, auth_params=params)
 
 
 @require_http_methods(["GET"])

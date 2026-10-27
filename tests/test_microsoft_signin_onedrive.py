@@ -233,10 +233,16 @@ def test_no_microsoft_practice_no_microsoft_button(seeded_tenant, ms, client):
 @pytest.mark.django_db
 def test_google_start_is_unchanged_for_every_kind_of_address(ms_staff, client):
     """A Microsoft practice's member, an unknown address and a Workspace one
-    all get Google's Workspace sign-in from Google's start, as before."""
+    all get Google's Workspace sign-in from Google's start, as before (now at
+    Google's chooser directly, the address as its hint)."""
+    from urllib.parse import parse_qs, urlparse
+
     for email in (OWN, "nobody@nowhere.example", "bryan.baker@getexecutivesnow.com"):
-        assert client.get("/accounts/google/start", {"email": email})["Location"] \
-            == "/accounts/google/login/"
+        location = client.get("/accounts/google/start", {"email": email})["Location"]
+        params = {k: v[0] for k, v in parse_qs(urlparse(location).query).items()}
+        assert location.startswith("https://accounts.google.com/")
+        assert params["redirect_uri"].endswith("/accounts/google/login/callback/")
+        assert params["login_hint"] == email
 
 
 @pytest.mark.django_db

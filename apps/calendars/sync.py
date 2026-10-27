@@ -68,6 +68,12 @@ def match(tenant, emails) -> tuple[set, set]:
 def sync(connection, *, now=None) -> dict:
     """Read the window and keep it. Returns counts; records an error on the
     connection rather than raising, so Home still shows what it had."""
+    from config import environment
+
+    if environment.is_demo():
+        # The demo reads no calendar: its meetings are the seed's, and a read
+        # would remove them as gone from a calendar that does not exist.
+        return {"error": "The demo reads no calendar."}
     now = now or timezone.now()
     start, end = now - BACK, now + AHEAD
     try:
@@ -109,10 +115,6 @@ def _keep(connection, events, start, end) -> int:
 
 
 def sync_if_stale(connection) -> None:
-    from config import environment
-
-    if environment.is_demo():
-        return
     if connection.last_synced_at is None or timezone.now() - connection.last_synced_at > STALE:
         sync(connection)
 

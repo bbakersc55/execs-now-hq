@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SignedOut } from "./SignedOut";
+import { LAST_ADDRESS, SignedOut } from "./SignedOut";
 
 describe("the signed-out screen (2026-09-30)", () => {
   beforeEach(() => { vi.unstubAllGlobals(); document.cookie = "csrftoken=tok123"; });
@@ -76,6 +76,25 @@ describe("the signed-out screen (2026-09-30)", () => {
     expect(microsoft.closest("form")).toBe(google.closest("form"));
     expect(microsoft).toHaveAttribute("formaction", "/accounts/microsoft/start");
     expect(google.closest("form")).toHaveAttribute("action", "/accounts/google/start");
+  });
+
+  it("goes straight on with no address, and fills in the last one used here", async () => {
+    respond(200, {});
+    window.localStorage.removeItem(LAST_ADDRESS);
+    const { unmount } = render(<SignedOut practice="" />);
+    const box = screen.getByLabelText("Your work email") as HTMLInputElement;
+    expect(box).not.toBeRequired();
+    expect(box.value).toBe("");
+    const form = box.closest("form")!;
+    form.addEventListener("submit", (e) => e.preventDefault());
+    await userEvent.setup().type(box, "bryan@contoso.example");
+    fireEvent.submit(form);
+    expect(window.localStorage.getItem(LAST_ADDRESS)).toBe("bryan@contoso.example");
+    unmount();
+    render(<SignedOut practice="" />);
+    expect((screen.getByLabelText("Your work email") as HTMLInputElement).value)
+      .toBe("bryan@contoso.example");
+    window.localStorage.removeItem(LAST_ADDRESS);
   });
 
   it("shows Google alone otherwise", () => {

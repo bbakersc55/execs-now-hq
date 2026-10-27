@@ -17,6 +17,19 @@ holds. Upload this at the start of the next chat with: "Read this handoff,
 then pick up where it leaves off." The specs in `docs/` are the source of
 truth; this covers what they don't, and what changed since 9/30.
 
+## 2026-10-27, night: the demo's calendar, and straight-to-Google sign-in (on `dev`)
+
+- **The demo's calendar** is never shown as connected, and Disconnect and
+  reading are refused there for every practice (a read or a disconnect had
+  removed the seeded meetings). The seed's connection carries no address.
+- **Practice sign-in goes straight to Google's account chooser** (no
+  "Sign In Via Google, Continue" page): `/accounts/google/start` starts
+  allauth's flow itself; `LOGIN_URL` is that start. The address is optional
+  (a login hint only) and the last one used is remembered in the browser. A
+  practice outside the Workspace still needs its address the first time,
+  since the address picks its Google client.
+- **Calendar matching**: a client with portal access is matched as a client.
+
 ## 2026-10-27, evening: Calendar (on `dev`, not released)
 
 - **Calendar** (`docs/calendar.md`; migrations `calendars 0001`, four

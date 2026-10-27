@@ -7,6 +7,17 @@ function csrfToken(): string {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+/** The last address a practice sign-in used in this browser (2026-10-27). */
+export const LAST_ADDRESS = "enhq_signin_email";
+
+function lastAddress(): string {
+  try { return window.localStorage.getItem(LAST_ADDRESS) || ""; } catch { return ""; }
+}
+
+function remember(address: string) {
+  try { if (address) window.localStorage.setItem(LAST_ADDRESS, address); } catch { /* none */ }
+}
+
 /**
  * The signed-out screen (2026-09-30): staff sign in with Google; a client
  * asks for a one-time link by email (C3, C4). The answer is the same whether
@@ -15,11 +26,17 @@ function csrfToken(): string {
  * `microsoft` (2026-10-27): the staff of a practice whose mail runs through
  * Microsoft 365 sign in with Microsoft. Both buttons share the one address
  * field; each sends it to its own start, which decides.
+ *
+ * Straight to the provider (owner, 2026-10-27): either button goes to
+ * Google's or Microsoft's own account chooser, no page of ours between. The
+ * address is optional: given, it only pre-selects the account there; empty,
+ * the chooser does the picking. The last one used here is filled in.
  */
 export function SignedOut({ practice, microsoft = false }: {
   practice: string; microsoft?: boolean;
 }) {
   const [email, setEmail] = useState("");
+  const [workEmail, setWorkEmail] = useState(lastAddress);
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -79,11 +96,14 @@ export function SignedOut({ practice, microsoft = false }: {
             this heading: apps/platform/mail.py. */}
         <h3 style={{ marginBottom: ".25rem" }}>Practice sign-in</h3>
         <p className="small muted" style={{ marginTop: 0 }}>For consultants and their team</p>
-        {/* Email first (P2 D1): the address decides which Google sign-in your
-            practice uses. A plain GET form: the server answers with a redirect. */}
-        <form method="get" action="/accounts/google/start" className="row tight wrap">
-          <input type="email" name="email" required aria-label="Your work email"
-            placeholder="you@yourpractice.com" autoComplete="email" />
+        {/* The address picks which Google client a practice uses (P2 D1) and
+            pre-selects the account; without one, the provider's chooser
+            picks. A plain GET form: the server answers with a redirect. */}
+        <form method="get" action="/accounts/google/start" className="row tight wrap"
+          onSubmit={() => remember(workEmail.trim())}>
+          <input type="email" name="email" aria-label="Your work email"
+            placeholder="you@yourpractice.com (optional)" autoComplete="email"
+            value={workEmail} onChange={(e) => setWorkEmail(e.target.value)} />
           <button className="btn" type="submit">Sign in with Google</button>
           {microsoft && (
             <button className="btn" type="submit" formAction="/accounts/microsoft/start">

@@ -96,7 +96,7 @@ export function CalendarCard() {
             </p>
             {s.last_error && <Banner kind="bad">{s.last_error}</Banner>}
           </>
-        ) : (
+        ) : !s.refusal && (
           <p><Pill kind="warn">not connected</Pill> No calendar is connected for you.</p>
         )}
         <div className="small muted">

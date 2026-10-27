@@ -22,7 +22,7 @@ def meetings(world) -> None:
     zone = ZoneInfo(tenant.timezone or "America/Denver")
     connection = CalendarConnection.objects.create(
         tenant=tenant, user=world.owner, provider="google",
-        email_address=world.owner.email, last_synced_at=timezone.now())
+        email_address="", last_synced_at=timezone.now())
     clients = list(world.people)
     first_client = clients[0] if clients else None
     people = world.people.get(first_client, [])

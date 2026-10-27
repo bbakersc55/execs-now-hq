@@ -54,5 +54,7 @@ describe("Profile → Your calendar (2026-10-27)", () => {
     renderRoute(<CalendarCard />);
     expect(await screen.findByText(refusal)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect your calendar" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Disconnect" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/No calendar is connected for you/)).not.toBeInTheDocument();
   });
 });

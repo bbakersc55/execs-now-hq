@@ -504,6 +504,32 @@ def test_the_demo_connects_no_calendar(seeded_tenant, ff, api, google, settings)
 
 
 @pytest.mark.django_db
+def test_the_demos_meetings_survive_every_button(seeded_tenant, ff, cf, api, google, acme,
+                                                 settings):
+    """The seed's connection is no one's calendar: never shown as connected,
+    never disconnected, never read (a read would remove its meetings as gone),
+    for every practice on the demo."""
+    connection = _connect(seeded_tenant, ff)
+    _sync(connection)
+    kept = CalendarEvent.all_objects.filter(connection=connection).count()
+    assert kept
+    settings.APP_ENVIRONMENT, settings.IS_DEMO, settings.IS_LOCAL = "demo", True, False
+    other = TenantFactory()
+    stranger = MembershipFactory(tenant=other, role="FF")
+
+    status = api.as_(ff).get("/api/calendar/").json()
+    assert status["connected"] is False and status["email_address"] == ""
+    for who in (ff, cf, stranger):
+        for path in ("start", "sync", "disconnect"):
+            assert api.as_(who).post(f"/api/calendar/{path}/").status_code in (400, 409), (who, path)
+    assert sync.sync(connection) == {"error": "The demo reads no calendar."}
+    from apps.calendars.tasks import sync_calendars
+    sync_calendars(str(seeded_tenant.pk))
+    assert CalendarConnection.all_objects.filter(pk=connection.pk).exists()
+    assert CalendarEvent.all_objects.filter(connection=connection).count() == kept
+
+
+@pytest.mark.django_db
 def test_disconnecting_removes_the_token_and_its_events(seeded_tenant, ff, api, google, acme):
     connection = _connect(seeded_tenant, ff)
     _sync(connection)
