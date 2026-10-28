@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { RefPicker } from "./ScorecardRefs";
 import { Modal } from "./shell";
 import { Banner, Card } from "./ui";
 import { Company, Me, api } from "../lib/api";
-import { COMPONENTS, SetupKpi, SetupPage, SetupState, Starter, StarterKpi, fmt } from "../lib/scorecard";
+import { COMPONENTS, Ref, SetupKpi, SetupPage, SetupState, Starter, StarterKpi, fmt } from "../lib/scorecard";
 import { useWords } from "../lib/words";
 import { StartCard } from "../screens/Scorecard";
 
@@ -145,6 +146,7 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
                       <span className="sc-setup-name">{k.name}
                         <span className="small muted"> · {KINDS[k.kind]}, {CADENCES[k.cadence]}, {TILES[k.tile]}
                           {k.per_person ? `, per person (${k.people.length})` : ""}
+                          {k.helper ? ", helper (no tile)" : ""}
                           {k.computed ? ` · computed: ${k.computed}`
                             : k.owner ? ` · entered by ${k.owner}` : " · no reading owner"}
                           {k.target_value !== null ? ` · target ${fmt(k, k.target_value)}` : ""}
@@ -284,13 +286,16 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
     audience_team: kpi.audience_team ?? "", note: kpi.note, strategy_component: kpi.strategy_component,
     people: kpi.people, month_targets: { ...kpi.month_targets },
     formula: kpi.formula, source_a: kpi.source_a ?? "", source_b: kpi.source_b ?? "",
+    operand_a: kpi.operand_a ?? null, operand_b: kpi.operand_b ?? null,
+    target_live: kpi.target_live_ref ?? null, helper: !!kpi.helper,
   } : {
     name: "", page: livePages[0]?.id ?? "", kind: "number", direction: "higher", cadence: "weekly",
     rollup: "sum", target_value: "", range_low: "", range_high: "", behind_band_pct: 10,
     duration_unit: "hours", rating_scale: 5, reading_owner: "", per_person: false, person_total: "sum",
     leaderboard: false, tile: "number_trend", audience: "page", audience_team: "", note: "",
     strategy_component: "", people: [], month_targets: {},
-    formula: "", source_a: "", source_b: "",
+    formula: "", source_a: "", source_b: "", operand_a: null, operand_b: null,
+    target_live: null, helper: false,
     ...(initial ? Object.fromEntries(Object.entries(initial).filter(([k]) => k !== "key")) : {}),
   });
   const [seasonal, setSeasonal] = useState(Object.keys(d.month_targets ?? {}).length > 0);
@@ -306,12 +311,15 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
   const save = useMutation({
     mutationFn: (withComputed: boolean = false) => {
       const body = { ...d, company: state.company.id, with_computed: withComputed,
-        month_targets: seasonal ? d.month_targets : {},
         audience_team: d.audience === "team" ? d.audience_team || state.teams[0]?.id : null,
         reading_owner: d.formula ? null : d.reading_owner || null,
         per_person: d.formula ? false : d.per_person,
         source_a: d.formula ? d.source_a || null : null,
-        source_b: d.formula ? d.source_b || null : null };
+        source_b: d.formula ? d.source_b || null : null,
+        operand_a: d.formula ? d.operand_a ?? null : null,
+        operand_b: d.formula ? d.operand_b ?? null : null,
+        target_live: d.direction === "range" ? null : d.target_live ?? null,
+        month_targets: seasonal && !d.target_live ? d.month_targets : {} };
       return kpi ? api.patch(`/api/scorecard/kpis/${kpi.id}/`, body) : api.post("/api/scorecard/kpis/", body);
     },
     onSuccess: () => onDone(kpi ? `${d.name} is saved.` : `${d.name} is added.`),
@@ -330,6 +338,10 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
         aria-invalid={error?.field === k} {...props} /></label>
   );
   const people = (d.people as string[]) ?? [];
+  const live = (d.target_live as Ref | null) ?? null;
+  // A live target is taken from a company KPI's own readings, never its own.
+  const liveSources = state.kpis.filter((k) => !k.archived && !k.formula && !k.per_person
+    && k.id !== kpi?.id);
   // One step only: company KPIs of the same cadence that are not computed.
   const sources = Object.fromEntries([["", "Choose…"], ...state.kpis
     .filter((k) => !k.archived && !k.formula && !k.per_person && k.cadence === d.cadence
@@ -359,7 +371,12 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
         {d.direction === "range" ? <>
           {text("range_low", "Range, low", { inputMode: "decimal" })}
           {text("range_high", "Range, high", { inputMode: "decimal" })}
-        </> : text("target_value", seasonal ? "Target, other months" : "Target", { inputMode: "decimal" })}
+        </> : <>
+          <RefPicker id="sc-target-from" label="Target from" value={live} state={state}
+            onChange={(r) => set("target_live", r)} of={kpi} invalid={error?.field === "target_live"}
+            base={[{ kind: "", label: "Typed here" }]} kpis={liveSources} />
+          {!live && text("target_value", seasonal ? "Target, other months" : "Target", { inputMode: "decimal" })}
+        </>}
         {text("behind_band_pct", "Behind within (%)", { inputMode: "decimal" })}
         {choice("tile", "Tile", TILES)}
         {!d.formula && choice("reading_owner", "Reading owner", Object.fromEntries([["", "Nobody yet"],
@@ -369,11 +386,11 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
           Object.fromEntries(state.teams.map((t) => [t.id, t.name])))}
         {choice("strategy_component", "Strategy component", COMPONENTS)}
       </div>
-      {d.direction !== "range" && (
+      {d.direction !== "range" && !live && (
         <label className="sc-check"><input type="checkbox" checked={seasonal}
           onChange={(e) => setSeasonal(e.target.checked)} /> A target per month (seasonal)</label>
       )}
-      {seasonal && d.direction !== "range" && (
+      {seasonal && d.direction !== "range" && !live && (
         <div className="sc-months">
           {MONTHS.map((m, i) => (
             <label key={m} className="sc-form-field"><span>{m}</span>
@@ -390,10 +407,21 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
       {!!d.formula && (
         <div className="sc-form-grid">
           {choice("source_a", `First ${w.kpi}`, sources)}
+          <RefPicker id="sc-operand-a" label="Of the first, use" value={d.operand_a as Ref | null}
+            state={state} of={state.kpis.find((k) => k.id === d.source_a)}
+            onChange={(r) => set("operand_a", r)} invalid={error?.field === "operand_a"}
+            base={[{ kind: "value", label: "Its readings" }, { kind: "target", label: "Its target" }]} />
           {choice("formula", "Worked out as", FORMULAS)}
           {choice("source_b", `Second ${w.kpi}`, sources)}
+          <RefPicker id="sc-operand-b" label="Of the second, use" value={d.operand_b as Ref | null}
+            state={state} of={state.kpis.find((k) => k.id === d.source_b)}
+            onChange={(r) => set("operand_b", r)} invalid={error?.field === "operand_b"}
+            base={[{ kind: "value", label: "Its readings" }, { kind: "target", label: "Its target" }]} />
         </div>
       )}
+      <label className="sc-check"><input type="checkbox" checked={!!d.helper}
+        onChange={(e) => set("helper", e.target.checked)} /> Helper: not shown as a tile. It still feeds
+        the targets and formulas that use it.</label>
       {!d.formula && <label className="sc-check"><input type="checkbox" checked={!!d.per_person}
         onChange={(e) => set("per_person", e.target.checked)} /> Per person: one reading per person</label>}
       {!d.formula && !!d.per_person && (

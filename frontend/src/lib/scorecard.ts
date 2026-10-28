@@ -68,7 +68,16 @@ export interface KpiDef {
   computed: string;
   /** Part 3: where a fed KPI's readings come from, and why its last read
    *  failed (only for the practice and the reading owner). */
-  feed?: { kind: "sheet" | "track" | "app" | "hubspot"; text: string; error: string } | null;
+  feed?: { kind: "sheet" | "track" | "app" | "hubspot"; text: string; error: string;
+    mode?: "column" | "cell" } | null;
+  /** "Helper: not shown as a tile": it only feeds a target or a formula. */
+  helper?: boolean;
+}
+
+/** What a live target or a computed KPI's operand is taken from. */
+export interface Ref {
+  kind: "" | "value" | "target" | "kpi" | "sheet_column" | "sheet_cell" | "track" | "hubspot";
+  kpi?: string; column?: string; header?: string; cell?: string; measure?: string;
 }
 
 /** The six strategy components a KPI can serve, in the order they're read. */
@@ -86,6 +95,8 @@ export interface Tile extends KpiDef {
   task_draft?: { title: string; description: string };
   /** The grid's columns are the window's own periods, with its roll-up beside. */
   history_is_window?: boolean;
+  /** A live target: what it is taken from, in words, and its value now. */
+  target_live?: { text: string; value: number | null } | null;
 }
 
 export interface Notice {
@@ -230,6 +241,7 @@ export interface SetupKpi extends KpiDef {
   month_targets: Record<string, number>; people: string[];
   formula: "" | "sum" | "difference" | "ratio" | "average";
   source_a: string | null; source_b: string | null;
+  operand_a?: Ref | null; operand_b?: Ref | null; target_live_ref?: Ref | null;
 }
 
 export type StarterKpi = { key: string; name: string; kind: Kind } & Record<string, unknown>;
@@ -251,6 +263,8 @@ export interface SetupState {
   owners: { id: string; name: string; side: "practice" | "client" }[];
   people: { id: string; name: string }[];
   starters: Starter[];
+  /** The fields a Track or HubSpot feed can read beside its measure. */
+  fields?: { track: { key: string; label: string }[]; hubspot: { key: string; label: string }[] };
 }
 
 // ------------------------------------------------------------ formatting
@@ -291,13 +305,24 @@ export function fmtChange(def: Pick<KpiDef, "kind" | "duration_unit">, change: n
 }
 
 /** "target 82%", "keep under 40 h", "48 to 72 hours". */
-export function targetText(def: KpiDef, target: number | null): string {
+export function targetText(def: KpiDef & { target_live?: Tile["target_live"] },
+  target: number | null): string {
   if (def.direction === "range") {
     if (def.range_low === null || def.range_high === null) return "";
     return `range ${fmt(def, def.range_low)} to ${fmt(def, def.range_high)}`;
   }
-  if (target === null) return "no target";
-  return def.direction === "lower" ? `keep under ${fmt(def, target)}` : `target ${fmt(def, target)}`;
+  if (target === null) return def.target_live ? "live target not read yet" : "no target";
+  const live = def.target_live ? " (live)" : "";
+  return def.direction === "lower" ? `keep under ${fmt(def, target)}${live}`
+    : `target ${fmt(def, target)}${live}`;
+}
+
+/** The Progress tile's line under a live target: "of 108 · 94%". */
+export function ofTarget(def: KpiDef, value: number | null, target: number | null,
+  live: boolean): string {
+  if (target === null) return "";
+  const pct = live && value !== null && target ? ` · ${Math.round((value / target) * 100)}%` : "";
+  return `of ${fmt(def, target)}${pct}`;
 }
 
 /** The unit beside an entry field. */

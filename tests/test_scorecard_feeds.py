@@ -475,7 +475,7 @@ def test_the_tile_back_names_the_source(practice):
     tile = next(t for t in data["kpis"] if t["name"] == "Occupancy")
     assert tile["feed"] == {"kind": "sheet", "text": "From the Google Sheet 'Weekly numbers', "
                             "tab 'Data', read every hour, the open period so far",
-                            "error": ""}
+                            "mode": "column", "error": ""}
     point = next(x for x in tile["history"] if x["period_start"] == w[3].isoformat())
     assert point["source"] == "sheet"
     # A client reader sees where it comes from, not the failure details.

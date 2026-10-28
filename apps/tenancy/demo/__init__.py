@@ -164,7 +164,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
     from apps.tenancy.context import tenant_context
 
     from . import calendar, comms, foundation, money, sessions, work
-    from .scorecard import operations, scorecard
+    from .scorecard import homeowner_contacts, operations, scorecard
 
     world = foundation.practice(ff_email=ff_email, ff_name=ff_name,
                                 oauth_client=oauth_client, today=today, visitor=visitor)
@@ -176,6 +176,7 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         operations(world)        # before the meetings: one proposes a reading of it
         comms.everything(world)
         scorecard(world)
+        homeowner_contacts(world)    # a live target, from the sheet's own column
         foundation.stage_rules(world)
         foundation.introductions(world)
         foundation.practice_scorecard(world)

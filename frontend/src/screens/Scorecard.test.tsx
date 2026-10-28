@@ -775,3 +775,68 @@ describe("the open period so far, the window menu and a source's cadence", () =>
     expect(patches.map((b) => [b.cadence, b.with_computed])).toEqual([["monthly", false], ["monthly", true]]);
   });
 });
+
+describe("live targets, operands and helpers", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("a Progress tile with a live target reads “102 of 108 · 94%”, and Details names the source", async () => {
+    const user = userEvent.setup();
+    const live = tile({ name: "Contacts Completed", kind: "count", shape: "progress", tile: "progress",
+      rollup: "last", target_live: { text: "the sheet's Total Homeowners column", value: 108 },
+      summary: { value: 102, target: 108, status: "behind", stale: false, missing: null,
+        periods: 1, periods_in: 1, full_target: 108, days_left: 4, elapsed: 0.4 } });
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, kpis: [live] } }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    const region = await screen.findByRole("region", { name: "Contacts Completed" });
+    expect(within(region).getByText("102")).toBeInTheDocument();
+    expect(within(region).getByText("of 108 · 94%")).toBeInTheDocument();
+    await user.click(within(region).getByRole("button", { name: "Back of Contacts Completed" }));
+    expect(within(region).getByText("Target 108, live from the sheet's Total Homeowners column."))
+      .toBeInTheDocument();
+  });
+
+  it("a typed target's Progress tile keeps “of” alone", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, kpis: [tile({
+      name: "Revenue", kind: "count", shape: "progress", tile: "progress",
+      summary: { value: 50, target: 100, status: "off_track", stale: false, missing: null,
+        periods: 1, periods_in: 1, full_target: 100, days_left: 4, elapsed: 0.4 } })] } }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    const region = await screen.findByRole("region", { name: "Revenue" });
+    expect(within(region).getByText("of 100")).toBeInTheDocument();
+  });
+
+  it("sets a live target from the sheet's column, an operand from a KPI's target, and a helper", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "POST /api/scorecard/kpis/": () => ({ status: 201, body: SETUP.kpis[0] }),
+      "PATCH /api/scorecard/kpis/k1/": () => ({ status: 200, body: SETUP.kpis[0] }),
+      "GET /api/scorecard/setup/": { ...SETUP, fields: { track: [], hubspot: [] } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ScorecardSetup me={aMe({ role: "FF" })}
+      company={aCompany({ id: "c1", is_client_company: true })} />);
+    await user.click(await screen.findByRole("button", { name: "Edit Occupancy" }));
+    await user.selectOptions(screen.getByLabelText("Target from"), "sheet_column");
+    expect(screen.queryByLabelText("Target")).toBeNull();
+    await user.type(screen.getByLabelText("Column heading or letter"), "Total Homeowners");
+    await user.click(screen.getByLabelText(/Helper: not shown as a tile/));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const body = fetchMock.calls.find((c) => c.method === "PATCH")?.body as Record<string, unknown>;
+      expect(body.target_live).toEqual({ kind: "sheet_column", header: "Total Homeowners", column: "" });
+      expect(body.helper).toBe(true);
+    });
+    await user.click(await screen.findByRole("button", { name: "Add a KPI" }));
+    await user.type(screen.getByLabelText("Name"), "Reached");
+    await user.click(screen.getByLabelText(/Computed: worked out/));
+    await user.selectOptions(screen.getByLabelText("First KPI"), "k1");
+    await user.selectOptions(screen.getByLabelText("Second KPI"), "k1");
+    await user.selectOptions(screen.getByLabelText("Of the second, use"), "target");
+    await user.click(screen.getByRole("button", { name: "Add the KPI" }));
+    await waitFor(() => {
+      const body = fetchMock.calls.find((c) => c.method === "POST")?.body as Record<string, unknown>;
+      expect([body.source_a, body.source_b, body.operand_a, body.operand_b])
+        .toEqual(["k1", "k1", null, { kind: "target" }]);
+    });
+  });
+});

@@ -209,6 +209,19 @@ class Kpi(TenantScopedModel):
                                  related_name="+")
     source_b = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT,
                                  related_name="+")
+    #: What of each source a computed KPI uses (`refs.py`): unset is the
+    #: source's own readings; {"kind": "target"} its target; a feed reference
+    #: (a sheet column or cell, a Track or HubSpot field) a number its feed
+    #: reads beside the reading, so "Contacts ÷ its target" needs no middle KPI.
+    operand_a = models.JSONField(null=True, blank=True)
+    operand_b = models.JSONField(null=True, blank=True)
+    #: A live target (`refs.py`): another KPI's latest reading, or a column,
+    #: cell or field of this KPI's own feed. Unset, the target is typed (or per
+    #: month) as before; set, it takes their place and the bands judge by it.
+    target_live = models.JSONField(null=True, blank=True)
+    #: "Helper: not shown as a tile": a value that only feeds a target or a
+    #: formula. Entered and fed as any KPI; never drawn on the page.
+    helper = models.BooleanField(default=False, db_default=False)
     position = models.PositiveSmallIntegerField(default=0, db_default=0)
     archived_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
@@ -242,6 +255,25 @@ class Kpi(TenantScopedModel):
 
     def __str__(self):
         return self.name
+
+
+class KpiFeedValue(TenantScopedModel):
+    """A number a KPI's feed reads beside its reading, one per period: the
+    column, cell or field a live target or a computed KPI's operand names
+    (`refs.key_of`). Written by the feed runs only; never by hand."""
+
+    kpi = models.ForeignKey("Kpi", on_delete=models.CASCADE, related_name="feed_values")
+    key = models.CharField(max_length=240)
+    period_start = models.DateField()
+    value = models.DecimalField(max_digits=16, decimal_places=4)
+    read_at = models.DateTimeField()
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_feed_value"
+        constraints = [
+            models.UniqueConstraint(fields=["kpi", "key", "period_start"],
+                                    name="kpi_feed_value_one_per_period"),
+        ]
 
 
 class KpiMonthTarget(TenantScopedModel):

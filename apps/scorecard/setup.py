@@ -210,7 +210,7 @@ def clean_kpi(scorecard, data, kpi=None) -> dict:
             "range_high", "behind_band_pct", "duration_unit", "rating_scale",
             "reading_owner", "per_person", "person_total", "leaderboard", "tile",
             "audience", "audience_team", "note", "strategy_component", "page", "formula",
-            "source_a", "source_b")
+            "source_a", "source_b", "operand_a", "operand_b", "target_live", "helper")
     for key in keys:
         if key in data:
             merged[key] = data[key]
@@ -292,15 +292,29 @@ def clean_kpi(scorecard, data, kpi=None) -> dict:
         raise SetupError("Choose a page of this scorecard.", "page")
     out["page"] = page
     out.update(_computed(scorecard, merged, kpi, out))
+    out["helper"] = bool(merged.get("helper", current("helper", False)))
+    from . import refs
+
+    try:
+        out["target_live"] = refs.clean_target(
+            scorecard, kpi.pk if kpi is not None else None,
+            merged.get("target_live", current("target_live")), name=name,
+            per_person=out["per_person"], direction=out["direction"],
+            computed=bool(out["formula"]))
+    except refs.RefRefused as exc:
+        raise SetupError(str(exc), exc.field) from None
     return out
 
 
 def _computed(scorecard, merged, kpi, out) -> dict:
     """A computed KPI's formula and two sources, one step only: two live KPIs
     of this scorecard, on its cadence, neither computed nor per person."""
+    from . import refs
+
     formula = merged.get("formula", kpi.formula if kpi is not None else "") or ""
     if not formula:
-        return {"formula": "", "source_a": None, "source_b": None}
+        return {"formula": "", "source_a": None, "source_b": None, "operand_a": None,
+                "operand_b": None}
     if formula not in Kpi.Formula.values:
         raise SetupError("A computed KPI is a sum, difference, ratio or average.", "formula")
     if out["per_person"]:
@@ -321,12 +335,23 @@ def _computed(scorecard, merged, kpi, out) -> dict:
         if source.cadence != out["cadence"]:
             raise SetupError(f"{source.name} is {source.get_cadence_display().lower()}; both "
                              "KPIs are on the computed KPI's cadence.", key)
-        chosen.append(source)
-    if chosen[0].pk == chosen[1].pk:
-        raise SetupError("Choose two different KPIs.", "source_b")
+        side = "operand_" + key[-1]
+        try:
+            operand = refs.clean_operand(
+                source, merged.get(side, getattr(kpi, side, None) if kpi is not None else None),
+                side)
+        except refs.RefRefused as exc:
+            raise SetupError(str(exc), exc.field) from None
+        chosen.append((source, operand))
+    (a, op_a), (b, op_b) = chosen
+    # One KPI twice is fine when it is two different numbers: "Contacts ÷ its target".
+    if a.pk == b.pk and refs.key_of(op_a or {}) == refs.key_of(op_b or {}) \
+            and refs.kind_of(op_a) == refs.kind_of(op_b):
+        raise SetupError("Choose two different KPIs, or two different numbers of one.",
+                         "source_b")
     # Nobody enters a computed KPI, so nobody is reminded about one.
-    return {"formula": formula, "source_a": chosen[0], "source_b": chosen[1],
-            "reading_owner": None}
+    return {"formula": formula, "source_a": a, "source_b": b, "operand_a": op_a,
+            "operand_b": op_b, "reading_owner": None}
 
 
 def _is_uuid(value) -> bool:
@@ -529,6 +554,8 @@ def describe(kpi) -> dict:
             "formula": kpi.formula,
             "source_a": str(kpi.source_a_id) if kpi.source_a_id else None,
             "source_b": str(kpi.source_b_id) if kpi.source_b_id else None,
+            "operand_a": kpi.operand_a, "operand_b": kpi.operand_b,
+            "target_live_ref": kpi.target_live,
             "month_targets": {str(t.month): num(t.value) for t in kpi.month_targets.all()},
             "people": [str(p.membership_id) for p in kpi.people.all()]}
 

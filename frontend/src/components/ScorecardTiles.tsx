@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import {
   CADENCE_LABEL, CADENCE_NOUN, KpiDef, PersonRow, Point, ROLLUP_WORDS, ReadingHistory,
-  STATUS_LABEL, Status, Tile, fmt, fmtChange, targetText,
+  STATUS_LABEL, Status, Tile, fmt, fmtChange, ofTarget, targetText,
 } from "../lib/scorecard";
 
 /**
@@ -260,7 +260,7 @@ function Body({ t }: { t: Tile }) {
         <>
           <div className="sc-value-row">
             <Big def={t} s={s} />
-            <div className="sc-muted">of {fmt(t, s.full_target)}</div>
+            <div className="sc-muted">{ofTarget(t, s.value, s.full_target, !!t.target_live)}</div>
           </div>
           <div className="sc-progress" role="img"
             aria-label={`${Math.round(pct)}% of the target`}>
@@ -378,6 +378,8 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
       <div className="sc-back-note">
         {t.note ? <><strong>How it's measured.</strong> {t.note}</> : "No note on how it's measured."}
         {t.computed && <div>Worked out each period from {t.computed}.</div>}
+        {t.target_live && <div className="sc-back-target">Target {t.target_live.value === null
+          ? "not read yet" : fmt(t, t.target_live.value)}, live from {t.target_live.text}.</div>}
         {t.feed && <div className="sc-back-feed">{t.feed.text}.
           {t.feed.error && <div className="sc-field-error"><strong>Last read failed:</strong> {t.feed.error}</div>}</div>}
       </div>

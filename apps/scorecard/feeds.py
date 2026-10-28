@@ -16,7 +16,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from . import periods as P
-from . import sheets
+from . import refs, sheets
 from .models import Kpi, KpiFeed
 
 #: How often each refresh reads: the hourly job runs them all and a daily
@@ -348,6 +348,8 @@ def run(feed, today, *, client=None, now=None) -> dict:
                 and not plan.skipped:
             raise sheets.FeedRefused("has no rows with a date and a number")
         counts = sheets.write(feed, results_for(feed, plan, today), now)
+        # The columns or cells a live target or a formula names, beside it.
+        refs.read_sheet(feed, rows, today, now)
     except (sheets.SheetUnavailable, sheets.FeedRefused, NoSheetsAccess) as exc:
         message = failure_words(feed, exc)
         if feed.last_error != message:
@@ -506,6 +508,8 @@ def run_track(feed, today, *, client=None, now=None) -> dict:
         results = sheets.outcome(kpi, values, today, kpi.scorecard.week_start,
                                  source=KpiReading.Source.TRACK, read_open=reads_open(feed))
         counts = sheets.write(feed, results, now, source=KpiReading.Source.TRACK)
+        refs.read_measures(kpi, "track", lambda m: track.plan_for(
+            feed, client, today, read_open=True, measure=m), today, now=now)
     except (track.TrackUnavailable, track.TrackRefused, sheets.FeedRefused) as exc:
         message = str(exc)
         if feed.last_error != message:
@@ -710,6 +714,9 @@ def run_hubspot(feed, today, *, client=None, now=None) -> dict:
             # Read at the close and kept, as a cell is.
             results = sheets.keep_closed(results)
         counts = sheets.write(feed, results, now, source=KpiReading.Source.HUBSPOT)
+        refs.read_measures(kpi, "hubspot", lambda m: hubspot.plan_for(
+            feed, client, today, zone=getattr(company.tenant, "timezone", "") or "UTC",
+            read_open=True, measure=m), today, snapshot=hubspot.SNAPSHOT, now=now)
     except (hubspot.HubSpotUnavailable, hubspot.HubSpotRefused, sheets.FeedRefused) as exc:
         message = str(exc)
         if feed.last_error != message:

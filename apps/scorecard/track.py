@@ -411,12 +411,13 @@ def value_for(measure, client, first, last, *, unit=None, user=None, cache=None)
     return Decimal(numbers[name])
 
 
-def plan_for(feed, client, today, *, periods=2, back=13, read_open=False):
+def plan_for(feed, client, today, *, periods=2, back=13, read_open=False, measure=None):
     """{(start, None): value} for the closed periods this read covers: the
     last two every day (late changes in Track follow), and as far back as
     `back` periods the first time. With `read_open`, the open period too, up
-    to today."""
+    to today. `measure` reads another field the same way (`refs.py`)."""
     kpi = feed.kpi
+    measure = measure or feed.measure
     week_start = kpi.scorecard.week_start
     last_closed = P.previous_start(P.start_of(today, kpi.cadence, week_start), kpi.cadence,
                                    week_start)
@@ -428,9 +429,9 @@ def plan_for(feed, client, today, *, periods=2, back=13, read_open=False):
     values = {}
     for start in starts:
         end = min(P.end_of(start, kpi.cadence), today)
-        value = value_for(feed.measure, client, start, end, unit=feed.unit_id or None,
+        value = value_for(measure, client, start, end, unit=feed.unit_id or None,
                           user=feed.assignee_id or None, cache=cache)
-        if value is not None and MEASURES[feed.measure][2] == "duration" \
+        if value is not None and MEASURES[measure][2] == "duration" \
                 and kpi.kind == "duration":
             # Days to close, in the KPI's own unit.
             value = _round(value * (24 if kpi.duration_unit == "hours" else 1440), "0.1")

@@ -31,18 +31,39 @@ def name_of(user) -> str:
 
 
 class Targets:
-    """A KPI's target in a period: its month's, when it has one, else fixed."""
+    """A KPI's target in a period: its month's, when it has one, else fixed;
+    or, for a live target (`refs.py`), the latest value of what it is taken
+    from on or before the period's last day. `live` is that series; left
+    out, it is read here, unfiltered (the practice's own arithmetic)."""
 
-    def __init__(self, kpi, months):
+    def __init__(self, kpi, months, live=None):
+        from . import refs
+
         self.kpi = kpi
         self.months = months
+        self.live = live if live is not None else refs.live_series(kpi)
 
     def of(self, start):
+        if self.live is not None:
+            from . import refs
+
+            return refs.latest_on(self.live, P.end_of(start, self.kpi.cadence))
         return self.months.get(start.month, self.kpi.target_value)
+
+    def current(self, today):
+        return self.of(P.start_of(today, self.kpi.cadence, self.kpi.scorecard.week_start))
 
     @property
     def seasonal(self) -> bool:
-        return bool(self.months)
+        return bool(self.months) and self.live is None
+
+
+def targets_for(kpi, months, reader=None) -> Targets:
+    """The KPI's targets as this reader may see them: a live target taken
+    from a KPI the reader can't see is no target for them."""
+    from . import refs
+
+    return Targets(kpi, months, live=refs.live_series(kpi, reader))
 
 
 def _kpi_status(kpi, value, target):
@@ -234,7 +255,7 @@ def definition(kpi, *, reader=None) -> dict:
         "tile": kpi.tile, "unit": unit_of(kpi), "duration_unit": kpi.duration_unit,
         "rating_scale": kpi.rating_scale, "note": kpi.note,
         "component": kpi.strategy_component, "per_person": kpi.per_person,
-        "leaderboard": kpi.leaderboard, "page": str(kpi.page_id),
+        "leaderboard": kpi.leaderboard, "page": str(kpi.page_id), "helper": kpi.helper,
         "range_low": num(kpi.range_low), "range_high": num(kpi.range_high),
         "fixed_target": num(kpi.target_value), "band": num(kpi.behind_band_pct),
         "owner": "" if kpi.is_computed else name_of(kpi.reading_owner),
@@ -281,7 +302,7 @@ def feed_of(kpi, reader):
     if feed is None or not feed.active:
         return None
     told = reader is not None and (reader.sets_up or kpi.reading_owner_id == reader.user_id)
-    return {"kind": "sheet", "text": source_text(feed),
+    return {"kind": "sheet", "text": source_text(feed), "mode": feed.mode,
             "error": feed.last_error if told else ""}
 
 
@@ -315,14 +336,38 @@ def _total(kpi, targets, per, rows):
     return Series(kpi, targets, by_start, scale=scale, so_far=so_far)
 
 
-def computed_values(kpi, readings_a, readings_b) -> dict:
-    """A computed KPI's value in each period both its sources have one:
+def operands(kpi, readings, months, reader=None) -> tuple:
+    """A computed KPI's two operands, each {start: value}, and the periods
+    where either is a "so far": each source's readings, its target, or a
+    number its feed reads beside them (`refs.py`). A target is a value in
+    every period, so it is taken where the other operand has one."""
+    from . import refs
+
+    sides, so_far = [], set()
+    for source, ref in ((kpi.source_a, kpi.operand_a), (kpi.source_b, kpi.operand_b)):
+        kind = refs.kind_of(ref) or "value"
+        if kind == "value":
+            own = [r for r in readings.get(source.pk, []) if r.membership_id is None]
+            so_far |= so_far_of(own)
+            sides.append({r.period_start: r.value for r in own})
+        elif kind == "target":
+            sides.append(targets_for(source, months.get(source.pk, {}), reader))
+        else:
+            key = refs.operand_key(source, ref)
+            sides.append(refs.values_of([source.pk], [key]).get((source.pk, key), {}))
+    starts = set().union(*(s for s in sides if isinstance(s, dict)))
+    a, b = ({st: side.of(st) for st in starts} if isinstance(side, Targets) else side
+            for side in sides)
+    return ({k: v for k, v in a.items() if v is not None},
+            {k: v for k, v in b.items() if v is not None}, frozenset(so_far))
+
+
+def computed_values(kpi, a, b) -> dict:
+    """A computed KPI's value in each period both its operands have one:
     start -> (value, None). A ratio over a zero has no value. A ratio of
     kind Percent is a percentage, as a typed percent is (93.4, not 0.934),
     so it is drawn, rolled up and judged against its target on that scale
     (Bryan, 2026-10-23)."""
-    a = {r.period_start: r.value for r in readings_a if r.membership_id is None}
-    b = {r.period_start: r.value for r in readings_b if r.membership_id is None}
     out = {}
     for start in a.keys() & b.keys():
         x, y = a[start], b[start]
@@ -344,13 +389,25 @@ def computed_values(kpi, readings_a, readings_b) -> dict:
 FORMULA_SIGN = {"sum": "+", "difference": "−", "ratio": "÷", "average": "and"}
 
 
+def operand_text(source, ref) -> str:
+    """"Contacts Completed", "Contacts Completed's target", "the sheet's
+    Total Homeowners column"."""
+    from . import refs
+
+    kind = refs.kind_of(ref) or "value"
+    if kind == "value":
+        return source.name
+    return refs.words(ref, source)
+
+
 def formula_text(kpi) -> str:
-    """"Revenue ÷ Bookings", "average of A and B"."""
+    """"Revenue ÷ Bookings", "average of A and B", "Contacts ÷ Contacts's target"."""
     if not kpi.is_computed or kpi.source_a is None or kpi.source_b is None:
         return ""
+    a, b = operand_text(kpi.source_a, kpi.operand_a), operand_text(kpi.source_b, kpi.operand_b)
     if kpi.formula == Kpi.Formula.AVERAGE:
-        return f"average of {kpi.source_a.name} and {kpi.source_b.name}"
-    return f"{kpi.source_a.name} {FORMULA_SIGN[kpi.formula]} {kpi.source_b.name}"
+        return f"average of {a} and {b}"
+    return f"{a} {FORMULA_SIGN[kpi.formula]} {b}"
 
 
 def tile(kpi, reader, targets, readings, people, win, today, week_start,
@@ -358,13 +415,16 @@ def tile(kpi, reader, targets, readings, people, win, today, week_start,
     """One KPI as the reader may see it. `sources` holds the readings of a
     computed KPI's two sources."""
     out = definition(kpi, reader=reader)
+    out["target_live"] = _live_payload(kpi, targets, today)
     if not kpi.per_person:
-        values = computed_values(kpi, *sources) if kpi.is_computed else {
-            r.period_start: (r.value, r) for r in readings if r.membership_id is None}
-        # A computed KPI is "so far" where either source is.
-        own = [r for group in (sources if kpi.is_computed else (readings,)) for r in group
-               if r.membership_id is None]
-        series = Series(kpi, targets, values, so_far=so_far_of(own))
+        if kpi.is_computed:
+            a, b, so_far = sources
+            values = computed_values(kpi, a, b)
+        else:
+            own = [r for r in readings if r.membership_id is None]
+            values = {r.period_start: (r.value, r) for r in own}
+            so_far = so_far_of(own)
+        series = Series(kpi, targets, values, so_far=so_far)
         out.update(shape=kpi.tile, summary=_summary(series, kpi, win, today, week_start),
                    delta=_delta(series, kpi, min(win.last, today)),
                    spark=_spark(series, kpi, win, today, week_start),
@@ -419,6 +479,28 @@ def tile(kpi, reader, targets, readings, people, win, today, week_start,
     out["each_target"] = num(targets.of(P.start_of(min(win.last, today), kpi.cadence,
                                                    week_start)))
     return out
+
+
+def _live_payload(kpi, targets, today):
+    """A live target's words and its value now, for the tile and Details."""
+    from . import refs
+
+    if not refs.kind_of(kpi.target_live):
+        return None
+    return {"text": refs.words(kpi.target_live, kpi), "value": num(targets.current(today))}
+
+
+def tiles_of(reader, kpis, win, today, week_start) -> list:
+    """The tiles of these KPIs: helpers are never drawn, though they still
+    feed the targets and formulas that name them."""
+    shown = [k for k in kpis if not k.helper]
+    sources = [s for k in shown if k.is_computed for s in (k.source_a, k.source_b)]
+    readings, months, people = load(shown + sources,
+                                    earliest_needed(win, shown, today, week_start))
+    return shown, [tile(k, reader, targets_for(k, months[k.pk], reader), readings[k.pk],
+                        people[k.pk], win, today, week_start,
+                        sources=operands(k, readings, months, reader) if k.is_computed
+                        else None) for k in shown]
 
 
 def load(kpis, first_day):
@@ -490,14 +572,7 @@ def build(reader, scorecard, page_id, win, today) -> dict:
     out["may_enter"] = any(reader.may_enter(k) for k in every_kpi)
     if not chosen:
         return out
-    kpis = chosen[1]
-    sources = [s for k in kpis if k.is_computed for s in (k.source_a, k.source_b)]
-    readings, months, people = load(kpis + sources,
-                                    earliest_needed(win, kpis, today, week_start))
-    tiles = [tile(k, reader, Targets(k, months[k.pk]), readings[k.pk], people[k.pk], win,
-                  today, week_start,
-                  sources=(readings[k.source_a_id], readings[k.source_b_id])
-                  if k.is_computed else None) for k in kpis]
+    kpis, tiles = tiles_of(reader, chosen[1], win, today, week_start)
     for t, k in zip(tiles, kpis):
         # The grid draws this window's own periods, and its roll-up beside
         # them (the tile's value), when the window holds more than one.

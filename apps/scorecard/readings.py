@@ -27,7 +27,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import periods as P
-from .board import Targets, definition, name_of, num
+from .board import definition, name_of, num, targets_for
 from .models import (Kpi, KpiFeed, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange,
                      KpiReminder)
 
@@ -151,7 +151,7 @@ def form(reader, scorecard, day: date, today: date) -> dict:
 
     kpis = []
     for page, kpi, rows in entries:
-        target = Targets(kpi, months[kpi.pk]).of(starts[kpi.pk])
+        target = targets_for(kpi, months[kpi.pk], reader).of(starts[kpi.pk])
         kpis.append({
             **definition(kpi, reader=reader),
             "page_name": page.name,

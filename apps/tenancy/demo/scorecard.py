@@ -387,3 +387,67 @@ def bonus_plans(world, card, kpis, team, starts) -> int:
             plan = bonus.copy_forward(plan, world.owner)
         made += 1
     return made
+
+
+#: Hooli's homeowner contacts page (2026-10-28): the example of a live target.
+HOMEOWNER_COMPANY = "Hooli Field Services"
+HOMEOWNER_PAGE = "Homeowner contacts"
+#: Contacts completed to date and the homeowners on the list, by week, oldest
+#: first, as the field team's sheet has them; the last is this week so far.
+HOMEOWNER_WEEKS = [(18, 96), (31, 96), (44, 100), (57, 100), (66, 104), (78, 104),
+                   (90, 108), (97, 108), (102, 108)]
+
+
+def homeowner_contacts(world) -> dict:
+    """Hooli Field Services' scorecard: one page, "Homeowner contacts", read
+    from the field team's Google Sheet. Contacts Completed is a Progress tile
+    whose target is live, the sheet's Total Homeowners column, so it reads
+    "102 of 108 · 94%" with no tile for the total; Homeowners reached is
+    Contacts Completed ÷ its own target. The demo never reads Google, so the
+    feed's readings and the column beside them are written here as a read
+    would have written them, this week's marked "so far"."""
+    from apps.scorecard import periods as P
+    from apps.scorecard import refs, setup
+    from apps.scorecard.models import Kpi, KpiFeed, KpiFeedValue, KpiReading, KpiReadingChange
+
+    company = world.companies[HOMEOWNER_COMPANY]
+    this_week = P.start_of(world.today, P.WEEKLY)
+    weeks = [this_week - timedelta(weeks=n) for n in range(len(HOMEOWNER_WEEKS) - 1, -1, -1)]
+    with at(moment(weeks[0] - timedelta(days=3), 10, 0)):
+        card = setup.ensure(company, world.owner)
+        page = card.pages.get()
+        page.name = HOMEOWNER_PAGE
+        page.save(update_fields=["name", "updated_at"])
+        contacts = setup.create_kpi(card, {
+            "name": "Contacts Completed", "kind": "count", "cadence": "weekly",
+            "rollup": "last", "tile": "progress", "page": str(page.pk),
+            "reading_owner": str(world.owner.pk), "strategy_component": "traction",
+            "target_live": {"kind": "sheet_column", "header": "Total Homeowners"},
+            "note": "Homeowners the field team has reached, to date"}, world.owner)
+        reached = setup.create_kpi(card, {
+            "name": "Homeowners reached", "kind": "percent", "cadence": "weekly",
+            "rollup": "last", "tile": "gauge", "target_value": 90, "page": str(page.pk),
+            "formula": "ratio", "source_a": str(contacts.pk), "source_b": str(contacts.pk),
+            "operand_b": {"kind": "target"}, "strategy_component": "traction",
+            "note": "Contacts Completed ÷ its target, the homeowners on the list"},
+            world.owner)
+        KpiFeed.objects.create(
+            tenant=world.tenant, kpi=contacts, spreadsheet_id="demo-homeowner-contacts",
+            spreadsheet_name="Homeowner contacts", tab="Contacts", mode="column",
+            refresh="hourly", date_column="A", date_header="Week of", value_column="B",
+            value_header="Contacts Completed", header_row=0,
+            last_run_at=moment(world.today, 7, 0), last_success_at=moment(world.today, 7, 0))
+        Kpi.objects.filter(pk=contacts.pk).update(feed=Kpi.Feed.SHEET)
+    key = refs.target_key(contacts)
+    for start, (done, total) in zip(weeks, HOMEOWNER_WEEKS):
+        so_far = start == this_week
+        when = moment(world.today, 7, 0) if so_far else \
+            moment(P.end_of(start, P.WEEKLY) + timedelta(days=1), 7, 0)
+        with at(when):
+            reading = KpiReading.objects.create(
+                tenant=world.tenant, kpi=contacts, period_start=start, value=done,
+                source=KpiReading.Source.SHEET, entered_at=when, provisional=so_far)
+            KpiReadingChange.objects.create(tenant=world.tenant, reading=reading, value=done)
+            KpiFeedValue.objects.create(tenant=world.tenant, kpi=contacts, key=key,
+                                        period_start=start, value=total, read_at=when)
+    return {"homeowner KPIs": [contacts.name, reached.name], "homeowner weeks": len(weeks)}

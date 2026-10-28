@@ -407,17 +407,20 @@ def value_for(measure, client, first, last, *, zone="UTC", owner=None, stage=Non
     return Decimal(client.count(obj, _between(WHEN[measure], *window) + _owner(owner)))
 
 
-def plan_for(feed, client, today, *, zone="UTC", periods=2, back=13, read_open=False):
+def plan_for(feed, client, today, *, zone="UTC", periods=2, back=13, read_open=False,
+             measure=None):
     """{(start, None): value} for the closed periods this read covers: the
     last two every day (late changes in HubSpot follow), and as far back as
     `back` periods the first time. Pipeline value is the latest closed
     period's alone, and only within two days of its close. With `read_open`,
-    the open period too, up to today."""
+    the open period too, up to today. `measure` reads another field the
+    same way (`refs.py`)."""
     kpi = feed.kpi
+    measure = measure or feed.measure
     week_start = kpi.scorecard.week_start
     last_closed = P.previous_start(P.start_of(today, kpi.cadence, week_start), kpi.cadence,
                                    week_start)
-    if feed.measure in SNAPSHOT:
+    if measure in SNAPSHOT:
         starts = [] if today - P.end_of(last_closed, kpi.cadence) > SNAPSHOT_GRACE \
             else [last_closed]
     else:
@@ -428,7 +431,7 @@ def plan_for(feed, client, today, *, zone="UTC", periods=2, back=13, read_open=F
     cache = {}
     values = {}
     for start in starts:
-        value = value_for(feed.measure, client, start,
+        value = value_for(measure, client, start,
                           min(P.end_of(start, kpi.cadence), today), zone=zone,
                           owner=feed.owner_id or None, stage=feed.stage_id or None, cache=cache)
         if value is not None:

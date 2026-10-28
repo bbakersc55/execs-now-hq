@@ -702,6 +702,22 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
     # An assistant still has no financials, in the demo as anywhere.
     assert api.as_(people["assistant"]).get("/api/finance-entries/").status_code in (403, 404)
 
+    # The live target example (2026-10-28): Hooli's Homeowner contacts page
+    # reads "102 of 108", its target the sheet's Total Homeowners column, and
+    # no tile for the total.
+    hooli = Company.all_objects.get(name="Hooli Field Services")
+    board = api.as_(people["practice owner"]).get(
+        f"/api/scorecard/?company={hooli.pk}&window=this_week").json()
+    assert [p["name"] for p in board["pages"]] == ["Homeowner contacts"]
+    tiles = {t["name"]: t for t in board["kpis"]}
+    assert sorted(tiles) == ["Contacts Completed", "Homeowners reached"]
+    done = tiles["Contacts Completed"]
+    assert done["shape"] == "progress" and done["summary"]["so_far"] is True
+    assert (done["summary"]["value"], done["summary"]["full_target"]) == (102, 108)
+    assert done["target_live"] == {"text": "the sheet's Total Homeowners column", "value": 108}
+    assert done["feed"]["kind"] == "sheet"
+    assert round(tiles["Homeowners reached"]["summary"]["value"], 1) == 94.4
+
     # -------------------------------------------------- the second run resets
     with tenant_context(tenant.pk):
         from apps.tenancy.models import SecretKind, TenantSecret

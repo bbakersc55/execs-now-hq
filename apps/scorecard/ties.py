@@ -40,14 +40,8 @@ def tiles_for(reader, kpis, today) -> dict:
         return {}
     week_start = kpis[0].scorecard.week_start
     win = P.window("this_week", today, week_start)
-    sources = [s for k in kpis if k.is_computed for s in (k.source_a, k.source_b)]
-    readings, months, people = board.load(
-        kpis + sources, board.earliest_needed(win, kpis, today, week_start))
-    return {k.pk: board.tile(k, reader, board.Targets(k, months[k.pk]), readings[k.pk],
-                             people[k.pk], win, today, week_start,
-                             sources=(readings[k.source_a_id], readings[k.source_b_id])
-                             if k.is_computed else None)
-            for k in kpis}
+    shown, tiles = board.tiles_of(reader, kpis, win, today, week_start)
+    return {k.pk: t for k, t in zip(shown, tiles)}
 
 
 def _kpi_query():

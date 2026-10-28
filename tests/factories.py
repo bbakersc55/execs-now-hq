@@ -1695,6 +1695,18 @@ class TrackConnectionFactory(TenantScopedFactory):
     domain = "acme.trackhs.com"
 
 
+class KpiFeedValueFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiFeedValue"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    key = "column:total homeowners:last"
+    period_start = factory.Sequence(lambda n: datetime.date(2026, 1, 5) + datetime.timedelta(days=7 * n))
+    value = 108
+    read_at = factory.LazyFunction(timezone.now)
+
+
 class KpiTrackFeedFactory(TenantScopedFactory):
     class Meta:
         model = "scorecard.KpiTrackFeed"
