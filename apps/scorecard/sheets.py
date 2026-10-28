@@ -117,7 +117,11 @@ _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%m-%d-%Y", "%m-%d-%y", "%Y
                  "%b %d, %Y", "%B %d, %Y", "%b %d %Y", "%B %d %Y", "%d %b %Y", "%d %B %Y",
                  "%a, %b %d, %Y", "%A, %B %d, %Y", "%b %Y", "%B %Y", "%b-%y", "%b-%Y",
                  "%m/%Y", "%Y-%m")
-_QUARTER = re.compile(r"^(?:q([1-4])\s*[-/ ]?\s*(\d{4})|(\d{4})\s*[-/ ]?\s*q([1-4]))$", re.I)
+_QUARTER = re.compile(r"^(?:q([1-4])\s*[-/ ]?\s*(?:fy)?\s*['’]?(\d{4}|\d{2})"
+                      r"|(\d{4})\s*[-/ ]?\s*q([1-4]))$", re.I)
+#: "Oct '24": a month with a two-digit year, only with the apostrophe, so
+#: "Oct 19" stays a day without a year.
+_MONTH_YY = re.compile(r"^([A-Za-z]{3,9})\.?\s*['’](\d{2})$")
 
 
 def text_of(cell) -> str:
@@ -140,7 +144,15 @@ def parse_date(cell) -> date | None:
     if quarter:
         q = int(quarter.group(1) or quarter.group(4))
         year = int(quarter.group(2) or quarter.group(3))
+        year += 2000 if year < 100 else 0
         return date(year, 3 * (q - 1) + 1, 1)
+    month_yy = _MONTH_YY.match(text)
+    if month_yy:
+        for fmt in ("%b %y", "%B %y"):
+            try:
+                return datetime.strptime(f"{month_yy.group(1)} {month_yy.group(2)}", fmt).date()
+            except ValueError:
+                continue
     cleaned = re.sub(r"\s+", " ", text.replace(".", "").replace("Sept ", "Sep "))
     # "Week of 10/19/2026", "w/e 10/25/2026": the date in it.
     found = re.search(r"\d{1,4}[/-]\d{1,2}([/-]\d{2,4})?", cleaned)
@@ -161,8 +173,9 @@ def parse_number(cell) -> Decimal | None:
     text = text_of(cell)
     if not text or text in ("-", "—", "–"):
         return None
-    negative = text.startswith("(") and text.endswith(")")
-    core = text.strip("()").replace(",", "").replace("$", "").replace("€", "") \
+    bare = text.lstrip("$€£").strip()                  # "$(1,200)" as "(1,200)"
+    negative = bare.startswith("(") and bare.endswith(")")
+    core = bare.strip("()").replace(",", "").replace("$", "").replace("€", "") \
         .replace("£", "").replace("%", "").strip()
     core = re.sub(r"\s*(hrs?|hours?|mins?|minutes?|days?)$", "", core, flags=re.I)
     if core.startswith("-"):
@@ -350,6 +363,74 @@ def plan_columns(kpi, week_start, rows, config) -> Plan:
         start = P.start_of(day, kpi.cadence, week_start)
         gathered[(start, member)].append(value)
         plan.rows_of[(start, member)].append(i + 1)
+    for key, values in gathered.items():
+        plan.values[key] = combine(kpi, values)
+    return plan
+
+
+def _label_of(row) -> str:
+    """A row's label: its first cell with words in it ("Net Income")."""
+    for c in row[:6]:
+        text = text_of(c)
+        if text and parse_date(text) is None and _is_text(text):
+            return text
+    return ""
+
+
+def _dates_in(row) -> int:
+    return sum(1 for c in row if parse_date(c) is not None)
+
+
+def plan_rows(kpi, week_start, rows, config) -> Plan:
+    """By row: a row of dates across ("Oct 2024", "Q4 2024", 10/31/2024) and
+    a row of numbers under them, a column per period. The numbers row is
+    found by its label wherever it has moved; the dates row where it was,
+    else the row nearest it with the most dates. Cells that are not periods
+    (the label column, a Total) are left out and said why."""
+    if kpi.per_person:
+        raise FeedRefused(f"{kpi.name} has a reading per person, so it is read by column, "
+                          "with a column of names.")
+    date_at, value_at = config.get("date_row"), config.get("value_row")
+    label = normal(config.get("value_label") or "")
+    if date_at is None or value_at is None:
+        raise FeedRefused("Choose the row of dates and the row of numbers.")
+    if label:
+        same = value_at < len(rows) and normal(_label_of(rows[value_at])) == label
+        if not same:
+            found = [i for i, r in enumerate(rows[:MOST_ROWS]) if normal(_label_of(r)) == label]
+            if not found:
+                raise FeedRefused(f"has no row called {config.get('value_label')}")
+            value_at = min(found, key=lambda i: abs(i - value_at))
+    if value_at >= len(rows):
+        raise FeedRefused(f"has no row {value_at + 1}")
+    if date_at >= len(rows) or not _dates_in(rows[date_at]):
+        near = [i for i in range(len(rows[:HEADER_SEARCH * 2])) if _dates_in(rows[i])]
+        if not near:
+            raise FeedRefused("has no row of dates")
+        date_at = max(near, key=lambda i: (_dates_in(rows[i]), -abs(i - date_at)))
+    plan = Plan(header_row=date_at)
+    dates, numbers = rows[date_at], rows[value_at]
+    gathered = defaultdict(list)
+    for c, cell in enumerate(dates):
+        day = parse_date(cell)
+        where = f"column {column_letter(c)}"
+        if day is None:
+            if text_of(cell) and c < len(numbers) and text_of(numbers[c]) \
+                    and normal(text_of(numbers[c])) != label:
+                plan.skipped.append((where, f'"{text_of(cell)}" isn\'t a period.'))
+            continue
+        raw_cell = numbers[c] if c < len(numbers) else ""
+        try:
+            raw = parse_number(raw_cell)
+            if raw is None:
+                continue                                   # no number yet for that period
+            value = as_reading(kpi, raw)
+        except FeedRefused as exc:
+            plan.skipped.append((where, str(exc)))
+            continue
+        start = P.start_of(day, kpi.cadence, week_start)
+        gathered[(start, None)].append(value)
+        plan.rows_of[(start, None)].append(column_letter(c))
     for key, values in gathered.items():
         plan.values[key] = combine(kpi, values)
     return plan

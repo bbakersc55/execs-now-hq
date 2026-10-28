@@ -397,6 +397,8 @@ class KpiFeed(TenantScopedModel):
     class Mode(models.TextChoices):
         COLUMN = "column", "By column"
         CELL = "cell", "One cell"
+        #: A column per period: a row of dates across, a row of numbers under it.
+        ROW = "row", "By row"
 
     class Refresh(models.TextChoices):
         HOURLY = "hourly", "Every hour"
@@ -423,6 +425,12 @@ class KpiFeed(TenantScopedModel):
     #: The row of headings, counted from 0; none when the data starts at the top.
     header_row = models.PositiveSmallIntegerField(null=True, blank=True)
     cell = models.CharField(max_length=12, blank=True, default="", db_default="")
+    #: By row: the row of dates and the row of numbers, counted from 0, and
+    #: the numbers row's label ("Net Income"), by which it is found again
+    #: when rows are inserted above it.
+    date_row = models.PositiveSmallIntegerField(null=True, blank=True)
+    value_row = models.PositiveSmallIntegerField(null=True, blank=True)
+    value_label = models.CharField(max_length=200, blank=True, default="", db_default="")
     #: A cell feed's first period: the one open when it was set up. A period
     #: that had closed by then is never given the cell's later number.
     cell_from = models.DateField(null=True, blank=True)
@@ -457,6 +465,8 @@ class KpiFeed(TenantScopedModel):
                 "value_column": self.value_column, "value_header": self.value_header,
                 "name_column": self.name_column, "name_header": self.name_header,
                 "header_row": self.header_row, "cell": self.cell, "people": self.people or {},
+                "date_row": self.date_row, "value_row": self.value_row,
+                "value_label": self.value_label,
                 "read_open": self.read_open}
 
 

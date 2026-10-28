@@ -184,6 +184,9 @@ def test_spreadsheet_addresses_cells_and_columns():
     ("Oct 19, 2026", date(2026, 10, 19)), ("October 19, 2026", date(2026, 10, 19)),
     ("Week of 10/19/2026", date(2026, 10, 19)), ("October 2026", date(2026, 10, 1)),
     ("Q4 2026", date(2026, 10, 1)), ("46314", date(2026, 10, 19)),
+    ("Oct 2024", date(2024, 10, 1)), ("OCT 2024", date(2024, 10, 1)), ("Oct '24", date(2024, 10, 1)),
+    ("Q4 '24", date(2024, 10, 1)), ("Q1-25", date(2025, 1, 1)), ("2024 Q3", date(2024, 7, 1)),
+    ("Oct 19", None),
     ("Total", None), ("", None), ("82%", None), ("12", None),
 ])
 def test_dates_as_people_type_them(text, expected):
@@ -193,6 +196,8 @@ def test_dates_as_people_type_them(text, expected):
 @pytest.mark.parametrize("text,expected", [
     ("1,234.50", Decimal("1234.50")), ("$1,234", Decimal("1234")), ("(1,200)", Decimal("-1200")),
     ("82%", Decimal("82")), ("3.5 hrs", Decimal("3.5")), ("", None), ("-", None),
+    ("$1,101,321", Decimal("1101321")), ("(1,101,321)", Decimal("-1101321")),
+    ("$(48,210)", Decimal("-48210")), ("($48,210)", Decimal("-48210")),
 ])
 def test_numbers_as_a_sheet_shows_them(text, expected):
     assert sheets.parse_number(text) == expected
@@ -519,6 +524,127 @@ def test_hourly_and_daily_refresh(practice):
     today = timezone.localdate()
     assert feeds.run_due(p["tenant"].pk, today, now=now + timedelta(hours=1))["ran"] == 1
     assert feeds.run_due(p["tenant"].pk, today, now=now + timedelta(hours=24))["ran"] == 2
+
+
+# ---------------------------------------------------------------- by row
+
+MONTHS_ACROSS = ["Oct 2024", "Nov 2024", "Dec 2024", "Jan 2025", "Feb 2025", "Mar 2025"]
+
+
+def financials(net=("$1,101,321", "(48,210)", "$96,400", "$(12,005)", "", "$88,000"),
+               margin=("12.5%", "-0.6%", "9.1%", "(1.2%)", "", "8.0%")):
+    """A P&L as a bookkeeper lays it out: a title, notes, the months across
+    row 7, a label column, a Total at the end."""
+    pad = [[""] * 9 for _ in range(6)]
+    pad[0][0], pad[1][0] = "Northwind Foods", "Profit and loss, by month"
+    return pad + [
+        ["", "Account"] + MONTHS_ACROSS + ["Total"],
+        ["", "Revenue", "$8,800,000", "$7,900,000", "$9,100,000", "$8,100,000", "", "$9,000,000",
+         "$51,900,000"],
+        ["", "Net Income", *net, "$1,225,506"],
+        ["", "Net margin %", *margin, "4.6%"],
+    ]
+
+
+def monthly(p, name, kind, rollup="sum", cadence="monthly"):
+    with tenant_context(p["tenant"].pk):
+        return setup.create_kpi(p["card"], {
+            "name": name, "kind": kind, "cadence": cadence, "rollup": rollup,
+            "page": str(p["card"].pages.get().pk)}, p["ff"].user)
+
+
+def by_row(p, kpi, value_row, label, date_row=6, **extra):
+    return mapping(p, kpi, tab="P&L", mode="row", date_row=date_row, value_row=value_row,
+                   value_label=label, **extra)
+
+
+def test_a_pl_read_by_row_month_across_previewed_then_saved(practice):
+    p = practice
+    FakeSheets.books[(SHEET_ID, "P&L")] = financials()
+    client = p["api"].as_(p["ff"])
+    net = monthly(p, "Net income", "money")
+    body = by_row(p, net, 8, "Net Income")
+    shown = post(client, f"{B}preview/", body)
+    assert shown.status_code == 200, shown.content
+    shown = shown.json()
+    assert shown["header_row"] == 6                                     # row 7: the months
+    got = {r["start"]: (r["value"], r["rows"]) for r in shown["periods"]}
+    assert got == {"2024-10-01": (1101321, ["C"]), "2024-11-01": (-48210, ["D"]),
+                   "2024-12-01": (96400, ["E"]), "2025-01-01": (-12005, ["F"]),
+                   "2025-03-01": (88000, ["H"])}                       # February is blank
+    assert {x["where"] for x in shown["skipped"]} == {"column I"}       # the Total
+    assert shown["skipped"][0]["why"] == '"Total" isn\'t a period.'
+    assert readings_of(net) == {}                                       # the preview saved nothing
+    saved = put(client, B, body).json()
+    assert saved["run"]["ok"] and saved["run"]["new"] == 5
+    assert saved["feed"]["mode"] == "row" and saved["feed"]["value_label"] == "Net Income"
+    # As far back as the sheet goes: October 2024 is written, before the pickers' floor.
+    assert readings_of(net)[date(2024, 10, 1)].value == Decimal("1101321")
+    assert readings_of(net)[date(2024, 11, 1)].value == Decimal("-48210")
+    assert feeds.source_text(KpiFeed.all_objects.get(kpi=net)) == (
+        "From the Google Sheet 'Weekly numbers', tab 'P&L', row 'Net Income', read every hour")
+
+
+def test_a_percent_row_into_a_percent_kpi(practice):
+    p = practice
+    FakeSheets.books[(SHEET_ID, "P&L")] = financials()
+    client = p["api"].as_(p["ff"])
+    margin = monthly(p, "Net margin", "percent", rollup="average")
+    assert put(client, B, by_row(p, margin, 9, "Net margin %")).json()["run"]["ok"]
+    assert {s: r.value for s, r in readings_of(margin).items()} == {
+        date(2024, 10, 1): Decimal("12.5"), date(2024, 11, 1): Decimal("-0.6"),
+        date(2024, 12, 1): Decimal("9.1"), date(2025, 1, 1): Decimal("-1.2"),
+        date(2025, 3, 1): Decimal("8")}
+
+
+def test_the_numbers_row_is_found_by_its_label_and_a_lost_one_is_said(practice):
+    p = practice
+    rows = financials()
+    FakeSheets.books[(SHEET_ID, "P&L")] = rows
+    client = p["api"].as_(p["ff"])
+    net = monthly(p, "Net income", "money")
+    put(client, B, by_row(p, net, 8, "Net Income"))
+    feed = KpiFeed.all_objects.get(kpi=net)
+    # The bookkeeper adds two rows above: the months and Net Income move down.
+    rows[8][3] = "$50,000"
+    FakeSheets.books[(SHEET_ID, "P&L")] = [[""] * 9, ["", "Notes"] + [""] * 7] + rows
+    assert feeds.run(feed, timezone.localdate())["update"] == 1
+    assert readings_of(net)[date(2024, 11, 1)].value == Decimal("50000")
+    # Renamed, it is said by name and every reading is kept.
+    rows[8][1] = "Net profit"
+    result = feeds.run(feed, timezone.localdate())
+    assert result == {"ok": False, "error": "The sheet 'Weekly numbers' (tab 'P&L') has no row "
+                                             "called Net Income."}
+    assert len(readings_of(net)) == 5
+
+
+def test_quarter_labels_across_for_a_quarterly_kpi(practice):
+    p = practice
+    FakeSheets.books[(SHEET_ID, "Q")] = [
+        ["Metric", "Q3 2024", "Q4 '24", "Q1-25", "2025 Q2"],
+        ["Bookings", "120", "140", "(10)", "1,100"],
+    ]
+    client = p["api"].as_(p["ff"])
+    bookings = monthly(p, "Bookings", "number", cadence="quarterly")
+    body = mapping(p, bookings, tab="Q", mode="row", date_row=0, value_row=1,
+                   value_label="Bookings")
+    assert put(client, B, body).json()["run"]["ok"]
+    assert {s: r.value for s, r in readings_of(bookings).items()} == {
+        date(2024, 7, 1): Decimal("120"), date(2024, 10, 1): Decimal("140"),
+        date(2025, 1, 1): Decimal("-10"), date(2025, 4, 1): Decimal("1100")}
+
+
+def test_by_row_refuses_what_cannot_be(practice):
+    p = practice
+    FakeSheets.books[(SHEET_ID, "P&L")] = financials()
+    client = p["api"].as_(p["ff"])
+    net = monthly(p, "Net income", "money")
+    for body, said in (
+            (by_row(p, net, 6, "Account"), "different rows"),
+            (by_row(p, net, None, ""), "row of dates and the row of numbers"),
+            (by_row(p, p["kpis"]["calls"], 8, "Net Income"), "per person")):
+        refused = post(client, f"{B}preview/", body)
+        assert refused.status_code == 400 and said in refused.json()["detail"], body
 
 
 # ---------------------------------------------------------------- the open period so far

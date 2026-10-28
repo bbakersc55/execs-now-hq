@@ -99,3 +99,49 @@ describe("the Google Sheet feed (M5 part 3)", () => {
     expect(screen.queryByRole("button", { name: /Google/ })).toBeNull();
   });
 });
+
+describe("the Google Sheet feed by row (a column per period)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("clicks the row of months and the row of numbers, previews, then saves", async () => {
+    const user = userEvent.setup();
+    const pl = {
+      ...GRID, tab: "P&L", tabs: [{ title: "P&L", id: 0 }], header_row: null,
+      rows: [["Northwind Foods"], [], [], [], [], [],
+        ["", "Account", "Oct 2024", "Nov 2024", "Total"],
+        ["", "Revenue", "$8,800,000", "$7,900,000", "$16,700,000"],
+        ["", "Net Income", "$1,101,321", "(48,210)", "$1,053,111"]],
+    };
+    const { fetchMock, onSaved } = show({
+      "GET /api/scorecard/feeds/": { ...STATE, kpi: { ...STATE.kpi, name: "Net income", cadence: "monthly",
+        cadence_noun: "month", kind: "money" } },
+      "POST /api/scorecard/feeds/open/": pl,
+      "POST /api/scorecard/feeds/preview/": { ...PREVIEW, header_row: 6,
+        skipped: [{ row: "column E", where: "column E", why: '"Total" isn\'t a period.' }],
+        counts: { new: 2, update: 0, same: 0, kept: 0, open: 0 },
+        periods: [
+          { start: "2024-10-01", label: "October 2024", person: "", value: 1101321, had: null, what: "new",
+            says: "New reading", rows: ["C"] },
+          { start: "2024-11-01", label: "November 2024", person: "", value: -48210, had: null, what: "new",
+            says: "New reading", rows: ["D"] }] },
+      "PUT /api/scorecard/feeds/": { feed: {}, run: { ok: true, new: 2, update: 0 } },
+    });
+    await user.type(await screen.findByLabelText("The spreadsheet's address"), "1AbC");
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await user.click(await screen.findByLabelText("By row (a column per period)"));
+    await user.click(screen.getByRole("button", { name: "Row 7 for dates" }));
+    await user.click(screen.getByRole("button", { name: "Row 9 for numbers" }));
+    expect(screen.getByRole("button", { name: /Numbers: row 9 \(Net Income\)/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show what it would make" }));
+    const preview = await screen.findByRole("region", { name: "What it would make" });
+    expect(within(preview).getByText("From columns")).toBeInTheDocument();
+    expect(within(preview).getByText("$1,101,321")).toBeInTheDocument();
+    expect(within(preview).getByText("-$48,210")).toBeInTheDocument();
+    expect(within(preview).getByText(/1 column left out/)).toBeInTheDocument();
+    expect(within(preview).getByText(/column E: "Total" isn't a period/)).toBeInTheDocument();
+    const asked = fetchMock.calls.find((c) => c.url.includes("/preview/"))!.body as Record<string, unknown>;
+    expect(asked).toMatchObject({ mode: "row", date_row: 6, value_row: 8, value_label: "Net Income" });
+    await user.click(screen.getByRole("button", { name: "Save the feed" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("Net income now reads from the sheet: 2 new readings."));
+  });
+});

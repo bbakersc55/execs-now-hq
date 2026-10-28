@@ -342,7 +342,9 @@ export const isoDay = (d: Date) =>
 
 /** Part 3: a KPI's Google Sheet feed, as the mapping screen gets it. */
 export interface FeedConfig {
-  spreadsheet_id: string; spreadsheet_name: string; tab: string; mode: "column" | "cell";
+  spreadsheet_id: string; spreadsheet_name: string; tab: string; mode: "column" | "cell" | "row";
+  /** By row: the row of dates, the row of numbers (from 0) and its label. */
+  date_row?: number | null; value_row?: number | null; value_label?: string;
   refresh: "hourly" | "daily"; active: boolean;
   date_column: string; date_header: string; value_column: string; value_header: string;
   name_column: string; name_header: string; header_row: number | null; cell: string;
@@ -370,10 +372,10 @@ export interface SheetGrid {
 export interface FeedPreview {
   header_row: number | null;
   periods: { start: string; label: string; person: string; value: number; had: number | null;
-    what: "new" | "update" | "same" | "kept" | "open"; says: string; rows: number[] }[];
+    what: "new" | "update" | "same" | "kept" | "open"; says: string; rows: (number | string)[] }[];
   more: number;
   counts: Record<"new" | "update" | "same" | "kept" | "open", number>;
-  skipped: { row: number; why: string }[]; skipped_more: number;
+  skipped: { row: number | string; where?: string; why: string }[]; skipped_more: number;
   unmatched: { name: string; rows: number }[];
   cell?: { ref: string; value: number | null; period: string; closes: string };
 }

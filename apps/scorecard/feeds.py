@@ -162,7 +162,7 @@ def client_for(feed_or_tenant, user=None, *, factory=None):
 
 # ------------------------------------------------------------- the mapping
 
-MODES = (KpiFeed.Mode.COLUMN, KpiFeed.Mode.CELL)
+MODES = (KpiFeed.Mode.COLUMN, KpiFeed.Mode.CELL, KpiFeed.Mode.ROW)
 
 
 def clean(kpi, data, read_open=None) -> dict:
@@ -181,7 +181,7 @@ def clean(kpi, data, read_open=None) -> dict:
         raise sheets.FeedRefused("Choose the tab the numbers are on.")
     mode = data.get("mode") or KpiFeed.Mode.COLUMN
     if mode not in MODES:
-        raise sheets.FeedRefused("A sheet is read by column or from one cell.")
+        raise sheets.FeedRefused("A sheet is read by column, by row or from one cell.")
     refresh = data.get("refresh") or KpiFeed.Refresh.DAILY
     if refresh not in KpiFeed.Refresh.values:
         raise sheets.FeedRefused("Refresh hourly or daily.")
@@ -190,13 +190,32 @@ def clean(kpi, data, read_open=None) -> dict:
            "spreadsheet_name": str(data.get("spreadsheet_name") or "")[:200],
            "date_column": "", "date_header": "", "value_column": "", "value_header": "",
            "name_column": "", "name_header": "", "header_row": None, "cell": "",
-           "people": {}, "read_open": read_open_choice(data, read_open)}
+           "people": {}, "read_open": read_open_choice(data, read_open),
+           "date_row": None, "value_row": None, "value_label": ""}
     if mode == KpiFeed.Mode.CELL:
         if kpi.per_person:
             raise sheets.FeedRefused(f"{kpi.name} has a reading per person, so it is read "
                                      "by column: one cell holds one number.")
         r, c = sheets.parse_cell(str(data.get("cell") or ""))
         out["cell"] = sheets.cell_name(r, c)
+        return out
+    if mode == KpiFeed.Mode.ROW:
+        if kpi.per_person:
+            raise sheets.FeedRefused(f"{kpi.name} has a reading per person, so it is read by "
+                                     "column, with a column of names.")
+        for role in ("date_row", "value_row"):
+            raw = data.get(role)
+            if raw in (None, ""):
+                raise sheets.FeedRefused("Click the row of dates and the row of numbers.")
+            try:
+                out[role] = int(raw)
+            except (TypeError, ValueError):
+                raise sheets.FeedRefused("A row is a number.") from None
+            if not 0 <= out[role] < sheets.MOST_ROWS:
+                raise sheets.FeedRefused("That row is outside the sheet.")
+        if out["date_row"] == out["value_row"]:
+            raise sheets.FeedRefused("The dates and the numbers are in different rows.")
+        out["value_label"] = " ".join(str(data.get("value_label") or "").split())[:200]
         return out
     for role in ("date", "value", "name"):
         letter = str(data.get(f"{role}_column") or "").strip().upper()
@@ -236,6 +255,8 @@ def plan_for(kpi, config, rows, today):
                 plan.values[(P.start_of(today, kpi.cadence, week_start), None)] = \
                     plan.values[(start, None)]
         return plan
+    if config["mode"] == KpiFeed.Mode.ROW:
+        return sheets.plan_rows(kpi, week_start, rows, config)
     columns_config = dict(config)
     columns_config["people"] = {k: v for k, v in (config.get("people") or {}).items()}
     return sheets.plan_columns(kpi, week_start, rows, columns_config)
@@ -260,7 +281,8 @@ def describe_preview(kpi, plan, results) -> dict:
                     for r in results[-sheets.PREVIEW_PERIODS:]],
         "more": max(0, len(results) - sheets.PREVIEW_PERIODS),
         "counts": counts,
-        "skipped": [{"row": n, "why": why} for n, why in plan.skipped[:sheets.PREVIEW_SKIPPED]],
+        "skipped": [{"row": n, "where": n if isinstance(n, str) else f"Row {n}", "why": why}
+                    for n, why in plan.skipped[:sheets.PREVIEW_SKIPPED]],
         "skipped_more": max(0, len(plan.skipped) - sheets.PREVIEW_SKIPPED),
         "unmatched": [{"name": n, "rows": c} for n, c in sorted(plan.unmatched.items())],
     }
@@ -344,9 +366,11 @@ def run(feed, today, *, client=None, now=None) -> dict:
             feed.connection = connection
         rows = client.rows(feed.spreadsheet_id, feed.tab)
         plan = plan_for(kpi, {**feed.config(), "reads_open": reads_open(feed)}, rows, today)
-        if feed.mode == KpiFeed.Mode.COLUMN and not plan.values and not plan.unmatched \
+        if feed.mode != KpiFeed.Mode.CELL and not plan.values and not plan.unmatched \
                 and not plan.skipped:
-            raise sheets.FeedRefused("has no rows with a date and a number")
+            raise sheets.FeedRefused("has no rows with a date and a number"
+                                     if feed.mode == KpiFeed.Mode.COLUMN
+                                     else "has no periods with a number under them")
         counts = sheets.write(feed, results_for(feed, plan, today), now)
         # The columns or cells a live target or a formula names, beside it.
         refs.read_sheet(feed, rows, today, now)
@@ -401,6 +425,10 @@ def source_text(feed) -> str:
     """For the tile's back: where the readings come from."""
     every = "every hour" if feed.refresh == KpiFeed.Refresh.HOURLY else "once a day"
     where = f"From the Google Sheet '{feed.spreadsheet_name or 'untitled'}', tab '{feed.tab}'"
+    if feed.mode == KpiFeed.Mode.ROW:
+        label = f"row '{feed.value_label}'" if feed.value_label else f"row {(feed.value_row or 0) + 1}"
+        return f"{where}, {label}, read {every}" + \
+            (", the open period so far" if reads_open(feed) else "")
     if feed.mode == KpiFeed.Mode.CELL:
         if reads_open(feed):
             return f"{where}, cell {feed.cell}, read {every}, the open period so far"

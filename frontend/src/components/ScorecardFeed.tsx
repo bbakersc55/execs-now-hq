@@ -8,7 +8,8 @@ import { Banner } from "./ui";
 import { api } from "../lib/api";
 import { FeedPreview, FeedState, SheetGrid, columnLetter, fmt } from "../lib/scorecard";
 
-type Mode = "column" | "cell";
+type Mode = "column" | "cell" | "row";
+type RowPick = "date" | "value";
 type Pick = "date" | "value" | "name";
 
 /**
@@ -78,6 +79,10 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
   });
   const [headerRow, setHeaderRow] = useState<number | null>(f?.header_row ?? null);
   const [cell, setCell] = useState(f?.cell ?? "");
+  const [dateRow, setDateRow] = useState<number | null>(f?.date_row ?? null);
+  const [valueRow, setValueRow] = useState<number | null>(f?.value_row ?? null);
+  const [valueLabel, setValueLabel] = useState(f?.value_label ?? "");
+  const [rowPicking, setRowPicking] = useState<RowPick>("date");
   const [people, setPeople] = useState<Record<string, string>>(f?.people ?? {});
   const [refresh, setRefresh] = useState<"hourly" | "daily">(f?.refresh ?? "daily");
   const [readOpen, setReadOpen] = useState<boolean | null>(null);
@@ -98,6 +103,7 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
   const body = () => ({
     company: companyId, kpi: s.kpi.id, spreadsheet: address, spreadsheet_name: grid?.title ?? f?.spreadsheet_name ?? "",
     tab, mode, refresh, cell, header_row: headerRow, people, read_open: readsOpen,
+    date_row: dateRow, value_row: valueRow, value_label: valueLabel,
     date_column: cols.date.letter, date_header: cols.date.header,
     value_column: cols.value.letter, value_header: cols.value.header,
     name_column: s.kpi.per_person ? cols.name.letter : "", name_header: s.kpi.per_person ? cols.name.header : "",
@@ -133,7 +139,18 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
   const roleOf = (col: number) => (mode === "column"
     ? roles.find((r) => cols[r].letter === columnLetter(col)) : undefined);
   const width = grid ? Math.max(1, ...grid.rows.map((r) => r.length)) : 0;
-  const ready = mode === "cell" ? !!cell : roles.every((r) => cols[r].letter);
+  const ready = mode === "cell" ? !!cell : mode === "row" ? dateRow !== null && valueRow !== null
+    : roles.every((r) => cols[r].letter);
+  // A row's label: its first cell with words in it ("Net Income").
+  const labelOf = (r: number) => (grid?.rows[r] ?? []).slice(0, 6)
+    .find((c) => c.trim() && !/^[\d$€£(),.%\s-]+$/.test(c.trim()))?.trim() ?? "";
+  const chooseRow = (r: number) => {
+    if (rowPicking === "date") { setDateRow(r); setRowPicking("value"); }
+    else { setValueRow(r); setValueLabel(labelOf(r)); }
+    setPreview(null);
+  };
+  const rowRole = (r: number): RowPick | undefined =>
+    (mode !== "row" ? undefined : r === dateRow ? "date" : r === valueRow ? "value" : undefined);
 
   return (
     <div className="sc-feed">
@@ -169,6 +186,8 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
               <legend className="sc-muted">Read it</legend>
               <label><input type="radio" name="sc-feed-mode" checked={mode === "column"}
                 onChange={() => { setMode("column"); setPreview(null); }} /> By column (a row per period)</label>
+              <label><input type="radio" name="sc-feed-mode" checked={mode === "row"} disabled={s.kpi.per_person}
+                onChange={() => { setMode("row"); setPreview(null); }} /> By row (a column per period)</label>
               <label><input type="radio" name="sc-feed-mode" checked={mode === "cell"} disabled={s.kpi.per_person}
                 onChange={() => { setMode("cell"); setPreview(null); }} /> From one cell (this period's number)</label>
             </fieldset>
@@ -195,6 +214,20 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
                 {grid.rows.slice(0, 20).map((_, i) => <option key={i} value={i}>{i + 1}</option>)}
               </select>
             </div>
+          ) : mode === "row" ? (
+            <div className="sc-feed-step sc-feed-row wrap">
+              {(["date", "value"] as RowPick[]).map((r) => {
+                const at = r === "date" ? dateRow : valueRow;
+                return (
+                  <button key={r} type="button" className={rowPicking === r ? "small" : "ghost small"}
+                    aria-pressed={rowPicking === r} onClick={() => setRowPicking(r)}>
+                    {r === "date" ? "Dates" : "Numbers"}: {at === null ? "click a row's number"
+                      : `row ${at + 1}${r === "value" && valueLabel ? ` (${valueLabel})` : ""}`}
+                  </button>);
+              })}
+              <span className="sc-muted">Months (Oct 2024), quarters (Q4 2024) or dates across; a column per
+                {" "}{s.kpi.cadence_noun}. Every period the sheet has is read, however far back.</span>
+            </div>
           ) : (
             <p className="sc-feed-step">Click the cell that holds this period's number{cell ? `: ${cell}` : ""}.
               It is read when each {s.kpi.cadence_noun} closes and kept as that {s.kpi.cadence_noun}'s reading.</p>
@@ -214,8 +247,14 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
               </thead>
               <tbody>
                 {grid.rows.map((row, r) => (
-                  <tr key={r} className={r === headerRow && mode === "column" ? "header" : ""}>
-                    <th scope="row">{r + 1}</th>
+                  <tr key={r} className={r === headerRow && mode === "column" ? "header"
+                    : rowRole(r) ? `picked ${rowRole(r)}` : ""}>
+                    <th scope="row">{mode === "row" ? (
+                      <button type="button" className="linklike"
+                        aria-label={`Row ${r + 1} for ${rowPicking === "date" ? "dates" : "numbers"}`}
+                        onClick={() => chooseRow(r)}>{r + 1}</button>
+                    ) : r + 1}
+                      {rowRole(r) && <span className="sc-feed-tag">{rowRole(r) === "date" ? "Dates" : "Numbers"}</span>}</th>
                     {Array.from({ length: width }, (_, c) => {
                       const ref = `${columnLetter(c)}${r + 1}`;
                       const on = mode === "cell" ? cell === ref : !!roleOf(c);
@@ -252,7 +291,8 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
         </>
       )}
 
-      {preview && <Preview p={preview} kpi={s.kpi} people={people} setPeople={(p) => { setPeople(p); setPreview(null); }} />}
+      {preview && <Preview p={preview} kpi={s.kpi} byRow={mode === "row"} people={people}
+        setPeople={(p) => { setPeople(p); setPreview(null); }} />}
 
       <div className="sc-entry-actions">
         <button type="button" disabled={!preview || save.isPending} onClick={() => save.mutate()}
@@ -269,7 +309,8 @@ function colIndex(letter: string) {
   return letter.toUpperCase().split("").reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
 }
 
-function Preview({ p, kpi, people, setPeople }: {
+function Preview({ p, kpi, people, setPeople, byRow = false }: {
+  byRow?: boolean;
   p: FeedPreview; kpi: FeedState["kpi"]; people: Record<string, string>;
   setPeople: (p: Record<string, string>) => void;
 }) {
@@ -295,12 +336,12 @@ function Preview({ p, kpi, people, setPeople }: {
         {c.same ? `, ${c.same} already in` : ""}
         {c.kept ? `, ${c.kept} kept as entered by hand` : ""}
         {c.open ? `, ${c.open} waiting for the period to close` : ""}.
-        {p.header_row !== null ? ` Headings found in row ${p.header_row + 1}.` : ""}</p>
+        {p.header_row !== null ? ` ${byRow ? "Dates" : "Headings"} found in row ${p.header_row + 1}.` : ""}</p>
       {p.periods.length > 0 && (
         <div className="sc-scroll">
           <table className="sc-back-table">
             <thead><tr><th>Period</th>{kpi.per_person && <th>Person</th>}<th className="money">Reading</th>
-              <th>From rows</th><th>What happens</th></tr></thead>
+              <th>{byRow ? "From columns" : "From rows"}</th><th>What happens</th></tr></thead>
             <tbody>
               {p.periods.map((r) => (
                 <tr key={`${r.start}-${r.person}`} className={`sc-feed-${r.what}`}>
@@ -334,8 +375,8 @@ function Preview({ p, kpi, people, setPeople }: {
       )}
       {p.skipped.length > 0 && (
         <details>
-          <summary>{p.skipped.length + p.skipped_more} row{p.skipped.length + p.skipped_more === 1 ? "" : "s"} left out</summary>
-          <ul>{p.skipped.map((x) => <li key={x.row}>Row {x.row}: {x.why}</li>)}</ul>
+          <summary>{p.skipped.length + p.skipped_more} {byRow ? "column" : "row"}{p.skipped.length + p.skipped_more === 1 ? "" : "s"} left out</summary>
+          <ul>{p.skipped.map((x) => <li key={String(x.row)}>{x.where ?? `Row ${x.row}`}: {x.why}</li>)}</ul>
           {p.skipped_more > 0 && <p className="sc-muted">And {p.skipped_more} more.</p>}
         </details>
       )}

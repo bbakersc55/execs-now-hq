@@ -43,6 +43,8 @@ def _feed_payload(feed):
             "value_column": feed.value_column, "value_header": feed.value_header,
             "name_column": feed.name_column, "name_header": feed.name_header,
             "header_row": feed.header_row, "cell": feed.cell, "people": feed.people,
+            "date_row": feed.date_row, "value_row": feed.value_row,
+            "value_label": feed.value_label,
             "last_run_at": feed.last_run_at.isoformat() if feed.last_run_at else None,
             "last_success_at": feed.last_success_at.isoformat() if feed.last_success_at else None,
             "last_error": feed.last_error, "account": feed.connection.email_address

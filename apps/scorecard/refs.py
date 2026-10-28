@@ -158,7 +158,10 @@ def clean_feed_ref(kpi, raw, field) -> dict:
         if has != wanted:
             raise RefRefused(f"{kpi.name} reads from {said[has]}, so the number comes from "
                              f"its {said[has]} feed.", field)
-        if has == "sheet" and (feed.mode == "cell") != (kind == "sheet_cell"):
+        if has == "sheet" and feed.mode == "row" and kind == "sheet_column":
+            raise RefRefused(f"{kpi.name}'s sheet is read by row, a column per period, so "
+                             "name a cell.", field)
+        if has == "sheet" and feed.mode != "row" and (feed.mode == "cell") != (kind == "sheet_cell"):
             raise RefRefused(f"{kpi.name}'s sheet is read "
                              f"{'from one cell' if feed.mode == 'cell' else 'by column'}, "
                              f"so name a {'cell' if feed.mode == 'cell' else 'column'}.",
@@ -259,7 +262,8 @@ def read_sheet(feed, rows, today, now=None) -> int:
     for key, ref, rule in extras_of(kpi):
         if kind_of(ref) == "sheet_column":
             if feed.mode != "column":
-                raise sheets.FeedRefused(f"is read from one cell, so it has no {words(ref)}")
+                how = "from one cell" if feed.mode == "cell" else "by row"
+                raise sheets.FeedRefused(f"is read {how}, so it has no {words(ref)}")
             plan = sheets.plan_columns(_Column(kpi, rule), week_start, rows, {
                 "date_column": feed.date_column, "date_header": feed.date_header,
                 "value_column": ref.get("column", ""), "value_header": ref.get("header", ""),
