@@ -610,6 +610,20 @@ to worker running: 2 min 17 s.** Production already had the VAPID keys and
 the Google `calendar.events` scope; Microsoft 365 waits on the Entra
 registration's variables.
 
+**Observed at Release 26 (2026-10-28 UTC, 3 migrations, all additive:
+`scorecard 0008`–`0010`; three commits, from feeds reading the open period
+to the sheet feed by row):** R1: the owner ran the backup by hand with the
+run-now mutation; `execsnowhq_prod_20261028_214425.sql.gz`, 4.2 MB,
+21:44:28. R2: `main` fast-forwarded `e25ba88..606e0aa`, pushed 21:47:23.
+R3: the worker `WAITING` 21:51:28, listing exactly the three. **R4 run by
+Claude**, 21:51:51–52:04, all OK (4 min 28 s after the push, inside web's
+six minutes). R5: `migrations current` 21:52:08, cluster running 21:52:14.
+R5b: not needed, the release adds no scheduled job. R6: nothing to do: web's
+deployment (`4b25fa1f`) SUCCESS by itself, `/healthz` 200. **Push to worker
+running: 4 min 51 s.** From this release, an existing feed on a Last or
+Average KPI reads the open period "so far" at its next refresh (the new
+default); a feed's own screen turns it off.
+
 ---
 
 ## Part A — the owner's steps, in order

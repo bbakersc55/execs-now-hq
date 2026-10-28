@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-27 UTC**, after Release 25. **The next session starts at
-"2026-10-27, late: Release 25, and where things stand" just below**, which
-sums up everything since Release 23; the dated sections after it have the
+2026-10-28 UTC**, after Release 26. **The next session starts at
+"2026-10-28: Release 26, the scorecard's feeds and targets" just below**,
+then "2026-10-27, late: Release 25, and where things stand", which sums up
+everything from Release 23 to 25; the dated sections after it have the
 detail. Then "2026-10-26: Release 23, and M5 part 5", "2026-10-24: catch-up
 reach, and M5 part 3", "2026-10-23: Release 22", "2026-10-22: Release 21,
 and M5 part 2", "Where things stand (2026-10-21)", and the older days in
@@ -13,6 +14,48 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
+## 2026-10-28: Release 26, the scorecard's feeds and targets
+
+- **Release 26 is live**: `main` at `606e0aa`, three additive migrations
+  (`scorecard 0008`–`0010`) applied by the runbook in the waiting worker,
+  all OK; no new scheduled job; web came up by itself; push to worker
+  running 4 min 51 s. Runbook, "Observed at Release 26". `dev` is ahead of
+  `main` only by this write-up.
+- **Feeds read the open period so far** (`fdaa764`): Sheet, Track, HubSpot
+  and app feeds each have "Also read the current period as it goes", on by
+  default for a Last or Average KPI and off for a Sum. The open period gets
+  a provisional reading, replaced at each refresh, marked "so far" on tiles
+  and grids and never prompting the missing-reading reminder; after the
+  close `feeds.finalise` (in `scorecard.read_feeds`) makes the last value
+  final. A number typed by hand still wins. The tile's front shows the open
+  period; Details lists the closed ones below it. **On production this
+  turns on for existing Last and Average feeds at their next refresh.**
+- **A new cadence re-fits readings** (`readings.refit`): each reading lands
+  in the period holding its date (a quarter-end date in that quarter),
+  readings sharing a period combine by the KPI's roll-up, history moves with
+  them, hand wins. A source KPI's cadence change offers to move its computed
+  KPIs in the same save. The computed picker lists KPIs on the form's
+  cadence; the Window dropdown offers all six windows.
+- **Live targets, operands, helpers** (`ec73e31`): a target can be typed,
+  per month, or live from another KPI's latest reading, a column or cell of
+  the KPI's own sheet, or a Track or HubSpot field (`refs.py`,
+  `KpiFeedValue`); the tile, Details and status bands use it, and a reader
+  who can't see the source KPI doesn't get the target. A computed KPI's
+  operands can be a KPI, the KPI's own target, or a feed column, cell or
+  field. "Helper: not shown as a tile" keeps a KPI off the board. Progress
+  tiles read "102 of 108 · 94%". The demo's example is Hooli Field
+  Services' "Homeowner contacts" page (fictional, at the owner's choice).
+- **Sheet feed by row** (`606e0aa`): a third layout, "By row (a column per
+  period)": click the dates row and the numbers row, same preview; month
+  names, quarter labels (2-digit years too) and "Oct '24" parse,
+  parentheses are negative, "$1,101,321" parses, percentages go into
+  Percent KPIs. A feed writes as far back as the sheet goes; January 2025 is
+  only the period pickers' floor.
+- **Only a real sheet can confirm:** a by-row feed on a live finance sheet,
+  and a live target read from a real sheet column. Unchanged from Release
+  25: the Microsoft 365 checks and the calendar checks. R1's listing worked
+  again this time (gcloud signed in).
+
 ## 2026-10-27, late: Release 25, and where things stand
 
 - **Release 25 is live**: `main` at `e25ba88`, eight migrations applied by
@@ -21,8 +64,7 @@ they don't, and what changed since 9/30.
   `0009`–`0010`; additive or no-op); R5b created `calendars.sync` for both
   practices; web came up by itself; push to worker running 2 min 17 s. R1 was
   read from the backup service's log, gcloud's sign-in having expired.
-  Runbook, "Observed at Release 25". `dev` is ahead of `main` only by this
-  write-up.
+  Runbook, "Observed at Release 25".
 - **On production now, since Release 23:**
   - *Release 24:* the HubSpot feed (M5 part 5), the M5 ties into the rest of
     the app, the polish (figures as said, banners at phone width, one-email
