@@ -77,10 +77,14 @@ describe("HubSpot (M5 part 5)", () => {
     await user.selectOptions(screen.getByLabelText("Owner"), "501");
     await user.selectOptions(screen.getByLabelText("Stage"), "qualifiedtobuy");
     expect(screen.getByText(/read as each period closes and kept/)).toBeInTheDocument();
+    // Off for a sum by default; turned on here.
+    const readOpen = screen.getByLabelText("Also read the current period as it goes");
+    expect(readOpen).not.toBeChecked();
+    await user.click(readOpen);
     await user.click(screen.getByRole("button", { name: "Save the measure" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PUT")?.body).toEqual({
       company: "c1", kpi: "k1", measure: "pipeline_value", owner_id: "501", owner_name: "Ana Ruiz",
-      stage_id: "qualifiedtobuy", stage_name: "Qualified to buy" }));
+      stage_id: "qualifiedtobuy", stage_name: "Qualified to buy", read_open: true }));
     expect(onSaved).toHaveBeenCalledWith("Pipeline now reads from HubSpot. Its first reading comes when this period closes.");
   });
 

@@ -51,7 +51,7 @@ def _feed_payload(feed):
     return {"measure": feed.measure, "param": feed.param, "param_label": feed.param_label,
             "text": feeds.app_source_text(feed), "last_error": feed.last_error,
             "last_success_at": feed.last_success_at.isoformat() if feed.last_success_at
-            else None}
+            else None, **feeds.read_open_payload(feed)}
 
 
 class AppFeedView(Base):
@@ -68,7 +68,8 @@ class AppFeedView(Base):
             if sales else []
         return Response({
             "kpi": {"id": str(kpi.pk), "name": kpi.name, "kind": kpi.kind,
-                    "per_person": kpi.per_person},
+                    "per_person": kpi.per_person,
+                    "read_open_default": feeds.reads_open_by_default(kpi)},
             "measures": practice.menu(money=request.membership.role == Role.FF),
             "stages": stages,
             "feed": _feed_payload(KpiAppFeed.objects.filter(kpi=kpi).first())})
@@ -93,10 +94,13 @@ class AppFeedView(Base):
             param, label = str(stage.pk), stage.label
         # One feed a KPI: the others stop, their readings kept.
         feeds.stop_other_feeds(kpi, Kpi.Feed.APP)
+        before = KpiAppFeed.all_objects.filter(kpi=kpi).first()
+        read_open = feeds.read_open_choice(request.data, before.read_open if before else None)
         feed, made = KpiAppFeed.all_objects.update_or_create(
             kpi=kpi, defaults={"tenant_id": kpi.tenant_id, "measure": measure, "param": param,
                                "param_label": label, "active": True, "last_error": "",
-                               "error_since": None, "created_by": request.user})
+                               "error_since": None, "created_by": request.user,
+                               "read_open": read_open})
         KpiAppFeed.all_objects.filter(pk=feed.pk).update(last_success_at=None)
         feed.refresh_from_db()
         AuditEvent.objects.create(

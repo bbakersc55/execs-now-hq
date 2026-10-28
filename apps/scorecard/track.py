@@ -411,20 +411,23 @@ def value_for(measure, client, first, last, *, unit=None, user=None, cache=None)
     return Decimal(numbers[name])
 
 
-def plan_for(feed, client, today, *, periods=2, back=13):
+def plan_for(feed, client, today, *, periods=2, back=13, read_open=False):
     """{(start, None): value} for the closed periods this read covers: the
     last two every day (late changes in Track follow), and as far back as
-    `back` periods the first time."""
+    `back` periods the first time. With `read_open`, the open period too, up
+    to today."""
     kpi = feed.kpi
     week_start = kpi.scorecard.week_start
     last_closed = P.previous_start(P.start_of(today, kpi.cadence, week_start), kpi.cadence,
                                    week_start)
     count = back if feed.last_success_at is None else periods
     starts = P.last_n(last_closed, kpi.cadence, count, week_start)
+    if read_open:
+        starts.append(P.start_of(today, kpi.cadence, week_start))
     cache = {}
     values = {}
     for start in starts:
-        end = P.end_of(start, kpi.cadence)
+        end = min(P.end_of(start, kpi.cadence), today)
         value = value_for(feed.measure, client, start, end, unit=feed.unit_id or None,
                           user=feed.assignee_id or None, cache=cache)
         if value is not None and MEASURES[feed.measure][2] == "duration" \

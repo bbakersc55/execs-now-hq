@@ -1505,6 +1505,8 @@ button.sc-tab.on { border-bottom-color: var(--navy); color: var(--navy); font-we
 .sc-missing { font-size: 12px; color: var(--sc-muted); }
 .sc-missing-closed { color: var(--sc-behind); }
 .sc-edited { font-size: 11px; color: var(--sc-muted); font-style: italic; }
+.sc-so-far { font-size: 11px; font-weight: 500; color: var(--sc-muted); margin-left: 4px; letter-spacing: 0; }
+.sc-cell .sc-so-far { display: block; font-size: 9px; margin-left: 0; line-height: 1; }
 .sc-empty { color: var(--sc-muted); font-size: 13px; margin: 0; }
 .sc-tile-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center;
                 gap: 8px; font-size: 12px; color: var(--sc-muted); }

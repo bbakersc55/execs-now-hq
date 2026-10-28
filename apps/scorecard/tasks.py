@@ -25,8 +25,9 @@ def read_feeds(tenant_id: str) -> dict:
     # Also part 4: a Track feed's readings, once a day each, rate-limit aware.
     """M5 part 3: every hour, read the practice's sheet feeds that are due
     (hourly ones, daily ones a day after their last read, a cell feed as its
-    period closes). It writes readings for closed periods only, never over
-    one typed by hand, and deletes nothing."""
+    period closes). It writes readings for closed periods, and a provisional
+    "so far" for the open one where the feed reads it, never over one typed
+    by hand, and deletes nothing."""
     from apps.scorecard import board, feeds
     from apps.tenancy.models import Tenant
 
@@ -40,5 +41,7 @@ def read_feeds(tenant_id: str) -> dict:
         app_done = feeds.run_due_app(tenant.pk, today)
         # Part 5: each HubSpot feed once a day, rate-limit aware.
         hubspot_done = feeds.run_due_hubspot(tenant.pk, today)
+        # A period that has closed keeps its last "so far" as its reading.
+        final = feeds.finalise(tenant.pk, today)
         return {"sheets": sheets_done, "track": track_done, "app": app_done,
-                "hubspot": hubspot_done}
+                "hubspot": hubspot_done, "finalised": final}

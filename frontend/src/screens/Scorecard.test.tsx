@@ -687,3 +687,91 @@ describe("the scorecard's ties into the rest of the app (M5)", () => {
     expect(screen.queryByText("Ask Claude")).toBeNull();
   });
 });
+
+describe("the open period so far, the window menu and a source's cadence", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("shows the open period's reading on the front marked so far, the closed ones below it in Details",
+    async () => {
+      const user = userEvent.setup();
+      const history = Array.from({ length: 13 }, (_, i) => ({
+        ...point(i, 70 + i), source: "sheet", so_far: i === 12 }));
+      const board = { ...BOARD, kpis: [tile({ history, spark: history,
+        summary: { value: 82, target: 82, status: "on_track", stale: false, missing: null,
+          periods: 1, periods_in: 1, full_target: 82, days_left: 4, elapsed: 0.4, so_far: true } })] };
+      vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": board }));
+      renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+      const occupancy = await screen.findByRole("region", { name: "Occupancy" });
+      expect(within(occupancy).getByText("82%")).toBeInTheDocument();
+      expect(within(occupancy).getByText("so far")).toBeInTheDocument();
+      await user.click(within(occupancy).getByRole("button", { name: "Back of Occupancy" }));
+      const rows = within(occupancy).getAllByRole("row").slice(1);
+      expect(rows[0]).toHaveTextContent(/^Wk 13.*so far/);
+      expect(rows.slice(1).every((r) => !/so far/.test(r.textContent ?? ""))).toBe(true);
+      expect(rows[1]).toHaveTextContent(/^Wk 12/);
+    });
+
+  it("marks a so-far cell in the grid", async () => {
+    const user = userEvent.setup();
+    const history = Array.from({ length: 13 }, (_, i) => ({ ...point(i, 70 + i), so_far: i === 12 }));
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": {
+      ...BOARD, kpis: [tile({ history, spark: history })] } }));
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    await screen.findByRole("region", { name: "Occupancy" });
+    await user.click(screen.getByRole("button", { name: "Grid" }));
+    expect(await screen.findByRole("button", { name: /Occupancy, Wk 13: 82% so far/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Occupancy, Wk 12: 81%, On track/ })).toBeInTheDocument();
+  });
+
+  it("offers every window whatever the page's cadences", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, kpis: [
+      tile({ cadence: "quarterly" }), tile({ id: "k2", name: "Cash", cadence: "monthly" })] } }));
+    renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+      route: "/companies/c1/scorecard" });
+    await screen.findByRole("region", { name: "Cash" });
+    expect(within(screen.getByLabelText("Window")).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["This week", "This month", "This quarter", "Year to date", "Last year", "Custom dates…"]);
+  });
+
+  it("lists computed sources on the cadence chosen in the form, and drops one that no longer fits", async () => {
+    const user = userEvent.setup();
+    const setup = { ...SETUP, kpis: [...SETUP.kpis,
+      { ...SETUP.kpis[1], id: "k3", name: "Revenue", cadence: "monthly" as const }] };
+    vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/setup/": setup }));
+    renderRoute(<ScorecardSetup me={aMe({ role: "FF" })}
+      company={aCompany({ id: "c1", is_client_company: true })} />);
+    await user.click(await screen.findByRole("button", { name: "Add a KPI" }));
+    await user.click(screen.getByLabelText(/Computed: worked out/));
+    const names = () => within(screen.getByLabelText("First KPI")).getAllByRole("option")
+      .map((o) => o.textContent);
+    expect(names()).toEqual(["Choose…", "Occupancy", "Bookings"]);
+    await user.selectOptions(screen.getByLabelText("First KPI"), "k1");
+    await user.selectOptions(screen.getByLabelText("Entered"), "monthly");
+    expect(names()).toEqual(["Choose…", "Revenue"]);
+    expect(screen.getByLabelText("First KPI")).toHaveValue("");
+  });
+
+  it("changing a source's cadence offers to change its computed KPIs with it in one save", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "PATCH /api/scorecard/kpis/k1/": (body: unknown) => (body as { with_computed?: boolean }).with_computed
+        ? { status: 200, body: SETUP.kpis[0] }
+        : { status: 400, body: { detail: "Occupancy per booking is worked out from Occupancy. "
+            + "Change it to monthly with it?", field: "with_computed",
+            computed: ["Occupancy per booking"] } },
+      "GET /api/scorecard/setup/": SETUP,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ScorecardSetup me={aMe({ role: "FF" })}
+      company={aCompany({ id: "c1", is_client_company: true })} />);
+    await user.click(await screen.findByRole("button", { name: "Edit Occupancy" }));
+    await user.selectOptions(screen.getByLabelText("Entered"), "monthly");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/Change it to monthly with it\?/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change them together and save" }));
+    expect(await screen.findByText("Occupancy is saved.")).toBeInTheDocument();
+    const patches = fetchMock.calls.filter((c) => c.method === "PATCH")
+      .map((c) => (c.body as { with_computed: boolean; cadence: string }));
+    expect(patches.map((b) => [b.cadence, b.with_computed])).toEqual([["monthly", false], ["monthly", true]]);
+  });
+});

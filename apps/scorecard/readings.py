@@ -12,6 +12,9 @@
 - **Units**: a percent is typed as 82, money in dollars, a duration in the
   KPI's own unit, a rating out of its scale; anything else is refused and
   the refusal says why.
+- **A new cadence re-fits the readings** (`refit`): each lands in the new
+  period holding its old period's last day, so a reading for the month of
+  March lands in Q1, never left on a date that starts no period.
 """
 
 from __future__ import annotations
@@ -25,7 +28,8 @@ from django.utils import timezone
 
 from . import periods as P
 from .board import Targets, definition, name_of, num
-from .models import Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange, KpiReminder
+from .models import (Kpi, KpiFeed, KpiMonthTarget, KpiPerson, KpiReading, KpiReadingChange,
+                     KpiReminder)
 
 LIMIT = Decimal("1e12")
 #: How far back the period pickers reach: two years of each cadence (Bryan,
@@ -281,10 +285,12 @@ def save(reader, scorecard, rows, today: date) -> dict:
                                             changed_by=user)
             reading.value, reading.entered_by, reading.entered_at = value, user, now
             reading.times_changed += 1
-            # Typed over a feed's number: the hand wins from now on (spec, "Feeds").
-            reading.source = KpiReading.Source.HAND
+            # Typed over a feed's number: the hand wins from now on (spec, "Feeds"),
+            # and a number typed is never "so far".
+            reading.source, reading.provisional = KpiReading.Source.HAND, False
             reading.save(update_fields=["value", "entered_by", "entered_at",
-                                        "times_changed", "source", "updated_at"])
+                                        "times_changed", "source", "provisional",
+                                        "updated_at"])
             changed += 1
     return {"saved": saved, "changed": changed, "errors": {}}
 
@@ -369,6 +375,77 @@ def bulk(reader, scorecard, cadence, count, today, first=None) -> dict:
             # The "From" picker's periods, newest first; a daily one is a date field.
             "choices": [] if cadence == P.DAILY else
             [{"start": s.isoformat(), "label": P.long_label(s, cadence)} for s in offered]}
+
+
+# ---------------------------------------------------------------- a new cadence
+
+@transaction.atomic
+def refit(kpi, old_cadence, actor, today) -> dict:
+    """The KPI's readings moved onto its new cadence's periods. Each lands in
+    the period holding its old period's last day: a quarter's reading in the
+    month the quarter ends, a month's in the quarter it ends (March in Q1)
+    and in the week holding its last day. Several landing in one period
+    combine by the KPI's roll-up into the latest of them, which keeps every
+    value the others held in its history; a reading typed by hand among them
+    makes the combined one the hand's, so no feed writes over it."""
+    cadence, week_start = kpi.cadence, kpi.scorecard.week_start
+    if cadence == old_cadence:
+        return {"moved": 0, "combined": 0}
+
+    def land(start):
+        return P.start_of(P.end_of(start, old_cadence), cadence, week_start)
+
+    groups = defaultdict(list)
+    for r in KpiReading.all_objects.select_for_update().filter(kpi=kpi).order_by(
+            "period_start", "created_at"):
+        groups[(land(r.period_start), r.membership_id)].append(r)
+    combined = 0
+    moving = []
+    for (target, _), group in groups.items():
+        keep, others = group[-1], group[:-1]
+        fields = ["period_start", "provisional", "updated_at"]
+        if others:
+            value = P.combine([r.value for r in group], kpi.rollup).quantize(Decimal("0.0001"))
+            KpiReadingChange.all_objects.filter(reading__in=others).update(reading=keep)
+            KpiReading.all_objects.filter(pk__in=[r.pk for r in others]).delete()
+            if value != keep.value:
+                KpiReadingChange.all_objects.create(
+                    tenant_id=kpi.tenant_id, reading=keep, value=value,
+                    previous_value=keep.value, changed_by=actor)
+                keep.value, keep.times_changed = value, keep.times_changed + 1
+            if any(r.source == KpiReading.Source.HAND for r in group):
+                keep.source = KpiReading.Source.HAND
+            fields += ["value", "times_changed", "source"]
+            combined += len(others)
+        keep.provisional = any(r.provisional for r in group) and \
+            not P.closed(target, cadence, today)
+        moving.append((keep, target, fields))
+    # One period a reading: the landing is in date order, so moving later
+    # readings last-first and earlier ones first-first never meets one still
+    # in the way.
+    later = sorted((m for m in moving if m[1] > m[0].period_start),
+                   key=lambda m: m[0].period_start, reverse=True)
+    earlier = sorted((m for m in moving if m[1] <= m[0].period_start),
+                     key=lambda m: m[0].period_start)
+    moved = 0
+    for keep, target, fields in later + earlier:
+        moved += int(keep.period_start != target)
+        keep.period_start = target
+        keep.save(update_fields=fields)
+    # A reminder follows its period, once; a cell feed's first period too.
+    seen = set()
+    for reminder in KpiReminder.all_objects.filter(kpi=kpi).order_by("-period_start"):
+        target = land(reminder.period_start)
+        if target in seen:
+            reminder.delete()
+            continue
+        seen.add(target)
+        if target != reminder.period_start:
+            KpiReminder.all_objects.filter(pk=reminder.pk).update(period_start=target)
+    for feed in KpiFeed.all_objects.filter(kpi=kpi, cell_from__isnull=False):
+        feed.cell_from = P.start_of(feed.cell_from, cadence, week_start)
+        feed.save(update_fields=["cell_from", "updated_at"])
+    return {"moved": moved, "combined": combined}
 
 
 # ---------------------------------------------------------------- reminders

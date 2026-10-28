@@ -62,11 +62,12 @@ def _combined_target(targets, starts, rule):
 class Series:
     """One line of readings: the KPI's own, one person's, or a total."""
 
-    def __init__(self, kpi, targets, by_start, *, scale=1):
+    def __init__(self, kpi, targets, by_start, *, scale=1, so_far=frozenset()):
         self.kpi = kpi
         self.targets = targets
         self.by_start = by_start                   # start -> (value, reading or None)
         self.scale = scale                         # a summed total's target is per person × n
+        self.so_far = so_far                       # starts whose value is a feed's "so far"
 
     def value(self, start):
         got = self.by_start.get(start)
@@ -108,6 +109,7 @@ def _point(series, start, cadence, today, *, people_names=None):
         "status": series.status(start),
         "missing": value is None and P.closed(start, cadence, today),
         "edited": bool(reading and reading.times_changed),
+        "so_far": start in series.so_far and not P.closed(start, cadence, today),
         "reading": str(reading.pk) if reading else None,
         "entered_by": name_of(reading.entered_by) if reading else "",
         "entered_at": reading.entered_at.isoformat() if reading else None,
@@ -123,7 +125,9 @@ def _summary(series, kpi, win, today, week_start):
     value, target, have = series.rolled(starts)
     closed_in = [s for s in starts if P.closed(s, cadence, today)]
     out = {"value": num(value), "target": num(target), "stale": False, "missing": None,
-           "periods": len(starts), "periods_in": len(have)}
+           "periods": len(starts), "periods_in": len(have),
+           "so_far": any(s in series.so_far and not P.closed(s, cadence, today)
+                         for s in have)}
     if kpi.direction == "range":
         out["status"] = _kpi_status(kpi, value, None)
     else:
@@ -281,6 +285,11 @@ def feed_of(kpi, reader):
             "error": feed.last_error if told else ""}
 
 
+def so_far_of(readings) -> frozenset:
+    """The periods whose reading is a feed's provisional "so far"."""
+    return frozenset(r.period_start for r in readings if r.provisional)
+
+
 def _person_series(kpi, targets, readings):
     per = defaultdict(dict)
     for r in readings:
@@ -289,15 +298,21 @@ def _person_series(kpi, targets, readings):
     return per
 
 
+def _person_so_far(per, member) -> frozenset:
+    return so_far_of(r for _, r in per.get(member, {}).values())
+
+
 def _total(kpi, targets, per, rows):
-    """A total of the rows given, per period: summed or averaged."""
+    """A total of the rows given, per period: summed or averaged. "So far"
+    when any row's is."""
     by_start = {}
     starts = {s for m in rows for s in per.get(m, {})}
     for s in starts:
         values = [per[m][s][0] for m in rows if s in per.get(m, {})]
         by_start[s] = (P.combine(values, kpi.person_total), None)
     scale = len(rows) if kpi.person_total == "sum" else 1
-    return Series(kpi, targets, by_start, scale=scale)
+    so_far = frozenset().union(*(_person_so_far(per, m) for m in rows))
+    return Series(kpi, targets, by_start, scale=scale, so_far=so_far)
 
 
 def computed_values(kpi, readings_a, readings_b) -> dict:
@@ -346,7 +361,10 @@ def tile(kpi, reader, targets, readings, people, win, today, week_start,
     if not kpi.per_person:
         values = computed_values(kpi, *sources) if kpi.is_computed else {
             r.period_start: (r.value, r) for r in readings if r.membership_id is None}
-        series = Series(kpi, targets, values)
+        # A computed KPI is "so far" where either source is.
+        own = [r for group in (sources if kpi.is_computed else (readings,)) for r in group
+               if r.membership_id is None]
+        series = Series(kpi, targets, values, so_far=so_far_of(own))
         out.update(shape=kpi.tile, summary=_summary(series, kpi, win, today, week_start),
                    delta=_delta(series, kpi, min(win.last, today)),
                    spark=_spark(series, kpi, win, today, week_start),
@@ -362,7 +380,7 @@ def tile(kpi, reader, targets, readings, people, win, today, week_start,
     only_own = reader.sees_only_own_row(kpi, tracked)
     row_out = []
     for m in sorted(rows, key=lambda m: names.get(m, "").lower()):
-        s = Series(kpi, targets, per.get(m, {}))
+        s = Series(kpi, targets, per.get(m, {}), so_far=_person_so_far(per, m))
         summary = _summary(s, kpi, win, today, week_start)
         row_out.append({"membership": str(m), "name": names.get(m, ""), "you": m == you,
                         "value": summary["value"], "target": summary["target"],

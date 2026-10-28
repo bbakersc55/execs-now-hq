@@ -1,16 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
+
 import { Modal } from "./shell";
 import { Banner } from "./ui";
 import { api } from "../lib/api";
 
 interface AppFeedState {
-  kpi: { id: string; name: string; kind: string; per_person: boolean };
+  kpi: { id: string; name: string; kind: string; per_person: boolean; read_open_default?: boolean };
   measures: { key: string; label: string; kind: string; money: boolean; param: string }[];
   stages: { id: string; label: string }[];
   feed: { measure: string; param: string; param_label: string; text: string; last_error: string;
-    last_success_at: string | null } | null;
+    last_success_at: string | null; read_open?: boolean } | null;
 }
 
 /** "My practice": a KPI read "From this app", one measure of the practice's
@@ -27,13 +29,16 @@ export function AppFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const [measure, setMeasure] = useState<string | null>(null);
   const [param, setParam] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [readOpen, setReadOpen] = useState<boolean | null>(null);
   const s = state.data;
+  const readsOpen = readOpenValue(readOpen, s?.feed?.read_open, s?.kpi.read_open_default);
   const chosen = measure ?? s?.feed?.measure ?? "";
   const def = s?.measures.find((m) => m.key === chosen);
   const stage = param ?? s?.feed?.param ?? "";
   const save = useMutation({
     mutationFn: () => api.put<{ run: { ok: boolean; new?: number; error?: string } }>("/api/scorecard/app-feed/",
-      { company: companyId, kpi: kpiId, measure: chosen, param: def?.param === "stage" ? stage : "" }),
+      { company: companyId, kpi: kpiId, measure: chosen, param: def?.param === "stage" ? stage : "",
+        read_open: readsOpen }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["scorecard", companyId] });
       qc.invalidateQueries({ queryKey: ["app-feed", companyId, kpiId] });
@@ -80,6 +85,8 @@ export function AppFeedModal({ companyId, kpiId, onClose, onSaved }: {
             KPI, whatever its page's audience.</p>}
           <p className="small muted">Worked out for each closed period once a day. A reading typed by hand is never
             replaced, and none is ever deleted.</p>
+          <ReadOpenChoice id="app-read-open" checked={readsOpen}
+            byDefault={!!s.kpi.read_open_default} onChange={setReadOpen} />
           <div className="row">
             <button className="primary" style={{ flex: "0 0 auto" }}
               disabled={!chosen || (def?.param === "stage" && !stage) || save.isPending}

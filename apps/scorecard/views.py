@@ -75,7 +75,7 @@ def _refuse_setup(reader):
 
 
 def _setup_error(exc):
-    body = {"detail": str(exc)}
+    body = {"detail": str(exc), **exc.extra}
     if exc.field:
         body["field"] = exc.field
     return Response(body, status=400)

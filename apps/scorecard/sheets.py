@@ -3,8 +3,10 @@ into a KPI's readings, in column mode or cell mode.
 
 The rules that hold for every feed, and here first:
 
-- **Closed periods only.** A feed writes the reading of a period once it has
-  ended; an open period waits for its close.
+- **Closed periods only**, unless the feed also reads the current period as
+  it goes (`feeds.reads_open`): then the open period has a provisional
+  reading ("so far") that each refresh replaces, and when the period closes
+  the last value read is its final reading, as a closed period's is.
 - **The hand wins.** A reading someone typed is never overwritten; the run
   counts it as kept, and the tile's back says the reading was entered by hand.
 - **Never deletes.** A row that disappears from the sheet leaves its reading.
@@ -384,10 +386,13 @@ def cell_period(kpi, week_start, today):
 
 # ------------------------------------------------------------- what it would do
 
-def outcome(kpi, plan_values: dict, today, week_start, source=None) -> list[dict]:
+def outcome(kpi, plan_values: dict, today, week_start, source=None, *,
+            read_open=False) -> list[dict]:
     """For each period the read gives, what writing it would do: new, an
     update of the feed's own earlier reading, the same, kept as typed by
-    hand, or waiting for the period to close."""
+    hand, or, for a period still open, waiting for its close or (`read_open`)
+    a provisional reading "so far". `provisional` says the reading there now
+    is one, so a close may still replace it."""
     from .models import KpiReading
 
     existing = {(r.period_start, r.membership_id): r for r in
@@ -397,24 +402,39 @@ def outcome(kpi, plan_values: dict, today, week_start, source=None) -> list[dict
     for (start, member), value in sorted(plan_values.items(), key=lambda kv: (
             kv[0][0], str(kv[0][1] or ""))):
         have = existing.get((start, member))
-        if not P.closed(start, kpi.cadence, today):
+        is_open = not P.closed(start, kpi.cadence, today)
+        if is_open and not read_open:
             what = "open"
+        elif is_open and have is not None and have.source != (source or have.Source.SHEET):
+            what = "kept"
+        elif is_open:
+            what = "same" if have is not None and have.value == value else "provisional"
         elif have is None:
             what = "new"
         elif have.source != (source or have.Source.SHEET):   # another feed's, or the hand's
             what = "kept"
-        elif have.value == value:
+        elif have.value == value and not have.provisional:
             what = "same"
         else:
-            what = "update"
+            what = "update"                      # a closed period's provisional becomes final
         out.append({"start": start, "member": member, "value": value, "what": what,
-                    "had": have.value if have is not None else None})
+                    "had": have.value if have is not None else None,
+                    "provisional": bool(have is not None and have.provisional)})
     return out
+
+
+def keep_closed(results) -> list[dict]:
+    """A snapshot (a cell, cash on hand, pipeline value) is read at the close
+    and kept: a later read of a closed period changes nothing, unless what is
+    there is still a provisional "so far", which the close replaces."""
+    return [dict(r, what="same") if r["what"] == "update" and not r.get("provisional") else r
+            for r in results]
 
 
 WHAT_SAYS = {"new": "New reading", "update": "Replaces the sheet's earlier value",
              "same": "Already in", "kept": "Kept: entered by hand",
-             "open": "Waits until the period closes"}
+             "open": "Waits until the period closes",
+             "provisional": "So far: replaced at each refresh until the period closes"}
 
 
 @transaction.atomic
@@ -425,18 +445,22 @@ def write(feed, results, now=None, source=None) -> dict:
 
     now = now or timezone.now()
     kpi = feed.kpi
-    counts = {"new": 0, "update": 0, "kept": 0, "same": 0, "open": 0}
+    counts = {"new": 0, "update": 0, "kept": 0, "same": 0, "open": 0, "provisional": 0}
     for r in results:
         counts[r["what"]] += 1
-        if r["what"] == "new":
+        provisional = r["what"] == "provisional"
+        if r["what"] == "provisional" and r["had"] is not None:
+            r = dict(r, what="update")
+        if r["what"] in ("new", "provisional"):
             try:
                 with transaction.atomic():
                     reading = KpiReading.all_objects.create(
                         tenant_id=kpi.tenant_id, kpi=kpi, period_start=r["start"],
                         membership_id=r["member"], value=r["value"],
-                        source=source or KpiReading.Source.SHEET, entered_at=now)
+                        source=source or KpiReading.Source.SHEET, entered_at=now,
+                        provisional=provisional)
             except Exception:                              # typed by hand meanwhile
-                counts["new"] -= 1
+                counts["provisional" if provisional else "new"] -= 1
                 counts["kept"] += 1
                 continue
             KpiReadingChange.all_objects.create(tenant_id=kpi.tenant_id, reading=reading,
@@ -445,14 +469,16 @@ def write(feed, results, now=None, source=None) -> dict:
             reading = KpiReading.all_objects.select_for_update().get(
                 kpi=kpi, period_start=r["start"], membership_id=r["member"])
             if reading.source != (source or KpiReading.Source.SHEET):   # the hand won meanwhile
-                counts["update"] -= 1
+                counts["provisional" if provisional else "update"] -= 1
                 counts["kept"] += 1
                 continue
-            KpiReadingChange.all_objects.create(
-                tenant_id=kpi.tenant_id, reading=reading, value=r["value"],
-                previous_value=reading.value)
+            if reading.value != r["value"]:
+                KpiReadingChange.all_objects.create(
+                    tenant_id=kpi.tenant_id, reading=reading, value=r["value"],
+                    previous_value=reading.value)
             reading.value, reading.entered_at = r["value"], now
-            reading.save(update_fields=["value", "entered_at", "updated_at"])
+            reading.provisional = provisional
+            reading.save(update_fields=["value", "entered_at", "provisional", "updated_at"])
     return counts
 
 

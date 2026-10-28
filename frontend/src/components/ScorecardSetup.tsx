@@ -296,9 +296,16 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
   const [seasonal, setSeasonal] = useState(Object.keys(d.month_targets ?? {}).length > 0);
   const [error, setError] = useState<{ text: string; field?: string } | null>(null);
   const set = (k: string, v: unknown) => setD({ ...d, [k]: v });
+  // A new cadence leaves no source on the old one chosen: the picker lists
+  // the KPIs on the cadence chosen here.
+  const setCadence = (v: string) => {
+    const fits = (id: unknown) => state.kpis.some((k) => k.id === id && k.cadence === v);
+    setD({ ...d, cadence: v,
+      source_a: fits(d.source_a) ? d.source_a : "", source_b: fits(d.source_b) ? d.source_b : "" });
+  };
   const save = useMutation({
-    mutationFn: () => {
-      const body = { ...d, company: state.company.id,
+    mutationFn: (withComputed: boolean = false) => {
+      const body = { ...d, company: state.company.id, with_computed: withComputed,
         month_targets: seasonal ? d.month_targets : {},
         audience_team: d.audience === "team" ? d.audience_team || state.teams[0]?.id : null,
         reading_owner: d.formula ? null : d.reading_owner || null,
@@ -312,7 +319,8 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
   });
   const choice = (k: string, label: string, options: Record<string, string>) => (
     <label className="sc-form-field"><span>{label}</span>
-      <select value={String(d[k] ?? "")} onChange={(e) => set(k, e.target.value)}>
+      <select value={String(d[k] ?? "")}
+        onChange={(e) => (k === "cadence" ? setCadence(e.target.value) : set(k, e.target.value))}>
         {Object.entries(options).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
       </select></label>
   );
@@ -329,12 +337,16 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
     .map((k) => [k.id, k.name])]);
   return (
     <form className="sc-kpi-form" aria-label={kpi ? `Edit ${kpi.name}` : `New ${w.kpi}`}
-      onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
+      onSubmit={(e) => { e.preventDefault(); save.mutate(false); }}
       // Only the button saves: Enter in a field doesn't make the KPI.
       onKeyDown={(e) => {
         if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault();
       }}>
-      {error && <Banner kind="bad">{error.text}</Banner>}
+      {error && error.field === "with_computed" ? (
+        <Banner kind="warn">{error.text}{" "}
+          <button type="button" className="primary small" disabled={save.isPending}
+            onClick={() => save.mutate(true)}>Change them together and save</button></Banner>
+      ) : error && <Banner kind="bad">{error.text}</Banner>}
       <div className="sc-form-grid">
         {text("name", "Name", { maxLength: 120, placeholder: "Occupancy" })}
         {choice("page", "Page", Object.fromEntries(livePages.map((p) => [p.id, p.name])))}

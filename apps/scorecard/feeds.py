@@ -24,6 +24,59 @@ from .models import Kpi, KpiFeed
 DAILY_AFTER = timedelta(hours=23)
 
 
+# ------------------------------------------------------------- the open period
+
+def reads_open_by_default(kpi) -> bool:
+    """"Also read the current period as it goes": on for a Last or Average
+    roll-up, whose number so far means something; off for a Sum, whose
+    part-period total would read as a shortfall."""
+    return kpi.rollup != Kpi.Rollup.SUM
+
+
+def reads_open(feed) -> bool:
+    """The feed's own choice, or the KPI's default while it has none."""
+    return reads_open_by_default(feed.kpi) if feed.read_open is None else feed.read_open
+
+
+def read_open_choice(data, current=None):
+    """The choice as a PUT gives it: true, false, or (absent) unchanged."""
+    if "read_open" not in data:
+        return current
+    value = data.get("read_open")
+    if value in (None, ""):
+        return None
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def read_open_payload(feed) -> dict:
+    return {"read_open": reads_open(feed), "read_open_default": reads_open_by_default(feed.kpi)}
+
+
+def open_period(kpi, today):
+    """The open period's start and the last day counted in it so far."""
+    start = P.start_of(today, kpi.cadence, kpi.scorecard.week_start)
+    return start, min(P.end_of(start, kpi.cadence), today)
+
+
+def finalise(tenant_id, today) -> int:
+    """When a period closes, the last value read into it is its final
+    reading: the "so far" mark comes off. Run after the feeds on each pass,
+    so a feed's first read after the close still replaces it."""
+    from .models import KpiReading
+
+    done = []
+    for r in KpiReading.all_objects.filter(tenant_id=tenant_id, provisional=True) \
+            .select_related("kpi"):
+        if P.closed(r.period_start, r.kpi.cadence, today):
+            done.append(r.pk)
+    if done:
+        KpiReading.all_objects.filter(pk__in=done).update(provisional=False,
+                                                          updated_at=timezone.now())
+    return len(done)
+
+
 class NoSheetsAccess(Exception):
     """The practice's Google connection can't read Sheets, said in words, with
     whether reconnecting fixes it."""
@@ -112,8 +165,9 @@ def client_for(feed_or_tenant, user=None, *, factory=None):
 MODES = (KpiFeed.Mode.COLUMN, KpiFeed.Mode.CELL)
 
 
-def clean(kpi, data) -> dict:
-    """The mapping as saved, checked. Raises `sheets.FeedRefused`."""
+def clean(kpi, data, read_open=None) -> dict:
+    """The mapping as saved, checked. Raises `sheets.FeedRefused`.
+    `read_open` is the feed's choice now, kept when the data says none."""
     if kpi.is_computed:
         raise sheets.FeedRefused(f"{kpi.name} is worked out from two other KPIs, so it "
                                  "has no feed of its own.")
@@ -136,7 +190,7 @@ def clean(kpi, data) -> dict:
            "spreadsheet_name": str(data.get("spreadsheet_name") or "")[:200],
            "date_column": "", "date_header": "", "value_column": "", "value_header": "",
            "name_column": "", "name_header": "", "header_row": None, "cell": "",
-           "people": {}}
+           "people": {}, "read_open": read_open_choice(data, read_open)}
     if mode == KpiFeed.Mode.CELL:
         if kpi.per_person:
             raise sheets.FeedRefused(f"{kpi.name} has a reading per person, so it is read "
@@ -177,6 +231,10 @@ def plan_for(kpi, config, rows, today):
         plan = sheets.Plan()
         if value is not None:
             plan.values[(start, None)] = sheets.as_reading(kpi, value)
+            if config.get("reads_open"):
+                # The cell holds the open period's number as it goes, too.
+                plan.values[(P.start_of(today, kpi.cadence, week_start), None)] = \
+                    plan.values[(start, None)]
         return plan
     columns_config = dict(config)
     columns_config["people"] = {k: v for k, v in (config.get("people") or {}).items()}
@@ -223,10 +281,17 @@ def preview(kpi, config, rows, today) -> dict:
                 "counts": {w: 0 for w in sheets.WHAT_SAYS},
                 "cell": {"ref": config["cell"], "value": num(value),
                          "period": P.long_label(open_start, kpi.cadence),
-                         "closes": P.end_of(open_start, kpi.cadence).isoformat()}}
+                         "closes": P.end_of(open_start, kpi.cadence).isoformat(),
+                         "so_far": _config_reads_open(kpi, config)}}
     plan = plan_for(kpi, config, rows, today)
-    results = sheets.outcome(kpi, plan.values, today, kpi.scorecard.week_start)
+    results = sheets.outcome(kpi, plan.values, today, kpi.scorecard.week_start,
+                             read_open=_config_reads_open(kpi, config))
     return describe_preview(kpi, plan, results)
+
+
+def _config_reads_open(kpi, config) -> bool:
+    choice = config.get("read_open")
+    return reads_open_by_default(kpi) if choice is None else choice
 
 
 # ------------------------------------------------------------- running
@@ -258,10 +323,11 @@ def results_for(feed, plan, today) -> list[dict]:
     its period's close: once stored it stays, and a period that closed
     before the feed was set up is not given today's number."""
     kpi = feed.kpi
-    results = sheets.outcome(kpi, plan.values, today, kpi.scorecard.week_start)
+    results = sheets.outcome(kpi, plan.values, today, kpi.scorecard.week_start,
+                             read_open=reads_open(feed))
     if feed.mode == KpiFeed.Mode.CELL:
-        results = [dict(r, what="same") if r["what"] == "update" else r for r in results
-                   if feed.cell_from is None or r["start"] >= feed.cell_from]
+        results = sheets.keep_closed([r for r in results if feed.cell_from is None
+                                      or r["start"] >= feed.cell_from])
     return results
 
 
@@ -277,7 +343,7 @@ def run(feed, today, *, client=None, now=None) -> dict:
             client, connection = client_for(feed)
             feed.connection = connection
         rows = client.rows(feed.spreadsheet_id, feed.tab)
-        plan = plan_for(kpi, feed.config(), rows, today)
+        plan = plan_for(kpi, {**feed.config(), "reads_open": reads_open(feed)}, rows, today)
         if feed.mode == KpiFeed.Mode.COLUMN and not plan.values and not plan.unmatched \
                 and not plan.skipped:
             raise sheets.FeedRefused("has no rows with a date and a number")
@@ -334,8 +400,10 @@ def source_text(feed) -> str:
     every = "every hour" if feed.refresh == KpiFeed.Refresh.HOURLY else "once a day"
     where = f"From the Google Sheet '{feed.spreadsheet_name or 'untitled'}', tab '{feed.tab}'"
     if feed.mode == KpiFeed.Mode.CELL:
+        if reads_open(feed):
+            return f"{where}, cell {feed.cell}, read {every}, the open period so far"
         return f"{where}, cell {feed.cell}, read as each period closes"
-    return f"{where}, read {every}"
+    return f"{where}, read {every}" + (", the open period so far" if reads_open(feed) else "")
 
 
 def notices_for(user, company=None) -> list:
@@ -434,9 +502,9 @@ def run_track(feed, today, *, client=None, now=None) -> dict:
     feed.last_run_at = now
     try:
         client = client or track_client(kpi.scorecard.company)
-        values = track.plan_for(feed, client, today)
+        values = track.plan_for(feed, client, today, read_open=reads_open(feed))
         results = sheets.outcome(kpi, values, today, kpi.scorecard.week_start,
-                                 source=KpiReading.Source.TRACK)
+                                 source=KpiReading.Source.TRACK, read_open=reads_open(feed))
         counts = sheets.write(feed, results, now, source=KpiReading.Source.TRACK)
     except (track.TrackUnavailable, track.TrackRefused, sheets.FeedRefused) as exc:
         message = str(exc)
@@ -479,7 +547,8 @@ def track_source_text(feed) -> str:
     label = track.MEASURES.get(feed.measure, (feed.measure,))[0]
     scope = f"property {feed.unit_name or feed.unit_id}" if feed.unit_id else (
         f"Track user {feed.assignee_id}" if feed.assignee_id else "all properties")
-    return f"From Track PMS: {label}, {scope}, computed once a day"
+    so_far = ", the open period so far" if reads_open(feed) else ""
+    return f"From Track PMS: {label}, {scope}, computed once a day{so_far}"
 
 
 def track_notices_for(user, company=None) -> list:
@@ -508,12 +577,12 @@ def run_app(feed, today, *, now=None) -> dict:
     now = now or timezone.now()
     kpi = feed.kpi
     try:
-        values = practice.plan_for(feed, today)
+        values = practice.plan_for(feed, today, read_open=reads_open(feed))
         results = sheets.outcome(kpi, values, today, kpi.scorecard.week_start,
-                                 source=KpiReading.Source.APP)
+                                 source=KpiReading.Source.APP, read_open=reads_open(feed))
         if feed.measure in practice.SNAPSHOT:
             # Read at the close and kept, as a cell is.
-            results = [dict(r, what="same") if r["what"] == "update" else r for r in results]
+            results = sheets.keep_closed(results)
         counts = sheets.write(feed, results, now, source=KpiReading.Source.APP)
     except practice.MeasureRefused as exc:
         message = str(exc)
@@ -557,7 +626,8 @@ def app_source_text(feed) -> str:
     label = practice.MEASURES.get(feed.measure, (feed.measure,))[0]
     if feed.param_label:
         label = f"{label}: {feed.param_label}"
-    return f"From this app: {label}, worked out once a day"
+    so_far = ", the open period so far" if reads_open(feed) else ""
+    return f"From this app: {label}, worked out once a day{so_far}"
 
 
 def app_notices_for(user, company=None) -> list:
@@ -632,12 +702,13 @@ def run_hubspot(feed, today, *, client=None, now=None) -> dict:
     try:
         client = client or hubspot_client(company)
         values = hubspot.plan_for(feed, client, today,
-                                  zone=getattr(company.tenant, "timezone", "") or "UTC")
+                                  zone=getattr(company.tenant, "timezone", "") or "UTC",
+                                  read_open=reads_open(feed))
         results = sheets.outcome(kpi, values, today, kpi.scorecard.week_start,
-                                 source=KpiReading.Source.HUBSPOT)
+                                 source=KpiReading.Source.HUBSPOT, read_open=reads_open(feed))
         if feed.measure in hubspot.SNAPSHOT:
             # Read at the close and kept, as a cell is.
-            results = [dict(r, what="same") if r["what"] == "update" else r for r in results]
+            results = sheets.keep_closed(results)
         counts = sheets.write(feed, results, now, source=KpiReading.Source.HUBSPOT)
     except (hubspot.HubSpotUnavailable, hubspot.HubSpotRefused, sheets.FeedRefused) as exc:
         message = str(exc)
@@ -686,7 +757,8 @@ def hubspot_source_text(feed) -> str:
     who = f"owner {feed.owner_name or feed.owner_id}" if feed.owner_id else "every owner"
     when = "read at each period's close" if feed.measure in hubspot.SNAPSHOT \
         else "computed once a day"
-    return f"From HubSpot: {label}, {who}, {when}"
+    so_far = ", the open period so far" if reads_open(feed) else ""
+    return f"From HubSpot: {label}, {who}, {when}{so_far}"
 
 
 def hubspot_notices_for(user, company=None) -> list:

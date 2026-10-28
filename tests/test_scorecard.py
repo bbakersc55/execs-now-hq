@@ -1200,3 +1200,119 @@ def test_a_computed_kpi_is_never_listed_as_waiting(sc):
     form = sc["api"].as_(sc["practice"]["ff"]).get(f"{B}entry/?company={sc['company'].pk}").json()
     names = [p["name"] for p in form["progress"]]
     assert "Revenue" in names and "Revenue per booking" not in names
+
+
+# ---------------------------------------------------------------- a new cadence
+
+def _kpi_with(sc, cadence, rollup, readings_at, *, hand=()):
+    """A KPI on the weekly page with a feed's readings at these dates, and
+    any in `hand` typed by hand."""
+    ff = sc["practice"]["ff"].user
+    with tenant_context(sc["tenant"].pk):
+        kpi = setup.create_kpi(sc["card"], {
+            "name": f"Refit {cadence} {rollup}", "kind": "number", "cadence": cadence,
+            "rollup": rollup, "page": str(sc["pages"]["weekly"].pk)}, ff)
+        for day, value in readings_at.items():
+            KpiReading.objects.create(
+                tenant=sc["tenant"], kpi=kpi, period_start=day, value=value,
+                source="hand" if day in hand else "sheet", entered_at=timezone.now())
+    return kpi
+
+
+def _values(kpi):
+    return {r.period_start: r.value for r in KpiReading.all_objects.filter(kpi=kpi)}
+
+
+@pytest.mark.django_db
+def test_a_reading_on_a_quarter_end_date_lands_in_that_quarter(sc):
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    kpi = _kpi_with(sc, "daily", "last", {date(2026, 3, 30): 5, date(2026, 3, 31): 7,
+                                           date(2026, 4, 1): 9})
+    assert patch(ff, f"{B}kpis/{kpi.pk}/", {"cadence": "quarterly"}).status_code == 200
+    # March 31 is Q1's last reading; April 1 starts Q2.
+    assert _values(kpi) == {date(2026, 1, 1): Decimal("7"), date(2026, 4, 1): Decimal("9")}
+
+
+@pytest.mark.django_db
+def test_months_into_quarters_combine_by_the_roll_up_and_keep_their_history(sc):
+    from apps.scorecard.models import KpiReadingChange
+
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    kpi = _kpi_with(sc, "monthly", "sum", {date(2026, 1, 1): 10, date(2026, 2, 1): 20,
+                                            date(2026, 3, 1): 30, date(2026, 4, 1): 5},
+                    hand={date(2026, 2, 1)})
+    other = sc["kpis"]["lead"]
+    others_before = _values(other)
+    assert patch(ff, f"{B}kpis/{kpi.pk}/", {"cadence": "quarterly"}).status_code == 200
+    assert _values(kpi) == {date(2026, 1, 1): Decimal("60"), date(2026, 4, 1): Decimal("5")}
+    q1 = KpiReading.all_objects.get(kpi=kpi, period_start=date(2026, 1, 1))
+    # A month typed by hand makes the quarter the hand's: no feed writes over it.
+    assert q1.source == "hand" and q1.times_changed == 1
+    # Every value the three months held is in the quarter's history.
+    held = sorted(KpiReadingChange.all_objects.filter(reading=q1).values_list("value", flat=True))
+    assert Decimal("60") in held
+    assert AuditEvent.all_objects.filter(verb="scorecard.readings_refitted",
+                                         payload__kpi=str(kpi.pk),
+                                         payload__combined=2).exists()
+    # Only this KPI's readings moved.
+    assert _values(other) == others_before
+
+
+@pytest.mark.django_db
+def test_quarters_into_months_and_weeks_into_months(sc):
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    quarterly = _kpi_with(sc, "quarterly", "average", {date(2026, 1, 1): 4, date(2026, 4, 1): 6})
+    assert patch(ff, f"{B}kpis/{quarterly.pk}/", {"cadence": "monthly"}).status_code == 200
+    assert _values(quarterly) == {date(2026, 3, 1): Decimal("4"), date(2026, 6, 1): Decimal("6")}
+    # The week of March 30 to April 5 ends in April, so it lands there.
+    weekly = _kpi_with(sc, "weekly", "average", {date(2026, 3, 23): 2, date(2026, 3, 30): 4,
+                                                  date(2026, 4, 6): 8})
+    assert patch(ff, f"{B}kpis/{weekly.pk}/", {"cadence": "monthly"}).status_code == 200
+    assert _values(weekly) == {date(2026, 3, 1): Decimal("2"), date(2026, 4, 1): Decimal("6")}
+    # And back to weeks: each month in the week holding its last day.
+    assert patch(ff, f"{B}kpis/{weekly.pk}/", {"cadence": "weekly"}).status_code == 200
+    assert _values(weekly) == {date(2026, 3, 30): Decimal("2"), date(2026, 4, 27): Decimal("6")}
+    assert all(P.is_valid_start(s, "weekly") for s in _values(weekly))
+
+
+@pytest.mark.django_db
+def test_a_per_person_kpi_refits_each_persons_readings_and_its_reminders(sc):
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    calls = sc["kpis"]["calls"]
+    week = sc["week"]
+    with tenant_context(sc["tenant"].pk):
+        KpiReminder.objects.create(tenant=sc["tenant"], kpi=calls, period_start=week,
+                                   recipient=sc["who"]["manager"].user)
+    assert patch(ff, f"{B}kpis/{calls.pk}/", {"cadence": "monthly"}).status_code == 200
+    month = P.start_of(P.end_of(week, "weekly"), "monthly")
+    got = {(r.membership_id, r.period_start): r.value
+           for r in KpiReading.all_objects.filter(kpi=calls)}
+    assert got == {(sc["who"][k].pk, month): Decimal(v) for k, v in
+                   {"member": 12, "colleague": 7, "manager": 9, "sales_member": 15}.items()}
+    assert list(KpiReminder.all_objects.filter(kpi=calls).values_list(
+        "period_start", flat=True)) == [month]
+
+
+@pytest.mark.django_db
+def test_a_sources_new_cadence_is_offered_to_its_computed_kpis_and_made_in_one_save(sc):
+    revenue, bookings, per = computed_world(sc)
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    offered = patch(ff, f"{B}kpis/{revenue.pk}/", {"cadence": "monthly"})
+    assert offered.status_code == 400
+    said = offered.json()
+    assert said["field"] == "with_computed"
+    assert sorted(said["computed"]) == sorted([per.name, bookings.name])
+    assert "Change them to monthly with it?" in said["detail"]
+    assert Kpi.all_objects.get(pk=revenue.pk).cadence == "weekly"      # nothing changed yet
+    done = patch(ff, f"{B}kpis/{revenue.pk}/", {"cadence": "monthly", "with_computed": True})
+    assert done.status_code == 200, done.content
+    assert {k.cadence for k in Kpi.all_objects.filter(pk__in=[revenue.pk, bookings.pk, per.pk])} \
+        == {"monthly"}
+    # The other source's readings were re-fitted too.
+    fitted = {r.period_start: r.value for r in KpiReading.all_objects.filter(kpi=bookings)}
+    assert all(P.is_valid_start(s, "monthly") for s in fitted)
+    assert sum(fitted.values()) == Decimal("9")                       # summed, nothing lost
+    assert P.start_of(P.end_of(sc["week"], "weekly"), "monthly") in fitted
+    # Still refused: a source of a computed KPI stays a company KPI with readings.
+    refused = patch(ff, f"{B}kpis/{revenue.pk}/", {"per_person": True, "with_computed": True})
+    assert refused.status_code == 400 and "stays a company KPI" in refused.json()["detail"]

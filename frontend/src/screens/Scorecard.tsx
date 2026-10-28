@@ -387,9 +387,10 @@ function Grid({ tiles, b }: { tiles: Tile[]; b: Board }) {
                     <td key={p.period_start} className="sc-cell-td">
                       <button type="button"
                         className={`sc-cell sc-cell-${p.status ?? (p.value === null ? "missing" : "none")}${i === t.history.length - 1 ? " sc-cell-now" : ""}`}
-                        aria-label={`${t.name}, ${p.label}: ${p.value === null ? "no reading" : fmt(t, p.value)}${p.status ? `, ${STATUS_LABEL[p.status]}` : ""}`}
+                        aria-label={`${t.name}, ${p.label}: ${p.value === null ? "no reading" : fmt(t, p.value)}${p.so_far ? " so far" : ""}${p.status ? `, ${STATUS_LABEL[p.status]}` : ""}`}
                         onClick={() => setCell({ t, p })}>
                         {p.value === null ? "—" : fmt(t, p.value, { bare: true, compact: true })}
+                        {p.so_far && <span className="sc-so-far" aria-hidden="true">so far</span>}
                       </button>
                     </td>
                   ))}
@@ -415,7 +416,7 @@ function Grid({ tiles, b }: { tiles: Tile[]; b: Board }) {
         <div className="sc-cell-detail" role="status">
           {cell.t.name}, {cell.p.label}: {cell.p.value === null ? "no reading"
             : `${fmt(cell.t, cell.p.value)}, entered by ${cell.p.entered_by || "someone"}${cell.p.entered_at
-              ? ` on ${new Date(cell.p.entered_at).toLocaleDateString()}` : ""}${cell.p.edited ? " (edited)" : ""}`}
+              ? ` on ${new Date(cell.p.entered_at).toLocaleDateString()}` : ""}${cell.p.edited ? " (edited)" : ""}${cell.p.so_far ? ", so far: replaced at each refresh until the period closes" : ""}`}
         </div>
       )}
       <div className="sc-legend">

@@ -158,7 +158,7 @@ def _feed_payload(feed):
             "unit_id": feed.unit_id, "unit_name": feed.unit_name,
             "assignee_id": feed.assignee_id, "text": feeds.track_source_text(feed),
             "last_success_at": feed.last_success_at.isoformat() if feed.last_success_at
-            else None, "last_error": feed.last_error}
+            else None, "last_error": feed.last_error, **feeds.read_open_payload(feed)}
 
 
 class TrackFeedView(Base):
@@ -168,7 +168,8 @@ class TrackFeedView(Base):
             return refusal
         connected = TrackConnection.objects.filter(company=reader.company).exists()
         return Response({"kpi": {"id": str(kpi.pk), "name": kpi.name, "kind": kpi.kind,
-                                 "per_person": kpi.per_person},
+                                 "per_person": kpi.per_person,
+                                 "read_open_default": feeds.reads_open_by_default(kpi)},
                          "connected": connected,
                          "feed": _feed_payload(KpiTrackFeed.objects.filter(kpi=kpi).first())})
 
@@ -193,12 +194,14 @@ class TrackFeedView(Base):
                             status=409)
         # A KPI has one feed: switching to Track stops the others (readings kept).
         feeds.stop_other_feeds(kpi, Kpi.Feed.TRACK)
+        before = KpiTrackFeed.all_objects.filter(kpi=kpi).first()
+        read_open = feeds.read_open_choice(request.data, before.read_open if before else None)
         feed, made = KpiTrackFeed.all_objects.update_or_create(
             kpi=kpi, defaults={"tenant_id": kpi.tenant_id, "measure": measure, "unit_id": unit,
                                "unit_name": str(request.data.get("unit_name") or "")[:200]
                                if unit else "", "assignee_id": user, "active": True,
                                "last_error": "", "error_since": None,
-                               "created_by": request.user})
+                               "created_by": request.user, "read_open": read_open})
         if made or feed.last_success_at is None:
             KpiTrackFeed.all_objects.filter(pk=feed.pk).update(last_success_at=None)
             feed.last_success_at = None

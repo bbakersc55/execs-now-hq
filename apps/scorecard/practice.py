@@ -244,10 +244,11 @@ def value_for(measure, tenant, first, last, *, param="", today=None):
     raise MeasureRefused("Choose a measure from the list.")
 
 
-def plan_for(feed, today, *, periods=2, back=13):
+def plan_for(feed, today, *, periods=2, back=13, read_open=False):
     """{(start, None): value} for the closed periods this read covers, as the
     Track feed reads: the last two each day, 13 back the first time. A
-    snapshot measure fills only the period that closed most recently."""
+    snapshot measure fills only the period that closed most recently. With
+    `read_open`, the open period too, up to today."""
     kpi = feed.kpi
     tenant = kpi.scorecard.company.tenant
     week_start = kpi.scorecard.week_start
@@ -255,8 +256,12 @@ def plan_for(feed, today, *, periods=2, back=13):
                                    week_start)
     count = 1 if feed.measure in SNAPSHOT else (back if feed.last_success_at is None else periods)
     values = {}
-    for start in P.last_n(last_closed, kpi.cadence, count, week_start):
-        value = value_for(feed.measure, tenant, start, P.end_of(start, kpi.cadence),
+    starts = P.last_n(last_closed, kpi.cadence, count, week_start)
+    if read_open:
+        starts.append(P.start_of(today, kpi.cadence, week_start))
+    for start in starts:
+        value = value_for(feed.measure, tenant, start,
+                          min(P.end_of(start, kpi.cadence), today),
                           param=feed.param, today=today)
         if value is not None and MEASURES[feed.measure][1] == "duration" \
                 and kpi.kind == "duration":

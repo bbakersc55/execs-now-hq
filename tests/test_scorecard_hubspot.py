@@ -422,6 +422,33 @@ def test_pipeline_value_is_read_at_the_close_and_kept(practice):
                             date(2026, 11, 20)) == {}
 
 
+def test_pipeline_value_read_as_it_goes_is_replaced_at_the_close_then_kept(practice):
+    p = practice
+    connect(p)
+    pipeline = p["kpis"]["pipeline"]
+    assert set_feed(p, pipeline, "pipeline_value", read_open=True).status_code == 200
+    feed = KpiHubSpotFeed.all_objects.get(kpi=pipeline)
+    nov_1 = date(2026, 11, 1)
+
+    def read(day, value):
+        with mock.patch.object(hubspot, "value_for", return_value=Decimal(value)):
+            assert feeds.run_hubspot(feed, day)["ok"]
+        return {r.period_start: r for r in KpiReading.all_objects.filter(kpi=pipeline)}
+
+    got = read(date(2026, 11, 20), "100")
+    assert got[nov_1].value == Decimal("100") and got[nov_1].provisional
+    got = read(date(2026, 11, 25), "150")
+    assert got[nov_1].value == Decimal("150") and got[nov_1].provisional
+    # The read at the close replaces the "so far"; later reads keep it.
+    got = read(date(2026, 12, 1), "175")
+    assert got[nov_1].value == Decimal("175") and not got[nov_1].provisional
+    assert got[date(2026, 12, 1)].provisional
+    got = read(date(2026, 12, 2), "1")
+    assert got[nov_1].value == Decimal("175")
+    assert feeds.hubspot_source_text(feed).endswith("read at each period's close, "
+                                                    "the open period so far")
+
+
 def test_a_stage_is_only_for_pipeline_value(practice):
     p = practice
     connect(p)

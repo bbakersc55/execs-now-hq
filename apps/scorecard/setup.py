@@ -23,9 +23,11 @@ FIRST_PAGE = "Weekly scorecard"
 class SetupError(ValueError):
     """Something asked of the setup that cannot be, said in words."""
 
-    def __init__(self, message, field=None):
+    def __init__(self, message, field=None, **extra):
         super().__init__(message)
         self.field = field
+        #: More for the form to act on, e.g. the computed KPIs it may offer to change.
+        self.extra = extra
 
 
 def audit(company, actor, verb, **payload):
@@ -394,6 +396,23 @@ def create_kpi(scorecard, data, actor) -> Kpi:
     return kpi
 
 
+def _tied(kpi) -> list:
+    """The live KPIs that must share `kpi`'s cadence: the computed KPIs worked
+    out from it, the other KPIs those are worked out from, and so on."""
+    seen, todo, out = {kpi.pk}, [kpi], []
+    while todo:
+        k = todo.pop()
+        near = list(Kpi.objects.filter(Q(source_a=k) | Q(source_b=k), archived_at__isnull=True))
+        if k.is_computed:
+            near += [x for x in (k.source_a, k.source_b) if x is not None and x.archived_at is None]
+        for x in near:
+            if x.pk not in seen:
+                seen.add(x.pk)
+                out.append(x)
+                todo.append(x)
+    return sorted(out, key=lambda x: (x.position, x.name))
+
+
 @transaction.atomic
 def update_kpi(kpi, data, actor) -> Kpi:
     fields = clean_kpi(kpi.scorecard, data, kpi)
@@ -401,11 +420,21 @@ def update_kpi(kpi, data, actor) -> Kpi:
                if getattr(kpi, k if k not in ("page", "audience_team", "reading_owner",
                                               "source_a", "source_b")
                           else k + "_id") != (v.pk if hasattr(v, "pk") else v)]
-    if {"cadence", "per_person", "formula"} & set(changed):
-        users = Kpi.objects.filter(Q(source_a=kpi) | Q(source_b=kpi), archived_at__isnull=True)
-        if users.exists():
-            raise SetupError(f"{users.first().name} is worked out from {kpi.name}, so its "
-                             "cadence stays, and it stays a company KPI with readings.")
+    users = list(Kpi.objects.filter(Q(source_a=kpi) | Q(source_b=kpi), archived_at__isnull=True))
+    if users and {"per_person", "formula"} & set(changed):
+        raise SetupError(f"{users[0].name} is worked out from {kpi.name}, so it stays a "
+                         "company KPI with readings.")
+    tied = _tied(kpi) if users and "cadence" in changed else []
+    if tied and not data.get("with_computed"):
+        # Offered, not refused: the computed KPIs, and the other KPIs they are
+        # worked out from, move to the new cadence in the same save.
+        names = [k.name for k in tied]
+        listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+        raise SetupError(f"{kpi.name} is tied to {listed}: a computed KPI and the KPIs it is "
+                         f"worked out from share one cadence. Change "
+                         f"{'it' if len(names) == 1 else 'them'} to {fields['cadence']} with it?",
+                         "with_computed", computed=names)
+    old_cadence = kpi.cadence
     for k in changed:
         setattr(kpi, k, fields[k])
     if "page" in changed:
@@ -414,6 +443,29 @@ def update_kpi(kpi, data, actor) -> Kpi:
         changed.append("position")
     if changed:
         kpi.save(update_fields=changed + ["updated_at"])
+    if "cadence" in changed:
+        from .board import today_for
+        from .readings import refit
+
+        today = today_for(kpi.scorecard.company.tenant)
+        for other in tied:
+            was = other.cadence
+            other.cadence = kpi.cadence
+            other.save(update_fields=["cadence", "updated_at"])
+            audit(kpi.scorecard.company, actor, "scorecard.kpi_changed", name=other.name,
+                  kpi=str(other.pk), fields=["cadence"])
+            if not other.is_computed:
+                fitted = refit(other, was, actor, today)
+                if fitted["moved"] or fitted["combined"]:
+                    audit(kpi.scorecard.company, actor, "scorecard.readings_refitted",
+                          name=other.name, kpi=str(other.pk), cadence=other.cadence,
+                          previous=was, **fitted)
+        # Its readings move onto the new periods, not left on dates that
+        # start none.
+        fitted = refit(kpi, old_cadence, actor, today)
+        if fitted["moved"] or fitted["combined"]:
+            audit(kpi.scorecard.company, actor, "scorecard.readings_refitted", name=kpi.name,
+                  kpi=str(kpi.pk), cadence=kpi.cadence, previous=old_cadence, **fitted)
     people = None
     if "people" in data:
         people = _people(kpi.scorecard.company, data.get("people")) if kpi.per_person else []

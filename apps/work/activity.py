@@ -147,6 +147,9 @@ AUDIT = {
                                "restored the {kpi} “{name}” on {target}'s {scorecard}"),
     "scorecard.kpis_reordered": ("scorecard",
                                  "reordered the {kpis} on “{name}”, {target}'s {scorecard}"),
+    "scorecard.readings_refitted": ("scorecard",
+                                    "moved the readings of the {kpi} “{name}” onto its new "
+                                    "periods on {target}'s {scorecard}"),
     "scorecard.week_start_changed": ("scorecard",
                                      "changed when the week starts on {target}'s {scorecard}"),
     # M5 part 2: bonus plans. `{name}` is the plan's, `{period}` its period.

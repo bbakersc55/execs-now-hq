@@ -36,6 +36,8 @@ export interface Point {
   period_start: string; label: string; value: number | null; target: number | null;
   status: Status | null; missing: boolean; edited: boolean; reading: string | null;
   entered_by: string; entered_at: string | null; source: string;
+  /** A feed's reading of the period still open, replaced at each refresh. */
+  so_far?: boolean;
 }
 
 export interface Summary {
@@ -43,6 +45,8 @@ export interface Summary {
   stale_from?: string; missing: string | null; open_period?: boolean; carried?: boolean;
   periods: number; periods_in: number; full_target: number | null;
   days_left: number; elapsed: number;
+  /** The value counts an open period's provisional "so far" reading. */
+  so_far?: boolean;
 }
 
 export interface PersonRow {
@@ -319,6 +323,7 @@ export interface FeedConfig {
   name_column: string; name_header: string; header_row: number | null; cell: string;
   people: Record<string, string>; last_run_at: string | null; last_success_at: string | null;
   last_error: string; account: string;
+  read_open?: boolean; read_open_default?: boolean;
 }
 
 export interface FeedState {
@@ -328,6 +333,8 @@ export interface FeedState {
     /** Readings shown by the KPI's kind ("82%", "$1,200"), not as stored. */
     kind?: Kind; duration_unit?: string };
   feed: FeedConfig | null;
+  /** "Also read the current period as it goes", by the KPI's roll-up. */
+  read_open_default?: boolean;
 }
 
 export interface SheetGrid {

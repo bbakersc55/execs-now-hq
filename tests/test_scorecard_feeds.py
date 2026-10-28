@@ -237,7 +237,7 @@ def test_a_messy_sheet_maps_cleanly_in_column_mode(practice):
     saved = put(client, B, body)
     assert saved.status_code == 200, saved.content
     assert saved.json()["run"] == {"ok": True, "new": 3, "update": 0, "kept": 0, "same": 0,
-                                   "open": 1}
+                                   "open": 1, "provisional": 0}
     got = readings_of(revenue)
     assert {s: r.value for s, r in got.items()} == {
         w[0]: Decimal("12400"), w[1]: Decimal("11950"), w[3]: Decimal("-1200")}
@@ -332,10 +332,12 @@ def test_a_dashboard_sheet_maps_cleanly_in_cell_mode(practice):
     FakeSheets.books[(SHEET_ID, "Dash")] = dashboard("86.5%")
     client = p["api"].as_(p["ff"])
     occupancy = p["kpis"]["occupancy"]
-    body = mapping(p, occupancy, tab="Dash", mode="cell", cell="C4")
+    # Read at each close only; reading the open period too is tested below.
+    body = mapping(p, occupancy, tab="Dash", mode="cell", cell="C4", read_open=False)
     shown = post(client, f"{B}preview/", body).json()
     assert shown["cell"] == {"ref": "C4", "value": 86.5, "period": P.long_label(
-        weeks_ago(0), "weekly"), "closes": P.end_of(weeks_ago(0), "weekly").isoformat()}
+        weeks_ago(0), "weekly"), "closes": P.end_of(weeks_ago(0), "weekly").isoformat(),
+        "so_far": False}
     saved = put(client, B, body).json()
     # The cell holds this week's number; it is stored when the week closes,
     # not as last week's.
@@ -433,7 +435,7 @@ def test_a_failed_read_keeps_the_readings_and_tells_the_reading_owner_once(pract
     put(client, B, mapping(p, occupancy, date_column="A", date_header="Week of",
                            value_column="B", value_header="Occupancy"))
     before = {s: r.value for s, r in readings_of(occupancy).items()}
-    assert len(before) == 3
+    assert len(before) == 4                 # three closed weeks and this one so far
     # The client renames the column.
     rows[2][1] = "Occ %"
     feed = KpiFeed.all_objects.get(kpi=occupancy)
@@ -472,7 +474,8 @@ def test_the_tile_back_names_the_source(practice):
     data = client.get(f"/api/scorecard/?company={p['company'].pk}&window=this_quarter").json()
     tile = next(t for t in data["kpis"] if t["name"] == "Occupancy")
     assert tile["feed"] == {"kind": "sheet", "text": "From the Google Sheet 'Weekly numbers', "
-                            "tab 'Data', read every hour", "error": ""}
+                            "tab 'Data', read every hour, the open period so far",
+                            "error": ""}
     point = next(x for x in tile["history"] if x["period_start"] == w[3].isoformat())
     assert point["source"] == "sheet"
     # A client reader sees where it comes from, not the failure details.
@@ -516,6 +519,154 @@ def test_hourly_and_daily_refresh(practice):
     today = timezone.localdate()
     assert feeds.run_due(p["tenant"].pk, today, now=now + timedelta(hours=1))["ran"] == 1
     assert feeds.run_due(p["tenant"].pk, today, now=now + timedelta(hours=24))["ran"] == 2
+
+
+# ---------------------------------------------------------------- the open period so far
+
+def test_the_open_period_is_read_so_far_by_default_for_last_and_average(practice):
+    p = practice
+    rows, w = messy_weekly()
+    FakeSheets.books[(SHEET_ID, "Data")] = rows
+    client = p["api"].as_(p["ff"])
+    occupancy, revenue = p["kpis"]["occupancy"], p["kpis"]["revenue"]
+    cols = {"date_column": "A", "date_header": "Week of"}
+    # The default follows the roll-up: on for an average, off for a sum.
+    assert client.get(f"{B}?company={p['company'].pk}&kpi={occupancy.pk}").json()[
+        "read_open_default"] is True
+    assert client.get(f"{B}?company={p['company'].pk}&kpi={revenue.pk}").json()[
+        "read_open_default"] is False
+
+    saved = put(client, B, mapping(p, occupancy, value_column="B", value_header="Occupancy",
+                                   **cols)).json()
+    assert saved["run"]["provisional"] == 1 and saved["run"]["open"] == 0
+    assert saved["feed"]["read_open"] is True and saved["feed"]["read_open_default"] is True
+    now = readings_of(occupancy)[w[4]]
+    assert now.value == Decimal("88") and now.provisional and now.source == "sheet"
+    # A sum waits for the close, as before.
+    run = put(client, B, mapping(p, revenue, value_column="C", value_header="Revenue",
+                                 **cols)).json()["run"]
+    assert run["open"] == 1 and run["provisional"] == 0 and w[4] not in readings_of(revenue)
+
+    # Tiles and the grid mark it "so far"; closed weeks are not.
+    board = client.get(f"/api/scorecard/?company={p['company'].pk}&window=this_week").json()
+    tile = next(t for t in board["kpis"] if t["name"] == "Occupancy")
+    assert tile["summary"]["value"] == 88 and tile["summary"]["so_far"] is True
+    marks = {x["period_start"]: x["so_far"] for x in tile["history"]}
+    assert marks[w[4].isoformat()] is True and marks[w[3].isoformat()] is False
+    # The front's value is the open week's; Details lists the closed ones before it.
+    assert tile["history"][-1]["period_start"] == w[4].isoformat()
+    assert tile["history"][-1]["value"] == 88
+    assert not any(x["so_far"] for x in tile["history"][:-1])
+
+    # Each refresh replaces it, still "so far".
+    feed = KpiFeed.all_objects.get(kpi=occupancy)
+    rows[8][1] = "90%"
+    assert feeds.run(feed, timezone.localdate())["provisional"] == 1
+    again = readings_of(occupancy)[w[4]]
+    assert again.pk == now.pk and again.value == Decimal("90") and again.provisional
+
+    # The week closes before the next read: no missing-reading reminder for it,
+    # and the last value read is its reading.
+    next_week = w[4] + timedelta(days=7)
+    with tenant_context(p["tenant"].pk):
+        readings.remind(p["tenant"], next_week)
+    from apps.scorecard.models import KpiReminder
+    assert not KpiReminder.all_objects.filter(kpi=occupancy, period_start=w[4]).exists()
+    assert feeds.finalise(p["tenant"].pk, next_week) == 1
+    final = readings_of(occupancy)[w[4]]
+    assert final.value == Decimal("90") and not final.provisional
+    board = client.get(f"/api/scorecard/?company={p['company'].pk}&window=this_quarter").json()
+    tile = next(t for t in board["kpis"] if t["name"] == "Occupancy")
+    assert not any(x["so_far"] for x in tile["history"])
+
+
+def test_the_first_read_after_the_close_makes_the_final_reading(practice):
+    p = practice
+    rows, w = messy_weekly()
+    FakeSheets.books[(SHEET_ID, "Data")] = rows
+    client = p["api"].as_(p["ff"])
+    occupancy = p["kpis"]["occupancy"]
+    put(client, B, mapping(p, occupancy, date_column="A", date_header="Week of",
+                           value_column="B", value_header="Occupancy"))
+    feed = KpiFeed.all_objects.get(kpi=occupancy)
+    rows[8][1] = "91%"
+    next_week = w[4] + timedelta(days=7)
+    run = feeds.run(feed, next_week)
+    assert run["update"] == 1 and run["provisional"] == 0
+    got = readings_of(occupancy)[w[4]]
+    assert got.value == Decimal("91") and not got.provisional
+    from apps.scorecard.models import KpiReadingChange
+    assert [c.value for c in KpiReadingChange.all_objects.filter(reading=got)] == [
+        Decimal("88"), Decimal("91")]
+
+
+def test_typed_by_hand_the_open_period_is_never_overwritten(practice):
+    p = practice
+    rows, w = messy_weekly()
+    FakeSheets.books[(SHEET_ID, "Data")] = rows
+    client = p["api"].as_(p["ff"])
+    occupancy = p["kpis"]["occupancy"]
+    put(client, B, mapping(p, occupancy, date_column="A", date_header="Week of",
+                           value_column="B", value_header="Occupancy"))
+    with tenant_context(p["tenant"].pk):
+        out = readings.save(_reader(p, p["owner"]), p["card"], [
+            {"kpi": str(occupancy.pk), "period_start": w[4].isoformat(), "value": "85"}],
+            timezone.localdate())
+    assert out["changed"] == 1
+    typed = readings_of(occupancy)[w[4]]
+    assert typed.source == "hand" and not typed.provisional
+    rows[8][1] = "95%"
+    feed = KpiFeed.all_objects.get(kpi=occupancy)
+    assert feeds.run(feed, timezone.localdate())["kept"] == 1
+    assert feeds.run(feed, w[4] + timedelta(days=7))["kept"] == 1
+    assert readings_of(occupancy)[w[4]].value == Decimal("85")
+
+
+def test_the_choice_is_the_feeds_and_is_kept_until_changed(practice):
+    p = practice
+    rows, w = messy_weekly()
+    FakeSheets.books[(SHEET_ID, "Data")] = rows
+    client = p["api"].as_(p["ff"])
+    revenue = p["kpis"]["revenue"]
+    body = mapping(p, revenue, date_column="A", date_header="Week of", value_column="C",
+                   value_header="Revenue")
+    shown = post(client, f"{B}preview/", {**body, "read_open": True}).json()
+    assert {r["start"]: r["what"] for r in shown["periods"]}[w[4].isoformat()] == "provisional"
+    saved = put(client, B, {**body, "read_open": True}).json()
+    assert saved["feed"]["read_open"] is True and saved["feed"]["read_open_default"] is False
+    assert readings_of(revenue)[w[4]].provisional
+    # Saved again without saying, the choice stays; said, it changes.
+    assert put(client, B, body).json()["feed"]["read_open"] is True
+    off = put(client, B, {**body, "read_open": False}).json()
+    assert off["feed"]["read_open"] is False and off["run"]["open"] == 1
+
+
+def test_a_cell_read_as_it_goes_gives_the_close_its_last_number(practice):
+    p = practice
+    FakeSheets.books[(SHEET_ID, "Dash")] = dashboard("86.5%")
+    client = p["api"].as_(p["ff"])
+    occupancy = p["kpis"]["occupancy"]
+    put(client, B, mapping(p, occupancy, tab="Dash", mode="cell", cell="C4"))
+    this_week = weeks_ago(0)
+    got = readings_of(occupancy)
+    assert set(got) == {this_week} and got[this_week].provisional
+    assert got[this_week].value == Decimal("86.5")
+    feed = KpiFeed.all_objects.get(kpi=occupancy)
+    assert feeds.source_text(feed).endswith("cell C4, read every hour, the open period so far")
+    # The first read after the close is the closed week's final number, and
+    # the new week's so far.
+    next_week = this_week + timedelta(days=7)
+    FakeSheets.books[(SHEET_ID, "Dash")] = dashboard("87%")
+    feeds.run(feed, next_week)
+    got = readings_of(occupancy)
+    assert got[this_week].value == Decimal("87") and not got[this_week].provisional
+    assert got[next_week].value == Decimal("87") and got[next_week].provisional
+    # Later in the new week the closed week stays; the open one follows the cell.
+    FakeSheets.books[(SHEET_ID, "Dash")] = dashboard("12%")
+    feeds.run(feed, next_week + timedelta(days=2))
+    got = readings_of(occupancy)
+    assert got[this_week].value == Decimal("87")
+    assert got[next_week].value == Decimal("12") and got[next_week].provisional
 
 
 # ---------------------------------------------------------------- isolation

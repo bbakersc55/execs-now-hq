@@ -299,6 +299,10 @@ class KpiReading(TenantScopedModel):
     entered_at = models.DateTimeField()
     #: How many times the value has been replaced: a tile marks it "edited".
     times_changed = models.PositiveSmallIntegerField(default=0, db_default=0)
+    #: A feed's reading of a period still open ("so far"), replaced at each
+    #: refresh. Once the period closes the last value read is the final one
+    #: and this is cleared (`feeds.finalise`); typing over it clears it too.
+    provisional = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "kpi_reading"
@@ -393,6 +397,9 @@ class KpiFeed(TenantScopedModel):
     #: Names in the sheet chosen on the mapping screen: name -> membership id.
     people = models.JSONField(default=dict, blank=True)
     active = models.BooleanField(default=True, db_default=True)
+    #: "Also read the current period as it goes": unset follows the KPI's
+    #: roll-up (on for Last and Average, off for Sum; `feeds.reads_open`).
+    read_open = models.BooleanField(null=True, blank=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
     last_success_at = models.DateTimeField(null=True, blank=True)
     #: What went wrong at the last read, in the reading owner's words; blank
@@ -417,7 +424,8 @@ class KpiFeed(TenantScopedModel):
                 "date_column": self.date_column, "date_header": self.date_header,
                 "value_column": self.value_column, "value_header": self.value_header,
                 "name_column": self.name_column, "name_header": self.name_header,
-                "header_row": self.header_row, "cell": self.cell, "people": self.people or {}}
+                "header_row": self.header_row, "cell": self.cell, "people": self.people or {},
+                "read_open": self.read_open}
 
 
 # ---------------------------------------------------------------- bonus plans
@@ -605,6 +613,9 @@ class KpiTrackFeed(TenantScopedModel):
     unit_name = models.CharField(max_length=200, blank=True, default="", db_default="")
     assignee_id = models.CharField(max_length=20, blank=True, default="", db_default="")
     active = models.BooleanField(default=True, db_default=True)
+    #: "Also read the current period as it goes": unset follows the KPI's
+    #: roll-up (on for Last and Average, off for Sum; `feeds.reads_open`).
+    read_open = models.BooleanField(null=True, blank=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
     last_success_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="", db_default="")
@@ -632,6 +643,9 @@ class KpiAppFeed(TenantScopedModel):
     param = models.CharField(max_length=40, blank=True, default="", db_default="")
     param_label = models.CharField(max_length=120, blank=True, default="", db_default="")
     active = models.BooleanField(default=True, db_default=True)
+    #: "Also read the current period as it goes": unset follows the KPI's
+    #: roll-up (on for Last and Average, off for Sum; `feeds.reads_open`).
+    read_open = models.BooleanField(null=True, blank=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
     last_success_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="", db_default="")
@@ -681,6 +695,9 @@ class KpiHubSpotFeed(TenantScopedModel):
     stage_id = models.CharField(max_length=64, blank=True, default="", db_default="")
     stage_name = models.CharField(max_length=200, blank=True, default="", db_default="")
     active = models.BooleanField(default=True, db_default=True)
+    #: "Also read the current period as it goes": unset follows the KPI's
+    #: roll-up (on for Last and Average, off for Sum; `feeds.reads_open`).
+    read_open = models.BooleanField(null=True, blank=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
     last_success_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="", db_default="")

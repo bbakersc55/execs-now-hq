@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
+
 import { Modal } from "./shell";
 import { Banner } from "./ui";
 import { api } from "../lib/api";
@@ -78,6 +80,8 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
   const [cell, setCell] = useState(f?.cell ?? "");
   const [people, setPeople] = useState<Record<string, string>>(f?.people ?? {});
   const [refresh, setRefresh] = useState<"hourly" | "daily">(f?.refresh ?? "daily");
+  const [readOpen, setReadOpen] = useState<boolean | null>(null);
+  const readsOpen = readOpenValue(readOpen, f?.read_open, s.read_open_default);
   const [picking, setPicking] = useState<Pick>("date");
   const [preview, setPreview] = useState<FeedPreview | null>(null);
   const [error, setError] = useState("");
@@ -93,7 +97,7 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
   });
   const body = () => ({
     company: companyId, kpi: s.kpi.id, spreadsheet: address, spreadsheet_name: grid?.title ?? f?.spreadsheet_name ?? "",
-    tab, mode, refresh, cell, header_row: headerRow, people,
+    tab, mode, refresh, cell, header_row: headerRow, people, read_open: readsOpen,
     date_column: cols.date.letter, date_header: cols.date.header,
     value_column: cols.value.letter, value_header: cols.value.header,
     name_column: s.kpi.per_person ? cols.name.letter : "", name_header: s.kpi.per_person ? cols.name.header : "",
@@ -243,6 +247,8 @@ function FeedForm({ s, companyId, onClose, onSaved }: {
             <button type="button" disabled={!ready || check.isPending} onClick={() => check.mutate()}>
               {check.isPending ? "Reading…" : "Show what it would make"}</button>
           </div>
+          <ReadOpenChoice id="sc-feed-read-open" checked={readsOpen} byDefault={!!s.read_open_default}
+            onChange={(on) => { setReadOpen(on); setPreview(null); }} />
         </>
       )}
 

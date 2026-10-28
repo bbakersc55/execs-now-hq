@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 
+import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
+
 import { Modal } from "./shell";
 import { Banner, Card } from "./ui";
 import { Me, api } from "../lib/api";
@@ -13,9 +15,11 @@ interface Measure { key: string; label: string; stream: string; kind: string; sc
 interface Options { measures: Measure[]; units: { id: string; name: string }[];
   assignees: { id: string; name: string; work_orders: number }[]; error: string }
 interface TrackFeedState {
-  kpi: { id: string; name: string; kind: string; per_person: boolean }; connected: boolean;
+  kpi: { id: string; name: string; kind: string; per_person: boolean; read_open_default?: boolean };
+  connected: boolean;
   feed: { measure: string; label: string; unit_id: string; unit_name: string; assignee_id: string;
-    text: string; last_success_at: string | null; last_error: string } | null;
+    text: string; last_success_at: string | null; last_error: string;
+    read_open?: boolean } | null;
 }
 
 const STREAMS: Record<string, string> = {
@@ -123,12 +127,14 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const [measure, setMeasure] = useState<string | null>(null);
   const [scope, setScope] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [readOpen, setReadOpen] = useState<boolean | null>(null);
+  const readsOpen = readOpenValue(readOpen, f?.read_open, state.data?.kpi.read_open_default);
   const chosen = measure ?? f?.measure ?? "";
   const def = options.data?.measures.find((m) => m.key === chosen);
   const scopeValue = scope ?? (def?.scope === "assignee" ? f?.assignee_id : f?.unit_id) ?? "";
   const save = useMutation({
     mutationFn: () => api.put<{ run: { ok: boolean; new?: number; error?: string } }>("/api/scorecard/track/feed/", {
-      company: companyId, kpi: kpiId, measure: chosen,
+      company: companyId, kpi: kpiId, measure: chosen, read_open: readsOpen,
       unit_id: def?.scope === "property" ? scopeValue : "",
       unit_name: options.data?.units.find((u) => u.id === scopeValue)?.name ?? "",
       assignee_id: def?.scope === "assignee" ? scopeValue : "" }),
@@ -182,6 +188,8 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
           )}
           <p className="small muted">Worked out for each closed period once a day. A reading typed by hand is never
             replaced, and none is ever deleted.</p>
+          <ReadOpenChoice id="track-read-open" checked={readsOpen}
+            byDefault={!!s.kpi.read_open_default} onChange={setReadOpen} />
           <div className="row">
             <button className="primary" style={{ flex: "0 0 auto" }} disabled={!chosen || save.isPending}
               onClick={() => save.mutate()}>{save.isPending ? "Reading Track…" : "Save the measure"}</button>

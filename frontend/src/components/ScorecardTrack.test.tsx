@@ -45,7 +45,8 @@ describe("Track PMS (M5 part 4)", () => {
     const user = userEvent.setup();
     const fetchMock = mockApi({
       "PUT /api/scorecard/track/feed/": { feed: {}, run: { ok: true, new: 13 } },
-      "/api/scorecard/track/feed/": { kpi: { id: "k1", name: "Open work orders", kind: "count", per_person: false }, connected: true, feed: null },
+      "/api/scorecard/track/feed/": { kpi: { id: "k1", name: "Open work orders", kind: "count", per_person: false,
+        read_open_default: true }, connected: true, feed: null },
       "/api/scorecard/track/options/": { measures: MEASURES, error: "",
         units: [{ id: "101", name: "Beach House" }], assignees: [{ id: "11", name: "Track user 11", work_orders: 4 }] },
     });
@@ -58,9 +59,14 @@ describe("Track PMS (M5 part 4)", () => {
     expect(screen.getByRole("option", { name: "Beach House" })).toBeInTheDocument();
     await user.selectOptions(picker, "maint_open");
     await user.selectOptions(screen.getByLabelText("Assigned to"), "11");
+    // On by the KPI's roll-up; turned off here.
+    const readOpen = screen.getByLabelText("Also read the current period as it goes");
+    expect(readOpen).toBeChecked();
+    await user.click(readOpen);
     await user.click(screen.getByRole("button", { name: "Save the measure" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PUT")?.body).toEqual({
-      company: "c1", kpi: "k1", measure: "maint_open", unit_id: "", unit_name: "", assignee_id: "11" }));
+      company: "c1", kpi: "k1", measure: "maint_open", unit_id: "", unit_name: "", assignee_id: "11",
+      read_open: false }));
     expect(onSaved).toHaveBeenCalledWith("Open work orders now reads from Track: 13 readings for past periods.");
   });
 });

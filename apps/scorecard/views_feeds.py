@@ -46,7 +46,7 @@ def _feed_payload(feed):
             "last_run_at": feed.last_run_at.isoformat() if feed.last_run_at else None,
             "last_success_at": feed.last_success_at.isoformat() if feed.last_success_at else None,
             "last_error": feed.last_error, "account": feed.connection.email_address
-            if feed.connection_id else ""}
+            if feed.connection_id else "", **feeds.read_open_payload(feed)}
 
 
 def _refused(exc):
@@ -68,21 +68,22 @@ class FeedsView(Base):
                     "kind": kpi.kind, "duration_unit": kpi.duration_unit,
                     "people": people},
             "feed": _feed_payload(feed),
+            "read_open_default": feeds.reads_open_by_default(kpi),
         })
 
     def put(self, request):
         reader, kpi = _kpi(request, request.data)
         if (refusal := _refuse_setup(reader)):
             return refusal
+        before = KpiFeed.all_objects.filter(kpi=kpi).first()
         try:
-            config = feeds.clean(kpi, request.data)
+            config = feeds.clean(kpi, request.data, before.read_open if before else None)
             client, connection = feeds.client_for(request.tenant.pk, request.user)
         except sheets.FeedRefused as exc:
             return _refused(exc)
         except feeds.NoSheetsAccess as exc:
             return Response({"detail": str(exc), "reconnect": exc.reconnect}, status=409)
         today = _today(request)
-        before = KpiFeed.all_objects.filter(kpi=kpi).first()
         cell_from = None
         if config["mode"] == KpiFeed.Mode.CELL:
             # A cell holds the open period's number: the first reading it
@@ -176,8 +177,9 @@ class FeedPreviewView(Base):
         if (refusal := _refuse_setup(reader)):
             return refusal
         config = None
+        before = KpiFeed.all_objects.filter(kpi=kpi).first()
         try:
-            config = feeds.clean(kpi, request.data)
+            config = feeds.clean(kpi, request.data, before.read_open if before else None)
             client, _ = feeds.client_for(request.tenant.pk, request.user)
             rows = client.rows(config["spreadsheet_id"], config["tab"])
             shown = feeds.preview(kpi, config, rows, _today(request))

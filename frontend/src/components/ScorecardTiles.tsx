@@ -203,9 +203,14 @@ function footer(t: Tile): string {
   return parts.join(" · ");
 }
 
+/** The small mark on a value that is the open period's reading so far. */
+export function SoFar({ on }: { on?: boolean }) {
+  return on ? <span className="sc-so-far" title="The open period's reading so far: it is replaced at each refresh until the period closes"> so far</span> : null;
+}
+
 function Big({ def, s }: { def: KpiDef; s: NonNullable<Tile["summary"]> }) {
   return (
-    <div className={`sc-big${s.stale ? " sc-stale" : ""}`}>{fmt(def, s.value)}</div>
+    <div className={`sc-big${s.stale ? " sc-stale" : ""}`}>{fmt(def, s.value)}<SoFar on={s.so_far} /></div>
   );
 }
 
@@ -292,7 +297,7 @@ function Body({ t }: { t: Tile }) {
       return (
         <>
           <div className="sc-value-row">
-            <div className={`sc-small-value${s.stale ? " sc-stale" : ""}`}>{fmt(t, s.value)}</div>
+            <div className={`sc-small-value${s.stale ? " sc-stale" : ""}`}>{fmt(t, s.value)}<SoFar on={s.so_far} /></div>
             <div className="sc-muted">{targetText(t, s.target)}</div>
           </div>
           <StatusStrip points={t.history} />
@@ -382,7 +387,7 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
           {[...t.history].reverse().map((p) => (
             <tr key={p.period_start}>
               <td>{p.label}</td>
-              <td className="money">{fmt(t, p.value)}{p.edited && <span className="sc-edited"> edited</span>}</td>
+              <td className="money">{fmt(t, p.value)}<SoFar on={p.so_far} />{p.edited && <span className="sc-edited"> edited</span>}</td>
               <td>
                 {p.status ? STATUS_LABEL[p.status] : p.missing ? "No reading" : "—"}
                 {t.may_enter && p.reading && (

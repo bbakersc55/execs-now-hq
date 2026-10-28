@@ -249,6 +249,23 @@ def test_the_connection_is_the_practice_owners_and_its_secrets_are_never_shown(
     assert connect(p, who=api.as_(p["owner"])).status_code == 403
 
 
+def test_an_average_reads_the_open_month_so_far(practice):
+    p = practice
+    connect(p)
+    occupancy = p["kpis"]["occupancy"]
+    from unittest import mock
+
+    with mock.patch("apps.scorecard.views_track._today", return_value=TODAY):
+        saved = set_feed(p, occupancy, "occupancy")
+    assert saved.status_code == 200, saved.content
+    assert saved.json()["feed"]["read_open"] is True
+    got = {r.period_start: r for r in KpiReading.all_objects.filter(kpi=occupancy)}
+    november = got[date(2026, 11, 1)]
+    assert november.provisional and november.source == "track"
+    assert not got[OCT_1].provisional
+    assert saved.json()["feed"]["text"].endswith("computed once a day, the open period so far")
+
+
 def test_a_measure_reads_closed_periods_by_the_feed_rules(practice):
     p = practice
     connect(p)
@@ -263,7 +280,9 @@ def test_a_measure_reads_closed_periods_by_the_feed_rules(practice):
     from unittest import mock
 
     with mock.patch("apps.scorecard.views_track._today", return_value=TODAY):
-        saved = set_feed(p, occupancy, "occupancy")
+        # Closed periods only here; the open period as it goes is
+        # test_scorecard_feeds.py's.
+        saved = set_feed(p, occupancy, "occupancy", read_open=False)
     assert saved.status_code == 200, saved.content
     assert saved.json()["run"]["ok"] is True
     got = {r.period_start: r for r in KpiReading.all_objects.filter(kpi=occupancy)}

@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 
+import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
+
 import { Modal } from "./shell";
 import { Banner, Card } from "./ui";
 import { Me, api } from "../lib/api";
@@ -13,9 +15,11 @@ interface Measure { key: string; label: string; object: string; kind: string; sn
 interface Options { measures: Measure[]; owners: { id: string; name: string; email: string }[];
   stages: { id: string; name: string }[]; error: string }
 interface HubSpotFeedState {
-  kpi: { id: string; name: string; kind: string; per_person: boolean }; connected: boolean;
+  kpi: { id: string; name: string; kind: string; per_person: boolean; read_open_default?: boolean };
+  connected: boolean;
   feed: { measure: string; label: string; owner_id: string; owner_name: string; stage_id: string;
-    stage_name: string; text: string; last_success_at: string | null; last_error: string } | null;
+    stage_name: string; text: string; last_success_at: string | null; last_error: string;
+    read_open?: boolean } | null;
 }
 
 const GROUPS: [string, string[]][] = [
@@ -123,13 +127,15 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const [owner, setOwner] = useState<string | null>(null);
   const [stage, setStage] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [readOpen, setReadOpen] = useState<boolean | null>(null);
+  const readsOpen = readOpenValue(readOpen, f?.read_open, state.data?.kpi.read_open_default);
   const chosen = measure ?? f?.measure ?? "";
   const def = options.data?.measures.find((m) => m.key === chosen);
   const ownerValue = owner ?? f?.owner_id ?? "";
   const stageValue = chosen === "pipeline_value" ? (stage ?? f?.stage_id ?? "") : "";
   const save = useMutation({
     mutationFn: () => api.put<{ run: { ok: boolean; new?: number; error?: string } }>("/api/scorecard/hubspot/feed/", {
-      company: companyId, kpi: kpiId, measure: chosen,
+      company: companyId, kpi: kpiId, measure: chosen, read_open: readsOpen,
       owner_id: ownerValue, owner_name: options.data?.owners.find((o) => o.id === ownerValue)?.name ?? "",
       stage_id: stageValue, stage_name: options.data?.stages.find((x) => x.id === stageValue)?.name ?? "" }),
     onSuccess: (r) => {
@@ -191,6 +197,8 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
           )}
           <p className="small muted">Worked out for each closed period once a day, at the practice's midnight. A
             reading typed by hand is never replaced, and none is ever deleted.</p>
+          <ReadOpenChoice id="hubspot-read-open" checked={readsOpen}
+            byDefault={!!s.kpi.read_open_default} onChange={setReadOpen} />
           <div className="row">
             <button className="primary" style={{ flex: "0 0 auto" }} disabled={!chosen || save.isPending}
               onClick={() => save.mutate()}>{save.isPending ? "Reading HubSpot…" : "Save the measure"}</button>
