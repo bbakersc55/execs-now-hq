@@ -1,0 +1,5 @@
+{
+ "too_long": "compute_response_time window is 92 days; max is 90 days",
+ "unknown_field": "unknown field 'period' for this tool \u2014 valid fields: category_accuracy, category_checkin, rating, reviewed_at, ... (7 more)",
+ "bad_measure": "measure 'bogus_measure' is not in the form '<fn>(<field>)' \u2014 accepted forms: count(*), count(), sum(price), sum(price) AS total, sum_price"
+}

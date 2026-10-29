@@ -1744,6 +1744,25 @@ class KpiHubSpotFeedFactory(TenantScopedFactory):
     measure = "deals_won"
 
 
+# --- M5 part 6: Besty ---
+
+class BestyConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BestyConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class KpiBestyFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiBestyFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    measure = "reviews_received"
+
+
 # --- The Notices list and browser notifications (2026-10-26) ---
 
 class NoticeFactory(TenantScopedFactory):

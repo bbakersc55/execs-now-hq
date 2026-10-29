@@ -68,7 +68,7 @@ export interface KpiDef {
   computed: string;
   /** Part 3: where a fed KPI's readings come from, and why its last read
    *  failed (only for the practice and the reading owner). */
-  feed?: { kind: "sheet" | "track" | "app" | "hubspot"; text: string; error: string;
+  feed?: { kind: "sheet" | "track" | "app" | "hubspot" | "besty"; text: string; error: string;
     mode?: "column" | "cell" } | null;
   /** "Helper: not shown as a tile": it only feeds a target or a formula. */
   helper?: boolean;
@@ -76,7 +76,7 @@ export interface KpiDef {
 
 /** What a live target or a computed KPI's operand is taken from. */
 export interface Ref {
-  kind: "" | "value" | "target" | "kpi" | "sheet_column" | "sheet_cell" | "track" | "hubspot";
+  kind: "" | "value" | "target" | "kpi" | "sheet_column" | "sheet_cell" | "track" | "hubspot" | "besty";
   kpi?: string; column?: string; header?: string; cell?: string; measure?: string;
 }
 
@@ -263,8 +263,9 @@ export interface SetupState {
   owners: { id: string; name: string; side: "practice" | "client" }[];
   people: { id: string; name: string }[];
   starters: Starter[];
-  /** The fields a Track or HubSpot feed can read beside its measure. */
-  fields?: { track: { key: string; label: string }[]; hubspot: { key: string; label: string }[] };
+  /** The fields a Track, HubSpot or Besty feed can read beside its measure. */
+  fields?: { track: { key: string; label: string }[]; hubspot: { key: string; label: string }[];
+    besty?: { key: string; label: string }[] };
 }
 
 // ------------------------------------------------------------ formatting

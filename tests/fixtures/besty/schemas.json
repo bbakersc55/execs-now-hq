@@ -1,0 +1,902 @@
+[
+ {
+  "tool": "compute_response_time",
+  "description": "Per-day average host response time to guest messages, broken down by responder (autopilot or a named subuser). Same query and outlier rule as the dashboard. Source is raw bt_messages, NOT the response_times aggregate table.",
+  "entity": "computed (bt_messages + bt_threads + non_host_users)",
+  "primary_timestamp": null,
+  "fields": [
+   {
+    "name": "date",
+    "type": "date",
+    "description": "Bucket date."
+   },
+   {
+    "name": "responder_label",
+    "type": "string",
+    "description": "\"autopilot\" | subuser name / email / id."
+   },
+   {
+    "name": "avg_response_minutes",
+    "type": "float",
+    "description": "Average response latency in minutes, after dropping unusually long waits per responder, as the dashboard does (includes autopilot delay)."
+   },
+   {
+    "name": "response_count",
+    "type": "int",
+    "description": "Number of replies in this bucket."
+   }
+  ],
+  "join_keys": [],
+  "documented_gaps": [
+   "Runs the dashboard query (analytics/responseTimeQuery.ts) unchanged, including its outlier rule: per responder, replies more than 3 standard deviations above the mean in log minutes are dropped (only when the responder has 20 or more replies).",
+   "Values include autopilot delay (raw next-message gap, not human-only).",
+   "Does NOT read from the response_times aggregate table (worker silently broken since 2025-07-08 \u00e2\u0080\u0094 see out-of-scope production ticket).",
+   "Default window is the last 30 days."
+  ]
+ },
+ {
+  "tool": "export_calls",
+  "description": "Bulk export of account calls, with recording, voicemail, and answered or initiating subuser details. `call_sid` uses `v3:` for Telnyx and `CA` for Twilio. `forwarded` means the call leg was handed to a forwarding number, not that it failed. `ai_answered` means the AI receptionist handled the call and no person picked up; it is not a missed call. `duration_seconds` is recording duration, not call duration. `targeted_subuser_ids` is post-filtered after routing eligibility and is not a routing-health denominator. Phone fields require include_pii=true and explicit fields. Calls have no listing attribution. Primary time field is created_at.",
+  "entity": "call_logs LEFT JOIN call_recordings ON call_recordings.id = call_logs.recording_id LEFT JOIN voice_voicemails ON voice_voicemails.call_sid = call_logs.call_sid AND voice_voicemails.user_id = call_logs.user_id LEFT JOIN non_host_users answered_by ON answered_by.id = call_logs.answered_by_subuser_id AND answered_by.user_id = call_logs.user_id LEFT JOIN non_host_users initiated_by ON initiated_by.id = call_logs.initiated_by_subuser_id AND initiated_by.user_id = call_logs.user_id",
+  "primary_timestamp": "created_at",
+  "fields": [
+   {
+    "name": "call_id",
+    "type": "int",
+    "description": "Besty call log id."
+   },
+   {
+    "name": "call_sid",
+    "type": "string",
+    "description": "Provider call id. A v3: prefix identifies Telnyx. A CA prefix identifies Twilio."
+   },
+   {
+    "name": "direction",
+    "type": "string",
+    "description": "Call direction: 'inbound' or 'outbound'."
+   },
+   {
+    "name": "status",
+    "type": "string",
+    "description": "Call leg status: 'answered', 'ai_answered', 'forwarded', 'no_answer', 'busy', or 'failed'. 'forwarded' means the leg was handed to a forwarding number, not that the call failed. 'ai_answered' means the AI receptionist handled the call and no person picked up."
+   },
+   {
+    "name": "created_at",
+    "type": "timestamp",
+    "description": "When the call started."
+   },
+   {
+    "name": "ended_at",
+    "type": "timestamp",
+    "description": "When the call ended."
+   },
+   {
+    "name": "duration_seconds",
+    "type": "int",
+    "description": "Recording duration in seconds. Present only for recorded calls. This is not a reliable call duration. Use ended_at - created_at for call duration."
+   },
+   {
+    "name": "recording_id",
+    "type": "int",
+    "description": "Besty recording id linked from the call log."
+   },
+   {
+    "name": "has_recording",
+    "type": "bool",
+    "description": "True when the call log has a recording_id.",
+    "derived": true
+   },
+   {
+    "name": "recording_url",
+    "type": "string",
+    "description": "Playback URL for the call recording. Opens in the Besty dashboard for a signed-in user of the account; the audio file is not publicly fetchable.",
+    "opt_in_only": true
+   },
+   {
+    "name": "summary",
+    "type": "string",
+    "description": "AI-generated call summary. Null until summary generation finishes."
+   },
+   {
+    "name": "has_summary",
+    "type": "bool",
+    "description": "True when an AI-generated call summary exists.",
+    "derived": true
+   },
+   {
+    "name": "thread_id",
+    "type": "int",
+    "description": "Besty messaging thread linked to the call."
+   },
+   {
+    "name": "caller_country",
+    "type": "string",
+    "description": "Country detected for the caller."
+   },
+   {
+    "name": "caller_state",
+    "type": "string",
+    "description": "State detected for the caller."
+   },
+   {
+    "name": "answered_by_subuser_id",
+    "type": "string",
+    "description": "UUID of the subuser who answered the call."
+   },
+   {
+    "name": "answered_by_name",
+    "type": "string",
+    "description": "Display name of the subuser who answered the call."
+   },
+   {
+    "name": "initiated_by_subuser_id",
+    "type": "string",
+    "description": "UUID of the subuser who initiated the call."
+   },
+   {
+    "name": "initiated_by_name",
+    "type": "string",
+    "description": "Display name of the subuser who initiated the call."
+   },
+   {
+    "name": "targeted_subuser_ids",
+    "type": "array",
+    "description": "Post-filter subuser UUIDs after the online and fresh-token eligibility gate. This is not the set of people who should have been rung. The intended target set is the union of voice_waterfall_levels.target_subuser_ids from the enabled voice_waterfall_configs row. Do not use this field as a routing-health denominator."
+   },
+   {
+    "name": "has_voicemail",
+    "type": "bool",
+    "description": "True when a voicemail is linked to the call.",
+    "derived": true
+   },
+   {
+    "name": "voicemail_id",
+    "type": "string",
+    "description": "UUID of the linked voicemail."
+   },
+   {
+    "name": "voicemail_transcript",
+    "type": "string",
+    "description": "Voicemail transcript.",
+    "opt_in_only": true
+   },
+   {
+    "name": "voicemail_summary",
+    "type": "string",
+    "description": "AI-generated voicemail summary."
+   },
+   {
+    "name": "voicemail_is_read",
+    "type": "bool",
+    "description": "Whether the voicemail has been marked read."
+   },
+   {
+    "name": "to_number",
+    "type": "string",
+    "description": "Number the call was placed to.",
+    "pii": true
+   },
+   {
+    "name": "from_number",
+    "type": "string",
+    "description": "Number the call came from.",
+    "pii": true
+   },
+   {
+    "name": "forwarded_to_number",
+    "type": "string",
+    "description": "Forwarding destination number, when used.",
+    "pii": true
+   },
+   {
+    "name": "voicemail_caller_number",
+    "type": "string",
+    "description": "Number associated with the voicemail caller.",
+    "pii": true
+   }
+  ],
+  "join_keys": [
+   "call_id",
+   "thread_id",
+   "recording_id"
+  ],
+  "documented_gaps": [
+   "call_recordings has no user_id. Tenant scope routes through call_logs.recording_id, so a recording is reachable only through its call.",
+   "duration_seconds is recording duration and is absent for unrecorded calls. Use ended_at - created_at for call duration.",
+   "targeted_subuser_ids is the post-filter set after online and fresh-token routing eligibility. It is not the intended target set or a routing-health denominator. The intended target set comes from the union of voice_waterfall_levels.target_subuser_ids on the enabled voice_waterfall_configs row, over ring levels only: a level_type = 'ai' level is the AI receptionist and has no targets.",
+   "summary is generated asynchronously and is null for recent calls.",
+   "Calls have no listing attribution and are unavailable under listing-scoped tokens."
+  ],
+  "limits": {
+   "raw_row_cap": 5000,
+   "max_window_days": 365,
+   "default_window_days": 90
+  }
+ },
+ {
+  "tool": "export_messages",
+  "description": "Bulk export of bt_messages. Owner is resolved via bt_threads.user_id (FROM expression JOINs). `sender_type` is derived per row from (is_incoming, event_type, subuser_id) \u00e2\u0080\u0094 matches live inbox semantics, not the PDF-export helper. event jsonb is surfaced shallowly: event_type, event_subtype, automation_id. Default filter excludes is_hidden_because_processing=true; pass filter.include_hidden=true to include. Primary time field is created_at.",
+  "entity": "bt_messages JOIN bt_threads ON bt_messages.bt_thread_id = bt_threads.id",
+  "primary_timestamp": "created_at",
+  "fields": [
+   {
+    "name": "message_id",
+    "type": "int",
+    "description": "bt_messages primary key."
+   },
+   {
+    "name": "thread_id",
+    "type": "int",
+    "description": "FK to bt_threads.id."
+   },
+   {
+    "name": "thread_url",
+    "type": "string",
+    "description": "Canonical thread URL: https://app.getbesty.ai/message-dashboard?id=1&threadId=<thread_id>.",
+    "derived": true
+   },
+   {
+    "name": "is_incoming",
+    "type": "bool",
+    "description": "True if from guest (vs host/automation)."
+   },
+   {
+    "name": "body",
+    "type": "string",
+    "description": "Message body as rendered."
+   },
+   {
+    "name": "body_raw",
+    "type": "string",
+    "description": "Original PMS payload before normalisation.",
+    "opt_in_only": true
+   },
+   {
+    "name": "message_subject",
+    "type": "string",
+    "description": "Subject (email channel only)."
+   },
+   {
+    "name": "subuser_id",
+    "type": "string",
+    "description": "Subuser that authored an outbound message (null for guest/automation)."
+   },
+   {
+    "name": "event_type",
+    "type": "string",
+    "description": "Top-level event marker \u00e2\u0080\u0094 'automated_message', 'sentByBesty', null for plain host/guest messages."
+   },
+   {
+    "name": "event_subtype",
+    "type": "string",
+    "description": "Sub-classification \u00e2\u0080\u0094 e.g. 'workflow' / 'journey' / 'sop'."
+   },
+   {
+    "name": "automation_id",
+    "type": "string",
+    "description": "For automated_message rows, the originating automation/SOP/journey id.",
+    "opt_in_only": true
+   },
+   {
+    "name": "event_raw",
+    "type": "jsonb",
+    "description": "Full event jsonb payload (variable shape).",
+    "opt_in_only": true
+   },
+   {
+    "name": "created_at",
+    "type": "timestamp",
+    "description": "When the message hit Besty."
+   },
+   {
+    "name": "sender_type",
+    "type": "string",
+    "description": "Canonical sender role ('guest' | 'host' | 'host_external' | 'autopilot' | 'automated'). Derived client-side from (is_incoming, event_type, event_subtype, subuser_id) \u00e2\u0080\u0094 matches the live inbox semantics, not the PDF-export getMessageSenderLabel helper. host_external: sent outside Besty, mostly synced from the PMS (event_subtype 'pms'): typed by the team in the PMS or sent by the PMS's own automated messages; the data cannot tell which. automated includes upsell offers and workflow messages (event_subtype workflow_message), which are not autopilot replies.",
+    "derived": true
+   }
+  ],
+  "join_keys": [
+   "message_id",
+   "thread_id"
+  ],
+  "documented_gaps": [
+   "No user_id on bt_messages \u00e2\u0080\u0094 ownership chains through bt_threads.user_id (FROM expression JOINs).",
+   "sender_type matches the live inbox semantics, NOT the PDF-export getMessageSenderLabel helper.",
+   "Default filter excludes is_hidden_because_processing=true. Pass filter.include_hidden=true to include."
+  ],
+  "limits": {
+   "raw_row_cap": 5000,
+   "max_window_days": 31,
+   "default_window_days": 30
+  }
+ },
+ {
+  "tool": "export_ops_tasks",
+  "description": "Bulk export of ops_tasks with assignees, due dates, overdue flags, lateness, and shareable public task_url links. `time_total_seconds` (timer-tracked) is the reliable duration measure; `cycle_seconds` (completed_at - created_at) is NOT surfaced because 86% of automation-created tasks have negative cycle times in production. `is_imported` is a derived flag (automation_id IS NOT NULL). `created_by` says who made each task: task_automation, workflow (any workflow run), pms_sync, person (a team member recorded making it) or other (another Besty feature or by hand, cannot tell); only person is known to be made by hand. Default filter excludes soft-deleted rows; pass filter.include_deleted=true to include. Assignee arrays are null when no assignee exists. `hours_late` is null when due_at is null. Primary time field is created_at.",
+  "entity": "ops_tasks LEFT JOIN ops_departments dept ON dept.id = ops_tasks.department",
+  "primary_timestamp": "created_at",
+  "fields": [
+   {
+    "name": "ops_task_id",
+    "type": "string",
+    "description": "Ops task UUID."
+   },
+   {
+    "name": "task_url",
+    "type": "string",
+    "description": "Shareable public task page URL (https://app.getbesty.ai/tasks/<id>/public), same link as Copy link in the Ops task detail.",
+    "derived": true
+   },
+   {
+    "name": "task_dashboard_url",
+    "type": "string",
+    "description": "Besty dashboard URL for the task.",
+    "derived": true
+   },
+   {
+    "name": "department",
+    "type": "string",
+    "description": "Department name (built-in or custom); null if the department was deleted."
+   },
+   {
+    "name": "title",
+    "type": "string",
+    "description": "Task title."
+   },
+   {
+    "name": "status",
+    "type": "string",
+    "description": "Task state: todo | in_progress | done."
+   },
+   {
+    "name": "priority",
+    "type": "int",
+    "description": "Priority 1 (low) \u00e2\u0080\u0094 5 (high)."
+   },
+   {
+    "name": "listing_id",
+    "type": "int",
+    "description": "FK to listings.id (nullable)."
+   },
+   {
+    "name": "reservation_id",
+    "type": "int",
+    "description": "FK to reservations.id (nullable)."
+   },
+   {
+    "name": "task_template_id",
+    "type": "string",
+    "description": "FK to ops_task_templates.id (nullable)."
+   },
+   {
+    "name": "automation_id",
+    "type": "string",
+    "description": "FK to ops_automations.id (nullable). Non-null implies the task was created by an automation.",
+    "opt_in_only": true
+   },
+   {
+    "name": "is_imported",
+    "type": "bool",
+    "description": "Derived flag: true if created by an automation/import path."
+   },
+   {
+    "name": "created_by",
+    "type": "string",
+    "description": "Who made the task: task_automation (an Operations task automation), workflow (a workflow run, including classic workflows), pms_sync (synced from the PMS), person (a team member is recorded making it), or other (another Besty feature such as an upsell purchase, a direct-booking drop-off or the AI VA, or by hand with no record; the data can't tell which)."
+   },
+   {
+    "name": "assignment_mode",
+    "type": "string",
+    "description": "How the task is assigned (direct | claim | ...)."
+   },
+   {
+    "name": "assignee_subuser_ids",
+    "type": "array",
+    "description": "UUIDs of assigned subusers. Null means the task has no assignees."
+   },
+   {
+    "name": "assignee_names",
+    "type": "array",
+    "description": "Display names of assigned subusers. Null means the task has no assignees."
+   },
+   {
+    "name": "estimated_duration_minutes",
+    "type": "int",
+    "description": "Pre-set duration estimate in minutes."
+   },
+   {
+    "name": "time_total_seconds",
+    "type": "int",
+    "description": "Tracked work seconds (sum across timer sessions). Use for \"how long did the task take\" analytics."
+   },
+   {
+    "name": "due_at",
+    "type": "timestamp",
+    "description": "Due-at timestamp."
+   },
+   {
+    "name": "is_overdue",
+    "type": "bool",
+    "description": "True when the task is past due, not done, and has no completion timestamp."
+   },
+   {
+    "name": "hours_late",
+    "type": "float",
+    "description": "Hours from due_at to completion or now. Positive means late; null when due_at is null."
+   },
+   {
+    "name": "is_unassigned",
+    "type": "bool",
+    "description": "True when no subuser is assigned to the task."
+   },
+   {
+    "name": "completed_at",
+    "type": "timestamp",
+    "description": "Completion timestamp (null while pending)."
+   },
+   {
+    "name": "created_at",
+    "type": "timestamp",
+    "description": "Creation timestamp."
+   },
+   {
+    "name": "updated_at",
+    "type": "timestamp",
+    "description": "Most recent update timestamp."
+   },
+   {
+    "name": "deleted_at",
+    "type": "timestamp",
+    "description": "Soft-delete timestamp (null if live)."
+   },
+   {
+    "name": "description",
+    "type": "string",
+    "description": "Free-text description."
+   },
+   {
+    "name": "summary",
+    "type": "string",
+    "description": "Optional summary text."
+   }
+  ],
+  "join_keys": [
+   "ops_task_id",
+   "reservation_id",
+   "listing_id"
+  ],
+  "documented_gaps": [
+   "`cycle_seconds` (completed_at - created_at) deliberately not exposed: 86% of automation-created tasks have negative values in production. Use `time_total_seconds` (timer-tracked) instead.",
+   "is_imported is derived from automation_id IS NOT NULL.",
+   "Default filter excludes soft-deleted rows (deleted_at IS NULL). Pass filter.include_deleted=true to include.",
+   "Assignee arrays use correlated subqueries to preserve one row per task. Tasks without assignees return null rather than an empty array.",
+   "hours_late is measured from due_at to completion or now. due_at is null on a meaningful share of automation-created tasks."
+  ],
+  "limits": {
+   "raw_row_cap": 5000,
+   "max_window_days": 365,
+   "default_window_days": 90
+  }
+ },
+ {
+  "tool": "export_owners",
+  "description": "Export messaging property owners linked to this account. Ask which owners receive booking digests, have portal accounts, or are attached to listings.",
+  "entity": "owners",
+  "primary_timestamp": "created_at",
+  "fields": [
+   {
+    "name": "owner_id",
+    "type": "int",
+    "description": "Messaging owner row id."
+   },
+   {
+    "name": "name",
+    "type": "string",
+    "description": "Property owner name."
+   },
+   {
+    "name": "applies_to",
+    "type": "string",
+    "description": "Whether this owner applies to listings or a listing set."
+   },
+   {
+    "name": "listing_ids",
+    "type": "jsonb",
+    "description": "Besty listing ids directly attached to this owner. Listings that arrive through listing_set_ids are not expanded here, but filter.listing_ids matches both."
+   },
+   {
+    "name": "listing_set_ids",
+    "type": "jsonb",
+    "description": "Besty listing-set ids attached to this owner."
+   },
+   {
+    "name": "thread_id",
+    "type": "int",
+    "description": "Besty thread id used to message this owner."
+   },
+   {
+    "name": "created_at",
+    "type": "timestamp",
+    "description": "When this owner was added."
+   },
+   {
+    "name": "is_deleted",
+    "type": "bool",
+    "description": "True when this owner was deleted."
+   },
+   {
+    "name": "weekly_booking_digest",
+    "type": "bool",
+    "description": "Whether weekly booking digests are enabled."
+   },
+   {
+    "name": "weekly_booking_digest_last_sent_at",
+    "type": "timestamp",
+    "description": "When the last weekly booking digest was sent."
+   },
+   {
+    "name": "has_portal_account",
+    "type": "bool",
+    "description": "Whether an owner portal account exists."
+   },
+   {
+    "name": "portal_account_created_at",
+    "type": "timestamp",
+    "description": "When the owner portal account was created."
+   },
+   {
+    "name": "has_pending_portal_invite",
+    "type": "bool",
+    "description": "Whether an unexpired portal invite exists."
+   },
+   {
+    "name": "portal_invite_expires_at",
+    "type": "timestamp",
+    "description": "When the portal invite expires."
+   },
+   {
+    "name": "portal_username",
+    "type": "string",
+    "description": "Owner portal username.",
+    "pii": true
+   },
+   {
+    "name": "hubspot_id",
+    "type": "string",
+    "description": "HubSpot contact id."
+   }
+  ],
+  "join_keys": [
+   "owner_id"
+  ],
+  "documented_gaps": [
+   "These are messaging owners, not owner-portal subusers; listing-scoped tokens cannot use this tool because owners can be attached through listing sets; on most accounts digest and portal flags are all false, this is not missing data; deleted owners are hidden by default."
+  ],
+  "limits": {
+   "raw_row_cap": 5000
+  }
+ },
+ {
+  "tool": "export_reviews",
+  "description": "Bulk export of guest reviews with canonical channel, category scores, private feedback, and linked stay and guest fields. Category scores exist only for PMSes that send them, such as Guesty. Private feedback is opt-in. Stay and guest columns are NULL for reviews that predate reservation sync. Per-guest or revenue answers must report the has_linked_stay = false count. To look up by PMS-side review id, use `filter.pms_review_ids`. Default filter excludes empty placeholder rows (no rating, no text, no private feedback: reviews the guest never left); pass filter.include_empty=true to include them. Primary time field is reviewed_at.",
+  "entity": "pms_reviews LEFT JOIN reservations ON reservations.user_id = pms_reviews.user_id AND reservations.hostaway_reservation_id = pms_reviews.pms_reservation_id LEFT JOIN listings ON listings.user_id = pms_reviews.user_id AND listings.pms_id = pms_reviews.listing_pms_id AND (listings.pms = reservations.pms OR (reservations.id IS NULL AND NOT EXISTS (SELECT 1 FROM listings other_listing WHERE other_listing.user_id = pms_reviews.user_id AND other_listing.pms_id = pms_reviews.listing_pms_id AND other_listing.id <> listings.id)))",
+  "primary_timestamp": "reviewed_at",
+  "fields": [
+   {
+    "name": "review_id",
+    "type": "int",
+    "description": "Besty internal review id."
+   },
+   {
+    "name": "pms_review_id",
+    "type": "string",
+    "description": "PMS-side review ID. This joins to export_review_replies.pms_review_id and export_review_issues.pms_review_id."
+   },
+   {
+    "name": "listing_id",
+    "type": "int",
+    "description": "Besty internal listing id. LEFT-JOINed through the matched reservation row (the JOIN needs reservations.pms to disambiguate listings, which is unique on (pms, pms_id) but not on pms_id alone). NULL when the reservation is missing OR the listing row is missing."
+   },
+   {
+    "name": "listing_url",
+    "type": "string",
+    "description": "Canonical listing URL: https://app.getbesty.ai/listings?listingId=<listing_id>.",
+    "derived": true
+   },
+   {
+    "name": "external_listing_id",
+    "type": "string",
+    "description": "PMS-side listing ID. It remains populated when listing_id is NULL."
+   },
+   {
+    "name": "external_reservation_id",
+    "type": "string",
+    "description": "PMS-side reservation ID. It matches reservations.hostaway_reservation_id, which stores PMS reservation IDs for every PMS."
+   },
+   {
+    "name": "reservation_id",
+    "type": "int",
+    "description": "Besty internal reservation id (LEFT JOIN \u00e2\u0080\u0094 NULL when the linked reservation row is missing)."
+   },
+   {
+    "name": "channel_raw",
+    "type": "string",
+    "description": "Raw channel id (airbnb / airbnb2 / airbnbOfficial / bookingcom / ...). Always selected so the `channel` normaliser transform sees it."
+   },
+   {
+    "name": "guest_name",
+    "type": "string",
+    "description": "Reviewer display name as supplied by the channel."
+   },
+   {
+    "name": "rating",
+    "type": "float",
+    "description": "Overall rating."
+   },
+   {
+    "name": "rating_denominator",
+    "type": "int",
+    "description": "Denominator for the rating (defaults to 5)."
+   },
+   {
+    "name": "has_reply",
+    "type": "bool",
+    "description": "True if the host has replied."
+   },
+   {
+    "name": "has_major_issue",
+    "type": "bool",
+    "description": "Set by Besty's review scanner when the review text describes a serious problem. Prefer this over export_review_issues.category for grouping."
+   },
+   {
+    "name": "category_cleanliness",
+    "type": "float",
+    "description": "Guest sub-score for cleanliness, out of rating_denominator, from the raw PMS payload. The Guesty key is category_ratings_cleanliness. NULL when absent or skipped. Use it in aggregation measures such as avg."
+   },
+   {
+    "name": "category_accuracy",
+    "type": "float",
+    "description": "Guest sub-score for accuracy, out of rating_denominator, from the raw PMS payload. The Guesty key is category_ratings_accuracy. NULL when absent or skipped. Use it in aggregation measures such as avg."
+   },
+   {
+    "name": "category_checkin",
+    "type": "float",
+    "description": "Guest sub-score for checkin, out of rating_denominator, from the raw PMS payload. The Guesty key is category_ratings_checkin. NULL when absent or skipped. Use it in aggregation measures such as avg."
+   },
+   {
+    "name": "category_communication",
+    "type": "float",
+    "description": "Guest sub-score for communication, out of rating_denominator, from the raw PMS payload. The Guesty key is category_ratings_communication. NULL when absent or skipped. Use it in aggregation measures such as avg."
+   },
+   {
+    "name": "category_location",
+    "type": "float",
+    "description": "Guest sub-score for location, out of rating_denominator, from the raw PMS payload. The Guesty key is category_ratings_location. NULL when absent or skipped. Use it in aggregation measures such as avg."
+   },
+   {
+    "name": "category_value",
+    "type": "float",
+    "description": "Guest sub-score for value, out of rating_denominator, from the raw PMS payload. The Guesty key is category_ratings_value. NULL when absent or skipped. Use it in aggregation measures such as avg."
+   },
+   {
+    "name": "has_private_feedback",
+    "type": "bool",
+    "description": "True when the raw PMS payload contains non-empty private feedback."
+   },
+   {
+    "name": "private_feedback",
+    "type": "string",
+    "description": "Text sent only to the host and not published on the channel. It comes from the Guesty privateFeedback payload key and is not replyable on the channel.",
+    "opt_in_only": true
+   },
+   {
+    "name": "stay_arrival_date",
+    "type": "date",
+    "description": "Arrival date for the linked stay. NULL when no stay is linked."
+   },
+   {
+    "name": "stay_departure_date",
+    "type": "date",
+    "description": "Departure date for the linked stay. NULL when no stay is linked."
+   },
+   {
+    "name": "stay_channel_raw",
+    "type": "string",
+    "description": "Raw booking channel for the linked stay. NULL when no stay is linked."
+   },
+   {
+    "name": "stay_revenue",
+    "type": "float",
+    "description": "Total price in stay_currency as stored by the PMS, not net payout. NULL when no stay is linked."
+   },
+   {
+    "name": "stay_currency",
+    "type": "string",
+    "description": "Currency for stay_revenue. NULL when no stay is linked."
+   },
+   {
+    "name": "stay_nights",
+    "type": "int",
+    "description": "Nights for the linked stay. Sparse for many PMS connectors; compute it from dates when needed."
+   },
+   {
+    "name": "guest_external_id",
+    "type": "string",
+    "description": "PMS-side guest ID for the reviewed stay. It identifies repeat guests across stays in the account even without a Besty guest row."
+   },
+   {
+    "name": "guest_prior_stays",
+    "type": "int",
+    "description": "Count of earlier confirmed or completed stays by the same PMS guest ID in the account. 0 means first stay. NULL when there is no linked stay."
+   },
+   {
+    "name": "guest_id",
+    "type": "string",
+    "description": "Besty guest row ID for the linked stay. Opt-in per-row lookup.",
+    "opt_in_only": true
+   },
+   {
+    "name": "crm_contact_id",
+    "type": "string",
+    "description": "CRM contact ID for the linked guest. Opt-in per-row lookup.",
+    "opt_in_only": true
+   },
+   {
+    "name": "review_text",
+    "type": "string",
+    "description": "Free-text review body.",
+    "opt_in_only": true
+   },
+   {
+    "name": "review_object",
+    "type": "jsonb",
+    "description": "Full PMS payload \u00e2\u0080\u0094 variable shape per PMS.",
+    "opt_in_only": true
+   },
+   {
+    "name": "reviewed_at",
+    "type": "timestamp",
+    "description": "When the channel says the review was left."
+   },
+   {
+    "name": "synced_at",
+    "type": "timestamp",
+    "description": "When Besty last pulled this review from the PMS."
+   },
+   {
+    "name": "channel",
+    "type": "string",
+    "description": "Canonical channel ('airbnb', 'bookingcom', 'vrbo', 'direct', 'unknown'). Derived from channel_raw via normalizeChannel \u00e2\u0080\u0094 airbnb/airbnb2/airbnbOfficial collapse to 'airbnb'. Usable in aggregation dimensions/filters/measures.",
+    "derived": true
+   },
+   {
+    "name": "has_linked_stay",
+    "type": "bool",
+    "description": "True when the review has a linked stay. Every answer based on stay or guest columns must report the number of reviews where this is false.",
+    "derived": true
+   }
+  ],
+  "join_keys": [
+   "review_id"
+  ],
+  "documented_gaps": [
+   "channel_id is NOT normalised at write time on the PMS-reviews table \u00e2\u0080\u0094 UI currently shows airbnb/airbnb2/airbnbOfficial as separate bars. `channel` here is canonicalised; `channel_raw` is opt-in for the raw value.",
+   "`review_text` and `review_object` (full PMS payload) are opt-in to keep default payloads small.",
+   "`reservation_id` is LEFT-JOINed \u00e2\u0080\u0094 NULL when the linked reservation row is missing (historical reviews predating the booking sync).",
+   "`listing_id` is LEFT-JOINed THROUGH the matched reservation (needs reservations.pms to disambiguate the listings unique constraint), or by pms_id alone when there is no reservation and the pms_id is unambiguous for the user. NULL when the listing cannot be told apart OR the listing row is missing. Multi-PMS users with overlapping pms_id values across PMSes would silently get duplicate rows without this discriminator.",
+   "Category scores exist only for PMSes that send them, such as Guesty. Private feedback is opt-in.",
+   "Stay and guest columns are NULL for reviews that predate reservation sync. The pilot account had approximately 40 percent of reviews without linked stays, so per-guest or revenue answers must report the has_linked_stay = false count.",
+   "`guest_prior_stays` uses PMS guest IDs and misses guests who rebooked through another channel account. `guest_id` and `crm_contact_id` are opt-in per-row lookups."
+  ],
+  "limits": {
+   "raw_row_cap": 10000,
+   "max_window_days": 730,
+   "default_window_days": 365
+  }
+ },
+ {
+  "tool": "export_upsell_events",
+  "description": "Upsell purchases (the revenue side), one row per purchased item, covering ALL three revenue sources: standard upsells, damage waivers, and workflow-sold upsells. `source` (upsell_event | damage_waiver | workflow) says which, `upsell_type` carries damage_waiver / workflow_upsell for the latter two, and `product_name` is the invoice-ready item label. Rows are de-duplicated with the same key the revenue dashboard uses (reservation_id, product_name, revenue_amount), so a host acknowledging a purchase on the ROI page does not add a row; it sets `acknowledged`. Summing revenue_amount over is_acceptance rows therefore reconciles to summarize_upsell_revenue less the taxes and application fees that tool adds (and less admin-test rows unless filter.include_synthetic=true). This export is for per-reservation and per-item breakdowns; for THE single revenue number, summarize_upsell_revenue is still faster. Holds and failed payments are included as their own lifecycle rows (event_type). The lifecycle starts at hold/purchase \u00e2\u0080\u0094 offers SENT to guests are NOT recorded here; for offer volume use export_upsell_offers. Default filter excludes admin-test rows (event_type_details->>'synthetic' = 'true'). Primary time field is created_at, the purchase time.",
+  "entity": "(\n  (\n  SELECT DISTINCT ON (\n    ue.user_id,\n    ue.reservation_id,\n    (ue.event_type_details->>'productName')::text,\n    ue.revenue_amount\n  )\n    ue.id::bigint AS id,\n    COALESCE(\n      min(ue.created_at) FILTER (\n        WHERE ue.event_type IN (\n          'purchase_direct', 'purchase_from_hold',\n          'purchase_direct_acknowledged', 'purchase_from_hold_acknowledged'\n        )\n      ) OVER (\n        PARTITION BY\n          ue.user_id,\n          ue.reservation_id,\n          (ue.event_type_details->>'productName')::text,\n          ue.revenue_amount\n      ),\n      ue.created_at\n    ) AS created_at,\n    ue.user_id AS user_id,\n    ue.upsell_type AS upsell_type,\n    regexp_replace(ue.event_type, '_acknowledged$', '') AS event_type,\n    (ue.event_type IN ('purchase_direct_acknowledged', 'purchase_from_hold_acknowledged')) AS acknowledged,\n    ue.reservation_id AS reservation_id,\n    ue.revenue_amount AS revenue_amount,\n    -- Normalised to match the other two branches. upsell_events.revenue_currency\n    -- is nullable and not case-normalised at write time, so every consumer wraps\n    -- it this way (see fetchUpsellRevenueTotalsByCurrency). Without it, a\n    -- group-by-currency aggregation over the union would split 'usd', 'USD' and\n    -- NULL into separate buckets from the waiver rows for the same host.\n    UPPER(COALESCE(ue.revenue_currency, 'USD')) AS revenue_currency,\n    ue.event_type_details AS event_type_details,\n    ue.off_platform_airbnb AS off_platform_airbnb,\n    'upsell_event'::text AS source,\n    (ue.event_type_details->>'productName')::text AS product_name\n  FROM upsell_events ue\n  ORDER BY\n    ue.user_id,\n    ue.reservation_id,\n    (ue.event_type_details->>'productName')::text,\n    ue.revenue_amount,\n    ue.created_at DESC\n)\n  UNION ALL\n  (\n  SELECT\n    (-(1000000000000::bigint + dw.id)) AS id,\n    (dw.created_at AT TIME ZONE 'UTC')::timestamp AS created_at,\n    dw.user_id AS user_id,\n    'damage_waiver'::text AS upsell_type,\n    'purchase_direct'::text AS event_type,\n    false AS acknowledged,\n    dw.reservation_id AS reservation_id,\n    dw.amount::double precision AS revenue_amount,\n    UPPER(COALESCE(dw.currency, 'USD')) AS revenue_currency,\n    jsonb_build_object('productName', 'Damage Waiver') AS event_type_details,\n    false AS off_platform_airbnb,\n    'damage_waiver'::text AS source,\n    'Damage Waiver'::text AS product_name\n  FROM damage_waiver_records dw\n  WHERE dw.type = 'waiver'\n)\n  UNION ALL\n  (\n  SELECT\n    (-(2000000000000::bigint + sp.id)) AS id,\n    (sp.created_at AT TIME ZONE 'UTC')::timestamp AS created_at,\n    su.user_id AS user_id,\n    (CASE WHEN su.source = 'host' THEN 'custom_upsell' ELSE 'workflow_upsell' END)::text AS upsell_type,\n    (CASE\n      WHEN sp.payment_method = 'prereserve' AND COALESCE((su.upsell_data->>'isHold')::boolean, false) THEN 'hold'\n      ELSE 'purchase_direct'\n    END)::text AS event_type,\n    (sp.acknowledged_at IS NOT NULL) AS acknowledged,\n    su.reservation_id AS reservation_id,\n    (sp.amount_in_cents / 100.0)::double precision AS revenue_amount,\n    UPPER(COALESCE(sp.currency, 'USD')) AS revenue_currency,\n    jsonb_build_object(\n      'productName', su.upsell_data->>'title',\n      'amountInCents', sp.amount_in_cents\n    ) AS event_type_details,\n    false AS off_platform_airbnb,\n    'workflow'::text AS source,\n    (su.upsell_data->>'title')::text AS product_name\n  FROM sidekick_upsell_purchases sp\n  JOIN sidekick_upsells su ON sp.sidekick_upsell_id = su.id\n)\n) AS upsell_events",
+  "primary_timestamp": "created_at",
+  "fields": [
+   {
+    "name": "upsell_event_id",
+    "type": "bigint",
+    "description": "Event id. Positive for upsell_events rows (the id of the latest lifecycle row for the item); large negative values for damage_waiver and workflow rows, which are NOT keys into upsell_events. Returned as a string on the inline path because it is a bigint \u00e2\u0080\u0094 compare as a string, not a number."
+   },
+   {
+    "name": "reservation_id",
+    "type": "int",
+    "description": "FK to reservations.id."
+   },
+   {
+    "name": "upsell_type",
+    "type": "string",
+    "description": "booking_booster | early_checkin | late_checkout | custom_upsell | damage_waiver | workflow_upsell."
+   },
+   {
+    "name": "source",
+    "type": "string",
+    "description": "Which table the row came from \u00e2\u0080\u0094 upsell_event | damage_waiver | workflow. Damage waivers and workflow-sold upsells are separate tables unioned in; filter on this to isolate or exclude them. workflow also includes reservation upsells a person created by hand, which carry upsell_type custom_upsell."
+   },
+   {
+    "name": "product_name",
+    "type": "string",
+    "description": "Item label suitable for an invoice line (e.g. \"Damage Waiver\"). Null on older rows with no productName."
+   },
+   {
+    "name": "event_type",
+    "type": "string",
+    "description": "Lifecycle state \u00e2\u0080\u0094 payment_failed | hold | purchase_direct | awaiting_payment | hold_released | purchase_from_hold_failed | purchase_from_hold. Acknowledgement is not a state here; see acknowledged."
+   },
+   {
+    "name": "acknowledged",
+    "type": "bool",
+    "description": "True once the host marked the purchase done on the ROI page. Informational only; it does not affect revenue. Always false for damage_waiver rows."
+   },
+   {
+    "name": "is_acceptance",
+    "type": "bool",
+    "description": "True if the row represents a completed purchase (purchase_direct or purchase_from_hold)."
+   },
+   {
+    "name": "revenue_amount",
+    "type": "float",
+    "description": "Revenue captured by this item, in currency. Rows are already de-duplicated to one per purchased item, so sum(revenue_amount) over is_acceptance rows reconciles to summarize_upsell_revenue less the taxes and application fees that tool adds."
+   },
+   {
+    "name": "currency",
+    "type": "string",
+    "description": "ISO 4217 currency for revenue_amount."
+   },
+   {
+    "name": "offered_amount",
+    "type": "float",
+    "description": "Price shown to the guest (if present). Always null for damage_waiver rows \u00e2\u0080\u0094 a waiver has no separately offered price."
+   },
+   {
+    "name": "off_platform_airbnb",
+    "type": "bool",
+    "description": "True for off-platform Airbnb upsells."
+   },
+   {
+    "name": "synthetic",
+    "type": "bool",
+    "description": "Admin-test marker \u00e2\u0080\u0094 true rows are excluded by default.",
+    "opt_in_only": true
+   },
+   {
+    "name": "event_type_details",
+    "type": "jsonb",
+    "description": "Full event jsonb (variable shape per event type).",
+    "opt_in_only": true
+   },
+   {
+    "name": "created_at",
+    "type": "timestamp",
+    "description": "Purchase time: the earliest purchase-state row for the item, not the time the host acknowledged it. Holds and failed payments carry their own time."
+   }
+  ],
+  "join_keys": [
+   "upsell_event_id",
+   "reservation_id"
+  ],
+  "documented_gaps": [
+   "DE-DUPLICATION: the raw upsell_events table is append-only and holds a second copy of every purchase the host acknowledged. This export collapses those with the same DISTINCT ON (reservation_id, product_name, revenue_amount) key the revenue dashboard and summarize_upsell_revenue use, keeping the latest lifecycle state and reporting the acknowledgement as `acknowledged`. The key has the same known side effects as on the dashboard: a hold collapses into the purchase_from_hold that follows it, and two genuine purchases of the same item at the same price on the same reservation collapse into one row.",
+   "created_at is the earliest purchase-state time for the item. The dashboard and summarize_upsell_revenue apply their date window to each raw row instead, so a purchase acknowledged in a later month is dated to the purchase month here but may count in the acknowledgement month there. All-time totals agree; a narrow window straddling an acknowledgement may not.",
+   "summarize_upsell_revenue additionally adds event_type_details taxAmount and applicationFeeAmount (minor units, /100), which this export does not expose, and it does not exclude synthetic rows. Those are the only differences from summing is_acceptance rows here.",
+   "Rows come from three tables (see `source`): upsell_events, damage_waiver_records, and workflow-sold upsells. Damage waiver and workflow rows have NEGATIVE upsell_event_id values so ids stay unique across sources; they are not keys into upsell_events. list_recent_upsell_events uses a different negative-id scheme for the same rows; do not join the two on id.",
+   "Damage waiver rows carry only a synthesized productName in event_type_details, so offered_amount and synthetic are null on them and off_platform_airbnb is always false.",
+   "Damage waiver rows are always event_type 'purchase_direct' with acknowledged = false \u00e2\u0080\u0094 the waiver table records completed waivers only, and acknowledgement cannot be performed on a waiver at all. Waiver HOLDS (damage_waiver_records.type = 'hold') are payment authorizations, not revenue, and are excluded entirely.",
+   "Workflow rows: reservation upsells a person created by hand share the workflow tables and appear with source = 'workflow' but upsell_type = 'custom_upsell'. A free item (amount 0) is a purchase_direct; event_type 'hold' appears only when the upsell was configured as a hold. revenue_amount is amount_in_cents / 100 on every surface, which is wrong for zero-decimal currencies (JPY, KRW); no such purchases exist today.",
+   "Default filter excludes admin-test rows (event_type_details->>'synthetic' = 'true'); host-facing dashboards currently leak these \u00e2\u0080\u0094 see out-of-scope production ticket.",
+   "offered_amount is derived from event_type_details->>'amountInCents' / 100."
+  ],
+  "limits": {
+   "raw_row_cap": 10000,
+   "max_window_days": 730,
+   "default_window_days": 365
+  }
+ }
+]

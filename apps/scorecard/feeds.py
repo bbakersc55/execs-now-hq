@@ -683,11 +683,12 @@ def app_notices_for(user, company=None) -> list:
 def stop_other_feeds(kpi, keep: str):
     """A KPI has one feed: setting one stops the others, their readings kept.
     `keep` is the `Kpi.Feed` value being set."""
-    from .models import KpiAppFeed, KpiHubSpotFeed, KpiTrackFeed
+    from .models import KpiAppFeed, KpiBestyFeed, KpiHubSpotFeed, KpiTrackFeed
 
     now = timezone.now()
     for kind, model in ((Kpi.Feed.SHEET, KpiFeed), (Kpi.Feed.TRACK, KpiTrackFeed),
-                        (Kpi.Feed.APP, KpiAppFeed), (Kpi.Feed.HUBSPOT, KpiHubSpotFeed)):
+                        (Kpi.Feed.APP, KpiAppFeed), (Kpi.Feed.HUBSPOT, KpiHubSpotFeed),
+                        (Kpi.Feed.BESTY, KpiBestyFeed)):
         if kind != keep:
             model.objects.filter(kpi=kpi, active=True).update(active=False, updated_at=now)
 
@@ -801,6 +802,130 @@ def hubspot_notices_for(user, company=None) -> list:
 
     rows = KpiHubSpotFeed.objects.filter(active=True, kpi__archived_at__isnull=True,
                                          kpi__reading_owner_id=user.pk).exclude(last_error="") \
+        .select_related("kpi", "kpi__scorecard__company")
+    if company is not None:
+        rows = rows.filter(kpi__scorecard__company=company)
+    return [{"kind": "feed", "kpi": f.kpi.name, "kpi_id": str(f.kpi_id),
+             "company": f.kpi.scorecard.company.name,
+             "company_id": str(f.kpi.scorecard.company_id), "period_start": None,
+             "text": f.last_error,
+             "reminded_at": f.error_since.isoformat() if f.error_since else None}
+            for f in rows.order_by("-error_since")]
+
+
+# ------------------------------------------------------------- Besty (part 6)
+
+BESTY_DEMO_REFUSAL = ("This is the demo. It never connects to a Besty account, so a Besty "
+                      "measure can't be read here.")
+
+
+def besty_client(company, *, factory=None):
+    """The Besty client for a company: that company's own connection and
+    token, never another's, and its own request budget."""
+    from config import environment
+
+    from . import besty
+    from .models import BestyConnection
+
+    if environment.is_demo():
+        raise besty.BestyUnavailable(BESTY_DEMO_REFUSAL)
+    connection = BestyConnection.all_objects.filter(company=company,
+                                                    tenant_id=company.tenant_id).first()
+    if connection is None:
+        raise besty.BestyUnavailable(f"{company.name} has no Besty connection. The practice "
+                                     "owner adds it on the company page.")
+    from apps.crm.services.secrets import decrypt
+
+    token = decrypt(connection.token_ciphertext)
+    if not token:
+        raise besty.BestyUnavailable(f"{company.name}'s Besty token can no longer be read. "
+                                     "Enter it again on the company page.")
+    return (factory or besty.BestyClient)(token, budget_key=f"company:{company.pk}")
+
+
+def run_besty(feed, today, *, client=None, now=None) -> dict:
+    """Compute the closed periods' readings from Besty and write them by the
+    Sheets feed's rules. A failure keeps every reading and is told once.
+    Nothing Besty answers is kept beyond the readings."""
+    from . import besty
+    from .models import KpiBestyFeed, KpiReading
+
+    now = now or timezone.now()
+    kpi = feed.kpi
+    company = kpi.scorecard.company
+    zone = getattr(company.tenant, "timezone", "") or "UTC"
+    try:
+        client = client or besty_client(company)
+        values = besty.plan_for(feed, client, today, zone=zone, read_open=reads_open(feed),
+                                now=now)
+        results = sheets.outcome(kpi, values, today, kpi.scorecard.week_start,
+                                 source=KpiReading.Source.BESTY, read_open=reads_open(feed))
+        counts = sheets.write(feed, results, now, source=KpiReading.Source.BESTY)
+        refs.read_measures(kpi, "besty", lambda m: besty.plan_for(
+            feed, client, today, zone=zone, read_open=True, measure=m, now=now), today,
+            now=now)
+    except (besty.BestyUnavailable, besty.BestyRefused, sheets.FeedRefused) as exc:
+        message = str(exc)
+        if feed.last_error != message:
+            feed.last_error, feed.error_since = message, now
+        KpiBestyFeed.all_objects.filter(pk=feed.pk).update(
+            last_run_at=now, last_error=feed.last_error, error_since=feed.error_since,
+            updated_at=now)
+        return {"ok": False, "error": message}
+    feed.last_error, feed.error_since, feed.last_success_at = "", None, now
+    KpiBestyFeed.all_objects.filter(pk=feed.pk).update(
+        last_run_at=now, last_success_at=now, last_error="", error_since=None,
+        last_counts=counts, updated_at=now)
+    if kpi.feed != Kpi.Feed.BESTY:
+        Kpi.all_objects.filter(pk=kpi.pk).update(feed=Kpi.Feed.BESTY)
+    return {"ok": True, **counts}
+
+
+def run_due_besty(tenant_id, today, *, now=None) -> dict:
+    """Once a day per Besty feed, for one practice's feeds only."""
+    from .models import KpiBestyFeed
+
+    now = now or timezone.now()
+    ran = failed = 0
+    for feed in KpiBestyFeed.all_objects.filter(
+            tenant_id=tenant_id, active=True, kpi__archived_at__isnull=True,
+            kpi__scorecard__company__deleted_at__isnull=True).select_related(
+            "kpi", "kpi__scorecard", "kpi__scorecard__company",
+            "kpi__scorecard__company__tenant"):
+        if feed.last_run_at is not None and now - feed.last_run_at < DAILY_AFTER:
+            continue
+        result = run_besty(feed, today, now=now)
+        ran += 1
+        failed += int(not result["ok"])
+    return {"ran": ran, "failed": failed}
+
+
+def besty_source_text(feed) -> str:
+    from . import besty
+
+    label = besty.MEASURES.get(feed.measure, (feed.measure,))[0]
+    if feed.param in besty.UPSELL_TYPES:
+        label = f"{label}, {besty.UPSELL_TYPES[feed.param].lower()}"
+    if feed.owner_id:
+        label = f"{label}, owner {feed.owner_name or feed.owner_id}"
+    scope = besty.MEASURES.get(feed.measure, ("", "", "", "total"))[3]
+    if feed.member_id:
+        who = f"{feed.member_name or feed.member_id}"
+    elif scope == "responder":
+        who = besty.RESPONDERS.get(feed.param, besty.RESPONDERS[""]).lower()
+    elif scope in ("member", "owner"):
+        who = "the whole team"
+    else:
+        who = "the whole account"
+    so_far = ", the open period so far" if reads_open(feed) else ""
+    return f"From Besty: {label}, {who}, computed once a day{so_far}"
+
+
+def besty_notices_for(user, company=None) -> list:
+    from .models import KpiBestyFeed
+
+    rows = KpiBestyFeed.objects.filter(active=True, kpi__archived_at__isnull=True,
+                                       kpi__reading_owner_id=user.pk).exclude(last_error="") \
         .select_related("kpi", "kpi__scorecard__company")
     if company is not None:
         rows = rows.filter(kpi__scorecard__company=company)

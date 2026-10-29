@@ -9,20 +9,21 @@ const KIND_WORDS: Record<string, string> = {
   sheet_cell: "A cell of its sheet",
   track: "A field of its Track feed",
   hubspot: "A field of its HubSpot feed",
+  besty: "A field of its Besty feed",
 };
 
 /** The feed kinds a KPI can name, by the feed it has: a KPI with no feed
  *  yet may name any, and its number comes with the feed's first read. */
 function feedKinds(kpi: SetupKpi | null | undefined): Ref["kind"][] {
   const feed = kpi?.feed;
-  if (!feed) return ["sheet_column", "sheet_cell", "track", "hubspot"];
+  if (!feed) return ["sheet_column", "sheet_cell", "track", "hubspot", "besty"];
   if (feed.kind === "sheet") return [feed.mode === "cell" ? "sheet_cell" : "sheet_column"];
-  if (feed.kind === "track" || feed.kind === "hubspot") return [feed.kind];
+  if (feed.kind === "track" || feed.kind === "hubspot" || feed.kind === "besty") return [feed.kind];
   return [];
 }
 
 /** The choice of where a number comes from, and the one field it needs:
- *  a KPI, a column (heading or letter), a cell, or a Track or HubSpot field. */
+ *  a KPI, a column (heading or letter), a cell, or a Track, HubSpot or Besty field. */
 export function RefPicker({ id, label, value, onChange, base, of, state, kpis, invalid }: {
   id: string; label: string; value: Ref | null | undefined; onChange: (r: Ref | null) => void;
   /** The first choices: "typed" for a target, "value" and "target" for an operand. */
@@ -35,7 +36,8 @@ export function RefPicker({ id, label, value, onChange, base, of, state, kpis, i
   const kinds = [...base.map((b) => b.kind), ...(kpis ? ["kpi" as const] : []), ...feedKinds(of)];
   const words = (k: string) => base.find((b) => b.kind === k)?.label ?? KIND_WORDS[k];
   const set = (patch: Partial<Ref>) => onChange({ ...(value ?? { kind }), ...patch } as Ref);
-  const fields = kind === "track" ? state.fields?.track : kind === "hubspot" ? state.fields?.hubspot : null;
+  const fields = kind === "track" ? state.fields?.track : kind === "hubspot" ? state.fields?.hubspot
+    : kind === "besty" ? state.fields?.besty : null;
   return (
     <>
       <label className="sc-form-field"><span>{label}</span>

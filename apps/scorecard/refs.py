@@ -10,8 +10,9 @@ A **reference** is a small dict, stored as JSON on the KPI:
 - ``{"kind": "sheet_column", "column": "D", "header": "Total Homeowners"}``
   and ``{"kind": "sheet_cell", "cell": "B2"}``: a column or cell of the KPI's
   own Google Sheet feed, read with its reading;
-- ``{"kind": "track", "measure": ...}`` and ``{"kind": "hubspot", "measure":
-  ...}``: another field of its Track or HubSpot feed, worked out the same way.
+- ``{"kind": "track", "measure": ...}``, ``{"kind": "hubspot", "measure":
+  ...}`` and ``{"kind": "besty", "measure": ...}``: another field of its
+  Track, HubSpot or Besty feed, worked out the same way.
 
 A feed reference's numbers are read by that KPI's own feed run, one per
 period, into `KpiFeedValue` under the reference's key; nothing else writes
@@ -30,7 +31,16 @@ from django.utils import timezone
 
 from . import periods as P
 
-FEED_KINDS = ("sheet_column", "sheet_cell", "track", "hubspot")
+FEED_KINDS = ("sheet_column", "sheet_cell", "track", "hubspot", "besty")
+#: The feeds whose other fields a reference may name, by their menus.
+MEASURE_KINDS = ("track", "hubspot", "besty")
+SAID = {"track": "Track", "hubspot": "HubSpot", "besty": "Besty"}
+
+
+def _menu(kind):
+    from . import besty, hubspot, track
+
+    return {"track": track.MEASURES, "hubspot": hubspot.MEASURES, "besty": besty.MEASURES}[kind]
 _FOUR = Decimal("0.0001")
 TARGET_KINDS = ("kpi",) + FEED_KINDS
 OPERAND_KINDS = ("value", "target") + FEED_KINDS
@@ -65,7 +75,7 @@ def key_of(ref, rule="last") -> str:
         return f"column:{name}:{rule}"[:240]
     if kind == "sheet_cell":
         return f"cell:{(ref.get('cell') or '').upper()}"
-    if kind in ("track", "hubspot"):
+    if kind in MEASURE_KINDS:
         return f"{kind}:{ref.get('measure') or ''}"
     return ""
 
@@ -95,23 +105,21 @@ def words(ref, kpi=None) -> str:
         return f"column {ref.get('column')} of the sheet"
     if kind == "sheet_cell":
         return f"cell {ref.get('cell')} of the sheet"
-    if kind in ("track", "hubspot"):
-        from . import hubspot, track
-
-        menu = track.MEASURES if kind == "track" else hubspot.MEASURES
-        label = menu.get(ref.get("measure"), (ref.get("measure"),))[0]
-        return f"{'Track' if kind == 'track' else 'HubSpot'}: {label}"
+    if kind in MEASURE_KINDS:
+        label = _menu(kind).get(ref.get("measure"), (ref.get("measure"),))[0]
+        return f"{SAID[kind]}: {label}"
     return ""
 
 
 # ------------------------------------------------------------- checking them
 
 def _active_feed(kpi):
-    """("sheet", feed) / ("track", feed) / ("hubspot", feed) / (None, None)."""
-    from .models import KpiFeed, KpiHubSpotFeed, KpiTrackFeed
+    """("sheet", feed) / ("track", feed) / ("hubspot", feed) / ("besty", feed)
+    / (None, None)."""
+    from .models import KpiBestyFeed, KpiFeed, KpiHubSpotFeed, KpiTrackFeed
 
     for name, model in (("sheet", KpiFeed), ("track", KpiTrackFeed),
-                        ("hubspot", KpiHubSpotFeed)):
+                        ("hubspot", KpiHubSpotFeed), ("besty", KpiBestyFeed)):
         feed = model.all_objects.filter(kpi_id=kpi.pk, active=True).first() \
             if kpi.pk else None
         if feed is not None:
@@ -123,7 +131,7 @@ def clean_feed_ref(kpi, raw, field) -> dict:
     """A column, cell or field of `kpi`'s own feed, as saved. A KPI with no
     feed yet may name one: its value comes with the feed's first read. A
     reference that doesn't fit the feed it has is refused in words."""
-    from . import hubspot, sheets, track
+    from . import sheets
 
     kind = kind_of(raw)
     if kind == "sheet_column":
@@ -143,10 +151,9 @@ def clean_feed_ref(kpi, raw, field) -> dict:
         except sheets.FeedRefused as exc:
             raise RefRefused(str(exc), field) from None
         out = {"kind": kind, "cell": sheets.cell_name(r, c)}
-    elif kind in ("track", "hubspot"):
-        menu = track.MEASURES if kind == "track" else hubspot.MEASURES
+    elif kind in MEASURE_KINDS:
         measure = str(raw.get("measure") or "")
-        if measure not in menu:
+        if measure not in _menu(kind):
             raise RefRefused("Choose a field from the list.", field)
         out = {"kind": kind, "measure": measure}
     else:
@@ -154,7 +161,7 @@ def clean_feed_ref(kpi, raw, field) -> dict:
     has, feed = _active_feed(kpi)
     if has is not None:
         wanted = "sheet" if kind.startswith("sheet") else kind
-        said = {"sheet": "a Google Sheet", "track": "Track", "hubspot": "HubSpot"}
+        said = {"sheet": "a Google Sheet", **SAID}
         if has != wanted:
             raise RefRefused(f"{kpi.name} reads from {said[has]}, so the number comes from "
                              f"its {said[has]} feed.", field)
@@ -281,7 +288,7 @@ def read_sheet(feed, rows, today, now=None) -> int:
 
 
 def read_measures(kpi, kind, plan, today, *, snapshot=frozenset(), now=None) -> int:
-    """The Track or HubSpot fields the KPI's feed reads beside its reading.
+    """The Track, HubSpot or Besty fields the KPI's feed reads beside its reading.
     `plan(measure)` gives {(start, None): value} for that field, the open
     period included."""
     written = 0

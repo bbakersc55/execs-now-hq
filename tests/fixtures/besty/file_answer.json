@@ -1,0 +1,24 @@
+{
+ "operation_id": "00000000-0000-0000-0000-000000000000",
+ "ok": [
+  {
+   "client_ref": "export_reviews_export",
+   "mode": "file",
+   "file_uri": "s3://besty-mcp-exports/u0000/export_reviews/0000.parquet",
+   "presigned_url": "https://besty-mcp-exports.s3.us-east-1.amazonaws.com/u0000/export_reviews/0000.parquet?X-Amz-Expires=86400",
+   "format": "parquet",
+   "row_count": 1130,
+   "head": [],
+   "join_keys": [
+    "review_id"
+   ]
+  }
+ ],
+ "failed": [],
+ "summary": {
+  "total": 1,
+  "succeeded": 1,
+  "failed": 0,
+  "duration_ms": 0
+ }
+}

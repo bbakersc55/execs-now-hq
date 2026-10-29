@@ -392,10 +392,13 @@ def test_each_adjustment_does_what_it_says_from_its_date_and_can_be_undone(
     assert raised["adjustments"][0]["text"] == later["adjusted"]
     assert raised["adjustments"][0]["by"] == ff.user.full_name
     assert raised["adjustments"][0]["label"] == RENT
-    # Advertising moves to the 25th, from now.
+    # Advertising moves to the 25th, from now. This month's payment, if the
+    # 25th is past, falls on today (it can't move into the past), so the
+    # 25th is checked from next month on (checked after the 28th, it failed
+    # on the 29th to 31st of a month).
     moved = adjust(line=ads, kind="day", day_of_month=25)
     assert {date.fromisoformat(row["on_date"]).day for row in line(moved, "LinkedIn Ads")
-            if row["on_date"] > TODAY.replace(day=28).isoformat()} == {25}
+            if row["on_date"] >= forecast._add_months(THIS, 1).isoformat()} == {25}
     # Draws are paused for two months, then resume.
     resume = forecast._add_months(THIS, 2).replace(day=27)
     paused = adjust(line=draw, kind="pause", from_date=TODAY.isoformat(),

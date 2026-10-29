@@ -41,7 +41,9 @@ def read_feeds(tenant_id: str) -> dict:
         app_done = feeds.run_due_app(tenant.pk, today)
         # Part 5: each HubSpot feed once a day, rate-limit aware.
         hubspot_done = feeds.run_due_hubspot(tenant.pk, today)
+        # Part 6: each Besty feed once a day.
+        besty_done = feeds.run_due_besty(tenant.pk, today)
         # A period that has closed keeps its last "so far" as its reading.
         final = feeds.finalise(tenant.pk, today)
         return {"sheets": sheets_done, "track": track_done, "app": app_done,
-                "hubspot": hubspot_done, "finalised": final}
+                "hubspot": hubspot_done, "besty": besty_done, "finalised": final}

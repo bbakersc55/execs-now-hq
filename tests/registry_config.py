@@ -53,7 +53,7 @@ from apps.finance.models import (
 )
 from apps.scorecard.models import (
     BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection,
-    HubSpotConnection, KpiHubSpotFeed, KpiAppFeed, KpiFeedValue,
+    HubSpotConnection, KpiHubSpotFeed, KpiAppFeed, KpiFeedValue, BestyConnection, KpiBestyFeed,
     ScorecardPage,
 )
 from apps.tenancy.registry import register
@@ -337,6 +337,10 @@ register(KpiAppFeed, factories.KpiAppFeedFactory, api_exposed=False)
 # (tests/test_scorecard_hubspot.py).
 register(HubSpotConnection, factories.HubSpotConnectionFactory, api_exposed=False)
 register(KpiHubSpotFeed, factories.KpiHubSpotFeedFactory, api_exposed=False)
+# M5 part 6: a company's Besty connection and a KPI's Besty measure, served by
+# /api/scorecard/besty/ through `access.company_for` (tests/test_scorecard_besty.py).
+register(BestyConnection, factories.BestyConnectionFactory, api_exposed=False)
+register(KpiBestyFeed, factories.KpiBestyFeedFactory, api_exposed=False)
 register(KpiFeedValue, factories.KpiFeedValueFactory, api_exposed=False)
 
 # Microsoft 365 as a practice's mail (2026-10-27): each person's own, served

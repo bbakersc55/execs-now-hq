@@ -1,6 +1,7 @@
 from django.urls import path
 
-from apps.scorecard import views, views_app, views_bonus, views_feeds, views_hubspot, views_track
+from apps.scorecard import (views, views_app, views_besty, views_bonus, views_feeds, views_hubspot,
+                            views_track)
 
 urlpatterns = [
     path("scorecard/", views.BoardView.as_view(), name="scorecard"),
@@ -50,6 +51,14 @@ urlpatterns = [
          name="scorecard-hubspot-options"),
     path("scorecard/hubspot/feed/", views_hubspot.HubSpotFeedView.as_view(),
          name="scorecard-hubspot-feed"),
+    path("scorecard/besty/connection/", views_besty.BestyConnectionView.as_view(),
+         name="scorecard-besty-connection"),
+    path("scorecard/besty/connection/test/", views_besty.BestyTestView.as_view(),
+         name="scorecard-besty-test"),
+    path("scorecard/besty/options/", views_besty.BestyOptionsView.as_view(),
+         name="scorecard-besty-options"),
+    path("scorecard/besty/feed/", views_besty.BestyFeedView.as_view(),
+         name="scorecard-besty-feed"),
     path("scorecard/practice/", views_app.PracticeView.as_view(), name="scorecard-practice"),
     path("scorecard/app-feed/", views_app.AppFeedView.as_view(), name="scorecard-app-feed"),
     path("scorecard/bonus/", views_bonus.BonusView.as_view(), name="scorecard-bonus"),

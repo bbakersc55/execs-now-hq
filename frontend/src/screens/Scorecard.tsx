@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { BonusArea, bonusLead } from "../components/ScorecardBonus";
 import { SheetFeedModal } from "../components/ScorecardFeed";
+import { BestyFeedModal } from "../components/ScorecardBesty";
 import { HubSpotFeedModal } from "../components/ScorecardHubSpot";
 import { TrackFeedModal } from "../components/ScorecardTrack";
 import { AppFeedModal } from "../components/ScorecardApp";
@@ -52,6 +53,7 @@ export function Scorecard({ me }: { me: Me }) {
   const [feedKpi, setFeedKpi] = useState<string | null>(null);
   const [trackKpi, setTrackKpi] = useState<string | null>(null);
   const [hubspotKpi, setHubspotKpi] = useState<string | null>(null);
+  const [bestyKpi, setBestyKpi] = useState<string | null>(null);
   const [appKpi, setAppKpi] = useState<string | null>(null);
   const [search, setSearch] = useSearchParams();
   // "Reconnect Google" is a browser redirect; its outcome comes back here.
@@ -209,6 +211,10 @@ export function Scorecard({ me }: { me: Me }) {
         <HubSpotFeedModal companyId={companyId} kpiId={hubspotKpi} onClose={() => setHubspotKpi(null)}
           onSaved={(text) => { setHubspotKpi(null); setManaged({ kind: "ok", text }); }} />
       )}
+      {bestyKpi && (
+        <BestyFeedModal companyId={companyId} kpiId={bestyKpi} onClose={() => setBestyKpi(null)}
+          onSaved={(text) => { setBestyKpi(null); setManaged({ kind: "ok", text }); }} />
+      )}
       {feedKpi && (
         <SheetFeedModal companyId={companyId} kpiId={feedKpi} onClose={() => setFeedKpi(null)}
           onSaved={(text) => { setFeedKpi(null); setManaged({ kind: "ok", text }); }} />
@@ -230,9 +236,11 @@ export function Scorecard({ me }: { me: Me }) {
           manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
             onFeed: () => setFeedKpi(t.id),
-            // The practice's own scorecard reads this app, a client's reads Track or HubSpot.
+            // The practice's own scorecard reads this app, a client's reads Track,
+            // HubSpot or Besty.
             ...(b.practice ? { onApp: () => setAppKpi(t.id) }
-              : { onTrack: () => setTrackKpi(t.id), onHubSpot: () => setHubspotKpi(t.id) }),
+              : { onTrack: () => setTrackKpi(t.id), onHubSpot: () => setHubspotKpi(t.id),
+                onBesty: () => setBestyKpi(t.id) }),
             busy: archive.isPending } : undefined} />);
         const tagged = tiles.some((t) => t.component);
         return (

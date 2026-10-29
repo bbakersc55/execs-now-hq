@@ -348,6 +348,8 @@ export interface TileManage {
   onApp?: () => void;
   /** Part 5: its HubSpot measure. */
   onHubSpot?: () => void;
+  /** Part 6: its Besty measure. */
+  onBesty?: () => void;
 }
 
 /** M5 ties: the task a KPI's tile offers, and the one already made. */
@@ -407,6 +409,9 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
         {latest ? (latest.source === "app"
           ? <>Latest worked out from this app
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
+          : latest.source === "besty"
+          ? <>Latest worked out from Besty
+            {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
           : latest.source === "hubspot"
           ? <>Latest worked out from HubSpot
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
@@ -447,6 +452,9 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
               {manage.onHubSpot && !t.computed && !t.per_person && (
                 <button type="button" className="ghost small" aria-label={`HubSpot measure for ${t.name}`}
                   onClick={manage.onHubSpot}>{t.feed?.kind === "hubspot" ? "HubSpot measure" : "Feed from HubSpot"}</button>)}
+              {manage.onBesty && !t.computed && !t.per_person && (
+                <button type="button" className="ghost small" aria-label={`Besty measure for ${t.name}`}
+                  onClick={manage.onBesty}>{t.feed?.kind === "besty" ? "Besty measure" : "Feed from Besty"}</button>)}
               <button type="button" className="ghost small" aria-label={`Archive ${t.name}`}
                 onClick={() => setArchiving(true)}>Archive</button>
             </>

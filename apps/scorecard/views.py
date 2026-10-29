@@ -34,7 +34,7 @@ from rest_framework.views import APIView
 
 from apps.tenancy.models import CLIENT_ROLES
 
-from . import board, hubspot, readings, setup, track
+from . import besty, board, hubspot, readings, setup, track
 from . import periods as P
 from .access import Reader, company_for
 from .models import Kpi, KpiReading, Scorecard, ScorecardPage
@@ -229,10 +229,12 @@ class SetupView(Base):
                               for m in (staff if company.is_practice else portal_people)],
                              key=lambda r: r["name"].lower()),
             "starters": setup.starters(),
-            # What a live target or an operand may name of a Track or HubSpot feed.
+            # What a live target or an operand may name of a Track, HubSpot or
+            # Besty feed.
             "fields": {"track": [{"key": k, "label": v[0]} for k, v in track.MEASURES.items()],
                        "hubspot": [{"key": k, "label": v[0]}
-                                   for k, v in hubspot.MEASURES.items()]},
+                                   for k, v in hubspot.MEASURES.items()],
+                       "besty": [{"key": k, "label": v[0]} for k, v in besty.MEASURES.items()]},
         }
         if scorecard is not None:
             out["pages"] = [{"id": str(p.pk), "name": p.name, "audience": p.audience,

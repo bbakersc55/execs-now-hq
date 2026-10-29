@@ -150,6 +150,7 @@ class Kpi(TenantScopedModel):
         TRACK = "track", "Track PMS"
         APP = "app", "From this app"
         HUBSPOT = "hubspot", "HubSpot"
+        BESTY = "besty", "Besty"
 
     class Formula(models.TextChoices):
         """A computed KPI, one step only (spec, "Computed KPIs"): two other
@@ -318,6 +319,7 @@ class KpiReading(TenantScopedModel):
         TRACK = "track", "Track PMS"
         APP = "app", "From this app"
         HUBSPOT = "hubspot", "HubSpot"
+        BESTY = "besty", "Besty"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()
@@ -754,3 +756,56 @@ class KpiHubSpotFeed(TenantScopedModel):
             models.CheckConstraint(condition=Q(stage_id="") | Q(measure="pipeline_value"),
                                    name="kpi_hubspot_feed_stage_only_for_pipeline"),
         ]
+
+
+class BestyConnection(TenantScopedModel):
+    """A client company's Besty account (M5 part 6): a long-lived read-only
+    MCP token, entered by the practice owner and encrypted on this row, as a
+    HubSpot token is (`tenant_secret` holds one secret of a kind per
+    practice; a practice has a Besty account per client company).
+    Write-only: the practice never sees it again, only its last four. Read
+    only for this company's KPIs."""
+
+    company = models.OneToOneField("crm.Company", on_delete=models.CASCADE,
+                                   related_name="besty_connection")
+    token_ciphertext = models.BinaryField(null=True, blank=True)
+    token_last4 = models.CharField(max_length=4, blank=True, default="", db_default="")
+    #: The last "Test connection": when, whether Besty accepted it, what it said.
+    checked_at = models.DateTimeField(null=True, blank=True)
+    check_ok = models.BooleanField(null=True, blank=True)
+    check_detail = models.TextField(blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "besty_connection"
+
+
+class KpiBestyFeed(TenantScopedModel):
+    """A KPI read from its company's Besty account (M5 part 6): one measure
+    from the menu (`besty.MEASURES`), for the total or one team member
+    (`member_id`), and for owner messages one property owner (`owner_id`);
+    `param` is an upsell type, or who a response time is for. Computed per
+    closed period on the worker, daily, by the Sheets feed's rules."""
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="besty_feed")
+    measure = models.CharField(max_length=24)
+    member_id = models.CharField(max_length=64, blank=True, default="", db_default="")
+    member_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    owner_id = models.CharField(max_length=24, blank=True, default="", db_default="")
+    owner_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    param = models.CharField(max_length=40, blank=True, default="", db_default="")
+    active = models.BooleanField(default=True, db_default=True)
+    #: "Also read the current period as it goes": unset follows the KPI's
+    #: roll-up (on for Last and Average, off for Sum; `feeds.reads_open`).
+    read_open = models.BooleanField(null=True, blank=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="", db_default="")
+    error_since = models.DateTimeField(null=True, blank=True)
+    last_counts = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_besty_feed"

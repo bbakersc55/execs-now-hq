@@ -486,6 +486,23 @@ describe("a KPI is made only by Save, and managed from both places", () => {
     expect(await within(dialog).findByText(/no HubSpot connection yet/)).toBeInTheDocument();
   });
 
+  it("a client's tile offers Feed from Besty, which opens the Besty picker", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/scorecard/besty/feed/": { kpi: { id: "k1", name: "Occupancy", kind: "percent",
+        per_person: false }, connected: false, feed: null },
+      "GET /api/scorecard/setup/": SETUP,
+      "GET /api/scorecard/": { ...BOARD, may_set_up: true },
+    }));
+    renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+      route: "/companies/c1/scorecard" });
+    const tile = await screen.findByRole("region", { name: "Occupancy" });
+    await user.click(within(tile).getByRole("button", { name: "Back of Occupancy" }));
+    await user.click(within(tile).getByRole("button", { name: "Besty measure for Occupancy" }));
+    const dialog = await screen.findByRole("dialog", { name: "Feed Occupancy from Besty" });
+    expect(await within(dialog).findByText(/no Besty connection yet/)).toBeInTheDocument();
+  });
+
   it("no Edit or Archive on a tile for anyone who doesn't set the scorecard up", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, may_set_up: false } }));

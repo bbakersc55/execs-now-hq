@@ -1,0 +1,8 @@
+{
+ "status": 200,
+ "headers": {
+  "Content-Type": "text/event-stream",
+  "mcp-session-id": "5e55e55e-0000-4000-8000-00000000be57"
+ },
+ "body": "event: message\ndata: {\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"ask-besty-mcp\",\"version\":\"0.1.0\"},\"instructions\":\"Read-only tools over one Besty account (the token's tenant). Routing guide:\\n- export_* tools: bulk data (reservations, messages, reviews, calendar, ...) with filters, column selection, and an aggregation grammar; large results return a presigned file URL. Start with describe_export_schemas for columns.\\n- list_*/get_* tools: the account's CONFIGURATION \\u00e2\\u0080\\u0094 what Besty is set up to do. Use these for \\\"what will Besty do when X?\\\" (list_workflows -> get_workflows), \\\"what messages do guests get?\\\" (list_journeys -> get_journey), \\\"what are guests told about X?\\\" (list_pages -> get_page), and what upsells are configured (list_custom_upsells, get_upsell_settings).\\n- compute_* and summarize_upsell_revenue: canonical metric numbers (occupancy, response time, upsell revenue) \\u00e2\\u0080\\u0094 prefer these over recomputing from raw exports.\\n- Upsell funnel: export_upsell_offers = offers SENT to guests; export_upsell_events = holds/purchases/revenue. No FK between them.\\n- Resolve listing names to ids via list_listings (and groupings via list_listing_sets) before passing listing ids anywhere.\\n- Tool availability reflects this connection's granted scopes; tools outside the grant are not listed.\"},\"jsonrpc\":\"2.0\",\"id\":1}\n\n"
+}

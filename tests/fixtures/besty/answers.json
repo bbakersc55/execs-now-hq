@@ -1,0 +1,301 @@
+{
+ "export_ops_tasks": {
+  "request": {
+   "time_range": {
+    "field": "created_at",
+    "since": "2025-10-01T06:00:00Z",
+    "until": "2026-10-01T06:00:00Z"
+   },
+   "aggregation": {
+    "measures": [
+     "count(*)"
+    ],
+    "filters": [
+     {
+      "field": "completed_at",
+      "op": "is_null"
+     },
+     {
+      "field": "status",
+      "op": "neq",
+      "value": "done"
+     }
+    ]
+   }
+  },
+  "answer": {
+   "operation_id": "00000000-0000-0000-0000-000000000000",
+   "ok": [
+    {
+     "client_ref": "export_ops_tasks_export",
+     "mode": "inline",
+     "rows": [],
+     "row_count": 0,
+     "schema": [
+      {
+       "name": "count",
+       "type": "int",
+       "description": ""
+      }
+     ],
+     "head": [],
+     "join_keys": []
+    }
+   ],
+   "failed": [],
+   "summary": {
+    "total": 1,
+    "succeeded": 1,
+    "failed": 0,
+    "duration_ms": 19
+   }
+  }
+ },
+ "export_upsell_events": {
+  "request": {
+   "time_range": {
+    "field": "created_at",
+    "since": "2026-07-01T06:00:00Z",
+    "until": "2026-10-01T06:00:00Z"
+   },
+   "filter": {
+    "only_acceptances": true
+   },
+   "aggregation": {
+    "measures": [
+     "sum(revenue_amount)",
+     "count(*)"
+    ]
+   }
+  },
+  "answer": {
+   "operation_id": "00000000-0000-0000-0000-000000000000",
+   "ok": [
+    {
+     "client_ref": "export_upsell_events_export",
+     "mode": "inline",
+     "rows": [],
+     "row_count": 0,
+     "schema": [
+      {
+       "name": "sum_revenue_amount",
+       "type": "float",
+       "description": ""
+      },
+      {
+       "name": "count",
+       "type": "int",
+       "description": ""
+      }
+     ],
+     "head": [],
+     "join_keys": []
+    }
+   ],
+   "failed": [],
+   "summary": {
+    "total": 1,
+    "succeeded": 1,
+    "failed": 0,
+    "duration_ms": 21
+   }
+  }
+ },
+ "compute_response_time": {
+  "request": {
+   "since": "2026-07-01T06:00:00Z",
+   "until": "2026-09-29T06:00:00Z",
+   "aggregate_window": true
+  },
+  "answer": {
+   "operation_id": "00000000-0000-0000-0000-000000000000",
+   "ok": [
+    {
+     "client_ref": "response_time",
+     "mode": "inline",
+     "rows": [],
+     "row_count": 0,
+     "schema": [
+      {
+       "name": "responder_label",
+       "type": "string",
+       "description": "\"autopilot\" | subuser name / email / id."
+      },
+      {
+       "name": "avg_response_minutes",
+       "type": "float",
+       "description": "Average response latency in minutes, after dropping unusually long waits per responder, as the dashboard does (includes autopilot delay)."
+      },
+      {
+       "name": "response_count",
+       "type": "int",
+       "description": "Number of replies in this bucket."
+      }
+     ],
+     "head": [],
+     "join_keys": []
+    }
+   ],
+   "failed": [],
+   "summary": {
+    "total": 1,
+    "succeeded": 1,
+    "failed": 0,
+    "duration_ms": 27
+   }
+  }
+ },
+ "export_reviews": {
+  "request": {
+   "time_range": {
+    "field": "reviewed_at",
+    "since": "2026-07-01T06:00:00Z",
+    "until": "2026-10-01T06:00:00Z"
+   },
+   "aggregation": {
+    "measures": [
+     "avg(rating)",
+     "count(*)"
+    ],
+    "dimensions": [
+     "rating_denominator"
+    ]
+   }
+  },
+  "answer": {
+   "operation_id": "00000000-0000-0000-0000-000000000000",
+   "ok": [
+    {
+     "client_ref": "export_reviews_export",
+     "mode": "inline",
+     "rows": [],
+     "row_count": 0,
+     "schema": [
+      {
+       "name": "rating_denominator",
+       "type": "int",
+       "description": ""
+      },
+      {
+       "name": "avg_rating",
+       "type": "float",
+       "description": ""
+      },
+      {
+       "name": "count",
+       "type": "int",
+       "description": ""
+      }
+     ],
+     "head": [],
+     "join_keys": []
+    }
+   ],
+   "failed": [],
+   "summary": {
+    "total": 1,
+    "succeeded": 1,
+    "failed": 0,
+    "duration_ms": 19
+   }
+  }
+ },
+ "export_messages": {
+  "request": {
+   "time_range": {
+    "field": "created_at",
+    "since": "2026-07-01T06:00:00Z",
+    "until": "2026-08-01T06:00:00Z"
+   },
+   "filter": {
+    "thread_ids": [
+     70000001,
+     70000002
+    ],
+    "is_incoming": false,
+    "sender_type": [
+     "host",
+     "host_external"
+    ]
+   },
+   "aggregation": {
+    "measures": [
+     "count(*)"
+    ]
+   }
+  },
+  "answer": {
+   "operation_id": "00000000-0000-0000-0000-000000000000",
+   "ok": [
+    {
+     "client_ref": "export_messages_export",
+     "mode": "inline",
+     "rows": [],
+     "row_count": 0,
+     "schema": [
+      {
+       "name": "count",
+       "type": "int",
+       "description": ""
+      }
+     ],
+     "head": [],
+     "join_keys": []
+    }
+   ],
+   "failed": [],
+   "summary": {
+    "total": 1,
+    "succeeded": 1,
+    "failed": 0,
+    "duration_ms": 25
+   }
+  }
+ },
+ "export_calls": {
+  "request": {
+   "time_range": {
+    "field": "created_at",
+    "since": "2026-07-01T06:00:00Z",
+    "until": "2026-10-01T06:00:00Z"
+   },
+   "filter": {
+    "status": [
+     "answered"
+    ]
+   },
+   "aggregation": {
+    "measures": [
+     "count(*)"
+    ]
+   }
+  },
+  "answer": {
+   "operation_id": "00000000-0000-0000-0000-000000000000",
+   "ok": [
+    {
+     "client_ref": "export_calls_export",
+     "mode": "inline",
+     "rows": [],
+     "row_count": 0,
+     "schema": [
+      {
+       "name": "count",
+       "type": "int",
+       "description": ""
+      }
+     ],
+     "head": [],
+     "join_keys": []
+    }
+   ],
+   "failed": [],
+   "summary": {
+    "total": 1,
+    "succeeded": 1,
+    "failed": 0,
+    "duration_ms": 20
+   }
+  }
+ }
+}
