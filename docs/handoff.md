@@ -2,8 +2,8 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-10-29 UTC**, after Release 29. **The next session starts at
-"2026-10-29, evening: Release 29, e-signature" just below**, then
-"2026-10-29: Release 28, several mailboxes and three UI fixes", then
+"2026-10-29, late: where things stand" just below**, then "2026-10-29,
+evening: Release 29, e-signature", then "2026-10-29: Release 28, several mailboxes and three UI fixes", then
 "2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets
 and Besty", then "2026-10-27, late: Release 25, and where things stand", which sums up
 everything from Release 23 to 25; the dated sections after it have the
@@ -15,6 +15,30 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-10-29, late: where things stand
+
+- **Releases 28 and 29 are live**: several mailboxes per practice with the
+  Mail tab, and e-signature version one. `main` at `b67563e`; `dev` is ahead
+  only by write-ups.
+- **Still to exercise on production**, with a real account:
+  - a real signature request sent through Gmail, signed by a signer on a
+    phone, then countersigned (tested end to end only with fakes);
+  - the Mail tab on contact and company pages now that mail filing is
+    switched on for the Executives Now mailbox.
+- **Bryan's own pipeline** (Executives Now) now runs Strategy Call Given →
+  Proposal Given (by "is sent a document") → Closed Won (by "signs a
+  document"), with the Welcome letter rule on entering Closed Won. That
+  supersedes "Executives Now has none of them yet" in the Release 29 section
+  below.
+- **Open items:**
+  - Azure/Entra: the app registration for Microsoft 365 mail, Sign in with
+    Microsoft, OneDrive notes and Microsoft calendars;
+  - Google verification (`docs/google_verification.md`);
+  - spec first, nothing built: the discipline module; shared clients with
+    referral fees; introduction suggestions; e-signature version two
+    (several signers, and creating the invoice on signing); the balance
+    sheet.
 
 ## 2026-10-29, evening: Release 29, e-signature
 
