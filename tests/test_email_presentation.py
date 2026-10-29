@@ -325,8 +325,12 @@ def test_a_referral_touch_goes_out_in_the_personal_layout(seeded_tenant, ff, dev
 
 @pytest.mark.django_db
 def test_the_outbox_preview_is_exactly_what_sends_and_only_on_localhost(
-    seeded_tenant, ff, api, settings, in_tenant_a
+    seeded_tenant, ff, api, settings, in_tenant_a, monkeypatch
 ):
+    # The unsubscribe link is signed with the current second: one second for
+    # the preview and the comparison, or a tick between them fails it
+    # (seen in the gate, 2026-10-29).
+    monkeypatch.setattr("django.core.signing.time.time", lambda: 1_800_000_000)
     contact = ContactFactory(tenant=seeded_tenant, first_name="Maria")
     message = outbox.create_message(
         tenant=seeded_tenant, producer=OutboxMessage.Producer.REFERRAL_TOUCH,

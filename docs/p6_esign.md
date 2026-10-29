@@ -124,8 +124,9 @@ away (fixed words, the same link, never stored on the row).
   someone already past the stage it names stays where they are. "Send a
   document" on "is sent a document" is refused (it would never stop).
 - **Defaults**, for new practices and on the demo: sent → Proposal Given;
-  signed → Closed Won. Existing practices can add them, and a "Welcome
-  letter" email rule for Closed Won, from the stage rules' examples.
+  signed → Closed Won; and entering Closed Won drafts the Welcome letter into
+  the Outbox for approval. Existing practices can add all three from the
+  stage rules' examples.
 
 ## The welcome letter
 

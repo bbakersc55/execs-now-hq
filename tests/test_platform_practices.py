@@ -104,10 +104,13 @@ def test_a_new_practice_gets_structure_and_none_of_anyone_elses(api, platform_ow
     assert "getexecutivesnow" not in tenant.from_address + tenant.inbound_domain
     assert tenant.branding_updated_at is None and tenant.email_logo_id is None
     assert Pipeline.all_objects.filter(tenant=tenant).exists()
-    # E-signature (2026-10-29): the two document rules, and nothing else.
-    assert {(r.trigger, r.action_type, r.move_to_stage.code)
+    # E-signature (2026-10-29): the two document rules and the welcome
+    # letter on Closed Won, and nothing else.
+    assert {(r.trigger, r.action_type,
+             (r.move_to_stage or r.to_stage).code, getattr(r.email_template, "original", ""))
             for r in StageAutomation.all_objects.filter(tenant=tenant)} == {
-        ("sent", "move_stage", "proposal_given"), ("signed", "move_stage", "closed_won")}
+        ("sent", "move_stage", "proposal_given", ""), ("signed", "move_stage", "closed_won", ""),
+        ("enters", "draft_email", "closed_won", "welcome_letter")}
     assert not StrategyTemplate.all_objects.filter(tenant=tenant).exists()
     owner = Membership.all_objects.get(tenant=tenant)
     assert owner.role == "FF" and owner.user.email == NEW["owner_email"]

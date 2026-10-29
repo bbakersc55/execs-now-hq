@@ -7,7 +7,8 @@ below. The library is seeded on first sight (`seed_tenant`), so a practice
 made before e-signature gets it the first time it opens Settings → Documents.
 
 The rules ("a document is sent: move to Proposal Given"; "a document is
-signed: move to Closed Won") are seeded for new practices and the demo only
+signed: move to Closed Won"; and "enters Closed Won: draft the Welcome letter
+into the Outbox") are seeded for new practices and the demo only
 (`default_rules`). An existing practice adds them from the stage rules'
 examples.
 """
@@ -68,9 +69,10 @@ DEFAULT_RULES = (("sent", "proposal_given"), ("signed", "closed_won"))
 
 
 def default_rules(tenant) -> list:
-    """The two default rules on the sales pipeline, unless an equal one is
+    """The three default rules on the sales pipeline, unless an equal one is
     there already. For a new practice and the demo."""
-    from apps.crm.models import Pipeline, PipelineStage, StageAutomation
+    from apps.crm import template_seed
+    from apps.crm.models import EmailTemplate, Pipeline, PipelineStage, StageAutomation
 
     pipeline = Pipeline.all_objects.filter(tenant_id=tenant.pk, kind="sales").first()
     if pipeline is None:
@@ -87,4 +89,16 @@ def default_rules(tenant) -> list:
         made.append(StageAutomation.all_objects.create(
             tenant_id=tenant.pk, pipeline=pipeline, trigger=trigger,
             action_type="move_stage", move_to_stage=stage, position=position))
+    # Entering Closed Won drafts the Welcome letter into the Outbox, for
+    # approval: its terms come from the document just signed.
+    won = PipelineStage.all_objects.filter(pipeline=pipeline, code="closed_won").first()
+    template_seed.seed_tenant(tenant)
+    welcome = EmailTemplate.all_objects.filter(tenant_id=tenant.pk,
+                                               original="welcome_letter").first()
+    if won is not None and welcome is not None and not StageAutomation.all_objects.filter(
+            pipeline=pipeline, trigger="enters", to_stage=won, action_type="draft_email",
+            email_template=welcome).exists():
+        made.append(StageAutomation.all_objects.create(
+            tenant_id=tenant.pk, pipeline=pipeline, trigger="enters", to_stage=won,
+            action_type="draft_email", email_template=welcome, position=len(DEFAULT_RULES)))
     return made

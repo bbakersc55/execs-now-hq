@@ -721,7 +721,8 @@ def stage_rules(world: World) -> None:
 
     # E-signature's two defaults, as a new practice has them (2026-10-29).
     keep = {"first_call", "prospecting_quiet", "decision_quiet", "won_kickoff",
-            "partner_touches", "nurturing_quiet", "document_sent", "document_signed"}
+            "partner_touches", "nurturing_quiet", "document_sent", "document_signed",
+            "welcome_letter"}
     for pipe in (pipeline.sales_pipeline(world.tenant), pipeline.referral_pipeline(world.tenant)):
         for example in rules.examples_for(pipe):
             if example["key"] in keep:

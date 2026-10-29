@@ -396,12 +396,15 @@ def _stage_of(world, pipeline):
 def test_sending_moves_them_to_proposal_given_and_signing_to_closed_won(world, dev_outbox, client):
     with tenant_context(world["t"].pk):
         made = seed.default_rules(world["t"])
-    assert len(made) == 2 and seed.default_rules(world["t"]) == []
+    assert len(made) == 3 and seed.default_rules(world["t"]) == []
     sales = _at(world, "qualified")
     document, token = _sent(world, dev_outbox)
     assert _stage_of(world, sales) == "proposal_given"
     _sign(client, token)
     assert _stage_of(world, sales) == "closed_won"
+    # ...where the Welcome letter is drafted, with what was signed, for approval.
+    welcome = OutboxMessage.all_objects.get(producer="stage_rule", to_contact=world["dana"])
+    assert welcome.state == "pending_approval" and "Fee: $6,000 a month" in welcome.body_text
 
 
 def test_a_document_rule_never_moves_anyone_backwards(world, dev_outbox):

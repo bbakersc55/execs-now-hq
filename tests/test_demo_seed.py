@@ -224,6 +224,9 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert set(StageAutomation.objects.filter(trigger__in=("sent", "signed"))
                    .values_list("trigger", "move_to_stage__code")) == {
             ("sent", "proposal_given"), ("signed", "closed_won")}
+        assert StageAutomation.objects.filter(
+            trigger="enters", to_stage__code="closed_won", action_type="draft_email",
+            email_template__original="welcome_letter").count() == 1
         waiting = Document.objects.get(state="viewed")
         # A visitor is both sides: the demo opens the signing page for them,
         # and signing it moves Jack to Closed Won.
@@ -239,6 +242,10 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert signed.status_code == 200, signed.content
         assert ContactPipelinePosition.objects.get(
             contact=waiting.signer, pipeline__kind="sales").stage.code == "closed_won"
+        # Closed Won drafts Jack's Welcome letter, quoting the signed fee.
+        welcome = OutboxMessage.objects.get(producer="stage_rule", to_contact=waiting.signer,
+                                            subject__startswith="Welcome to")
+        assert welcome.state == "pending_approval" and "Fee: $4,500 a month" in welcome.body_text
         assert StrategySessionPrep.objects.get().state == "ready"
         live = StrategySession.objects.get(state="in_call")
         assert StrategyMapRow.objects.filter(session=live, state="proposed").count() >= 2
