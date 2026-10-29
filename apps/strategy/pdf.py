@@ -30,6 +30,7 @@ the fractional wrote in front of the prospect:
 | `alignment_observation` | §3 item 4 — the question never asked aloud |
 | `mechanics` | "notes / mechanics from experience" on a map row |
 | `investment` | §9 in its entirety, money and all |
+| `scorecard` | the KPIs the moves point at, latest reading and status (not private; optional) |
 
 The exclusion is done **when the document's content is built**, not with CSS or
 a print rule: content that is not in the context cannot leak into the file, and
@@ -132,10 +133,10 @@ def context_for(session) -> dict:
         for rating in ratings:
             rating["is_lowest"] = rating["rating"] == floor
 
-    rows = []
-    for row in (StrategyMapRow.objects.filter(session=session,
-                                              state=StrategyMapRow.State.ACCEPTED)
-                .order_by("position", "created_at")):
+    rows, accepted = [], list(
+        StrategyMapRow.objects.filter(session=session, state=StrategyMapRow.State.ACCEPTED)
+        .select_related("kpi").order_by("position", "created_at"))
+    for row in accepted:
         rows.append({
             "position": len(rows) + 1,
             "header": row.header, "statement": row.statement,
@@ -195,6 +196,8 @@ def context_for(session) -> dict:
         "focused_cards": focused_cards(rows),
         "mirror_goal_points": sentences(session.mirror_goal),
         "mirror_unlocks_points": sentences(session.mirror_unlocks),
+        "scorecard": scorecard_of(session, accepted) if flags["scorecard"] else [],
+        "scorecard_heading": _scorecard_word(session.tenant),
     }
     # A v3 session (P3) prints on the same two pages, with the template's own
     # header chips, chart heading and scale, and path copy.
@@ -204,6 +207,54 @@ def context_for(session) -> dict:
         context.update(v3.pdf_context(session, context, sections, merge))
     context.update(_design(session, context))
     return context
+
+
+def _scorecard_word(tenant) -> str:
+    from apps.tenancy import words
+
+    return words.of(tenant).Scorecard
+
+
+def scorecard_of(session, accepted) -> list:
+    """The optional Scorecard section: each live KPI the accepted moves point
+    at, once, with the moves that point at it and its latest reading and
+    status. Read as the practice owner reads the company's scorecard, so a
+    per-person KPI is its total and never anyone's row. Empty without a
+    company, a KPI of that company, or a practice owner to read as."""
+    from apps.scorecard import board, ties
+    from apps.tenancy.models import Membership, Role
+
+    if not session.company_id:
+        return []
+    moves: dict = {}
+    for row in accepted:
+        kpi = row.kpi
+        if kpi is None or kpi.archived_at is not None \
+                or kpi.scorecard.company_id != session.company_id:
+            continue
+        name = (row.header or "").strip() or (row.bottleneck or "").strip()
+        moves.setdefault(kpi.pk, []).append(name)
+    owner = Membership.all_objects.filter(tenant_id=session.tenant_id, role=Role.FF,
+                                          revoked_at__isnull=True).first()
+    if not moves or owner is None:
+        return []
+    reader = ties.reader_for_membership(owner, session.company)
+    today = board.today_for(session.tenant)
+    kpis = {k.pk: k for k in ties._kpi_query().filter(pk__in=moves)}
+    tiles = ties.tiles_for(reader, list(kpis.values()), today)
+    out = []
+    for pk, names in moves.items():
+        kpi, tile = kpis.get(pk), tiles.get(pk)
+        if kpi is None or tile is None:
+            continue
+        found = ties.latest(kpi, tile, today)
+        out.append({"name": kpi.name, "moves": [n for n in names if n],
+                    "value": found["value_text"] if found else "No reading yet",
+                    "period": found["period"] if found else "",
+                    "target": found["target_text"] if found else "",
+                    "status": found["status"] or "" if found else "",
+                    "status_label": found["status_label"] if found else ""})
+    return out
 
 
 FONTS = Path(__file__).resolve().parent / "fonts"
@@ -283,7 +334,8 @@ def _design(session, context) -> dict:
         {"header": (row.get("header") or "").strip() or row["bottleneck"],
          "note": row["mechanics_note"]}
         for row in context.get("map_rows") or [] if row.get("mechanics_note")]
-    extra = bool(context.get("custom_sections") or context.get("money") or mechanics)
+    extra = bool(context.get("custom_sections") or context.get("money") or mechanics
+                 or context.get("scorecard"))
     from apps.tenancy.contrast import text_on
 
     return {

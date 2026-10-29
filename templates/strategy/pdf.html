@@ -296,7 +296,13 @@
         {% for item in mechanics_notes %}<tr><td class="q">{{ item.header }}</td><td>{{ item.note }}</td></tr>{% endfor %}
       </table>
     </div>
-  {% endif %}
+  {% endif %}{% if scorecard %}
+    <div class="part">
+      <div class="title"><div class="eyebrow">The map</div><h2>{{ scorecard_heading }}</h2></div>
+      <table class="extra">
+        {% for item in scorecard %}<tr><td class="q">{{ item.name }}{% if item.moves %}<br><i>{{ item.moves|join:"; " }}</i>{% endif %}</td><td>{{ item.value }}{% if item.period %}, {{ item.period }}{% endif %}{% if item.target %} · {{ item.target }}{% endif %}{% if item.status_label %} · <b>{{ item.status_label }}</b>{% endif %}</td></tr>{% endfor %}
+      </table>
+    </div>{% endif %}
   {% if money %}
     <div class="part">
       <div class="title"><div class="eyebrow">Scope</div><h2>Scope and investment</h2></div>

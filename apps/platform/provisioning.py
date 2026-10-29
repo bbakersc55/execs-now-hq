@@ -2,8 +2,9 @@
 
 `provision_practice` gives a new practice its structure and none of anybody
 else's data: default pipelines and stages, digests held, no stage rules, no
-strategy template, the AI budget and cap the owner chose, P1's neutral brand,
-and never Executives Now's addresses.
+strategy template, a starter "My practice" scorecard (six KPIs "From this
+app"), the AI budget and cap the owner chose, P1's neutral brand, and never
+Executives Now's addresses.
 """
 
 from __future__ import annotations
@@ -105,6 +106,9 @@ def provision_practice(*, legal_name: str, display_name: str, domain: str,
             payload={"display_name": display_name, "domain": domain,
                      "owner_email": owner_email, "by": "platform owner"})
         ensure_for(tenant)
+        from apps.scorecard import practice
+
+        practice.make_starter(tenant, actor)
     return tenant
 
 

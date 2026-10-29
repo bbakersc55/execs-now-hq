@@ -69,6 +69,48 @@ def practice_company(tenant):
     return Company.all_objects.create(tenant=tenant, name=tenant.name, is_practice=True)
 
 
+#: A new practice's starter "My practice" (owner, 2026-10-28): six KPIs on
+#: "From this app", no targets; the money two are the owner's alone to see.
+STARTER = (
+    ("New leads", "new_leads", {"kind": "count", "cadence": "weekly", "rollup": "sum",
+                                "tile": "bars"}),
+    ("Proposals given", "proposals_given", {"kind": "count", "cadence": "weekly",
+                                            "rollup": "sum", "tile": "bars"}),
+    ("Won", "won", {"kind": "count", "cadence": "monthly", "rollup": "sum", "tile": "bars"}),
+    ("Invoices overdue", "invoices_overdue", {"kind": "count", "cadence": "weekly",
+                                              "rollup": "last", "direction": "lower"}),
+    ("Cash on hand", "cash_on_hand", {"kind": "money", "cadence": "weekly", "rollup": "last",
+                                      "tile": "line"}),
+    ("Tasks overdue", "tasks_overdue", {"kind": "count", "cadence": "weekly",
+                                        "rollup": "last", "direction": "lower"}),
+)
+
+
+def make_starter(tenant, actor) -> list:
+    """The starter scorecard on a practice that has none: its first page and
+    the six KPIs, each fed "From this app". The worker's daily run reads them."""
+    from apps.tenancy.context import tenant_context
+
+    from . import setup
+    from .models import Kpi, KpiAppFeed, Scorecard
+
+    with tenant_context(tenant.pk):
+        company = practice_company(tenant)
+        if Scorecard.objects.filter(company=company).exists():
+            return []
+        scorecard = setup.ensure(company, actor)
+        page = scorecard.pages.get()
+        made = []
+        for name, measure, fields in STARTER:
+            kpi = setup.create_kpi(scorecard, {"name": name, "page": str(page.pk), **fields},
+                                   actor)
+            KpiAppFeed.objects.create(tenant_id=tenant.pk, kpi=kpi, measure=measure,
+                                      created_by=actor)
+            Kpi.objects.filter(pk=kpi.pk).update(feed=Kpi.Feed.APP)
+            made.append(kpi)
+        return made
+
+
 def is_money(measure) -> bool:
     return MEASURES.get(measure, ("", "", False))[2]
 

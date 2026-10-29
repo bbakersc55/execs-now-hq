@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -155,6 +155,27 @@ describe("the scorecard (M5 part 1)", () => {
     expect(within(meeting).getByLabelText("Cycle pages")).toBeInTheDocument();
     await user.click(within(meeting).getByRole("button", { name: "Exit" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("cycles the meeting view's pages every 30 seconds when asked", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({ "GET /api/scorecard/": BOARD });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+    await screen.findByRole("region", { name: "Occupancy" });
+    await user.click(screen.getByRole("button", { name: "Meeting" }));
+    const meeting = screen.getByRole("dialog", { name: "Scorecard, meeting view" });
+    const toP2 = () => fetchMock.calls.filter((c) => c.url.includes("page=p2")).length;
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(within(meeting).getByLabelText("Cycle pages"));
+      await act(async () => { vi.advanceTimersByTime(29_999); });
+      expect(toP2()).toBe(0);
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(toP2()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says a missing reading instead of drawing a zero", async () => {

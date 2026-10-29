@@ -144,6 +144,15 @@ class _Writer:
             self.heading("Notes from experience")
             self.table(["", ""], [[item["header"], item["note"]]
                                   for item in c["mechanics_notes"]], [2.6, 3.9])
+        if c.get("scorecard"):
+            self.heading(c["scorecard_heading"])
+            self.table(["", ""], [[item["name"] + (f" ({'; '.join(item['moves'])})"
+                                                    if item["moves"] else ""),
+                                   " · ".join(x for x in (
+                                       ", ".join(x for x in (item["value"], item["period"])
+                                                 if x),
+                                       item["target"], item["status_label"]) if x)]
+                                  for item in c["scorecard"]], [2.6, 3.9])
         if c["money"]:
             self.heading("Scope and investment")
             self.table(["", "", ""],

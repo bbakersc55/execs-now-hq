@@ -54,17 +54,22 @@ class ResponseSchema(models.TextChoices):
 
 # FR-4.24 — the five things that never reach the prospect's PDF unless a person
 # deliberately turns them on, one at a time. All false at creation (AC-4.9).
+# The sixth, `scorecard` (2026-10-28), is not private but optional: the KPIs
+# the accepted moves point at, with their latest reading and status.
 PDF_FLAG_KEYS = (
     "fractional_notes",          # the private note beside any answer
     "mechanics",                 # strategy_map_row.mechanics_note
     "diagnostic_observations",   # §4 observations written during the call
     "alignment_observation",     # §3 item 4 — never asked aloud (FR-4.17)
     "investment",                # all of §9 (also hidden from a VA, AC-4.13)
+    "scorecard",                 # the moves' KPIs, read as the practice reads them
 )
 
 
 def default_pdf_include_flags() -> dict:
-    return {key: False for key in PDF_FLAG_KEYS}
+    # The five private ones, as a session has always been made; an unstored
+    # `scorecard` reads as off (`pdf.flags_of`), so nothing made before it changes.
+    return {key: False for key in PDF_FLAG_KEYS if key != "scorecard"}
 
 
 class StrategyTemplate(TenantScopedModel):

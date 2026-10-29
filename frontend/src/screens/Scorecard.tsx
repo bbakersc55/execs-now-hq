@@ -457,6 +457,9 @@ function targetCell(t: Tile) {
   return `${t.direction === "lower" ? "≤ " : ""}${fmt(t, last, { bare: true })}`;
 }
 
+/** The Meeting view's "Cycle pages": the next page every 30 seconds. */
+export const CYCLE_MS = 30_000;
+
 /** Full screen, larger type, for a TV or a shared screen; cycles the pages
  *  when asked. */
 function Meeting({ b, onExit, onPage }: { b: Board; onExit: () => void; onPage: (id: string) => void }) {
@@ -478,7 +481,7 @@ function Meeting({ b, onExit, onPage }: { b: Board; onExit: () => void; onPage: 
     const timer = setInterval(() => {
       const at = b.pages.findIndex((p) => p.id === b.page);
       onPage(b.pages[(at + 1) % b.pages.length].id);
-    }, 20000);
+    }, CYCLE_MS);
     return () => clearInterval(timer);
   }, [cycle, b.page, b.pages, onPage]);
   const name = b.pages.find((p) => p.id === b.page)?.name ?? "";

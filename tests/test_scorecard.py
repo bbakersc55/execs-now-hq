@@ -477,6 +477,24 @@ def test_only_the_practice_owner_and_associates_set_a_scorecard_up(sc):
 
 
 @pytest.mark.django_db
+def test_a_new_kpis_behind_band_defaults_to_ten(sc):
+    ff = sc["api"].as_(sc["practice"]["ff"])
+    body = {"company": str(sc["company"].pk), "kind": "count",
+            "page": str(sc["pages"]["weekly"].pk)}
+    unsaid = post(ff, f"{B}kpis/", {**body, "name": "Unsaid"})
+    blank = post(ff, f"{B}kpis/", {**body, "name": "Blank", "behind_band_pct": ""})
+    said = post(ff, f"{B}kpis/", {**body, "name": "Said", "behind_band_pct": "25"})
+    assert {r.status_code for r in (unsaid, blank, said)} == {201}
+    bands = dict(Kpi.all_objects.filter(name__in=["Unsaid", "Blank", "Said"])
+                 .values_list("name", "behind_band_pct"))
+    assert bands == {"Unsaid": Decimal(10), "Blank": Decimal(10), "Said": Decimal(25)}
+    with tenant_context(sc["tenant"].pk):
+        starter = setup.create_starter(sc["company"], "close_rate", sc["practice"]["ff"].user)
+    assert starter.behind_band_pct == Decimal(10)
+    assert Kpi._meta.get_field("behind_band_pct").default == 10
+
+
+@pytest.mark.django_db
 def test_setting_up_is_audited_and_shows_in_activity_in_the_practices_words(sc):
     from apps.tenancy import words
 

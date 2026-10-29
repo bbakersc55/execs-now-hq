@@ -1,9 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-28 UTC**, after Release 26. **The next session starts at
-"2026-10-28: Release 26, the scorecard's feeds and targets" just below**,
-then "2026-10-27, late: Release 25, and where things stand", which sums up
+2026-10-29 UTC**, after Release 27. **The next session starts at
+"2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets and
+Besty" just below**, then "2026-10-27, late: Release 25, and where things stand", which sums up
 everything from Release 23 to 25; the dated sections after it have the
 detail. Then "2026-10-26: Release 23, and M5 part 5", "2026-10-24: catch-up
 reach, and M5 part 3", "2026-10-23: Release 22", "2026-10-22: Release 21,
@@ -14,13 +14,42 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-10-28: Release 26, the scorecard's feeds and targets
+## 2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets and Besty
 
-- **Release 26 is live**: `main` at `606e0aa`, three additive migrations
-  (`scorecard 0008`–`0010`) applied by the runbook in the waiting worker,
-  all OK; no new scheduled job; web came up by itself; push to worker
-  running 4 min 51 s. Runbook, "Observed at Release 26". `dev` is ahead of
-  `main` only by this write-up.
+- **Release 27 is live**: `main` at `f798d93`, one additive migration
+  (`scorecard 0011`, the two Besty tables) applied by the runbook in the
+  waiting worker, OK; no new scheduled job (Besty feeds run in the existing
+  feed job); web came up by itself; push to worker running 1 min 45 s.
+  Runbook, "Observed at Release 27". `dev` is ahead of `main` by this
+  write-up and the four small items below.
+- **Release 26 is live** before it: `main` at `606e0aa`, three additive
+  migrations (`scorecard 0008`–`0010`) applied by the runbook in the waiting
+  worker, all OK; no new scheduled job; web came up by itself; push to
+  worker running 4 min 51 s. Runbook, "Observed at Release 26".
+- **The Besty feed** (`f798d93`, M5 part 6, `docs/besty_feed.md`): a
+  company's Besty connection on its company page (token encrypted on that
+  company's row, Test connection = initialize and the tool list), and a KPI
+  feed "Besty" with ops tasks (open, overdue, completed, days to close, work
+  time; by team member or total), upsell revenue and count by type, guest
+  response time (everyone, people, autopilot, or one team member), reviews
+  and average rating, owner messages and owners contacted per team member,
+  and calls answered. Daily on the worker; the open period read as it goes;
+  Besty's long answers come as Parquet files, so every measure asks Besty to
+  count and add up instead, and nothing beyond readings is stored. **No
+  company is connected on production yet**; a live token answers "Connected:
+  124 read-only tools."
+- **On `dev` since, not released** (no migrations): a new practice starts
+  with a "My practice" scorecard of six KPIs on "From this app" (new leads,
+  proposals given, won, invoices overdue, cash on hand, tasks overdue; no
+  targets; `practice.make_starter`, called by provisioning; existing
+  practices are left alone); the Meeting view's "Cycle pages" turns every
+  30 seconds (it was 20); the strategy PDF has a sixth toggle, "the
+  Scorecard section", listing the KPIs the accepted moves point at with
+  their latest reading and status, read as the practice owner reads that
+  company's scorecard (a per-person KPI as its total), on page three and in
+  the Word copy; a new KPI's Behind band was already 10 on every path, now
+  pinned by a test. The leftover "Contoso (check)" practice is deleted from
+  the laptop (`execsnowhq_local`), with its one sign-in.
 - **Feeds read the open period so far** (`fdaa764`): Sheet, Track, HubSpot
   and app feeds each have "Also read the current period as it goes", on by
   default for a Last or Average KPI and off for a Sum. The open period gets

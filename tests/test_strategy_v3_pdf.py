@@ -323,3 +323,73 @@ def test_prep_never_reaches_the_prospect(session, ff, api, fake_claude, client):
                     emails.default_pdf_cover(session)):
         assert "MARKER-PREP-NOTES" not in surface
         assert "night supervisors" not in surface and "Their site says" not in surface
+
+
+@pytest.mark.django_db
+def test_the_optional_scorecard_section_lists_the_moves_kpis_with_latest_and_status(
+        session, ff, api):
+    import io
+    import zipfile
+
+    from django.utils import timezone
+
+    from apps.crm.models import Company
+    from apps.scorecard import board, periods as P, setup
+    from apps.scorecard.models import KpiReading
+    from apps.strategy import docx_export
+    from apps.tenancy.context import tenant_context
+
+    run(session)
+    session.company = session.contact.company
+    session.save(update_fields=["company"])
+    rows = list(StrategyMapRow.objects.filter(session=session).order_by("position"))
+    other = Company.all_objects.create(tenant=session.tenant, name="Someone Else Co")
+    today = board.today_for(session.tenant)
+    week = P.previous_start(P.start_of(today, P.WEEKLY, "monday"), P.WEEKLY, "monday")
+    with tenant_context(session.tenant_id):
+        card = setup.ensure(session.company, ff.user)
+        page = str(card.pages.get().pk)
+
+        def kpi(name, on=card, **extra):
+            return setup.create_kpi(on, {"name": name, "kind": "count", "cadence": "weekly",
+                                         "rollup": "sum", "target_value": 10,
+                                         "page": page if on is card
+                                         else str(on.pages.get().pk), **extra}, ff.user)
+
+        jobs = kpi("Jobs priced from the book")
+        idle = kpi("Schedules published")
+        gone = kpi("Archived one")
+        theirs = kpi("Not this company's", on=setup.ensure(other, ff.user))
+        KpiReading.objects.create(tenant=session.tenant, kpi=jobs, period_start=week, value=12,
+                                  entered_by=ff.user, entered_at=timezone.now())
+        gone.archived_at = timezone.now()
+        gone.save(update_fields=["archived_at"])
+    for row, k in ((rows[0], jobs), (rows[1], idle), (rows[2], jobs)):
+        row.kpi = k
+        row.save(update_fields=["kpi"])
+    StrategyMapRow.objects.create(tenant=session.tenant, session=session, position=9,
+                                  header="Old", bottleneck="x", kpi=gone,
+                                  state=StrategyMapRow.State.ACCEPTED)
+    StrategyMapRow.objects.create(tenant=session.tenant, session=session, position=10,
+                                  header="Theirs", bottleneck="y", kpi=theirs,
+                                  state=StrategyMapRow.State.ACCEPTED)
+
+    off = pdf_service.render_html(session)
+    assert "Jobs priced from the book" not in off and pdf_service.page_count(session) == 2
+
+    assert patch(api, ff, base(session) + "pdf-flags/", {"scorecard": True}).status_code == 200
+    session.refresh_from_db()
+    items = pdf_service.context_for(session)["scorecard"]
+    assert [i["name"] for i in items] == ["Jobs priced from the book", "Schedules published"]
+    jobs_item = items[0]
+    assert jobs_item["moves"] == ["A Weekly Scorecard", "A Price Book"]
+    assert (jobs_item["value"], jobs_item["status_label"]) == ("12", "On track")
+    assert jobs_item["target"] == "target 10" and jobs_item["period"]
+    assert (items[1]["value"], items[1]["status_label"]) == ("No reading yet", "")
+    html = pdf_service.render_html(session)
+    assert "<h2>Scorecard</h2>" in html and "Jobs priced from the book" in html
+    assert "Archived one" not in html and "Not this company" not in html
+    assert pdf_service.page_count(session) == 3
+    xml = zipfile.ZipFile(io.BytesIO(docx_export.render_docx(session))).read(
+        "word/document.xml").decode()
+    assert "Scorecard" in xml and "Jobs priced from the book" in xml and "On track" in xml

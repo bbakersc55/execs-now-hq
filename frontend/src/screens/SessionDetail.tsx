@@ -56,6 +56,7 @@ const FLAG_LABEL: Record<string, string> = {
   alignment_observation: "The alignment observation",
   mechanics: "Notes / mechanics from experience",
   investment: "Scope and investment",
+  scorecard: "the Scorecard section (the moves' KPIs, latest reading and status)",
 };
 
 /**

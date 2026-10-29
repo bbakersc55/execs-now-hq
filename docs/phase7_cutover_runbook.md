@@ -624,6 +624,20 @@ running: 4 min 51 s.** From this release, an existing feed on a Last or
 Average KPI reads the open period "so far" at its next refresh (the new
 default); a feed's own screen turns it off.
 
+**Observed at Release 27 (2026-10-29 UTC, 1 migration, additive:
+`scorecard 0011`, the Besty connection and feed tables; one commit, the
+Besty feed):** R1: the owner ran the backup by hand with the run-now
+mutation; `execsnowhq_prod_20261029_021633.sql.gz`, 4.3 MB, 02:16:38. R2:
+`main` fast-forwarded `c23dabf..f798d93`, pushed 02:19:34. R3: the worker
+`WAITING` 02:20:38, listing exactly `scorecard.0011_besty`. **R4 run by
+Claude**, 02:20:59–21:06, OK (1 min 25 s after the push). R5: `migrations
+current` 02:21:15, cluster running 02:21:19. R5b: not needed, Besty feeds
+run in the existing feed job. R6: nothing to do: web's deployment
+(`5268462a`) SUCCESS by itself by 02:21:28, `/healthz` 200, and the new
+`/api/scorecard/besty/connection/` answering 403 signed out (404 before).
+**Push to worker running: 1 min 45 s.** No company has a Besty connection
+until someone enters a token on its company page.
+
 ---
 
 ## Part A — the owner's steps, in order

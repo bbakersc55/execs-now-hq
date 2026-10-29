@@ -114,6 +114,24 @@ def test_a_new_practice_gets_structure_and_none_of_anyone_elses(api, platform_ow
 
 
 @pytest.mark.django_db
+def test_a_new_practice_starts_with_its_my_practice_scorecard(platform_owner):
+    from apps.scorecard.models import Kpi, KpiAppFeed
+
+    tenant = provisioning.provision_practice(**NEW, actor=platform_owner.user)
+    kpis = list(Kpi.all_objects.filter(tenant=tenant).order_by("position"))
+    assert [k.name for k in kpis] == ["New leads", "Proposals given", "Won",
+                                      "Invoices overdue", "Cash on hand", "Tasks overdue"]
+    assert {k.scorecard.company.is_practice for k in kpis} == {True}
+    assert {k.feed for k in kpis} == {"app"} and {k.behind_band_pct for k in kpis} == {10}
+    feeds = {f.kpi.name: f.measure for f in KpiAppFeed.all_objects.filter(tenant=tenant)}
+    assert feeds == {"New leads": "new_leads", "Proposals given": "proposals_given",
+                     "Won": "won", "Invoices overdue": "invoices_overdue",
+                     "Cash on hand": "cash_on_hand", "Tasks overdue": "tasks_overdue"}
+    assert not Kpi.all_objects.exclude(tenant=tenant).filter(name="Proposals given",
+                                                              feed="app").exists()
+
+
+@pytest.mark.django_db
 def test_an_executives_now_domain_practice_uses_the_internal_client(platform_owner):
     tenant = provisioning.provision_practice(**{**NEW, "domain": "getexecutivesnow.com"},
                                              actor=platform_owner.user)

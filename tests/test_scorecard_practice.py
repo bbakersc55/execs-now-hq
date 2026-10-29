@@ -293,3 +293,19 @@ def test_one_practices_measures_read_nothing_of_anothers(books, api):
     assert b.get(f"/api/scorecard/?company={practice.practice_company(books['t']).pk}"
                  ).status_code == 404
     assert feeds.run_due_app(other.pk, date(2026, 11, 5)) == {"ran": 0, "failed": 0}
+
+
+def test_the_starter_is_made_once_and_its_feeds_fit_their_kpis(seeded_tenant, ff):
+    made = practice.make_starter(seeded_tenant, ff.user)
+    assert len(made) == 6
+    for kpi in made:
+        practice.check_fits(kpi, kpi.app_feed.measure, role="FF")
+    assert practice.make_starter(seeded_tenant, ff.user) == []
+    assert Kpi.all_objects.filter(tenant=seeded_tenant).count() == 6
+
+
+def test_the_starter_is_not_made_over_a_scorecard_already_begun(seeded_tenant, ff):
+    with tenant_context(seeded_tenant.pk):
+        setup.ensure(practice.practice_company(seeded_tenant), ff.user)
+    assert practice.make_starter(seeded_tenant, ff.user) == []
+    assert not Kpi.all_objects.filter(tenant=seeded_tenant).exists()
