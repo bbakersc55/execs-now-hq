@@ -506,6 +506,12 @@ def _scorecard_count(model: str) -> int:
     return getattr(models, model).objects.count()
 
 
+def _documents_in(state) -> int:
+    from apps.esign.models import Document
+
+    return Document.objects.filter(state=state).count()
+
+
 def counts(world: World) -> dict:
     """What was seeded, counted from the database rather than remembered."""
     from apps.billing.models import ClientInvoice, ClientInvoiceSchedule, ClientPayment
@@ -573,6 +579,7 @@ def counts(world: World) -> dict:
         "commitments overdue": Commitment.objects.filter(
             state="open", due_date__lt=today).count(),
         "strategy templates": StrategyTemplate.objects.count(),
+        "documents for signature": {s: _documents_in(s) for s in ("viewed", "complete")},
         "strategy sessions": {s: StrategySession.objects.filter(state=s).count()
                               for s in ("draft", "in_call", "complete", "converted")},
         "meeting proposals": {s: MeetingProposal.objects.filter(state=s).count()
@@ -712,8 +719,9 @@ def stage_rules(world: World) -> None:
     from apps.crm.models import ContactPipelinePosition, PipelineNotice, StageAutomation
     from apps.crm.services import pipeline, stage_rules as rules
 
+    # E-signature's two defaults, as a new practice has them (2026-10-29).
     keep = {"first_call", "prospecting_quiet", "decision_quiet", "won_kickoff",
-            "partner_touches", "nurturing_quiet"}
+            "partner_touches", "nurturing_quiet", "document_sent", "document_signed"}
     for pipe in (pipeline.sales_pipeline(world.tenant), pipeline.referral_pipeline(world.tenant)):
         for example in rules.examples_for(pipe):
             if example["key"] in keep:

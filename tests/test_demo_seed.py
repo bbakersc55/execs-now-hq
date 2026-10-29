@@ -57,8 +57,8 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
     from apps.billing.models import ClientInvoice, ClientInvoiceSchedule
     from apps.crm.models import (
         Campaign, CampaignRecipient, Company, Contact, ContactEmail, EmailSuppression,
-        Enrollment, GmailConnection, OutboxMessage, PipelineStage, StageChange, Task,
-        UnmatchedInbound,
+        ContactPipelinePosition, Enrollment, GmailConnection, OutboxMessage, PipelineStage,
+        StageChange, Task, UnmatchedInbound,
     )
     from apps.crm.services import transport
     from apps.finance import payees, reports
@@ -213,6 +213,32 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         review.pdf_include_flags = {**review.pdf_include_flags, "scorecard": True}
         assert {k["name"] for k in strategy_pdf.context_for(review)["scorecard"]} \
             == {"Overtime hours", "On-time delivery"}
+        # E-signature (2026-10-29): Pied Piper's letter complete, Jack's
+        # proposal opened and waiting, and the two default rules.
+        from apps.crm.models import StageAutomation
+        from apps.esign import services as esign
+        from apps.esign.models import Document
+
+        assert {(d.company.name, d.state) for d in Document.objects.all()} == {
+            ("Pied Piper Compression", "complete"), ("Sheinhardt Wig Company", "viewed")}
+        assert set(StageAutomation.objects.filter(trigger__in=("sent", "signed"))
+                   .values_list("trigger", "move_to_stage__code")) == {
+            ("sent", "proposal_given"), ("signed", "closed_won")}
+        waiting = Document.objects.get(state="viewed")
+        # A visitor is both sides: the demo opens the signing page for them,
+        # and signing it moves Jack to Closed Won.
+        link = esign.demo_link(waiting)
+        token = link.rsplit("/sign/", 1)[1]
+        from django.test import Client
+
+        page = Client()
+        assert page.get(f"/api/sign/{token}").status_code == 200
+        signed = page.post(f"/api/sign/{token}", {"agreed": True, "method": "typed",
+                                                 "typed": "Jack Donaghy"},
+                           content_type="application/json")
+        assert signed.status_code == 200, signed.content
+        assert ContactPipelinePosition.objects.get(
+            contact=waiting.signer, pipeline__kind="sales").stage.code == "closed_won"
         assert StrategySessionPrep.objects.get().state == "ready"
         live = StrategySession.objects.get(state="in_call")
         assert StrategyMapRow.objects.filter(session=live, state="proposed").count() >= 2

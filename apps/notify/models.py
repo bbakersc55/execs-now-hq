@@ -22,6 +22,7 @@ class Kind(models.TextChoices):
     CLIENT_MESSAGE = "client_message", "A message on work you share with the client"
     READING = "reading", "A scorecard reading waiting on you"
     MENTION = "mention", "Someone mentions you in a comment"
+    DOCUMENT = "document", "A document you sent for signature"
 
 
 class Notice(TenantScopedModel):

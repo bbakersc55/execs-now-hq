@@ -13,3 +13,12 @@ works with no internet at all.
 
 One file: the variable face covers every weight the design uses (400–700)
 without a request per weight.
+
+# Dancing Script, vendored
+
+`DancingScript-Medium.ttf` — Dancing Script (SIL Open Font License 1.1,
+`DancingScript-OFL.txt` beside it), from https://github.com/google/fonts
+(`ofl/dancingscript`), made a static weight-500 instance with fontTools.
+The typed signature on the signing page and in the countersign panel
+(2026-10-29). The same file is embedded in the signed PDF
+(`apps/esign/fonts/`), so what a signer sees is what the page records.

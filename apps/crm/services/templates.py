@@ -53,6 +53,13 @@ FIELDS = (
     ("OtherHimHer", "Him, her or them, for who they're meeting (introductions)"),
     ("OtherHisHer", "His, her or their, for who they're meeting (introductions)"),
     ("OtherBlurb", "How you'd introduce who they're meeting (introductions)"),
+    # E-signature (owner, 2026-10-29): what the company's latest signed
+    # document says, and its goals, for the welcome letter.
+    ("Scope", "The scope in their latest signed document"),
+    ("Fee", "The fee in their latest signed document"),
+    ("Term", "The term in their latest signed document"),
+    ("StartDate", "The start date in their latest signed document"),
+    ("Goals", "Their company's goals, one a line"),
 )
 NAMES = tuple(name for name, _ in FIELDS)
 _FIELD = re.compile(r"\{([A-Za-z][A-Za-z ]*)\}")
@@ -70,6 +77,10 @@ ONLY_IN = {
     "OtherSpecialties": "only in introductions", "IntroNote": "only in introductions",
     "OtherHeShe": "only in introductions", "OtherHimHer": "only in introductions",
     "OtherHisHer": "only in introductions", "OtherBlurb": "only in introductions",
+    "Scope": "only once their company has signed a document",
+    "Fee": "only once their company has signed a document",
+    "Term": "only once their company has signed a document",
+    "StartDate": "only once their company has signed a document",
 }
 
 #: What a preview shows when no one is chosen: a visible placeholder.
@@ -86,6 +97,8 @@ PLACEHOLDERS = {
     "Specialties": "[Their specialties]", "Blurb": "[How you'd introduce them]",
     "OtherHeShe": "[he/she/they]", "OtherHimHer": "[him/her/them]",
     "OtherHisHer": "[his/her/their]", "OtherBlurb": "[How you'd introduce who they're meeting]",
+    "Scope": "[The signed scope]", "Fee": "[The signed fee]", "Term": "[The signed term]",
+    "StartDate": "[The signed start date]", "Goals": "[Their goals]",
 }
 
 #: A contact's pronouns as (HeShe, HimHer, HisHer); unset reads as they.
@@ -136,8 +149,15 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
         "Specialties": ", ".join(contact.specialties or []) if contact else "",
         "Blurb": (contact.intro_blurb or "").strip() if contact else "",
         **pronoun_values(None, "Other"), "OtherBlurb": "",
+        **_signed_values(contact),
         **extra,
     }
+
+
+def _signed_values(contact) -> dict:
+    from apps.esign.services import welcome_values
+
+    return welcome_values(contact)
 
 
 #: The fields whose whole line goes when they have nothing to say ("{PracticeNews}",
@@ -145,7 +165,7 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
 #: field with no value reads as blank where it stands, and its line stays.
 LINE_FIELDS = ("PracticeNews", "FeeTerms", "FlyerNote", "PayLink", "OtherCompany",
                "OtherDiscipline", "OtherSpecialties", "IntroNote", "Specialties", "Blurb",
-               "OtherBlurb")
+               "OtherBlurb", "Scope", "Fee", "Term", "StartDate", "Goals")
 
 
 def render(text: str, values: dict, *, fallback: str = DEFAULT_FALLBACK,

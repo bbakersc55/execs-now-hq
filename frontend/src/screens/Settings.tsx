@@ -25,6 +25,7 @@ export const SETTINGS: { to: string; label: string; roles: Role[] }[] = [
   // feedback, 2026-10-05). The address stays /staff so links keep working.
   { to: "/staff", label: "Team", roles: ["FF"] },
   { to: "/settings/templates", label: "Email templates", roles: ["FF"] },
+  { to: "/settings/documents", label: "Documents", roles: ["FF"] },
   { to: "/rules", label: "Stage rules", roles: ["FF"] },
   { to: "/referrals", label: "Referral settings", roles: ["FF"] },
   { to: "/settings/digests", label: "Digests", roles: ["FF"] },

@@ -61,7 +61,29 @@ function refusal(response: Response, data: unknown): string {
   return `${response.status} ${response.statusText}`;
 }
 
+/** A file the server makes on asking (a document's preview PDF): its bytes,
+ *  or the server's own words as the error. */
+async function blob(path: string, body?: unknown): Promise<Blob> {
+  const response = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    credentials: "same-origin",
+    headers: {
+      "X-CSRFToken": csrfToken(),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let data: unknown = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+    throw Object.assign(new Error(refusal(response, data)), { status: response.status, data });
+  }
+  return response.blob();
+}
+
 export const api = {
+  blob,
   get: <T,>(path: string) => request<T>("GET", path),
   post: <T,>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T,>(path: string, body?: unknown) => request<T>("PATCH", path, body),
@@ -1745,6 +1767,16 @@ export const TEMPLATE_FIELDS: { field: string; label: string; only?: string }[] 
     only: "only in a new partner's first email" },
   { field: "{PayLink}", label: "The invoice's payment link (invoice emails only)",
     only: "only in invoice emails" },
+  // E-signature (2026-10-29): the company's latest signed document, and its goals.
+  { field: "{Scope}", label: "The scope in their latest signed document",
+    only: "only once their company has signed a document" },
+  { field: "{Fee}", label: "The fee in their latest signed document",
+    only: "only once their company has signed a document" },
+  { field: "{Term}", label: "The term in their latest signed document",
+    only: "only once their company has signed a document" },
+  { field: "{StartDate}", label: "The start date in their latest signed document",
+    only: "only once their company has signed a document" },
+  { field: "{Goals}", label: "Their company's goals, one a line" },
 ];
 
 /** The fields a campaign can use: all but the two that belong to one email. */
@@ -2739,3 +2771,60 @@ export interface Introduction {
   outcome: "" | "no_reply" | "met" | "client" | "not_fit"; outcome_label: string;
   draft_state: string;
 }
+
+
+// ------------------------------------------------------------- e-signature
+
+/** apps/esign/views.py — Settings → Documents. */
+export interface DocumentTemplate {
+  id: string; name: string; title: string;
+  /** Plain text with merge fields; a line starting "# " is a heading. */
+  body: string;
+  original: string; is_original: boolean; changed: boolean; used_for: string[];
+  /** Which of Scope, Fee, Term and StartDate it asks for. */
+  fields_used: string[];
+  updated_at: string;
+}
+
+export type DocumentState = "draft" | "sent" | "viewed" | "signed" | "declined"
+  | "countersigned" | "complete" | "void" | "expired";
+
+/** A document on the company card. An assistant gets only the first part. */
+export interface SignDocument {
+  id: string; title: string; state: DocumentState; state_label: string;
+  signer: { id: string; name: string; email: string };
+  sent_at: string | null; viewed_at: string | null; signed_at: string | null;
+  declined_at: string | null; countersigned_at: string | null; completed_at: string | null;
+  voided_at: string | null; expires_at: string | null; created_at: string | null;
+  source?: "template" | "upload"; template?: string | null; template_name?: string;
+  fields?: Record<string, string>; fields_used?: string[];
+  decline_reason?: string; void_reason?: string; countersigned_by?: string;
+  request?: { id: string; state: string; state_label: string; from: string } | null;
+  pdf_sha256?: string; final_sha256?: string;
+  has_signed_pdf?: boolean; has_final_pdf?: boolean; from_rule?: boolean;
+  /** The line the countersigner ticks, as it is kept. */
+  countersign_consent?: string;
+  can?: { send: boolean; refill: boolean; countersign: boolean; void: boolean };
+  /** The portal's list only. */
+  has_pdf?: boolean;
+}
+
+/** GET /api/sign/<token> — the public signing page. */
+export interface SigningPage {
+  practice: string; title: string; signer_name: string; signer_email: string;
+  state: DocumentState; expires_at: string | null; sha256: string;
+  consent_version: string; consent_text: string;
+}
+
+/** What a signature capture hands over. */
+export interface CapturedSignature {
+  method: "typed" | "drawn"; typed: string; drawn: string;
+}
+
+/** The document fields a template can ask for, in the form's order. */
+export const DOCUMENT_FIELDS: { field: string; label: string; long?: boolean; date?: boolean }[] = [
+  { field: "Scope", label: "Scope of work", long: true },
+  { field: "Fee", label: "Fee" },
+  { field: "Term", label: "Term" },
+  { field: "StartDate", label: "Start date", date: true },
+];

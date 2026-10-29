@@ -148,6 +148,10 @@ def _run(rule, contact, *, actor=None, allow_moves=True):
         return notify(contact, rule)
     if kind == R.Action.START_FOLLOW_UP:
         return start_follow_up(contact, rule, actor=actor)
+    if kind == R.Action.SEND_SIGNATURE:
+        from apps.esign import services as esign
+
+        return esign.from_rule(contact, rule, actor=actor)
     # CALENDAR_EVENT never runs by itself: it needs a time, so it is offered
     # to the person who made the move (`calendar_offers`) and made when they
     # pick one. A move with nobody to ask (an import, a rule) offers nothing.
@@ -406,6 +410,10 @@ def summary(rule) -> str:
         when = f"When a contact is won{where}"
     elif rule.trigger == R.Trigger.LOST:
         when = f"When a contact is lost{where}"
+    elif rule.trigger == R.Trigger.DOC_SENT:
+        when = f"When a contact is sent a document to sign{where}"
+    elif rule.trigger == R.Trigger.DOC_SIGNED:
+        when = f"When a contact signs a document{where}"
     elif rule.from_stage is not None:
         when = (f"When a contact moves from {rule.from_stage.label} to "
                 f"{rule.to_stage.label}{where}")
@@ -433,6 +441,10 @@ def summary(rule) -> str:
                 f"{', ' + rule.touch_cadence.replace('bimonthly', 'every two months') if rule.touch_cadence else ''}.")
     if kind == R.Action.START_FOLLOW_UP:
         return f"{when}, start the stage's follow-up without asking."
+    if kind == R.Action.SEND_SIGNATURE:
+        name = f" '{rule.document_template.name}'" if rule.document_template_id else ""
+        return (f"{when}, make the document{name} for them to sign and put its email in "
+                "the Outbox for approval.")
     if kind == R.Action.CALENDAR_EVENT:
         days = rule.task_due_offset_days if rule.task_due_offset_days is not None else 1
         return (f"{when}, offer a calendar event '{rule.task_title_template}' "
@@ -472,6 +484,14 @@ EXAMPLES = {
         {"key": "lost_check_in", "trigger": "lost", "action_type": "create_task",
          "task_title_template": "Check in with {FirstName} {LastName}",
          "task_due_offset_days": 90},
+        # E-signature (owner, 2026-10-29): the two a new practice starts with,
+        # and the welcome letter when won.
+        {"key": "document_sent", "trigger": "sent", "action_type": "move_stage",
+         "move_to": "proposal_given"},
+        {"key": "document_signed", "trigger": "signed", "action_type": "move_stage",
+         "move_to": "closed_won"},
+        {"key": "welcome_letter", "trigger": "enters", "stage": "closed_won",
+         "action_type": "draft_email", "email_original": "welcome_letter"},
     ],
     "referral": [
         {"key": "partner_touches", "trigger": "enters", "stage": "new_partner",
@@ -500,9 +520,20 @@ def examples_for(pipeline) -> list[dict]:
             if ex["move_to"] not in stages:
                 continue
             fields["move_to_stage"] = stages[ex["move_to"]]
+        if "email_original" in ex:
+            from apps.crm import template_seed
+            from apps.crm.models import EmailTemplate
+
+            template_seed.seed_tenant(pipeline.tenant)
+            template = EmailTemplate.all_objects.filter(
+                tenant_id=pipeline.tenant_id, original=fields.pop("email_original")).first()
+            if template is None:
+                continue
+            fields["email_template"] = template
         rule = R(tenant_id=pipeline.tenant_id, pipeline=pipeline, **fields)
         have = R.all_objects.filter(pipeline=pipeline, trigger=rule.trigger,
                                     to_stage=fields.get("to_stage"),
+                                    move_to_stage=fields.get("move_to_stage"),
                                     action_type=rule.action_type).exists()
         out.append({"key": ex["key"], "summary": summary(rule), "added": have,
                     "fields": fields})

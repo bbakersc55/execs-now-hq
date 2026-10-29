@@ -23,7 +23,7 @@ from .models import Kind, Notice, PushPreference, PushSubscription
 log = logging.getLogger(__name__)
 
 #: Which kinds each side of the app can receive.
-STAFF_KINDS = [Kind.NOTICE, Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION]
+STAFF_KINDS = [Kind.NOTICE, Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.DOCUMENT]
 CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION]
 #: How long a push service keeps a notification for a browser that is off.
 TTL_SECONDS = 24 * 3600

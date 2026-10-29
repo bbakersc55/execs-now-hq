@@ -96,6 +96,11 @@ def provision_practice(*, legal_name: str, display_name: str, domain: str,
             from_address=f"info@{domain}", inbound_domain="",
         )
         seed_tenant(tenant)
+        # E-signature: the built-in documents, and the two default rules.
+        from apps.esign import seed as esign_seed
+
+        esign_seed.seed_tenant(tenant)
+        esign_seed.default_rules(tenant)
         user = User.objects.filter(email__iexact=owner_email).first() \
             or User.objects.create_user(email=owner_email)
         Membership.all_objects.create(tenant=tenant, user=user, role=Role.FF,

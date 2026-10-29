@@ -130,6 +130,9 @@ HANDLED_RELATIONS = {
     # waiting drafts withdrawn) and stay with it as history; the survivor's
     # carry on. A merged-away record sends nothing.
     "follow_up_run.contact",
+    # E-signature: who a document is to. What was printed and signed is the
+    # document's own copy (`signer_name`, `signer_email`) and does not change.
+    "document.signer",
 }
 
 
@@ -198,6 +201,9 @@ def _merge_later_tables(tenant, survivor, absorbed, *, actor=None) -> dict:
     move_all(Company, "primary_contact")
     move_all(Contact, "merged_into")
     move_all(StrategySession)
+    from apps.esign.models import Document
+
+    move_all(Document, "signer")
     from apps.billing.models import ClientInvoice, ClientInvoiceSchedule
 
     move_all(ClientInvoice)

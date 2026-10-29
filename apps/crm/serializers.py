@@ -599,6 +599,7 @@ class StageAutomationSerializer(serializers.ModelSerializer):
             "task_title_template", "task_due_offset_days", "task_client_visible", "task_for",
             "task_assignee", "email_template", "send_by_offset_days", "move_to_stage",
             "touch_cadence", "notice_text", "event_minutes", "is_active", "position", "summary",
+            "document_template",
         ]
         extra_kwargs = {"task_client_visible": {"required": False},
                         "to_stage": {"required": False}, "position": {"required": False}}
@@ -610,7 +611,8 @@ class StageAutomationSerializer(serializers.ModelSerializer):
         merged = {f: getattr(self.instance, f) for f in (
             "pipeline", "trigger", "from_stage", "to_stage", "idle_days", "action_type",
             "task_title_template", "move_to_stage", "touch_cadence", "notice_text",
-            "task_for", "task_assignee", "email_template")} if self.instance else {}
+            "task_for", "task_assignee", "email_template", "document_template")} \
+            if self.instance else {}
         merged.update(attrs)
         get = merged.get
         pipeline = get("pipeline")
@@ -623,7 +625,7 @@ class StageAutomationSerializer(serializers.ModelSerializer):
                     {key: f"{stage.label} is on another pipeline; a rule stays on its own."})
         if trigger in (R.Trigger.ENTERS, R.Trigger.IDLE) and get("to_stage") is None:
             raise serializers.ValidationError({"to_stage": "Choose the stage."})
-        if trigger in (R.Trigger.WON, R.Trigger.LOST):
+        if trigger in (R.Trigger.WON, R.Trigger.LOST, R.Trigger.DOC_SENT, R.Trigger.DOC_SIGNED):
             attrs["to_stage"] = None
             attrs["from_stage"] = None
         if trigger == R.Trigger.IDLE:
@@ -665,6 +667,14 @@ class StageAutomationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"task_title_template": "Give the task a title."})
         if action == R.Action.DRAFT_EMAIL and get("email_template") is None:
             raise serializers.ValidationError({"email_template": "Choose a template."})
+        if action == R.Action.SEND_SIGNATURE:
+            if get("document_template") is None:
+                raise serializers.ValidationError(
+                    {"document_template": "Choose a document template."})
+            if trigger == R.Trigger.DOC_SENT:
+                raise serializers.ValidationError({"action_type": (
+                    "Sending a document when one is sent would never stop. Choose another "
+                    "trigger.")})
         if get("task_for") == R.For.MEMBER:
             who = get("task_assignee")
             if who is None or not Membership.all_objects.filter(

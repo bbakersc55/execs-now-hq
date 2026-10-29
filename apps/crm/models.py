@@ -683,12 +683,18 @@ class StageAutomation(TenantScopedModel):
         # Calendar (owner, 2026-10-05 and 2026-10-27): a calendar event at a
         # time the person moving the card picks, asked on the move.
         CALENDAR_EVENT = "calendar_event", "Offer a calendar event"
+        # E-signature (owner, 2026-10-29): a document from a template, to the
+        # contact, into the Outbox for approval like every other email.
+        SEND_SIGNATURE = "send_signature", "Send a document for signature"
 
     class Trigger(models.TextChoices):
         ENTERS = "enters", "Enters the stage"
         IDLE = "idle", "Has sat in the stage with no activity"
         WON = "won", "Is won"
         LOST = "lost", "Is lost"
+        # E-signature: a document to them is sent, or they sign one.
+        DOC_SENT = "sent", "Is sent a document to sign"
+        DOC_SIGNED = "signed", "Signs a document"
 
     class For(models.TextChoices):
         CONTACT_OWNER = "contact_owner", "The contact's owner"
@@ -739,6 +745,10 @@ class StageAutomation(TenantScopedModel):
     email_template = models.ForeignKey(
         EmailTemplate, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
+    #: For `send_signature`: which document template.
+    document_template = models.ForeignKey(
+        "esign.DocumentTemplate", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="+")
     # FR-1.12 — default 7 days, configurable per rule.
     send_by_offset_days = models.PositiveSmallIntegerField(default=7)
     is_active = models.BooleanField(default=True)
@@ -747,7 +757,8 @@ class StageAutomation(TenantScopedModel):
         db_table = "stage_automation"
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(trigger__in=["won", "lost"]) | models.Q(to_stage__isnull=False),
+                condition=(models.Q(trigger__in=["won", "lost", "sent", "signed"])
+                           | models.Q(to_stage__isnull=False)),
                 name="stage_automation_stage_rule_has_a_stage"),
             models.CheckConstraint(
                 condition=~models.Q(trigger="idle") | models.Q(idle_days__gte=1),
@@ -1314,6 +1325,12 @@ class OutboxMessage(TenantScopedModel):
         # invoice's PDF, and a failed charge. Financial.
         SUBSCRIPTION_RECEIPT = "subscription_receipt", "Subscription receipt"
         SUBSCRIPTION_NOTICE = "subscription_notice", "Subscription notice"
+        # E-signature (owner, 2026-10-29): the request, with {SignLink} filled
+        # in on delivery and never stored; the 7-day reminder; and the signed
+        # copy to both sides once it is countersigned.
+        SIGNATURE_REQUEST = "signature_request", "Signature request"
+        SIGNATURE_REMINDER = "signature_reminder", "Signature reminder"
+        SIGNED_COPY = "signed_copy", "Signed document"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -1338,6 +1355,9 @@ class OutboxMessage(TenantScopedModel):
         # P4 part 4: fixed wording about what already happened to their card.
         Producer.AUTOPAY_NOTICE,
         Producer.SUBSCRIPTION_RECEIPT, Producer.SUBSCRIPTION_NOTICE,
+        # E-signature: fixed wording about a document already sent, and the
+        # signed copy once both sides have signed.
+        Producer.SIGNATURE_REMINDER, Producer.SIGNED_COPY,
     }
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)

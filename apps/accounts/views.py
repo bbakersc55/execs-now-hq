@@ -68,6 +68,11 @@ def tenant_from_link(via: str):
 
         invoice = invoice_for(token)
         return invoice.tenant if invoice else None
+    if kind == "sign":
+        from apps.esign.links import document_for
+
+        document = document_for(token)
+        return document.tenant if document else None
     if kind == "signin":
         # The sign-in link's own page (2026-10-22: its logo was fetched with
         # no practice named, so a signed-out browser got a broken image).

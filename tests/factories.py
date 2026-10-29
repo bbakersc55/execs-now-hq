@@ -1811,3 +1811,48 @@ class PushPreferenceFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     user = factory.SubFactory(UserFactory)
+
+
+# ------------------------------------------------------------- e-signature
+
+class DocumentTemplateFactory(TenantScopedFactory):
+    class Meta:
+        model = "esign.DocumentTemplate"
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Template {n}")
+    title = "Proposal"
+    body = "# Scope of work\n{Scope}\n\n# Fee\n{Fee}"
+
+
+class DocumentFactory(TenantScopedFactory):
+    """A draft to a contact at a company, both in the document's practice."""
+
+    class Meta:
+        model = "esign.Document"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    signer = factory.SubFactory(ContactFactory, tenant=factory.SelfAttribute("..tenant"),
+                                company=factory.SelfAttribute("..company"))
+    title = factory.Sequence(lambda n: f"Document {n}")
+    source = "upload"
+    signer_name = "Signer"
+    signer_email = factory.Sequence(lambda n: f"signer{n}@example.invalid")
+
+
+class SignatureFactory(TenantScopedFactory):
+    class Meta:
+        model = "esign.Signature"
+
+    tenant = factory.SubFactory(TenantFactory)
+    document = factory.SubFactory(DocumentFactory, tenant=factory.SelfAttribute("..tenant"))
+    role = "signer"
+    name = "Signer"
+    email = "signer@example.invalid"
+    method = "typed"
+    typed_text = "Signer"
+    consent_version = "2026-10-29"
+    consent_text = "I agree."
+    signed_at = factory.LazyFunction(timezone.now)
+    pdf_sha256 = "0" * 64

@@ -91,7 +91,7 @@ def test_turning_it_on_makes_one_subscription_per_browser_with_every_kind(world,
     assert made.status_code == 201, made.content
     state = made.json()
     assert state["browsers"] == 1 and state["refusal"] == ""
-    assert {k["key"] for k in state["kinds"] if k["on"]} == {"notice", "client_message",
+    assert {k["key"] for k in state["kinds"] if k["on"]} == {"notice", "client_message", "document",
                                                              "reading", "mention"}
     # The same browser again, even signed in as someone else: still one, now theirs.
     subscribe(api, who["ff"])

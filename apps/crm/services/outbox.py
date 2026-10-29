@@ -239,6 +239,12 @@ def approve(message, *, actor, role):
 
     if (refused := mailboxes.refusal(message)):
         raise SendNotPermitted(refused)
+    if message.producer == P.SIGNATURE_REQUEST:
+        # Its document may have been voided while the email waited.
+        from apps.esign import services as esign
+
+        if (refused := esign.send_refusal(message)):
+            raise SendNotPermitted(refused)
 
     message.state = S.APPROVED
     message.approved_by = actor
@@ -259,6 +265,11 @@ def approve(message, *, actor, role):
         from apps.crm.services import referrals
 
         referrals.thanks_sent(message)
+    if message.producer == P.SIGNATURE_REQUEST and message.state == S.SENT:
+        # Delivered: the document is Sent, and its rules run.
+        from apps.esign import services as esign
+
+        esign.request_sent(message, actor=actor)
     if message.producer == P.CAMPAIGN and message.state == S.SENT:
         # "When this campaign is sent" (owner, 2026-10-19): only once it is.
         from apps.crm.services import campaigns
@@ -466,6 +477,13 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
             attachment.filename, content,
             attachment.stored_file.content_type or "application/pdf",
         ))
+
+    # A signature request's link is made now and never stored: the row
+    # keeps {SignLink} (apps/esign/links.py).
+    if message.producer == P.SIGNATURE_REQUEST and body_text is None:
+        from apps.esign import services as esign
+
+        body_text, body_html = esign.delivery_text(message)
 
     # One function decides what leaves, and every preview calls it too.
     from apps.crm.services import email_layout

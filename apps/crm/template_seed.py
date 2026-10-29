@@ -99,6 +99,23 @@ ORIGINALS["introduction_both"] = (
     "it from here.",
 )
 
+# E-signature (owner, 2026-10-29): for the Closed Won rule. Its terms come
+# from the company's latest signed document, its goals from the company.
+ORIGINALS["welcome_letter"] = (
+    "Welcome letter",
+    "Welcome to {PracticeName}",
+    "Hi {FirstName},\n\n"
+    "Thank you for signing. We're glad to be working with {Company}.\n\n"
+    "To confirm what we agreed:\n"
+    "Scope: {Scope}\n"
+    "Fee: {Fee}\n"
+    "Term: {Term}\n"
+    "Starting: {StartDate}\n\n"
+    "The goals we'll work toward together:\n"
+    "{Goals}\n\n"
+    "Before we start, I'll be in touch with what I need from you for the first week.",
+)
+
 #: use -> the original it starts on.
 USES = {
     "referral_touch": "referral_touch",

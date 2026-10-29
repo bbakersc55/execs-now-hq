@@ -115,7 +115,17 @@ def test_a_demo_message_goes_to_the_redirect_and_says_who_it_was_for(demo):
 def test_no_demo_message_of_any_kind_carries_a_real_recipient(demo, producer):
     """Every producer the app has, to a real-looking address at a real domain."""
     contact = _someone(demo.tenant, "a.real.person@gmail.com")
-    _send(demo, producer=producer, contact=contact)
+    fields = {}
+    if producer == P.SIGNATURE_REQUEST:
+        # A request carries its document's link, so it needs a document.
+        from .factories import ClientCompanyFactory, DocumentFactory
+
+        company = ClientCompanyFactory(tenant=demo.tenant)
+        type(contact).all_objects.filter(pk=contact.pk).update(company=company)
+        contact.refresh_from_db()
+        document = DocumentFactory(tenant=demo.tenant, company=company, signer=contact)
+        fields = {"source_type": "document", "source_id": document.pk}
+    _send(demo, producer=producer, contact=contact, **fields)
 
     for mime in demo.sent:
         assert _addresses(mime) == {REDIRECT}

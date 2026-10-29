@@ -7,9 +7,9 @@ import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import { Pipeline, Stage, StaffMember, api } from "../lib/api";
 import { useWords } from "../lib/words";
 
-type Trigger = "enters" | "idle" | "won" | "lost";
+type Trigger = "enters" | "idle" | "won" | "lost" | "sent" | "signed";
 type Action = "create_task" | "draft_email" | "move_stage" | "enroll_touches" | "notify" | "start_follow_up"
-  | "calendar_event";
+  | "calendar_event" | "send_signature";
 type For = "contact_owner" | "practice_owner" | "member";
 
 export interface Rule {
@@ -18,6 +18,7 @@ export interface Rule {
   task_title_template: string; task_due_offset_days: number | null; task_client_visible: boolean;
   task_for: For; task_assignee: string | null;
   email_template: string | null; send_by_offset_days: number; move_to_stage: string | null;
+  document_template?: string | null;
   touch_cadence: string; notice_text: string; is_active: boolean; position: number;
   summary: string;
 }
@@ -101,7 +102,8 @@ export function StageRules() {
   });
 
   const byStage = (id: string) => (rules.data ?? []).filter((r) => r.to_stage === id && (r.trigger === "enters" || r.trigger === "idle"));
-  const pipelineWide = (rules.data ?? []).filter((r) => r.trigger === "won" || r.trigger === "lost");
+  const pipelineWide = (rules.data ?? []).filter((r) => ["won", "lost", "sent", "signed"]
+    .includes(r.trigger));
   const offered = (examples.data ?? []).filter((e) => !e.added);
 
   return (
@@ -155,7 +157,7 @@ export function StageRules() {
       </Card>
 
       {pipeline && (
-        <Card title={`When someone is won or lost in ${pipeline.name}`}>
+        <Card title={`When someone is won or lost, or a document goes out or comes back, in ${pipeline.name}`}>
           <RuleList rules={pipelineWide} onChanged={refresh} onNote={setNote} />
           <RuleForm pipeline={pipeline} stages={stages} stage={null} onSaved={refresh} onNote={setNote} />
         </Card>
@@ -341,7 +343,7 @@ function RuleList({ rules, onChanged, onNote }: {
           <span className="rule-summary">{r.summary}</span>
           <span className="rule-tools">
             <Pill kind={r.action_type === "draft_email" ? "warn" : "ok"}>
-              {r.action_type === "draft_email" ? "queues for approval" : r.trigger === "idle" ? "checked daily" : "fires at once"}</Pill>
+              {r.action_type === "draft_email" || r.action_type === "send_signature" ? "queues for approval" : r.trigger === "idle" ? "checked daily" : "fires at once"}</Pill>
             {r.action_type === "create_task" && (
               <label className="inline small">
                 <input type="checkbox" style={{ width: "auto" }}
@@ -377,11 +379,17 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
     task_client_visible: visibleByDefault(stage ? "enters" : "won", stage ?? undefined, pipeline),
     task_for: "contact_owner" as For, task_assignee: "", email_template: "", send_by_offset_days: 7,
     move_to_stage: "", touch_cadence: "monthly", notice_text: "", event_minutes: 30,
+    document_template: "",
   };
   const [d, setD] = useState(blank);
   const set = (patch: Partial<typeof d>) => setD({ ...d, ...patch });
   const templates = useQuery<Template[]>({
     queryKey: ["templates"], queryFn: () => api.get<Template[]>("/api/email-templates/"), enabled: open,
+  });
+  const documentTemplates = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["document-templates"],
+    queryFn: () => api.get<{ id: string; name: string }[]>("/api/document-templates/"),
+    enabled: open,
   });
   const staff = useQuery<StaffWithUser[]>({
     queryKey: ["staff"], queryFn: () => api.get<StaffWithUser[]>("/api/staff/"), enabled: open,
@@ -404,6 +412,7 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
       move_to_stage: d.action_type === "move_stage" ? d.move_to_stage || null : null,
       touch_cadence: d.action_type === "enroll_touches" ? d.touch_cadence : "",
       notice_text: d.action_type === "notify" ? d.notice_text : "",
+      document_template: d.action_type === "send_signature" ? d.document_template || null : null,
       is_active: true,
     }),
     onSuccess: () => { setD(blank); setOpen(false); onNote({ kind: "ok", text: "Rule saved." }); onSaved(); },
@@ -448,6 +457,8 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
             }}>
               <option value="won">A contact is won</option>
               <option value="lost">A contact is lost</option>
+              <option value="sent">A contact is sent a document to sign</option>
+              <option value="signed">A contact signs a document</option>
             </select>
           )}
         </Field>
@@ -475,6 +486,8 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
             <option value="start_follow_up">Start the stage's follow-up, without asking</option>
             {d.trigger === "enters" && (
               <option value="calendar_event">Offer a calendar event, at a time I pick</option>)}
+            {d.trigger !== "sent" && (
+              <option value="send_signature">Send a document for signature, for approval</option>)}
           </select>
         </Field>
       </div>
@@ -498,6 +511,15 @@ function RuleForm({ pipeline, stages, stage, onSaved, onNote }: {
               </label>
             </Field>
           </>
+        )}
+        {d.action_type === "send_signature" && (
+          <Field label="Document template">
+            <select aria-label="Document template" value={d.document_template}
+              onChange={(e) => set({ document_template: e.target.value })}>
+              <option value="">Choose…</option>
+              {(documentTemplates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </Field>
         )}
         {d.action_type === "draft_email" && (
           <>

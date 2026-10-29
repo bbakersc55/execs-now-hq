@@ -374,3 +374,12 @@ from apps.notify.models import Notice, PushPreference, PushSubscription  # noqa:
 register(Notice, factories.NoticeFactory, api_exposed=False)
 register(PushSubscription, factories.PushSubscriptionFactory, api_exposed=False)
 register(PushPreference, factories.PushPreferenceFactory, api_exposed=False)
+
+# E-signature (owner, 2026-10-29).
+from apps.esign.models import Document, DocumentTemplate, Signature  # noqa: E402
+
+register(DocumentTemplate, factories.DocumentTemplateFactory,
+         endpoints=("/api/document-templates/",))
+register(Document, factories.DocumentFactory,
+         endpoints=("/api/documents/", "/api/portal-documents/"))
+register(Signature, factories.SignatureFactory, api_exposed=False)

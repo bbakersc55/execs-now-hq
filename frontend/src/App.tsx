@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-  Receipt, Landmark, Users, Gauge, X } from "lucide-react";
+  Receipt, Landmark, Users, Gauge, X, FileSignature } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 
@@ -62,6 +62,9 @@ import { Invoices } from "./screens/Invoices";
 import { InvoiceSettings } from "./screens/InvoiceSettings";
 import { BillingSettings } from "./screens/BillingSettings";
 import { PayLink } from "./screens/PayLink";
+import { SignDocument } from "./screens/SignDocument";
+import { DocumentTemplates } from "./screens/DocumentTemplates";
+import { PortalDocuments } from "./screens/PortalDocuments";
 import { Suspended } from "./screens/Suspended";
 import { AiUsage } from "./screens/AiUsage";
 import { Branding } from "./screens/Branding";
@@ -181,6 +184,8 @@ const NAV: NavItem[] = [
   { to: "/scorecard", label: (w) => w.Scorecard, roles: CLIENT, icon: Gauge,
     when: (me) => !!me.has_scorecard },
   { to: "/invoices", label: "Invoices", roles: CLIENT, icon: Receipt },
+  // E-signature (2026-10-29): what was sent to their company to sign.
+  { to: "/documents", label: "Documents", roles: CLIENT, icon: FileSignature },
   // P7 phase 3: the client owner sets up their company's teams.
   { to: "/team", label: "Your team", roles: ["FCC"], icon: Users },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
@@ -218,7 +223,8 @@ export function App() {
   const isPublic = matchPath("/updates/:token", location.pathname)
     || matchPath("/strategy/precall/:token", location.pathname)
     || matchPath("/unsubscribe/:token", location.pathname)
-    || matchPath("/pay/:token", location.pathname);
+    || matchPath("/pay/:token", location.pathname)
+    || matchPath("/sign/:token", location.pathname);
   if (isPublic) {
     return (
       <Routes>
@@ -230,6 +236,8 @@ export function App() {
           element={<LinkBranded kind="unsubscribe"><Unsubscribe /></LinkBranded>} />
         <Route path="/pay/:token"
           element={<LinkBranded kind="pay"><PayLink /></LinkBranded>} />
+        <Route path="/sign/:token"
+          element={<LinkBranded kind="sign"><SignDocument /></LinkBranded>} />
       </Routes>
     );
   }
@@ -441,6 +449,8 @@ export function App() {
             <Route path="/rules" element={<Settings me={me}><StageRules /></Settings>} />
             <Route path="/settings/templates"
               element={<Settings me={me}><EmailTemplates /></Settings>} />
+            {me.role === "FF" && <Route path="/settings/documents"
+              element={<Settings me={me}><DocumentTemplates /></Settings>} />}
             <Route path="/staff" element={<Settings me={me}><Staff me={me} /></Settings>} />
             <Route path="/ai-usage" element={<Settings me={me}><AiUsage /></Settings>} />
             {me.role === "FF" && <Route path="/settings/digests"
@@ -478,6 +488,8 @@ export function App() {
             <Route path="/invoices" element={me.role && CLIENT.includes(me.role)
               ? <ClientInvoices /> : <Invoices me={me} />} />
             <Route path="/invoices/:id" element={<InvoiceDetail me={me} />} />
+            {me.role && CLIENT.includes(me.role) && <Route path="/documents"
+              element={<PortalDocuments />} />}
             {me.role === "FCC" && <Route path="/team" element={<YourTeam me={me} />} />}
             {me.role === "FF" && <Route path="/settings/invoices"
               element={<Settings me={me}><InvoiceSettings /></Settings>} />}

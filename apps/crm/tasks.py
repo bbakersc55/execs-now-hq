@@ -89,4 +89,8 @@ def stage_rules_daily(tenant_id: str) -> dict:
 
         steps = follow_ups.advance(tenant)
         emailed = stage_rules.send_notice_emails(tenant)
-    return {"fired": fired, "emailed": emailed, "follow_ups": steps}
+        # E-signature: expire what is 30 days unsigned, remind once at 7.
+        from apps.esign import services as esign
+
+        documents = esign.daily(tenant)
+    return {"fired": fired, "emailed": emailed, "follow_ups": steps, "documents": documents}

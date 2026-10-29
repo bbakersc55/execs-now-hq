@@ -6,6 +6,7 @@ from apps.accounts import views as account_views
 from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail, views_microsoft
+from apps.esign import views_sign as esign_sign
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
 from apps.crm import views_unsubscribe as crm_unsubscribe
@@ -53,6 +54,7 @@ urlpatterns = [
     path("api/", include("apps.finance.urls")),
     path("api/", include("apps.personal.urls")),
     path("api/", include("apps.scorecard.urls")),
+    path("api/", include("apps.esign.urls")),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed
     # token IS the authentication, and it grants that one capability. Under
     # /api/ so the app's own page can render it (the dev proxy forwards /api);
@@ -69,6 +71,10 @@ urlpatterns = [
          name="precall-form"),
     path("api/pay/<str:token>", billing_pay.pay_page, name="pay-page"),
     path("api/pay/<str:token>/pdf", billing_pay.pay_pdf, name="pay-pdf"),
+    # E-signature: the signing page, by its one-use link (apps/esign/links.py).
+    path("api/sign/<str:token>", esign_sign.sign_page, name="sign-page"),
+    path("api/sign/<str:token>/pdf", esign_sign.sign_pdf, name="sign-pdf"),
+    path("api/sign/<str:token>/decline", esign_sign.sign_decline, name="sign-decline"),
     path("api/strategy/precall/<str:token>/complete", strategy_precall.precall_complete,
          name="precall-complete"),
     path("accounts/refused", account_views.login_refused, name="login-refused"),

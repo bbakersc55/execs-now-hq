@@ -12,6 +12,7 @@ import { CardOnFile, Company, Contact, Me, api } from "../lib/api";
 import { longDate } from "../lib/money";
 import { ClientTeamsCard } from "../components/ClientTeams";
 import { CompanyCommitments } from "../components/ContactCommitments";
+import { DocumentsCard } from "../components/Documents";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
 import { ScorecardSetup } from "../components/ScorecardSetup";
 import { BestyConnectionCard } from "../components/ScorecardBesty";
@@ -192,6 +193,9 @@ export function CompanyDetail({ me }: { me: Me }) {
       {/* A table with a column per team: it takes the page's width, below the
           pair above, rather than half of it (Bryan, 2026-10-14). */}
       <ClientTeamsCard me={me} company={c} />
+
+      {/* E-signature (2026-10-29): proposals, letters and PDFs to sign. */}
+      <DocumentsCard me={me} companyId={c.id} people={theirs} />
 
       {/* M5 part 1: the practice sets the client's scorecard up here. */}
       <ScorecardSetup me={me} company={c} />

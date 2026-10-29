@@ -104,7 +104,10 @@ def test_a_new_practice_gets_structure_and_none_of_anyone_elses(api, platform_ow
     assert "getexecutivesnow" not in tenant.from_address + tenant.inbound_domain
     assert tenant.branding_updated_at is None and tenant.email_logo_id is None
     assert Pipeline.all_objects.filter(tenant=tenant).exists()
-    assert not StageAutomation.all_objects.filter(tenant=tenant).exists()
+    # E-signature (2026-10-29): the two document rules, and nothing else.
+    assert {(r.trigger, r.action_type, r.move_to_stage.code)
+            for r in StageAutomation.all_objects.filter(tenant=tenant)} == {
+        ("sent", "move_stage", "proposal_given"), ("signed", "move_stage", "closed_won")}
     assert not StrategyTemplate.all_objects.filter(tenant=tenant).exists()
     owner = Membership.all_objects.get(tenant=tenant)
     assert owner.role == "FF" and owner.user.email == NEW["owner_email"]
@@ -129,6 +132,15 @@ def test_a_new_practice_starts_with_its_my_practice_scorecard(platform_owner):
                      "Cash on hand": "cash_on_hand", "Tasks overdue": "tasks_overdue"}
     assert not Kpi.all_objects.exclude(tenant=tenant).filter(name="Proposals given",
                                                               feed="app").exists()
+
+
+@pytest.mark.django_db
+def test_a_new_practice_starts_with_the_built_in_documents(platform_owner):
+    from apps.esign.models import DocumentTemplate
+
+    tenant = provisioning.provision_practice(**NEW, actor=platform_owner.user)
+    assert set(DocumentTemplate.all_objects.filter(tenant=tenant).values_list(
+        "original", flat=True)) == {"proposal", "engagement_letter"}
 
 
 @pytest.mark.django_db

@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "apps.scorecard",
     "apps.notify",
     "apps.calendars",
+    "apps.esign",
 ]
 
 MIDDLEWARE = [
