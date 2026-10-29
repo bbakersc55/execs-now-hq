@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-29 UTC**, after Release 28. **The next session starts at
-"2026-10-29: Release 28, several mailboxes and three UI fixes" just below**,
-then "2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets
+2026-10-29 UTC**, after Release 29. **The next session starts at
+"2026-10-29, evening: Release 29, e-signature" just below**, then
+"2026-10-29: Release 28, several mailboxes and three UI fixes", then
+"2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets
 and Besty", then "2026-10-27, late: Release 25, and where things stand", which sums up
 everything from Release 23 to 25; the dated sections after it have the
 detail. Then "2026-10-26: Release 23, and M5 part 5", "2026-10-24: catch-up
@@ -14,6 +15,45 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-10-29, evening: Release 29, e-signature
+
+- **Release 29 is live**: `main` at `b67563e`, three additive migrations
+  (`esign 0001`: the `document_template`, `document` and `document_signature`
+  tables; `crm 0055`: the stage rule's document template, and its stage
+  check widened for the two document triggers; `notify 0002`: a notice kind,
+  no SQL) applied by the runbook in the waiting worker, all OK; **no new
+  scheduled job** (expiry and the 7-day reminder run in the existing daily
+  stage-rules job); web came up by itself; push to worker running 2 min 41 s.
+  Runbook, "Observed at Release 29". `dev` is ahead of `main` only by this
+  write-up.
+- **E-signature, version one** (`826e0f9`, `docs/p6_esign.md`): Settings →
+  Documents (Proposal and Engagement letter built in, `{Scope}` `{Fee}`
+  `{Term}` `{StartDate}`, Restore); a Documents card on every company page
+  (template or uploaded PDF, preview, signer and From, into the Outbox with a
+  `{SignLink}` chip made at delivery and never stored); the public signing
+  page `/sign/<token>` (the PDF, the versioned ESIGN consent line, typed in
+  Dancing Script or drawn, Decline with a reason; one-use expiring links; the
+  PDF's SHA-256 checked before signing; a signature page appended);
+  countersigning on the card, the final PDF emailed to both; the portal's
+  Documents list; notices and push on viewed, signed, declined and
+  countersign needed; stage-rule action "Send a document for signature" and
+  triggers "is sent a document" and "signs a document" (forward only).
+- **Default rules for new practices and the demo** (`b67563e`): sent → Proposal
+  Given, signed → Closed Won, and entering Closed Won drafts the **Welcome
+  letter** (its terms from the signed document, `{Goals}` from the company)
+  into the Outbox for approval. Executives Now has none of them yet; all three
+  are in the stage rules' examples. The demo was reseeded on the e-signature
+  code: Jack Donaghy's proposal waits to be signed ("Open the signing page",
+  demo only), and Pied Piper's engagement letter is complete.
+- **Not yet exercised on production**: a real signature request through
+  Gmail, and a real signer on a phone. Tested end to end with fakes.
+- **The backup grew from 4.3 MB to 5.4 MB that afternoon** (14:34 to 18:06
+  UTC). The owner's explanation: mail filing ("File mail with contacts and
+  companies") was switched on for the Executives Now mailbox, which stored
+  the last 30 days of matching mail. Expected, not a problem.
+- **Also**: contact merges move a document's signer; the Outbox preview test
+  pins the signing clock (it failed once when a second ticked mid-test).
 
 ## 2026-10-29: Release 28, several mailboxes and three UI fixes
 

@@ -656,6 +656,25 @@ itself by 14:38:33, `/healthz` 200, and the new `/api/mailboxes/` answering
 practice keeps its one connection as its one mailbox until someone connects
 another.
 
+**Observed at Release 29 (2026-10-29 UTC, 3 migrations, additive:
+`esign 0001_initial`, the e-signature tables; `crm 0055_esign`, the stage
+rule's document template and its stage check dropped and re-made wider in one
+transaction; `notify 0002_alter_notice_kind`, choices only, no SQL; two
+commits, e-signature and the Welcome letter rule):** R1: the owner ran the
+backup by hand with the run-now mutation;
+`execsnowhq_prod_20261029_180635.sql.gz`, 5.4 MB, 18:06:40. It was 4.3 MB at
+14:34 the same day: mail filing had been switched on for the Executives Now
+mailbox in between (the owner's explanation), storing 30 days of matching
+mail. R2: `main` fast-forwarded `80e7a3f..b67563e`, pushed 19:23:50. R3: the
+worker `WAITING` 19:25:45, listing exactly the three. **R4 run by Claude**,
+19:26:07–21, all OK (2 min 17 s after the push). R5: `migrations current`
+19:26:25, cluster running 19:26:31. R5b: not needed, no scheduled job added
+(expiry and the reminder run in `crm.stage_rules_daily`). R6: nothing to do:
+web's deployment (`879f5beb`) SUCCESS by itself by 19:27:05, `/healthz` 200,
+`/api/documents/` 403 and `/api/sign/<wrong token>` 404 signed out.
+**Push to worker running: 2 min 41 s.** No practice's rules changed: the
+three defaults are for new practices only.
+
 ---
 
 ## Part A — the owner's steps, in order
