@@ -8,7 +8,7 @@ same 404. Every request is counted against the token and the address.
 
 GET   /api/sign/<token>           the page; the first one makes it Viewed
 POST  /api/sign/<token>           {agreed, method, typed | drawn}: sign
-GET   /api/sign/<token>/pdf       the PDF as sent
+GET   /api/sign/<token>/pdf       the PDF as sent, inline; framed by the page
 POST  /api/sign/<token>/decline   {reason}
 """
 
@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 
 from django.http import HttpResponse, JsonResponse
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -78,6 +79,10 @@ def sign_page(request, token: str):
                                        f"and email the signed copy to {document.signer_email}."})
 
 
+# The signing page shows this in a frame, so it may be framed by our own
+# origin; the site-wide X-Frame-Options DENY made Chrome show a broken
+# document there (2026-10-29).
+@xframe_options_sameorigin
 @require_http_methods(["GET"])
 def sign_pdf(request, token: str):
     from apps.tenancy import storage

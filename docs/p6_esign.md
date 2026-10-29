@@ -169,3 +169,19 @@ redirect, and the reminder and the signed copy with it.
 - The reminder reuses the one link rather than issuing a new one.
 - Expiry and the reminder run in the existing daily job, not a new one.
 - Countersigned and Complete happen in one step.
+
+## Version two (not built)
+
+- **Several signers** on one document, and **the invoice created on signing**
+  (from the Scope 'Version one' leaves out).
+- **Proposals and engagement letters on the practice's letterhead**, as the
+  strategy map PDF is (`apps/strategy/pdf.py`, `render_html`): the header
+  wears the practice's mark beside its name, or its logo, or with neither the
+  drawn mark in its colors (Settings → Branding: `email_mark`, `email_logo`,
+  the brand colors); headings and rules in the accent color, with text on the
+  accent chosen for contrast (`text_on`). Version one already colors the
+  headings with the practice's header color (`apps/esign/pdf.py`, `_accent`)
+  but shows no mark or logo and prints the practice's name as a small line.
+  An uploaded PDF is sent as it is, and the signature page keeps its plain
+  layout. The PDF is rendered and hashed once, when the document is made,
+  so a later branding change never alters one already made.

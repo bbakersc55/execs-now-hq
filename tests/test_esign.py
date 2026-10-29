@@ -200,6 +200,28 @@ def test_a_voided_documents_request_is_not_sent(world, dev_outbox):
 
 # ------------------------------------------------------------- signing
 
+def test_the_framed_pdf_reaches_a_signed_out_visitor_with_the_token(world, dev_outbox):
+    """The page frames `/api/sign/<token>/pdf`: a signed-out browser must get
+    the PDF itself, inline, and a frame header that lets our own page show it
+    (the site-wide DENY showed Chrome's broken document, 2026-10-29). Opening
+    it full size is the same URL at the top level."""
+    from django.test import Client
+
+    document, token = _sent(world, dev_outbox)
+    visitor = Client()
+    page = visitor.get(f"/api/sign/{token}")
+    assert page.status_code == 200 and page["X-Frame-Options"] == "DENY"
+    pdf = visitor.get(f"/api/sign/{token}/pdf")
+    assert pdf.status_code == 200
+    assert pdf["Content-Type"] == "application/pdf"
+    assert pdf["Content-Disposition"].startswith("inline;")
+    assert pdf["X-Frame-Options"] == "SAMEORIGIN"
+    assert "frame-ancestors 'none'" not in pdf.get("Content-Security-Policy", "")
+    assert pdf.content.startswith(b"%PDF-") and _pages(pdf.content) >= 1
+    _sign(visitor, token)
+    assert visitor.get(f"/api/sign/{token}/pdf").status_code == 404
+
+
 def test_viewing_then_signing_records_everything_and_appends_the_page(world, dev_outbox, client):
     from apps.tenancy import storage
 
