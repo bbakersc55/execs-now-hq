@@ -241,19 +241,7 @@ export function SessionDetail({ me }: { me: Me }) {
         {/* The rail navigates and nothing else. Starting a section is its own
             control, so reading ahead mid-call cannot move the pacing under
             you (owner's ruling, 2026-09-21). */}
-        <nav className="rail" aria-label="Sections">
-          {(data.sections ?? []).map((section) => (
-            <button key={section.code} onClick={() => scrollTo(section.code)}
-              className={data.current_section === section.code ? "on" : ""}>
-              <span>{section.title}</span>
-              <span className="mins">
-                {data.current_section === section.code && onSection !== null
-                  ? `${onSection}′`
-                  : section.time_budget_minutes ? `${section.time_budget_minutes}′` : ""}
-              </span>
-            </button>
-          ))}
-        </nav>
+        <SectionRail data={data} onSection={onSection} onPick={scrollTo} />
 
         <div>
       {(data.sections ?? []).map((section) => {
@@ -947,6 +935,29 @@ function QuestionRow({ question, saved, savedNote, answeredBy, fromEmail, disabl
   );
 }
 
+/** The agenda down the left of the call: each step and its minutes. A long
+ *  label wraps under itself, never under the minutes (2026-10-29). */
+export function SectionRail({ data, onSection, onPick }: {
+  data: Pick<StrategySessionRow, "sections" | "current_section">;
+  onSection: number | null; onPick: (code: string) => void;
+}) {
+  return (
+    <nav className="rail" aria-label="Sections">
+      {(data.sections ?? []).map((section) => (
+        <button key={section.code} onClick={() => onPick(section.code)}
+          className={data.current_section === section.code ? "on" : ""}>
+          <span>{section.title}</span>
+          <span className="mins">
+            {data.current_section === section.code && onSection !== null
+              ? `${onSection}′`
+              : section.time_budget_minutes ? `${section.time_budget_minutes}′` : ""}
+          </span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 function PdfCard({ data, path, onChanged, setNote }: {
   data: StrategySessionRow; path: string; onChanged: () => void;
   setNote: (text: string) => void;
@@ -955,6 +966,8 @@ function PdfCard({ data, path, onChanged, setNote }: {
     mutationFn: (body: Record<string, boolean>) => api.patch(`${path}pdf-flags/`, body),
     onSuccess: onChanged,
   });
+  const w = useWords();
+  const scorecardLinked = (data.map_rows ?? []).some((row) => row.state === "accepted" && !!row.kpi);
   const [showEmail, setShowEmail] = useState(true);
   // The covering email, drafted from the session and then entirely the
   // fractional's (owner, 2026-09-29). Null until the draft arrives.
@@ -999,6 +1012,17 @@ function PdfCard({ data, path, onChanged, setNote }: {
           Include {FLAG_LABEL[key]}
         </label>
       ))}
+      {/* The section lists the KPIs accepted moves point at, so with none it
+          is left out even when switched on; say so here (owner, 2026-10-29). */}
+      {!scorecardLinked && (
+        <p className="small muted" data-testid="pdf-scorecard-none">
+          No accepted move names a KPI yet, so the {w.Scorecard} section stays out
+          of the PDF even when switched on.{" "}
+          {(data.kpi_choices ?? []).length > 0
+            ? "Choose one in \u201cKPI it moves\u201d on a move in the map."
+            : `This session's company has no KPIs on its ${w.scorecard} to choose from.`}
+        </p>
+      )}
       <DocumentWords path={path} onChanged={onChanged} setNote={setNote} />
       <div className="row tight" style={{ marginTop: ".75rem" }}>
         <a className="btn ghost" href={`${path}pdf/?as=html`} target="_blank"

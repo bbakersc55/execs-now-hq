@@ -207,6 +207,12 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         review = StrategySession.objects.get(company__name="Dunder Mifflin Paper")
         assert set(review.map_rows.exclude(kpi=None).values_list("kpi__name", flat=True)) \
             == {"Overtime hours", "On-time delivery"}
+        # ...so its PDF's Scorecard section, once turned on, lists both.
+        from apps.strategy import pdf as strategy_pdf
+
+        review.pdf_include_flags = {**review.pdf_include_flags, "scorecard": True}
+        assert {k["name"] for k in strategy_pdf.context_for(review)["scorecard"]} \
+            == {"Overtime hours", "On-time delivery"}
         assert StrategySessionPrep.objects.get().state == "ready"
         live = StrategySession.objects.get(state="in_call")
         assert StrategyMapRow.objects.filter(session=live, state="proposed").count() >= 2

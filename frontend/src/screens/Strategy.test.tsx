@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -245,6 +245,27 @@ describe("the live session view", () => {
     expect(word).toHaveAttribute("download");
     expect(screen.getByRole("link", { name: "Download the file" }).getAttribute("href"))
       .toMatch(/\/pdf\/$/);
+  });
+
+  it("says the Scorecard section stays out until an accepted move names a KPI (2026-10-29)",
+     async () => {
+    // No accepted move names one: say so, and how to name one.
+    showSession(aSession({ kpi_choices: [{ id: "k1", name: "Inspections per site" }] }));
+    expect(await screen.findByTestId("pdf-scorecard-none")).toHaveTextContent(
+      /No accepted move names a KPI yet, so the Scorecard section stays out of the PDF.*KPI it moves/);
+    cleanup();
+    // A company with no KPIs at all is told that instead.
+    showSession(aSession());
+    expect(await screen.findByTestId("pdf-scorecard-none")).toHaveTextContent(
+      /has no KPIs on its scorecard to choose from/);
+    cleanup();
+    // An accepted move naming one: nothing to say.
+    showSession(aSession({
+      kpi_choices: [{ id: "k1", name: "Inspections per site" }],
+      map_rows: [{ ...aSession().map_rows![0], state: "accepted", kpi: "k1",
+                   kpi_name: "Inspections per site" }] }));
+    await screen.findByText("The PDF");
+    expect(screen.queryByTestId("pdf-scorecard-none")).not.toBeInTheDocument();
   });
 
   it("matrix §10 — a VA reads the session and cannot run it", async () => {

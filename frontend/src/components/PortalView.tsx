@@ -24,11 +24,13 @@ export function usePortalView(me: Me) {
   };
 }
 
-export function PortalViewSwitch({ value, onChange }: {
-  value: PortalViewName; onChange: (view: PortalViewName) => void;
+/** `joined` makes it one segmented control, as Tasks' toolbar has it beside
+ *  Board / List; Goals keeps the plain row. */
+export function PortalViewSwitch({ value, onChange, joined = false }: {
+  value: PortalViewName; onChange: (view: PortalViewName) => void; joined?: boolean;
 }) {
   return (
-    <div className="row" role="group" aria-label="Whose work">
+    <div className={joined ? "seg" : "row"} role="group" aria-label="Whose work">
       {(Object.keys(LABEL) as PortalViewName[]).map((view) => (
         <button key={view} type="button" aria-pressed={value === view}
           className={value === view ? "small primary" : "small"}

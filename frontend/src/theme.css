@@ -517,6 +517,21 @@ label { display: block; font-size: var(--t-13); color: var(--muted); margin-bott
 .pill.bad { background: var(--bad-bg); color: var(--bad); border-color: var(--bad-line); }
 .pill.ai { background: var(--info-bg); color: var(--navy); border-color: var(--info-line); }
 
+/* A joined segmented control: Board / List, and the portal's Mine / My team /
+   Everyone beside it. Natural width, never stretched. */
+.seg { display: inline-flex; flex: 0 0 auto; }
+.seg > button { border-radius: 0; margin: 0; }
+.seg > button + button { margin-left: -1px; }
+.seg > button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.seg > button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.seg > button[aria-pressed="true"] { position: relative; z-index: 1; }
+
+/* Tasks' toolbar in two rows: search, whose work and the view; then the
+   dropdowns, left-aligned. */
+.filters.stacked { flex-direction: column; align-items: stretch; }
+.filters-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.filters-row > .search { flex: 1 1 220px; min-width: 0; }
+
 /* The filter bar: chips, not bare dropdowns. */
 .filters {
   display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
@@ -868,6 +883,14 @@ ul.work-tree.card-grid .goal-card { margin-bottom: 0; }
   border-left-color: var(--orange);
 }
 .rail .mins { font-size: var(--t-12); color: var(--gray-light); font-variant-numeric: tabular-nums; }
+/* A long step label wraps onto a second line inside the rail, with its
+   minutes kept right-aligned on the first (owner, 2026-10-29: "The mirror and
+   where they want to go" ran under its minutes and into the panel). */
+.rail { min-width: 0; }
+.rail button { align-items: flex-start; white-space: normal; gap: var(--s2); }
+.rail button > span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;
+                                  line-height: 1.3; }
+.rail button > .mins { flex: 0 0 auto; line-height: 1.3; padding-top: 1px; }
 .must-ask { color: var(--orange); font-weight: 700; }
 .tray-drawer {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 100vw);

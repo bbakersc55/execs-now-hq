@@ -10,7 +10,7 @@ import { PortalViewSwitch, usePortalView } from "../components/PortalView";
 import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
-import { Avatar, Chip, FilterBar, PageHead, useRemembered, useRowLink } from "../components/shell";
+import { Avatar, Chip, PageHead, useRemembered, useRowLink } from "../components/shell";
 import { useRemembered as useRememberedValue } from "../lib/remembered";
 import { Banner, toast, when } from "../components/ui";
 import { TaskSheet } from "./TaskDetail";
@@ -120,71 +120,79 @@ export function Tasks({ me }: { me: Me }) {
           ? <PortalCreate me={me} offer={["task"]} />
           : <StaffCreate me={me} offer={["task"]} />} />
 
-      {/* Chips, not bare dropdowns: what is set reads back as a sentence, and
-          each one clears on its own. */}
-      <FilterBar onClearAll={anyFilter ? () => {
-        chooseCompany(""); setStatus(""); setPriority(""); setSearch("");
-      } : undefined}>
-        <span className="search">
-          <Search size={16} strokeWidth={1.75} />
-          <input aria-label={`Search ${w.tasks}`} placeholder={`Search ${w.tasks}`}
-            value={search} onChange={(e) => setSearch(e.target.value)} />
-        </span>
-        {staff && (
-          <CompanyFilter value={company} onChange={chooseCompany} companies={clients}
-            asChip />
-        )}
-        {staff && (
-          <TeamFilter teams={teamFilter.teams} value={teamFilter.team}
-            onChange={teamFilter.choose} />
-        )}
-        {portalView.offered && (
-          <PortalViewSwitch value={portalView.view} onChange={portalView.choose} />
-        )}
-        <select aria-label={`Filter by ${w.project}`} value={project}
-          style={{ width: "auto", minWidth: 150 }}
-          onChange={(e) => setProject(e.target.value)}>
-          <option value="">Any {w.project}</option>
-          {projectOptions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-        </select>
-        <select aria-label="Filter by assignee" value={assignee}
-          style={{ width: "auto", minWidth: 150 }}
-          onChange={(e) => setAssignee(e.target.value)}>
-          <option value="">Anyone</option>
-          {peopleOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <select aria-label="Filter by status" value={status}
-          style={{ width: "auto", minWidth: 150 }}
-          onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Any status</option>
-          {STATUSES.map((st) => <option key={st} value={st}>{STATUS_LABELS[st]}</option>)}
-        </select>
-        <select aria-label="Filter by priority" value={priority}
-          style={{ width: "auto", minWidth: 130 }}
-          onChange={(e) => setPriority(e.target.value)}>
-          <option value="">Any priority</option>
-          <option value="3">Urgent</option>
-          <option value="2">High</option>
-          <option value="1">Normal</option>
-          <option value="0">Low</option>
-        </select>
-        {project && <Chip label={`${w.Project}: ${projectOptions.find((p) => p.id === project)?.title ?? "—"}`}
-          onClear={() => setProject("")} />}
-        {assignee && <Chip label={`Assignee: ${peopleOptions.find((p) => p.id === assignee)?.name ?? "—"}`}
-          onClear={() => setAssignee("")} />}
-        {status && <Chip label={`Status: ${STATUS_LABELS[status as WorkStatus]}`}
-          onClear={() => setStatus("")} />}
-        <span style={{ marginLeft: "auto" }} className="row tight">
+      {/* Two rows (owner, 2026-10-29): what to look for, whose and how to
+          see it; then the dropdowns, left-aligned. Chips read back what is
+          set, and each one clears on its own. */}
+      <div className="filters stacked">
+        <div className="filters-row">
+          <span className="search">
+            <Search size={16} strokeWidth={1.75} />
+            <input aria-label={`Search ${w.tasks}`} placeholder={`Search ${w.tasks}`}
+              value={search} onChange={(e) => setSearch(e.target.value)} />
+          </span>
+          {portalView.offered && (
+            <PortalViewSwitch value={portalView.view} onChange={portalView.choose} joined />
+          )}
+          <div className="seg" role="group" aria-label="View">
+            <button className={view === "board" ? "small primary" : "small"}
+              aria-pressed={view === "board"} onClick={() => setBoardView(true)}>Board</button>
+            <button className={view === "list" ? "small primary" : "small"}
+              aria-pressed={view === "list"} onClick={() => setBoardView(false)}>List</button>
+          </div>
+        </div>
+        <div className="filters-row">
+          {staff && (
+            <CompanyFilter value={company} onChange={chooseCompany} companies={clients}
+              asChip />
+          )}
+          {staff && (
+            <TeamFilter teams={teamFilter.teams} value={teamFilter.team}
+              onChange={teamFilter.choose} />
+          )}
+          <select aria-label={`Filter by ${w.project}`} value={project}
+            style={{ width: "auto", minWidth: 150 }}
+            onChange={(e) => setProject(e.target.value)}>
+            <option value="">Any {w.project}</option>
+            {projectOptions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+          <select aria-label="Filter by assignee" value={assignee}
+            style={{ width: "auto", minWidth: 150 }}
+            onChange={(e) => setAssignee(e.target.value)}>
+            <option value="">Anyone</option>
+            {peopleOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <select aria-label="Filter by status" value={status}
+            style={{ width: "auto", minWidth: 150 }}
+            onChange={(e) => setStatus(e.target.value)}>
+            <option value="">Any status</option>
+            {STATUSES.map((st) => <option key={st} value={st}>{STATUS_LABELS[st]}</option>)}
+          </select>
+          <select aria-label="Filter by priority" value={priority}
+            style={{ width: "auto", minWidth: 130 }}
+            onChange={(e) => setPriority(e.target.value)}>
+            <option value="">Any priority</option>
+            <option value="3">Urgent</option>
+            <option value="2">High</option>
+            <option value="1">Normal</option>
+            <option value="0">Low</option>
+          </select>
           <select aria-label="Sort by" value={sort} style={{ width: "auto", minWidth: 170 }}
             onChange={(e) => setSort(e.target.value as TaskSort)}>
             {SORTS.map(([key, label]) => <option key={key} value={key}>Sort: {label}</option>)}
           </select>
-          <button className={view === "board" ? "small primary" : "small"}
-            aria-pressed={view === "board"} onClick={() => setBoardView(true)}>Board</button>
-          <button className={view === "list" ? "small primary" : "small"}
-            aria-pressed={view === "list"} onClick={() => setBoardView(false)}>List</button>
-        </span>
-      </FilterBar>
+          {project && <Chip label={`${w.Project}: ${projectOptions.find((p) => p.id === project)?.title ?? "—"}`}
+            onClear={() => setProject("")} />}
+          {assignee && <Chip label={`Assignee: ${peopleOptions.find((p) => p.id === assignee)?.name ?? "—"}`}
+            onClear={() => setAssignee("")} />}
+          {status && <Chip label={`Status: ${STATUS_LABELS[status as WorkStatus]}`}
+            onClear={() => setStatus("")} />}
+          {anyFilter && (
+            <button className="link small" onClick={() => {
+              chooseCompany(""); setStatus(""); setPriority(""); setSearch("");
+            }}>Clear all</button>
+          )}
+        </div>
+      </div>
 
       {board.error && <Banner kind="bad">{board.error}</Banner>}
       {board.pending && (
