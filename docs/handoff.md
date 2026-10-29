@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-29 UTC**, after Release 27. **The next session starts at
-"2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets and
-Besty" just below**, then "2026-10-27, late: Release 25, and where things stand", which sums up
+2026-10-29 UTC**, after Release 28. **The next session starts at
+"2026-10-29: Release 28, several mailboxes and three UI fixes" just below**,
+then "2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets
+and Besty", then "2026-10-27, late: Release 25, and where things stand", which sums up
 everything from Release 23 to 25; the dated sections after it have the
 detail. Then "2026-10-26: Release 23, and M5 part 5", "2026-10-24: catch-up
 reach, and M5 part 3", "2026-10-23: Release 22", "2026-10-22: Release 21,
@@ -13,6 +14,48 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-10-29: Release 28, several mailboxes and three UI fixes
+
+- **Release 28 is live**: `main` at `c8cd614`, one additive migration
+  (`crm 0054_mailboxes`: the `mailbox` table and five nullable columns)
+  applied by the runbook in the waiting worker, OK; **no new scheduled job**
+  (mailbox polling and filing run in the existing inbound poll); web came up
+  by itself; push to worker running 2 min 1 s. Runbook, "Observed at
+  Release 28". `dev` is ahead of `main` only by this write-up.
+- **It also released what was on `dev` after Release 27** (`08b8b31`, no
+  migrations): the starter "My practice" scorecard for new practices, the
+  Meeting view's 30-second cycle, and the strategy PDF's optional Scorecard
+  section (see the section below for each).
+- **Several mailboxes per practice** (`b2117aa`, `docs/mailboxes.md`): a
+  practice connects its owner's own mailbox, a shared address such as info@,
+  or a client's mailbox it runs, each with its own send-as, dev allow-list
+  and reply polling (Microsoft ones once Entra is configured). Every send
+  has a From choice: the Outbox item's, then the thread's mailbox, the
+  company's "Mail about this company goes from", the sender's own address
+  where their settings ask, their default mailbox, then the practice alias.
+  A disconnected mailbox refuses to send and stops polling, and is never
+  silently replaced. Every contact and company page has a **Mail** tab
+  (owners and associates; assistants for assigned clients; clients never)
+  with reply-in-place through the thread's mailbox; an assistant's reply
+  becomes an Outbox draft. "File mail with contacts and companies" is off
+  per mailbox until turned on; when on, only mail matching a contact or a
+  company's domain is stored, and nothing else, not even as unmatched.
+  Existing practices send exactly as before, their one connection becoming
+  their one mailbox the first time it is needed. **Proven only with fakes**:
+  a second mailbox's real Google or Microsoft consent, live filing, and
+  Graph listing; nobody has connected a second mailbox on production yet.
+- **Three UI fixes** (`c8cd614`): the strategy session's agenda rail wraps a
+  long step label onto a second line, its minutes right-aligned on the first
+  (the rail is the only place a step label sits beside its minutes); the
+  Tasks toolbar is two rows, search (growing), a joined Mine / My team /
+  Everyone and a joined Board / List on the first, the dropdowns
+  left-aligned on the second (Goals unchanged); and the PDF card says when
+  no accepted move names a KPI, so the Scorecard section would stay out, and
+  how to name one. The demo's seed was unchanged: Dunder Mifflin's review
+  already links two moves, and the demo seed test now checks its PDF lists
+  both KPIs once the section is on. A headless Chrome layout test covers the
+  rail and the toolbar at 1366 and 390.
 
 ## 2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets and Besty
 

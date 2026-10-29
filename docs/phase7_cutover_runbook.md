@@ -638,6 +638,24 @@ run in the existing feed job. R6: nothing to do: web's deployment
 **Push to worker running: 1 min 45 s.** No company has a Besty connection
 until someone enters a token on its company page.
 
+**Observed at Release 28 (2026-10-29 UTC, 1 migration, additive:
+`crm 0054_mailboxes`, the `mailbox` table and five nullable columns; three
+commits, the starter practice scorecard and PDF Scorecard section, several
+mailboxes and the Mail tab, and three UI fixes):** R1: the owner ran the
+backup by hand with the run-now mutation;
+`execsnowhq_prod_20261029_143402.sql.gz`, 4.3 MB, 14:34:05 (the 08:04 run
+also present). R2: `main` fast-forwarded `f798d93..c8cd614`, pushed
+14:36:29. R3: the worker `WAITING` 14:37:42, listing exactly
+`crm.0054_mailboxes`. **R4 run by Claude**, 14:38:06–18, OK (1 min 37 s
+after the push); the owner's own rerun afterwards found "No migrations to
+apply". R5: `migrations current` 14:38:22, cluster running 14:38:30. R5b:
+not needed, no scheduled job added (mailboxes poll and file in the existing
+inbound poll). R6: nothing to do: web's deployment (`6ed75772`) SUCCESS by
+itself by 14:38:33, `/healthz` 200, and the new `/api/mailboxes/` answering
+403 signed out (404 before). **Push to worker running: 2 min 1 s.** Every
+practice keeps its one connection as its one mailbox until someone connects
+another.
+
 ---
 
 ## Part A — the owner's steps, in order
