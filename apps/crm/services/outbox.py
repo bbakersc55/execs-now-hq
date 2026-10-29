@@ -24,18 +24,27 @@ class SendNotPermitted(Exception):
 
 # --------------------------------------------------------------- threading
 
-def thread_for(tenant, contact=None, subject="", client_company=None):
-    """Carve-back: every outbound message belongs to a thread with a token."""
+def thread_for(tenant, contact=None, subject="", client_company=None, mailbox=None):
+    """Carve-back: every outbound message belongs to a thread with a token.
+
+    With a mailbox (2026-10-28), the contact's thread in that mailbox: a
+    conversation lives in one mailbox, and Gmail knows its thread only
+    there. A thread from before mailboxes is someone's own mailbox's."""
     thread = None
     if contact is not None:
         # Never a financial thread: that one holds an invoice and its replies,
         # and ordinary mail on it would vanish from an assistant's view.
-        thread = EmailThread.all_objects.filter(tenant=tenant, contact=contact,
-                                                is_financial=False).first()
+        threads = EmailThread.all_objects.filter(tenant=tenant, contact=contact,
+                                                 is_financial=False)
+        if mailbox is None:
+            thread = threads.first()
+        else:
+            thread = threads.filter(mailbox=mailbox).first() or (
+                threads.filter(mailbox__isnull=True).first() if mailbox.is_own else None)
     if thread is None:
         thread = EmailThread.all_objects.create(
             tenant=tenant, contact=contact, client_company=client_company,
-            thread_token=EmailThread.new_token(), subject=subject,
+            thread_token=EmailThread.new_token(), subject=subject, mailbox=mailbox,
         )
     return thread
 
@@ -100,7 +109,8 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
                    from_address=None, sent_via="postmark", thread=None,
                    source_type="", source_id=None, attachments=(),
                    deliver_body_text=None, force_direct=False, deliver_body_html=None,
-                   category=None, also_to_contact=None, also_to_address=""):
+                   category=None, also_to_contact=None, also_to_address="",
+                   mailbox=None):
     """Single entry point. Nothing else in the codebase writes an OutboxMessage.
 
     `deliver_body_text` is for one-time links (magic links, PIN resets): it is
@@ -120,8 +130,23 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
             source_type=source_type, source_id=source_id,
         )
 
+    from apps.crm.services import mailboxes
+    from apps.crm.services import sender as sender_service
+
+    # The mailbox and its From (2026-10-28), resolved once, HERE, and kept on
+    # the row: FR-1.15c's per-producer default, then the mailbox defaults
+    # (`sender.choose`), or what the producer chose.
+    company = (to_contact.company if to_contact is not None and to_contact.company_id
+               else getattr(thread, "client_company", None))
+    if mailbox is not None:
+        from_address = from_address or mailboxes.address_of(mailbox)
+    elif from_address:
+        mailbox = mailboxes.for_address(tenant, from_address)
+    else:
+        mailbox, from_address = sender_service.choose(tenant, actor, producer,
+                                                      company=company, thread=thread)
     if thread is None:
-        thread = thread_for(tenant, contact=to_contact, subject=subject)
+        thread = thread_for(tenant, contact=to_contact, subject=subject, mailbox=mailbox)
 
     # `force_direct` is for a message whose human approval happened upstream in
     # its own review queue — a digest approved on the digest screen (FR-3.29),
@@ -130,13 +155,6 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
     direct = force_direct or _direct_to_sent(producer, role)
     if (deliver_body_text is not None or deliver_body_html is not None) and not direct:
         raise ValueError("deliver_body_text is only for direct-to-sent producers.")
-    if not from_address:
-        # FR-1.15c — the per-producer sender default. Resolved once, HERE, and
-        # recorded on the row, so the log says what actually went out even if
-        # the preference changes afterwards.
-        from apps.crm.services import sender as sender_service
-
-        from_address = sender_service.resolve_from(tenant, actor, producer)
     from apps.crm.services import unsubscribe
 
     message = OutboxMessage.all_objects.create(
@@ -161,6 +179,7 @@ def create_message(*, tenant, producer, to_address, subject, body_text,
         sent_via=sent_via,
         source_type=source_type,
         source_id=source_id,
+        mailbox=mailbox,
     )
     for stored_file, filename in attachments:
         from apps.crm.models import OutboxAttachment
@@ -216,6 +235,10 @@ def approve(message, *, actor, role):
     reason = _suppress_if_unsubscribed(message, actor=actor)
     if reason:
         raise SendNotPermitted(reason)
+    from apps.crm.services import mailboxes
+
+    if (refused := mailboxes.refusal(message)):
+        raise SendNotPermitted(refused)
 
     message.state = S.APPROVED
     message.approved_by = actor
@@ -379,11 +402,17 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     # passes through `approve`. A suppressed category does not leave.
     if _suppress_if_unsubscribed(message, actor=actor):
         return message
+    # A disconnected mailbox sends nothing, and never hands its mail to another.
+    from apps.crm.services import mailboxes
+
+    if (refused := mailboxes.refusal(message)):
+        raise TransportUnavailable(refused)
 
     # One check per address (owner, 2026-10-26): real mail leaves a laptop
     # only when every address on it is on the allow-list.
     dev_real = settings.IS_LOCAL and all(
-        is_real_send_allowed(address, message.tenant) for address in recipients_of(message))
+        is_real_send_allowed(address, message.tenant, message.mailbox)
+        for address in recipients_of(message))
     # The demo sends only through its redirect (owner, 2026-10-08). Where it
     # can, the one address below replaces the recipient before anything is
     # built; where it cannot (no redirect set, no connection of its own, or
@@ -395,8 +424,14 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     demo_to = _demo_recipient(message.tenant) if demo else ""
     use_real_transport = (bool(demo_to) if demo
                           else (not settings.IS_LOCAL) or dev_real)
-    transport = (get_transport(tenant=message.tenant) if use_real_transport
-                 else DevOutboxTransport())
+    mailbox = message.mailbox
+    if not use_real_transport:
+        transport = DevOutboxTransport()
+    elif mailbox is not None and not mailbox.is_own and not demo:
+        # A shared or a client's mailbox goes through its own provider.
+        transport = get_transport("microsoft" if mailbox.provider == "microsoft" else None)
+    else:
+        transport = get_transport(tenant=message.tenant)
 
     thread = message.thread
     if thread is None:
@@ -460,6 +495,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         from_address=from_address,
         # Gmail's own unsubscribe button, for marketing and updates only.
         headers=_unsubscribe_headers(message),
+        mailbox=mailbox,
     )
 
     message.state = S.SENT
@@ -490,6 +526,12 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         )
         updates = ["last_message_at", "updated_at"]
         thread.last_message_at = message.sent_at
+        # The mailbox it actually went through: the conversation's from now on.
+        went = result.get("mailbox") or mailboxes.of_connection(result.get("connection")) \
+            or mailbox
+        if went is not None and thread.mailbox_id is None:
+            thread.mailbox = went
+            updates.insert(0, "mailbox")
         # Gmail assigns the thread id on the first send; remembering it is what
         # lets Tier 2 polling recognise the reply later.
         if result.get("gmail_thread_id") and not thread.gmail_thread_id:

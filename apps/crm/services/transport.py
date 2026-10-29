@@ -133,11 +133,19 @@ def build_mime(*, to_address, from_address, subject, body_text,
 
 # ------------------------------------------------------------------ Gmail
 
-def access_token_for(connection):
-    """Exchange the stored refresh token for an access token."""
+def stored_refresh(connection) -> str:
+    """The refresh token a connection holds: a person's in `tenant_secret`,
+    a shared or client mailbox's on its own row (2026-10-28)."""
     from apps.crm.services.secrets import read_secret
 
-    refresh_token = read_secret(connection.secret)
+    if hasattr(connection, "stored_token"):
+        return connection.stored_token()
+    return read_secret(connection.secret)
+
+
+def access_token_for(connection):
+    """Exchange the stored refresh token for an access token."""
+    refresh_token = stored_refresh(connection)
     if not refresh_token:
         raise TransportUnavailable(
             f"{connection.email_address} has no stored Gmail credential. "
@@ -316,7 +324,7 @@ class GmailTransport:
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
-             inline_images=(), from_address="", headers=None, also_to=()):
+             inline_images=(), from_address="", headers=None, also_to=(), mailbox=None):
         from config import environment
 
         demo = environment.is_demo()
@@ -330,6 +338,13 @@ class GmailTransport:
                     "The demo sends only to its redirect address. This message was "
                     "addressed to someone else and was not sent.")
             from_address = environment.demo_sender()
+        if mailbox is not None and not mailbox.is_own and not demo:
+            return self._send_from_mailbox(
+                mailbox, tenant=tenant, to_address=to_address, subject=subject,
+                body_text=body_text, thread=thread, in_reply_to=in_reply_to,
+                references=references, attachments=attachments, body_html=body_html,
+                inline_images=inline_images, from_address=from_address, headers=headers,
+                also_to=also_to)
         connection = sending_connection_for(tenant, from_address)
         if demo and (connection.send_as_address or "").lower() != environment.demo_sender():
             raise TransportUnavailable(
@@ -373,7 +388,50 @@ class GmailTransport:
             "gmail_thread_id": data.get("threadId", ""),
             "message_id_header": message_id,
             "from_address": mime["From"],
+            "connection": connection,
         }
+
+    def _send_from_mailbox(self, mailbox, *, tenant, to_address, subject, body_text, thread,
+                           in_reply_to, references, attachments, body_html, inline_images,
+                           from_address, headers, also_to):
+        """Through a shared or a client's mailbox: its own token, From one of
+        its own addresses and never anything else (`mailboxes.addresses`)."""
+        from apps.crm.services import mailboxes
+
+        connection = mailbox.connection
+        if connection is None:
+            raise TransportUnavailable(f"{mailbox.email_address} is disconnected.")
+        allowed = mailboxes.addresses(mailbox)
+        sender = (from_address or "").lower()
+        if sender not in allowed:
+            if (connection.send_as_address or "").lower() == sender and sender:
+                raise SendAsNotVerified(connection.send_as_error or (
+                    f"{sender} is not yet a checked send-as address of {mailbox.email_address}. "
+                    "Verify it in Settings → Email."))
+            sender = mailboxes.address_of(mailbox)
+        token = access_token_for(connection)
+        message_id = message_id_for(tenant, thread)
+        mime = build_mime(
+            to_address=", ".join([to_address, *also_to]), from_address=sender,
+            subject=subject, body_text=body_text, message_id=message_id,
+            thread_token=thread.thread_token, in_reply_to=in_reply_to,
+            references=references, attachments=attachments, body_html=body_html,
+            inline_images=inline_images, headers=headers)
+        payload = {"raw": base64.urlsafe_b64encode(mime.as_bytes()).decode()}
+        if thread.gmail_thread_id and thread.mailbox_id == mailbox.pk:
+            payload["threadId"] = thread.gmail_thread_id
+        response = requests.post(f"{GMAIL_API}/messages/send",
+                                 headers={"Authorization": f"Bearer {token}"},
+                                 json=payload, timeout=30)
+        if not response.ok:
+            raise TransportUnavailable(
+                f"Gmail rejected the message ({response.status_code}): {response.text[:300]}")
+        data = response.json()
+        return {"provider": "gmail", "provider_message_id": data.get("id", ""),
+                "gmail_message_id": data.get("id", ""),
+                "gmail_thread_id": data.get("threadId", ""),
+                "message_id_header": message_id, "from_address": mime["From"],
+                "mailbox": mailbox}
 
 
 class GmailReader:
@@ -415,6 +473,67 @@ class GmailReader:
                 f"({response.status_code}): {response.text[:200]}")
         return response.json()
 
+    # The Mail tab's filing (2026-10-28): new mail by its envelope first.
+
+    #: Ids listed per run at most; the filing takes the oldest of them.
+    LISTED = 500
+
+    def listing(self, after, *, limit=100) -> list[dict]:
+        """The oldest `limit` messages since `after`, in any folder but
+        chats, drafts, spam and trash, by their envelope only."""
+        from datetime import datetime, timezone as tz
+
+        query = f"after:{int(after.timestamp())} -in:chats -in:drafts -in:spam -in:trash"
+        ids, page = [], None
+        while len(ids) < self.LISTED:
+            params = {"q": query, "maxResults": 100, **({"pageToken": page} if page else {})}
+            response = requests.get(f"{GMAIL_API}/messages", params=params, timeout=30,
+                                    headers={"Authorization": f"Bearer {self.token()}"})
+            if not response.ok:
+                raise TransportUnavailable(
+                    f"Gmail would not list new mail ({response.status_code}): "
+                    f"{response.text[:200]}")
+            data = response.json()
+            ids.extend(m["id"] for m in data.get("messages") or [])
+            page = data.get("nextPageToken")
+            if not page:
+                break
+        out = []
+        for message_id in reversed(ids[-self.LISTED:]):
+            if len(out) >= limit:
+                break
+            response = requests.get(
+                f"{GMAIL_API}/messages/{message_id}", timeout=30,
+                headers={"Authorization": f"Bearer {self.token()}"},
+                params={"format": "metadata",
+                        "metadataHeaders": ["From", "To", "Cc", "Message-ID"]})
+            if response.status_code == 404:
+                continue
+            if not response.ok:
+                raise TransportUnavailable(
+                    f"Gmail would not return a message's envelope ({response.status_code}).")
+            data = response.json()
+            headers = {h.get("name", "").lower(): h.get("value", "")
+                       for h in (data.get("payload") or {}).get("headers") or []}
+            stamp = int(data.get("internalDate") or 0) / 1000
+            out.append({"id": data.get("id", message_id), "thread": data.get("threadId", ""),
+                        "at": datetime.fromtimestamp(stamp, tz=tz.utc),
+                        "from": headers.get("from", ""), "to": headers.get("to", ""),
+                        "cc": headers.get("cc", ""), "message_id": headers.get("message-id", "")})
+        out.sort(key=lambda e: e["at"])
+        return out
+
+    def full(self, envelope) -> dict:
+        response = requests.get(f"{GMAIL_API}/messages/{envelope['id']}",
+                                headers={"Authorization": f"Bearer {self.token()}"},
+                                params={"format": "full"}, timeout=30)
+        if response.status_code == 404:
+            return {}
+        if not response.ok:
+            raise TransportUnavailable(
+                f"Gmail would not return a message ({response.status_code}).")
+        return response.json()
+
     def attachment(self, message_id: str, attachment_id: str) -> str:
         response = requests.get(
             f"{GMAIL_API}/messages/{message_id}/attachments/{attachment_id}",
@@ -447,7 +566,7 @@ class DevOutboxTransport:
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
-             inline_images=(), from_address="", headers=None, also_to=()):
+             inline_images=(), from_address="", headers=None, also_to=(), mailbox=None):
         from django.core.mail import EmailMultiAlternatives
 
         message_id = message_id_for(tenant, thread)
@@ -488,6 +607,10 @@ def get_transport(name=None, *, tenant=None):
     """The practice's own transport: Microsoft 365 when that is its mail
     provider (docs/m365_transport.md), otherwise exactly what it always was."""
     if name is None and tenant is not None and is_microsoft(tenant):
+        from apps.crm.services.graph import GraphTransport
+
+        return GraphTransport()
+    if name == "microsoft":
         from apps.crm.services.graph import GraphTransport
 
         return GraphTransport()

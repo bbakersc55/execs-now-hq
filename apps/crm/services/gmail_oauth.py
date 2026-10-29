@@ -77,6 +77,9 @@ RETURN_SESSION_KEY = "gmail_oauth_return"
 DRIVE_SESSION_KEY = "gmail_oauth_drive"
 INBOUND_SESSION_KEY = "gmail_oauth_inbound"
 SHEETS_SESSION_KEY = "gmail_oauth_sheets"
+#: Connecting a shared or a client's mailbox (2026-10-28): what it is, kept
+#: through the consent ({kind, label, company, files_mail}).
+MAILBOX_SESSION_KEY = "mailbox_oauth_spec"
 
 RETURN_PATHS = {"email": "/settings/email", "meetings": "/meetings"}
 

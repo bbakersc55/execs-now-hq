@@ -239,8 +239,9 @@ def _received_at(payload: dict):
     stamp = payload.get("internalDate")
     if stamp:
         try:
-            return timezone.datetime.fromtimestamp(int(stamp) / 1000,
-                                                   tz=timezone.utc)
+            from datetime import datetime, timezone as tz
+
+            return datetime.fromtimestamp(int(stamp) / 1000, tz=tz.utc)
         except (TypeError, ValueError, OSError):
             pass
     return timezone.now()

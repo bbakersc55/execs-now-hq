@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
 import { MailProvider, Me, MicrosoftStatus, api } from "../lib/api";
+import { MailboxesCard } from "../components/Mailboxes";
 import { DevAllowlist } from "./DevAllowlist";
 import { SenderSettings } from "./SenderSettings";
 
@@ -337,6 +338,8 @@ export function MicrosoftEmailSettings({ me, providerCard }: {
           </Banner>
         )}
       </Card>
+
+      <MailboxesCard />
 
       <SenderSettings provider="Microsoft 365" />
       {s.is_local_build && <DevAllowlist />}

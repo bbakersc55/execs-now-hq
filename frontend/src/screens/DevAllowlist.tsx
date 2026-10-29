@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMailboxes } from "../components/Mailboxes";
 import { useState } from "react";
 
 import { Banner, Card, Empty, Pill } from "../components/ui";
@@ -7,7 +8,7 @@ import { api } from "../lib/api";
 interface Effective {
   is_local: boolean;
   from_env: string[];
-  entries: { id: string; address: string; note: string; removable: boolean }[];
+  entries: { id: string; address: string; note: string; removable: boolean; mailbox?: string }[];
   effective: string[];
 }
 
@@ -21,7 +22,12 @@ export function DevAllowlist() {
   const qc = useQueryClient();
   const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
+  const [mailbox, setMailbox] = useState("");
   const [error, setError] = useState("");
+  // Each mailbox has its own list too (2026-10-28): an entry for one applies
+  // only to mail from it.
+  const mailboxes = useMailboxes();
+  const connected = (mailboxes.data?.mailboxes ?? []).filter((m) => m.connected);
 
   const list = useQuery<Effective>({
     queryKey: ["dev-allowlist"],
@@ -35,7 +41,7 @@ export function DevAllowlist() {
   };
 
   const add = useMutation({
-    mutationFn: () => api.post("/api/dev-allowlist/", { address, note }),
+    mutationFn: () => api.post("/api/dev-allowlist/", { address, note, mailbox: mailbox || null }),
     onSuccess: () => { setAddress(""); setNote(""); setError(""); invalidate(); },
     onError: (e: Error & { data?: Record<string, unknown> }) => {
       const detail = e.data
@@ -78,6 +84,14 @@ export function DevAllowlist() {
           <input value={note} placeholder="note (optional)" aria-label="Note"
             onChange={(e) => setNote(e.target.value)} />
         </div>
+        {connected.length > 1 && (
+          <div style={{ flex: "1 1 180px" }}>
+            <select aria-label="For mail from" value={mailbox} onChange={(e) => setMailbox(e.target.value)}>
+              <option value="">From any mailbox</option>
+              {connected.map((m) => <option key={m.id} value={m.id}>From {m.email_address}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ flex: "0 0 auto" }}>
           <button className="primary" type="submit" disabled={!address.trim() || add.isPending}>
             Allow real delivery
@@ -102,7 +116,7 @@ export function DevAllowlist() {
             {data.entries.map((e) => (
               <tr key={e.id}>
                 <td className="mono">{e.address}</td>
-                <td><Pill kind="ai">added here</Pill></td>
+                <td><Pill kind="ai">added here</Pill>{e.mailbox && <div className="muted small">from {e.mailbox} only</div>}</td>
                 <td className="muted small">{e.note || "—"}</td>
                 <td className="right">
                   <button className="danger" disabled={remove.isPending}

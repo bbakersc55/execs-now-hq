@@ -2017,3 +2017,31 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .meetings .what { min-width: 0; overflow-wrap: anywhere; }
 .meetings .links { display: flex; flex-wrap: wrap; gap: .25rem .5rem; font-size: .85em; }
 .meetings li.past { opacity: .7; }
+
+/* Mailboxes and the Mail tab (2026-10-28). */
+.record-tabs { display: flex; gap: 0; margin: 4px 0 14px; border-bottom: 1px solid var(--line); }
+.record-tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0;
+                      background: none; padding: 8px 14px; font: inherit; font-weight: 500;
+                      color: var(--ink-2); }
+.record-tabs button.on { border-bottom-color: var(--orange); color: var(--navy); font-weight: 700; }
+.mail-list, .mailbox-list { list-style: none; margin: 0; padding: 0; }
+.mail-item, .mailbox-row { border-top: 1px solid var(--line); padding: 10px 0; min-width: 0; }
+.mail-item:first-child, .mailbox-row:first-child { border-top: 0; }
+.mail-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; width: 100%;
+             border: 0; background: none; padding: 0; text-align: left; font: inherit;
+             color: var(--text); cursor: pointer; justify-content: flex-start;
+             white-space: normal; height: auto; min-height: 0; }
+.mail-head:hover:not(:disabled) { background: none; color: var(--navy); }
+.mail-head > span { min-width: 0; }
+.mail-dir { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+            padding: 1px 6px; border-radius: 6px; background: var(--hover); color: var(--ink-2); }
+.mail-dir.mail-outbound { background: var(--orange-050); color: var(--orange-600); }
+.mail-subject { font-weight: 600; overflow-wrap: anywhere; }
+.mail-meta { overflow-wrap: anywhere; }
+.mail-snippet { margin-top: 2px; overflow-wrap: anywhere; }
+.mail-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; font-size: 14px; }
+.mail-reply { display: grid; gap: 6px; margin-top: 8px; }
+.mailbox-connect { border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+                   margin-bottom: 12px; background: var(--hover); }
+.mailbox-row .muted { overflow-wrap: anywhere; }
+label.choice.inline { display: inline-flex; margin-left: 8px; }

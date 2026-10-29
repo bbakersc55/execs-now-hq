@@ -1144,13 +1144,28 @@ class OutboxViewSet(viewsets.ReadOnlyModelViewSet):
                 setattr(message, field, request.data[field] or "")
         sender_choice = request.data.get("sender")
         if sender_choice:
+            from apps.crm.services import outbox as outbox_service
             from apps.crm.services import sender as sender_service
 
-            message.from_address = sender_service.resolve_from(
+            mailbox, message.from_address = sender_service.choose(
                 message.tenant, request.user, message.producer, override=sender_choice,
             )
+            if mailbox != message.mailbox and message.thread_id \
+                    and message.thread.mailbox_id not in (None, getattr(mailbox, "pk", None)):
+                # A conversation lives in one mailbox: from another, a thread of its own.
+                thread = message.thread
+                message.thread = (
+                    outbox_service.thread_for(message.tenant, contact=message.to_contact,
+                                              subject=message.subject, mailbox=mailbox)
+                    if not thread.is_financial else type(thread).all_objects.create(
+                        tenant=message.tenant, contact=thread.contact,
+                        client_company=thread.client_company, is_financial=True,
+                        subject=thread.subject, mailbox=mailbox,
+                        thread_token=type(thread).new_token()))
+            message.mailbox = mailbox
         message.save(update_fields=[
-            "subject", "body_text", "body_html", "from_address", "updated_at",
+            "subject", "body_text", "body_html", "from_address", "mailbox", "thread",
+            "updated_at",
         ])
         return Response(self.get_serializer(message).data)
 
@@ -1428,13 +1443,15 @@ class DevSendAllowlistViewSet(viewsets.ModelViewSet):
         from apps.accounts.mailer import dev_allowlist
 
         from_env = sorted(dj_settings.DEV_REAL_SEND_ALLOWLIST)
-        rows = {e.address: e for e in self.get_queryset()}
+        rows = {e.address: e for e in self.get_queryset().select_related("mailbox")}
         return Response({
             "is_local": dj_settings.IS_LOCAL,
             "from_env": from_env,
             "entries": [
                 {"id": str(e.pk), "address": a, "note": e.note,
-                 "source": "database", "removable": True}
+                 "source": "database", "removable": True,
+                 # Only for mail from one mailbox (2026-10-28), else from any.
+                 "mailbox": e.mailbox.email_address if e.mailbox_id else ""}
                 for a, e in sorted(rows.items())
             ],
             "effective": sorted(dev_allowlist(request.tenant)),

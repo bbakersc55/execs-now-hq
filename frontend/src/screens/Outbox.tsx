@@ -195,7 +195,7 @@ export function Outbox() {
               )}
               <strong>{m.subject}</strong>
               <div className="muted small">
-                To {m.to_address}{m.also_to_address ? ` and ${m.also_to_address}` : ""} · from {m.from_address} · {m.label ?? m.producer.replace(/_/g, " ")}
+                To {m.to_address}{m.also_to_address ? ` and ${m.also_to_address}` : ""} · from {m.from_address}{m.mailbox_label ? ` (${m.mailbox_label})` : ""} · {m.label ?? m.producer.replace(/_/g, " ")}
               </div>
               {/* FR-0.7 — answered BEFORE approval: is a real person about to
                   receive this? `dev_real_send` is only written after a send. */}

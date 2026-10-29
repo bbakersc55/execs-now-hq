@@ -4,6 +4,7 @@ from apps.crm import views, views_campaigns, views_queue
 from apps.crm import views_gmail
 from apps.crm import views_microsoft
 from apps.crm import views_inbound
+from apps.crm import views_mail
 from apps.crm import views_referrals
 
 router = DefaultRouter()
@@ -40,5 +41,7 @@ router.register("gmail-connection", views_gmail.GmailConnectionViewSet,
 router.register("microsoft-connection", views_microsoft.MicrosoftConnectionViewSet,
                 basename="microsoft-connection")
 router.register("mail-provider", views_microsoft.MailProviderView, basename="mail-provider")
+router.register("mailboxes", views_mail.MailboxViewSet, basename="mailbox")
+router.register("mail", views_mail.MailView, basename="mail")
 
 urlpatterns = router.urls

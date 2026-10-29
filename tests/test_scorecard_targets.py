@@ -50,6 +50,15 @@ class FakeSheets:
     def rows(self, spreadsheet_id, tab, **_):
         return [list(r) for r in FakeSheets.books.get((spreadsheet_id, tab), [])]
 
+def shows(text: str, number: str) -> bool:
+    """`number` as a value in `text`: never as part of a timestamp's
+    fraction, an id or a longer number, which are what made a bare substring
+    check fail now and then."""
+    import re
+
+    return re.search(rf"(?<![\w.-]){re.escape(number)}(?!\w)", text) is not None
+
+
 
 @pytest.fixture(autouse=True)
 def fake_google(monkeypatch):
@@ -280,7 +289,7 @@ def test_a_target_from_a_kpi_the_reader_cant_see_is_no_target_for_them(card):
     seen, _ = tile_of(c, "Margin", who=c["member"])
     assert seen["target_live"]["value"] is None
     assert seen["summary"]["target"] is None and seen["summary"]["status"] is None
-    assert "777" not in json.dumps(seen)
+    assert not shows(json.dumps(seen), "777")
 
 
 # ---------------------------------------------------------------- computed operands
@@ -405,6 +414,6 @@ def test_a_target_or_operand_never_comes_from_another_company_or_practice(card):
                                     period_start=week(0), value=444, read_at=timezone.now())
     tile, _ = tile_of(c, "Mine")
     assert tile["target_live"]["value"] is None
-    assert "555" not in json.dumps(tile) and "444" not in json.dumps(tile)
+    assert not shows(json.dumps(tile), "555") and not shows(json.dumps(tile), "444")
     # And a client of this practice never reaches the other company's page through it.
     assert tile_of(c, "Their goal", who=c["owner"])[0] is None

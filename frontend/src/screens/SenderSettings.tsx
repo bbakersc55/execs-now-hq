@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { DefaultMailbox } from "../components/Mailboxes";
 import { Banner, Card, Field } from "../components/ui";
 import { api } from "../lib/api";
 
@@ -57,6 +58,8 @@ export function SenderSettings({ provider = "Gmail" }: { provider?: "Gmail" | "M
         refuses anything else, so offering a choice that failed at send time would be
         worse than not offering it.
       </p>
+
+      <DefaultMailbox />
 
       {!ownVerified && (
         <Banner kind="warn">

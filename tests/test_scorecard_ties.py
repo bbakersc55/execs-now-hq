@@ -38,6 +38,15 @@ from .test_scorecard import board, digest_world, patch, post, sc  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
+def shows(text: str, number: str) -> bool:
+    """`number` as a value in `text`: never as part of a timestamp's
+    fraction, an id or a longer number, which are what made a bare substring
+    check fail now and then."""
+    import re
+
+    return re.search(rf"(?<![\w.-]){re.escape(number)}(?!\w)", text) is not None
+
+
 
 def weeks_back(sc, n):
     return P.last_n(sc["week"], P.WEEKLY, n, "monday")
@@ -104,7 +113,7 @@ def test_the_portal_shows_a_goals_kpi_only_to_whoever_may_see_it(sc):
             assert got["kpi"]["name"] == "Cash" and got["kpi"]["value_text"] == "777,001"
         else:
             assert got["kpi"] is None, key
-            assert "777" not in json.dumps(got), key
+            assert not shows(json.dumps(got), "777"), key
     # A per-person KPI: a member is shown their own row, said to be theirs.
     Goal.all_objects.filter(pk=goal.pk).update(kpi=sc["kpis"]["calls"])
     mine = sc["api"].as_(sc["who"]["member"]).get(f"/api/goals/{goal.pk}/").json()["kpi"]
@@ -174,7 +183,7 @@ def test_a_members_digest_carries_their_own_row_and_never_a_colleagues(sc):
     for leak in ("Cole", "Max", "Sam", ": 7 ", ": 9 ", ": 15 ", ": 28 ", ": 43 "):
         assert leak not in text, leak
     # What they may not see is absent: Cash (leadership), Margin (leaders' page).
-    assert "Cash" not in text and "777" not in text and "Margin" not in text
+    assert "Cash" not in text and not shows(text, "777") and "Margin" not in text
     # A rating per person: their own, under each person sees their own.
     assert any(line.startswith("Rating (yours)") and ": 4 " in line
                for line in got["readings"])

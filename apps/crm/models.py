@@ -58,6 +58,10 @@ class Company(TenantScopedModel):
     seat_count = models.PositiveIntegerField(null=True, blank=True)
     digest_ai_prose = models.BooleanField(default=True)  # FR-3.24
     deleted_at = models.DateTimeField(null=True, blank=True)  # D2
+    #: "Mail about this client goes from this mailbox" (2026-10-28). Unset,
+    #: the sender's own default.
+    mail_from = models.ForeignKey("crm.Mailbox", null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "company"
@@ -914,6 +918,11 @@ class EmailThread(TenantScopedModel):
     #: no financials and an associate only an assigned client company's
     #: (`permissions.without_money`). Ordinary mail never lands on one.
     is_financial = models.BooleanField(default=False, db_default=False)
+    #: Which of the practice's mailboxes the conversation is in (2026-10-28):
+    #: replies are read from it and a reply in place goes through it. Unset on
+    #: a thread from before mailboxes, or not yet sent.
+    mailbox = models.ForeignKey("crm.Mailbox", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="threads")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "email_thread"
@@ -960,6 +969,10 @@ class MailPreference(TenantScopedModel):
     #: FR-1.15d — replaces the bare practice name as a sign-off.
     signature_text = models.TextField(blank=True, default="")
     signature_html = models.TextField(blank=True, default="")
+    #: "My default mailbox" (2026-10-28): what the practice alias would have
+    #: been for mail this person sends. Unset, the alias as before.
+    default_mailbox = models.ForeignKey("crm.Mailbox", null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "mail_preference"
@@ -992,6 +1005,9 @@ class DevSendAllowlistEntry(TenantScopedModel):
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="+",
     )
+    #: Only for mail from this mailbox (2026-10-28); unset, from any.
+    mailbox = models.ForeignKey("crm.Mailbox", null=True, blank=True,
+                                on_delete=models.CASCADE, related_name="allowlist")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "dev_send_allowlist_entry"
@@ -1076,6 +1092,96 @@ class MicrosoftConnection(TenantScopedModel):
             models.UniqueConstraint(fields=["tenant", "user"],
                                     name="microsoft_connection_one_per_user")
         ]
+
+
+class Mailbox(TenantScopedModel):
+    """One mailbox the practice sends from and reads (2026-10-28): someone's
+    own, a shared address like info@, or a client's mailbox the practice runs
+    (`services/mailboxes.py`).
+
+    Someone's own mailbox is their connection in Settings → Email
+    (`gmail`/`microsoft`), and its credential, send-as check and read grant
+    stay there. A shared or a client's mailbox has nobody's connection: its
+    token, send-as and grant are on this row, because a person's own token
+    is keyed to them and connecting info@ must never replace it.
+
+    Disconnecting keeps the row (a thread still says which mailbox it was)
+    and stops every send through it and every read of it.
+    """
+
+    class Provider(models.TextChoices):
+        GMAIL = "gmail", "Gmail"
+        MICROSOFT = "microsoft", "Microsoft 365"
+
+    class Kind(models.TextChoices):
+        OWN = "own", "Someone's own"
+        SHARED = "shared", "A shared address"
+        CLIENT = "client", "A client's mailbox"
+
+    provider = models.CharField(max_length=10, choices=Provider.choices,
+                                default=Provider.GMAIL, db_default=Provider.GMAIL)
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    label = models.CharField(max_length=80, blank=True, default="", db_default="")
+    email_address = models.EmailField()
+    #: Whose own mailbox this is.
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                             on_delete=models.SET_NULL, related_name="+")
+    #: A client's mailbox: whose.
+    client_company = models.ForeignKey(Company, null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="+")
+    gmail = models.OneToOneField(GmailConnection, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="mailbox")
+    microsoft = models.OneToOneField(MicrosoftConnection, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name="mailbox")
+    # A shared or a client's mailbox's own credential, send-as and grant. An
+    # own mailbox's are on its connection; these stay empty.
+    token_ciphertext = models.BinaryField(null=True, blank=True)
+    scopes = models.JSONField(default=list, blank=True)
+    directory_id = models.CharField(max_length=64, blank=True, default="", db_default="")
+    send_as_address = models.EmailField(blank=True, default="", db_default="")
+    send_as_verified_at = models.DateTimeField(null=True, blank=True)
+    send_as_error = models.TextField(blank=True, default="", db_default="")
+    last_poll_error = models.TextField(blank=True, default="", db_default="")
+    #: "File mail with contacts and companies" (the Mail tab): new mail in this
+    #: mailbox to or from a contact or a company's domain is kept; anything
+    #: else is never stored. Off unless someone turns it on.
+    files_mail = models.BooleanField(default=False, db_default=False)
+    #: How far the filing has read: mail after this moment is next.
+    files_after = models.DateTimeField(null=True, blank=True)
+    files_error = models.TextField(blank=True, default="", db_default="")
+    connected_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name="+")
+    disconnected_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "mailbox"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "provider", "email_address"],
+                                    name="mailbox_one_per_address"),
+        ]
+
+    def __str__(self):
+        return self.email_address
+
+    @property
+    def connection(self):
+        """What sends and reads for it: an own mailbox's connection, a shared
+        or client mailbox itself, or None once disconnected."""
+        if self.disconnected_at is not None:
+            return None
+        if self.kind == self.Kind.OWN:
+            return self.gmail or self.microsoft
+        return self if self.token_ciphertext else None
+
+    @property
+    def is_own(self) -> bool:
+        return self.kind == self.Kind.OWN
+
+    def stored_token(self) -> str:
+        """A shared or client mailbox's refresh token ("" for none)."""
+        from apps.crm.services.secrets import decrypt
+
+        return decrypt(self.token_ciphertext)
 
 
 class EmailMessage(TenantScopedModel):
@@ -1269,6 +1375,10 @@ class OutboxMessage(TenantScopedModel):
     dev_real_send = models.BooleanField(default=False)
     source_type = models.CharField(max_length=40, blank=True, default="")
     source_id = models.UUIDField(null=True, blank=True)
+    #: The mailbox it goes through (2026-10-28), chosen with its From and
+    #: changeable on the Outbox item until it is approved.
+    mailbox = models.ForeignKey("crm.Mailbox", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
 
     #: Marketing, updates or transactional (owner, 2026-09-28). Set when the
     #: row is made; rows from before it are read through `category_for`.

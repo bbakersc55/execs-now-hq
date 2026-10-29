@@ -102,10 +102,11 @@ def sending_connection_for(tenant, from_address=""):
 def access_token_for(connection):
     """A fresh access token. Microsoft rotates the refresh token on every use,
     so the new one is stored before the access token is handed back."""
-    from apps.crm.services.secrets import read_secret, write_secret
+    from apps.crm.services.secrets import encrypt, write_secret
+    from apps.crm.services.transport import stored_refresh
     from apps.tenancy.models import SecretKind
 
-    stored = read_secret(connection.secret)
+    stored = stored_refresh(connection)
     if not stored:
         raise TransportUnavailable(
             f"{connection.email_address} has no stored Microsoft 365 credential. "
@@ -117,7 +118,11 @@ def access_token_for(connection):
             f"{exc} Reconnect Microsoft 365 for {connection.email_address} in Settings → "
             "Email; until then, no app mail (including sign-in links) can be sent.") from exc
     rotated = tokens.get("refresh_token")
-    if rotated and rotated != stored:
+    if rotated and rotated != stored and hasattr(connection, "stored_token"):
+        # A shared or client mailbox keeps its token on its own row.
+        connection.token_ciphertext = encrypt(rotated)
+        connection.save(update_fields=["token_ciphertext", "updated_at"])
+    elif rotated and rotated != stored:
         secret = write_secret(tenant=connection.tenant, kind=SecretKind.MICROSOFT_REFRESH,
                               value=rotated, user=connection.user)
         if connection.secret_id != secret.pk:
@@ -261,7 +266,7 @@ class GraphTransport:
 
     def send(self, *, tenant, to_address, subject, body_text, thread,
              in_reply_to="", references="", attachments=(), body_html="",
-             inline_images=(), from_address="", headers=None, also_to=()):
+             inline_images=(), from_address="", headers=None, also_to=(), mailbox=None):
         from config import environment
 
         if environment.is_demo():
@@ -269,16 +274,29 @@ class GraphTransport:
             # (`transport.GmailTransport`); it is never a Microsoft practice.
             raise TransportUnavailable(
                 "This is the demo. It sends through its own Gmail connection only.")
-        connection = sending_connection_for(tenant, from_address)
+        if mailbox is not None and not mailbox.is_own:
+            # A shared or a client's mailbox: its own token, its own addresses.
+            from apps.crm.services import mailboxes
+
+            connection = mailbox.connection
+            if connection is None:
+                raise TransportUnavailable(f"{mailbox.email_address} is disconnected.")
+            if (from_address or "").lower() not in mailboxes.addresses(mailbox):
+                from_address = mailboxes.address_of(mailbox)
+            own = True
+            sender = from_address
+        else:
+            connection = sending_connection_for(tenant, from_address)
+            own = bool(from_address) and from_address.lower() == connection.email_address.lower()
+            sender = (connection.email_address if own
+                      else connection.send_as_address or tenant.from_address)
         token = access_token_for(connection)
-        own = bool(from_address) and from_address.lower() == connection.email_address.lower()
         message_id = message_id_for(tenant, thread)
 
         def mime_with(carried):
             return build_mime(
                 to_address=", ".join([to_address, *also_to]),
-                from_address=(connection.email_address if own
-                              else connection.send_as_address or tenant.from_address),
+                from_address=sender,
                 subject=subject, body_text=body_text, message_id=message_id,
                 thread_token=thread.thread_token, in_reply_to=in_reply_to,
                 references=references, attachments=carried, body_html=body_html,
@@ -300,6 +318,8 @@ class GraphTransport:
             # draft says, and that is what a reply's In-Reply-To will carry.
             "message_id_header": draft.get("internetMessageId") or message_id,
             "from_address": mime["From"],
+            **({"mailbox": mailbox} if mailbox is not None and not mailbox.is_own
+               else {"connection": connection}),
         }
 
 
@@ -506,6 +526,50 @@ class GraphReader:
                 conversation_id=row.get("conversationId") or conversation_id,
                 received=row.get("receivedDateTime", "")))
         return {"id": conversation_id, "provider": "microsoft", "messages": messages}
+
+    def listing(self, after, *, limit=100) -> list[dict]:
+        """The Mail tab's filing (2026-10-28): the oldest `limit` messages
+        since `after`, by their envelope only."""
+        from datetime import datetime
+
+        def said(recipient):
+            mail = (recipient or {}).get("emailAddress") or {}
+            name, address = mail.get("name", ""), mail.get("address", "")
+            return f"{name} <{address}>" if name else address
+
+        response = _call("GET", f"{GRAPH}/me/messages", token=self.token(), params={
+            "$filter": f"receivedDateTime gt {after.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+            "$orderby": "receivedDateTime asc", "$top": str(limit),
+            "$select": "id,conversationId,internetMessageId,receivedDateTime,from,"
+                       "toRecipients,ccRecipients,isDraft"})
+        if not response.ok:
+            raise TransportUnavailable(
+                f"Microsoft 365 would not list new mail ({response.status_code}): "
+                f"{_said(response)[:200]}")
+        out = []
+        for row in response.json().get("value") or []:
+            if row.get("isDraft"):
+                continue
+            out.append({
+                "id": row["id"], "thread": row.get("conversationId") or "",
+                "at": datetime.fromisoformat(row["receivedDateTime"].replace("Z", "+00:00")),
+                "from": said(row.get("from")),
+                "to": ", ".join(said(r) for r in row.get("toRecipients") or []),
+                "cc": ", ".join(said(r) for r in row.get("ccRecipients") or []),
+                "message_id": row.get("internetMessageId") or ""})
+        return out
+
+    def full(self, envelope) -> dict:
+        raw = _call("GET", f"{GRAPH}/me/messages/{envelope['id']}/$value", token=self.token(),
+                    timeout=60)
+        if raw.status_code == 404:
+            return {}
+        if not raw.ok:
+            raise TransportUnavailable(
+                f"Microsoft 365 would not return a message ({raw.status_code}).")
+        return mime_to_payload(raw.content, message_id=envelope["id"],
+                               conversation_id=envelope["thread"],
+                               received=envelope["at"].strftime("%Y-%m-%dT%H:%M:%SZ"))
 
     def attachment(self, message_id: str, attachment_id: str) -> str:
         """Every attachment arrives inside the MIME, so there is never one to

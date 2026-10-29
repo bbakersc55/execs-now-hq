@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { GmailStatus, MailProvider, Me, api } from "../lib/api";
+import { MailboxesCard } from "../components/Mailboxes";
 import { DevAllowlist } from "./DevAllowlist";
 import { MailProviderCard, MicrosoftEmailSettings } from "./MicrosoftEmail";
 import { PracticeAddress } from "./PracticeAddress";
@@ -285,6 +286,8 @@ function GmailEmailSettings({ me, providerCard }: { me: Me; providerCard: React.
           </table>
         )}
       </Card>
+
+      <MailboxesCard />
 
       <SenderSettings />
 

@@ -1,4 +1,5 @@
 import { CallNotes } from "../components/CallNotes";
+import { MailTab, RecordTabs } from "../components/Mailboxes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -54,6 +55,9 @@ export function CompanyDetail({ me }: { me: Me }) {
   const { id } = useParams();
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
+  // Overview or Mail (2026-10-28); ?tab=mail opens on the Mail tab.
+  const [tab, setTab] = useState<"overview" | "mail">(() =>
+    new URLSearchParams(window.location.search).get("tab") === "mail" ? "mail" : "overview");
   const [error, setError] = useState("");
   const qc = useQueryClient();
   const company = useQuery<Company>({
@@ -123,6 +127,8 @@ export function CompanyDetail({ me }: { me: Me }) {
       </div>
       {note && <Banner kind="ok">{note}</Banner>}
       {error && <Banner kind="bad">{error}</Banner>}
+      <RecordTabs tab={tab} onTab={setTab} />
+      {tab === "mail" ? <MailTab me={me} company={c.id} /> : <>
       <p className="sub">
         {c.industry || "No industry"}
         {c.is_client_company && <> · <Pill kind="ok">client company</Pill></>}
@@ -215,6 +221,7 @@ export function CompanyDetail({ me }: { me: Me }) {
           )}
         </Card>
       </div>
+      </>}
     </>
   );
 }

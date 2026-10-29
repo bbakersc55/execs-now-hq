@@ -69,6 +69,9 @@ def consent_url(request, *, inbound=False, files=False, where="email") -> str:
     request.session[microsoft_oauth.INBOUND_SESSION_KEY] = inbound
     request.session[microsoft_oauth.FILES_SESSION_KEY] = files
     request.session[microsoft_oauth.RETURN_SESSION_KEY] = where
+    from apps.crm.services import gmail_oauth
+
+    request.session.pop(gmail_oauth.MAILBOX_SESSION_KEY, None)
     return microsoft_oauth.authorization_url(state, login_hint=request.user.email,
                                              inbound=inbound, files=files)
 
@@ -274,6 +277,9 @@ class MicrosoftConnectionViewSet(viewsets.ViewSet):
         if connection is None:
             return Response({"detail": "No Microsoft 365 account is connected."}, status=400)
         email_address = connection.email_address
+        from apps.crm.services import mailboxes
+
+        mailboxes.disconnected_own(connection)
         if connection.secret_id:
             connection.secret.delete()
         connection.delete()
@@ -317,6 +323,9 @@ def microsoft_callback(request):
     inbound_wanted = bool(request.session.pop(microsoft_oauth.INBOUND_SESSION_KEY, False))
     files_wanted = bool(request.session.pop(microsoft_oauth.FILES_SESSION_KEY, False))
     where = request.session.pop(microsoft_oauth.RETURN_SESSION_KEY, "email")
+    from apps.crm.services import gmail_oauth
+
+    mailbox_spec = request.session.pop(gmail_oauth.MAILBOX_SESSION_KEY, None)
     error_key = "drive_error" if where == "meetings" else "ms_error"
 
     def refused(text):
@@ -353,6 +362,16 @@ def microsoft_callback(request):
         return refused(str(exc))
 
     claims = microsoft_oauth.id_claims(tokens)
+    if mailbox_spec:
+        # A shared or a client's mailbox, on its own row (2026-10-28).
+        from apps.crm.views_mail import connected_mailbox
+
+        return HttpResponseRedirect(_spa_url(**connected_mailbox(
+            request, mailbox_spec, provider="microsoft", email_address=email_address,
+            refresh_token=tokens["refresh_token"],
+            scopes=microsoft_oauth.granted_scopes(tokens),
+            reads=microsoft_oauth.inbound_granted(tokens),
+            directory_id=str(claims.get("tid") or ""))))
     before = MicrosoftConnection.all_objects.filter(tenant=tenant, user=request.user).first()
     # Adding OneDrive to the same account and address changes nothing about
     # sending, so a check already passed stands; anything else earns it again,

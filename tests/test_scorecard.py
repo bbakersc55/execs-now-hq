@@ -271,7 +271,8 @@ def test_a_member_is_sent_their_own_row_and_nothing_of_a_colleague(sc):
     # a value; his row is.
     for name in ("Cole Colleague", "Sam Sales"):
         assert name not in text, f"{name} leaked to a member"
-    assert '"Max Manager", "you"' not in text and "9.0" not in text
+    # Max's 9 as a value anywhere; a bare "9.0" also matches a timestamp's seconds.
+    assert '"Max Manager", "you"' not in text and '": 9.0' not in text
     calls = next(t for d in everything for t in d["kpis"] if t["name"] == "Calls")
     assert calls["shape"] == "my_row" and calls["total"] is False
     assert [(r["name"], r["value"]) for r in calls["rows"]] == [("Mia Member", 12.0)]

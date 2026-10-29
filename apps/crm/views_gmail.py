@@ -171,6 +171,7 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         request.session[gmail_oauth.RETURN_SESSION_KEY] = "email"
         request.session[gmail_oauth.DRIVE_SESSION_KEY] = False
         request.session[gmail_oauth.SHEETS_SESSION_KEY] = False
+        request.session.pop(gmail_oauth.MAILBOX_SESSION_KEY, None)
         email = request.user.email
         # FR-6.3g — Tier 2 is **opt-in per connect**, never folded in. A
         # practice that does not collect replies is never asked to let the app
@@ -266,6 +267,9 @@ class GmailConnectionViewSet(viewsets.ViewSet):
         if connection is None:
             return Response({"detail": "No Gmail account is connected."}, status=400)
         email_address = connection.email_address
+        from apps.crm.services import mailboxes
+
+        mailboxes.disconnected_own(connection)
         if connection.secret_id:
             connection.secret.delete()
         connection.delete()
@@ -292,6 +296,7 @@ def gmail_callback(request):
     drive_wanted = bool(request.session.pop(gmail_oauth.DRIVE_SESSION_KEY, False))
     inbound_wanted = bool(request.session.pop(gmail_oauth.INBOUND_SESSION_KEY, False))
     sheets_wanted = bool(request.session.pop(gmail_oauth.SHEETS_SESSION_KEY, False))
+    mailbox_spec = request.session.pop(gmail_oauth.MAILBOX_SESSION_KEY, None)
 
     membership = getattr(request, "membership", None)
     if membership is None or membership.role not in ("FF", "CF"):
@@ -347,6 +352,15 @@ def gmail_callback(request):
                 "Nothing was stored.")))
 
     tenant = membership.tenant
+    if mailbox_spec:
+        # A shared or a client's mailbox: on its own row, never in place of
+        # the person's own connection or its token.
+        from apps.crm.views_mail import connected_mailbox
+
+        return HttpResponseRedirect(_spa_url(where, **connected_mailbox(
+            request, mailbox_spec, provider="gmail", email_address=email_address,
+            refresh_token=tokens["refresh_token"], scopes=gmail_oauth.granted_scopes(tokens),
+            reads=gmail_oauth.inbound_granted(tokens))))
     secret = secrets.write_secret(
         tenant=tenant, kind=SecretKind.GMAIL_REFRESH,
         value=tokens["refresh_token"], user=request.user,

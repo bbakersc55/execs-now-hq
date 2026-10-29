@@ -773,6 +773,7 @@ class OutboxMessageSerializer(serializers.ModelSerializer):
     attachments = OutboxAttachmentSerializer(many=True, read_only=True)
     sender_options = serializers.SerializerMethodField()
     label = serializers.SerializerMethodField()
+    mailbox_label = serializers.SerializerMethodField()
 
     class Meta:
         model = OutboxMessage
@@ -782,9 +783,17 @@ class OutboxMessageSerializer(serializers.ModelSerializer):
             "subject", "body_text", "body_html", "is_ai_generated", "warning",
             "send_by", "approved_by", "approved_at", "sent_at", "sent_via",
             "dev_real_send", "delivery", "attachments", "sender_options",
-            "created_at",
+            "mailbox_label", "created_at",
         ]
         read_only_fields = ["state", "approved_by", "approved_at", "sent_at", "dev_real_send"]
+
+    def get_mailbox_label(self, obj):
+        """Which mailbox it goes through, in words, when it is not someone's
+        own (2026-10-28)."""
+        mailbox = obj.mailbox
+        if mailbox is None or mailbox.is_own:
+            return ""
+        return mailbox.label or mailbox.email_address
 
     def get_label(self, obj):
         """What the email is, in words: for a referral thank-you, which moment
@@ -808,10 +817,19 @@ class OutboxMessageSerializer(serializers.ModelSerializer):
             return []
         from apps.crm.services import sender as sender_service
 
+        from apps.crm.services import mailboxes
+
         alias, own = sender_service.verified_addresses(obj.tenant, request.user)
         options = [{"value": "alias", "address": alias, "label": "The practice alias"}]
         if own:
             options.append({"value": "self", "address": own, "label": "My own address"})
+        # Every other connected mailbox (2026-10-28), by its own address.
+        seen = {alias.lower(), own.lower()}
+        for option in mailboxes.options(obj.tenant, request.user):
+            if option["address"] not in seen:
+                seen.add(option["address"])
+                options.append({"value": option["value"], "address": option["address"],
+                                "label": option["label"]})
         return options
 
     def get_delivery(self, obj):
@@ -830,7 +848,7 @@ class OutboxMessageSerializer(serializers.ModelSerializer):
 
         # One check per address: real only when every one is on the list.
         addresses = recipients_of(obj)
-        off = [a for a in addresses if not is_real_send_allowed(a, obj.tenant)]
+        off = [a for a in addresses if not is_real_send_allowed(a, obj.tenant, obj.mailbox)]
         real = not off
         named = " and ".join(addresses)
         return {
@@ -895,8 +913,14 @@ class DevSendAllowlistEntrySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DevSendAllowlistEntry
-        fields = ["id", "address", "note", "added_by", "created_at"]
+        fields = ["id", "address", "note", "mailbox", "added_by", "created_at"]
         read_only_fields = ["added_by"]
+
+    def validate_mailbox(self, value):
+        # Only for mail from one of this practice's mailboxes (2026-10-28).
+        if value is not None and value.tenant_id != self.context["request"].tenant.pk:
+            raise serializers.ValidationError("Choose one of the practice's mailboxes.")
+        return value
 
     def validate_address(self, value):
         from apps.accounts.mailer import AllowlistEntryInvalid, normalise_allowlist_entry

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { Plus, Save, Search, Send, UserPlus } from "lucide-react";
 
+import { useMailboxes } from "../components/Mailboxes";
 import { RichText, insertMergeField, textToHtml } from "../components/RichText";
 import { Chip, FilterBar, PageHead, useRowLink } from "../components/shell";
 import { Banner, Card, Empty, Field, when } from "../components/ui";
@@ -98,6 +99,8 @@ export function CampaignDetail() {
   const campaign = useQuery<Campaign>({
     queryKey: ["campaign", id], queryFn: () => api.get<Campaign>(path),
   });
+  // The connected shared and client mailboxes, as more Froms (2026-10-28).
+  const mailboxes = useMailboxes();
   const [draft, setDraft] = useState<Partial<Campaign>>({});
   const [note, setNote] = useState("");
   // The recipients' choice lives here so "Enroll and queue" can be the page's
@@ -203,6 +206,8 @@ export function CampaignDetail() {
                 onChange={(e) => set({ sender: e.target.value })}>
                 <option value="alias">The practice's address</option>
                 <option value="self">My own address</option>
+                {(mailboxes.data?.mailboxes ?? []).filter((m) => m.connected && m.kind !== "own")
+                  .map((m) => <option key={m.id} value={`mailbox:${m.id}`}>{m.sends_as} · {m.label || m.kind_label}</option>)}
               </select>
             </Field>
           </div>

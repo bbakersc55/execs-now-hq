@@ -40,8 +40,10 @@ def normalise_allowlist_entry(value: str) -> str:
     return entry
 
 
-def dev_allowlist(tenant=None) -> set[str]:
-    """The effective allow-list: `.env` entries UNION the tenant's own rows.
+def dev_allowlist(tenant=None, mailbox=None) -> set[str]:
+    """The effective allow-list: `.env` entries UNION the tenant's own rows,
+    those for every mailbox and, with `mailbox`, that mailbox's own
+    (2026-10-28).
 
     The environment is the floor — an address set in `.env` cannot be removed
     through the UI, so the deployment's guarantee cannot be quietly lowered by
@@ -52,14 +54,17 @@ def dev_allowlist(tenant=None) -> set[str]:
         return entries
     from apps.crm.models import DevSendAllowlistEntry
 
+    from django.db.models import Q
+
     entries.update(
-        DevSendAllowlistEntry.all_objects.filter(tenant=tenant)
+        DevSendAllowlistEntry.all_objects.filter(tenant=tenant).filter(
+            Q(mailbox__isnull=True) | Q(mailbox_id=getattr(mailbox, "pk", None)))
         .values_list("address", flat=True)
     )
     return {e.strip().lower() for e in entries if e}
 
 
-def is_real_send_allowed(to_address: str, tenant=None) -> bool:
+def is_real_send_allowed(to_address: str, tenant=None, mailbox=None) -> bool:
     if not settings.IS_LOCAL:
         return True
-    return (to_address or "").strip().lower() in dev_allowlist(tenant)
+    return (to_address or "").strip().lower() in dev_allowlist(tenant, mailbox)

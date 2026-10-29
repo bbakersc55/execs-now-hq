@@ -43,25 +43,54 @@ def verified_addresses(tenant, user):
     return alias, own
 
 
-def resolve_from(tenant, user, producer, *, override=""):
-    """The address a message should be sent from.
+def resolve_from(tenant, user, producer, *, override="", company=None, thread=None):
+    """The address a message should be sent from (`choose`, without the
+    mailbox)."""
+    return choose(tenant, user, producer, override=override, company=company,
+                  thread=thread)[1]
 
-    `override` is the per-draft choice made in Review & edit ("alias" | "self" |
-    a literal address). It wins over the stored per-producer default, because
-    the person looking at the draft has more context than a setting does.
+
+def choose(tenant, user, producer, *, override="", company=None, thread=None):
+    """`(mailbox, address)`: where a message goes from (2026-10-28).
+
+    In order: the choice made on the draft (`override`: "alias", "self", a
+    mailbox as "mailbox:<id>", or a literal address); the mailbox its thread
+    is already in; the company's default ("mail about this client goes from
+    this mailbox"); the person's own address where their per-producer
+    setting says so; their default mailbox; and the practice alias. A
+    mailbox that is disconnected is passed over. With no mailbox set
+    anywhere, which is every practice with one connection, the address is
+    exactly what it always was, and the mailbox the one it always went
+    through.
     """
+    from apps.crm.services import mailboxes
+
+    if override.startswith("mailbox:"):
+        found = mailboxes.usable(tenant, override.split(":", 1)[1])
+        if found is not None:
+            return found, mailboxes.address_of(found)
+        override = ""
     alias, own = verified_addresses(tenant, user)
     choice = override
     if choice not in (MailPreference.Sender.ALIAS, MailPreference.Sender.SELF, ""):
         # A literal address: honoured only if it is one of the two verified ones.
-        return choice if choice in (alias, own) and choice else alias
+        address = choice if choice in (alias, own) and choice else alias
+        return mailboxes.legacy_for(tenant, address), address
+    if not choice and not mailboxes._off_mailboxes(tenant):
+        for found in (getattr(thread, "mailbox", None), mailboxes.company_default(company)):
+            if mailboxes.is_connected(found):
+                return found, mailboxes.address_of(found)
     if not choice:
         preference = preference_for(tenant, user)
         choice = preference.sender_for(producer) if preference else \
             MailPreference.DEFAULTS.get(producer, MailPreference.Sender.ALIAS)
-    if choice == MailPreference.Sender.SELF and own:
-        return own
-    return alias
+        if choice != MailPreference.Sender.SELF or not own:
+            found = mailboxes.user_default(tenant, user) \
+                if not mailboxes._off_mailboxes(tenant) else None
+            if found is not None:
+                return found, mailboxes.address_of(found)
+    address = own if choice == MailPreference.Sender.SELF and own else alias
+    return mailboxes.legacy_for(tenant, address), address
 
 
 def _default_signature_text(tenant, user):

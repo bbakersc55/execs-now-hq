@@ -73,51 +73,98 @@ def reading_connection(tenant):
     raise NotConnected("No Google account is connected for this practice.")
 
 
-def watched(tenant):
+def reading_mailboxes(tenant) -> dict:
+    """{id: mailbox} for each connected mailbox holding the read grant
+    (2026-10-28). A disconnected one is never read."""
+    from apps.crm.services import mailboxes
+
+    return {m.pk: m for m in mailboxes.of_tenant(tenant, connected_only=True)
+            if mailboxes.reads(m)}
+
+
+def watched(tenant, reading_ids=None):
     """The threads replies are read for: those the practice's own provider
-    started. A practice that switched leaves the other provider's threads
-    where they are, read no further (docs/m365_transport.md, D6)."""
-    if transport.is_microsoft(tenant):
-        return EmailThread.objects.exclude(graph_conversation_id="")
-    return EmailThread.objects.exclude(gmail_thread_id="")
+    started before mailboxes (a practice that switched leaves the other
+    provider's threads where they are, read no further, docs/m365_transport.md,
+    D6), and every thread of a mailbox that reads. A thread of a mailbox that
+    is disconnected, or does not read, is not read."""
+    from django.db.models import Q
+
+    if reading_ids is None:
+        reading_ids = list(reading_mailboxes(tenant))
+    legacy = ~Q(graph_conversation_id="") if transport.is_microsoft(tenant) \
+        else ~Q(gmail_thread_id="")
+    started = ~Q(gmail_thread_id="") | ~Q(graph_conversation_id="")
+    return EmailThread.objects.filter(
+        (Q(mailbox__isnull=True) & legacy) | (Q(mailbox_id__in=reading_ids) & started))
 
 
-def due(tenant, *, limit=THREADS_PER_RUN):
+def due(tenant, *, limit=THREADS_PER_RUN, reading_ids=None):
     """The threads to look at, least recently polled first.
 
     `last_polled_at IS NULL` sorts first on Postgres with `nulls_first`, which
     is what makes a thread created between two runs get read on the next one
     rather than waiting for its turn.
     """
-    return list(watched(tenant)
+    return list(watched(tenant, reading_ids)
                 .order_by(F("last_polled_at").asc(nulls_first=True))
                 .values_list("pk", flat=True)[:limit])
 
 
-def poll(tenant, *, client=None, limit=THREADS_PER_RUN) -> dict:
-    """One run. Returns what a health line would say."""
+def poll(tenant, *, client=None, limit=THREADS_PER_RUN, readers=None) -> dict:
+    """One run over every mailbox that reads. Returns what a health line
+    would say. `client` reads every thread (tests); `readers` maps a
+    mailbox id to its reader."""
     from config import environment
+
+    from apps.crm.services import mail_filing
 
     if environment.is_demo():
         raise NotConnected(environment.DEMO_REFUSAL)
     microsoft = transport.is_microsoft(tenant)
-    if client is None:
-        if microsoft:
-            from apps.crm.services.graph import GraphReader
+    from apps.crm.services import mailboxes
 
-            client = GraphReader(reading_connection(tenant))
+    reading = reading_mailboxes(tenant)
+    if client is not None:
+        # One reader for everything (tests): every connected mailbox's threads.
+        reading = {m.pk: m for m in mailboxes.of_tenant(tenant, connected_only=True)}
+    legacy, refused = client, None
+    if legacy is None:
+        try:
+            connection = reading_connection(tenant)
+        except NotConnected as exc:
+            refused = exc
         else:
-            client = transport.GmailReader(reading_connection(tenant))
+            if microsoft:
+                from apps.crm.services.graph import GraphReader
+
+                legacy = GraphReader(connection)
+            else:
+                legacy = transport.GmailReader(connection)
+    if legacy is None and not reading:
+        raise refused
+    readers = dict(readers or {})
+
+    def reader_of(thread):
+        if thread.mailbox_id is None:
+            return legacy, microsoft
+        mailbox = reading[thread.mailbox_id]
+        if thread.mailbox_id not in readers:
+            readers[thread.mailbox_id] = client or mail_filing.reader_for(mailbox)
+        return readers[thread.mailbox_id], mailbox.provider == "microsoft"
 
     totals = {"threads": 0, "matched": 0, "unmatched": 0, "already_had": 0,
               "skipped_outbound": 0, "errors": 0}
-    for pk in due(tenant, limit=limit):
+    for pk in due(tenant, limit=limit, reading_ids=list(reading)):
         thread = EmailThread.objects.filter(pk=pk).first()
         if thread is None:                              # pragma: no cover - raced
             continue
+        reader, graph = reader_of(thread)
+        if reader is None:
+            continue                  # a thread from before mailboxes, and nothing reads it
         totals["threads"] += 1
         try:
-            payload = client.thread(thread.graph_conversation_id if microsoft
+            payload = reader.thread(thread.graph_conversation_id if graph
                                     else thread.gmail_thread_id)
         except transport.TransportUnavailable as exc:
             # Recorded on the thread, and the cursor is **not** advanced, so
@@ -126,10 +173,22 @@ def poll(tenant, *, client=None, limit=THREADS_PER_RUN) -> dict:
             thread.save(update_fields=["poll_error", "updated_at"])
             totals["errors"] += 1
             continue
-        counts = inbound.ingest_thread(tenant, payload, client=client) if payload else {}
+        counts = inbound.ingest_thread(tenant, payload, client=reader) if payload else {}
         for key, value in counts.items():
             totals[key] += value
         thread.poll_error = ""
         thread.last_polled_at = timezone.now()
         thread.save(update_fields=["poll_error", "last_polled_at", "updated_at"])
     return totals
+
+
+def file_mail(tenant, *, readers=None) -> dict:
+    """The Mail tab's filing, for each mailbox with it on (`mail_filing`)."""
+    from apps.crm.services import mail_filing
+
+    out = {}
+    for mailbox in reading_mailboxes(tenant).values():
+        if mailbox.files_mail:
+            out[mailbox.email_address] = mail_filing.file_mailbox(
+                mailbox, client=(readers or {}).get(mailbox.pk))
+    return out

@@ -257,11 +257,16 @@ def queue(campaign, contacts, *, actor) -> dict:
                             "detail": why})
             continue
         subject, html, text = rendered_for(campaign, contact, actor=actor)
+        mailbox, address = sender.choose(
+            campaign.tenant, campaign.created_by or actor, P.CAMPAIGN,
+            override=campaign.sender, company=contact.company if contact.company_id else None)
         message = outbox.create_message(
             tenant=campaign.tenant, producer=P.CAMPAIGN, category="marketing",
             to_contact=contact, to_address=contact.primary_email,
             subject=subject, body_text=text, body_html=html, actor=actor,
-            from_address=from_address, send_by=send_by,
+            # Each recipient's From (2026-10-28): the campaign's own choice, or
+            # their company's default mailbox, or the sender's, as the Outbox.
+            mailbox=mailbox, from_address=address, send_by=send_by,
             source_type="campaign", source_id=campaign.pk, attachments=files)
         CampaignRecipient.all_objects.update_or_create(
             tenant_id=campaign.tenant_id, campaign=campaign, contact=contact,

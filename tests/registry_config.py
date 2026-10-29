@@ -350,6 +350,12 @@ from apps.crm.models import MicrosoftConnection  # noqa: E402
 
 register(MicrosoftConnection, factories.MicrosoftConnectionFactory)
 
+# Several mailboxes per practice (2026-10-28): the API's own isolation tests
+# are in tests/test_mailboxes.py.
+from apps.crm.models import Mailbox  # noqa: E402
+
+register(Mailbox, factories.MailboxFactory, endpoints=("/api/mailboxes/",))
+
 # Calendar (2026-10-27): each person's own connection; Home's events and a
 # company's are served by /api/calendar/ (tests/test_calendar.py).
 from apps.calendars.models import (  # noqa: E402

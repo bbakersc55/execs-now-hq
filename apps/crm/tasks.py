@@ -65,9 +65,12 @@ def poll_inbound(tenant_id: str) -> dict:
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
         try:
-            return inbound_poll.poll(tenant)
+            report = inbound_poll.poll(tenant)
         except inbound_poll.NotConnected as exc:
-            return {"connected": False, "detail": str(exc)}
+            report = {"connected": False, "detail": str(exc)}
+        # The Mail tab's filing (2026-10-28), for each mailbox that has it on.
+        filed = inbound_poll.file_mail(tenant)
+        return {**report, **({"filed": filed} if filed else {})}
 
 
 @unattended_job("crm.stage_rules_daily")

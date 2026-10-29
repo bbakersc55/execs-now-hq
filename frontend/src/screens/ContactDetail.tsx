@@ -1,4 +1,5 @@
 import { CallNotes } from "../components/CallNotes";
+import { MailTab, RecordTabs } from "../components/Mailboxes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -23,6 +24,9 @@ export function ContactDetail({ me }: { me: Me }) {
   const qc = useQueryClient();
   const w = useWords();
   const [note, setNote] = useState("");
+  // Overview or Mail (2026-10-28); ?tab=mail opens on the Mail tab.
+  const [tab, setTab] = useState<"overview" | "mail">(() =>
+    new URLSearchParams(window.location.search).get("tab") === "mail" ? "mail" : "overview");
   const [editing, setEditing] = useState(false);
   const [lookingForDupes, setLookingForDupes] = useState(false);
 
@@ -122,6 +126,8 @@ export function ContactDetail({ me }: { me: Me }) {
       )}
       {note && <Banner kind="ok">{note}</Banner>}
 
+      <RecordTabs tab={tab} onTab={setTab} />
+      {tab === "mail" ? <MailTab me={me} contact={c.id} /> : (
       <div className="record-cols">
         <div>
           <Card title="Pipelines">
@@ -366,6 +372,7 @@ export function ContactDetail({ me }: { me: Me }) {
           </Card>
         </div>
       </div>
+      )}
     </>
   );
 }

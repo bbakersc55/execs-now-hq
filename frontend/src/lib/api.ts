@@ -350,6 +350,8 @@ export interface OutboxMessage {
   }[];
   /** Verified send-as addresses this draft may go from (FR-1.15c). */
   sender_options: { value: string; address: string; label: string }[];
+  /** A shared or client mailbox it goes through, in words ("" for someone's own). */
+  mailbox_label?: string;
   /** Where this WILL go, decided before approval (FR-0.7). */
   delivery: {
     target: "real" | "dev";
@@ -484,6 +486,32 @@ export interface GmailStatus {
   is_local_build: boolean;
   verify_error?: string;
 }
+
+/** GET /api/mailboxes/ — the practice's mailboxes (2026-10-28). */
+export interface Mailbox {
+  id: string; provider: "gmail" | "microsoft"; provider_label: string;
+  kind: "own" | "shared" | "client"; kind_label: string; label: string;
+  email_address: string; whose: string; company: string | null; company_name: string;
+  connected: boolean; sends_as: string; send_as_address: string; send_as_verified: boolean;
+  send_as_error: string; reads: boolean; files_mail: boolean; files_after: string | null;
+  files_error: string; last_poll_error: string; connected_by: string;
+  disconnected_at: string | null; may_change: boolean;
+  allowlist: { id: string; address: string }[];
+  verify_error?: string;
+}
+
+export interface Mailboxes { mailboxes: Mailbox[]; default: string | null; is_local_build: boolean }
+
+/** One message on a contact's or company's Mail tab. */
+export interface MailItem {
+  id: string; direction: "inbound" | "outbound"; from_address: string;
+  to_addresses: string[]; cc_addresses: string[]; subject: string; when: string | null;
+  snippet: string; body: string;
+  mailbox: { id: string; label: string; address: string } | null;
+  contact: string | null; may_reply: boolean; reply_from: string; reply_refusal: string;
+}
+
+export interface MailPage { results: MailItem[]; page: number; previous: boolean; next: boolean }
 
 /** GET /api/calendar/ — one's own calendar connection (2026-10-27). */
 export interface CalendarStatus {

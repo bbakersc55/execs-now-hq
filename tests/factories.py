@@ -457,6 +457,24 @@ class GmailConnectionFactory(TenantScopedFactory):
     scopes = ["gmail.send"]
 
 
+def _encrypt(value):
+    from apps.crm.services.secrets import encrypt
+
+    return encrypt(value)
+
+
+class MailboxFactory(TenantScopedFactory):
+    """A shared mailbox (2026-10-28): its own token on its row."""
+
+    class Meta:
+        model = "crm.Mailbox"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kind = "shared"
+    email_address = factory.Sequence(lambda n: f"shared{n}@example.invalid")
+    token_ciphertext = factory.LazyFunction(lambda: _encrypt("refresh-test"))
+
+
 class MicrosoftConnectionFactory(TenantScopedFactory):
     class Meta:
         model = "crm.MicrosoftConnection"
