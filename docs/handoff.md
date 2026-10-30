@@ -1,9 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-29 UTC**, after Release 29. **The next session starts at
-"2026-10-29, late: where things stand" just below**, then "2026-10-29,
-evening: Release 29, e-signature", then "2026-10-29: Release 28, several mailboxes and three UI fixes", then
+2026-10-29 UTC**, after Release 30. **The next session starts at
+"2026-10-29, night: Release 30, the signing page's PDF" just below**, then
+"2026-10-29, late: where things stand", then "2026-10-29, evening: Release 29, e-signature", then "2026-10-29: Release 28, several mailboxes and three UI fixes", then
 "2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets
 and Besty", then "2026-10-27, late: Release 25, and where things stand", which sums up
 everything from Release 23 to 25; the dated sections after it have the
@@ -16,11 +16,40 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
+## 2026-10-29, night: Release 30, the signing page's PDF
+
+- **Release 30 is live**: `main` at `a0427c9`, **no migrations, no new
+  scheduled job**; web came up by itself about a minute after the push.
+  Runbook, "Observed at Release 30".
+- **The fix**: on production the signing page's PDF frame showed Chrome's
+  broken-document icon, signed out and in incognito. The PDF was served
+  (200, 12.6 KB, `application/pdf`, inline, read from the log), but with the
+  site-wide `X-Frame-Options: DENY`, so Chrome would not show it even in our
+  own page's frame. `/api/sign/<token>/pdf` now sends `SAMEORIGIN`; the page
+  itself keeps `DENY`. A test fetches the framed PDF signed out with the
+  token; headless Chrome at 1366 and 390 showed a real PDF in the frame and
+  from "Open the document full size". **Not yet seen on production with a
+  live link.**
+- **The backup grew from 5.4 MB to 8.4 MB** (18:06 to 23:28 UTC), compared
+  table by table from the two dumps: mail filing on the Executives Now
+  mailbox, still storing its 30 days (`email_message` +200 rows, about 12.6
+  of the 12.8 MB uncompressed growth; `email_attachment` +253;
+  `email_thread` +128). Everything else is a few rows: the document
+  templates and the one document, three more stage rules, two pipeline
+  stages fewer.
+- **On `dev`, not yet released**: signing tokens are masked in the logs
+  (`config/log_masking.py`): the access log's path, query and Referer, and a
+  server error's line, show `<token>`. Production's log before it holds whole
+  links from the 21:23 UTC requests; they die with their document (signed,
+  declined, voided or expired).
+- **E-signature version two** in `docs/p6_esign.md` now includes proposals and
+  engagement letters on the practice's letterhead, as the strategy map PDF is.
+
 ## 2026-10-29, late: where things stand
 
 - **Releases 28 and 29 are live**: several mailboxes per practice with the
-  Mail tab, and e-signature version one. `main` at `b67563e`; `dev` is ahead
-  only by write-ups.
+  Mail tab, and e-signature version one (Release 30, just above, fixed its
+  PDF frame).
 - **Still to exercise on production**, with a real account:
   - a real signature request sent through Gmail, signed by a signer on a
     phone, then countersigned (tested end to end only with fakes);

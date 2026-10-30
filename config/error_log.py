@@ -17,6 +17,8 @@ from __future__ import annotations
 import logging
 import traceback
 
+from config.log_masking import mask
+
 MESSAGE_MOST = 300
 
 
@@ -34,7 +36,9 @@ class TracebackOnly(logging.Formatter):
         # `getMessage` is Django's own "Internal Server Error: /path": the
         # path without its query string. Nothing else of the record is read,
         # so the request Django attaches to it never reaches the log.
-        lines = [f"{self.formatTime(record)} {record.levelname} {record.getMessage()}"]
+        # The path is masked: a signing token in it never reaches the log
+        # (config/log_masking.py).
+        lines = [f"{self.formatTime(record)} {record.levelname} {mask(record.getMessage())}"]
         if record.exc_info and record.exc_info[1] is not None:
             lines += self._frames(record.exc_info[1])
         return "\n".join(lines)

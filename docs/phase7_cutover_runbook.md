@@ -675,6 +675,21 @@ web's deployment (`879f5beb`) SUCCESS by itself by 19:27:05, `/healthz` 200,
 **Push to worker running: 2 min 41 s.** No practice's rules changed: the
 three defaults are for new practices only.
 
+**Observed at Release 30 (2026-10-29 UTC, no migrations: the signing page's
+PDF allowed in a same-origin frame, `a0427c9`, with the handoff and the
+e-signature spec's version two):** R1: the owner ran the backup by hand with
+the run-now mutation; `execsnowhq_prod_20261029_232825.sql.gz`, 8.4 MB,
+23:28:27. It was 5.4 MB at 18:06: mail filing on the Executives Now mailbox
+went on storing its 30 days of mail (`email_message` 284 → 484 rows, 178 of
+the 200 inbound, received from 10/2 on; `email_attachment` 51 → 304;
+`email_thread` 214 → 342; about 12.6 MB of the 12.8 MB uncompressed growth
+is `email_message`). R2: `main` fast-forwarded `b67563e..a0427c9`, pushed
+23:31:09. R3–R5: nothing to do, no migration; the worker's deployment
+(`be56271f`) started 23:32:43 and was SUCCESS by 23:32:47. R6: nothing to
+do: web's deployment (`c1a312ca`) SUCCESS by itself; `/api/sign/<wrong
+token>/pdf` answered `X-Frame-Options: DENY` at 23:31:59 and `SAMEORIGIN`
+at 23:32:15; `/healthz` 200. **Push to web serving: about 1 min.**
+
 ---
 
 ## Part A — the owner's steps, in order
