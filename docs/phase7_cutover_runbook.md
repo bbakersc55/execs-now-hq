@@ -690,6 +690,26 @@ do: web's deployment (`c1a312ca`) SUCCESS by itself; `/api/sign/<wrong
 token>/pdf` answered `X-Frame-Options: DENY` at 23:31:59 and `SAMEORIGIN`
 at 23:32:15; `/healthz` 200. **Push to web serving: about 1 min.**
 
+**Observed at Release 31 (2026-10-31 UTC, no migrations: signing tokens masked
+in the logs, `5ba67c1`, and proposals, letters and signature pages on the
+letterhead, `762c0c6`):** R1: the owner ran the backup by hand;
+`execsnowhq_prod_20261031_193546.sql.gz`, 8.8 MB, 19:35:50. **The first push
+failed on Railway's side.** `5ba67c1`, pushed 19:39:34: five deployments
+FAILED, none with a line from the app and no reason given (web `fb1f39ba`,
+empty logs; worker `45732bd4`, built, then stuck in `INITIALIZING` until it
+was removed; hand deploys web `f91915cb` and `ec16b194`, each failing during
+`image push`; worker `64fea91b`, no build lines). The old web and worker kept
+running throughout, `/healthz` 200. The exact gunicorn command passed
+`--check-config` on the laptop, and the status page showed only "Degraded
+Performance", so the cause is an inference, not a finding. The demo built
+`762c0c6` without trouble at 21:08. Stopped after one retry and waited for
+the owner. R2 again: `main` fast-forwarded `5ba67c1..762c0c6`, pushed
+21:20:40, no hand deploy. R3–R5: nothing to do, no migration; the worker's
+deployment (`f3e9c98b`) running 21:23:01. R6: nothing to do: web's deployment
+(`2f7d0b25`) SUCCESS by itself by 21:23:10, `/healthz` 200;
+`/api/sign/<wrong token>?via=sign:…` logged `<token>` in both places at
+21:23:36. **Push to web serving: under 3 min.**
+
 ---
 
 ## Part A — the owner's steps, in order

@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-29 UTC**, after Release 30. **The next session starts at
-"2026-10-29, night: Release 30, the signing page's PDF" just below**, then
+2026-10-31 UTC**, after Release 31. **The next session starts at
+"2026-10-31: Release 31, letterhead and masked tokens" just below**, then
+"2026-10-29, night: Release 30, the signing page's PDF", then
 "2026-10-29, late: where things stand", then "2026-10-29, evening: Release 29, e-signature", then "2026-10-29: Release 28, several mailboxes and three UI fixes", then
 "2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets
 and Besty", then "2026-10-27, late: Release 25, and where things stand", which sums up
@@ -15,6 +16,29 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-10-31: Release 31, letterhead and masked tokens
+
+- **Release 31 is live**: `main` at `762c0c6`, **no migrations, no new
+  scheduled job**. Runbook, "Observed at Release 31", has the five failed
+  deployments of the first attempt; the cause looked like Railway's but was
+  never shown.
+- **The letterhead** (`docs/p6_esign.md`, "The letterhead"): template
+  documents and every signature page wear the strategy map PDF's letterhead,
+  on every page; uploads stay as uploaded apart from the signature page. Real
+  PDFs were rendered and looked at. **Not yet seen on a production document.**
+  Documents already made keep the PDF they were made with.
+- **Signing tokens are masked** in production's access log, seen there with
+  wrong tokens only. Lines from before Release 31 still hold whole links.
+- **The demo was reseeded** on `762c0c6`, so Summit's own data was reset;
+  `summit-demo` holds Sheinhardt's proposal and Pied Piper's letter on the
+  letterhead. Visitors' copies were left alone and have no documents.
+- **The demo seed's Scorecard digest**: from Friday to Sunday Michael's
+  digest had no Scorecard section, because Friday's digest was newer than the
+  last closed week, which failed `tests/test_demo_seed.py` on those days. The
+  seed now leaves that week as news.
+- **The gate now takes about 25 minutes**; the backend suite alone took
+  22 min 29 s.
 
 ## 2026-10-29, night: Release 30, the signing page's PDF
 
