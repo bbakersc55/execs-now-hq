@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  {{ font_faces|safe }}
+  @font-face { font-family: "Dancing Script"; font-weight: 400; src: url("{{ script_font }}"); }
+  /* The strategy map's letterhead (templates/strategy/pdf.html) on pages that
+     flow: Letter, 48px at the sides, its top row and footer on every page.
+     Top margin: 48 + the row's 36 + the sheet's 18 between blocks. */
+  @page { size: letter; margin: 102px 48px 96px;
+          @top-center { content: element(letterhead); width: 100%; vertical-align: top;
+                        padding-top: 48px; }
+          @bottom-center { content: element(pagefoot); width: 100%; vertical-align: bottom;
+                           padding-bottom: 48px; } }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Lato, "Helvetica Neue", Arial, sans-serif; font-size: 14px;
+         line-height: 1.45; color: #1B1F2A; background: #ffffff; }
+  .top { position: running(letterhead); display: flex; justify-content: space-between;
+         align-items: center; height: 36px; width: 720px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand img.mark { width: 30px; height: 30px; }
+  .brand img.logo { max-height: 34px; max-width: 260px; }
+  .practice { white-space: nowrap; font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+              text-transform: uppercase; color: {{ brand.header_color }}; }
+  .dateline { font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+              text-transform: uppercase; color: #5C6370; }
+  .foot { position: running(pagefoot); display: flex; justify-content: space-between;
+          align-items: center; width: 720px; border-top: 1px solid #DFE3E8; padding-top: 10px;
+          font-size: 11px; color: #5C6370; }
+  .count::after { content: "Page " counter(page) " of " counter(pages); }
+  h1 { margin: 0 0 18px; font-family: Lora, Georgia, serif; font-weight: 600; font-size: 36px;
+       line-height: 1.15; color: {{ brand.header_color }}; }
+  h2 { margin: 22px 0 6px; font-family: Lora, Georgia, serif; font-weight: 600; font-size: 22px;
+       line-height: 1.2; color: {{ brand.header_color }}; break-after: avoid; }
+  p { margin: 0 0 10px; }
+  .intro { font-size: 16px; line-height: 1.5; color: #3A4150; margin-bottom: 18px; }
+  .sig { border: 1px solid #DFE3E8; border-top: 4px solid {{ brand.header_color }};
+         border-radius: 10px; padding: 14px 16px; margin: 0 0 14px; break-inside: avoid; }
+  .sig.alt { border-top-color: {{ brand.accent_color }}; }
+  .role { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+          color: #5C6370; }
+  .mark-line { font-family: "Dancing Script"; font-size: 34px; line-height: 1.2;
+               color: {{ brand.header_color }}; border-bottom: 1px solid #DFE3E8;
+               padding: 4px 0; margin: 6px 0 8px; min-height: 52px; }
+  .mark-line img { height: 60px; }
+  table.facts { width: 100%; border-collapse: collapse; font-size: 12px; color: #3A4150; }
+  table.facts td { padding: 2px 0; vertical-align: top; }
+  table.facts td:first-child { width: 128px; color: #5C6370; }
+  .hash { font-size: 11px; word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="top">
+  {% include "strategy/pdf_brand.html" %}
+  <div class="dateline">{{ dateline }}</div>
+</div>
+<div class="foot">
+  <div>Prepared by {% if fractional %}{{ fractional }} · {% endif %}{{ practice }}{% if company %} · Confidential to {{ company }}{% endif %}</div>
+  {% if signature_page %}<div>Signature page</div>{% else %}<div class="count"></div>{% endif %}
+</div>
+{% if signature_page %}
+<h1>Signatures</h1>
+<p class="intro">{{ title }}, sent to {{ signer_name }} ({{ signer_email }}). Signed electronically; the hash below is of the PDF before this page, as each person saw it.</p>
+{% for sig in signatures %}
+<div class="sig{% if forloop.counter|divisibleby:2 %} alt{% endif %}">
+  <div class="role">{{ sig.role }}</div>
+  <div class="mark-line">{% if sig.drawn %}<img src="{{ sig.drawn }}" alt="">{% else %}{{ sig.typed }}{% endif %}</div>
+  <table class="facts">
+    {% for label, value in sig.rows %}<tr><td>{{ label }}</td><td>{{ value }}</td></tr>{% endfor %}
+    <tr><td>Document hash</td><td class="hash">SHA-256 {{ sig.hash }}</td></tr>
+  </table>
+</div>
+{% endfor %}
+{% else %}
+<h1>{{ title }}</h1>
+{{ body|safe }}
+{% endif %}
+</body>
+</html>

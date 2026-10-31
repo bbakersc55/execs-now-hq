@@ -596,3 +596,98 @@ def test_open_the_signing_page_is_the_demos_only(world, dev_outbox, api, setting
     settings.APP_ENVIRONMENT = "demo"
     got = post(api.as_(world["ff"]), url)
     assert got.status_code == 200 and got.json()["url"].endswith(f"/sign/{token}")
+
+
+# ------------------------------------------------------------- the letterhead
+
+LONG_BODY = {"Scope": "\n".join(f"Workstream {n}: " + "fix the step, measure it, hand it over. " * 12
+                                for n in range(1, 31)), "Fee": "$6,000 a month",
+             "Term": "Six months", "StartDate": "2026-12-01"}
+
+
+def _images_by_page(content: bytes) -> list[int]:
+    from pypdf import PdfReader
+
+    return [len(page.images) for page in PdfReader(io.BytesIO(content)).pages]
+
+
+def _page_texts(content: bytes) -> list[str]:
+    from pypdf import PdfReader
+
+    return [page.extract_text() for page in PdfReader(io.BytesIO(content)).pages]
+
+
+def _brand(world, kind):
+    from apps.tenancy import branding
+    from apps.tenancy.demo.foundation import logo_png, mark_png
+
+    branding.set_image(world["t"], actor=world["ff"].user, kind=kind,
+                       content=logo_png() if kind == "logo" else mark_png())
+
+
+def _foot(world) -> str:
+    return (f"Prepared by {world['ff'].user.full_name} · {world['t'].name} · "
+            "Confidential to Hooli Field Services")
+
+
+@pytest.mark.parametrize("kind", ["logo", "mark"])
+def test_a_template_document_wears_the_letterhead_on_every_page(world, kind):
+    from apps.tenancy import storage
+
+    _brand(world, kind)
+    content = storage.read(_document(world, **LONG_BODY).pdf)
+    pages = _page_texts(content)
+    assert len(pages) >= 2
+    assert all(count == 1 for count in _images_by_page(content)), _images_by_page(content)
+    for number, text in enumerate(pages, start=1):
+        assert _foot(world) in text, text
+        assert f"Page {number} of {len(pages)}" in text
+
+
+def test_with_no_image_the_letterhead_draws_the_mark_and_names_the_practice(world):
+    from apps.tenancy import storage
+
+    content = storage.read(_document(world).pdf)
+    assert _images_by_page(content) == [0]
+    assert world["t"].name.upper() in _page_texts(content)[0]
+    assert _foot(world) in _page_texts(content)[0]
+
+
+def test_a_made_document_keeps_the_letterhead_it_was_made_with(world):
+    from apps.tenancy import storage
+
+    document = _document(world)
+    before = storage.read(document.pdf)
+    _brand(world, "logo")
+    document.refresh_from_db()
+    assert storage.read(document.pdf) == before
+    assert services.pdfs.sha256(before) == document.pdf_sha256
+
+
+def test_an_upload_stays_as_uploaded_and_its_signature_page_wears_the_letterhead(
+        world, dev_outbox, client, api):
+    from pypdf import PdfReader
+
+    from apps.crm.services import outbox
+    from apps.tenancy import storage
+
+    _brand(world, "logo")
+    upload = io.BytesIO(_blank_pdf())
+    upload.name = "msa.pdf"
+    made = api.as_(world["ff"]).post("/api/documents/", {
+        "company": str(world["hooli"].pk), "signer": str(world["dana"].pk), "title": "MSA",
+        "file": upload})
+    assert made.status_code == 201, made.content
+    document = Document.all_objects.get(pk=made.json()["id"])
+    assert storage.read(document.pdf) == _blank_pdf()
+    with tenant_context(world["t"].pk):
+        outbox.approve(services.queue_request(document, actor=world["ff"].user, role="FF"),
+                       actor=world["ff"].user, role="FF")
+    token = dev_outbox[-1].body.split("/sign/")[1].split()[0].strip()
+    assert _sign(client, token).status_code == 200
+    document.refresh_from_db()
+    final = storage.read(document.signed_pdf)
+    assert _images_by_page(final) == [0, 1]
+    assert PdfReader(io.BytesIO(final)).pages[0].extract_text() == ""
+    text = _page_texts(final)[1]
+    assert _foot(world) in text and "Signature page" in text

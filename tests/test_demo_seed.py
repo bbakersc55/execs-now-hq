@@ -221,6 +221,19 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
 
         assert {(d.company.name, d.state) for d in Document.objects.all()} == {
             ("Pied Piper Compression", "complete"), ("Sheinhardt Wig Company", "viewed")}
+        # Both on Summit's letterhead, and the signature page too (2026-10-31).
+        import io
+
+        from pypdf import PdfReader
+
+        from apps.tenancy import storage as esign_storage
+
+        for document in Document.objects.all():
+            content = esign_storage.read(document.final_pdf or document.pdf)
+            pages = PdfReader(io.BytesIO(content)).pages
+            assert all(len(page.images) == 1 for page in pages)
+            assert all("Summit Operations Partners · Confidential to" in page.extract_text()
+                       for page in pages)
         assert set(StageAutomation.objects.filter(trigger__in=("sent", "signed"))
                    .values_list("trigger", "move_to_stage__code")) == {
             ("sent", "proposal_given"), ("signed", "closed_won")}

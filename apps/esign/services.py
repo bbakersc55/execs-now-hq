@@ -203,7 +203,8 @@ def from_template(company, template, signer, *, fields: dict, actor, rule=None):
     _check_signer(company, signer)
     clean = {name: str((fields or {}).get(name, ""))[:4000] for name, _ in DOC_FIELDS}
     title, text = merge(template, signer, sender=actor, fields=clean)
-    content = pdfs.render_document(company.tenant, title=title or template.name, text=text)
+    content = pdfs.render_document(company, title=title or template.name, text=text,
+                                   actor=actor)
     document = Document.all_objects.create(
         tenant=company.tenant, company=company, title=(title or template.name)[:160],
         source=Document.Source.TEMPLATE, template=template, fields=clean,
@@ -245,8 +246,8 @@ def refill(document, *, fields: dict, actor):
         raise DocumentRefused("Its email is on its way; void it and make a new one.", 409)
     clean = {name: str((fields or {}).get(name, ""))[:4000] for name, _ in DOC_FIELDS}
     title, text = merge(document.template, document.signer, sender=actor, fields=clean)
-    content = pdfs.render_document(document.tenant, title=title or document.template.name,
-                                   text=text)
+    content = pdfs.render_document(document.company, title=title or document.template.name,
+                                   text=text, actor=actor)
     document.fields = clean
     document.title = (title or document.template.name)[:160]
     document.pdf = _store(document.tenant, content, _filename(title))
@@ -260,7 +261,7 @@ def preview(company, template, signer, *, fields: dict, actor) -> bytes:
     """The PDF a template would make, made and not kept."""
     _check_signer(company, signer)
     title, text = merge(template, signer, sender=actor, fields=fields)
-    return pdfs.render_document(company.tenant, title=title or template.name, text=text)
+    return pdfs.render_document(company, title=title or template.name, text=text, actor=actor)
 
 
 # ------------------------------------------------------------- sending

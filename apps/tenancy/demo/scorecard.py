@@ -319,8 +319,9 @@ def _scorecard_digest(world, company, owner_member) -> int:
     from django.utils import timezone
 
     from apps.crm.models import Task
+    from apps.scorecard import periods as P
     from apps.work import digests, services as work
-    from apps.work.models import Cadence, Goal, Stakeholder
+    from apps.work.models import Cadence, Digest, Goal, Stakeholder
 
     goal = Goal.objects.filter(client_company=company, title="Deliver the next day").first()
     contact = owner_member.contact
@@ -337,6 +338,13 @@ def _scorecard_digest(world, company, owner_member) -> int:
         work.add_narrative(task, actor=world.owner, role="FF",
                            line="The first Friday review found two routes running late; "
                                 "both are redrawn for next week.")
+    # Friday's digest would otherwise be newer than the last closed week from
+    # Friday to Sunday, and the section says only what closed since the last
+    # digest: seeded on those days, this one had none.
+    week_closed = P.start_of(world.today, P.WEEKLY) - timedelta(days=1)
+    Digest.objects.filter(contact=contact, state=Digest.State.SENT,
+                          period_end__gt=moment(week_closed, 8, 0)).update(
+        period_end=moment(week_closed, 8, 0))
     window = digests.next_window(world.tenant, Cadence.WEEKLY, now)
     start, end = digests.period_for(world.tenant, Cadence.WEEKLY, window)
     made = digests.generate(tenant=world.tenant, contact=contact, cadence=Cadence.WEEKLY,

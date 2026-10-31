@@ -97,6 +97,18 @@ Signing and countersigning first recompute the stored PDF's hash and refuse
 if it differs from the one recorded when the document was made (logged as
 `document.hash_mismatch`). Every step is an audit event.
 
+## The letterhead
+
+Done 2026-10-31. Documents made from a template, and the signature page on
+every document, wear the strategy map PDF's letterhead (`templates/esign/pdf.html`,
+with `strategy/pdf_brand.html` and the same images, faces and measurements): the
+practice's mark beside its name, or its logo, or with neither the drawn mark in
+its colors; its colors on the headings; "Prepared by … · Confidential to …" in
+the footer; on every page, 48px at the sides, Lato and Lora. An uploaded PDF
+stays as uploaded apart from its signature page. A PDF is rendered and hashed
+once, when the document is made, so a later branding change never alters one
+already made.
+
 ## The signature page
 
 Appended after the last page: per signature, the name, the signature (typed
@@ -174,14 +186,3 @@ redirect, and the reminder and the signed copy with it.
 
 - **Several signers** on one document, and **the invoice created on signing**
   (from the Scope 'Version one' leaves out).
-- **Proposals and engagement letters on the practice's letterhead**, as the
-  strategy map PDF is (`apps/strategy/pdf.py`, `render_html`): the header
-  wears the practice's mark beside its name, or its logo, or with neither the
-  drawn mark in its colors (Settings → Branding: `email_mark`, `email_logo`,
-  the brand colors); headings and rules in the accent color, with text on the
-  accent chosen for contrast (`text_on`). Version one already colors the
-  headings with the practice's header color (`apps/esign/pdf.py`, `_accent`)
-  but shows no mark or logo and prints the practice's name as a small line.
-  An uploaded PDF is sent as it is, and the signature page keeps its plain
-  layout. The PDF is rendered and hashed once, when the document is made,
-  so a later branding change never alters one already made.
