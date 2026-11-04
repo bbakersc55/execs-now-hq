@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-04 UTC**, after Release 32. **The next session starts at
-"2026-11-04: Release 32, bank feeds on Plaid" just below**, then
+2026-11-04 UTC**, after Release 33. **The next session starts at
+"2026-11-04, evening: Release 33, the Track editor" just below**, then
+"2026-11-04: Release 32, bank feeds on Plaid", then
 "2026-10-31: Release 31, letterhead and masked tokens", then
 "2026-10-29, night: Release 30, the signing page's PDF", then
 "2026-10-29, late: where things stand", then "2026-10-29, evening: Release 29, e-signature", then "2026-10-29: Release 28, several mailboxes and three UI fixes", then
@@ -17,6 +18,26 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-04, evening: Release 33, the Track editor
+
+- **Release 33 is live**: `main` at `9e7b67e`, **no migrations, no new
+  scheduled job**. Runbook, "Observed at Release 33".
+- **The Track feed editor** (SkyRun Park City): its measure list came only
+  with Track's properties and people, which paged through every work order
+  and took minutes; until then the list held only its headings. The menu now
+  comes with the feed, the people are read from two pages of work orders, and
+  a spinner or a plain error shows while Track is read. **Not yet seen on
+  SkyRun's own scorecard.** HubSpot and Besty build their menus the same way
+  (not changed).
+- **Bank feeds, settled**: the ten choices answered (nine accepted; pending
+  lines now stay out of the P&L, the forecast's lines and the CPA downloads).
+- The Accounts table fits at 1366; the unsubscribe-header test's clock is
+  frozen; the demo test checks a client owner's portal Invoices list.
+- **Google verification** was reviewed (no changes): the live /hq page is
+  nearly empty, the privacy policy says the app "does not read other email"
+  (mail filing contradicts it) and omits Calendar and Sheets, and the bare
+  domain's /hq pages are 404 (use www). Steps for Bryan were given in chat.
 
 ## 2026-11-04: Release 32, bank feeds on Plaid
 

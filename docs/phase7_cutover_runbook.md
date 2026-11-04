@@ -729,6 +729,18 @@ signed out (404 before), an unsigned `POST /webhooks/plaid` 400. **Push to
 web serving: 6 min 54 s.** The Plaid variables are not set in production yet,
 so the feature is hidden there until they are.
 
+**Observed at Release 33 (2026-11-04 UTC, no migrations: the Track feed
+editor's measure list no longer waits on Track (SkyRun Park City), pending
+bank lines out of the P&L and CPA downloads, the Accounts table's fit;
+`9e7b67e`):** R1: the owner ran the backup by hand;
+`execsnowhq_prod_20261104_211853.sql.gz`, 11.2 MB, 21:18:59, media copied.
+R2: `main` fast-forwarded `5d003bc..9e7b67e`, pushed 21:26:29, the project
+named with `-p 8f0dc06d-… -e production` from the start. R3–R5: nothing to
+do; worker `9f9ff6b2` `migrations current` 21:27:47, running 21:27:50. R6:
+web `94c7bb01` SUCCESS by itself, listening 21:27:56; `/healthz` 200 and the
+served bundle carries the editor's new text. **Push to web serving: 1 min
+27 s.**
+
 ---
 
 ## Part A — the owner's steps, in order
