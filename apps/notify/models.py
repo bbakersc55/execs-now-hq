@@ -23,6 +23,7 @@ class Kind(models.TextChoices):
     READING = "reading", "A scorecard reading waiting on you"
     MENTION = "mention", "Someone mentions you in a comment"
     DOCUMENT = "document", "A document you sent for signature"
+    BANK = "bank", "A bank connection that needs you"
 
 
 class Notice(TenantScopedModel):

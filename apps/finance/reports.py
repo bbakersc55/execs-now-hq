@@ -209,7 +209,7 @@ def _bank_said(tenant, account, said) -> dict | None:
         return None
     books = account_balance(tenant, account, said["on"])
     return {"on": said["on"].isoformat(), "cents": said["cents"], "books_cents": books,
-            "difference_cents": books - said["cents"]}
+            "difference_cents": books - said["cents"], "source": said.get("source", "file")}
 
 
 def account_balance(tenant, account, as_of: date) -> int:

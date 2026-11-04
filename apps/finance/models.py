@@ -173,6 +173,9 @@ class FinanceEntry(TenantScopedModel):
         MANUAL = "manual", "Typed in"
         INVOICE = "invoice", "From an invoice payment"
         IMPORT = "import", "From an import"
+        #: A bank connection's feed (`bankfeeds/`): made, changed and removed
+        #: by the bank's own transactions.
+        BANK = "bank", "From the bank feed"
 
     #: The kinds the P&L is made of.
     EARNED = (Kind.INCOME, Kind.EXPENSE)
@@ -212,6 +215,13 @@ class FinanceEntry(TenantScopedModel):
     #: (owner, 2026-10-10). Not an expense; the CPA's worksheet lists them by
     #: date in those two columns, and so does the worksheet export.
     estimated_tax = models.CharField(max_length=8, blank=True, default="", db_default="")
+    #: From the bank feed: not posted at the bank yet. Shown as pending, and
+    #: never ticked or counted in a reconciliation until it posts.
+    pending = models.BooleanField(default=False, db_default=False)
+    #: From the bank feed: the bank's own category for the line, shown as the
+    #: suggestion while the entry has none of the practice's.
+    bank_category = models.CharField(max_length=120, blank=True, default="", db_default="")
+
     class Side(models.TextChoices):
         #: The practice's own: everything before P6 M4.
         BUSINESS = "", "Business"
@@ -689,3 +699,139 @@ class FinanceForecastSnapshot(TenantScopedModel):
             models.UniqueConstraint(fields=["tenant", "month"],
                                     name="finance_forecast_snapshot_one_per_month"),
         ]
+
+
+# ------------------------------------------------ bank feeds (docs/p6_bank_feeds.md)
+
+class BankConnection(TenantScopedModel):
+    """One login at one bank, through a provider (Plaid first): the practice
+    owner's own accounts, feeding the books. `company` is for the later CFO
+    package (a client company's own bank); nothing sets it yet."""
+
+    class Status(models.TextChoices):
+        CONNECTED = "connected", "Connected"
+        NEEDS_ATTENTION = "needs_attention", "Needs attention"
+        DISCONNECTED = "disconnected", "Disconnected"
+
+    company = models.ForeignKey("crm.Company", null=True, blank=True,
+                                on_delete=models.PROTECT, related_name="+")
+    provider = models.CharField(max_length=16, default="plaid", db_default="plaid")
+    #: The provider's id for this login (Plaid's item id).
+    item_id = models.CharField(max_length=120)
+    institution_id = models.CharField(max_length=60, blank=True, default="", db_default="")
+    institution_name = models.CharField(max_length=160, blank=True, default="",
+                                        db_default="")
+    #: Fernet, as the practice's NMI keys are (`crm.services.secrets`); never
+    #: sent to the browser, never logged. Emptied on disconnect.
+    access_token_ciphertext = models.BinaryField(null=True, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices,
+                              default=Status.CONNECTED, db_default=Status.CONNECTED)
+    #: What the provider said when it needed attention (ITEM_LOGIN_REQUIRED,
+    #: PENDING_DISCONNECT, an error code), for the card and Reconnect.
+    attention_code = models.CharField(max_length=60, blank=True, default="", db_default="")
+    attention_detail = models.CharField(max_length=300, blank=True, default="",
+                                        db_default="")
+    #: Where the next sync starts (Plaid's /transactions/sync cursor).
+    cursor = models.TextField(blank=True, default="", db_default="")
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    #: The last sync anyone asked for (Check now is allowed once an hour).
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    #: What the last sync did: {added, modified, removed, skipped, ...}.
+    last_sync_counts = models.JSONField(default=dict, blank=True, db_default={})
+    last_error = models.CharField(max_length=300, blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    disconnected_at = models.DateTimeField(null=True, blank=True)
+    disconnected_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bank_connection"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "item_id"],
+                                    name="bank_connection_one_per_item"),
+            models.CheckConstraint(
+                condition=Q(status__in=("connected", "needs_attention", "disconnected")),
+                name="bank_connection_status"),
+        ]
+
+
+class BankFeedAccount(TenantScopedModel):
+    """One account under a connection, mapped by the owner to the ledger
+    account its lines go to (or to none: not fed)."""
+
+    connection = models.ForeignKey(BankConnection, on_delete=models.CASCADE,
+                                   related_name="accounts")
+    #: The provider's own id for the account.
+    provider_account_id = models.CharField(max_length=120)
+    name = models.CharField(max_length=160, blank=True, default="", db_default="")
+    official_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    mask = models.CharField(max_length=8, blank=True, default="", db_default="")
+    type = models.CharField(max_length=24, blank=True, default="", db_default="")
+    subtype = models.CharField(max_length=40, blank=True, default="", db_default="")
+    #: The ledger account (Reconcile's) its lines go to; empty until mapped.
+    finance_account = models.ForeignKey(FinanceAccount, null=True, blank=True,
+                                        on_delete=models.PROTECT, related_name="feeds")
+    #: The owner chose not to feed it.
+    skipped = models.BooleanField(default=False, db_default=False)
+    #: Lines dated before this are already in the books (typed or imported)
+    #: and are not brought in again. Set when it is mapped.
+    feed_from = models.DateField(null=True, blank=True)
+    #: The provider's balance (/accounts/get): for a bank account what it holds,
+    #: for a card what is owed.
+    balance_cents = models.BigIntegerField(null=True, blank=True)
+    available_cents = models.BigIntegerField(null=True, blank=True)
+    currency = models.CharField(max_length=3, blank=True, default="", db_default="")
+    balance_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bank_feed_account"
+        ordering = ["name", "mask"]
+        constraints = [
+            models.UniqueConstraint(fields=["connection", "provider_account_id"],
+                                    name="bank_feed_account_one_per_connection"),
+            models.CheckConstraint(condition=Q(skipped=False) | Q(finance_account__isnull=True),
+                                   name="bank_feed_account_skipped_is_unmapped"),
+        ]
+
+
+class BankFeedTransaction(TenantScopedModel):
+    """One transaction the feed has seen, and what became of it: the entry it
+    made, the entry it matched, or why it made none. Known by the provider's
+    own id, so a change or a removal finds what it made."""
+
+    class Outcome(models.TextChoices):
+        NEW = "new", "A new entry"
+        TRANSFER = "transfer", "A transfer, by a rule"
+        INVOICE_PAYMENT = "invoice_payment", "An invoice payment already recorded"
+        TRANSFER_MATCH = "transfer_match", "The other side of a transfer"
+        DUPLICATE = "duplicate", "Already in the books"
+        IGNORE = "ignore", "Ignored, by a rule"
+        BEFORE_FEED = "before_feed", "Before the feed began"
+        CLOSED_MONTH = "closed_month", "In a closed month"
+
+    feed_account = models.ForeignKey(BankFeedAccount, on_delete=models.CASCADE,
+                                     related_name="transactions")
+    provider_transaction_id = models.CharField(max_length=120)
+    on_date = models.DateField()
+    amount_cents = models.BigIntegerField()
+    direction = models.CharField(max_length=3)
+    description = models.CharField(max_length=255, blank=True, default="", db_default="")
+    bank_category = models.CharField(max_length=120, blank=True, default="", db_default="")
+    pending = models.BooleanField(default=False, db_default=False)
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    #: The entry it made (new, transfer) or matched (the two matches).
+    entry = models.ForeignKey(FinanceEntry, null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name="bank_transactions")
+    #: The bank removed it.
+    removed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bank_feed_transaction"
+        ordering = ["on_date", "created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["feed_account", "provider_transaction_id"],
+                                    name="bank_feed_transaction_once"),
+        ]
+        indexes = [models.Index(fields=["tenant", "entry"])]

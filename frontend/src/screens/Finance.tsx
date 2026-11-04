@@ -546,6 +546,10 @@ function Entries() {
                         invoice {entry.invoice.number}</Link></>}</td>
                     <td>{entry.kind === "transfer" ? <Pill>transfer</Pill>
                       : entry.category?.name ?? <Pill kind="warn">no category yet</Pill>}
+                      {entry.pending && <> <Pill>pending at the bank</Pill></>}
+                      {!entry.category && entry.bank_category && entry.kind !== "transfer"
+                        && <div className="tiny muted">The bank suggests:{" "}
+                          {entry.bank_category}</div>}
                       {(entry.kind === "owner" || entry.kind === "held")
                         && <> <Pill>not in the P&amp;L</Pill></>}
                       {entry.estimated_tax && <> <Pill kind="ai">Estimated tax:{" "}
@@ -754,7 +758,8 @@ function Balance() {
             {v.cash.map((row) => <tr key={row.id}><td>{row.name}
               {row.last4 && <span className="muted"> ·· {row.last4}</span>}
               {row.bank_said && (
-                <div className="tiny muted">Your bank said {dollars(row.bank_said.cents)} on{" "}
+                <div className="tiny muted">Your bank{row.bank_said.source === "feed"
+                  ? "'s feed" : ""} said {dollars(row.bank_said.cents)} on{" "}
                   {longDate(row.bank_said.on)}; the books say{" "}
                   {dollars(row.bank_said.books_cents)}
                   {row.bank_said.difference_cents === 0 ? ", the same."

@@ -2011,13 +2011,15 @@ export interface FinanceEntry {
   to_account: { id: string; name: string } | null;
   description: string; counterparty: string;
   client_company: { id: string; name: string } | null;
-  reference: string; source: "manual" | "invoice" | "import"; source_label: string;
+  reference: string; source: "manual" | "invoice" | "import" | "bank"; source_label: string;
   invoice: { id: string; number: string } | null;
   removed: boolean; remove_reason: string;
   /** Who it was paid to, where that is a 1099 payee. */
   payee_contact?: string;
   /** An owner draw that was an estimated tax payment. */
   estimated_tax?: "" | "federal" | "state";
+  /** Bank feeds: not posted at the bank yet; the bank's own category. */
+  pending?: boolean; bank_category?: string;
 }
 
 /** What the CPA's worksheet asks for at year end and the books cannot know. */
@@ -2053,7 +2055,7 @@ export interface BalanceView {
           closed: boolean;
           /** What the bank's own file said on its last line, against the books. */
           bank_said?: { on: string; cents: number; books_cents: number;
-                        difference_cents: number } | null }[];
+                        difference_cents: number; source?: "file" | "feed" } | null }[];
   unplaced_cents: number; unplaced_count: number; cash_total_cents: number;
   cards: { id: string; name: string; kind: string; last4: string; amount_cents: number;
            closed: boolean }[];
@@ -2174,7 +2176,7 @@ export interface ReconcileGrid {
               cells: Record<string, ReconcileCell>;
               /** By month: the PDF statements imported for it. */
               statements?: Record<string, KeptStatement[]>;
-              bank_said?: { on: string; cents: number } | null }[];
+              bank_said?: { on: string; cents: number; source?: "file" | "feed" } | null }[];
   locked_through: string | null;
   /** The close that set the lock; null when it was typed before closing existed. */
   locked_by: { month: string; by: string; at: string } | null;
@@ -2288,7 +2290,9 @@ export interface Forecast {
   note: string; cash_today_cents: number; unplaced_cents: number;
   accounts: { id: string; name: string; kind: string; amount_cents: number;
               last_entry_on: string | null; reconciled_through: string | null;
-              stale: boolean }[];
+              stale: boolean;
+              /** Bank feeds: cash today is the bank's own balance, of this day. */
+              from_bank?: boolean; bank_on?: string | null; books_cents?: number }[];
   floor_cents: number | null; weeks: ForecastRow[]; months: ForecastRow[];
   views: Record<ForecastView, ForecastSummary>; lines: ForecastLine[];
   left_out: { id: string; group: string; label: string; amount_cents: number;
@@ -2828,3 +2832,30 @@ export const DOCUMENT_FIELDS: { field: string; label: string; long?: boolean; da
   { field: "Term", label: "Term" },
   { field: "StartDate", label: "Start date", date: true },
 ];
+
+// ------------------------------------------------ bank feeds (docs/p6_bank_feeds.md)
+
+export interface BankFeedAccount {
+  id: string; name: string; official_name: string; mask: string; type: string;
+  subtype: string; finance_account: { id: string; name: string } | null; skipped: boolean;
+  feed_from: string | null; balance_cents: number | null; available_cents: number | null;
+  currency: string; balance_at: string | null;
+}
+
+export interface BankConnection {
+  id: string; provider: string; institution: string;
+  status: "connected" | "needs_attention" | "disconnected"; status_label: string;
+  attention_code: string; attention_detail: string; reconnect: boolean;
+  last_synced_at: string | null; last_checked_at: string | null; can_check_at: string | null;
+  last_sync_counts: Partial<Record<"added" | "modified" | "removed" | "matched" | "skipped"
+    | "closed_month" | "pending" | "waiting", number>>;
+  last_error: string; waiting: number; accounts: BankFeedAccount[];
+  created_at: string; disconnected_at: string | null;
+}
+
+export interface BankOverview {
+  /** Shown at all: the provider's keys are set, or this is the demo. */
+  available: boolean; configured: boolean; demo: boolean; refusal: string;
+  connections: BankConnection[]; disconnected: BankConnection[];
+  count: number; included: number; each_after_cents: number; price_line: string;
+}

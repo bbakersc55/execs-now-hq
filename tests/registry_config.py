@@ -285,6 +285,15 @@ register(FinanceForecastAdjustment, factories.FinanceForecastAdjustmentFactory,
 register(FinanceForecastSnapshot, factories.FinanceForecastSnapshotFactory,
          api_exposed=False)
 
+# Bank feeds (2026-11-04): the practice owner's, read through the one route.
+from apps.finance.models import (  # noqa: E402
+    BankConnection, BankFeedAccount, BankFeedTransaction,
+)
+
+register(BankConnection, factories.BankConnectionFactory, endpoints=("/api/finance-bank/",))
+register(BankFeedAccount, factories.BankFeedAccountFactory, endpoints=("/api/finance-bank/",))
+register(BankFeedTransaction, factories.BankFeedTransactionFactory, api_exposed=False)
+
 # --- M5 part 1: the KPI scorecard. Read only through /api/scorecard/, which
 # asks `apps.scorecard.access` (tests/test_scorecard.py). ---
 register(Scorecard, factories.ScorecardFactory, api_exposed=False)

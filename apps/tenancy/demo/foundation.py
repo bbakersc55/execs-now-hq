@@ -622,12 +622,25 @@ def counts(world: World) -> dict:
         "PDF statements imported": FinanceImportBatch.objects.filter(
             status="committed", statement_file__isnull=False).count(),
         "import rules": FinanceRule.objects.count(),
+        "bank connections": _bank_counts(),
         "personal side": _personal_counts(world),
         "stored files": StoredFile.objects.count(),
         "mail connection kept": bool(world.extra.get("mail_connection_kept")),
         "AI key kept": bool(world.extra.get("ai_key_kept")),
         "AI, automatic spend allowed a day (USD)": world.tenant.ai_unattended_daily_cap_usd,
     }
+
+
+def _bank_counts() -> dict:
+    from apps.finance.models import BankConnection, BankFeedAccount, FinanceEntry
+
+    return {"connections": BankConnection.objects.count(),
+            "accounts fed": BankFeedAccount.objects.filter(
+                finance_account__isnull=False).count(),
+            "entries from the feed": FinanceEntry.objects.filter(
+                source="bank", removed_at__isnull=True).count(),
+            "pending": FinanceEntry.objects.filter(
+                source="bank", pending=True, removed_at__isnull=True).count()}
 
 
 def _personal_counts(world) -> dict:

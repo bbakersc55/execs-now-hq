@@ -10,6 +10,7 @@ import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import { hasPersonal, personalOptions, usePersonalChart } from "../lib/personal";
 import { AiGate } from "../components/DemoVisitor";
+import { BankFeedsOnImport } from "../components/BankConnections";
 
 /**
  * Importing a bank or card export (P5 §4; matrix 13.8), in the contact
@@ -92,6 +93,7 @@ export function FinanceImport({ accounts, categories }: {
 
   return (
     <>
+      {!batch && <BankFeedsOnImport />}
       {said && <Banner kind="bad">{said}</Banner>}
       {done && <Banner kind="ok">{done}</Banner>}
 

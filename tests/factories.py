@@ -1499,6 +1499,42 @@ class FinanceForecastSnapshotFactory(TenantScopedFactory):
     forecast = {"start_cents": 0, "in_cents": 0, "out_cents": 0, "end_cents": 0, "by": {}}
 
 
+# --- Bank feeds (docs/p6_bank_feeds.md) ---
+
+class BankConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.BankConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    item_id = factory.Sequence(lambda n: f"item-factory-{n}")
+    institution_name = "Factory Bank"
+
+
+class BankFeedAccountFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.BankFeedAccount"
+
+    tenant = factory.SubFactory(TenantFactory)
+    connection = factory.SubFactory(BankConnectionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    provider_account_id = factory.Sequence(lambda n: f"acct-factory-{n}")
+    name = "Factory checking"
+
+
+class BankFeedTransactionFactory(TenantScopedFactory):
+    class Meta:
+        model = "finance.BankFeedTransaction"
+
+    tenant = factory.SubFactory(TenantFactory)
+    feed_account = factory.SubFactory(BankFeedAccountFactory,
+                                      tenant=factory.SelfAttribute("..tenant"))
+    provider_transaction_id = factory.Sequence(lambda n: f"txn-factory-{n}")
+    on_date = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 1))
+    amount_cents = 1000
+    direction = "out"
+    outcome = "ignore"
+
+
 # --- M5 part 1: the KPI scorecard ---
 
 class ScorecardFactory(TenantScopedFactory):

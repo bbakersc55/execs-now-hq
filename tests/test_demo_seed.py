@@ -377,9 +377,14 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
             report = reports.pnl(tenant, year=year)
             income += report["income"]["total"]
             expenses += report["expenses"]["total"]
-            # Only this month's Mixed card lines still waiting for a side (P6 M4).
+            # Only this month's Mixed card lines still waiting for a side (P6 M4),
+            # and today's lines from the bank feed, each with the bank's suggestion.
+            fed = FinanceEntry.objects.filter(source="bank", category__isnull=True,
+                                              removed_at__isnull=True, on_date__year=year)
+            assert all(e.bank_category for e in fed)
             assert report["uncategorized"]["count"] == FinanceEntry.objects.filter(
-                side="to_sort", removed_at__isnull=True, on_date__year=year).count()
+                side="to_sort", removed_at__isnull=True, on_date__year=year).count() \
+                + fed.exclude(side="to_sort").count()
         assert 0.55 <= (income - expenses) / income <= 0.60, "margin after contractors"
         entries = FinanceEntry.objects.filter(removed_at__isnull=True)
         assert entries.filter(kind="owner").count() >= 20
@@ -387,6 +392,18 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert entries.filter(kind="income", direction="out").count() == 1    # a refund
         # Another, entered late, and the correcting entry in the open month.
         assert entries.filter(kind="expense", direction="in").count() == 2
+        # Bank feeds: the sample connection, two accounts fed, today's lines
+        # through the real sync code, two of them still pending at the bank.
+        from apps.finance.models import BankConnection, BankFeedAccount
+
+        connection = BankConnection.objects.get()
+        assert (connection.status, connection.institution_name) == ("connected",
+                                                                    "Front Range Bank")
+        assert BankFeedAccount.objects.filter(finance_account__isnull=False).count() == 2
+        assert BankFeedAccount.objects.filter(skipped=True).count() == 1
+        fed = FinanceEntry.objects.filter(source="bank", removed_at__isnull=True)
+        assert fed.count() == 5 and fed.filter(pending=True).count() == 2
+        assert set(fed.values_list("on_date", flat=True)) == {today}
         batch = FinanceImportBatch.objects.get(source="csv", account__side="business")
         assert batch.status == "committed"
         # One PDF statement, imported, so the PDF import and the statement on
@@ -619,12 +636,18 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         household_paid = [p for p in estimate["payments"] if p["from"] == "household"]
         assert len(household_paid) == 2 and {p["which"] for p in household_paid} == {"state"}
         assert any(p["from"] == "practice" for p in estimate["payments"])
-        assert estimate["set_aside"] == {"percent_per_draw": "28", "saved_cents": 532_000}
+        # What is set aside grows with each month's draw since the last
+        # estimated payment, so it is the seed's own figure, not a fixed one
+        # (532,000 on 10-15, 1,162,000 on 11-04).
+        kept = mine["PersonalSetAside"].get()
+        assert kept.saved_cents > 0 and kept.saved_cents % 1_000 == 0
+        assert estimate["set_aside"] == {"percent_per_draw": "28",
+                                         "saved_cents": kept.saved_cents}
         assert estimate["by_next"]["on_date"] == f"{year + 1}-01-15" or \
             today < date(year, 9, 16)
         tax_env = next(row for row in personal_budget.month_view(ledger)["envelopes"]
                        if row["source"] == "tax")
-        assert tax_env["left_cents"] == 532_000 and tax_env["planned_cents"] > 0
+        assert tax_env["left_cents"] == kept.saved_cents and tax_env["planned_cents"] > 0
         sheet = {g["group"]: g for g in cpa.groups(ledger, today.year)}
         for group in ("medical", "interest", "property_tax", "charitable", "non_cash"):
             assert sheet[group]["total_cents"] > 0, group

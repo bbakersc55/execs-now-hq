@@ -79,6 +79,9 @@ def represent_entry(entry) -> dict:
         # P6 M4: "" business, "personal" (an owner draw standing for the
         # owner's own spending) or "to_sort" (a Mixed account's line).
         "side": entry.side,
+        # Bank feeds: not posted at the bank yet, and the bank's own category,
+        # shown as the suggestion while the entry has none.
+        "pending": entry.pending, "bank_category": entry.bank_category,
     }
 
 
@@ -1054,7 +1057,8 @@ class ReconcileViewSet(FinanceViewSet):
         for account in out["accounts"]:
             found = next((value for pk, value in said.items()
                           if str(pk) == account["id"]), None)
-            account["bank_said"] = ({"on": found["on"].isoformat(), "cents": found["cents"]}
+            account["bank_said"] = ({"on": found["on"].isoformat(), "cents": found["cents"],
+                                     "source": found.get("source", "file")}
                                     if found else None)
         return Response(out)
 

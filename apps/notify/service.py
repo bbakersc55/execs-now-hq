@@ -23,7 +23,8 @@ from .models import Kind, Notice, PushPreference, PushSubscription
 log = logging.getLogger(__name__)
 
 #: Which kinds each side of the app can receive.
-STAFF_KINDS = [Kind.NOTICE, Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.DOCUMENT]
+STAFF_KINDS = [Kind.NOTICE, Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.DOCUMENT,
+               Kind.BANK]
 CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION]
 #: How long a push service keeps a notification for a browser that is off.
 TTL_SECONDS = 24 * 3600
@@ -35,8 +36,11 @@ MOST_FAILURES = 5
 def kinds_for(membership) -> list[str]:
     from apps.tenancy.models import CLIENT_ROLES
 
+    from apps.tenancy.models import Role
+
     kinds = CLIENT_KINDS if membership.role in CLIENT_ROLES else STAFF_KINDS
-    return [str(k) for k in kinds]
+    # Bank connections are the practice owner's alone (docs/p6_bank_feeds.md).
+    return [str(k) for k in kinds if k != Kind.BANK or membership.role == Role.FF]
 
 
 def tell(*, tenant_id, recipient_id, kind, title, text, url="", source_type="",

@@ -75,6 +75,10 @@ NEEDS: tuple[Need, ...] = (
          "reading a Word document of meeting notes from OneDrive"),
     Need("lxml.html", "lxml",
          "reading Teams and Copilot meeting notes (Loop, as HTML) from OneDrive"),
+    Need("plaid.api.plaid_api", "plaid-python",
+         "bank feeds: connecting a bank and reading its transactions through Plaid"),
+    Need("jwt", "PyJWT",
+         "bank feeds: verifying that a webhook came from Plaid"),
 )
 
 

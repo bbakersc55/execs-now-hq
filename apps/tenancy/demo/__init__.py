@@ -171,6 +171,10 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
     with tenant_context(world.tenant.pk):
         foundation.people(world)
         money.history(world)
+        # The bank feed's sample connection, on the books just made.
+        from .bankfeed import connect as bank_connection
+
+        bank_connection(world)
         sessions.strategy(world)
         work.engagements(world)
         operations(world)        # before the meetings: one proposes a reading of it

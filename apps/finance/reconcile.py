@@ -28,7 +28,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.finance.models import (
-    FinanceAccount, FinanceCleared, FinanceEntry, FinanceGuide, FinanceImportBatch,
+    BankFeedTransaction, FinanceAccount, FinanceCleared, FinanceEntry, FinanceGuide,
+    FinanceImportBatch,
     FinanceImportRow, FinanceMonthClose, FinanceReconciliation, FinanceSettings,
 )
 from apps.finance.services import FinanceError, _a_date, _cents, audit, settings_for
@@ -137,8 +138,10 @@ def _candidates(rec):
     earlier = FinanceCleared.all_objects.filter(
         tenant_id=rec.tenant_id, account_id=rec.account_id,
         reconciliation__statement_on__lt=rec.statement_on).values("entry_id")
+    # A bank feed's pending line is not on any statement until it posts.
     return (_touching(rec.account)
-            .filter(on_date__lte=rec.statement_on, on_date__gte=began(rec.account))
+            .filter(on_date__lte=rec.statement_on, on_date__gte=began(rec.account),
+                    pending=False)
             .exclude(pk__in=earlier))
 
 
@@ -229,6 +232,15 @@ def from_the_bank(account, batch=None) -> set:
     payments = rows.filter(outcome=O.INVOICE_PAYMENT, matched_entry__isnull=False) \
         .values_list("matched_entry__client_payment_id", flat=True)
     # A deposit is one line at the bank and two in the books: fee and tax.
+    # The bank feed's lines are the bank's too (`docs/p6_bank_feeds.md`).
+    fed = BankFeedTransaction.all_objects.filter(
+        tenant_id=account.tenant_id, feed_account__finance_account=account,
+        removed_at__isnull=True, pending=False, entry__isnull=False,
+        outcome__in=("new", "transfer", "transfer_match", "invoice_payment"))
+    if batch is None:
+        found |= set(fed.values_list("entry_id", flat=True))
+        payments = list(payments) + list(fed.filter(outcome="invoice_payment").values_list(
+            "entry__client_payment_id", flat=True))
     found |= set(FinanceEntry.all_objects.filter(
         tenant_id=account.tenant_id, account=account, removed_at__isnull=True,
         client_payment_id__in=[p for p in payments if p]).values_list("pk", flat=True))
@@ -253,6 +265,15 @@ def _arrive_ticked(rec, *, only=None, after=None) -> int:
     if after is not None:
         entries = entries.filter(on_date__gt=after)
     return _tick(rec, entries)
+
+
+def fed(tenant, account_id, entry_ids) -> None:
+    """Lines a bank feed brought in (or that posted): they arrive ticked in the
+    statement being worked on, as an import's do."""
+    rec = FinanceReconciliation.all_objects.filter(
+        tenant=tenant, account_id=account_id, state=S.OPEN).first()
+    if rec is not None:
+        _arrive_ticked(rec, only=set(entry_ids))
 
 
 def imported(batch) -> None:

@@ -341,6 +341,17 @@ if NMI_ENVIRONMENT == "live" and IS_LOCAL:
     raise RuntimeError("NMI_ENVIRONMENT is live on a localhost server. Live NMI keys "
                        "belong only in production.")
 
+# --- Bank feeds (P6, 2026-11-04; docs/p6_bank_feeds.md) ---
+# Plaid, the first provider behind `apps/finance/bankfeeds/providers`. Only the
+# provider module reads these. Unset in production, the feature is hidden and
+# the Import page says so in one line; the demo refuses connections either way.
+PLAID_CLIENT_ID = env("PLAID_CLIENT_ID", default="").strip()
+PLAID_SECRET = env("PLAID_SECRET", default="").strip()
+PLAID_ENVIRONMENT = env("PLAID_ENVIRONMENT", default="sandbox").strip().lower()
+if PLAID_ENVIRONMENT not in ("sandbox", "production"):
+    raise RuntimeError(f"PLAID_ENVIRONMENT must be sandbox or production, not "
+                       f"{PLAID_ENVIRONMENT!r}.")
+
 # --- Browser notifications (Web Push, 2026-10-26) ---
 # The server's VAPID key pair: `manage.py make_vapid_keys` prints a new one.
 # Unset, browser notifications say they aren't set up here; the Notices list

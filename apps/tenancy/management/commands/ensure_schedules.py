@@ -89,7 +89,8 @@ SCHEDULES = [
     # P6 M2: the month's forecast, kept for "how good it has been". Daily at
     # the practice's midnight, so the 1st is caught as the month begins and a
     # missed 1st the day after; a no-op once the month's is kept, and for a
-    # practice without the Cash forecast.
+    # practice without the Cash forecast. Bank feeds (2026-11-04) ride in it:
+    # each live connection is synced first, nightly, before the forecast.
     ("finance.keep_month_forecast", "apps.finance.tasks.keep_month_forecast",
      Schedule.DAILY, None, 0),
     # M5 part 1: a reading owner is reminded once when a period closes

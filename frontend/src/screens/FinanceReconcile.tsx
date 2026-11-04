@@ -247,7 +247,8 @@ function Start({ data, account, month, onCancel, onStarted }: {
           <PriceBox label="Statement ending balance" cents={cents} onChange={setCents} />
         </Field>
       </div>
-      {said && <p className="small muted">Your bank's file ended at {dollars(said.cents)} on{" "}
+      {said && <p className="small muted">{said.source === "feed"
+        ? "Your bank feed said " : "Your bank's file ended at "}{dollars(said.cents)} on{" "}
         {longDate(said.on)}. Check it against the statement.</p>}
       <Statements kept={row.statements?.[month] ?? []} />
       {later && (

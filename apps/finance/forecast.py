@@ -96,12 +96,23 @@ def _money(cents: int) -> str:
 def _accounts(tenant, today: date) -> tuple[list[dict], int]:
     """Cash today: every open bank and cash account, as the balance view has
     it. A card is not cash. Each says how fresh it is."""
+    from apps.finance.bankfeeds import connections
+
     rows, total = [], 0
+    fed = connections.balances(tenant)
     for account in FinanceAccount.all_objects.filter(
             tenant=tenant, closed_at__isnull=True).exclude(kind=CARD).order_by("kind", "name"):
         if account.opening_on > today:
             continue
-        cents = reports.account_balance(tenant, account, today)
+        books = cents = reports.account_balance(tenant, account, today)
+        # A bank feed's balance is what the bank holds now (docs/p6_bank_feeds.md):
+        # cash today is that, when the feed has spoken in the last few days.
+        feed = fed.get(account.pk)
+        bank_on = timezone.localdate(feed["at"]) if feed else None
+        if feed is not None and (today - bank_on).days <= STALE_DAYS:
+            cents = feed["cents"]
+        else:
+            feed = bank_on = None
         last = FinanceEntry.all_objects.filter(
             Q(account=account) | Q(to_account=account), tenant=tenant,
             removed_at__isnull=True, on_date__lte=today).aggregate(m=Max("on_date"))["m"]
@@ -113,7 +124,9 @@ def _accounts(tenant, today: date) -> tuple[list[dict], int]:
             "amount_cents": cents,
             "last_entry_on": last.isoformat() if last else None,
             "reconciled_through": through.isoformat() if through else None,
-            "stale": last is None or (today - last).days > STALE_DAYS})
+            "from_bank": feed is not None,
+            "bank_on": bank_on.isoformat() if bank_on else None, "books_cents": books,
+            "stale": feed is None and (last is None or (today - last).days > STALE_DAYS)})
         total += cents
     return rows, total
 

@@ -25,6 +25,8 @@
 #   python-docx                  — the strategy map as an editable Word file (2026-10-15)
 #   pywebpush                    — browser notifications by Web Push (2026-10-26); 1.14,
 #                                  the last on requests rather than aiohttp
+#   plaid-python                 — bank feeds (2026-11-04); python-dateutil held at 2.9
+#                                  (3.0 and 4.0 were days old when this was pinned)
 # Everything else below is a transitive dependency of those.
 
 annotated-types==0.8.0
@@ -101,3 +103,6 @@ zopfli==0.4.3
 python-docx==1.1.2
 lxml==6.1.3
 pywebpush==1.14.1
+plaid-python==46.0.0
+python-dateutil==2.9.0.post0
+nulltype==2.3.1

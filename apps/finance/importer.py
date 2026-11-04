@@ -270,12 +270,17 @@ class _Books:
     """What is already in the books, for one dry run: each thing can be
     matched once, so two identical lines are two entries, not one seen twice."""
 
-    def __init__(self, tenant, account):
+    def __init__(self, tenant, account, *, for_feed=False):
         self.tenant, self.account = tenant, account
         live = FinanceEntry.all_objects.filter(tenant=tenant, removed_at__isnull=True)
-        # Typed in by hand: known by what the entry itself says.
+        # Typed in by hand: known by what the entry itself says. The bank
+        # feed's own entries are too, to a file; but not to the feed itself,
+        # which knows its lines by the bank's id, so a second coffee on the
+        # same day for the same amount is a second entry.
         here = live.filter(account=account).exclude(kind=K.TRANSFER).exclude(
             source=FinanceEntry.Source.IMPORT)
+        if for_feed:
+            here = here.exclude(source=FinanceEntry.Source.BANK)
         self.bank_ids = set(here.exclude(bank_id="").values_list("bank_id", flat=True))
         self.same: dict = {}
         for entry in here:
@@ -313,6 +318,14 @@ class _Books:
             outcome__in=(O.TRANSFER, O.TRANSFER_MATCH)).values_list(
                 "matched_entry_id", "entry_id"))
         seen_ids = {pk for pair in seen for pk in pair if pk}
+        if for_feed:
+            # A transfer this account's own feed made or matched has been seen
+            # from this side.
+            from apps.finance.models import BankFeedTransaction
+
+            seen_ids |= set(BankFeedTransaction.all_objects.filter(
+                tenant=tenant, feed_account__finance_account=account,
+                entry__isnull=False).values_list("entry_id", flat=True))
         self.transfers = [t for t in live.filter(kind=K.TRANSFER).filter(
             Q(account=account) | Q(to_account=account)).order_by("on_date")
             if t.pk not in seen_ids]
@@ -845,11 +858,19 @@ def rollback(batch, *, actor=None) -> dict:
 
 def bank_said(tenant) -> dict:
     """For each account, the bank's own balance on the last line of its newest
-    committed import that carried one: a check beside the balance view."""
+    committed import that carried one: a check beside the balance view. A bank
+    feed's balance (`docs/p6_bank_feeds.md`) is the bank's too, and the newer
+    of the two is the one shown; `source` says which."""
     out = {}
     for batch in (FinanceImportBatch.all_objects.filter(
             tenant=tenant, status=S.COMMITTED, last_balance_cents__isnull=False)
             .order_by("last_balance_on", "committed_at")):
         out[batch.account_id] = {"on": batch.last_balance_on,
-                                 "cents": batch.last_balance_cents}
+                                 "cents": batch.last_balance_cents, "source": "file"}
+    from apps.finance.bankfeeds import connections
+
+    for account_id, fed in connections.balances(tenant).items():
+        on = timezone.localdate(fed["at"])
+        if account_id not in out or out[account_id]["on"] <= on:
+            out[account_id] = {"on": on, "cents": fed["cents"], "source": "feed"}
     return out

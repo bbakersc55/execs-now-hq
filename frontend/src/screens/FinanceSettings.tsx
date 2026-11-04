@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
+import { BankConnectionsCard } from "../components/BankConnections";
 import { FinanceCategories } from "../components/FinanceCategories";
 import { FinanceDisclaimer } from "../components/FinanceDisclaimer";
 import { PriceBox } from "../components/InvoiceLines";
@@ -28,6 +29,8 @@ import { personalOptions, usePersonalChart } from "../lib/personal";
 
 export function FinanceSettings() {
   const qc = useQueryClient();
+  // A bank notice's link: the connection that needs Reconnect.
+  const [params] = useSearchParams();
   const [said, setSaid] = useState("");
   const accounts = useQuery<FinanceAccount[]>({
     queryKey: ["finance-accounts"],
@@ -135,6 +138,8 @@ export function FinanceSettings() {
         <NewAccount busy={busy} onAdd={(body, added) => send.mutate(
           { url: "/api/finance-accounts/", body }, { onSuccess: added })} />
       </Card>
+
+      <BankConnectionsCard reconnectId={params.get("reconnect")} />
 
       <FinanceCategories categories={cats} bookkeeping={bookkeeping} busy={busy}
         paidInvoicesId={settings.data?.invoice_income_category ?? ""}

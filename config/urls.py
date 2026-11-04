@@ -7,6 +7,7 @@ from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail, views_microsoft
 from apps.esign import views_sign as esign_sign
+from apps.finance.bankfeeds import views as bank_views
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
 from apps.crm import views_unsubscribe as crm_unsubscribe
@@ -83,6 +84,8 @@ urlpatterns = [
     # C3.3: GET renders a confirmation page; only POST consumes the token.
     path("auth/magic/<str:token>", account_views.magic_link_landing, name="magic-landing"),
     path("healthz", spa.healthz, name="healthz"),
+    # Bank feeds: Plaid's webhook, verified by its signature (docs/p6_bank_feeds.md).
+    path("webhooks/plaid", bank_views.plaid_webhook, name="plaid-webhook"),
     # Browser notifications' service worker, at the root so it serves every page.
     path("sw.js", spa.service_worker, name="service-worker"),
     # P4 part 1: the token proof, laptop and sandbox only (404 elsewhere).
@@ -91,6 +94,6 @@ urlpatterns = [
     # Last: every other path is the React app's (production; Phase 7). The
     # server's own prefixes are excluded so a mistyped API URL is a 404, not
     # a page of HTML.
-    re_path(r"^(?!api/|admin/|accounts/|auth/|static/|media/|healthz).*$",
+    re_path(r"^(?!api/|admin/|accounts/|auth/|static/|media/|healthz|webhooks/).*$",
             spa.app_shell, name="app-shell"),
 ]

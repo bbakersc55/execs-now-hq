@@ -135,6 +135,8 @@ export function FinanceForecast() {
           style={{ margin: "var(--s3) 0 0", paddingLeft: "1.1rem" }}>
           {data.accounts.map((account) => (
             <li key={account.id}>{account.name}: {dollars(account.amount_cents)}
+              {account.from_bank && account.bank_on
+                && <>, from your bank feed on {longDate(account.bank_on)}</>}
               {account.reconciled_through
                 ? <>, reconciled through {longDate(account.reconciled_through)}</>
                 : <>, not reconciled yet</>}

@@ -1,6 +1,7 @@
 from rest_framework.routers import DefaultRouter
 
 from apps.finance import views
+from apps.finance.bankfeeds import views as bank_views
 
 router = DefaultRouter()
 router.register("finance-entries", views.EntryViewSet, basename="finance-entry")
@@ -14,5 +15,6 @@ router.register("finance-payees", views.PayeeView, basename="finance-payee")
 router.register("finance-reconcile", views.ReconcileViewSet, basename="finance-reconcile")
 router.register("finance-months", views.MonthViewSet, basename="finance-month")
 router.register("finance-forecast", views.ForecastViewSet, basename="finance-forecast")
+router.register("finance-bank", bank_views.BankConnectionViewSet, basename="finance-bank")
 
 urlpatterns = router.urls
