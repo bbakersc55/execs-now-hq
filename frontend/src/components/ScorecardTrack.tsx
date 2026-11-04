@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 
+import { ConnectionRead } from "./ConnectionRead";
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
 
 import { Modal } from "./shell";
@@ -168,7 +169,6 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
         <div className="track-feed">
           {f && <p className="small muted" style={{ marginTop: 0 }}>{f.text}.{f.last_error && <> <strong>Last read failed:</strong> {f.last_error}</>}</p>}
           {error && <div role="alert"><Banner kind="bad">{error}</Banner></div>}
-          {options.data?.error && <Banner kind="warn">{options.data.error}</Banner>}
           <label htmlFor="track-measure" className="small">Measure</label>
           <select id="track-measure" value={chosen} onChange={(e) => { setMeasure(e.target.value); setScope(""); setError(""); }}>
             <option value="">Choose a measure…</option>
@@ -188,17 +188,9 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
                   ? (options.data?.units ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)
                   : (options.data?.assignees ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.work_orders} work orders)</option>)}
               </select>
-              {options.isPending && (
-                <p className="small muted row tight" role="status" style={{ margin: 0 }}>
-                  <span className="spinner" aria-hidden="true" />
-                  Reading {def.scope === "property" ? "the properties" : "the people"} from
-                  Track… The total can be saved meanwhile.</p>
-              )}
-              {options.isError && (
-                <div role="alert"><Banner kind="bad">Track's {def.scope === "property"
-                  ? "properties" : "people"} could not be read: {(options.error as Error).message}{" "}
-                  The measure can still be saved for the total.</Banner></div>
-              )}
+              <ConnectionRead source="Track" pending={options.isPending}
+                error={options.error ?? (options.data?.error || null)}
+                what={def.scope === "property" ? "properties" : "people"} />
               {def.scope === "assignee" && <p className="small muted" style={{ margin: 0 }}>Track's people are shown by their
                 Track user number: its API lists no names.</p>}
             </>

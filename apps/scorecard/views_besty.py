@@ -165,6 +165,13 @@ class BestyFeedView(Base):
                                  "per_person": kpi.per_person,
                                  "read_open_default": feeds.reads_open_by_default(kpi)},
                          "connected": connected,
+                         # What is fixed and local comes with the feed, so the
+                         # editor never waits on Besty for it (2026-11-04).
+                         "measures": besty.menu(),
+                         "upsell_types": [{"id": k, "name": v}
+                                          for k, v in besty.UPSELL_TYPES.items()],
+                         "responders": [{"id": k, "name": v}
+                                        for k, v in besty.RESPONDERS.items()],
                          "feed": _feed_payload(KpiBestyFeed.objects.filter(kpi=kpi).first())})
 
     def put(self, request):

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 
+import { ConnectionRead } from "./ConnectionRead";
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
 
 import { Modal } from "./shell";
@@ -19,6 +20,8 @@ interface Options {
   upsell_types: Choice[]; responders: Choice[]; error: string;
 }
 interface BestyFeedState {
+  /** What is fixed, sent with the feed so the editor never waits on Besty for it. */
+  measures?: Measure[]; upsell_types?: Choice[]; responders?: Choice[];
   kpi: { id: string; name: string; kind: string; per_person: boolean; read_open_default?: boolean };
   connected: boolean;
   feed: { measure: string; label: string; member_id: string; member_name: string; owner_id: string;
@@ -137,7 +140,12 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const [readOpen, setReadOpen] = useState<boolean | null>(null);
   const readsOpen = readOpenValue(readOpen, f?.read_open, state.data?.kpi.read_open_default);
   const chosen = measure ?? f?.measure ?? "";
-  const def = options.data?.measures.find((m) => m.key === chosen);
+  // The menu, the upsell types and the reply groupings are the server's own
+  // lists: they never wait on Besty. Only the team and the owners do.
+  const measures = state.data?.measures ?? options.data?.measures ?? [];
+  const upsellTypes = state.data?.upsell_types ?? options.data?.upsell_types ?? [];
+  const responders = state.data?.responders ?? options.data?.responders ?? [];
+  const def = measures.find((m) => m.key === chosen);
   const scope = def?.scope;
   const memberValue = scope === "member" || scope === "owner" || scope === "responder"
     ? (member ?? f?.member_id ?? "") : "";
@@ -167,7 +175,7 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const s = state.data;
   const title = s ? `Feed ${s.kpi.name} from Besty` : "Besty measure";
   const groups = GROUPS.map(([label, tools]) =>
-    [label, (options.data?.measures ?? []).filter((m) => tools.includes(m.tool))] as const);
+    [label, measures.filter((m) => tools.includes(m.tool))] as const);
   const members = options.data?.members ?? [];
   return (
     <Modal label={title} title={title} onClose={onClose}>
@@ -177,7 +185,6 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
         <div className="track-feed">
           {f && <p className="small muted" style={{ marginTop: 0 }}>{f.text}.{f.last_error && <> <strong>Last read failed:</strong> {f.last_error}</>}</p>}
           {error && <div role="alert"><Banner kind="bad">{error}</Banner></div>}
-          {options.data?.error && <Banner kind="warn">{options.data.error}</Banner>}
           <label htmlFor="besty-measure" className="small">Measure</label>
           <select id="besty-measure" value={chosen} onChange={(e) => { setMeasure(e.target.value); setError(""); }}>
             <option value="">Choose a measure…</option>
@@ -190,7 +197,8 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
           {(scope === "member" || scope === "owner") && (
             <>
               <label htmlFor="besty-member" className="small">Team member</label>
-              <select id="besty-member" value={memberValue} onChange={(e) => setMember(e.target.value)}>
+              <select id="besty-member" value={memberValue} onChange={(e) => setMember(e.target.value)}
+                aria-busy={options.isPending}>
                 <option value="">The whole team (total)</option>
                 {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
@@ -199,7 +207,8 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
           {scope === "owner" && (
             <>
               <label htmlFor="besty-owner" className="small">Owner</label>
-              <select id="besty-owner" value={ownerValue} onChange={(e) => setOwner(e.target.value)}>
+              <select id="besty-owner" value={ownerValue} onChange={(e) => setOwner(e.target.value)}
+                aria-busy={options.isPending}>
                 <option value="">Every owner (total)</option>
                 {(options.data?.owners ?? []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
@@ -210,7 +219,7 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
               <label htmlFor="besty-type" className="small">Upsell type</label>
               <select id="besty-type" value={paramValue} onChange={(e) => setParam(e.target.value)}>
                 <option value="">Every type (total)</option>
-                {(options.data?.upsell_types ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                {upsellTypes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </>
           )}
@@ -222,7 +231,7 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
                 if (v.startsWith("member:")) { setMember(v.slice(7)); setParam(""); }
                 else { setMember(""); setParam(v); }
               }}>
-                {(options.data?.responders ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {responders.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 {members.length > 0 && (
                   <optgroup label="One team member">
                     {members.map((m) => <option key={m.id} value={`member:${m.id}`}>{m.name}</option>)}
@@ -230,6 +239,11 @@ export function BestyFeedModal({ companyId, kpiId, onClose, onSaved }: {
                 )}
               </select>
             </>
+          )}
+          {(scope === "member" || scope === "owner" || scope === "responder") && (
+            <ConnectionRead source="Besty" pending={options.isPending}
+                error={options.error ?? (options.data?.error || null)}
+              what={scope === "owner" ? "team and owners" : "team"} />
           )}
           {chosen === "tasks_days_to_close" && (
             <p className="small muted" style={{ margin: 0 }}>Besty gives this only for tasks a person made: a task an

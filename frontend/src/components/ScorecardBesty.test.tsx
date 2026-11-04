@@ -95,4 +95,53 @@ describe("Besty (M5 part 6)", () => {
     renderRoute(<BestyFeedModal companyId="c1" kpiId="k1" onClose={() => {}} onSaved={() => {}} />);
     expect(await screen.findByText(/no Besty connection yet/)).toBeInTheDocument();
   });
+
+  // SkyRun Park City, 2026-11-04 (Track first): the menu waited on the
+  // connection, so while it was read the Measure list held only its headings.
+  function connectedBesty(options: "hangs" | "fails", state: object) {
+    const base = mockApi({
+      "PUT /api/scorecard/besty/feed/": { feed: {}, run: { ok: true, new: 3 } },
+      "/api/scorecard/besty/feed/": state,
+      "/api/scorecard/besty/options/": () => ({ status: 502, body: { detail: "Bad gateway" } }),
+    });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      options === "hangs" && String(input).includes("/besty/options/")
+        ? new Promise<Response>(() => {}) : base(input, init)));
+    renderRoute(<BestyFeedModal companyId="c1" kpiId="k1" onClose={() => {}} onSaved={() => {}} />);
+    return base;
+  }
+
+  const FIXED = { measures: MEASURES, upsell_types: OPTIONS.upsell_types, responders: OPTIONS.responders };
+
+  it("with a connected Besty feed, offers the menu and its fixed lists at once while Besty is read", async () => {
+    const user = userEvent.setup();
+    const base = connectedBesty("hangs", { ...STATE, ...FIXED });
+    const picker = await screen.findByLabelText("Measure");
+    expect(screen.getByRole("option", { name: "Ops tasks open" })).toBeEnabled();
+    picker.focus();
+    await user.keyboard("{ArrowDown}");
+    // The upsell types are fixed: there at once, no spinner.
+    await user.selectOptions(picker, "upsell_revenue");
+    expect(screen.getByRole("option", { name: "Late checkout" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+    // The team is Besty's: a spinner, and the total can be saved.
+    await user.selectOptions(picker, "tasks_open");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Reading the team from Besty… The total can be saved meanwhile.");
+    await user.selectOptions(picker, "owner_messages");
+    expect(screen.getByRole("status")).toHaveTextContent("Reading the team and owners from Besty");
+    await user.click(screen.getByRole("button", { name: "Save the measure" }));
+    await waitFor(() => expect(base.calls.find((c) => c.method === "PUT")?.body).toMatchObject({
+      measure: "owner_messages", member_id: "", owner_id: "" }));
+  });
+
+  it("says plainly when Besty's team could not be read, and still saves the total", async () => {
+    const user = userEvent.setup();
+    const base = connectedBesty("fails", { ...STATE, ...FIXED });
+    await user.selectOptions(await screen.findByLabelText("Measure"), "tasks_open");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Besty's team could not be read: Bad gateway The measure can still be saved for the total.");
+    await user.click(screen.getByRole("button", { name: "Save the measure" }));
+    await waitFor(() => expect(base.calls.some((c) => c.method === "PUT")).toBe(true));
+  });
 });

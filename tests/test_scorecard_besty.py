@@ -734,6 +734,21 @@ def test_days_to_close_is_in_the_kpis_unit_and_scope_is_kept_to_the_measure(prac
     assert KpiReading.all_objects.get(kpi=revenue, period_start=OCT_1).value == Decimal("50")
 
 
+def test_the_editor_gets_its_fixed_lists_with_the_feed_without_asking_besty(practice):
+    """As Track's (SkyRun Park City, 2026-11-04): the menu, the upsell types
+    and the reply groupings waited on Besty's team and owners."""
+    p = practice
+    connect(p)
+    FakeBesty.calls = []
+    kpi = p["kpis"]["reviews"]
+    got = p["client"].get(f"{B}feed/?company={p['company'].pk}&kpi={kpi.pk}").json()
+    assert got["connected"] is True
+    assert {m["key"] for m in got["measures"]} == set(besty.MEASURES)
+    assert {u["id"] for u in got["upsell_types"]} == set(besty.UPSELL_TYPES)
+    assert {r["id"] for r in got["responders"]} == set(besty.RESPONDERS)
+    assert FakeBesty.calls == []                       # Besty was not asked
+
+
 def test_the_picker_offers_the_menu_team_owners_and_types(practice):
     p = practice
     connect(p)

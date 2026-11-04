@@ -94,4 +94,47 @@ describe("HubSpot (M5 part 5)", () => {
     renderRoute(<HubSpotFeedModal companyId="c1" kpiId="k1" onClose={() => {}} onSaved={() => {}} />);
     expect(await screen.findByText(/no HubSpot connection yet/)).toBeInTheDocument();
   });
+
+  // SkyRun Park City, 2026-11-04 (Track first): the menu waited on the
+  // connection, so while it was read the Measure list held only its headings.
+  function connectedHubSpot(options: "hangs" | "fails", state: object) {
+    const base = mockApi({
+      "PUT /api/scorecard/hubspot/feed/": { feed: {}, run: { ok: true, new: 3 } },
+      "/api/scorecard/hubspot/feed/": state,
+      "/api/scorecard/hubspot/options/": () => ({ status: 502, body: { detail: "Bad gateway" } }),
+    });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      options === "hangs" && String(input).includes("/hubspot/options/")
+        ? new Promise<Response>(() => {}) : base(input, init)));
+    renderRoute(<HubSpotFeedModal companyId="c1" kpiId="k1" onClose={() => {}} onSaved={() => {}} />);
+    return base;
+  }
+
+  it("with a connected HubSpot feed, offers the menu at once while HubSpot is still being read", async () => {
+    const user = userEvent.setup();
+    const base = connectedHubSpot("hangs", { kpi: { id: "k1", name: "Deals won", kind: "count",
+      per_person: false, read_open_default: false }, connected: true, measures: MEASURES, feed: null });
+    const picker = await screen.findByLabelText("Measure");
+    expect(screen.getByRole("option", { name: "Deals won" })).toBeEnabled();
+    picker.focus();
+    await user.keyboard("{ArrowDown}");
+    await user.selectOptions(picker, "deals_won");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Reading the owners from HubSpot… The total can be saved meanwhile.");
+    expect(screen.getByLabelText("Owner")).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Save the measure" }));
+    await waitFor(() => expect(base.calls.find((c) => c.method === "PUT")?.body).toMatchObject({
+      measure: "deals_won", owner_id: "" }));
+  });
+
+  it("says plainly when HubSpot's owners could not be read, and still saves the total", async () => {
+    const user = userEvent.setup();
+    const base = connectedHubSpot("fails", { kpi: { id: "k1", name: "Deals won", kind: "count",
+      per_person: false, read_open_default: false }, connected: true, measures: MEASURES, feed: null });
+    await user.selectOptions(await screen.findByLabelText("Measure"), "deals_won");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "HubSpot's owners could not be read: Bad gateway The measure can still be saved for the total.");
+    await user.click(screen.getByRole("button", { name: "Save the measure" }));
+    await waitFor(() => expect(base.calls.some((c) => c.method === "PUT")).toBe(true));
+  });
 });

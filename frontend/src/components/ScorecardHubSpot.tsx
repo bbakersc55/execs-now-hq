@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 
+import { ConnectionRead } from "./ConnectionRead";
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
 
 import { Modal } from "./shell";
@@ -15,6 +16,8 @@ interface Measure { key: string; label: string; object: string; kind: string; sn
 interface Options { measures: Measure[]; owners: { id: string; name: string; email: string }[];
   stages: { id: string; name: string }[]; error: string }
 interface HubSpotFeedState {
+  /** The fixed menu, sent with the feed so the editor never waits on HubSpot for it. */
+  measures?: Measure[];
   kpi: { id: string; name: string; kind: string; per_person: boolean; read_open_default?: boolean };
   connected: boolean;
   feed: { measure: string; label: string; owner_id: string; owner_name: string; stage_id: string;
@@ -130,7 +133,9 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const [readOpen, setReadOpen] = useState<boolean | null>(null);
   const readsOpen = readOpenValue(readOpen, f?.read_open, state.data?.kpi.read_open_default);
   const chosen = measure ?? f?.measure ?? "";
-  const def = options.data?.measures.find((m) => m.key === chosen);
+  // The menu is the server's own list, not HubSpot's: it never waits on HubSpot.
+  const measures = state.data?.measures ?? options.data?.measures ?? [];
+  const def = measures.find((m) => m.key === chosen);
   const ownerValue = owner ?? f?.owner_id ?? "";
   const stageValue = chosen === "pipeline_value" ? (stage ?? f?.stage_id ?? "") : "";
   const save = useMutation({
@@ -155,7 +160,7 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const s = state.data;
   const title = s ? `Feed ${s.kpi.name} from HubSpot` : "HubSpot measure";
   const groups = GROUPS.map(([label, objects]) =>
-    [label, (options.data?.measures ?? []).filter((m) => objects.includes(m.object))] as const);
+    [label, measures.filter((m) => objects.includes(m.object))] as const);
   return (
     <Modal label={title} title={title} onClose={onClose}>
       {!s ? <p>Loading…</p> : !s.connected ? (
@@ -164,7 +169,6 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
         <div className="track-feed">
           {f && <p className="small muted" style={{ marginTop: 0 }}>{f.text}.{f.last_error && <> <strong>Last read failed:</strong> {f.last_error}</>}</p>}
           {error && <div role="alert"><Banner kind="bad">{error}</Banner></div>}
-          {options.data?.error && <Banner kind="warn">{options.data.error}</Banner>}
           <label htmlFor="hubspot-measure" className="small">Measure</label>
           <select id="hubspot-measure" value={chosen} onChange={(e) => { setMeasure(e.target.value); setError(""); }}>
             <option value="">Choose a measure…</option>
@@ -177,16 +181,21 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
           {def && (
             <>
               <label htmlFor="hubspot-owner" className="small">Owner</label>
-              <select id="hubspot-owner" value={ownerValue} onChange={(e) => setOwner(e.target.value)}>
+              <select id="hubspot-owner" value={ownerValue} onChange={(e) => setOwner(e.target.value)}
+                aria-busy={options.isPending}>
                 <option value="">Every owner (total)</option>
                 {(options.data?.owners ?? []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
+              <ConnectionRead source="HubSpot" pending={options.isPending}
+                error={options.error ?? (options.data?.error || null)}
+                what={def.key === "pipeline_value" ? "owners and stages" : "owners"} />
             </>
           )}
           {def?.key === "pipeline_value" && (
             <>
               <label htmlFor="hubspot-stage" className="small">Stage</label>
-              <select id="hubspot-stage" value={stageValue} onChange={(e) => setStage(e.target.value)}>
+              <select id="hubspot-stage" value={stageValue} onChange={(e) => setStage(e.target.value)}
+                aria-busy={options.isPending}>
                 <option value="">Every open stage (total)</option>
                 {(options.data?.stages ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>

@@ -118,4 +118,18 @@ describe("Track PMS (M5 part 4)", () => {
     await user.click(screen.getByRole("button", { name: "Save the measure" }));
     await waitFor(() => expect(base.calls.some((c) => c.method === "PUT")).toBe(true));
   });
+
+  it("shows a refusal the server caught from Track beside the list it was reading", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({
+      "/api/scorecard/track/feed/": { kpi: { id: "k1", name: "Occupancy", kind: "percent", per_person: false,
+        read_open_default: false }, connected: true, measures: MEASURES, feed: null },
+      "/api/scorecard/track/options/": { measures: MEASURES, units: [], assignees: [],
+        error: "Track answered 503. The read will try again later." } }));
+    renderRoute(<TrackFeedModal companyId="c1" kpiId="k1" onClose={() => {}} onSaved={() => {}} />);
+    await user.selectOptions(await screen.findByLabelText("Measure"), "occupancy");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Track's properties could not be read: "
+      + "Track answered 503. The read will try again later. The measure can still be saved for the total.");
+  });
 });
+

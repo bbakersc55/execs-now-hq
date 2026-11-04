@@ -164,6 +164,9 @@ class HubSpotFeedView(Base):
                                  "per_person": kpi.per_person,
                                  "read_open_default": feeds.reads_open_by_default(kpi)},
                          "connected": connected,
+                         # The menu is fixed and local: the editor offers it at
+                         # once, never waiting on HubSpot (2026-11-04).
+                         "measures": hubspot.menu(),
                          "feed": _feed_payload(
                              KpiHubSpotFeed.objects.filter(kpi=kpi).first())})
 

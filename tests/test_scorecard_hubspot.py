@@ -456,6 +456,19 @@ def test_a_stage_is_only_for_pipeline_value(practice):
     assert KpiHubSpotFeed.all_objects.get(kpi=p["kpis"]["won"]).stage_id == ""
 
 
+def test_the_editor_gets_the_menu_with_the_feed_without_asking_hubspot(practice):
+    """As Track's (SkyRun Park City, 2026-11-04): the menu waited on HubSpot's
+    owners and stages, so a slow HubSpot left the Measure list empty."""
+    p = practice
+    connect(p)
+    FakeHubSpot.calls = []
+    kpi = p["kpis"]["won"]
+    got = p["client"].get(f"{B}feed/?company={p['company'].pk}&kpi={kpi.pk}").json()
+    assert got["connected"] is True
+    assert {m["key"] for m in got["measures"]} == set(hubspot.MEASURES)
+    assert FakeHubSpot.calls == []                     # HubSpot was not asked
+
+
 def test_the_picker_offers_the_menu_owners_and_open_stages(practice):
     p = practice
     connect(p)
