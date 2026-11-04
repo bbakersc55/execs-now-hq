@@ -741,6 +741,16 @@ web `94c7bb01` SUCCESS by itself, listening 21:27:56; `/healthz` 200 and the
 served bundle carries the editor's new text. **Push to web serving: 1 min
 27 s.**
 
+**Observed at Release 34 (2026-11-04 UTC, no migrations: the HubSpot and
+Besty feed editors' menus no longer wait on the connection, `d0c3a0d`):**
+R1: the newest dump was still Release 33's run-now,
+`execsnowhq_prod_20261104_211853.sql.gz`, 11.2 MB, 21:18:59 (1 h 22 min
+old). R2: `main` fast-forwarded `9e7b67e..d0c3a0d`, pushed 22:41:50. R3–R5:
+nothing to do; worker `fe9d9663` `migrations current` 22:43:48, running
+22:43:51. R6: web `c98640c5` SUCCESS by itself, listening 22:44:03;
+`/healthz` 200 and the served bundle carries the shared reading line.
+**Push to web serving: 2 min 13 s.**
+
 ---
 
 ## Part A — the owner's steps, in order

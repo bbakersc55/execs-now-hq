@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-04 UTC**, after Release 33. **The next session starts at
-"2026-11-04, evening: Release 33, the Track editor" just below**, then
+2026-11-04 UTC**, after Release 34. **The next session starts at
+"2026-11-04, night: Release 34, the HubSpot and Besty editors" just below**,
+then "2026-11-04, evening: Release 33, the Track editor", then
 "2026-11-04: Release 32, bank feeds on Plaid", then
 "2026-10-31: Release 31, letterhead and masked tokens", then
 "2026-10-29, night: Release 30, the signing page's PDF", then
@@ -18,6 +19,17 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-04, night: Release 34, the HubSpot and Besty editors
+
+- **Release 34 is live**: `main` at `d0c3a0d`, **no migrations, no new
+  scheduled job**. Runbook, "Observed at Release 34".
+- The HubSpot and Besty feed editors get their menus with the KPI's own data,
+  as Track's does since Release 33; Besty's upsell types and reply groupings
+  too. One shared line (`ConnectionRead`) shows a spinner while owners,
+  stages, the team or properties are read, and a plain error beside the list
+  when the read fails or the server caught a refusal, in all three editors.
+  Tested with a fake slow-then-failing connection in headless Chrome.
 
 ## 2026-11-04, evening: Release 33, the Track editor
 
