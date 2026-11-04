@@ -87,10 +87,12 @@ export function FinanceSettings() {
           deleted.
         </p>
         {(accounts.data ?? []).length > 0 && (
+          // Fits beside Settings at 1366; on a phone it scrolls inside its box.
+          <div className="table-fit">
           <table>
             <thead><tr><th>Account</th><th>Kind</th><th>Started</th>
               <th className="money">Opening</th>
-              {bookkeeping && <th>Reconciled each month</th>}
+              {bookkeeping && <th>Reconciled monthly</th>}
               {personal && <th>Side</th>}<th /></tr></thead>
             <tbody>
               {(accounts.data ?? []).map((row) => (
@@ -118,7 +120,9 @@ export function FinanceSettings() {
                           url: `/api/finance-accounts/${row.id}/`, method: "patch",
                           body: { side: e.target.value } })}>
                         <option value="business">Business</option>
-                        <option value="mixed">Mixed (business and personal)</option>
+                        <option value="mixed"
+                          title="Business and personal: each line is sorted to a side">
+                          Mixed</option>
                       </select>
                     </td>
                   )}
@@ -134,6 +138,7 @@ export function FinanceSettings() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
         <NewAccount busy={busy} onAdd={(body, added) => send.mutate(
           { url: "/api/finance-accounts/", body }, { onSuccess: added })} />

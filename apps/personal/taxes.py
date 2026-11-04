@@ -205,11 +205,11 @@ def business_profit(tenant, year: int, today: date) -> dict:
     """Net profit in the practice's books (cash basis): what has come in
     less what has gone out, this year to date, and at that pace for the
     year."""
-    from apps.finance.reports import SIGNED, live
+    from apps.finance.reports import SIGNED, posted
 
     so_far = 0
     if tenant is not None:
-        earned = live(tenant).filter(kind__in=FinanceEntry.EARNED, on_date__year=year,
+        earned = posted(tenant).filter(kind__in=FinanceEntry.EARNED, on_date__year=year,
                                      on_date__lte=today)
         income = earned.filter(kind=K.INCOME).aggregate(t=Sum(SIGNED))["t"] or 0
         spent = earned.filter(kind=K.EXPENSE).aggregate(t=Sum(SIGNED))["t"] or 0

@@ -605,8 +605,21 @@ def test_a_refused_credential_says_reconnect(ms_practice, ff, ms):
     assert "AADSTS70000" in str(exc.value) and "Trace ID" not in str(exc.value)
 
 
+@pytest.fixture
+def signing_clock():
+    """The signed unsubscribe link carries the second it was made, so a test
+    that makes it twice (sent, then expected) stops the signer's clock: on a
+    second boundary the two differed (seen in a gate run, 2026-11-04)."""
+    from django.core import signing
+
+    stopped = signing.b62_encode(1_790_000_000)
+    with mock.patch.object(signing.TimestampSigner, "timestamp", return_value=stopped):
+        yield stopped
+
+
 @pytest.mark.django_db
-def test_marketing_carries_the_one_click_unsubscribe_headers(ms_practice, ff, ms, settings):
+def test_marketing_carries_the_one_click_unsubscribe_headers(ms_practice, ff, ms, settings,
+                                                             signing_clock):
     _connect(ms_practice, ff)
     contact = ContactFactory(tenant=ms_practice)
     ContactEmailFactory(tenant=ms_practice, contact=contact, address="dana@acme.invalid")

@@ -138,8 +138,9 @@ What it does to the books (`bankfeeds/sync.py`):
   month, or a new line dated in one, **raises a notice instead** and leaves
   the books alone; the same for an entry ticked in a finished reconciliation.
 - **Pending** transactions are entries marked pending ("pending at the bank"
-  on Entries). They are **never ticked or counted in a reconciliation until
-  they post**. A posted transaction that names its pending one takes over
+  on Entries). They are **never ticked or counted in a reconciliation, the
+  P&L, the forecast's own lines or the CPA downloads until they post**
+  (choice 5). A posted transaction that names its pending one takes over
   that one's entry (its amount and date updated, the owner's category kept).
 - Lines the feed brings in (and pending lines when they post) **arrive ticked**
   in the statement being worked on, as a bank file's do, and Reconcile marks
@@ -208,12 +209,13 @@ connect refuses.
   removes the item; it prints counts only. Run 2026-11-04: 14 accounts; first
   pass 16 added (after waiting for the sandbox's first pull); second pass, from
   the first's cursor, 176 added and 16 modified; item removed.
-- **Tests with a fake provider** (`tests/test_bank_feeds.py`, 29 with their parameters): practice
+- **Tests with a fake provider** (`tests/test_bank_feeds.py`, 30 with their parameters): practice
   isolation (routes and webhooks), role boundaries (associate, assistant,
   client), the token encrypted and never in a response, the cursor across
   pages and passes, a failed pass keeping its cursor, rules, duplicates,
   modified and removed lines, pending lines kept out of a reconciliation and
-  taking over their entry when posted, the closed-month rule, webhook
+  taking over their entry when posted, pending lines kept out of the P&L, the
+  forecast's lines and the CPA downloads until they post, the closed-month rule, webhook
   verification (a real ES256 key made in the test; wrong key, old, altered
   body, unknown key id, HS256 and no header all refused), the item webhooks,
   Reconnect in update mode, a login error during sync, disconnect stopping
@@ -232,32 +234,41 @@ connect refuses.
   webhook from Plaid (verification is tested with a key made in the test,
   in Plaid's scheme); production keys.
 
-## Choices made (the simplest reading; each for a yes or a change)
+## Choices made
 
-1. **Nothing is read until every account is decided** (mapped or "Don't
+Taken as the simplest reading on 2026-11-04 and put to the owner. **All ten
+settled (owner, 2026-11-04):** nine accepted as built; the fifth changed, and
+is built as now written.
+
+1. **Accepted.** **Nothing is read until every account is decided** (mapped or "Don't
    feed"). Loan, investment and brokerage accounts arrive as "Don't feed".
-2. **The feed begins after the books' newest entry** for that ledger account
+2. **Accepted.** **The feed begins after the books' newest entry** for that ledger account
    (and after the lock), so an account with a year of imported statements
    does not get the year again. Plaid's 365 days are therefore used only for a
    ledger account with no history.
-3. **A personal or split rule** (P6 M4) does not place a fed line on the
+3. **Accepted.** **A personal or split rule** (P6 M4) does not place a fed line on the
    personal side: the feed does not write the owner's ledger. Such a line is
    an uncategorized business line (To sort on a Mixed account). The Mixed
    account's small-line threshold is not applied to fed lines either.
-4. **Plaid's category is shown, not applied.** Only the owner's rules set a
+4. **Accepted.** **Plaid's category is shown, not applied.** Only the owner's rules set a
    category. A one-click "use the bank's category" is not built.
-5. **Pending lines are in the books** (P&L and balance view) as entries
-   marked pending; only Reconcile leaves them out until they post.
-6. **A new line in a closed month is not entered**; the notice says to reopen
+5. **Pending lines stay out until they post** (changed by the owner,
+   2026-11-04): out of the P&L (and the dashboard's month), the cash
+   forecast's own lines (regular costs, estimated tax, card payments, "how
+   good it has been"), the CPA downloads (entries, summary, worksheet), the
+   1099 report and the personal tax estimate, as well as Reconcile. They
+   still show in Entries tagged "pending at the bank", and in the balance
+   view's cash. When one posts it counts from then on. (`reports.posted`.)
+6. **Accepted.** **A new line in a closed month is not entered**; the notice says to reopen
    the month and add it by hand. If the month is reopened later the line is
    not brought in again by itself.
-7. **Check now's hour** is per connection and counts only Check now presses;
+7. **Accepted.** **Check now's hour** is per connection and counts only Check now presses;
    the nightly sync, webhooks, mapping and Reconnect do not use it up.
-8. **The count shown** is every connection not disconnected, including one
+8. **Accepted.** **The count shown** is every connection not disconnected, including one
    that needs attention.
-9. **The bank notice** goes to every practice owner of the practice, once a
+9. **Accepted.** **The bank notice** goes to every practice owner of the practice, once a
    day per connection.
-10. **Plaid's `name`** is the entry's description; its `merchant_name` only
+10. **Accepted.** **Plaid's `name`** is the entry's description; its `merchant_name` only
     when there is no name.
 
 ## Next steps

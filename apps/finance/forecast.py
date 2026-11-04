@@ -301,7 +301,7 @@ def _patterns(tenant, months: list[date]) -> dict:
     if not months:
         return {}
     entries = (FinanceEntry.all_objects.filter(
-        tenant=tenant, removed_at__isnull=True, on_date__gte=months[0],
+        tenant=tenant, removed_at__isnull=True, pending=False, on_date__gte=months[0],
         on_date__lte=reconcile.month_end(months[-1]), account__isnull=False,
         kind__in=(K.EXPENSE, K.INCOME, K.OWNER), estimated_tax="")
         .exclude(source=FinanceEntry.Source.INVOICE)
@@ -325,7 +325,7 @@ def _entered_since(tenant, after: date, today: date) -> dict:
     month is not forecast again for it."""
     seen = set()
     for entry in FinanceEntry.all_objects.filter(
-            tenant=tenant, removed_at__isnull=True, on_date__gt=after,
+            tenant=tenant, removed_at__isnull=True, pending=False, on_date__gt=after,
             on_date__lte=today,
             account__isnull=False, kind__in=(K.EXPENSE, K.INCOME, K.OWNER)):
         key = (entry.kind, entry.direction, entry.category_id, entry.account_id,
@@ -426,7 +426,7 @@ def _estimated_tax(tenant, today: date, end: date, closed: list[date]) -> list[d
     amount of each mark, on the dates they are due."""
     last12 = closed[-12:]
     marked = FinanceEntry.all_objects.filter(
-        tenant=tenant, removed_at__isnull=True, kind=K.OWNER, direction=D.OUT,
+        tenant=tenant, removed_at__isnull=True, pending=False, kind=K.OWNER, direction=D.OUT,
         account__isnull=False, on_date__gte=last12[0],
         on_date__lte=reconcile.month_end(last12[-1])).exclude(estimated_tax="") \
         .select_related("account").order_by("on_date", "created_at")
@@ -436,7 +436,7 @@ def _estimated_tax(tenant, today: date, end: date, closed: list[date]) -> list[d
             latest[entry.estimated_tax] = entry
     # One already paid for a due date (within a fortnight of it) is not forecast.
     paid = list(FinanceEntry.all_objects.filter(
-        tenant=tenant, removed_at__isnull=True, kind=K.OWNER, direction=D.OUT,
+        tenant=tenant, removed_at__isnull=True, pending=False, kind=K.OWNER, direction=D.OUT,
         on_date__gt=reconcile.month_end(closed[-1]), on_date__lte=today)
         .exclude(estimated_tax="").values_list("estimated_tax", "on_date"))
     lines = []
@@ -479,7 +479,8 @@ def _card_payments(tenant, today: date, end: date, closed: list[date],
         if closed:
             last12 = closed[-12:]
             days = [on.day for on in FinanceEntry.all_objects.filter(
-                tenant=tenant, removed_at__isnull=True, kind=K.TRANSFER, to_account=card,
+                tenant=tenant, removed_at__isnull=True, pending=False, kind=K.TRANSFER,
+                to_account=card,
                 on_date__gte=last12[0], on_date__lte=reconcile.month_end(last12[-1]))
                 .values_list("on_date", flat=True)]
         if days:
@@ -1075,7 +1076,7 @@ def _actual(tenant, snapshot) -> dict:
     entries = FinanceEntry.all_objects.filter(
         Q(on_date__gt=snapshot.taken_on)
         | Q(on_date=snapshot.taken_on, created_at__gt=snapshot.created_at),
-        tenant=tenant, removed_at__isnull=True,
+        tenant=tenant, removed_at__isnull=True, pending=False,
         on_date__lte=last).select_related("category", "category__parent", "to_account")
     for entry in entries:
         if entry.kind == K.TRANSFER:

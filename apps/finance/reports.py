@@ -27,6 +27,13 @@ def live(tenant):
     return FinanceEntry.all_objects.filter(tenant=tenant, removed_at__isnull=True)
 
 
+def posted(tenant):
+    """What the P&L, the CPA's downloads and the 1099 report count: a bank
+    feed's pending line is left out until it posts (owner, 2026-11-04). It is
+    still in Entries, tagged, and in the balance view's cash."""
+    return live(tenant).filter(pending=False)
+
+
 #: An earned entry's amount as it counts toward its category: a refund (income
 #: going out, an expense coming back in) takes away from it.
 SIGNED = Case(
@@ -49,7 +56,7 @@ def pnl(tenant, *, year: int, by: str = "month") -> dict:
     index = (lambda month: month - 1) if by == "month" else (lambda month: (month - 1) // 3)
     settings_for(tenant)            # makes the chart, for a practice's first look
 
-    earned = live(tenant).filter(kind__in=FinanceEntry.EARNED, on_date__year=year)
+    earned = posted(tenant).filter(kind__in=FinanceEntry.EARNED, on_date__year=year)
     cells: dict = {}
     for row in (earned.filter(category__isnull=False)
                 .values("category_id", "on_date__month").annotate(total=Sum(SIGNED))):
@@ -109,7 +116,7 @@ def pnl(tenant, *, year: int, by: str = "month") -> dict:
 
 
 def years(tenant, also: int) -> list[int]:
-    found = {day.year for day in live(tenant).dates("on_date", "year")}
+    found = {day.year for day in posted(tenant).dates("on_date", "year")}
     return sorted(found | {also}, reverse=True)
 
 
@@ -224,7 +231,7 @@ def account_balance(tenant, account, as_of: date) -> int:
 
 def this_month(tenant, today: date) -> dict:
     """Revenue, expenses and margin for the month so far (§5.3)."""
-    month = live(tenant).filter(on_date__year=today.year, on_date__month=today.month,
+    month = posted(tenant).filter(on_date__year=today.year, on_date__month=today.month,
                                 on_date__lte=today)
     sums = month.aggregate(
         revenue=Sum(SIGNED, filter=Q(kind=K.INCOME)),
@@ -243,7 +250,7 @@ def this_month(tenant, today: date) -> dict:
 # -------------------------------------------------------------- the CPA export
 
 def _in_range(tenant, start: date, end: date):
-    return (live(tenant).filter(on_date__gte=start, on_date__lte=end)
+    return (posted(tenant).filter(on_date__gte=start, on_date__lte=end)
             .select_related("category", "category__parent", "account", "to_account",
                             "client_company",
                             "client_payment__invoice")

@@ -344,6 +344,47 @@ def test_pending_lines_never_count_in_a_reconcile_until_they_post(books, ff, api
     assert FinanceEntry.all_objects.filter(source="bank").count() == 2
 
 
+@pytest.mark.django_db
+def test_pending_lines_stay_out_of_the_pnl_forecast_and_cpa_downloads(books, ff, api, fake,
+                                                                     today):
+    from apps.finance import forecast, payees, reports
+
+    fake.pages = [{"added": [t(1, 4000, text="PENDING HOTEL", pending=True),
+                             t(2, 100, text="POSTED COFFEE"),
+                             t(3, 9000, "in", text="PENDING DEPOSIT", pending=True)]}]
+    made = map_all(api, ff, books, connect(api, ff, fake))
+    tenant = books["tenant"]
+    with tenant_context(tenant.pk):
+        pnl = reports.pnl(tenant, year=TODAY.year)
+        assert pnl["uncategorized"] == {"count": 1, "amount_cents": 100}
+        csv_text = reports.export_entries(tenant, start=date(2026, 1, 1), end=TODAY)
+        assert "POSTED COFFEE" in csv_text and "PENDING" not in csv_text
+        summary = reports.export_summary(tenant, start=date(2026, 1, 1), end=TODAY)
+        assert "90.00" not in summary and "40.00" not in summary
+        assert reports.this_month(tenant, TODAY)["revenue_cents"] == 0
+        pending_ids = set(FinanceEntry.objects.filter(pending=True).values_list("pk", flat=True))
+        assert len(pending_ids) == 2
+        assert not pending_ids & set(e.pk for e in reports._in_range(
+            tenant, date(2026, 1, 1), TODAY))
+        assert payees.report(tenant, year=TODAY.year) is not None
+        seen = forecast._entered_since(tenant, date(2026, 10, 1), TODAY)
+        for entry in FinanceEntry.objects.filter(pk__in=pending_ids):
+            key = (entry.kind, entry.direction, entry.category_id, entry.account_id,
+                   *forecast._who(entry))
+            assert (key, entry.on_date.replace(day=1)) not in seen
+        assert len(seen) == 1                                 # the coffee alone
+    # Entries still shows them, tagged.
+    listed = {e["description"]: e for e in get(api, ff, E).json()["entries"]}
+    assert listed["PENDING HOTEL"]["pending"] and listed["PENDING DEPOSIT"]["pending"]
+    # Once posted, they count.
+    fake.pages.append({"added": [t(4, 4000, text="HOTEL", pending_id="txn-1")],
+                       "removed": ["txn-1"]})
+    run(tenant, made["id"])
+    with tenant_context(tenant.pk):
+        assert reports.pnl(tenant, year=TODAY.year)["uncategorized"] == {
+            "count": 2, "amount_cents": 4100}
+
+
 # ============================================================ closed months
 
 @pytest.mark.django_db

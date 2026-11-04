@@ -370,6 +370,15 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert invoices.filter(kind="contact", client_company__isnull=True).count() == 2
         assert invoices.order_by("issue_date").first().issue_date == date(2025, 1, 1)
         assert all(i.pdf_id for i in invoices.exclude(status="draft"))
+        # The portal's Invoices page has something to show (owner, 2026-11-04):
+        # Wayne Industries' client owner sees the company's invoices, as sent.
+        bruce = Membership.objects.get(user__email="bruce.wayne@wayneindustries.example")
+        as_bruce = Client()
+        as_bruce.force_login(bruce.user)
+        shown = as_bruce.get("/api/portal-invoices/").json()
+        assert len(shown) >= 12
+        assert {"paid", "sent"} <= {row["status"] for row in shown}
+        assert all(row["number"].startswith("SOP-") for row in shown)
         assert set(FinanceAccount.objects.values_list("kind", flat=True)) == {"bank", "card"}
         assert all(a.opening_balance_cents for a in FinanceAccount.objects.exclude(side="mixed"))
         income = expenses = 0
@@ -379,8 +388,10 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
             expenses += report["expenses"]["total"]
             # Only this month's Mixed card lines still waiting for a side (P6 M4),
             # and today's lines from the bank feed, each with the bank's suggestion.
+            # (Pending ones stay out of the P&L until they post.)
             fed = FinanceEntry.objects.filter(source="bank", category__isnull=True,
-                                              removed_at__isnull=True, on_date__year=year)
+                                              removed_at__isnull=True, on_date__year=year,
+                                              pending=False)
             assert all(e.bank_category for e in fed)
             assert report["uncategorized"]["count"] == FinanceEntry.objects.filter(
                 side="to_sort", removed_at__isnull=True, on_date__year=year).count() \

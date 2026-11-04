@@ -25,7 +25,7 @@ from django.db.models import Q, Sum
 
 from apps.crm.models import Contact
 from apps.finance.models import FinanceAccount, FinanceEntry
-from apps.finance.reports import SIGNED, live
+from apps.finance.reports import SIGNED, posted
 
 K = FinanceEntry.Kind
 
@@ -42,7 +42,7 @@ def payees(tenant):
 
 def report(tenant, *, year: int, threshold_cents: int | None = None) -> dict:
     threshold = default_threshold_cents(year) if threshold_cents is None else threshold_cents
-    paid = live(tenant).filter(kind=K.EXPENSE, on_date__year=year,
+    paid = posted(tenant).filter(kind=K.EXPENSE, on_date__year=year,
                                payee_contact__isnull=False)
     totals = {row["payee_contact_id"]: row for row in paid.values("payee_contact_id").annotate(
         total=Sum(SIGNED),
