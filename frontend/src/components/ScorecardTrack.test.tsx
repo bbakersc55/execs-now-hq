@@ -69,4 +69,53 @@ describe("Track PMS (M5 part 4)", () => {
       read_open: false }));
     expect(onSaved).toHaveBeenCalledWith("Open work orders now reads from Track: 13 readings for past periods.");
   });
+
+  // SkyRun Park City, 2026-11-04: with a live Track connection the Measure list
+  // sat empty (only its group headings) while Track's properties were read.
+  function connectedFeed(options: "hangs" | "fails") {
+    const base = mockApi({
+      "PUT /api/scorecard/track/feed/": { feed: {}, run: { ok: true, new: 12 } },
+      "/api/scorecard/track/feed/": { kpi: { id: "k1", name: "Occupancy", kind: "percent",
+        per_person: false, read_open_default: false }, connected: true, measures: MEASURES, feed: null },
+      "/api/scorecard/track/options/": () => ({ status: 502, body: { detail: "Bad gateway" } }),
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      options === "hangs" && String(input).includes("/track/options/")
+        ? new Promise<Response>(() => {}) : base(input, init));
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn();
+    renderRoute(<TrackFeedModal companyId="c1" kpiId="k1" onClose={() => {}} onSaved={onSaved} />);
+    return { base, onSaved };
+  }
+
+  it("with a connected Track feed, offers the menu at once while Track is still being read", async () => {
+    const user = userEvent.setup();
+    const { base, onSaved } = connectedFeed("hangs");
+    const picker = await screen.findByLabelText("Measure");
+    expect(screen.getByRole("option", { name: "Occupancy" })).toBeEnabled();
+    // By keyboard, then by mouse (selectOptions clicks the option).
+    picker.focus();
+    await user.keyboard("{ArrowDown}");
+    await user.selectOptions(picker, "occupancy");
+    expect(picker).toHaveValue("occupancy");
+    // The property list waits on Track: a spinner says so, and the total can be saved.
+    expect(screen.getByRole("status")).toHaveTextContent("Reading the properties from Track");
+    expect(screen.getByLabelText("For")).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Save the measure" }));
+    await waitFor(() => expect(base.calls.find((c) => c.method === "PUT")?.body).toEqual({
+      company: "c1", kpi: "k1", measure: "occupancy", unit_id: "", unit_name: "", assignee_id: "",
+      read_open: false }));
+    expect(onSaved).toHaveBeenCalledWith("Occupancy now reads from Track: 12 readings for past periods.");
+  });
+
+  it("says plainly when Track's properties could not be read, and still saves the total", async () => {
+    const user = userEvent.setup();
+    const { base } = connectedFeed("fails");
+    await user.selectOptions(await screen.findByLabelText("Measure"), "occupancy");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Track's properties could not be read: Bad gateway The measure can still be saved for the total.");
+    expect(screen.queryByRole("status")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Save the measure" }));
+    await waitFor(() => expect(base.calls.some((c) => c.method === "PUT")).toBe(true));
+  });
 });

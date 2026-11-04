@@ -171,6 +171,9 @@ class TrackFeedView(Base):
                                  "per_person": kpi.per_person,
                                  "read_open_default": feeds.reads_open_by_default(kpi)},
                          "connected": connected,
+                         # The menu is fixed and local: the editor offers it at
+                         # once, never waiting on Track (2026-11-04).
+                         "measures": track.menu(),
                          "feed": _feed_payload(KpiTrackFeed.objects.filter(kpi=kpi).first())})
 
     def put(self, request):

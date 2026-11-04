@@ -2107,3 +2107,12 @@ label.choice.inline { display: inline-flex; margin-left: 8px; }
 .doc-row .doc-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
 .doc-fields { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .doc-fields .wide { grid-column: 1 / -1; }
+
+/* A small spinner beside "Reading … from Track" (2026-11-04). */
+.spinner {
+  display: inline-block; width: 14px; height: 14px; flex: 0 0 auto;
+  border: 2px solid var(--line); border-top-color: var(--navy); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }

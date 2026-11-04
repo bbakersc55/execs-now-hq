@@ -193,10 +193,10 @@ class TrackClient:
         except ValueError:
             raise TrackUnavailable("Track's answer couldn't be read.") from None
 
-    def collection(self, path, key, params=None):
-        """Every row of a paged collection."""
+    def collection(self, path, key, params=None, most_pages=MOST_PAGES):
+        """Every row of a paged collection (or its first `most_pages` pages)."""
         rows, page = [], 1
-        while page <= MOST_PAGES:
+        while page <= most_pages:
             got = self.get(path, {**(params or {}), "page": page, "size": PAGE_SIZE})
             embedded = got.get("_embedded") or {}
             rows.extend(embedded.get(key) or [])
@@ -232,13 +232,13 @@ class TrackClient:
             params["unit"] = unit
         return self.collection("/channel-management/channel/reviews", "channel_reviews", params)
 
-    def maintenance(self, user=None):
+    def maintenance(self, user=None, most_pages=MOST_PAGES):
         return self.collection("/pms/maintenance/work-orders", "workOrders",
-                               {"userId": user} if user else None)
+                               {"userId": user} if user else None, most_pages=most_pages)
 
-    def housekeeping(self, user=None):
+    def housekeeping(self, user=None, most_pages=MOST_PAGES):
         return self.collection("/pms/housekeeping/work-orders", "nodes",
-                               {"userId": user} if user else None)
+                               {"userId": user} if user else None, most_pages=most_pages)
 
 
 # ------------------------------------------------------------- the arithmetic
@@ -440,16 +440,23 @@ def plan_for(feed, client, today, *, periods=2, back=13, read_open=False, measur
     return values
 
 
+#: Pages of work orders the picker reads for its list of people. The editor
+#: waits on this read, and an account with years of work orders took minutes
+#: to page through all of them (SkyRun Park City, 2026-11-04).
+PICKER_PAGES = 2
+
+
 def options(client) -> dict:
     """What the picker offers: the properties, and the Track users seen on
-    recent work orders (the reference documents no users list, so they are
-    shown by id)."""
+    the first pages of work orders (the reference documents no users list,
+    so they are shown by id). Bounded: the editor waits on it."""
     units = [{"id": str(u.get("id")), "name": u.get("name") or f"Unit {u.get('id')}"}
              for u in client.units()]
     users = {}
     for stream in ("maintenance", "housekeeping"):
         try:
-            rows = client.maintenance() if stream == "maintenance" else client.housekeeping()
+            rows = (client.maintenance(most_pages=PICKER_PAGES) if stream == "maintenance"
+                    else client.housekeeping(most_pages=PICKER_PAGES))
         except TrackUnavailable:
             continue
         for row in rows:

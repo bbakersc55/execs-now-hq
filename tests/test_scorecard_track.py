@@ -337,6 +337,42 @@ def test_the_picker_offers_the_menu_properties_and_assignees(practice):
     assert {a["id"] for a in got["assignees"]} == {"11", "12", "21", "22"}
 
 
+def test_the_editor_gets_the_menu_with_the_feed_without_asking_track(practice):
+    """SkyRun Park City, 2026-11-04: the menu came only with Track's properties
+    and people, so while Track was read the Measure list had nothing in it."""
+    p = practice
+    connect(p)
+    FakeTrack.calls = []
+    kpi = p["kpis"]["closed"]
+    got = p["client"].get(f"{B}feed/?company={p['company'].pk}&kpi={kpi.pk}").json()
+    assert got["connected"] is True
+    assert {m["key"] for m in got["measures"]} == set(track.MEASURES)
+    assert FakeTrack.calls == []                       # Track was not asked
+
+
+def test_the_pickers_people_read_only_the_first_pages_of_work_orders(practice, monkeypatch):
+    """An account with years of work orders: the picker reads PICKER_PAGES of
+    each kind, not all of them, so the editor's list arrives in seconds."""
+    p = practice
+    connect(p)
+    endless = FakeTrack()
+
+    def many_pages(url, headers):
+        status, head, body = endless(url, headers)
+        if "work-orders" in url:
+            data = json.loads(body)
+            data["page_count"] = 150
+            body = json.dumps(data)
+        return status, head, body
+
+    monkeypatch.setattr(track, "http_transport", many_pages)
+    FakeTrack.calls = []
+    got = p["client"].get(f"{B}options/?company={p['company'].pk}").json()
+    assert got["error"] == "" and got["units"] and got["assignees"]
+    orders = [c for c in FakeTrack.calls if "work-orders" in c["path"]]
+    assert len(orders) == 2 * track.PICKER_PAGES
+
+
 def test_a_per_person_kpi_is_refused(practice):
     p = practice
     connect(p)

@@ -17,6 +17,8 @@ interface Options { measures: Measure[]; units: { id: string; name: string }[];
 interface TrackFeedState {
   kpi: { id: string; name: string; kind: string; per_person: boolean; read_open_default?: boolean };
   connected: boolean;
+  /** The fixed menu, sent with the feed so the editor never waits on Track for it. */
+  measures?: Measure[];
   feed: { measure: string; label: string; unit_id: string; unit_name: string; assignee_id: string;
     text: string; last_success_at: string | null; last_error: string;
     read_open?: boolean } | null;
@@ -130,7 +132,10 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const [readOpen, setReadOpen] = useState<boolean | null>(null);
   const readsOpen = readOpenValue(readOpen, f?.read_open, state.data?.kpi.read_open_default);
   const chosen = measure ?? f?.measure ?? "";
-  const def = options.data?.measures.find((m) => m.key === chosen);
+  // The menu is the server's own list, not Track's: it never waits on Track
+  // (SkyRun Park City, 2026-11-04: the list sat empty while Track was read).
+  const measures = state.data?.measures ?? options.data?.measures ?? [];
+  const def = measures.find((m) => m.key === chosen);
   const scopeValue = scope ?? (def?.scope === "assignee" ? f?.assignee_id : f?.unit_id) ?? "";
   const save = useMutation({
     mutationFn: () => api.put<{ run: { ok: boolean; new?: number; error?: string } }>("/api/scorecard/track/feed/", {
@@ -154,7 +159,7 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const s = state.data;
   const title = s ? `Feed ${s.kpi.name} from Track` : "Track measure";
   const groups = Object.entries(STREAMS).map(([k, label]) =>
-    [label, (options.data?.measures ?? []).filter((m) => m.stream === k)] as const);
+    [label, measures.filter((m) => m.stream === k)] as const);
   return (
     <Modal label={title} title={title} onClose={onClose}>
       {!s ? <p>Loading…</p> : !s.connected ? (
@@ -176,12 +181,24 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
           {def && (
             <>
               <label htmlFor="track-scope" className="small">{def.scope === "property" ? "For" : "Assigned to"}</label>
-              <select id="track-scope" value={scopeValue} onChange={(e) => setScope(e.target.value)}>
+              <select id="track-scope" value={scopeValue} onChange={(e) => setScope(e.target.value)}
+                aria-busy={options.isPending}>
                 <option value="">{def.scope === "property" ? "All properties (total)" : "Everyone (total)"}</option>
                 {def.scope === "property"
                   ? (options.data?.units ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)
                   : (options.data?.assignees ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.work_orders} work orders)</option>)}
               </select>
+              {options.isPending && (
+                <p className="small muted row tight" role="status" style={{ margin: 0 }}>
+                  <span className="spinner" aria-hidden="true" />
+                  Reading {def.scope === "property" ? "the properties" : "the people"} from
+                  Track… The total can be saved meanwhile.</p>
+              )}
+              {options.isError && (
+                <div role="alert"><Banner kind="bad">Track's {def.scope === "property"
+                  ? "properties" : "people"} could not be read: {(options.error as Error).message}{" "}
+                  The measure can still be saved for the total.</Banner></div>
+              )}
               {def.scope === "assignee" && <p className="small muted" style={{ margin: 0 }}>Track's people are shown by their
                 Track user number: its API lists no names.</p>}
             </>
