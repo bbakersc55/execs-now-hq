@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-10-31 UTC**, after Release 31. **The next session starts at
-"2026-10-31: Release 31, letterhead and masked tokens" just below**, then
+2026-11-04 UTC**, after Release 32. **The next session starts at
+"2026-11-04: Release 32, bank feeds on Plaid" just below**, then
+"2026-10-31: Release 31, letterhead and masked tokens", then
 "2026-10-29, night: Release 30, the signing page's PDF", then
 "2026-10-29, late: where things stand", then "2026-10-29, evening: Release 29, e-signature", then "2026-10-29: Release 28, several mailboxes and three UI fixes", then
 "2026-10-28 and 29: Releases 26 and 27, the scorecard's feeds, targets
@@ -16,6 +17,29 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-04: Release 32, bank feeds on Plaid
+
+- **Release 32 is live**: `main` at `5d003bc`, migrations `finance 0016` and
+  `notify 0003` (additive) applied in the waiting worker, all OK; **no new
+  scheduled job**. Runbook, "Observed at Release 32". The Railway CLI had come
+  unlinked; name the project with `-p 8f0dc06d-… -e production`.
+- **Bank feeds, version one** (`docs/p6_bank_feeds.md`): Settings → Finance →
+  Bank connections and Finance → Import, Plaid behind a provider interface,
+  nightly sync inside the daily Finance job, Check now once an hour, the
+  SYNC_UPDATES_AVAILABLE and item webhooks at `/webhooks/plaid` (verified),
+  Reconnect, Disconnect, balances into the forecast and Reconcile.
+  `scripts/plaid_proof.py` passed on the sandbox.
+- **Hidden in production until** `PLAID_CLIENT_ID`, `PLAID_SECRET` and
+  `PLAID_ENVIRONMENT=production` are set in Railway, and the webhook
+  `https://app.getexecutivesnow.com/webhooks/plaid` is entered in Plaid's
+  dashboard. **Not yet seen with a real bank or a real webhook.**
+- **The demo was reseeded** on `5d003bc` by Bryan: Front Range Bank, two
+  accounts fed, five lines, two pending.
+- **Open for Bryan:** the ten "Choices made" in the spec; next, client-company
+  connections and the $0.50 charge beyond five.
+- `test_marketing_carries_the_one_click_unsubscribe_headers` failed one gate
+  run on a second boundary (a signed link's timestamp); it passes alone.
 
 ## 2026-10-31: Release 31, letterhead and masked tokens
 

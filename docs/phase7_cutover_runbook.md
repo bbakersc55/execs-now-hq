@@ -710,6 +710,25 @@ deployment (`f3e9c98b`) running 21:23:01. R6: nothing to do: web's deployment
 `/api/sign/<wrong token>?via=sign:…` logged `<token>` in both places at
 21:23:36. **Push to web serving: under 3 min.**
 
+**Observed at Release 32 (2026-11-04 UTC, bank feeds on Plaid, `5d003bc`;
+`finance 0016_bank_feeds` and `notify 0003_bank_feeds`, additive):** R1: the
+owner ran the backup by hand; `execsnowhq_prod_20261104_185449.sql.gz`,
+11.1 MB, 18:54:52. R2: `main` fast-forwarded `762c0c6..5d003bc`, pushed
+18:57:44. **The Railway CLI was no longer linked in the repo folder** ("No
+linked project found"), which cost about six minutes before R3; every command
+from then on named the project: `-p 8f0dc06d-0265-4af7-8cab-2ec26c6eccca -e
+production` (`execs-now-hq-live-app-no-testing`). R3: worker `e465065f`
+`WAITING` for exactly the two (the first line read was 19:02:52, read late;
+web's build had begun waiting at about 18:58:55). R4: applied by me
+19:04:23–32, both `OK`. R5: `migrations current` 19:04:38, cluster starting
+19:04:41. R5b: no new scheduled job (the nightly bank sync runs inside
+`finance.keep_month_forecast`). R6: nothing to do, **but close**: web
+`18094bb9` was at 331 s of its 360 s wait when R4 landed, listening 19:04:38,
+SUCCESS by itself. From outside: `/healthz` 200, `/api/finance-bank/` 403
+signed out (404 before), an unsigned `POST /webhooks/plaid` 400. **Push to
+web serving: 6 min 54 s.** The Plaid variables are not set in production yet,
+so the feature is hidden there until they are.
+
 ---
 
 ## Part A — the owner's steps, in order
