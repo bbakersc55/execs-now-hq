@@ -509,9 +509,10 @@ def notices(request, company=None) -> list:
                     "text": f"No reading yet for {P.long_label(r.period_start, r.kpi.cadence)}",
                     "reminded_at": r.created_at.isoformat()})
     from .feeds import (app_notices_for, besty_notices_for, hubspot_notices_for, notices_for,
-                        track_notices_for)
+                        reviews_notices_for, track_notices_for)
 
     return (out + notices_for(request.user, company) + track_notices_for(request.user, company)
             + app_notices_for(request.user, company)
             + hubspot_notices_for(request.user, company)
-            + besty_notices_for(request.user, company))
+            + besty_notices_for(request.user, company)
+            + reviews_notices_for(request.user, company))

@@ -683,12 +683,12 @@ def app_notices_for(user, company=None) -> list:
 def stop_other_feeds(kpi, keep: str):
     """A KPI has one feed: setting one stops the others, their readings kept.
     `keep` is the `Kpi.Feed` value being set."""
-    from .models import KpiAppFeed, KpiBestyFeed, KpiHubSpotFeed, KpiTrackFeed
+    from .models import KpiAppFeed, KpiBestyFeed, KpiHubSpotFeed, KpiReviewsFeed, KpiTrackFeed
 
     now = timezone.now()
     for kind, model in ((Kpi.Feed.SHEET, KpiFeed), (Kpi.Feed.TRACK, KpiTrackFeed),
                         (Kpi.Feed.APP, KpiAppFeed), (Kpi.Feed.HUBSPOT, KpiHubSpotFeed),
-                        (Kpi.Feed.BESTY, KpiBestyFeed)):
+                        (Kpi.Feed.BESTY, KpiBestyFeed), (Kpi.Feed.REVIEWS, KpiReviewsFeed)):
         if kind != keep:
             model.objects.filter(kpi=kpi, active=True).update(active=False, updated_at=now)
 
@@ -935,3 +935,120 @@ def besty_notices_for(user, company=None) -> list:
              "text": f.last_error,
              "reminded_at": f.error_since.isoformat() if f.error_since else None}
             for f in rows.order_by("-error_since")]
+
+
+# ------------------------------------------- Google reviews (docs/google_reviews_feed.md)
+
+def read_reviews(tenant_id, *, now=None, client=None) -> dict:
+    """Each connected location of one practice, once a day: new and changed
+    reviews into the store. A location Google has not approved yet, or that
+    failed, says so on its connection and keeps what is stored. Never in the
+    demo, which reads no Google account."""
+    from config import environment
+
+    from . import google_reviews
+    from .models import GoogleReviewsConnection
+
+    now = now or timezone.now()
+    read = failed = 0
+    if environment.is_demo():
+        return {"read": 0, "failed": 0}
+    for connection in GoogleReviewsConnection.all_objects.filter(
+            tenant_id=tenant_id, company__deleted_at__isnull=True).exclude(
+            location_name="").select_related("tenant", "company"):
+        if connection.last_read_at is not None and now - connection.last_read_at < DAILY_AFTER:
+            continue
+        try:
+            google_reviews.sync(connection, client or google_reviews.client_for(connection))
+            read += 1
+        except (google_reviews.ReviewsUnavailable, google_reviews.ReviewsRefused) as exc:
+            google_reviews.failed(connection, exc)
+            failed += 1
+    return {"read": read, "failed": failed}
+
+
+def run_reviews(feed, today, *, now=None) -> dict:
+    """The closed periods' readings from the stored reviews, written by the
+    Sheets feed's rules. When the location's last read failed (or Google has
+    not approved access yet), that is the feed's error too: what is stored
+    is still worked out, and nothing is deleted."""
+    from . import google_reviews
+    from .models import GoogleReviewsConnection, KpiReading, KpiReviewsFeed
+
+    now = now or timezone.now()
+    kpi = feed.kpi
+    connection = GoogleReviewsConnection.all_objects.filter(
+        company_id=kpi.scorecard.company_id, tenant_id=kpi.tenant_id).first()
+    try:
+        if connection is None or not connection.location_name:
+            raise google_reviews.ReviewsRefused(
+                f"{kpi.scorecard.company.name} has no Google Business Profile location "
+                "connected. The practice owner connects it on the company page.")
+        values = google_reviews.plan_for(feed, today, read_open=reads_open(feed))
+        results = sheets.outcome(kpi, values, today, kpi.scorecard.week_start,
+                                 source=KpiReading.Source.REVIEWS, read_open=reads_open(feed))
+        counts = sheets.write(feed, results, now, source=KpiReading.Source.REVIEWS)
+    except (google_reviews.ReviewsRefused, sheets.FeedRefused) as exc:
+        message = str(exc)
+        if feed.last_error != message:
+            feed.last_error, feed.error_since = message, now
+        KpiReviewsFeed.all_objects.filter(pk=feed.pk).update(
+            last_run_at=now, last_error=feed.last_error, error_since=feed.error_since,
+            updated_at=now)
+        return {"ok": False, "error": message}
+    told = connection.last_error
+    feed.last_error = told
+    feed.error_since = (feed.error_since or now) if told else None
+    feed.last_success_at = now
+    KpiReviewsFeed.all_objects.filter(pk=feed.pk).update(
+        last_run_at=now, last_success_at=now, last_error=told, error_since=feed.error_since,
+        last_counts=counts, updated_at=now)
+    if kpi.feed != Kpi.Feed.REVIEWS:
+        Kpi.all_objects.filter(pk=kpi.pk).update(feed=Kpi.Feed.REVIEWS)
+    return {"ok": not told, **counts, **({"error": told} if told else {})}
+
+
+def run_due_reviews(tenant_id, today, *, now=None) -> dict:
+    """The locations read once a day, then each reviews feed once a day."""
+    from .models import KpiReviewsFeed
+
+    now = now or timezone.now()
+    done = read_reviews(tenant_id, now=now)
+    ran = failed = 0
+    for feed in KpiReviewsFeed.all_objects.filter(
+            tenant_id=tenant_id, active=True, kpi__archived_at__isnull=True,
+            kpi__scorecard__company__deleted_at__isnull=True).select_related(
+            "kpi", "kpi__tenant", "kpi__scorecard", "kpi__scorecard__company"):
+        if feed.last_run_at is not None and now - feed.last_run_at < DAILY_AFTER:
+            continue
+        result = run_reviews(feed, today, now=now)
+        ran += 1
+        failed += int(not result["ok"])
+    return {**done, "ran": ran, "failed_feeds": failed}
+
+
+def reviews_source_text(feed) -> str:
+    from . import google_reviews
+
+    label = google_reviews.MEASURES.get(feed.measure, (feed.measure,))[0]
+    if feed.measure == "reviews_by_star" and feed.star:
+        label = f"New {feed.star}-star reviews"
+    so_far = ", the open period so far" if reads_open(feed) else ""
+    return f"From Google reviews: {label}, worked out once a day{so_far}"
+
+
+def reviews_notices_for(user, company=None) -> list:
+    from .models import KpiReviewsFeed
+
+    rows = KpiReviewsFeed.objects.filter(active=True, kpi__archived_at__isnull=True,
+                                         kpi__reading_owner_id=user.pk).exclude(last_error="") \
+        .select_related("kpi", "kpi__scorecard__company")
+    if company is not None:
+        rows = rows.filter(kpi__scorecard__company=company)
+    return [{"kind": "feed", "kpi": f.kpi.name, "kpi_id": str(f.kpi_id),
+             "company": f.kpi.scorecard.company.name,
+             "company_id": str(f.kpi.scorecard.company_id), "period_start": None,
+             "text": f.last_error,
+             "reminded_at": f.error_since.isoformat() if f.error_since else None}
+            for f in rows.order_by("-error_since")]
+

@@ -181,6 +181,10 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         comms.everything(world)
         scorecard(world)
         homeowner_contacts(world)    # a live target, from the sheet's own column
+        # Google reviews: Stark Tool & Die's location, and two KPIs from it.
+        from .reviews import connect as google_reviews
+
+        google_reviews(world)
         # E-signature: one complete, one waiting; before the rules, so the
         # seed's own signing moves nobody.
         from .documents import documents

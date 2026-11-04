@@ -151,6 +151,8 @@ class Kpi(TenantScopedModel):
         APP = "app", "From this app"
         HUBSPOT = "hubspot", "HubSpot"
         BESTY = "besty", "Besty"
+        #: Google reviews, from the company's Business Profile (2026-11-04).
+        REVIEWS = "reviews", "Google reviews"
 
     class Formula(models.TextChoices):
         """A computed KPI, one step only (spec, "Computed KPIs"): two other
@@ -320,6 +322,7 @@ class KpiReading(TenantScopedModel):
         APP = "app", "From this app"
         HUBSPOT = "hubspot", "HubSpot"
         BESTY = "besty", "Besty"
+        REVIEWS = "reviews", "Google reviews"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()
@@ -809,3 +812,96 @@ class KpiBestyFeed(TenantScopedModel):
 
     class Meta(TenantScopedModel.Meta):
         db_table = "kpi_besty_feed"
+
+
+# ----------------------------------------- Google reviews (docs/google_reviews_feed.md)
+
+class GoogleReviewsConnection(TenantScopedModel):
+    """A client company's Google Business Profile location, for its reviews:
+    the Google sign-in's refresh token (encrypted on this row, as Track's key
+    and HubSpot's token are), which account signed in, and the account and
+    location chosen from Google's lists. The practice owner connects it; the
+    Google account that signs in is whoever manages the client's profile."""
+
+    company = models.OneToOneField("crm.Company", on_delete=models.CASCADE,
+                                   related_name="google_reviews_connection")
+    token_ciphertext = models.BinaryField(null=True, blank=True)
+    google_email = models.CharField(max_length=254, blank=True, default="", db_default="")
+    #: Google's resource names: `accounts/123` and `locations/456`.
+    account_name = models.CharField(max_length=120, blank=True, default="", db_default="")
+    account_label = models.CharField(max_length=200, blank=True, default="", db_default="")
+    location_name = models.CharField(max_length=120, blank=True, default="", db_default="")
+    location_title = models.CharField(max_length=200, blank=True, default="", db_default="")
+    #: From the reviews list itself, kept with each read.
+    average_rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    total_review_count = models.PositiveIntegerField(null=True, blank=True)
+    #: Google has not approved the project's Business Profile API access yet
+    #: (quota 0, or a 403). The connection stays; reads resume once approved.
+    not_approved = models.BooleanField(default=False, db_default=False)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    check_ok = models.BooleanField(null=True, blank=True)
+    check_detail = models.TextField(blank=True, default="", db_default="")
+    last_read_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "google_reviews_connection"
+
+
+class GoogleReview(TenantScopedModel):
+    """One review of the connected location, as Google last gave it. Known by
+    Google's review id; read nightly, newest change first, until a review
+    already stored and unchanged is reached."""
+
+    connection = models.ForeignKey(GoogleReviewsConnection, on_delete=models.CASCADE,
+                                   related_name="reviews")
+    review_id = models.CharField(max_length=200)
+    star_rating = models.PositiveSmallIntegerField(null=True, blank=True)
+    comment = models.TextField(blank=True, default="", db_default="")
+    reviewer_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    created_on_google = models.DateTimeField()
+    updated_on_google = models.DateTimeField()
+    #: When the business replied, if it has.
+    reply_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "google_review"
+        ordering = ["-created_on_google"]
+        constraints = [
+            models.UniqueConstraint(fields=["connection", "review_id"],
+                                    name="google_review_once_per_connection"),
+            models.CheckConstraint(
+                condition=Q(star_rating__isnull=True) | Q(star_rating__gte=1, star_rating__lte=5),
+                name="google_review_star_rating_1_to_5"),
+        ]
+        indexes = [models.Index(fields=["tenant", "connection", "created_on_google"])]
+
+
+class KpiReviewsFeed(TenantScopedModel):
+    """A KPI worked out from its company's stored Google reviews: one measure
+    from the menu (`google_reviews.MEASURES`), and for "reviews by star" the
+    star. Per closed period, daily, by the Sheets feed's rules."""
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="reviews_feed")
+    measure = models.CharField(max_length=24)
+    star = models.PositiveSmallIntegerField(null=True, blank=True)
+    active = models.BooleanField(default=True, db_default=True)
+    read_open = models.BooleanField(null=True, blank=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="", db_default="")
+    error_since = models.DateTimeField(null=True, blank=True)
+    last_counts = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_reviews_feed"
+        constraints = [
+            models.CheckConstraint(condition=Q(star__isnull=True) | Q(star__gte=1, star__lte=5),
+                                   name="kpi_reviews_feed_star_1_to_5"),
+        ]
+

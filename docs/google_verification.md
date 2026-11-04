@@ -31,6 +31,7 @@ ready to paste. **[app]** is code; that's mine, in P2.
 | `gmail.readonly` | Collecting client replies to threads the app started (Module 6) | **Restricted**: annual security assessment |
 | `drive.readonly` | Reading the meeting-notes folder (Module 5) | **Restricted**: annual security assessment |
 | `spreadsheets.readonly` | Reading a client's spreadsheet into a scorecard KPI (M5 part 3, the Google Sheet feed) | **Sensitive**, I believe: review, no security assessment. Added 2026-10-24; goes into the next submission |
+| `business.manage` | Reading a client company's Google reviews into its scorecard (the Google reviews feed, `docs/google_reviews_feed.md`) | **Sensitive**, I believe: review, no security assessment. Added 2026-11-04; goes into the next submission. **Separately**, Google gates the Business Profile APIs themselves: the project must be approved through Google's Business Profile API access request, or every call answers with quota 0 or a 403 (the app says so in one line and keeps the connection) |
 
 **Disclosure the review will look for:** Drive meeting notes are sent to
 Anthropic's Claude API for parsing. That is a transfer of Google user data to a
@@ -142,6 +143,20 @@ in the app, why nothing narrower works, and what the user sees.
 > preview shows every reading it would make before anything is saved. The
 > app never writes to a spreadsheet, and reads only the ones a practice has
 > set up a feed on. No spreadsheet content is sent to Claude.
+
+**`business.manage`**
+> Optional, and requested separately, on its own consent, only when the
+> practice owner connects a client company's Google Business Profile for its
+> scorecard. Whoever manages that profile signs in; the app lists the
+> accounts and locations that sign-in can see, so the right location is
+> chosen, then reads that one location's reviews once a day: each review's
+> stars, text, reviewer's display name, dates and whether it was replied to,
+> and the location's average rating and review count. From these it works
+> out the client's review KPIs (new reviews, average rating, five-star share,
+> unanswered reviews, days to reply) and shows the latest reviews read-only
+> on the company page. Google offers no read-only scope for reviews;
+> business.manage is the only one. The app never replies, edits or deletes
+> anything, never changes the profile, and sends no review text to Claude.
 
 **`drive.readonly`**
 > Optional, and requested separately only when the user turns on meeting

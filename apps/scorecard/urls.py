@@ -1,7 +1,7 @@
 from django.urls import path
 
 from apps.scorecard import (views, views_app, views_besty, views_bonus, views_feeds, views_hubspot,
-                            views_track)
+                            views_reviews, views_track)
 
 urlpatterns = [
     path("scorecard/", views.BoardView.as_view(), name="scorecard"),
@@ -43,6 +43,19 @@ urlpatterns = [
     path("scorecard/track/options/", views_track.TrackOptionsView.as_view(),
          name="scorecard-track-options"),
     path("scorecard/track/feed/", views_track.TrackFeedView.as_view(), name="scorecard-track-feed"),
+    # Google reviews (docs/google_reviews_feed.md).
+    path("scorecard/reviews/connection/", views_reviews.ReviewsConnectionView.as_view(),
+         name="scorecard-reviews-connection"),
+    path("scorecard/reviews/connection/start/", views_reviews.ReviewsStartView.as_view(),
+         name="scorecard-reviews-start"),
+    path("scorecard/reviews/connection/choices/", views_reviews.ReviewsChoicesView.as_view(),
+         name="scorecard-reviews-choices"),
+    path("scorecard/reviews/connection/test/", views_reviews.ReviewsTestView.as_view(),
+         name="scorecard-reviews-test"),
+    path("scorecard/reviews/latest/", views_reviews.ReviewsLatestView.as_view(),
+         name="scorecard-reviews-latest"),
+    path("scorecard/reviews/feed/", views_reviews.ReviewsFeedView.as_view(),
+         name="scorecard-reviews-feed"),
     path("scorecard/hubspot/connection/", views_hubspot.HubSpotConnectionView.as_view(),
          name="scorecard-hubspot-connection"),
     path("scorecard/hubspot/connection/test/", views_hubspot.HubSpotTestView.as_view(),

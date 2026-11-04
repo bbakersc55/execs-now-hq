@@ -350,6 +350,7 @@ export interface TileManage {
   onHubSpot?: () => void;
   /** Part 6: its Besty measure. */
   onBesty?: () => void;
+  onReviews?: () => void;
 }
 
 /** M5 ties: the task a KPI's tile offers, and the one already made. */
@@ -409,6 +410,9 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
         {latest ? (latest.source === "app"
           ? <>Latest worked out from this app
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
+          : latest.source === "reviews"
+          ? <>Latest worked out from Google reviews
+            {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
           : latest.source === "besty"
           ? <>Latest worked out from Besty
             {latest.entered_at ? ` on ${new Date(latest.entered_at).toLocaleDateString()}` : ""}.</>
@@ -455,6 +459,10 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
               {manage.onBesty && !t.computed && !t.per_person && (
                 <button type="button" className="ghost small" aria-label={`Besty measure for ${t.name}`}
                   onClick={manage.onBesty}>{t.feed?.kind === "besty" ? "Besty measure" : "Feed from Besty"}</button>)}
+              {manage.onReviews && !t.computed && !t.per_person && (
+                <button type="button" className="ghost small" aria-label={`Google reviews measure for ${t.name}`}
+                  onClick={manage.onReviews}>{t.feed?.kind === "reviews" ? "Google reviews measure"
+                    : "Feed from Google reviews"}</button>)}
               <button type="button" className="ghost small" aria-label={`Archive ${t.name}`}
                 onClick={() => setArchiving(true)}>Archive</button>
             </>

@@ -392,3 +392,14 @@ register(DocumentTemplate, factories.DocumentTemplateFactory,
 register(Document, factories.DocumentFactory,
          endpoints=("/api/documents/", "/api/portal-documents/"))
 register(Signature, factories.SignatureFactory, api_exposed=False)
+
+# Google reviews (2026-11-04): read only through /api/scorecard/reviews/, which
+# finds the company through `access.company_for` (tests/test_google_reviews.py).
+from apps.scorecard.models import (  # noqa: E402
+    GoogleReview, GoogleReviewsConnection, KpiReviewsFeed,
+)
+
+register(GoogleReviewsConnection, factories.GoogleReviewsConnectionFactory, api_exposed=False)
+register(GoogleReview, factories.GoogleReviewFactory, api_exposed=False)
+register(KpiReviewsFeed, factories.KpiReviewsFeedFactory, api_exposed=False)
+

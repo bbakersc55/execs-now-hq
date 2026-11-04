@@ -290,6 +290,12 @@ def gmail_callback(request):
     # state, so the OAuth client needs no second redirect URI.
     if calendar_views.is_calendar_consent(request):
         return calendar_views.callback(request)
+    # And a Business Profile consent for a company's Google reviews
+    # (docs/google_reviews_feed.md), the same way.
+    from apps.scorecard import views_reviews
+
+    if views_reviews.is_reviews_consent(request):
+        return views_reviews.callback(request)
     # Popped first, before any early return, so every refusal below lands on
     # the screen the person was actually looking at.
     where = request.session.pop(gmail_oauth.RETURN_SESSION_KEY, "email")

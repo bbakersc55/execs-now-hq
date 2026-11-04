@@ -403,6 +403,20 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert entries.filter(kind="income", direction="out").count() == 1    # a refund
         # Another, entered late, and the correcting entry in the open month.
         assert entries.filter(kind="expense", direction="in").count() == 2
+        # Google reviews: Stark Tool & Die's location, a year of reviews read
+        # through the real sync, and two KPIs worked out from them.
+        from apps.scorecard.models import GoogleReview, GoogleReviewsConnection, KpiReviewsFeed
+
+        location = GoogleReviewsConnection.objects.get()
+        assert location.company.name == "Stark Tool & Die" and location.location_title
+        assert GoogleReview.objects.filter(connection=location).count() >= 25
+        assert GoogleReview.objects.filter(connection=location, reply_at__isnull=True).exists()
+        assert location.average_rating and location.total_review_count >= 25
+        fed = KpiReviewsFeed.objects.filter(active=True).select_related("kpi")
+        assert {f.kpi.name for f in fed} == {"Google rating", "New Google reviews"}
+        assert all(f.last_success_at and not f.last_error for f in fed)
+        assert all(KpiReading.objects.filter(kpi=f.kpi, source="reviews").count() >= 12
+                   for f in fed)
         # Bank feeds: the sample connection, two accounts fed, today's lines
         # through the real sync code, two of them still pending at the bank.
         from apps.finance.models import BankConnection, BankFeedAccount

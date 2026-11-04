@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { BonusArea, bonusLead } from "../components/ScorecardBonus";
 import { SheetFeedModal } from "../components/ScorecardFeed";
 import { BestyFeedModal } from "../components/ScorecardBesty";
+import { ReviewsFeedModal } from "../components/ScorecardReviews";
 import { HubSpotFeedModal } from "../components/ScorecardHubSpot";
 import { TrackFeedModal } from "../components/ScorecardTrack";
 import { AppFeedModal } from "../components/ScorecardApp";
@@ -54,6 +55,7 @@ export function Scorecard({ me }: { me: Me }) {
   const [trackKpi, setTrackKpi] = useState<string | null>(null);
   const [hubspotKpi, setHubspotKpi] = useState<string | null>(null);
   const [bestyKpi, setBestyKpi] = useState<string | null>(null);
+  const [reviewsKpi, setReviewsKpi] = useState<string | null>(null);
   const [appKpi, setAppKpi] = useState<string | null>(null);
   const [search, setSearch] = useSearchParams();
   // "Reconnect Google" is a browser redirect; its outcome comes back here.
@@ -211,6 +213,10 @@ export function Scorecard({ me }: { me: Me }) {
         <HubSpotFeedModal companyId={companyId} kpiId={hubspotKpi} onClose={() => setHubspotKpi(null)}
           onSaved={(text) => { setHubspotKpi(null); setManaged({ kind: "ok", text }); }} />
       )}
+      {reviewsKpi && (
+        <ReviewsFeedModal companyId={companyId} kpiId={reviewsKpi} onClose={() => setReviewsKpi(null)}
+          onSaved={(text) => { setReviewsKpi(null); setManaged({ kind: "ok", text }); }} />
+      )}
       {bestyKpi && (
         <BestyFeedModal companyId={companyId} kpiId={bestyKpi} onClose={() => setBestyKpi(null)}
           onSaved={(text) => { setBestyKpi(null); setManaged({ kind: "ok", text }); }} />
@@ -240,7 +246,7 @@ export function Scorecard({ me }: { me: Me }) {
             // HubSpot or Besty.
             ...(b.practice ? { onApp: () => setAppKpi(t.id) }
               : { onTrack: () => setTrackKpi(t.id), onHubSpot: () => setHubspotKpi(t.id),
-                onBesty: () => setBestyKpi(t.id) }),
+                onBesty: () => setBestyKpi(t.id), onReviews: () => setReviewsKpi(t.id) }),
             busy: archive.isPending } : undefined} />);
         const tagged = tiles.some((t) => t.component);
         return (

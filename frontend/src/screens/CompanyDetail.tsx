@@ -16,6 +16,7 @@ import { DocumentsCard } from "../components/Documents";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
 import { ScorecardSetup } from "../components/ScorecardSetup";
 import { BestyConnectionCard } from "../components/ScorecardBesty";
+import { GoogleReviewsCard, ReviewsCard } from "../components/ScorecardReviews";
 import { HubSpotConnectionCard } from "../components/ScorecardHubSpot";
 import { TrackConnectionCard } from "../components/ScorecardTrack";
 import { useWords } from "../lib/words";
@@ -202,6 +203,8 @@ export function CompanyDetail({ me }: { me: Me }) {
       {(me.role === "FF" || me.role === "CF") && <TrackConnectionCard me={me} companyId={c.id} />}
       {(me.role === "FF" || me.role === "CF") && <HubSpotConnectionCard me={me} companyId={c.id} />}
       {(me.role === "FF" || me.role === "CF") && <BestyConnectionCard me={me} companyId={c.id} />}
+      {(me.role === "FF" || me.role === "CF") && <GoogleReviewsCard me={me} companyId={c.id} />}
+      {(me.role === "FF" || me.role === "CF") && <ReviewsCard companyId={c.id} />}
 
       {/* Promises made in meetings, open and done (2026-10-20). */}
       <CompanyCommitments companyId={c.id} />

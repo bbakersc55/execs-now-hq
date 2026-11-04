@@ -1892,3 +1892,40 @@ class SignatureFactory(TenantScopedFactory):
     consent_text = "I agree."
     signed_at = factory.LazyFunction(timezone.now)
     pdf_sha256 = "0" * 64
+
+
+# --- Google reviews (docs/google_reviews_feed.md) ---
+
+class GoogleReviewsConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.GoogleReviewsConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    account_name = "accounts/100"
+    location_name = "locations/200"
+    location_title = "Factory location"
+
+
+class GoogleReviewFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.GoogleReview"
+
+    tenant = factory.SubFactory(TenantFactory)
+    connection = factory.SubFactory(GoogleReviewsConnectionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    review_id = factory.Sequence(lambda n: f"review-{n}")
+    star_rating = 5
+    created_on_google = factory.LazyFunction(
+        lambda: __import__("django.utils.timezone", fromlist=["now"]).now())
+    updated_on_google = factory.SelfAttribute("created_on_google")
+
+
+class KpiReviewsFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiReviewsFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    measure = "new_reviews"
+
