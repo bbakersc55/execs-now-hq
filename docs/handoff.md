@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-04 UTC**, after Release 34. **The next session starts at
-"2026-11-04, night: Release 34, the HubSpot and Besty editors" just below**,
+2026-11-05 UTC**, after Release 35. **The next session starts at
+"2026-11-05: Release 35, Google reviews" just below**, then
+"2026-11-04, night: Release 34, the HubSpot and Besty editors",
 then "2026-11-04, evening: Release 33, the Track editor", then
 "2026-11-04: Release 32, bank feeds on Plaid", then
 "2026-10-31: Release 31, letterhead and masked tokens", then
@@ -19,6 +20,25 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-05: Release 35, Google reviews
+
+- **Release 35 is live**: `main` at `e595d62`, **one migration,
+  `scorecard 0012_google_reviews`** (additive), applied by the runbook;
+  **no new scheduled job**. Runbook, "Observed at Release 35".
+- **The Google reviews feed** (`docs/google_reviews_feed.md`): a company's
+  Google Business Profile card (owner connects through the existing OAuth
+  client, `business.manage` asked for on its own consent), a read-only Google
+  reviews card, and six measures a KPI can be fed from. Read nightly on
+  `scorecard.read_feeds`.
+- **Waiting on Google before it works for a real client**: `business.manage`
+  added to the OAuth consent screen (`docs/google_verification.md`), and the
+  Business Profile API access request approved for the project. Until then the
+  card shows "Google hasn't approved this app's access…" and keeps the
+  connection.
+- **The demo** (reseeded by the owner 2026-11-05): Stark Tool & Die, Long
+  Island, 4.30 from 38 reviews; a "Reputation" page with Google rating (12
+  readings) and New Google reviews (13).
 
 ## 2026-11-04, night: Release 34, the HubSpot and Besty editors
 

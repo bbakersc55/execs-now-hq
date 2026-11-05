@@ -751,6 +751,21 @@ nothing to do; worker `fe9d9663` `migrations current` 22:43:48, running
 `/healthz` 200 and the served bundle carries the shared reading line.
 **Push to web serving: 2 min 13 s.**
 
+**Observed at Release 35 (2026-11-05 UTC, one migration,
+`scorecard 0012_google_reviews`: the Google reviews feed, `e595d62`):** R1:
+the owner ran the backup by hand; `gcloud` was signed out, so read from
+`railway logs --service backup`: `execsnowhq_prod_20261105_155242.sql.gz`,
+11.5 MB, media copied. R2: `main` fast-forwarded `d0c3a0d..e595d62`, pushed
+15:53:25. R3: worker `1e0750b2` `WAITING` 15:54:48, listing exactly
+`scorecard.0012_google_reviews`. R4: applied by me 15:55:05–10, `OK`. R5:
+`migrations current` 15:55:22, running 15:55:25. R5b: no new scheduled job
+(the reviews are read on `scorecard.read_feeds`). R6: web `ad2561af` SUCCESS by
+itself, listening 15:57:00; `/healthz` 200 and
+`/api/scorecard/reviews/connection/` 403 signed out (404 before). **Push to
+web serving: 3 min 35 s.** Connecting a profile needs `business.manage` on
+the OAuth consent screen and Google's Business Profile API approval; until
+then the card shows the "not approved" line.
+
 ---
 
 ## Part A — the owner's steps, in order
