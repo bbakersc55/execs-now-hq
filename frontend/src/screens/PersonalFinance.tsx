@@ -11,6 +11,7 @@ import { categoryOptions } from "../lib/finance";
 import { dollars, longDate } from "../lib/money";
 import { PERSONAL_DISCLAIMER, personalOptions, usePersonalChart } from "../lib/personal";
 import { ImportFileStep, StatementRead } from "./FinanceImport";
+import { BankFeedsOnImport } from "../components/BankConnections";
 import { AiGate } from "../components/DemoVisitor";
 import { PersonalGoals, PersonalOverview } from "./PersonalBudget";
 import { PersonalForecastPage } from "./PersonalForecast";
@@ -629,6 +630,7 @@ function PersonalImports() {
   const done = (history.data ?? []).filter((b) => b.status !== "dry_run");
   return (
     <>
+      {!batch && <BankFeedsOnImport side="personal" />}
       {said && <Banner kind={said.kind}>{said.text}</Banner>}
       {!batch && (
         <ImportFileStep<PersonalImport> key={round} accounts={own} pdfKept={false}

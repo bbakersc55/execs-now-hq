@@ -181,6 +181,56 @@ the cursor cleared, and the connection kept as disconnected: the nightly job,
 Check now and webhooks all leave it alone. **Every entry it brought in is
 kept.** It no longer counts toward the five.
 
+## Personal finance (added 2026-11-05)
+
+The owner's household accounts can be fed too, into their personal ledger
+(P6 M4), and **never into the practice's books**.
+
+- **Where.** Personal → Import has its own "Personal: bank feeds" card with
+  **Connect a bank** (the same Plaid flow) and its personal connections in a
+  line each. Settings → Finance → Bank connections lists them under their own
+  heading, **Personal**, below "The practice's", with the same mapping, Check
+  now (once an hour), Reconnect and Disconnect. Only with Personal finance
+  switched on.
+- **Whose.** A connection made there is marked `side = personal` and carries
+  the ledger of the owner who made it. Nobody else reaches it: another
+  practice owner of the same practice, or of another practice, gets 404 on
+  every route and does not see it listed; an associate or assistant gets 403
+  (as for every bank route); a client user, 404. Its notices (needs
+  attention, a line held by a finished statement) go to that owner only.
+- **Mapping.** Each account maps to one of that owner's **household
+  accounts** (Personal → Accounts) or "Don't feed"; never a ledger account of
+  the practice's or a Mixed account, and a practice connection can never map
+  to a household account. A household account is fed by one bank account at
+  most. The feed begins the day after the account's newest line from anywhere
+  but the feed (and not before its opening date).
+- **What a sync does** (`bankfeeds/personal.py`): each new transaction
+  becomes a ledger line marked "From the bank feed", decided as a personal
+  statement line **with no rule**: a line already in the account (typed or
+  imported) is not entered twice; the other side of a move between the
+  household's accounts is paired as a transfer (decision 7); money in matching
+  an owner draw is pay from the practice (decision 20; the draw is read, never
+  written); otherwise under the ledger's threshold, Everything else, at or
+  over it, To sort. **None of the practice's rules applies** (business,
+  personal or split), so nothing becomes "paid personally" and no entry is
+  made in the books. Changes follow the bank; a removal removes the line (and
+  unpairs it). A line ticked on a **finished** personal statement is left as
+  it is and the owner is told, as a closed month's entry is on the practice's
+  side.
+- **Pending** transactions make **no ledger line until they post**; the
+  posted one makes it.
+- **The same nightly sync, webhook and Check now**; the count against the
+  five included covers both sides together.
+- **Not built:** a personal connection's balance is stored and shown on the
+  card, but the personal forecast and personal Reconcile do not use it yet.
+
+Migrations `finance 0017_bank_feeds_personal` (`bank_connection.side` and
+`ledger`, `bank_feed_account.personal_account`, `bank_feed_transaction.personal_line`,
+three checks: a personal connection has its ledger and a practice one none;
+a feed account is mapped to one side at most; a skipped one to neither) and
+`personal 0007_bank_feeds_personal` (the line source `bank`, no SQL);
+additive.
+
 ## The demo
 
 Connecting is **refused** in the demo, as Gmail is, and so is everything that
@@ -192,6 +242,11 @@ code** with the fake provider: five lines dated the day of the seed, two of
 them pending, each with the bank's suggestion. Being dated today they fall
 after the bank reconciliation in progress, which is unchanged. The nightly
 job never syncs in the demo.
+
+And one **personal** connection, **Aspen Credit Union**, on the owner's
+household side: Joint checking fed into the ledger's Joint checking, Joint
+savings not fed, synced the same way: Safeway ($18.50, Everything else), King
+Soopers ($94.12, To sort) and a Shell line still pending (no line yet).
 
 ## Production with the keys unset
 

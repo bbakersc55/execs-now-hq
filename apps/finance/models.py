@@ -705,16 +705,28 @@ class FinanceForecastSnapshot(TenantScopedModel):
 
 class BankConnection(TenantScopedModel):
     """One login at one bank, through a provider (Plaid first): the practice
-    owner's own accounts, feeding the books. `company` is for the later CFO
-    package (a client company's own bank); nothing sets it yet."""
+    owner's own accounts, feeding the books, or (side personal) the owner's
+    household accounts, feeding their personal ledger and nothing of the
+    practice's. `company` is for the later CFO package (a client company's own
+    bank); nothing sets it yet."""
 
     class Status(models.TextChoices):
         CONNECTED = "connected", "Connected"
         NEEDS_ATTENTION = "needs_attention", "Needs attention"
         DISCONNECTED = "disconnected", "Disconnected"
 
+    class Side(models.TextChoices):
+        PRACTICE = "practice", "The practice's"
+        PERSONAL = "personal", "Personal"
+
     company = models.ForeignKey("crm.Company", null=True, blank=True,
                                 on_delete=models.PROTECT, related_name="+")
+    #: Whose books it feeds (docs/p6_bank_feeds.md, "Personal finance").
+    side = models.CharField(max_length=10, choices=Side.choices, default=Side.PRACTICE,
+                            db_default=Side.PRACTICE)
+    #: A personal connection's ledger: the owner who made it, and only theirs.
+    ledger = models.ForeignKey("personal.PersonalLedger", null=True, blank=True,
+                               on_delete=models.PROTECT, related_name="bank_connections")
     provider = models.CharField(max_length=16, default="plaid", db_default="plaid")
     #: The provider's id for this login (Plaid's item id).
     item_id = models.CharField(max_length=120)
@@ -754,6 +766,11 @@ class BankConnection(TenantScopedModel):
             models.CheckConstraint(
                 condition=Q(status__in=("connected", "needs_attention", "disconnected")),
                 name="bank_connection_status"),
+            # A personal connection has its ledger; the practice's has none.
+            models.CheckConstraint(
+                condition=(Q(side="practice", ledger__isnull=True)
+                           | Q(side="personal", ledger__isnull=False)),
+                name="bank_connection_side_and_ledger"),
         ]
 
 
@@ -773,6 +790,10 @@ class BankFeedAccount(TenantScopedModel):
     #: The ledger account (Reconcile's) its lines go to; empty until mapped.
     finance_account = models.ForeignKey(FinanceAccount, null=True, blank=True,
                                         on_delete=models.PROTECT, related_name="feeds")
+    #: A personal connection's account: the household account its lines go
+    #: to. Never with `finance_account`.
+    personal_account = models.ForeignKey("personal.PersonalAccount", null=True, blank=True,
+                                         on_delete=models.PROTECT, related_name="feeds")
     #: The owner chose not to feed it.
     skipped = models.BooleanField(default=False, db_default=False)
     #: Lines dated before this are already in the books (typed or imported)
@@ -793,6 +814,12 @@ class BankFeedAccount(TenantScopedModel):
                                     name="bank_feed_account_one_per_connection"),
             models.CheckConstraint(condition=Q(skipped=False) | Q(finance_account__isnull=True),
                                    name="bank_feed_account_skipped_is_unmapped"),
+            models.CheckConstraint(
+                condition=Q(skipped=False) | Q(personal_account__isnull=True),
+                name="bank_feed_account_skipped_is_unmapped_personal"),
+            models.CheckConstraint(
+                condition=Q(finance_account__isnull=True) | Q(personal_account__isnull=True),
+                name="bank_feed_account_one_side"),
         ]
 
 
@@ -810,6 +837,9 @@ class BankFeedTransaction(TenantScopedModel):
         IGNORE = "ignore", "Ignored, by a rule"
         BEFORE_FEED = "before_feed", "Before the feed began"
         CLOSED_MONTH = "closed_month", "In a closed month"
+        #: Personal side: still pending at the bank; its line is made when it
+        #: posts.
+        PENDING = "pending", "Pending at the bank"
 
     feed_account = models.ForeignKey(BankFeedAccount, on_delete=models.CASCADE,
                                      related_name="transactions")
@@ -824,6 +854,9 @@ class BankFeedTransaction(TenantScopedModel):
     #: The entry it made (new, transfer) or matched (the two matches).
     entry = models.ForeignKey(FinanceEntry, null=True, blank=True, on_delete=models.SET_NULL,
                               related_name="bank_transactions")
+    #: Personal side: the ledger line it made (new, transfer) or matched.
+    personal_line = models.ForeignKey("personal.PersonalLine", null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="bank_transactions")
     #: The bank removed it.
     removed_at = models.DateTimeField(null=True, blank=True)
 

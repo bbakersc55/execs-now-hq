@@ -224,6 +224,8 @@ class PersonalLine(OwnedModel):
         IMPORT = "import", "From an import"
         #: The personal side of a line in one of the practice's accounts.
         BOOKS = "books", "From a practice account"
+        #: From a personal bank connection (docs/p6_bank_feeds.md).
+        BANK = "bank", "From the bank feed"
 
     on_date = models.DateField(db_index=True)
     amount_cents = models.BigIntegerField()

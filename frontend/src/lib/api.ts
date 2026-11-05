@@ -2838,12 +2838,16 @@ export const DOCUMENT_FIELDS: { field: string; label: string; long?: boolean; da
 export interface BankFeedAccount {
   id: string; name: string; official_name: string; mask: string; type: string;
   subtype: string; finance_account: { id: string; name: string } | null; skipped: boolean;
+  /** A personal connection's account: the household account it feeds. */
+  personal_account: { id: string; name: string } | null;
   feed_from: string | null; balance_cents: number | null; available_cents: number | null;
   currency: string; balance_at: string | null;
 }
 
 export interface BankConnection {
   id: string; provider: string; institution: string;
+  /** Whose books it feeds: the practice's, or the owner's personal ledger. */
+  side: "practice" | "personal";
   status: "connected" | "needs_attention" | "disconnected"; status_label: string;
   attention_code: string; attention_detail: string; reconnect: boolean;
   last_synced_at: string | null; last_checked_at: string | null; can_check_at: string | null;
@@ -2857,5 +2861,8 @@ export interface BankOverview {
   /** Shown at all: the provider's keys are set, or this is the demo. */
   available: boolean; configured: boolean; demo: boolean; refusal: string;
   connections: BankConnection[]; disconnected: BankConnection[];
+  /** Personal finance is on: the viewer's own personal connections. */
+  personal_on: boolean; personal: BankConnection[]; personal_disconnected: BankConnection[];
+  /** Both sides together, for the plan's "5 included". */
   count: number; included: number; each_after_cents: number; price_line: string;
 }

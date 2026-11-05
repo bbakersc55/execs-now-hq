@@ -3,7 +3,7 @@ import { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BankConnection, BankOverview, FinanceAccount } from "../lib/api";
+import { BankConnection, BankOverview, FinanceAccount, PersonalAccount } from "../lib/api";
 import { mockApi, renderRoute } from "../test/render";
 import { BankConnectionsCard, BankFeedsOnImport } from "./BankConnections";
 
@@ -18,7 +18,8 @@ const LEDGERS: FinanceAccount[] = [
 
 function connection(more: Partial<BankConnection> = {}): BankConnection {
   return {
-    id: "k1", provider: "plaid", institution: "First Platypus Bank", status: "connected",
+    id: "k1", provider: "plaid", side: "practice", institution: "First Platypus Bank",
+    status: "connected",
     status_label: "Connected", attention_code: "", attention_detail: "", reconnect: false,
     last_synced_at: "2026-11-04T06:00:00Z", last_checked_at: null, can_check_at: null,
     last_sync_counts: { added: 3 }, last_error: "", waiting: 0, created_at: "2026-11-01T00:00:00Z",
@@ -26,17 +27,20 @@ function connection(more: Partial<BankConnection> = {}): BankConnection {
     accounts: [
       { id: "f1", name: "Plaid Checking", official_name: "", mask: "0000", type: "depository",
         subtype: "checking", finance_account: { id: "a1", name: "Checking" }, skipped: false,
+        personal_account: null,
         feed_from: "2026-10-16", balance_cents: 11000, available_cents: 10000, currency: "USD",
         balance_at: "2026-11-04T06:00:00Z" },
       { id: "f2", name: "Plaid Saving", official_name: "", mask: "1111", type: "depository",
         subtype: "savings", finance_account: null, skipped: false, feed_from: null,
+        personal_account: null,
         balance_cents: 21000, available_cents: 20000, currency: "USD", balance_at: null }],
     ...more };
 }
 
 function overview(more: Partial<BankOverview> = {}): BankOverview {
   return { available: true, configured: true, demo: false, refusal: "",
-           connections: [connection()], disconnected: [], count: 1, included: 5,
+           connections: [connection()], disconnected: [], personal_on: false, personal: [],
+           personal_disconnected: [], count: 1, included: 5,
            each_after_cents: 50,
            price_line: "5 bank connections included, then $0.50 a month each", ...more };
 }
@@ -133,7 +137,7 @@ describe("the Bank connections card", () => {
     await userEvent.click(screen.getByRole("button", { name: "Connect a bank" }));
     expect(await screen.findByText(/First Platypus Bank is connected/)).toBeInTheDocument();
     expect(fetchMock.calls.find((c) => c.url.endsWith("/connect/"))?.body)
-      .toEqual({ public_token: "public-sandbox" });
+      .toEqual({ public_token: "public-sandbox", side: "practice" });
   });
 
   it("shows the demo's refusal from the server", async () => {
@@ -179,6 +183,80 @@ describe("bank feeds on the Import page", () => {
     show(<BankFeedsOnImport />, { "GET /api/finance-bank/": overview({ available: false }) });
     expect(await screen.findByLabelText("Bank feeds")).toHaveTextContent(
       "Bank feeds aren't set up on this server yet");
+    expect(screen.queryByRole("button", { name: "Connect a bank" })).not.toBeInTheDocument();
+  });
+});
+
+/** Personal finance's own connections (docs/p6_bank_feeds.md, "Personal finance"). */
+const HOUSEHOLD: PersonalAccount[] = [
+  { id: "p1", name: "Joint checking", kind: "bank", kind_label: "Bank account", last4: "2210",
+    closed: false, side: "personal", in_books: false },
+  { id: "m1", name: "Everyday Visa", kind: "card", kind_label: "Credit card", last4: "5512",
+    closed: false, side: "mixed", in_books: true }];
+
+function personalConnection(more: Partial<BankConnection> = {}): BankConnection {
+  const base = connection({ id: "k9", side: "personal", institution: "Aspen Credit Union" });
+  return { ...base, waiting: 1, accounts: [
+    { ...base.accounts[0], id: "g1", name: "ACU Checking", finance_account: null,
+      personal_account: { id: "p1", name: "Joint checking" } },
+    { ...base.accounts[1], id: "g2", name: "ACU Savings" }], ...more };
+}
+
+describe("personal bank connections", () => {
+  it("are listed in Settings under their own heading and map to household accounts only",
+    async () => {
+      const fetchMock = show(<BankConnectionsCard />, {
+        "GET /api/finance-bank/": overview({ personal_on: true,
+                                             personal: [personalConnection()], count: 2 }),
+        "GET /api/personal/accounts": HOUSEHOLD,
+        "POST /api/finance-bank/k9/mapping/": () => ({ body: personalConnection() }) });
+      const personal = await screen.findByRole("region", { name: "Personal bank connections" });
+      expect(within(personal).getByRole("heading", { name: "Personal" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "The practice's" })).toBeInTheDocument();
+      // The practice's connection is not under Personal, and the count is both sides.
+      expect(within(personal).queryByText("First Platypus Bank")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Bank connections included")).toHaveTextContent(
+        "You have 2 connected.");
+      const picker = await within(personal).findByLabelText("Personal account for ACU Savings");
+      await waitFor(() => expect(within(picker).getByRole("option",
+        { name: /Joint checking/ })).toBeInTheDocument());
+      // Household accounts only: neither the practice's ledger nor a Mixed card.
+      const offered = within(picker).getAllByRole("option").map((o) => o.textContent);
+      expect(offered).toEqual(["Feeds… choose", "Don't feed", "Feeds Joint checking ·· 2210"]);
+      expect(within(personal).getByLabelText("Personal account for ACU Checking"))
+        .toHaveValue("p1");
+      await userEvent.selectOptions(picker, "none");
+      await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "POST")?.body)
+        .toEqual({ mapping: { g2: "" } }));
+    });
+
+  it("connect from Personal → Import, marked personal, and list only the personal ones",
+    async () => {
+      window.Plaid = { create: (o) => {
+        setTimeout(() => o.onSuccess("public-sandbox", {}), 0);
+        return { open: vi.fn(), exit: vi.fn(), destroy: vi.fn() };
+      } };
+      const fetchMock = show(<BankFeedsOnImport side="personal" />, {
+        "GET /api/finance-bank/": overview({ personal_on: true,
+                                             personal: [personalConnection()] }),
+        "POST /api/finance-bank/link-token/": () => ({ body: { link_token: "link-n",
+                                                               update: false } }),
+        "POST /api/finance-bank/connect/": () => ({ status: 201,
+                                                    body: personalConnection() }) });
+      const list = await screen.findByRole("list", { name: "Connected personal banks" });
+      expect(within(list).getByText("Aspen Credit Union")).toBeInTheDocument();
+      expect(screen.queryByText("First Platypus Bank")).not.toBeInTheDocument();
+      expect(screen.getByText(/never in the practice's books/)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Connect a bank" }));
+      expect(await screen.findByText(/under Personal\./)).toBeInTheDocument();
+      expect(fetchMock.calls.find((c) => c.url.endsWith("/connect/"))?.body)
+        .toEqual({ public_token: "public-sandbox", side: "personal" });
+    });
+
+  it("show nothing on Personal → Import where Personal finance is off", async () => {
+    const fetchMock = show(<BankFeedsOnImport side="personal" />, {
+      "GET /api/finance-bank/": overview() });
+    await waitFor(() => expect(fetchMock.calls.length).toBeGreaterThan(0));
     expect(screen.queryByRole("button", { name: "Connect a bank" })).not.toBeInTheDocument();
   });
 });

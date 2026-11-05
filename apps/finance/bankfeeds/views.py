@@ -23,10 +23,22 @@ log = logging.getLogger(__name__)
 
 class BankConnectionViewSet(FinanceViewSet):
     def _connection(self, pk):
-        return self._one(BankConnection, pk, "bank connection")
+        row = self._one(BankConnection, pk, "bank connection")
+        if row.side == BankConnection.Side.PERSONAL and not self._own_personal(row):
+            # Someone else's household: as if it were not there.
+            raise services.FinanceError("That bank connection is not in this practice.",
+                                        status=404)
+        return row
+
+    def _own_personal(self, row) -> bool:
+        from apps.tenancy import modules
+
+        return (modules.has(self.request.tenant, modules.PERSONAL)
+                and not getattr(self.request, "acting_as", None)
+                and row.ledger is not None and row.ledger.owner_id == self.request.user.pk)
 
     def list(self, request):
-        return Response(connections.overview(request.tenant))
+        return Response(connections.overview(request.tenant, request.user))
 
     @action(detail=False, methods=["post"], url_path="link-token")
     def link_token(self, request):
@@ -41,8 +53,12 @@ class BankConnectionViewSet(FinanceViewSet):
     @action(detail=False, methods=["post"])
     def connect(self, request):
         try:
+            side = request.data.get("side") or BankConnection.Side.PRACTICE
+            if side == BankConnection.Side.PERSONAL and getattr(request, "acting_as", None):
+                raise services.FinanceError("Personal finance is yours alone.", status=404)
             made = connections.connect(request.tenant, actor=request.user,
-                                       public_token=request.data.get("public_token"))
+                                       public_token=request.data.get("public_token"),
+                                       side=side)
         except services.FinanceError as exc:
             return self._refusal(exc)
         return Response(connections.represent(made), status=201)

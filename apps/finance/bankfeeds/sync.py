@@ -58,7 +58,8 @@ def undecided(connection) -> int:
     """Accounts the owner has neither mapped nor chosen not to feed. While any
     is, no transaction is read: reading moves the cursor past their lines."""
     return BankFeedAccount.all_objects.filter(
-        connection=connection, finance_account__isnull=True, skipped=False).count()
+        connection=connection, finance_account__isnull=True, personal_account__isnull=True,
+        skipped=False).count()
 
 
 #: Account types that are not where a practice's money moves day to day. They
@@ -127,8 +128,12 @@ def run(connection, *, actor=None) -> dict:
 
 @transaction.atomic
 def apply(connection, changes, *, actor=None) -> dict:
+    from .personal import PersonalPass, is_personal
+
     connection = BankConnection.all_objects.select_for_update().get(pk=connection.pk)
-    pass_ = _Pass(connection, actor)
+    # A personal connection feeds the owner's ledger, never the books.
+    pass_ = PersonalPass(connection, actor) if is_personal(connection) \
+        else _Pass(connection, actor)
     for t in changes.added:
         pass_.added(t)
     for t in changes.modified:

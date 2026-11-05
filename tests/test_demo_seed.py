@@ -421,11 +421,18 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         # through the real sync code, two of them still pending at the bank.
         from apps.finance.models import BankConnection, BankFeedAccount
 
-        connection = BankConnection.objects.get()
+        connection = BankConnection.objects.get(side="practice")
         assert (connection.status, connection.institution_name) == ("connected",
                                                                     "Front Range Bank")
         assert BankFeedAccount.objects.filter(finance_account__isnull=False).count() == 2
-        assert BankFeedAccount.objects.filter(skipped=True).count() == 1
+        assert BankFeedAccount.objects.filter(connection=connection, skipped=True).count() == 1
+        # And one personal connection, on the owner's household side only.
+        personal_bank = BankConnection.objects.get(side="personal")
+        assert (personal_bank.institution_name, personal_bank.ledger.owner_id) == (
+            "Aspen Credit Union", owner.pk)
+        assert BankFeedAccount.objects.filter(connection=personal_bank,
+                                              personal_account__name="Joint checking").exists()
+        assert BankFeedAccount.objects.filter(connection=personal_bank, skipped=True).count() == 1
         fed = FinanceEntry.objects.filter(source="bank", removed_at__isnull=True)
         assert fed.count() == 5 and fed.filter(pending=True).count() == 2
         assert set(fed.values_list("on_date", flat=True)) == {today}
@@ -570,7 +577,16 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert all(line.category.type == "transfer" for line in paired)
         # Waiting: last month's three checking lines, and this month's card
         # lines no rule knows.
-        waiting = lines.filter(category__isnull=True)
+        # The personal bank feed's lines: today's, in joint checking, the
+        # pending one not yet a line, nothing of it in the books.
+        from_bank = lines.filter(source="bank")
+        assert {(line.description, line.on_date, line.account.name) for line in from_bank} == {
+            ("SAFEWAY #1532", today, "Joint checking"),
+            ("KING SOOPERS #0114", today, "Joint checking")}
+        assert from_bank.get(description="SAFEWAY #1532").category.name == "Everything else"
+        assert not FinanceEntry.objects.filter(description__in=(
+            "SAFEWAY #1532", "KING SOOPERS #0114", "SHELL OIL 5741")).exists()
+        waiting = lines.filter(category__isnull=True).exclude(source="bank")
         assert waiting.count() >= 2 and {
             line.description.split()[0] for line in waiting} <= {"COSTCO", "BELL", "CANYON"}
         assert all(line.on_date >= last_month for line in waiting)

@@ -1,7 +1,10 @@
 """Bank connections: connect, map, Check now, Reconnect, Disconnect, and what
 the provider's webhooks change (`docs/p6_bank_feeds.md`).
 
-The practice owner's alone, as the rest of the books are. The access token is
+The practice owner's alone, as the rest of the books are. A **personal**
+connection is the owner's household's: made from Personal finance, its
+accounts mapped to their personal ledger's accounts, its lines in that ledger
+only (`personal.py`), and reached by nobody but the owner who made it. The access token is
 encrypted on the connection's own row with the key NMI's are kept under
 (`crm.services.secrets`), and is never sent to a browser or written to a log.
 """
@@ -84,13 +87,19 @@ def count(tenant) -> int:
 
 # ------------------------------------------------------------------ notices
 
-def tell_owner(tenant, *, title, text, source_type, source_id, url="/settings/finance"):
+def tell_owner(tenant, *, title, text, source_type, source_id, url="/settings/finance",
+               only=None):
+    """The practice's owners; `only` (a user id) for a personal connection,
+    whose news is its owner's alone."""
     from apps.notify.models import Kind
     from apps.notify.service import tell
     from apps.tenancy.models import Membership, Role
 
-    for owner in Membership.all_objects.filter(tenant=tenant, role=Role.FF,
-                                               revoked_at__isnull=True):
+    owners = Membership.all_objects.filter(tenant=tenant, role=Role.FF,
+                                           revoked_at__isnull=True)
+    if only is not None:
+        owners = owners.filter(user_id=only)
+    for owner in owners:
         tell(tenant_id=tenant.pk, recipient_id=owner.user_id, kind=Kind.BANK, title=title,
              text=text, url=url, source_type=source_type[:40], source_id=source_id)
 
@@ -110,7 +119,29 @@ def needs_attention(connection, code: str, detail: str = "") -> None:
                text=f"{name} {why}. Open Settings, Finance, Bank connections and choose "
                     "Reconnect." + (f" The bank said: {detail}" if detail else ""),
                source_type=f"bank.attention.{timezone.localdate():%Y-%m-%d}",
-               source_id=connection.pk, url=f"/settings/finance?reconnect={connection.pk}")
+               source_id=connection.pk, url=f"/settings/finance?reconnect={connection.pk}",
+               only=_owner_only(connection))
+
+
+def _owner_only(connection):
+    """Who hears about a connection: a personal one's owner only."""
+    if connection.side == BankConnection.Side.PERSONAL and connection.ledger_id:
+        from apps.personal.models import PersonalLedger
+
+        return PersonalLedger.objects.filter(pk=connection.ledger_id).values_list(
+            "owner_id", flat=True).first()
+    return None
+
+
+def personal_ledger(tenant, actor):
+    """The owner's own ledger, for a personal connection: only in a practice
+    with Personal finance switched on."""
+    from apps.personal import services as personal
+    from apps.tenancy import modules
+
+    if not modules.has(tenant, modules.PERSONAL):
+        raise FinanceError("Personal finance is not switched on in this practice.", status=404)
+    return personal.ledger_for(actor)
 
 
 def repaired(connection) -> None:
@@ -147,8 +178,11 @@ def link_token(tenant, *, actor, connection=None) -> dict:
     return {"link_token": token, "update": connection is not None}
 
 
-def connect(tenant, *, actor, public_token: str) -> BankConnection:
+def connect(tenant, *, actor, public_token: str, side: str = "practice") -> BankConnection:
     _refuse_new()
+    if side not in BankConnection.Side.values:
+        raise FinanceError("side is practice or personal.")
+    ledger = personal_ledger(tenant, actor) if side == BankConnection.Side.PERSONAL else None
     public_token = str(public_token or "").strip()
     if not public_token:
         raise FinanceError("The bank's sign-in did not finish. Try Connect a bank again.")
@@ -162,9 +196,14 @@ def connect(tenant, *, actor, public_token: str) -> BankConnection:
             provider=provider.name or providers.DEFAULT, item_id=linked.item_id).first()
         if connection is not None and connection.tenant_id != tenant.pk:
             raise FinanceError("That bank login is connected elsewhere.", status=409)
+        if connection is not None and (connection.side, connection.ledger_id) != (
+                side, ledger.pk if ledger else None):
+            raise FinanceError("That bank login is already connected on the other side "
+                               "(the practice's or personal). Disconnect it there first.",
+                               status=409)
         connection = connection or BankConnection(
             tenant=tenant, provider=provider.name or providers.DEFAULT,
-            item_id=linked.item_id, created_by=actor)
+            item_id=linked.item_id, created_by=actor, side=side, ledger=ledger)
         connection.institution_id = linked.institution_id[:60]
         connection.institution_name = linked.institution_name[:160]
         connection.access_token_ciphertext = secrets.encrypt(linked.access_token)
@@ -173,7 +212,7 @@ def connect(tenant, *, actor, public_token: str) -> BankConnection:
         connection.disconnected_at = connection.disconnected_by = None
         connection.save()
         services.audit(tenant, "bank_connected", actor, connection,
-                       institution=connection.institution_name)
+                       institution=connection.institution_name, side=connection.side)
     try:
         from .sync import store_accounts
 
@@ -213,55 +252,88 @@ def _feed_from(account) -> object:
     return start
 
 
+def _personal_feed_from(account) -> object:
+    """As `_feed_from`, in the household's ledger: the day after the newest
+    line the account has from anywhere but the feed. (No months close there.)"""
+    from apps.personal.models import PersonalLine
+
+    newest = PersonalLine.objects.filter(account=account, removed_at__isnull=True).exclude(
+        source=PersonalLine.Source.BANK).aggregate(m=Max("on_date"))["m"]
+    start = account.opening_on
+    if newest is not None:
+        start = max(start, newest + timedelta(days=1))
+    return start
+
+
+def _target(connection, target_id):
+    """The account a feed account is mapped to: one of the practice's ledger
+    accounts, or (a personal connection) one of its owner's household ones."""
+    if connection.side == BankConnection.Side.PERSONAL:
+        from apps.personal.models import PersonalAccount
+
+        found = PersonalAccount.objects.filter(
+            ledger_id=connection.ledger_id, pk=target_id).first() \
+            if _uuid(target_id) else None
+        if found is None:
+            raise FinanceError("That account is not one of your personal accounts.",
+                               status=404)
+        return found
+    found = FinanceAccount.all_objects.filter(
+        tenant=connection.tenant, pk=target_id).first() if _uuid(target_id) else None
+    if found is None:
+        raise FinanceError("That ledger account is not in this practice.", status=404)
+    return found
+
+
 def set_mapping(connection, *, actor, mapping: dict) -> BankConnection:
     """`{feed account id: ledger account id, or "" for not fed}`. An account
     whose feed has made entries keeps its ledger account; it can be stopped
-    (not fed), and its entries stay."""
+    (not fed), and its entries stay. A personal connection's accounts map to
+    its owner's household accounts, and only to those."""
     _refuse_demo()
     if connection.status == S.DISCONNECTED:
         raise FinanceError("This connection is disconnected.", status=409)
+    personal = connection.side == BankConnection.Side.PERSONAL
+    field = "personal_account" if personal else "finance_account"
     feeds = {str(f.pk): f for f in BankFeedAccount.all_objects.filter(connection=connection)}
     changed = False
     with transaction.atomic():
-        for feed_id, ledger_id in (mapping or {}).items():
+        for feed_id, target_id in (mapping or {}).items():
             feed = feeds.get(str(feed_id))
             if feed is None:
                 raise FinanceError("That account is not under this connection.", status=404)
-            ledger = None
-            if ledger_id:
-                ledger = FinanceAccount.all_objects.filter(
-                    tenant=connection.tenant, pk=ledger_id).first() \
-                    if _uuid(ledger_id) else None
-                if ledger is None:
-                    raise FinanceError("That ledger account is not in this practice.",
-                                       status=404)
-                if ledger.closed_at is not None:
-                    raise FinanceError(f"“{ledger.name}” is closed.")
+            target = None
+            if target_id:
+                target = _target(connection, target_id)
+                if target.closed_at is not None:
+                    raise FinanceError(f"“{target.name}” is closed.")
                 taken = BankFeedAccount.all_objects.filter(
-                    tenant=connection.tenant, finance_account=ledger).exclude(
+                    tenant=connection.tenant, **{field: target}).exclude(
                         pk=feed.pk).exclude(connection__status=S.DISCONNECTED).first()
                 if taken is not None:
-                    raise FinanceError(f"“{ledger.name}” is already fed by "
+                    raise FinanceError(f"“{target.name}” is already fed by "
                                        f"{taken.name or 'another account'}.", status=409)
-            if (ledger.pk if ledger else None) == feed.finance_account_id \
-                    and feed.skipped == (ledger is None):
+            current = getattr(feed, field + "_id")
+            if (target.pk if target else None) == current and feed.skipped == (target is None):
                 continue
-            if feed.finance_account_id and ledger is not None and \
+            if current and target is not None and \
                     BankFeedTransaction.all_objects.filter(feed_account=feed).exists():
-                raise FinanceError(f"{feed.name} has already fed {feed.finance_account.name}. "
+                raise FinanceError(f"{feed.name} has already fed {getattr(feed, field).name}. "
                                    "Stop feeding it first; its entries stay.", status=409)
-            was_fed = feed.finance_account_id is not None
-            feed.finance_account, feed.skipped = ledger, ledger is None
-            if ledger is not None:
-                feed.feed_from = _feed_from(ledger)
+            was_fed = current is not None
+            setattr(feed, field, target)
+            feed.skipped = target is None
+            if target is not None:
+                feed.feed_from = _personal_feed_from(target) if personal else _feed_from(target)
             feed.save()
-            if ledger is not None and not was_fed:
+            if target is not None and not was_fed:
                 # Lines the cursor passed while this account was not fed are
                 # read again from the beginning; the ones already known are
                 # recognized by the bank's id and not entered twice.
                 changed = True
             services.audit(connection.tenant, "bank_account_mapped", actor, feed,
-                           ledger=ledger.name if ledger else "", feed_from=str(feed.feed_from))
+                           ledger=target.name if target else "", side=connection.side,
+                           feed_from=str(feed.feed_from))
         if changed:
             BankConnection.all_objects.filter(pk=connection.pk).update(
                 cursor="", updated_at=timezone.now())
@@ -363,9 +435,9 @@ def queue_sync(connection) -> None:
 
 def represent(connection) -> dict:
     feeds = list(BankFeedAccount.all_objects.filter(connection=connection)
-                 .select_related("finance_account"))
+                 .select_related("finance_account", "personal_account"))
     return {
-        "id": str(connection.pk), "provider": connection.provider,
+        "id": str(connection.pk), "provider": connection.provider, "side": connection.side,
         "institution": connection.institution_name or "Your bank",
         "status": connection.status, "status_label": connection.get_status_display(),
         "attention_code": connection.attention_code,
@@ -379,13 +451,17 @@ def represent(connection) -> dict:
         if connection.last_checked_at else None,
         "last_sync_counts": connection.last_sync_counts or {},
         "last_error": connection.last_error,
-        "waiting": sum(1 for f in feeds if f.finance_account_id is None and not f.skipped),
+        "waiting": sum(1 for f in feeds if f.finance_account_id is None
+                       and f.personal_account_id is None and not f.skipped),
         "accounts": [{
             "id": str(f.pk), "name": f.name, "official_name": f.official_name,
             "mask": f.mask, "type": f.type, "subtype": f.subtype,
             "finance_account": ({"id": str(f.finance_account_id),
                                  "name": f.finance_account.name}
                                 if f.finance_account_id else None),
+            "personal_account": ({"id": str(f.personal_account_id),
+                                  "name": f.personal_account.name}
+                                 if f.personal_account_id else None),
             "skipped": f.skipped,
             "feed_from": f.feed_from.isoformat() if f.feed_from else None,
             "balance_cents": f.balance_cents, "available_cents": f.available_cents,
@@ -398,12 +474,24 @@ def represent(connection) -> dict:
     }
 
 
-def overview(tenant) -> dict:
+def overview(tenant, user=None) -> dict:
+    """The practice's connections, and the viewer's own personal ones under
+    their own heading. The plan's count covers both sides together."""
     from config import environment
 
-    rows = list(BankConnection.all_objects.filter(tenant=tenant).order_by(
-        "status", "created_at"))
+    from apps.tenancy import modules
+
+    rows = list(BankConnection.all_objects.filter(
+        tenant=tenant, side=BankConnection.Side.PRACTICE).order_by("status", "created_at"))
+    personal_on = modules.has(tenant, modules.PERSONAL)
+    mine = list(BankConnection.all_objects.filter(
+        tenant=tenant, side=BankConnection.Side.PERSONAL,
+        ledger__owner=user).order_by("status", "created_at")) \
+        if personal_on and user is not None else []
     return {
+        "personal_on": personal_on,
+        "personal": [represent(c) for c in mine if c.status != S.DISCONNECTED],
+        "personal_disconnected": [represent(c) for c in mine if c.status == S.DISCONNECTED],
         "available": available(), "configured": providers.configured(),
         "demo": environment.is_demo(),
         "refusal": DEMO_REFUSAL if environment.is_demo()

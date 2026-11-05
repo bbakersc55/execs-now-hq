@@ -65,7 +65,7 @@ class _Ledger:
     """What is already in this account, for one dry run: each line can be
     matched once, as the books' import has it."""
 
-    def __init__(self, ledger, account):
+    def __init__(self, ledger, account, *, for_feed=False):
         self.ledger, self.account = ledger, account
         live = PersonalLine.objects.filter(ledger=ledger, account=account,
                                            removed_at__isnull=True)
@@ -82,7 +82,11 @@ class _Ledger:
             if row.bank_id:
                 self.bank_ids.add(row.bank_id)
             self._count(row.on_date, row.amount_cents, row.direction, row.description)
-        for line in live.exclude(source=PersonalLine.Source.IMPORT):
+        # A bank feed knows its own lines by the bank's id, so for the feed
+        # they are not "already in" (two coffees on one day are two lines).
+        own = (PersonalLine.Source.IMPORT, PersonalLine.Source.BANK) if for_feed \
+            else (PersonalLine.Source.IMPORT,)
+        for line in live.exclude(source__in=own):
             self._count(line.on_date, line.amount_cents, line.direction, line.description)
         self.taken: set = set()
         #: The practice's draws already proposed as pay in this dry run.
