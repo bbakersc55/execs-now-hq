@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-05 UTC**, after Release 35. **The next session starts at
-"2026-11-05: Release 35, Google reviews" just below**, then
+2026-11-05 UTC**, after Release 36. **The next session starts at
+"2026-11-05, later: Release 36, personal bank feeds" just below**, then
+"2026-11-05: Release 35, Google reviews", then
 "2026-11-04, night: Release 34, the HubSpot and Besty editors",
 then "2026-11-04, evening: Release 33, the Track editor", then
 "2026-11-04: Release 32, bank feeds on Plaid", then
@@ -20,6 +21,22 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-05, later: Release 36, personal bank feeds
+
+- **Release 36 is live**: `main` at `2099487`, **two migrations**
+  (`personal 0007`, `finance 0017`, additive), applied by the runbook; **no
+  new scheduled job**. Runbook, "Observed at Release 36".
+- **Bank feeds on the personal side** (`docs/p6_bank_feeds.md`, "Personal
+  finance"): connected from Personal → Import, mapped to household accounts
+  only, lines into the owner's ledger with none of the practice's rules and
+  nothing in the books; listed under "Personal" in Settings → Finance; the
+  count covers both sides. Six choices taken as the simplest reading, listed
+  in the doc for the owner.
+- **Demo:** the reseed right after the push ran on the old code (its deploy
+  was blocked by the reseed itself); redeployed 18:00:26 UTC. **A further
+  reseed is needed** for Aspen Credit Union to show (summary
+  `"connections": 2`).
 
 ## 2026-11-05: Release 35, Google reviews
 

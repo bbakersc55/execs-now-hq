@@ -766,6 +766,21 @@ web serving: 3 min 35 s.** Connecting a profile needs `business.manage` on
 the OAuth consent screen and Google's Business Profile API approval; until
 then the card shows the "not approved" line.
 
+**Observed at Release 36 (2026-11-05 UTC, two migrations,
+`personal 0007_bank_feeds_personal` and `finance 0017_bank_feeds_personal`:
+bank feeds on the personal side, `2099487`):** R1: no new run-now; the newest
+dump was Release 35's, `execsnowhq_prod_20261105_155242.sql.gz`, 11.5 MB
+(2 h 10 min old, after the day's 08:00 run; the backup log showed nothing and
+`gcloud` was signed out, so it was taken from Release 35's reading). R2: `main`
+fast-forwarded `e595d62..2099487`, pushed 18:03:17. R3: worker `b88a0f9f`
+`WAITING` 18:05:01, listing exactly the two. R4: applied by me 18:05:16–22,
+both `OK`. R5: running 18:05:38. R5b: no new scheduled job. R6: web
+`84b22375` SUCCESS by itself, listening 18:05:25; `/healthz` 200 and the
+served bundle carries the "Personal: bank feeds" card. **Push to web serving:
+2 min 8 s.** The demo's own deploy of the same commit had failed earlier
+(its start-up migration blocked by a reseed running at the same time) and was
+redeployed by hand at 18:00:26, SUCCESS.
+
 ---
 
 ## Part A — the owner's steps, in order
