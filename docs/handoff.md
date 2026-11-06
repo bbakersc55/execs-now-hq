@@ -2,8 +2,9 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-05 UTC**, after Release 36. **The next session starts at
-"2026-11-05, later: Release 36, personal bank feeds" just below**, then
-"2026-11-05: Release 35, Google reviews", then
+"2026-11-05, late: where things stand" just below**, which sums up Releases
+32 to 36 and everything open; then "2026-11-05, later: Release 36, personal
+bank feeds", then "2026-11-05: Release 35, Google reviews", then
 "2026-11-04, night: Release 34, the HubSpot and Besty editors",
 then "2026-11-04, evening: Release 33, the Track editor", then
 "2026-11-04: Release 32, bank feeds on Plaid", then
@@ -21,6 +22,63 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-05, late: where things stand
+
+- **Releases 32 to 36 are live**:
+  - bank feeds on Plaid, for the practice (Release 32) and for Personal
+    finance (Release 36);
+  - the Google reviews feed (Release 35);
+  - the Track, HubSpot and Besty editor fixes (Releases 33 and 34).
+
+  The sections below have the detail of each.
+- **Plaid is on the production trial plan.** `PLAID_CLIENT_ID`, `PLAID_SECRET`
+  and `PLAID_ENVIRONMENT` are set on both web (`execs-now-hq`) and
+  `qcluster`.
+  - Bryan has real banks connected on both sides, the practice and Personal
+    finance; on the practice side it is US Bank.
+  - **An FNBO card could not be connected; the cause is not yet known.**
+- **Google Business Profile API access**:
+  - The first application was rejected because the website did not match.
+  - It was resubmitted on 2026-11-05 as **case 7-5687000041618**; Google says
+    7 to 10 business days.
+  - `business.manage` is now on the OAuth consent screen.
+  - Bryan is a Manager on the client's Business Profile, under Bryan's
+    Executives Now address.
+  - **Until the quota turns on**, the reviews connection shows "not approved"
+    on production. That is expected; the connection is kept.
+- **The gate now runs in parallel** (`6ef2c60`). The backend runs on six
+  workers (pytest-xdist, `--dist loadfile`), with the frontend checks
+  alongside.
+  - It takes about 12 to 20 minutes, against about 34 for the old serial
+    gate.
+  - `GATE_SERIAL=1 scripts/gate.sh` runs it the old way, one step at a time.
+- **Brand assets for Execs NOW HQ are on `dev` (`40b96b3`), not yet released.**
+  `docs/brand/README.md` lists the files; `docs/brand/contact-sheet.png`
+  shows all of them. They are used in four places:
+  - the tab icons and the web manifest;
+  - the sign-in page's header, only when no practice is named;
+  - the Practices area's header;
+  - platform mail's header.
+- **Next small task:** move the platform interface's tokens to the logo
+  palette (`#0D2C54`, `#E87722`, in place of `#0A3A65` and `#F58220`). Leave
+  practice-branded surfaces alone.
+- **Teller was dropped**: it has no self-serve sign-up. Plaid is the only
+  bank provider.
+- **Open on Bryan's side:**
+  - **Azure/Entra:** the app registration (for Microsoft 365 mail, Sign in
+    with Microsoft, OneDrive notes and Microsoft calendars).
+  - **The website plan:**
+    - `execsnowhq.com` is registered at GoDaddy.
+    - The product site and the rebuilt consulting site are to be built on
+      Astro, as Railway services.
+    - The direction and pricing decisions are pending.
+  - **Google verification:**
+    - It needs three pages on the site (`docs/google_verification.md`).
+    - The app uses three restricted scopes, which means a CASA security
+      assessment.
+    - As the interim for beta reconnects, move the External OAuth client to
+      "In production".
 
 ## 2026-11-05, later: Release 36, personal bank feeds
 
