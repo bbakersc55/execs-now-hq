@@ -102,4 +102,19 @@ describe("the signed-out screen (2026-09-30)", () => {
     render(<SignedOut practice="" />);
     expect(screen.queryByRole("button", { name: "Sign in with Microsoft" })).not.toBeInTheDocument();
   });
+
+  it("is headed by the product's two-line lockup when no practice is named (2026-11-05)", () => {
+    respond(200, {});
+    render(<SignedOut practice="" />);
+    expect(screen.getByRole("img", { name: "Execs NOW HQ" }))
+      .toHaveAttribute("src", "/brand/svg/enhq-stacked-standard.svg");
+  });
+
+  it("keeps a practice's sign-in page to the practice's name, with nothing of the product's", () => {
+    respond(200, {});
+    render(<SignedOut practice="Blue Sky Business Consulting" />);
+    expect(screen.getByRole("heading", { name: "Blue Sky Business Consulting" })).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(document.body.innerHTML).not.toMatch(/brand\/svg|Execs NOW HQ/);
+  });
 });

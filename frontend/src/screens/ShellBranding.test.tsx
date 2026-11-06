@@ -14,10 +14,12 @@ const BRAND = {
              on_accent: "#1F2933", gray_dark: "#6D6E71", gray_light: "#939598" },
 };
 
-function stubApp(role: "FF" | "FCC") {
+function stubApp(role: "FF" | "FCC" | null) {
   vi.stubGlobal("fetch", mockApi({
-    "GET /api/me": aMe({ role }),
-    "GET /api/branding": role === "FF" ? BRAND : { ...BRAND, product_name: null },
+    "GET /api/me": role ? aMe({ role }) : aMe({ role: null, area: "platform", is_platform_owner: true }),
+    "GET /api/branding": role === "FF" ? BRAND
+      : role === null ? { ...BRAND, display_name: "", mark_url: "" }
+        : { ...BRAND, product_name: null },
     "GET /api/": [],
   }));
 }
@@ -43,6 +45,7 @@ describe("branding in the shell (P1)", () => {
     expect(icon()).toBe("/api/branding/mark");
     expect(document.title).toBe("Blue Sky Business Consulting");
     expect(document.body.textContent).not.toMatch(/Execs NOW HQ/);
+    expect(document.querySelector("img[src*='brand/']")).toBeNull();
   });
 
   it("keeps staff on the product's look, with the practice named under it", async () => {
@@ -96,5 +99,22 @@ describe("signed out (P2: no practice until one is known)", () => {
       .toContain(`/api/branding?via=${encodeURIComponent(`cadence:${link}`)}`);
     expect(document.title).toBe("Blue Sky Business Consulting");
     expect(token("--navy")).toBe("#2E7D32");
+  });
+
+  it("heads the Practices area with the product's one-line lockup (2026-11-05)", async () => {
+    const { App } = await import("../App");
+    stubApp(null);
+    renderRoute(<App />, { path: "*", route: "/practices" });
+    const lockup = await screen.findByRole("img", { name: "Execs NOW HQ" });
+    expect(lockup).toHaveAttribute("src", "/brand/svg/enhq-line-reversed.svg");
+    expect(lockup.closest("h1")).toHaveClass("product-heading");
+  });
+
+  it("keeps a practice's staff on the product's name in text, not the lockup", async () => {
+    const { App } = await import("../App");
+    stubApp("FF");
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+    expect(await screen.findByRole("heading", { name: "Execs NOW HQ" })).toHaveClass("wordmark");
+    expect(document.querySelector("img[src*='brand/svg']")).toBeNull();
   });
 });

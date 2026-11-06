@@ -66,7 +66,7 @@ NEEDS: tuple[Need, ...] = (
     Need("requests", "requests",
          "sending mail through Gmail, and the Google OAuth token exchange"),
     Need("PIL", "pillow",
-         "writing the product's tab icons from its mark (manage.py build_favicons)"),
+         "reading uploaded logos and images (esign, the demo seed)"),
     Need("pypdf", "pypdf",
          "importing a PDF bank statement: its pages, and a scan told from one with text"),
     Need("pywebpush", "pywebpush",

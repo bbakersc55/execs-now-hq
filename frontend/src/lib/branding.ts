@@ -32,8 +32,26 @@ export function usePracticeName(): string {
   return useBranding().data?.display_name || "your practice";
 }
 
-/** The product's tab icon (manage.py build_favicons writes it). Staff only. */
-export const PRODUCT_FAVICON = `${import.meta.env.BASE_URL}brand/favicon-32.png`;
+/** The product's name, as config/branding.py PRODUCT_NAME has it: for the
+ *  alt text of the product's own artwork, where no payload names it. */
+export const PRODUCT_NAME = "Execs NOW HQ";
+
+const BRAND = `${import.meta.env.BASE_URL}brand/`;
+
+/** The product's tab icon (scripts/brand/build_brand.py writes it). Staff only. */
+export const PRODUCT_FAVICON = `${BRAND}favicon-32.png`;
+
+/** The product's artwork (docs/brand/README.md, owner 2026-11-05). Only on
+ *  the surfaces that name the product: the sign-in page with no practice
+ *  named, and the Practices area. Never on a practice's or a client's. */
+export const PRODUCT_ART = {
+  /** Two lines, standard colors: the sign-in page, on white. */
+  stacked: `${BRAND}svg/enhq-stacked-standard.svg`,
+  /** One line, reversed: the Practices area's dark blue sidebar and bar. */
+  lineReversed: `${BRAND}svg/enhq-line-reversed.svg`,
+  /** The square alone, reversed: the collapsed sidebar. */
+  markReversed: `${BRAND}svg/enhq-mark-reversed.svg`,
+};
 
 /** Point the page's icon link at `href`, creating the link if there is none. */
 export function setFavicon(href: string) {

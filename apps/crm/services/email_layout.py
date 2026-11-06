@@ -65,6 +65,14 @@ LOGO_MAX_BYTES = 500 * 1024
 #: The square mark beside a personal sign-off.
 MARK_CID = "enhq-mark"
 MARK_MAX = 56
+#: Platform mail only (apps/platform/mail.py, owner 2026-11-05): the
+#: product's one-line lockup in the header, 160 px wide, in place of the
+#: sending practice's logo. Never on a practice's own mail (white-label).
+PRODUCT_CID = "enhq-product"
+PRODUCT_LOCKUP_WIDTH = 160
+#: Drawn at 512 px, so it stays sharp on a 3x screen (docs/brand/README.md).
+PRODUCT_LOCKUP = "frontend/public/brand/png/enhq-line-standard-transparent-512.png"
+_PRODUCT_TAG = re.compile(r"<img\b[^>]*\bdata-enhq-product\b[^>]*>")
 
 #: (Content-ID, tenant field, the markup that shows it). The mark's pattern takes
 #: its whole table cell, so an unreadable mark leaves no empty column behind.
@@ -133,6 +141,25 @@ def footer_html(text: str, *, link_color: str) -> str:
                        for line in (text or "").splitlines() if line.strip())
 
 
+def _product_lockup() -> bytes | None:
+    from django.conf import settings
+
+    try:
+        return (settings.BASE_DIR / PRODUCT_LOCKUP).read_bytes()
+    except OSError:
+        return None
+
+
+def product_logo() -> Logo | None:
+    """The lockup's display size in a platform email's header, or None when
+    the file is not there (the header then names the product in text)."""
+    content = _product_lockup()
+    if not content:
+        return None
+    _, width, height = image_size(content)
+    return Logo(width=PRODUCT_LOCKUP_WIDTH, height=round(PRODUCT_LOCKUP_WIDTH * height / width))
+
+
 def template_context(tenant, *, internal=False, **extra):
     """`accent` is fill and decoration only (D4): bars, rules, button fills.
     Text on white uses `link_color` (the primary color), and text on an
@@ -149,17 +176,23 @@ def template_context(tenant, *, internal=False, **extra):
 
 
 def document(tenant, *, content_html, subject="", preheader="", footer_link=None,
-             personal=False, internal=False) -> str:
+             personal=False, internal=False, product=False) -> str:
     """A finished HTML email around already-safe content.
 
     `footer_link` is `(label, url)` — the digest's "change how often you hear from
-    us" control, small and unobtrusive in the footer.
+    us" control, small and unobtrusive in the footer. `product` is for the
+    platform's own mail only: the product's lockup heads it, not the sending
+    practice's logo.
     """
+    from config.branding import PRODUCT_NAME
+
     link = {"label": footer_link[0], "url": footer_link[1]} if footer_link else None
+    extra = {"product_logo": product_logo(), "product_cid": PRODUCT_CID,
+             "product_name": PRODUCT_NAME} if product else {}
     return render_to_string(
         "email/personal.html" if personal else "email/base.html",
         template_context(tenant, internal=internal, content=content_html, subject=subject,
-                         preheader=preheader, footer_link=link),
+                         preheader=preheader, footer_link=link, **extra),
     )
 
 
@@ -347,6 +380,17 @@ def with_logo(html, tenant, *, as_data_uri=False) -> tuple[str, list[tuple]]:
     from apps.tenancy import storage
 
     inline = []
+    if _PRODUCT_TAG.search(html or ""):
+        from config.branding import PRODUCT_NAME
+
+        content = _product_lockup()
+        if not content:
+            html = _PRODUCT_TAG.sub(lambda _match: str(escape(PRODUCT_NAME)), html)
+        elif as_data_uri:
+            uri = f"data:image/png;base64,{base64.b64encode(content).decode()}"
+            html = html.replace(f'src="cid:{PRODUCT_CID}"', f'src="{uri}"')
+        else:
+            inline.append((PRODUCT_CID, content, "image/png", "execs-now-hq.png"))
     for cid, field, tag in _SLOTS:
         if not tag.search(html or ""):
             continue

@@ -3,7 +3,9 @@ owner's invitation, and the feedback notice to the platform owner.
 
 Sent through the platform owner's own practice (Executives Now), so it goes
 out from its verified Gmail alias and lands in its Outbox, the one send log,
-like every other message. No client footer: it is not client mail.
+like every other message. No client footer: it is not client mail. Its header
+is the product's one-line lockup, 160 px wide (owner, 2026-11-05;
+docs/brand/README.md), not the sending practice's logo.
 """
 
 from __future__ import annotations
@@ -62,7 +64,7 @@ def _send(*, to, subject, paragraphs, producer, attachments=()):
     sender = sender_tenant()
     text = "\n\n".join(paragraphs)
     html = email_layout.document(
-        sender, subject=subject, preheader=paragraphs[0][:140], internal=True,
+        sender, subject=subject, preheader=paragraphs[0][:140], internal=True, product=True,
         content_html="".join(f"<p>{escape(p)}</p>" for p in paragraphs))
     from apps.crm.services.transport import TransportUnavailable
 

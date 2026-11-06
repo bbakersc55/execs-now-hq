@@ -157,6 +157,16 @@ h4 { font-size: var(--t-14); font-weight: 600; color: var(--text); }
 /* The practice's name as text, where its logo would be: when it has none, and
    when the file cannot be loaded. Never a broken-image icon and its alt. */
 .sidebar .brand h1.wordmark { letter-spacing: -.01em; line-height: 1.2; overflow-wrap: anywhere; }
+/* The Practices area's header: the product's one-line lockup (2026-11-05),
+   at a size its square's HQ can be read; the square alone when collapsed. */
+/* 160px wide: its square is 38px, so its clear space is 19px, which the 16px
+   margin plus 4px gives on the left, and 8px more under it (the area switch
+   below pulls up 12px of the 24px gap); the sidebar's padding is above. */
+.sidebar .brand h1.product-heading { margin: 0; padding: 0 0 8px 4px; line-height: 0; }
+.sidebar .brand img.product-lockup { width: 160px; max-width: 100%; height: auto; max-height: none; }
+.sidebar .brand img.product-mark { width: 32px; height: 32px; max-height: none; }
+.layout.collapsed .sidebar .brand h1.product-heading,
+.layout.collapsed .sidebar .brand img.product-mark { display: block; }
 .sidebar .brand { flex-wrap: wrap; }
 .sidebar .brand .practice { flex-basis: 100%; font-size: var(--t-12); color: #9ab4cc;
                             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1336,6 +1346,7 @@ fieldset.choices legend { font-size: var(--t-12); font-weight: 600; letter-spaci
 .topbar.phone .icon-button:hover:not(:disabled) { background: rgba(255, 255, 255, .1); color: #fff; }
 .topbar-brand { min-width: 0; display: flex; align-items: center; }
 .topbar-brand img { max-height: 28px; max-width: 160px; }
+.topbar-brand img.product-lockup { height: 28px; width: auto; max-width: none; margin-left: 6px; }
 .topbar-brand .wordmark { font-size: var(--t-16); font-weight: 650; color: #fff;
                           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar.phone .right { flex-shrink: 0; }
@@ -2116,3 +2127,9 @@ label.choice.inline { display: inline-flex; margin-left: 8px; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+/* The sign-in page's header when no practice is named: the product's
+   two-line lockup (2026-11-05). */
+/* Clear space (docs/brand/README.md): half the square on every side, so 40px
+   beneath a 236px lockup, whose square is 80px. */
+.signin-lockup { display: block; width: 236px; max-width: 70%; height: auto; margin: 0 auto 40px; }

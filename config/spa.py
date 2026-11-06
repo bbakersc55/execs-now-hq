@@ -75,9 +75,14 @@ def with_identity(html: str, request) -> str:
         title = PRODUCT_NAME if staff else "Sign in"
         static = settings.STATIC_URL if settings.STATIC_URL.startswith("/") \
             else "/" + settings.STATIC_URL
+        # The product's mark (docs/brand/README.md, 2026-11-05), and the web
+        # manifest that names it: only where the product may be named.
         icons = (f'<link rel="icon" href="{static}brand/favicon.ico" sizes="any" />'
-                 f'<link rel="icon" type="image/png" href="{static}brand/favicon-32.png" />'
-                 f'<link rel="apple-touch-icon" href="{static}brand/apple-touch-icon.png" />')
+                 f'<link rel="icon" type="image/png" sizes="16x16" href="{static}brand/favicon-16.png" />'
+                 f'<link rel="icon" type="image/png" sizes="32x32" href="{static}brand/favicon-32.png" />'
+                 f'<link rel="icon" type="image/png" sizes="48x48" href="{static}brand/favicon-48.png" />'
+                 f'<link rel="apple-touch-icon" href="{static}brand/apple-touch-icon.png" />'
+                 f'<link rel="manifest" href="{static}brand/site.webmanifest" />')
     else:
         title = tenant_branding(tenant)["display_name"] or "Portal"
         icons = '<link rel="icon" href="/api/branding/mark" />'

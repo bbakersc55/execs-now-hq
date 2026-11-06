@@ -18,7 +18,7 @@ import { NoteCapture } from "./components/NoteCapture";
 import { PendingUploads } from "./components/PendingUploads";
 import { makeWords, Words, WordsProvider } from "./lib/words";
 import { api, Me, SIGNED_OUT_EVENT } from "./lib/api";
-import { PRODUCT_FAVICON, setFavicon, useBranding } from "./lib/branding";
+import { PRODUCT_ART, PRODUCT_FAVICON, PRODUCT_NAME, setFavicon, useBranding } from "./lib/branding";
 import { applyPortalTokens } from "./lib/palette";
 import { LinkBranded } from "./components/LinkBranded";
 import { AreaSwitch } from "./components/AreaSwitch";
@@ -112,6 +112,17 @@ export function BrandMark({ logo, name, inline = false }: {
   }
   return inline ? <span className="wordmark">{name}</span>
     : <h1 className="wordmark">{name}</h1>;
+}
+
+/** The Practices area's header (owner, 2026-11-05): the product's one-line
+ *  lockup, reversed for the dark blue sidebar; its square alone when the
+ *  sidebar is collapsed. The heading's text is the alt. */
+export function ProductLockup({ collapsed = false, inline = false }: {
+  collapsed?: boolean; inline?: boolean;
+}) {
+  const art = <img className={collapsed ? "product-mark" : "product-lockup"}
+    src={collapsed ? PRODUCT_ART.markReversed : PRODUCT_ART.lineReversed} alt={PRODUCT_NAME} />;
+  return inline ? art : <h1 className="product-heading">{art}</h1>;
 }
 
 const TENANT = ["FF", "CF", "VA"];
@@ -347,7 +358,8 @@ export function App() {
       <aside id="app-menu" className="sidebar" aria-label="Menu"
         {...(phone ? { role: "dialog", "aria-modal": drawer, hidden: !drawer } : {})}>
         <div className="brand">
-          <BrandMark logo={staff ? "" : brand?.logo_url ?? ""} name={wordmark} />
+          {platform ? <ProductLockup collapsed={collapsed} />
+            : <BrandMark logo={staff ? "" : brand?.logo_url ?? ""} name={wordmark} />}
           {/* P1: staff see which practice they are in, under the product. */}
           {staff && brand?.display_name && (
             <div className="practice" aria-label="Practice">{brand.display_name}</div>)}
@@ -378,7 +390,8 @@ export function App() {
       {/* UI 3: who is signed in, Collapse and Feedback live in the bar now. */}
       <TopBar me={me} practice={brand?.display_name ?? ""} collapsed={collapsed}
         phone={phone ? { open: drawer, onOpen: () => setDrawer(true),
-                         brand: <BrandMark logo={staff ? "" : brand?.logo_url ?? ""}
+                         brand: platform ? <ProductLockup inline />
+                           : <BrandMark logo={staff ? "" : brand?.logo_url ?? ""}
                                   name={staff ? brand?.display_name || wordmark : wordmark} inline /> }
           : undefined}
         // On a narrow window the toggle expands over the content rather than

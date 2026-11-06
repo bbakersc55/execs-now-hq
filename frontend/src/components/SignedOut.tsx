@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { PRODUCT_ART, PRODUCT_NAME } from "../lib/branding";
 import { Banner } from "./ui";
 
 function csrfToken(): string {
@@ -67,6 +68,12 @@ export function SignedOut({ practice, microsoft = false }: {
 
   return (
     <main style={{ padding: "3rem 1rem", maxWidth: "28rem", margin: "0 auto", textAlign: "center" }}>
+      {/* The product's two-line lockup heads the sign-in page when no
+          practice is named (owner, 2026-11-05). A page an emailed link names
+          a practice on keeps that practice's name, and nothing of ours. */}
+      {!practice && (
+        <img className="signin-lockup" src={PRODUCT_ART.stacked} alt={PRODUCT_NAME}
+          width={296} height={101} />)}
       <h2>{practice || "Sign in"}</h2>
       <p className="muted">You are not signed in.</p>
 
