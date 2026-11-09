@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import { APP_URL } from "../config";
 ---
 <Base title="Page not found" description="That page isn't here. Start from the Execs NOW HQ home page, or sign in to the app." noindex>
   <section class="wrap max-w-3xl pt-20 pb-10">
@@ -8,7 +9,7 @@ import Base from "../layouts/Base.astro";
     <p class="mt-4 text-lg leading-relaxed text-[#33394a]">It may have moved. Start from the home page, or sign in to the app.</p>
     <div class="mt-8 flex flex-wrap gap-3">
       <a href="/" class="btn-ghost">Home page</a>
-      <a href="https://app.getexecutivesnow.com" class="btn-ghost">Sign in</a>
+      <a href={APP_URL} class="btn-ghost">Sign in</a>
     </div>
   </section>
 </Base>

@@ -7,7 +7,8 @@ import { Banner, Card, Empty, Field, Flash, useFlash, when } from "./ui";
 
 const TENANT = ["FF", "CF", "VA"];
 const CADENCES: Stakeholder["cadence"][] = ["every_update", "weekly", "monthly"];
-const CADENCE_LABELS: Record<string, string> = {
+/** A cadence by name, never by code (Home and the Stakeholders panel). */
+export const CADENCE_LABELS: Record<string, string> = {
   every_update: "On every update", weekly: "Weekly", monthly: "Monthly",
 };
 

@@ -9,7 +9,7 @@ export interface Plan {
 }
 
 const CLIENTS = "Unlimited client companies, up to 25 client users per client included";
-const MAIL = "Google Workspace and Microsoft 365, both available now";
+const MAIL = "Google Workspace or Microsoft 365, both available now";
 
 export const PLANS: Plan[] = [
   {
@@ -76,6 +76,6 @@ export const EVERY_PLAN = [
   "Books, reconciliation, month close, CPA worksheet, 13-week forecast",
   "Sending queue, email templates and campaigns",
   "Notes and calendar",
-  "Google Workspace and Microsoft 365",
+  "Google Workspace or Microsoft 365",
   "Nightly backups",
 ];

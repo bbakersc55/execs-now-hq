@@ -1,6 +1,6 @@
 // One place for the site's names, addresses and switches.
 export const PRODUCT = "Execs NOW HQ";
-export const SITE_URL = "https://www.execsnowhq.com";
+export { SITE_URL } from "./site-url.mjs";
 export const APP_URL = "https://app.getexecutivesnow.com";
 export const CONTACT_EMAIL = "info@execsnowhq.com";
 export const LEGAL_ENTITY = "Noble Rose LLC d/b/a Execs NOW HQ";

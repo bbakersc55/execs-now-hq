@@ -111,6 +111,8 @@ describe("the dashboard", () => {
     expect(await screen.findByRole("link", { name: "Dana Reyes" }))
       .toHaveAttribute("href", "/digests");
     expect(screen.queryByRole("button", { name: /Approve/ })).not.toBeInTheDocument();
+    // Its cadence by name, never the code (2026-11-09: Home printed "every_update").
+    expect(screen.getByText(/^Weekly · through/)).toBeInTheDocument();
   });
 
   it("splits the pipeline into prospects and partners, names grouped by week", async () => {

@@ -42,9 +42,13 @@
   --orange: #e87722;
   --orange-600: #d16b1f;
   --orange-050: #fdf5f0;
-  /* Text on an orange fill. White on the product's own screens; the client
+  /* Text on an orange fill: navy on the product's own screens, as on the
+     marketing site (4.7:1; white on #E87722 is only 2.96:1). The client
      portal sets it per practice (lib/palette.ts). */
-  --on-orange: #fff;
+  --on-orange: #0d2c54;
+  /* An orange fill under the pointer: lighter, so navy still reads (5.5:1).
+     The portal derives its own from the practice's accent. */
+  --orange-hover: #eb8b43;
 
   /* --- neutrals --------------------------------------------------------- */
   --text: #1f2937;
@@ -422,7 +426,7 @@ button.primary, .btn.primary {
   background: var(--orange); border-color: var(--orange); color: var(--on-orange); font-weight: 600;
 }
 button.primary:hover:not(:disabled), .btn.primary:hover {
-  background: var(--orange-600); border-color: var(--orange-600);
+  background: var(--orange-hover); border-color: var(--orange-hover);
 }
 /* Buttons look like buttons at rest (2026-10-08), not only under the mouse:
    an action that reads as a link is an action people do not see. Three ranks.
@@ -1097,7 +1101,7 @@ a.button { display: inline-flex; align-items: center; gap: var(--s1);
            padding: var(--s2) var(--s4); border-radius: var(--radius-sm);
            text-decoration: none; font-size: var(--t-14); }
 a.button.primary { background: var(--orange); color: var(--on-orange); }
-a.button.primary:hover { background: var(--orange-600); }
+a.button.primary:hover { background: var(--orange-hover); }
 
 /* Dashboard (Tier 2). Four tiles, then panels. Everything is flat: elevation
    is reserved for the thing in focus, and nothing on a dashboard is. */
@@ -1516,7 +1520,7 @@ button.sc-view.on, button.sc-view.on:hover:not(:disabled) { background: var(--na
 a.sc-enter { height: 40px; padding: 0 16px; border-radius: 10px; background: var(--orange);
              color: var(--on-orange); font-weight: 700; display: inline-flex; align-items: center;
              text-decoration: none; }
-a.sc-enter:hover { background: var(--orange-600); color: var(--on-orange); }
+a.sc-enter:hover { background: var(--orange-hover); color: var(--on-orange); }
 .sc-notice { background: var(--sc-behind-bg); color: var(--sc-behind-ink); border: 1px solid var(--sc-behind-line);
              border-radius: 10px; padding: 10px 14px; font-size: 13px; }
 .sc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--sc-line); flex-wrap: wrap; }
@@ -2009,7 +2013,7 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #E87722; }
 .notices { position: relative; }
 .notices-button { position: relative; }
 .notices-count { position: absolute; top: -2px; right: -4px; min-width: 16px; height: 16px;
-                 padding: 0 4px; border-radius: 8px; background: var(--orange); color: #fff;
+                 padding: 0 4px; border-radius: 8px; background: var(--orange); color: var(--on-orange);
                  font-size: 10px; line-height: 16px; font-weight: 700; text-align: center; }
 .notices-panel { position: absolute; right: 0; top: calc(100% + var(--s2)); z-index: 40;
                  width: min(360px, calc(100vw - 2 * var(--s4))); max-height: 70vh; overflow-y: auto;

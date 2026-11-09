@@ -2,9 +2,10 @@
 // serves dist/ on Railway and forwards the demo form to the app.
 import { defineConfig } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
+import { SITE_URL } from "./src/site-url.mjs";
 
 export default defineConfig({
-  site: "https://www.execsnowhq.com",
+  site: SITE_URL,
   output: "static",
   trailingSlash: "never",
   build: { format: "directory", inlineStylesheets: "always" },

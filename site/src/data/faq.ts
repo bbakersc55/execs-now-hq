@@ -11,7 +11,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Do you support Outlook?",
-    a: "Yes. Microsoft 365 and Google Workspace are both available now: sign-in, sending and replies from your own address, your calendar, and meeting notes from OneDrive or Drive.",
+    a: "Yes. Connect Google Workspace or Microsoft 365, both available now: sign-in, sending and replies from your own address, your calendar, and meeting notes from Drive or OneDrive.",
   },
   {
     q: "Why does Google warn me when I connect?",
@@ -39,6 +39,6 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Is there a trial?",
-    a: "No. Request demo access and you get a private copy of the demo practice for 30 days, with fictional clients, to try everything.",
+    a: "No free trial of your own account. Ask for demo access and you get a private copy of the demo practice for 30 days.",
   },
 ];

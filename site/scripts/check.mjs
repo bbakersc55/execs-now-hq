@@ -5,6 +5,7 @@
 // no page says "tenant". Exits 1 on any failure.
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { SITE_URL } from "../src/site-url.mjs";
 
 const dist = resolve(import.meta.dirname, "../dist");
 const pages = [];
@@ -30,7 +31,11 @@ for (const page of pages) {
   const html = readFileSync(page, "utf8");
   if (!/<title>[^<]+<\/title>/.test(html)) fail(page, "no <title>");
   if (!/<meta name="description" content="[^"]{40,}"/.test(html)) fail(page, "no meta description");
-  if (!/<link rel="canonical" href="https:\/\/www\.execsnowhq\.com/.test(html)) fail(page, "no canonical");
+  if (!html.includes(`<link rel="canonical" href="${SITE_URL}`)) fail(page, "no canonical");
+  // No absolute link to a Railway host or to this site's own address: internal links stay relative.
+  if (/up\.railway\.app/.test(html)) fail(page, "a Railway hostname in the page");
+  for (const m of html.matchAll(/<a [^>]*href="(https?:\/\/[^"]+)"/g))
+    if (m[1].startsWith(SITE_URL)) fail(page, `absolute internal link ${m[1]}`);
   for (const tag of ["og:title", "og:description", "og:image", "og:url"]) {
     if (!html.includes(`property="${tag}"`)) fail(page, `no ${tag}`);
   }

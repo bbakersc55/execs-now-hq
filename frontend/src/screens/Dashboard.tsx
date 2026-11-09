@@ -15,6 +15,7 @@ import {
   CalendarUpcoming, Dashboard as Board, Me, Pipeline, aiPausedMessage, api,
 } from "../lib/api";
 import { MeetingList } from "../components/MeetingList";
+import { CADENCE_LABELS } from "../components/StakeholdersPanel";
 import { useRemembered } from "../lib/remembered";
 import { Words, useWords } from "../lib/words";
 
@@ -161,7 +162,7 @@ export function Dashboard({ me }: { me: Me }) {
                     waiting and takes you there. */}
                 <Link to="/digests">{digest.contact}</Link>
                 <span className="small muted">
-                  {digest.cadence} · through {digest.period_end.slice(0, 10)}
+                  {CADENCE_LABELS[digest.cadence] ?? "Digest"} · through {digest.period_end.slice(0, 10)}
                   {digest.ai_prose && " · AI-drafted"}
                   {digest.stale && " · out of date"}
                 </span>

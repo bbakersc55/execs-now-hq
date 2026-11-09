@@ -176,7 +176,7 @@ export function Digests({ me }: { me: Me }) {
                 </label>
               ) : undefined}>
               <p className="small muted">
-                To {d.to_address} · covers {when(d.period_start)} to {when(d.period_end)} ·
+                To {d.to_address} · covers {when(d.period_start)} to {when(d.period_end)} ·{" "}
                 {d.cadence === "every_update"
                   ? <>sends as soon as approved</>
                   : <>sends {when(d.send_window_at)}</>}

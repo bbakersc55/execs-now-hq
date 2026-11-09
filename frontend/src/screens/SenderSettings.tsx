@@ -54,7 +54,7 @@ export function SenderSettings({ provider = "Gmail" }: { provider?: "Gmail" | "M
       {note && <Banner kind="ok">{note}</Banner>}
 
       <p className="muted small">
-        Both options are limited to <strong>verified send-as addresses</strong> — {provider}
+        Both options are limited to <strong>verified send-as addresses</strong> — {provider}{" "}
         refuses anything else, so offering a choice that failed at send time would be
         worse than not offering it.
       </p>

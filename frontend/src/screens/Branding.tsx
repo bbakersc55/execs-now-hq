@@ -306,10 +306,12 @@ function Preview({ form, practiceName, hasLogo, version }: {
   return (
     <Card title="Preview">
       <p className="small muted" style={{ marginTop: 0 }}>Browser tab</p>
-      <div aria-label="Tab preview" className="row" style={{ gap: "0.5rem", alignItems: "center",
+      {/* `tight`: a plain .row grows every child to 180px, which stretched
+          the 16px mark into a bar. */}
+      <div aria-label="Tab preview" className="row tight" style={{ gap: "0.5rem", alignItems: "center",
         border: "1px solid var(--line, #E5E7EB)", borderRadius: 8, padding: "0.35rem 0.6rem",
         width: "fit-content" }}>
-        <img src={mark} alt="" width={16} height={16} />
+        <img src={mark} alt="" width={16} height={16} style={{ objectFit: "contain" }} />
         <span className="small">{name}</span>
       </div>
 

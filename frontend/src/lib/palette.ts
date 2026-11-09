@@ -29,7 +29,7 @@ export function mix(hex: string, toward: string, amount: number): string {
 
 export const PORTAL_TOKENS = [
   "--navy", "--navy-700", "--navy-300", "--orange", "--orange-600", "--orange-050",
-  "--on-orange", "--focus",
+  "--on-orange", "--orange-hover", "--focus",
 ] as const;
 
 export function portalTokens(primary: string, accent: string): Record<string, string> {
@@ -43,6 +43,10 @@ export function portalTokens(primary: string, accent: string): Record<string, st
     "--orange-050": mix(accent, "#ffffff", 0.93),
     // Text on an accent fill: white or near-black, whichever reads (D4).
     "--on-orange": textOn(accent),
+    // Under the pointer: darker behind white text, lighter behind dark text,
+    // so the hover never costs the text its contrast.
+    "--orange-hover": textOn(accent).toLowerCase() === "#ffffff"
+      ? mix(accent, "#000000", 0.1) : mix(accent, "#ffffff", 0.12),
     "--focus": `0 0 0 3px rgba(${r}, ${g}, ${b}, .20)`,
   };
 }

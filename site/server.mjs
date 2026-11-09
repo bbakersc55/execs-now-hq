@@ -14,13 +14,15 @@
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
+import { SITE_URL } from "./src/site-url.mjs";
 import { brotliCompressSync, gzipSync, constants as Z } from "node:zlib";
 
 const PORT = Number(process.env.PORT || 4321);
 const ROOT = resolve(import.meta.dirname, "dist");
 const LEAD_URL = process.env.LEAD_FORWARD_URL || "https://app.getexecutivesnow.com/api/public/leads";
 const LEAD_TOKEN = process.env.SITE_LEAD_TOKEN || "";
-const CANONICAL = "www.execsnowhq.com";
+const CANONICAL = new URL(SITE_URL).host;
+const BARE = CANONICAL.replace(/^www\./, "");
 const MAX_BODY = 16 * 1024;
 
 const TYPES = {
@@ -156,7 +158,7 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
     const host = String(req.headers.host || "").toLowerCase();
-    if (host === "execsnowhq.com") {
+    if (host === BARE && BARE !== CANONICAL) {
       res.writeHead(301, { Location: `https://${CANONICAL}${url.pathname}${url.search}` });
       return res.end();
     }

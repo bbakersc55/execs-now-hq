@@ -7,6 +7,7 @@ import {
   Receipt, Landmark, Users, Gauge, X, FileSignature } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
+import { Landing } from "./components/Landing";
 
 import { ActingBanner } from "./components/ActAs";
 import { useNarrowWindow, useRemembered } from "./components/shell";
@@ -417,8 +418,7 @@ export function App() {
             {/* The landing page (design brief, Tier 2). A client user never
                 reaches it: their landing page is the portal. */}
             <Route path="/" element={
-              me.role && TENANT.includes(me.role)
-                ? <Dashboard me={me} /> : <Contacts me={me} />} />
+              <Landing role={me.role} staff={<Dashboard me={me} />} other={<Contacts me={me} />} />} />
             <Route path="/dashboard" element={<Dashboard me={me} />} />
             <Route path="/contacts" element={<Contacts me={me} />} />
             <Route path="/contacts/:id" element={<ContactDetail me={me} />} />
