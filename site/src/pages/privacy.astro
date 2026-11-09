@@ -35,13 +35,13 @@ import { CONTACT_EMAIL } from "../config";
   <LimitedUse />
 
   <h2>Microsoft 365 data</h2>
-  <p>When Microsoft 365 is switched on, the same features use the matching Microsoft permissions (Mail.Send, Mail.ReadBasic, Mail.Read, Files.Read and Calendars.ReadWrite) under the same rules.</p>
+  <p>When you connect Microsoft 365, the same features use the matching Microsoft permissions (Mail.Send, Mail.ReadBasic, Mail.Read, Files.Read and Calendars.ReadWrite) under the same rules.</p>
 
   <h2>Bank data</h2>
   <p>Bank feeds come through Plaid. You sign in to your bank inside Plaid's own window; your bank sign-in never reaches us. We store the account's name, type and last four digits, and the transactions Plaid sends, with Plaid's access token encrypted. Disconnecting a bank removes the connection at Plaid and destroys the token. Plaid's handling of your data is described in <a href="https://plaid.com/legal/#end-user-privacy-policy">Plaid's end user privacy policy</a>.</p>
 
   <h2>Payment data</h2>
-  <p>Clients pay a practice through the practice's own payment processor. Card and bank details go to that processor, not to us; the app keeps the invoice, its pay link and whether it was paid. When a practice pays us for its subscription, its card details go to our processor, and we keep only a reference to the card and its last four digits.</p>
+  <p>Clients pay a practice into the practice's own merchant account at the payment processor. Card and bank details go to that processor, not to us; the app keeps the invoice, its pay link and whether it was paid. When a practice pays us for its subscription, its card details go to our processor, and we keep only a reference to the card and its last four digits.</p>
 
   <h2>AI processing</h2>
   <p>When a practice uses AI features, the relevant text is sent to Anthropic's Claude API under the practice's own Anthropic account, to produce drafts and summaries that a person reviews. That includes the meeting-notes documents read from the chosen folder, transcripts, and notes the practice asks Claude to work on. Recordings are transcribed by Google Cloud Speech-to-Text. Google user data is sent to Anthropic only to provide those features to the user, and is never used to develop, improve or train AI models.</p>

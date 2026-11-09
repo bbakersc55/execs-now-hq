@@ -9,7 +9,7 @@ Canonical address `https://www.execsnowhq.com`.
 cd site
 npm ci
 npm run dev              # http://localhost:5300, the pages only (no /api/lead)
-npm run build            # changelog from the runbook, then dist/
+npm run build            # dist/
 npm run check            # links, assets, meta tags, GA switch, vocabulary
 PORT=4390 npm start      # dist/ as Railway serves it, with /api/lead
 ```
@@ -35,12 +35,6 @@ PORT=4390 npm start      # dist/ as Railway serves it, with /api/lead
 - **Video slots** for sections 03 to 06: `VIDEO_SLOTS` in
   `src/data/shots.ts`. Put a silent MP4 in `public/video/` and its path there;
   the screenshot becomes its poster.
-- **The changelog** is built from `docs/phase7_cutover_runbook.md`'s release
-  record by `scripts/changelog.mjs`, with each release's public line from
-  `src/data/changelog-lines.json` (the runbook's own words are internal). On
-  Railway, `docs/` isn't in the build, so the committed
-  `src/data/changelog.json` is used: run `npm run changelog` and commit after
-  a release.
 - **The headshot**: `public/about/bryan-a` and `bryan-b`, two square crops
   (`scripts/make_images.py`). `HEADSHOT` in `src/config.ts` picks one.
 - **Privacy and terms** are drafts for review: `LEGAL_DRAFT` in

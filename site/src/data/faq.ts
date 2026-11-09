@@ -1,3 +1,5 @@
+import { PAYMENTS } from "./pricing";
+
 export const FAQ: { q: string; a: string }[] = [
   {
     q: "Who can see my data?",
@@ -9,7 +11,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Do you support Outlook?",
-    a: "Gmail and Google Workspace today. Microsoft 365 sign-in, mail, calendar and OneDrive are built and switching on soon.",
+    a: "Yes. Microsoft 365 and Google Workspace are both available now: sign-in, sending and replies from your own address, your calendar, and meeting notes from OneDrive or Drive.",
   },
   {
     q: "Why does Google warn me when I connect?",
@@ -17,7 +19,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "How do payments work?",
-    a: "Invoices carry a pay link from your own merchant account. The money goes straight to you and never passes through us, and there is no platform percentage.",
+    a: `Invoices carry a pay link from your own merchant account, and the money never passes through us. ${PAYMENTS}`,
   },
   {
     q: "Can I bring my contacts?",
@@ -28,8 +30,8 @@ export const FAQ: { q: string; a: string }[] = [
     a: "The whole app works at phone width in the browser, signing included. There's nothing to install.",
   },
   {
-    q: "What's included in a seat?",
-    a: "Seats are for your own team. Clients and their people are unlimited and never charged.",
+    q: "Who counts as a user?",
+    a: "Your own team: consultants and assistants. Micro practice includes the owner plus 2, Team the owner plus 20, and further users are $25 a month each. Client companies are unlimited, with up to 25 client users per client included; beyond 25, it's $10 a month for each block of 25.",
   },
   {
     q: "What if I leave?",

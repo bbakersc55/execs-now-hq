@@ -54,6 +54,12 @@ export const SHOTS = {
     fullWidth: 1700,
     cropHeight: 1080,
   },
+  "meeting-queue": {
+    alt: "The meeting queue with one meeting's proposal open: Claude's summary to edit or discard, and each attendee matched to an existing contact, with the line of the notes it came from and Approve or Reject.",
+    url: `Meeting queue · ${P}`,
+    card: { kind: "tag", label: "Proposed action item", title: "Send this week's scrap tags", note: "Owner: Mason Marsh · waits for your approval", bg: "#fdf1e7", fg: "#8a4510" },
+    cardSide: "left",
+  },
   "portal-our-work": {
     alt: "The client portal's Our work page in the practice's green and gold: two goals with baseline, current and target, their projects and dated tasks.",
     url: `Our work · Alder Fasteners`,

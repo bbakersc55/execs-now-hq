@@ -1,7 +1,7 @@
 import { SITE_URL, LEGAL_DRAFT } from "../config";
 
 // The legal pages join the sitemap once they are no longer drafts.
-const PAGES = ["/", "/pricing", "/security", "/about", "/demo", "/changelog",
+const PAGES = ["/", "/pricing", "/security", "/about", "/demo",
   ...(LEGAL_DRAFT ? [] : ["/privacy", "/terms"])];
 
 export function GET() {
