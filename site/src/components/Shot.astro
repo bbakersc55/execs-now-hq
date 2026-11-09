@@ -1,0 +1,90 @@
+---
+// A product screenshot in a thin light browser frame, drawn in CSS, with one
+// floating detail card, also CSS. Nothing is baked into the image.
+//
+// VIDEO SLOT: pass `video` (a path under public/video/, silent MP4) and the
+// frame plays it, muted and looping, with this screenshot as its poster.
+// Sections 03 to 06 take theirs from VIDEO_SLOTS in src/data/shots.ts.
+import { SHOTS, type Card, type Shot } from "../data/shots";
+
+interface Props {
+  name: keyof typeof SHOTS;
+  eager?: boolean;
+  video?: string;
+  videoSlot?: string;
+  sizes?: string;
+  cardSide?: "left" | "right";
+  class?: string;
+}
+const { name, eager = false, video = "", videoSlot, sizes = "(min-width: 1152px) 1100px, 100vw", cardSide, class: extra = "" } = Astro.props;
+const shot: Shot = SHOTS[name];
+const card: Card = shot.card;
+const side = cardSide ?? shot.cardSide ?? "right";
+const base = `/shots/${name}`;
+const w = shot.width ?? 1440;
+const h = shot.height ?? 900;
+const webp = `${base}-720.webp 720w, ${base}-1440.webp 1440w, ${base}.webp ${shot.fullWidth ?? w * 2}w`;
+const crop = shot.cropHeight;
+const png = `${base}-720.png 720w, ${base}-1440.png 1440w`;
+---
+<figure class:list={["shot relative", extra]} data-video-slot={videoSlot}>
+  <div class="overflow-hidden rounded-xl border border-[#dcd8d0] bg-white shadow-[0_1px_2px_rgba(13,44,84,.06),0_12px_32px_-12px_rgba(13,44,84,.22)]">
+    <div class="flex items-center gap-3 border-b border-[#e8e5df] bg-[#f4f2ee] px-3 py-2" aria-hidden="true">
+      <span class="flex gap-1.5"><i class="block size-2.5 rounded-full bg-[#d9d5ce]"></i><i class="block size-2.5 rounded-full bg-[#d9d5ce]"></i><i class="block size-2.5 rounded-full bg-[#d9d5ce]"></i></span>
+      <span class="mx-auto max-w-[60%] truncate rounded bg-white px-3 py-0.5 text-center text-[11px] text-gray-dark">{shot.url}</span>
+      <span class="w-[42px]"></span>
+    </div>
+    {video ? (
+      <video class="block h-auto w-full" width={w} height={h} autoplay muted loop playsinline preload="none"
+        poster={`${base}-1440.webp`} aria-label={shot.alt}>
+        <source src={video} type="video/mp4" />
+      </video>
+    ) : (
+      <picture class:list={[crop && "block overflow-hidden"]} style={crop ? `aspect-ratio:${w}/${crop}` : undefined}>
+        <source type="image/webp" srcset={webp} sizes={sizes} />
+        <img class:list={["block w-full", crop ? "h-full object-cover object-top" : "h-auto"]} src={`${base}-1440.png`} srcset={png} sizes={sizes}
+          width={w} height={h} alt={shot.alt}
+          loading={eager ? "eager" : "lazy"} decoding={eager ? "sync" : "async"}
+          fetchpriority={eager ? "high" : undefined} />
+      </picture>
+    )}
+  </div>
+  <figcaption class:list={[
+    "relative z-10 mx-auto -mt-6 w-[88%] max-w-[300px] rounded-lg border border-line bg-white p-3 text-left text-[13px] leading-snug shadow-[0_10px_28px_-10px_rgba(13,44,84,.35)]",
+    "sm:absolute sm:mt-0 sm:w-[280px] sm:mx-0",
+    side === "right" ? "sm:-right-3 sm:bottom-8 lg:-right-8" : "sm:-left-3 sm:bottom-8 lg:-left-8",
+  ]}>
+    {card.kind === "tag" && (
+      <div>
+        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold" style={`background:${card.bg ?? "#e8f5ec"};color:${card.fg ?? "#14632f"}`}>
+          <i class="block size-1.5 rounded-full" style={`background:${card.fg ?? "#14632f"}`}></i>{card.label}
+        </span>
+        <p class="mt-2 font-medium text-navy">{card.title}</p>
+        {card.note && <p class="mt-0.5 text-gray-dark">{card.note}</p>}
+      </div>
+    )}
+    {card.kind === "comment" && (
+      <div class="flex gap-2.5">
+        <span class="grid size-8 shrink-0 place-items-center rounded-full bg-navy text-xs font-bold text-white" aria-hidden="true">{card.initials}</span>
+        <div>
+          <p><span class="font-semibold text-navy">{card.author}</span>{card.when && <span class="text-gray-dark"> · {card.when}</span>}</p>
+          <p class="mt-0.5 text-[#33394a]">{card.text}</p>
+        </div>
+      </div>
+    )}
+    {card.kind === "signature" && (
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-[#14632f]">{card.label}</p>
+        <p class="mt-1 border-b border-navy/30 pb-1 font-serif text-2xl italic text-navy">{card.name}</p>
+        <p class="mt-1.5 text-gray-dark">{card.note}</p>
+      </div>
+    )}
+    {card.kind === "figure" && (
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-gray-dark">{card.label}</p>
+        <p class="mt-1 font-display text-2xl font-bold text-navy">{card.value}</p>
+        {card.note && <p class="mt-0.5 text-gray-dark">{card.note}</p>}
+      </div>
+    )}
+  </figcaption>
+</figure>

@@ -57,6 +57,8 @@ BY_PRODUCER = {
     P.REFERRAL_THANKS: CORRESPONDENCE,
     # One person introducing two people to each other.
     P.INTRODUCTION: CORRESPONDENCE,
+    # The practice owner answering one person who asked on the website.
+    P.WEBSITE_REPLY: CORRESPONDENCE,
     P.CAMPAIGN: MARKETING,
     P.DIGEST: UPDATES,
     P.CLIENT_ACTIVITY: UPDATES,

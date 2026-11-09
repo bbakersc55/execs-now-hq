@@ -488,11 +488,11 @@ function Sparkline({ block }: { block: GoalBlock }) {
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}
          role="img" aria-label={`${block.measure.measurable}, ${values.length} readings`}
          style={{ margin: ".3rem 0" }}>
-      <polyline fill="none" stroke="var(--blue, #0A3A65)" strokeWidth="2"
+      <polyline fill="none" stroke="var(--blue, #0D2C54)" strokeWidth="2"
                 points={points.map((p) => `${p.x},${p.y}`).join(" ")} />
       {points.map((p, index) => (
         <circle key={index} cx={p.x} cy={p.y} r="3"
-                fill={p.is_baseline ? "var(--orange, #F58220)" : "var(--blue, #0A3A65)"} />
+                fill={p.is_baseline ? "var(--orange, #E87722)" : "var(--blue, #0D2C54)"} />
       ))}
     </svg>
   );

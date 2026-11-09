@@ -1,0 +1,11 @@
+---
+import Base from "../../layouts/Base.astro";
+import { CONTACT_EMAIL } from "../../config";
+---
+<Base title="Thanks" description="Your request for demo access was received." noindex>
+  <section class="wrap max-w-3xl pt-20 pb-10">
+    <h1 class="text-4xl font-extrabold">Thanks. We have your request.</h1>
+    <p class="mt-4 text-lg leading-relaxed text-[#33394a]">You'll hear back within one business day. Anything else, write to <a class="text-navy underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.</p>
+    <a href="/" class="btn-ghost mt-8">Back to the home page</a>
+  </section>
+</Base>

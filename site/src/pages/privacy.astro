@@ -1,0 +1,69 @@
+---
+import Legal from "../layouts/Legal.astro";
+import LimitedUse from "../components/LimitedUse.astro";
+import { CONTACT_EMAIL } from "../config";
+---
+<Legal title="Privacy policy" description="What Execs NOW HQ stores, what it does with Google, Microsoft and bank data, who it shares data with, and how to have it deleted.">
+  <p>Execs NOW HQ is provided by Noble Rose LLC d/b/a Execs NOW HQ ("we", "us"). This policy covers the Execs NOW HQ app at app.getexecutivesnow.com and this website. It is written to say plainly what the app does.</p>
+
+  <h2>Who uses the app</h2>
+  <p>Fractional-executive practices ("practices"), their own team, and the clients they invite. Each practice's data is kept separate from every other practice's. A practice decides what goes into its account and who it invites; for its clients' information, the practice is in charge and we process it on the practice's behalf.</p>
+
+  <h2>What we store</h2>
+  <ul>
+    <li><strong>Accounts:</strong> name, email address, role, and sign-in records.</li>
+    <li><strong>What a practice enters or imports:</strong> contacts, companies, pipelines, tasks, goals, notes (including PIN-locked notes), strategy sessions, scorecards, proposals and signed documents with their audit trail, invoices, the practice's books, and files it uploads.</li>
+    <li><strong>Mail:</strong> email the app sends for the practice; replies to it, if the practice turns reply collection on; and mail with the practice's contacts, if it turns mail filing on (see below).</li>
+    <li><strong>Recordings</strong> a user chooses to make, their transcripts and summaries. Audio is deleted after the practice's retention period; transcripts stay with the note.</li>
+    <li><strong>Personal finance,</strong> if the practice owner uses it: household members and income, personal bank and card lines, debts, balances and tax estimates. It belongs to that user, and no one else in the practice, and none of its clients, can see it.</li>
+    <li><strong>Usage and cost totals</strong> needed to run and bill the service, and error logs.</li>
+  </ul>
+
+  <h2>Google user data</h2>
+  <p>With the user's permission, the app uses Google data only for these features, each asked for separately when it's turned on:</p>
+  <ul>
+    <li><strong>Sign-in</strong> (openid, email, profile): name and email address.</li>
+    <li><strong>Sending</strong> (gmail.send): sends the practice's mail from the user's address after a person approves each message, or when a client asks for a sign-in link.</li>
+    <li><strong>Confirming the sending address</strong> (gmail.settings.basic): reads the "Send mail as" list. Changes nothing.</li>
+    <li><strong>Replies and mail filing</strong> (gmail.readonly), only if turned on: reads replies on threads the app started. If mail filing is also on, it looks at the senders and recipients of new mail and fetches and keeps only messages that involve one of the practice's contacts or a company's domain. Other mail, personal mail included, is never stored.</li>
+    <li><strong>Meeting notes</strong> (drive.readonly), only if turned on: reads the meeting-notes documents in one Drive folder the user chooses.</li>
+    <li><strong>Scorecard sheets</strong> (spreadsheets.readonly): reads the one spreadsheet tab a scorecard feed points at.</li>
+    <li><strong>Calendar</strong> (calendar.events): shows the user's meetings with the practice's contacts, and adds an event to the user's own calendar when they ask.</li>
+    <li><strong>Business reviews</strong> (business.manage): reads one location's reviews and rating for a client's scorecard.</li>
+  </ul>
+  <p>The app never changes Gmail settings, never writes to or deletes anything in Gmail, Drive or Sheets, and never replies to or edits reviews.</p>
+  <LimitedUse />
+
+  <h2>Microsoft 365 data</h2>
+  <p>When Microsoft 365 is switched on, the same features use the matching Microsoft permissions (Mail.Send, Mail.ReadBasic, Mail.Read, Files.Read and Calendars.ReadWrite) under the same rules.</p>
+
+  <h2>Bank data</h2>
+  <p>Bank feeds come through Plaid. You sign in to your bank inside Plaid's own window; your bank sign-in never reaches us. We store the account's name, type and last four digits, and the transactions Plaid sends, with Plaid's access token encrypted. Disconnecting a bank removes the connection at Plaid and destroys the token. Plaid's handling of your data is described in <a href="https://plaid.com/legal/#end-user-privacy-policy">Plaid's end user privacy policy</a>.</p>
+
+  <h2>Payment data</h2>
+  <p>Clients pay a practice through the practice's own payment processor. Card and bank details go to that processor, not to us; the app keeps the invoice, its pay link and whether it was paid. When a practice pays us for its subscription, its card details go to our processor, and we keep only a reference to the card and its last four digits.</p>
+
+  <h2>AI processing</h2>
+  <p>When a practice uses AI features, the relevant text is sent to Anthropic's Claude API under the practice's own Anthropic account, to produce drafts and summaries that a person reviews. That includes the meeting-notes documents read from the chosen folder, transcripts, and notes the practice asks Claude to work on. Recordings are transcribed by Google Cloud Speech-to-Text. Google user data is sent to Anthropic only to provide those features to the user, and is never used to develop, improve or train AI models.</p>
+
+  <h2>Who can see it</h2>
+  <p>A practice's data is visible only to that practice's people, according to their role, and to the clients it invites, who see only their own company's work. The platform owner sees only each practice's name, totals and the feedback its people choose to send, never what is inside it. People who operate the servers can technically reach the database and its backups; that access is limited to running and backing up the service.</p>
+
+  <h2>Sharing</h2>
+  <p>We don't sell data or use it for advertising. We use these service providers to run the app: Railway (hosting and database, in the United States), Google Cloud (file storage, backups and speech-to-text), Anthropic (AI, under the practice's own account), Plaid (bank feeds), Google and Microsoft (mail, files and calendars, under the user's own account), and our payment processor. We may disclose data when the law requires it.</p>
+
+  <h2>This website</h2>
+  <p>The demo request form sends what you type to our own practice's records, so we can reply. If analytics are switched on, this site uses Google Analytics to count visits; it sets cookies for that purpose.</p>
+
+  <h2>Security</h2>
+  <p>Data is encrypted in transit. Stored credentials, such as a practice's Claude key and its Google, Microsoft and bank connection tokens, are encrypted in the database. Access is limited by practice and by role. See <a href="/security">Security</a> for more.</p>
+
+  <h2>Retention and deletion</h2>
+  <p>Data is kept while the practice uses the service. A user can disconnect Google at any time in the app or at myaccount.google.com/permissions, and Microsoft in the app or their Microsoft account; the app then stops using that data. On request, we delete a user's or a practice's data, exporting the practice's data first if asked. Deleted data rolls out of the nightly backups within 30 days.</p>
+
+  <h2>Changes</h2>
+  <p>If we change this policy in a way that matters, we'll say so in the app before it takes effect.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or deletion requests: <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.</p>
+</Legal>

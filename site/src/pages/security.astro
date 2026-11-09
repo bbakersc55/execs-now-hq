@@ -1,0 +1,77 @@
+---
+import Base from "../layouts/Base.astro";
+import Shot from "../components/Shot.astro";
+import LimitedUse from "../components/LimitedUse.astro";
+
+const google = [
+  ["Sign in", "Your name and email address, to sign you in.", "openid, email, profile"],
+  ["Send approved mail", "Sends mail from your own address, only after a person approves each message, or when a client asks for a sign-in link.", "gmail.send"],
+  ["Confirm your sending address", "Reads your \"Send mail as\" list, so mail never goes out from the wrong address. Changes nothing.", "gmail.settings.basic"],
+  ["Read replies and file client mail, when switched on", "Reads replies on threads the app started. If you also turn on filing, it looks at new mail's senders and recipients and keeps only mail with your contacts or their companies. Anything else, personal mail included, is never stored.", "gmail.readonly"],
+  ["Watch a notes folder", "Reads meeting-notes documents in the one Drive folder you choose, to propose contacts, action items and tasks for your review. Never writes, moves or deletes.", "drive.readonly"],
+  ["Read a KPI sheet", "Reads the one spreadsheet tab a scorecard feed points at. Never writes.", "spreadsheets.readonly"],
+  ["Calendar events", "Shows your meetings with a contact or company, and adds an event to your own calendar when you click Add to calendar. Nobody is invited.", "calendar.events"],
+  ["Business reviews", "Reads one location's Google reviews and rating, daily, for a client's scorecard. Never replies, edits or deletes.", "business.manage"],
+];
+const microsoft = [
+  ["Sign in", "Your name and email address, to sign you in.", "openid, email, profile, offline_access"],
+  ["Send approved mail", "Sends mail from your own address, after a person approves each message.", "Mail.Send"],
+  ["Read replies and file client mail, when switched on", "The same rules as Gmail: replies to threads the app started, and only mail with your contacts if you turn filing on.", "Mail.ReadBasic, Mail.Read"],
+  ["Watch a notes folder", "Reads meeting notes in the one OneDrive folder you choose.", "Files.Read"],
+  ["Calendar events", "Shows your meetings with contacts, and adds events to your own calendar when you ask.", "Calendars.ReadWrite"],
+];
+---
+<Base title="Security" description="How Execs NOW HQ keeps each practice sealed: roles and permission levels, encrypted tokens, nightly backups, passwordless client links, and exactly what a connected Google or Microsoft account is used for.">
+  <section class="wrap max-w-4xl pt-14 pb-6 sm:pt-20">
+    <h1 class="text-4xl font-extrabold sm:text-5xl">Security</h1>
+    <p class="mt-4 text-lg leading-relaxed text-[#33394a]">
+      Your practice holds your clients' plans, numbers and mail. Here is how it's kept, in plain English.
+    </p>
+  </section>
+
+  <section class="wrap max-w-4xl">
+    <div class="grid gap-x-10 gap-y-8 py-8 sm:grid-cols-2">
+      <div><h2 class="text-xl font-bold">Sealed practices</h2><p class="mt-2 leading-relaxed text-[#33394a]">Every row in the database belongs to one practice, and every query goes through one layer that scopes it to yours. It isn't left to each screen to remember. As the platform owner, we can't see inside a practice either.</p></div>
+      <div><h2 class="text-xl font-bold">Roles and permission levels</h2><p class="mt-2 leading-relaxed text-[#33394a]">Practice owner, associate and assistant on your side, each seeing only what their role allows; assistants never see financials or settings. On the client side, each client sees only their own company, and their team members get one of five permission levels: viewer, member, manager, senior leadership or client owner.</p></div>
+      <div><h2 class="text-xl font-bold">Encrypted tokens</h2><p class="mt-2 leading-relaxed text-[#33394a]">Your Claude key and every Google, Microsoft, bank and processor connection are encrypted in the database and never shown again in full. Sign-in links and signing links are masked in the logs.</p></div>
+      <div><h2 class="text-xl font-bold">Nightly backups</h2><p class="mt-2 leading-relaxed text-[#33394a]">The whole database is backed up every night to separate storage, and every release that changes the database waits for that day's backup first.</p></div>
+      <div><h2 class="text-xl font-bold">Passwordless portal links</h2><p class="mt-2 leading-relaxed text-[#33394a]">Clients sign in with a link sent to their own email, so there are no client passwords to reuse or leak. Your team signs in with Google or Microsoft.</p></div>
+      <div><h2 class="text-xl font-bold">Where data lives</h2><p class="mt-2 leading-relaxed text-[#33394a]">The app and its database run on Railway in the United States. Files and backups are kept in Google Cloud Storage.</p></div>
+      <div><h2 class="text-xl font-bold">Nothing sent without you</h2><p class="mt-2 leading-relaxed text-[#33394a]">Mail to clients waits in your sending queue until a person approves it, and anything the AI drafts is a proposal until someone accepts it.</p></div>
+      <div><h2 class="text-xl font-bold">Your money stays yours</h2><p class="mt-2 leading-relaxed text-[#33394a]">Client payments go through your own merchant account. Bank feeds come through Plaid; your bank sign-in never reaches us.</p></div>
+    </div>
+  </section>
+
+  <section class="wrap max-w-5xl py-10">
+    <div class="grid gap-12 lg:grid-cols-2">
+      <Shot name="settings-mailboxes" cardSide="left" sizes="(min-width: 1152px) 520px, 100vw" />
+      <Shot name="bank-connections" cardSide="right" sizes="(min-width: 1152px) 520px, 100vw" />
+    </div>
+  </section>
+
+  <section class="wrap max-w-4xl py-10">
+    <h2 class="text-2xl font-extrabold sm:text-3xl">What a connected Google account is used for</h2>
+    <p class="mt-3 leading-relaxed text-[#33394a]">Each permission is asked for separately, only when you turn on the feature that needs it, and you can disconnect at any time in the app or in your Google account.</p>
+    <dl class="mt-6 divide-y divide-line border-y border-line">
+      {google.map(([what, how, scope]) => (
+        <div class="grid gap-1 py-4 sm:grid-cols-[13rem_1fr] sm:gap-6">
+          <dt class="font-semibold text-navy">{what}</dt>
+          <dd class="leading-relaxed text-[#33394a]">{how} <span class="block pt-1 font-mono text-xs text-gray-dark">{scope}</span></dd>
+        </div>
+      ))}
+    </dl>
+    <div class="prose-plain mt-6 text-[15px] text-[#33394a]"><LimitedUse /></div>
+
+    <h2 class="mt-14 text-2xl font-extrabold sm:text-3xl">What a connected Microsoft 365 account is used for</h2>
+    <p class="mt-3 leading-relaxed text-[#33394a]">Built and switching on soon. The same rules apply.</p>
+    <dl class="mt-6 divide-y divide-line border-y border-line">
+      {microsoft.map(([what, how, scope]) => (
+        <div class="grid gap-1 py-4 sm:grid-cols-[13rem_1fr] sm:gap-6">
+          <dt class="font-semibold text-navy">{what}</dt>
+          <dd class="leading-relaxed text-[#33394a]">{how} <span class="block pt-1 font-mono text-xs text-gray-dark">{scope}</span></dd>
+        </div>
+      ))}
+    </dl>
+    <p class="mt-10 leading-relaxed text-[#33394a]">Found a problem? Write to <a class="text-navy underline" href="mailto:info@execsnowhq.com">info@execsnowhq.com</a>. See also the <a class="text-navy underline" href="/privacy">privacy policy</a>.</p>
+  </section>
+</Base>

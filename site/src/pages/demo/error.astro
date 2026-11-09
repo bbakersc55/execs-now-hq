@@ -1,0 +1,10 @@
+---
+import Base from "../../layouts/Base.astro";
+import { CONTACT_EMAIL } from "../../config";
+---
+<Base title="That didn't go through" description="Your request for demo access could not be sent." noindex>
+  <section class="wrap max-w-3xl pt-20 pb-10">
+    <h1 class="text-4xl font-extrabold">That didn't go through.</h1>
+    <p class="mt-4 text-lg leading-relaxed text-[#33394a]">Please write to <a class="text-navy underline" href={`mailto:${CONTACT_EMAIL}?subject=Demo%20access`}>{CONTACT_EMAIL}</a> instead, or <a class="text-navy underline" href="/demo">try the form again</a>.</p>
+  </section>
+</Base>

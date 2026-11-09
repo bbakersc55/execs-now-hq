@@ -1331,6 +1331,9 @@ class OutboxMessage(TenantScopedModel):
         SIGNATURE_REQUEST = "signature_request", "Signature request"
         SIGNATURE_REMINDER = "signature_reminder", "Signature reminder"
         SIGNED_COPY = "signed_copy", "Signed document"
+        # The marketing site's "Request demo access" form (2026-11-09): the
+        # practice owner's reply to whoever asked, waiting for approval.
+        WEBSITE_REPLY = "website_reply", "Website reply"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.

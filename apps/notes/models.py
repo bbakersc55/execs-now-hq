@@ -68,6 +68,7 @@ class Note(TenantScopedModel):
         MANUAL = "manual", "Written in the app"
         IMPORT = "import", "Created by a CSV import"
         RECORDING = "recording", "Transcribed from a recording"
+        WEBSITE = "website", "From the website's form"
 
     class TranscriptionState(models.TextChoices):
         NONE = "none", "No recording"

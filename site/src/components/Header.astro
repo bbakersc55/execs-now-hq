@@ -1,0 +1,48 @@
+---
+import { APP_URL } from "../config";
+const here = Astro.url.pathname.replace(/\/$/, "") || "/";
+const links = [
+  { href: "/#how", label: "Product" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/security", label: "Security" },
+  { href: "/about", label: "About" },
+  { href: "/changelog", label: "Changelog" },
+];
+---
+<header class="sticky top-0 z-40 border-b border-line bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/85">
+  <div class="wrap flex h-[64px] items-center justify-between gap-3 sm:h-[72px]">
+    <a href="/" class="shrink-0" aria-label="Execs NOW HQ, home">
+      <img src="/brand/enhq-stacked-standard.svg" alt="Execs NOW HQ" width="135" height="46" class="h-[36px] w-auto sm:h-[46px]" />
+    </a>
+    <nav aria-label="Main" class="hidden lg:block">
+      <ul class="flex items-center gap-6 text-[15px] font-medium">
+        {links.map((l) => (
+          <li><a href={l.href} class="text-navy no-underline hover:text-orange-ink" aria-current={here === l.href ? "page" : undefined}>{l.label}</a></li>
+        ))}
+        <li><a href={APP_URL} class="text-navy no-underline hover:text-orange-ink">Sign in</a></li>
+      </ul>
+    </nav>
+    <div class="flex items-center gap-2">
+      <a href="/demo" class="btn-orange !px-3.5 !py-2.5 !text-sm sm:!px-4 sm:!text-[15px]">Request demo access</a>
+      <details class="relative lg:hidden" id="menu">
+        <summary class="grid size-10 cursor-pointer list-none place-items-center rounded-md border border-navy/25 text-navy [&::-webkit-details-marker]:hidden">
+          <svg aria-hidden="true" width="18" height="14" viewBox="0 0 18 14"><path d="M0 1h18M0 7h18M0 13h18" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="sr-only">Menu</span>
+        </summary>
+        <nav aria-label="Main, small screens" class="absolute right-0 top-full mt-2 w-56 rounded-lg border border-line bg-white p-2 shadow-lg">
+          <ul class="flex flex-col text-[15px]">
+            {links.map((l) => (
+              <li><a href={l.href} class="block rounded px-3 py-2.5 text-navy no-underline hover:bg-paper">{l.label}</a></li>
+            ))}
+            <li><a href={APP_URL} class="block rounded px-3 py-2.5 text-navy no-underline hover:bg-paper">Sign in</a></li>
+          </ul>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>
+<script>
+  // Close the small-screen menu after following an in-page link.
+  const menu = document.getElementById("menu") as HTMLDetailsElement | null;
+  menu?.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => { menu.open = false; }));
+</script>

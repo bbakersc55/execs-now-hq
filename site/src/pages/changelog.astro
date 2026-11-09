@@ -1,0 +1,20 @@
+---
+import Base from "../layouts/Base.astro";
+import entries from "../data/changelog.json";
+const fmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+const shown = entries.filter((e) => e.line);
+---
+<Base title="Changelog" description="Every Execs NOW HQ release, newest first.">
+  <section class="wrap max-w-3xl pt-14 pb-10 sm:pt-20">
+    <h1 class="text-4xl font-extrabold sm:text-5xl">Changelog</h1>
+    <p class="mt-4 text-lg text-[#33394a]">One line per release, newest first. Live on real clients since October 2026.</p>
+    <ol class="mt-10 divide-y divide-line border-y border-line">
+      {shown.map((e) => (
+        <li class="grid gap-1 py-4 sm:grid-cols-[9.5rem_1fr] sm:gap-6">
+          <p class="text-sm text-gray-dark"><span class="font-semibold text-navy">Release {e.release}</span><br class="hidden sm:block" /><span class="sm:hidden"> · </span><time datetime={e.date}>{fmt.format(new Date(e.date + "T12:00:00Z"))}</time></p>
+          <p class="leading-relaxed">{e.line}</p>
+        </li>
+      ))}
+    </ol>
+  </section>
+</Base>

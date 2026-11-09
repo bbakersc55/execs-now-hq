@@ -1,0 +1,20 @@
+---
+import { FAQ } from "../data/faq";
+interface Props { headingLevel?: "h2" | "h3" }
+const { headingLevel = "h2" } = Astro.props;
+const H = headingLevel;
+---
+<div>
+  <H class="text-2xl font-extrabold sm:text-3xl">Questions people ask</H>
+  <div class="mt-6 divide-y divide-line border-y border-line">
+    {FAQ.map((item) => (
+      <details class="group py-1">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 py-4 font-display text-base font-bold text-navy [&::-webkit-details-marker]:hidden">
+          {item.q}
+          <span aria-hidden="true" class="grid size-6 shrink-0 place-items-center rounded-full border border-navy/30 text-sm transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <p class="max-w-3xl pb-5 leading-relaxed text-[#33394a]">{item.a}</p>
+      </details>
+    ))}
+  </div>
+</div>

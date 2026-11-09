@@ -1777,6 +1777,9 @@ export const TEMPLATE_FIELDS: { field: string; label: string; only?: string }[] 
   { field: "{StartDate}", label: "The start date in their latest signed document",
     only: "only once their company has signed a document" },
   { field: "{Goals}", label: "Their company's goals, one a line" },
+  // The website's demo form (2026-11-09): the auto-reply's promised next step.
+  { field: "{NextStep}", label: "What you'll send them next (website replies only)",
+    only: "only in website replies" },
 ];
 
 /** The fields a campaign can use: all but the two that belong to one email. */

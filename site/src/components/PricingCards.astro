@@ -1,0 +1,23 @@
+---
+import { PLANS, PRICING_FOOTNOTE } from "../data/pricing";
+interface Props { headingLevel?: "h2" | "h3" }
+const { headingLevel = "h3" } = Astro.props;
+const H = headingLevel;
+---
+<div>
+  <div class="grid gap-5 md:grid-cols-3">
+    {PLANS.map((p, i) => (
+      <div class:list={["flex flex-col rounded-xl border bg-white p-6", i === 1 ? "border-navy shadow-[0_12px_32px_-14px_rgba(13,44,84,.35)]" : "border-line"]}>
+        <H class="text-lg font-extrabold">{p.name}</H>
+        <p class="mt-3"><span class="font-display text-4xl font-extrabold text-navy">{p.price}</span> <span class="text-gray-dark">{p.per}</span></p>
+        <p class="mt-2 text-[15px] text-[#33394a]">{p.summary}</p>
+        <ul class="mt-5 space-y-2.5 text-[15px]">
+          {p.features.map((f) => (
+            <li class="flex gap-2.5"><span aria-hidden="true" class="mt-2 block size-1.5 shrink-0 rounded-full bg-orange"></span>{f}</li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </div>
+  <p class="mt-5 max-w-3xl text-sm leading-relaxed text-gray-dark">{PRICING_FOOTNOTE}</p>
+</div>

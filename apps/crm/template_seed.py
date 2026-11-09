@@ -116,6 +116,18 @@ ORIGINALS["welcome_letter"] = (
     "Before we start, I'll be in touch with what I need from you for the first week.",
 )
 
+# The marketing site's "Request demo access" form (2026-11-09): the reply to
+# whoever asked, from the practice owner, waiting in the Outbox for approval.
+# {NextStep} is what they asked for: the demo copy, or times for a call.
+ORIGINALS["website_reply"] = (
+    "Website reply",
+    "Thanks for getting in touch",
+    "Hi {FirstName},\n\n"
+    "Thanks for asking about {PracticeName}. I'll reply within one business day with "
+    "{NextStep}.\n\n"
+    "If anything comes up before then, just reply to this email.",
+)
+
 #: use -> the original it starts on.
 USES = {
     "referral_touch": "referral_touch",

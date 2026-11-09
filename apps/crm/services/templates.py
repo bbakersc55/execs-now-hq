@@ -60,6 +60,8 @@ FIELDS = (
     ("Term", "The term in their latest signed document"),
     ("StartDate", "The start date in their latest signed document"),
     ("Goals", "Their company's goals, one a line"),
+    # The marketing site's form (2026-11-09): what the reply says comes next.
+    ("NextStep", "What you'll send them next (website replies)"),
 )
 NAMES = tuple(name for name, _ in FIELDS)
 _FIELD = re.compile(r"\{([A-Za-z][A-Za-z ]*)\}")
@@ -81,6 +83,7 @@ ONLY_IN = {
     "Fee": "only once their company has signed a document",
     "Term": "only once their company has signed a document",
     "StartDate": "only once their company has signed a document",
+    "NextStep": "only in website replies",
 }
 
 #: What a preview shows when no one is chosen: a visible placeholder.
@@ -99,6 +102,7 @@ PLACEHOLDERS = {
     "OtherHisHer": "[his/her/their]", "OtherBlurb": "[How you'd introduce who they're meeting]",
     "Scope": "[The signed scope]", "Fee": "[The signed fee]", "Term": "[The signed term]",
     "StartDate": "[The signed start date]", "Goals": "[Their goals]",
+    "NextStep": "[What you'll send them next]",
 }
 
 #: A contact's pronouns as (HeShe, HimHer, HisHer); unset reads as they.
@@ -144,7 +148,7 @@ def values_for(contact, *, tenant, sender=None, **extra) -> dict:
         "ProspectName": "",
         "FlyerNote": "",
         "OtherName": "", "OtherFirstName": "", "OtherCompany": "", "OtherDiscipline": "",
-        "OtherSpecialties": "", "IntroNote": "",
+        "OtherSpecialties": "", "IntroNote": "", "NextStep": "",
         **pronoun_values(contact),
         "Specialties": ", ".join(contact.specialties or []) if contact else "",
         "Blurb": (contact.intro_blurb or "").strip() if contact else "",

@@ -1,0 +1,25 @@
+---
+import Base from "../layouts/Base.astro";
+import PricingCards from "../components/PricingCards.astro";
+import Faq from "../components/Faq.astro";
+import { EVERY_PLAN } from "../data/pricing";
+---
+<Base title="Pricing" description="Execs NOW HQ pricing: Micro practice $200 a month, Team $299 a month, discipline modules $50 each, capped at $150. Client seats are never charged.">
+  <section class="wrap pt-14 pb-10 sm:pt-20">
+    <h1 class="text-4xl font-extrabold sm:text-5xl">Pricing</h1>
+    <p class="mt-4 max-w-2xl text-lg leading-relaxed text-[#33394a]">
+      Flat monthly prices for your own team. Your clients and their people are unlimited and never charged.
+    </p>
+    <div class="mt-10"><PricingCards headingLevel="h2" /></div>
+    <a href="/demo" class="btn-orange mt-8">Request demo access</a>
+  </section>
+  <section class="wrap py-12">
+    <h2 class="text-2xl font-extrabold sm:text-3xl">Every plan includes</h2>
+    <ul class="mt-6 grid gap-x-10 gap-y-3 text-[16px] sm:grid-cols-2">
+      {EVERY_PLAN.map((x) => (
+        <li class="flex gap-2.5"><span aria-hidden="true" class="mt-2 block size-1.5 shrink-0 rounded-full bg-orange"></span>{x}</li>
+      ))}
+    </ul>
+  </section>
+  <section class="wrap max-w-4xl py-12"><Faq /></section>
+</Base>

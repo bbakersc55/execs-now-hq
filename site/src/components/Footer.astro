@@ -1,0 +1,42 @@
+---
+import { APP_URL, CONTACT_EMAIL, LEGAL_ENTITY } from "../config";
+const year = new Date().getFullYear();
+---
+<footer class="mt-24 bg-navy text-white">
+  <div class="wrap grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+    <div>
+      <img src="/brand/enhq-line-reversed.svg" alt="Execs NOW HQ" width="220" height="52" class="h-[40px] w-auto" loading="lazy" />
+      <p class="mt-4 max-w-xs text-sm leading-relaxed text-white/80">
+        Everything a fractional practice runs, in one place, in your brand.
+      </p>
+    </div>
+    <nav aria-label="Product" class="text-sm">
+      <h2 class="mb-3 font-display text-sm font-bold text-white">Product</h2>
+      <ul class="space-y-2 text-white/85">
+        <li><a class="hover:text-white" href="/#how">How it works</a></li>
+        <li><a class="hover:text-white" href="/pricing">Pricing</a></li>
+        <li><a class="hover:text-white" href="/changelog">Changelog</a></li>
+        <li><a class="hover:text-white" href={APP_URL}>Sign in</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Company" class="text-sm">
+      <h2 class="mb-3 font-display text-sm font-bold text-white">Company</h2>
+      <ul class="space-y-2 text-white/85">
+        <li><a class="hover:text-white" href="/about">About</a></li>
+        <li><a class="hover:text-white" href="/security">Security</a></li>
+        <li><a class="hover:text-white" href="/demo">Request demo access</a></li>
+        <li><a class="hover:text-white" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Legal" class="text-sm">
+      <h2 class="mb-3 font-display text-sm font-bold text-white">Legal</h2>
+      <ul class="space-y-2 text-white/85">
+        <li><a class="hover:text-white" href="/privacy">Privacy</a></li>
+        <li><a class="hover:text-white" href="/terms">Terms</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="border-t border-white/15">
+    <p class="wrap py-5 text-xs text-white/75">© {year} {LEGAL_ENTITY}. Product names in comparisons belong to their owners.</p>
+  </div>
+</footer>

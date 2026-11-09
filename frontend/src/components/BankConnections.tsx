@@ -307,7 +307,7 @@ function Connection({ connection: c, targets, highlighted, onSaid, onDone }: {
     <section aria-label={`Bank connection ${c.institution}`}
       style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s3)",
                marginTop: "var(--s3)",
-               ...(highlighted ? { outline: "2px solid var(--orange, #F58220)",
+               ...(highlighted ? { outline: "2px solid var(--orange, #E87722)",
                                    outlineOffset: "4px", borderRadius: "4px" } : {}) }}>
       <div className="spread" style={{ flexWrap: "wrap", gap: "var(--s2)" }}>
         <div>

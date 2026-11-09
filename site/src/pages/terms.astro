@@ -1,0 +1,47 @@
+---
+import Legal from "../layouts/Legal.astro";
+import { CONTACT_EMAIL } from "../config";
+---
+<Legal title="Terms of service" description="The terms for using Execs NOW HQ, in plain language.">
+  <p>These terms are between you and Noble Rose LLC d/b/a Execs NOW HQ ("we", "us"). By using Execs NOW HQ you agree to them. If you use it for a practice, you agree for that practice.</p>
+
+  <h2>The service</h2>
+  <p>Execs NOW HQ is software for running a fractional-executive practice: contacts and pipelines, strategy sessions, client work and a client portal, scorecards, documents and signatures, invoices, and books. We may improve or change features over time; we'll tell you in the app before we take away anything you depend on.</p>
+
+  <h2>Your account and your team</h2>
+  <ul>
+    <li>Keep your sign-in secure and tell us if you think someone else has used it.</li>
+    <li>The practice owner decides who joins the practice and what each person may see, and is responsible for their use of it.</li>
+    <li>You invite your clients, and you're responsible for having the right to put their information in the app and to email them through it.</li>
+  </ul>
+
+  <h2>Your data</h2>
+  <p>What you put in is yours. We use it only to run the service for you, as the <a href="/privacy">privacy policy</a> describes. You can download documents, reports and books at any time, and we delete your data on request.</p>
+
+  <h2>AI drafts</h2>
+  <p>AI features run on your own Anthropic account and key, and Anthropic's terms and charges apply to that use. The app shows the price of an AI action before you run it. What Claude produces is a draft: nothing it drafts is sent or created until a person approves it, and you are responsible for what you approve.</p>
+
+  <h2>Payments you collect</h2>
+  <p>Client payments go through your own payment processor under your agreement with them. We are not a party to those payments and never hold the money.</p>
+
+  <h2>Connected services</h2>
+  <p>Google, Microsoft, Plaid, your payment processor and the other services you connect have their own terms. A connection works only while they allow it, and you can disconnect at any time.</p>
+
+  <h2>Fees</h2>
+  <p>Plans are billed monthly at the prices on the <a href="/pricing">pricing page</a>. You can cancel at any time; the service runs to the end of the month you've paid for. We'll give you at least 30 days' notice of a price change.</p>
+
+  <h2>Acceptable use</h2>
+  <p>Don't use the service to send unsolicited bulk mail, to break the law, to infringe anyone's rights, or to try to reach another practice's data or disrupt the service.</p>
+
+  <h2>Ending</h2>
+  <p>You can stop at any time. We may suspend or end an account that breaks these terms or doesn't pay, and will tell you why. Either way, you can ask for your data before it is deleted.</p>
+
+  <h2>Warranty and liability</h2>
+  <p>We work hard to keep the service available and correct, but it is provided "as is", without warranties beyond those the law requires. To the extent the law allows, our total liability for any claim is limited to the fees you paid us in the 12 months before it, and we aren't liable for indirect or consequential losses.</p>
+
+  <h2>Changes to these terms</h2>
+  <p>If we change these terms in a way that matters, we'll tell you in the app at least 30 days before the change takes effect.</p>
+
+  <h2>Contact</h2>
+  <p><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></p>
+</Legal>

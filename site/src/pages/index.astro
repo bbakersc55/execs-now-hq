@@ -1,0 +1,286 @@
+---
+import Base from "../layouts/Base.astro";
+import Shot from "../components/Shot.astro";
+import SectionHead from "../components/SectionHead.astro";
+import PricingCards from "../components/PricingCards.astro";
+import Faq from "../components/Faq.astro";
+import DemoForm from "../components/DemoForm.astro";
+import { VIDEO_SLOTS } from "../data/shots";
+
+const problems = [
+  ["Your clients can't see the work", "So every month you re-prove your value by email."],
+  ["Five tools, five logins", "CRM, proposals, portal, dashboards, books, none of them talking."],
+  ["The strategy call lives in your head", "And the engagement plan gets retyped three times."],
+  ["Your name isn't on any of it", "The portal, the proposal and the dashboard all carry someone else's logo."],
+];
+
+const stops = [
+  { title: "Win the engagement", text: "Run the strategy call from your own questions. The map is drafted as you go and leaves the call as a PDF on your letterhead.", shot: "strategy-map-pdf" },
+  { title: "Run the work", text: "Goals, projects and tasks your client sees in their portal, with progress digests that read as value delivered, not a changelog.", shot: "digest-preview" },
+  { title: "Prove it", text: "A scorecard fed from the client's own systems, and a value report that shows where they started and where they are.", shot: "scorecard-tiles" },
+  { title: "Get paid", text: "Proposal, signature, invoice and payment in one line, through your own processor.", shot: "invoices-paylink" },
+  { title: "Keep the books", text: "Books, bank feeds and a 13-week cash forecast for the practice, and a separate personal side for your household.", shot: "finance-forecast" },
+  { title: "Grow", text: "Contacts and two pipelines with rules that offer the next follow-up, referral partners kept warm, and introductions you can make.", shot: "pipeline-rule" },
+] as const;
+
+const replaces = [
+  ["CRM and pipelines", "HubSpot, Pipedrive", "Contacts, two pipelines with rules and follow-ups"],
+  ["Proposals and e-signature", "PandaDoc, DocuSign", "Documents on your letterhead, with signing"],
+  ["Client portal", "Assembly, SuiteDash", "A portal in your brand, included"],
+  ["Projects and tasks", "Asana, ClickUp, Notion", "Goals, projects, tasks and digests"],
+  ["KPI dashboards", "Looker Studio, spreadsheets", "Scorecards with feeds"],
+  ["Bookkeeping and cash forecast", "QuickBooks, for a small practice", "Books, reconciliation, month close, CPA worksheet, 13-week forecast"],
+  ["Invoicing and payments", "FreshBooks, Stripe invoicing", "Invoices, pay links and autopay through your own processor"],
+  ["Email approval and campaigns", "Mailchimp, for light use", "Sending queue, templates, unsubscribe by kind of mail"],
+];
+
+const alsoDoes = [
+  "Contacts with merge", "Vendors and 1099s", "PIN-locked notes", "Internal vs. shared comments",
+  "Waiting on others", "A meeting queue from your notetaker", "Introductions with blurbs", "Search by specialty",
+  "Calendar", "Notices and push notifications", "Teams with five permission levels", "CSV import",
+  "An e-signature audit trail",
+];
+
+type Status = "Built" | "Specced" | "Idea";
+const coming: { who: string; what: { text: string; status: Status }[] }[] = [
+  { who: "Every practice", what: [{ text: "Discipline modules: starter templates, analytical tools and SOPs for each discipline, with a learning AI tool that drafts them from your own work", status: "Specced" }] },
+  { who: "Fractional CFOs", what: [{ text: "Balance sheet and client financial statements feeding the scorecard; QuickBooks and Xero for accounting; bank connections for client companies", status: "Specced" }] },
+  { who: "Fractional CMOs", what: [
+    { text: "The HubSpot feed, which already reads deals and contacts", status: "Built" },
+    { text: "Marketing and engagement KPIs", status: "Specced" },
+  ] },
+  { who: "Fractional COOs", what: [{ text: "Operations scorecards from Track and Besty today, more feeds as clients bring them", status: "Built" }] },
+  { who: "Fractional CHROs", what: [{ text: "A simple HRIS: people, roles, documents, reviews", status: "Idea" }] },
+  { who: "Practices that refer each other", what: [{ text: "Shared clients with one portal, and referral fees tracked", status: "Specced" }] },
+  { who: "Everyone", what: [
+    { text: "Microsoft 365 sign-in, mail, calendar and OneDrive, switching on soon", status: "Built" },
+    { text: "Introduction suggestions from specialties", status: "Specced" },
+    { text: "E-signature with several signers, and an invoice from a signed proposal", status: "Specced" },
+    { text: "Notion and ClickUp import", status: "Specced" },
+  ] },
+];
+const statusStyle: Record<Status, string> = {
+  Built: "bg-[#e8f5ec] text-[#14632f]",
+  Specced: "bg-[#eef3fa] text-navy",
+  Idea: "bg-[#f1efea] text-[#4a4c50]",
+};
+---
+<Base preloadImage="/shots/home-dashboard-1440.webp">
+  <!-- Hero -->
+  <section class="wrap pt-14 pb-16 sm:pt-20">
+    <div class="max-w-4xl">
+      <h1 class="text-4xl font-extrabold leading-[1.08] sm:text-5xl lg:text-[3.6rem]">
+        Everything a fractional practice runs, in one place, <span class="text-orange-display">in your brand.</span>
+      </h1>
+      <p class="mt-6 max-w-3xl text-lg leading-relaxed text-[#33394a] sm:text-xl">
+        CRM, strategy calls, client work, scorecards, proposals, invoices and books, with nothing sent or
+        decided without you. Built by a fractional COO to run his own practice; live on real clients since
+        October 2026.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="/demo" class="btn-orange">Request demo access</a>
+        <a href="#how" class="btn-ghost">See the product</a>
+      </div>
+    </div>
+    <Shot name="home-dashboard" eager class="mt-14" />
+  </section>
+
+  <!-- 01 -->
+  <section id="problem" class="border-t border-line bg-white py-20">
+    <div class="wrap">
+      <SectionHead n="01" title="The problem" />
+      <div class="mt-10 grid gap-x-10 gap-y-8 md:grid-cols-2">
+        {problems.map(([head, body]) => (
+          <div class="border-l-[3px] border-orange pl-5">
+            <h3 class="text-xl font-bold">{head}</h3>
+            <p class="mt-1.5 text-[17px] leading-relaxed text-[#33394a]">{body}</p>
+          </div>
+        ))}
+      </div>
+      <p class="mt-12 max-w-3xl font-display text-xl font-bold text-navy">
+        Execs NOW HQ was built to fix exactly this, by someone who had the problem.
+      </p>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section id="how" class="py-20">
+    <div class="wrap">
+      <SectionHead n="02" title="How a practice runs on it">
+        <p class="mt-4 text-lg leading-relaxed text-[#33394a]">Six stops, from the first call to the books.</p>
+      </SectionHead>
+      <ol class="mt-12 space-y-20">
+        {stops.map((s, i) => (
+          <li class:list={["grid items-center gap-8 lg:gap-14", i % 2 === 1 ? "lg:grid-cols-[1.6fr_0.8fr]" : "lg:grid-cols-[0.8fr_1.6fr]"]}>
+            <div class:list={[i % 2 === 1 && "lg:order-2"]}>
+              <p class="font-display text-sm font-bold text-gray-dark">Stop {i + 1} of 6</p>
+              <h3 class="mt-1 text-2xl font-extrabold">{s.title}</h3>
+              <p class="mt-3 text-[17px] leading-relaxed text-[#33394a]">{s.text}</p>
+            </div>
+            <Shot name={s.shot} cardSide={i % 2 === 1 ? "left" : "right"} sizes="(min-width: 1152px) 680px, 100vw" />
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <!-- 03 -->
+  <section id="portal" class="border-t border-line bg-white py-20">
+    <div class="wrap">
+      <SectionHead n="03" title="What your client sees" line="Your brand everywhere. Ours nowhere." />
+      <div class="mt-10 grid gap-10 lg:grid-cols-[0.75fr_1.6fr] lg:gap-14">
+        <ul class="space-y-3 text-[17px] leading-relaxed text-[#33394a]">
+          <li><strong class="text-navy">Our work</strong>, with baseline, current and target on every goal.</li>
+          <li><strong class="text-navy">Their own tasks</strong>, which they create, assign and comment on.</li>
+          <li><strong class="text-navy">The scorecard</strong> and the <strong class="text-navy">value report</strong>.</li>
+          <li><strong class="text-navy">Sign-in by link</strong>, so there are no passwords.</li>
+          <li>Your name, colors and letterhead on the portal, the mail and every PDF.</li>
+        </ul>
+        <div class="space-y-12">
+          <Shot name="portal-our-work" videoSlot="03" video={VIDEO_SLOTS["03"]} sizes="(min-width: 1152px) 720px, 100vw" />
+          <Shot name="settings-branding" cardSide="left" sizes="(min-width: 1152px) 720px, 100vw" class="lg:ml-16" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 -->
+  <section id="strategy" class="py-20">
+    <div class="wrap">
+      <SectionHead n="04" title="The strategy call" line="Your method. Claude drafts. You decide." />
+      <div class="mt-10 grid gap-10 lg:grid-cols-[0.75fr_1.6fr] lg:gap-14">
+        <ul class="space-y-3 text-[17px] leading-relaxed text-[#33394a]">
+          <li>Your sections and your questions, with a pre-call form for the prospect.</li>
+          <li>Claude drafts Strategy Map rows as you type: bottleneck, root cause, fix, owner, 30/60/90.</li>
+          <li>Accept, edit or discard each one.</li>
+          <li>The map as a PDF on your letterhead, the same day, and as a Word download.</li>
+          <li>When they sign, the map becomes their goals, projects and tasks.</li>
+        </ul>
+        <Shot name="strategy-call-tray" videoSlot="04" video={VIDEO_SLOTS["04"]} sizes="(min-width: 1152px) 720px, 100vw" />
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section id="scorecards" class="border-t border-line bg-white py-20">
+    <div class="wrap">
+      <SectionHead n="05" title="Scorecards from the client's own systems" line="Goals are what you'll do. KPIs are what already happened." />
+      <div class="mt-10 grid gap-10 lg:grid-cols-[0.75fr_1.6fr] lg:gap-14">
+        <ul class="space-y-3 text-[17px] leading-relaxed text-[#33394a]">
+          <li>KPIs entered by hand or read from a Google Sheet, Track, HubSpot, Besty, Google reviews or the app itself.</li>
+          <li>Each KPI's own cadence and windows, with live targets.</li>
+          <li>Bonus plans, visible by level, so each person sees their own.</li>
+          <li>A meeting view for the screen on the wall.</li>
+        </ul>
+        <div class="space-y-12">
+          <Shot name="scorecard-grid" videoSlot="05" video={VIDEO_SLOTS["05"]} sizes="(min-width: 1152px) 720px, 100vw" />
+          <Shot name="my-bonus" cardSide="left" sizes="(min-width: 1152px) 720px, 100vw" class="lg:ml-16" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 -->
+  <section id="proposals" class="py-20">
+    <div class="wrap">
+      <SectionHead n="06" title="Proposal to signed to won" line="Sign, and the pipeline does the rest." />
+      <div class="mt-10 grid gap-10 lg:grid-cols-[0.75fr_1.6fr] lg:gap-14">
+        <ul class="space-y-3 text-[17px] leading-relaxed text-[#33394a]">
+          <li>Templates with your own fields, on your letterhead.</li>
+          <li>A signing page that works on a phone, then your countersignature.</li>
+          <li>The pipeline moves to Closed won by itself.</li>
+          <li>The welcome letter waits in your queue for your yes.</li>
+        </ul>
+        <div class="space-y-12">
+          <Shot name="documents-proposal" videoSlot="06" video={VIDEO_SLOTS["06"]} sizes="(min-width: 1152px) 720px, 100vw" />
+          <Shot name="signing-page" cardSide="left" sizes="(min-width: 1152px) 720px, 100vw" class="lg:ml-16" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 -->
+  <section id="replaces" class="border-t border-line bg-white py-20">
+    <div class="wrap">
+      <SectionHead n="07" title="What it replaces" />
+      <div class="mt-10 overflow-x-auto rounded-xl border border-line">
+        <table class="w-full min-w-[640px] border-collapse text-left text-[15px]">
+          <caption class="sr-only">Jobs a practice does, tools often used for them, and where each lives in Execs NOW HQ</caption>
+          <thead class="bg-paper font-display text-sm text-navy">
+            <tr><th scope="col" class="px-4 py-3">Job</th><th scope="col" class="px-4 py-3">Tools like</th><th scope="col" class="px-4 py-3">In Execs NOW HQ</th></tr>
+          </thead>
+          <tbody class="divide-y divide-line">
+            {replaces.map(([job, tools, ours]) => (
+              <tr><th scope="row" class="px-4 py-3 font-semibold text-navy">{job}</th><td class="px-4 py-3 text-gray-dark">{tools}</td><td class="px-4 py-3">{ours}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 text-sm text-gray-dark">Trademarks belong to their owners; these are examples, not endorsements.</p>
+
+      <h3 class="mt-14 text-2xl font-extrabold">Does it do…? Yes.</h3>
+      <ul class="mt-5 flex flex-wrap gap-2.5">
+        {alsoDoes.map((x) => <li class="rounded-full border border-line bg-paper px-3.5 py-1.5 text-[15px]">{x}</li>)}
+        <li class="rounded-full border border-dashed border-gray-light px-3.5 py-1.5 text-[15px] text-gray-dark">Microsoft 365, coming</li>
+      </ul>
+
+      <div class="mt-14 grid gap-12 lg:grid-cols-2">
+        <Shot name="company-mail" cardSide="left" sizes="(min-width: 1152px) 540px, 100vw" />
+        <Shot name="sending-queue" cardSide="right" sizes="(min-width: 1152px) 540px, 100vw" />
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 -->
+  <section id="pricing" class="py-20">
+    <div class="wrap">
+      <SectionHead n="08" title="Pricing">
+        <p class="mt-4 text-lg text-[#33394a]">Flat monthly prices. <a href="/pricing" class="text-navy underline">Full pricing</a></p>
+      </SectionHead>
+      <div class="mt-10"><PricingCards /></div>
+      <a href="/demo" class="btn-orange mt-8">Request demo access</a>
+    </div>
+  </section>
+
+  <!-- 09 -->
+  <section id="next" class="border-t border-line bg-white py-20">
+    <div class="wrap">
+      <SectionHead n="09" title="Coming next, by kind of fractional" />
+      <div class="mt-10 overflow-x-auto rounded-xl border border-line">
+        <table class="w-full min-w-[640px] border-collapse text-left text-[15px]">
+          <caption class="sr-only">What is built, specced or an idea, for each kind of fractional practice</caption>
+          <thead class="bg-paper font-display text-sm text-navy">
+            <tr><th scope="col" class="px-4 py-3">For</th><th scope="col" class="px-4 py-3">What</th><th scope="col" class="w-28 px-4 py-3">Status</th></tr>
+          </thead>
+          <tbody class="divide-y divide-line">
+            {coming.map((row) => row.what.map((w, j) => (
+              <tr>
+                {j === 0 && <th scope="row" rowspan={row.what.length} class="px-4 py-3 align-top font-semibold text-navy">{row.who}</th>}
+                <td class="px-4 py-3">{w.text}</td>
+                <td class="px-4 py-3"><span class:list={["inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold", statusStyle[w.status]]}>{w.status}</span></td>
+              </tr>
+            )))}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-8 font-display text-xl font-bold text-navy">Which would make you switch? <a href="#demo" class="text-orange-ink underline">Tell us on the demo form.</a></p>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" class="py-20">
+    <div class="wrap max-w-4xl"><Faq /></div>
+  </section>
+
+  <!-- 10 -->
+  <section id="demo" class="border-t border-line bg-white py-20">
+    <div class="wrap">
+      <DemoForm>
+        <div slot="intro">
+          <p class="eyebrow"><span class="inline-block border-b-2 border-orange pb-0.5">10</span></p>
+          <h2 class="mt-3 text-3xl font-extrabold leading-tight sm:text-4xl">Request demo access</h2>
+        </div>
+      </DemoForm>
+    </div>
+  </section>
+</Base>

@@ -6,6 +6,7 @@ from apps.accounts import views as account_views
 from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail, views_microsoft
+from apps.crm import views_site_leads as crm_site_leads
 from apps.esign import views_sign as esign_sign
 from apps.finance.bankfeeds import views as bank_views
 from apps.strategy import views_precall as strategy_precall
@@ -35,6 +36,9 @@ urlpatterns = [
     path("accounts/google/external/callback", google_external.google_external_callback,
          name="google-external-callback"),
     path("accounts/", include("allauth.urls")),
+    # The marketing site's "Request demo access" form, forwarded by the site's
+    # own server with the shared secret (apps/crm/views_site_leads.py).
+    re_path(r"^api/public/leads/?$", crm_site_leads.leads, name="public-leads"),
     path("api/branding", account_views.branding, name="branding"),
     # The practice's logo for client-facing pages: no id in the URL, so it can
     # only ever serve the requesting tenant's own (white-label).

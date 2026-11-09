@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Montserrat (SIL OFL, public/fonts/OFL.txt) for headings only. */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 500 900;
+  font-display: swap;
+  src: url("/fonts/montserrat-latin-wght.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/* Brand tokens, shared with the app (docs/brand/README.md). */
+@theme {
+  --color-navy: #0d2c54;
+  --color-navy-700: #203d62;
+  --color-orange: #e87722;
+  /* Orange for small text on the light page: #e87722 is 3:1 there, which
+     fails body-size text, so words in orange use this darker shade. */
+  --color-orange-ink: #a8520f;
+  /* Orange for large headings: 3:1 on the page, enough for text 24px+ bold. */
+  --color-orange-display: #e0701a;
+  --color-gray-dark: #6d6e71;
+  --color-gray-light: #939598;
+  --color-paper: #faf8f4;
+  --color-line: #e4e1da;
+  --font-display: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { @apply bg-paper text-[#1d2433] font-sans antialiased; }
+  h1, h2, h3 { @apply font-display text-navy; letter-spacing: -0.01em; }
+  a { text-underline-offset: 3px; }
+  /* Grid children may shrink below their content (a screenshot's frame), so a
+     phone-width page never scrolls sideways. */
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .grid > * { min-width: 0; }
+  :focus-visible { outline: 3px solid var(--color-orange); outline-offset: 2px; }
+}
+
+@layer components {
+  .wrap { @apply mx-auto w-full max-w-6xl px-4 sm:px-6; }
+  /* Navy on orange is 4.7:1; white on orange would be 3:1. */
+  .btn-orange { @apply inline-flex items-center justify-center rounded-md px-5 py-3 text-[15px] font-semibold no-underline transition-colors bg-orange text-navy hover:bg-[#f08a3a]; }
+  .btn-ghost { @apply inline-flex items-center justify-center rounded-md px-5 py-3 text-[15px] font-semibold no-underline transition-colors border border-navy/25 text-navy hover:border-navy hover:bg-white; }
+  .eyebrow { @apply font-display text-sm font-bold uppercase tracking-[0.12em] text-orange-ink; }
+  .prose-plain p { @apply mb-4 leading-relaxed; }
+  .prose-plain h2 { @apply mt-10 mb-3 text-2xl font-bold; }
+  .prose-plain h3 { @apply mt-6 mb-2 text-lg font-bold; }
+  .prose-plain ul { @apply mb-4 list-disc space-y-1.5 pl-6; }
+  .prose-plain a { @apply text-navy underline; }
+}

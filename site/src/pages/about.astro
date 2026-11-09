@@ -1,0 +1,33 @@
+---
+import Base from "../layouts/Base.astro";
+import { HEADSHOT } from "../config";
+---
+<Base title="About" description="A letter from Bryan Baker, the fractional COO who built Execs NOW HQ to run his own practice.">
+  <article class="wrap max-w-3xl pt-14 pb-10 sm:pt-20">
+    <p class="eyebrow">About</p>
+    <h1 class="mt-3 text-4xl font-extrabold leading-tight sm:text-5xl">I built this to run my own practice.</h1>
+
+    <div class="mt-10 flex flex-col gap-8 sm:flex-row sm:items-start">
+      <picture class="shrink-0">
+        <source type="image/webp" srcset={`/about/bryan-${HEADSHOT}.webp`} />
+        <img src={`/about/bryan-${HEADSHOT}.jpg`} alt="Bryan Baker" width="800" height="800"
+          class="size-40 rounded-xl border border-line object-cover sm:size-48" loading="eager" />
+      </picture>
+      <div class="text-[17.5px] leading-[1.75] text-[#262c3a]">
+        <p>Hi, I'm Bryan.</p>
+        <p class="mt-5">I'm a fractional COO. My practice, Executives Now, helps founders find what's holding the business back and fix it. Before that I did the work from the inside: I helped grow a window-cleaning company from $1M to $10M in revenue in 28 months, and I rebuilt the inside sales team at an accounting firm, which brought in $1M of new revenue.</p>
+      </div>
+    </div>
+
+    <div class="mt-5 space-y-5 text-[17.5px] leading-[1.75] text-[#262c3a]">
+      <p>When I went fractional, I found that running the practice took more tools than running the work. A CRM for prospects. Something for proposals and signatures. A portal for clients, a dashboard tool for their numbers, and books for my own. None of them talked to each other, none of them carried my name, and my clients couldn't see what I was doing for them unless I wrote it up every month.</p>
+      <p>The strategy call was the worst of it. Everything that mattered was said in that hour, and then I retyped it into a document, then into a plan, then into a task list.</p>
+      <p>So I built the thing I wanted. Execs NOW HQ runs the strategy call from my own questions and drafts the map as we talk. The map becomes the client's goals and projects. The client sees the work, their scorecard and their progress in a portal with my name on it, and the proposal, the signature, the invoice and the books all live in the same place. And nothing goes to a client, and nothing gets decided, without me saying yes.</p>
+      <p>It has been running my practice, with my real clients, since October 2026. Every week I find something to make better, and I fix it.</p>
+      <p>Next, I'm opening it to other fractionals: CFOs, CMOs and CHROs as well as COOs, each with modules for their own discipline, and practices that refer clients to each other sharing one portal. If that's you, <a href="/demo" class="text-navy underline">request demo access</a> and tell me what would make you switch. I read every one.</p>
+    </div>
+
+    <p class="mt-10 font-serif text-3xl italic text-navy">Bryan Baker</p>
+    <p class="mt-1 text-gray-dark">Executives Now</p>
+  </article>
+</Base>

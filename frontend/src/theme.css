@@ -32,12 +32,16 @@
 
 :root {
   /* --- brand ------------------------------------------------------------ */
-  --navy: #0a3a65;
-  --navy-700: #0d4a80;
-  --navy-300: #7ba3c6;
-  --orange: #f58220;
-  --orange-600: #dc7318;
-  --orange-050: #fef3e8;
+  /* The logo's palette (docs/brand/README.md), on the product's own screens
+     since 2026-11-09; it replaced #0a3a65 and #f58220. The shades relate to
+     the two colors the way lib/palette.ts derives a practice's. Practice-
+     branded surfaces set their own family over these and are unaffected. */
+  --navy: #0d2c54;
+  --navy-700: #203d62;
+  --navy-300: #7a8ba1;
+  --orange: #e87722;
+  --orange-600: #d16b1f;
+  --orange-050: #fdf5f0;
   /* Text on an orange fill. White on the product's own screens; the client
      portal sets it per practice (lib/palette.ts). */
   --on-orange: #fff;
@@ -1416,7 +1420,7 @@ ul.plain li { padding: var(--s1) 0; }
 
 /* A merge field in the rich editor: one unit, the caret goes after it. */
 .richtext .merge-chip { display: inline-block; padding: 0 .35em; margin: 0 .05em;
-  border-radius: 4px; background: var(--surface-2, #EEF2F6); color: var(--navy, #0A3A65);
+  border-radius: 4px; background: var(--surface-2, #EEF2F6); color: var(--navy, #0D2C54);
   font-size: .92em; line-height: 1.5; white-space: nowrap; user-select: all; }
 
 /* U2: the Import door, one choice per importer. */
@@ -1839,9 +1843,9 @@ td.bn-ok, td.bn-behind, td.bn-off { font-weight: 600; }
 .sc-feed-grid tbody th { color: var(--sc-muted); font-weight: 500; background: #fff; }
 .sc-feed-grid tr.header td { font-weight: 700; background: var(--sc-line-soft); }
 .sc-feed-grid th.picked, .sc-feed-grid td.picked { background: rgba(245, 130, 32, 0.14); }
-.sc-feed-tag { display: block; font-size: 10px; font-weight: 700; color: #F58220; text-transform: uppercase; }
+.sc-feed-tag { display: block; font-size: 10px; font-weight: 700; color: #E87722; text-transform: uppercase; }
 button.sc-feed-cell { all: unset; display: block; min-width: 2em; min-height: 1.2em; cursor: pointer; }
-button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
+button.sc-feed-cell:focus-visible { outline: 2px solid #E87722; }
 .sc-feed-preview { border-top: 1px solid var(--sc-line); padding-top: 10px; display: flex;
   flex-direction: column; gap: 8px; }
 .sc-feed-preview tr.sc-feed-kept td, .sc-feed-preview tr.sc-feed-open td { color: var(--sc-muted); }
@@ -1873,7 +1877,7 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .follow-up-form .row.wrap { flex-wrap: wrap; align-items: center; gap: 6px; }
 .follow-up-form input[type="number"] { width: 5rem; flex: 0 0 auto; }
 .follow-up-form select { flex: 1 1 200px; min-width: 0; }
-.follow-up-offer { border-left: 4px solid #F58220; margin-bottom: 1rem; }
+.follow-up-offer { border-left: 4px solid #E87722; margin-bottom: 1rem; }
 .follow-up-line td { font-size: .9rem; padding-top: 0; }
 .nmi-events li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 
@@ -1881,7 +1885,7 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #F58220; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .pill.chip { display: inline-flex; align-items: center; gap: 4px; }
 .chip-x { all: unset; cursor: pointer; padding: 0 2px; line-height: 1; }
-.chip-x:focus-visible { outline: 2px solid #F58220; }
+.chip-x:focus-visible { outline: 2px solid #E87722; }
 .what-they-do-form, .intro-form { display: flex; flex-direction: column; gap: 6px; }
 .intro-form { margin-bottom: .75rem; }
 .intro-how { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px var(--s4); }

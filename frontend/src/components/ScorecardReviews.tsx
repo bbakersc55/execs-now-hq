@@ -50,7 +50,7 @@ export function Stars({ n }: { n: number | null }) {
   if (!n) return <span className="muted">no stars</span>;
   return (
     <span aria-label={`${n} star${n === 1 ? "" : "s"}`} title={`${n} of 5`}
-      style={{ color: "var(--orange, #F58220)", letterSpacing: "1px", whiteSpace: "nowrap" }}>
+      style={{ color: "var(--orange, #E87722)", letterSpacing: "1px", whiteSpace: "nowrap" }}>
       {"★".repeat(n)}<span style={{ color: "var(--line-strong, #c9ccd1)" }}>{"★".repeat(5 - n)}</span>
     </span>
   );

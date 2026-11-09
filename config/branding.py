@@ -9,8 +9,10 @@ PRODUCT_NAME = "Execs NOW HQ"
 PRODUCT_OWNER = "Executives Now"
 
 PALETTE = {
-    "dark_blue": "#0A3A65",
-    "orange": "#F58220",
+    # The logo's palette since 2026-11-09 (was #0A3A65 / #F58220). The product's
+    # own chrome only; a practice's brand is its own (Branding settings).
+    "dark_blue": "#0D2C54",
+    "orange": "#E87722",
     "gray_dark": "#6D6E71",
     "gray_light": "#939598",
 }

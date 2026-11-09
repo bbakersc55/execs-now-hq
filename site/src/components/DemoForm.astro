@@ -1,0 +1,95 @@
+---
+import { CONTACT_EMAIL } from "../config";
+interface Props { headingLevel?: "h1" | "h2" }
+const { headingLevel = "h2" } = Astro.props;
+const H = headingLevel;
+const field = "mt-1.5 block w-full rounded-md border border-[#c9c5bd] bg-white px-3 py-2.5 text-[15px] text-[#1d2433] focus:border-navy";
+const label = "block text-sm font-semibold text-navy";
+---
+<div class="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
+  <div>
+    <slot name="intro">
+      <H class="text-3xl font-extrabold leading-tight sm:text-4xl">Request demo access</H>
+    </slot>
+    <p class="mt-4 max-w-md leading-relaxed text-[#33394a]">
+      Ask for a private copy of the demo practice for 30 days, with fictional clients and every
+      module switched on, or for a call. You'll hear back within one business day.
+    </p>
+    <p class="mt-4 max-w-md text-sm text-gray-dark">
+      Rather email? Write to <a class="text-navy underline" href={`mailto:${CONTACT_EMAIL}?subject=Demo%20access`}>{CONTACT_EMAIL}</a>.
+    </p>
+  </div>
+  <form id="demo-form" method="post" action="/api/lead" class="rounded-xl border border-line bg-white p-5 sm:p-7" novalidate>
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div><label class={label} for="f-name">Name</label><input class={field} id="f-name" name="name" autocomplete="name" required maxlength="120" /></div>
+      <div><label class={label} for="f-email">Email</label><input class={field} id="f-email" name="email" type="email" autocomplete="email" required maxlength="254" /></div>
+      <div class="sm:col-span-2"><label class={label} for="f-practice">Practice name</label><input class={field} id="f-practice" name="practice_name" autocomplete="organization" maxlength="160" /></div>
+      <div>
+        <label class={label} for="f-discipline">Discipline</label>
+        <select class={field} id="f-discipline" name="discipline">
+          <option value="coo">COO</option><option value="cfo">CFO</option><option value="cmo">CMO</option>
+          <option value="chro">CHRO</option><option value="other">Other</option>
+        </select>
+      </div>
+      <fieldset>
+        <legend class={label}>Email platform</legend>
+        <div class="mt-2.5 flex gap-5 text-[15px]">
+          <label class="flex items-center gap-2"><input type="radio" name="email_platform" value="google" checked class="size-4 accent-navy" /> Google</label>
+          <label class="flex items-center gap-2"><input type="radio" name="email_platform" value="microsoft" class="size-4 accent-navy" /> Microsoft</label>
+        </div>
+      </fieldset>
+      <fieldset class="sm:col-span-2">
+        <legend class={label}>What would you like?</legend>
+        <div class="mt-2.5 flex flex-col gap-2.5 text-[15px] sm:flex-row sm:gap-6">
+          <label class="flex items-center gap-2"><input type="radio" name="wants" value="demo_copy" checked class="size-4 accent-navy" /> A private demo copy for 30 days</label>
+          <label class="flex items-center gap-2"><input type="radio" name="wants" value="call" class="size-4 accent-navy" /> A call</label>
+        </div>
+      </fieldset>
+      <div class="sm:col-span-2">
+        <label class={label} for="f-message">Anything we should know? <span class="font-normal text-gray-dark">(optional)</span></label>
+        <input class={field} id="f-message" name="message" maxlength="500" placeholder="Which feature would make you switch?" />
+      </div>
+      <div class="absolute -left-[9999px]" aria-hidden="true">
+        <label for="f-website">Leave this empty</label><input id="f-website" name="website" tabindex="-1" autocomplete="off" />
+      </div>
+    </div>
+    <div class="mt-6 flex flex-wrap items-center gap-4">
+      <button type="submit" class="btn-orange">Request demo access</button>
+      <p id="demo-status" class="text-sm text-[#33394a]" role="status" aria-live="polite"></p>
+    </div>
+  </form>
+</div>
+<script>
+  const form = document.getElementById("demo-form") as HTMLFormElement | null;
+  const status = document.getElementById("demo-status");
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!status) return;
+    if (!form.checkValidity()) { status.textContent = "Please add your name and a valid email."; form.reportValidity(); return; }
+    const button = form.querySelector("button");
+    if (button) button.disabled = true;
+    status.textContent = "Sending…";
+    try {
+      const response = await fetch("/api/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      if (response.ok) {
+        form.reset();
+        status.textContent = "Thanks. You'll hear back within one business day.";
+      } else if (response.status === 400) {
+        const body = await response.json().catch(() => ({}));
+        status.textContent = body.detail || "Please check the form and try again.";
+      } else if (response.status === 429) {
+        status.textContent = "That's a lot of requests from here. Please email info@execsnowhq.com instead.";
+      } else {
+        status.textContent = "That didn't go through. Please email info@execsnowhq.com instead.";
+      }
+    } catch {
+      status.textContent = "That didn't go through. Please email info@execsnowhq.com instead.";
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+</script>

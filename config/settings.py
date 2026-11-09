@@ -360,8 +360,16 @@ VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="").strip()
 VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="").strip()
 VAPID_SUBJECT = env("VAPID_SUBJECT", default="mailto:info@getexecutivesnow.com").strip()
 
+# --- The marketing site's "Request demo access" form (2026-11-09) ---
+# The site's own server forwards each form post to POST /api/public/leads with
+# this shared secret in X-Site-Lead-Token. Unset, the endpoint refuses every
+# request: it is never open. The practice the leads land in is the one with
+# this slug; unset, the platform owner's own practice (Executives Now).
+SITE_LEAD_TOKEN = env("SITE_LEAD_TOKEN", default="").strip()
+SITE_LEAD_PRACTICE = env("SITE_LEAD_PRACTICE", default="").strip()
+
 # --- Google ---
-GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="execs-now-hq")
+GOOGLE_CLOUD_PROJECT =env("GOOGLE_CLOUD_PROJECT", default="execs-now-hq")
 GCS_BUCKET_MEDIA = env("GCS_BUCKET_MEDIA", default="execs-now-hq-media")
 # Speech-to-Text language for recordings (FR-2.16). BCP-47.
 GOOGLE_STT_LANGUAGE = env("GOOGLE_STT_LANGUAGE", default="en-US")

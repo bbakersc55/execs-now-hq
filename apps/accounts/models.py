@@ -192,3 +192,28 @@ class MagicLinkToken(TenantScopedModel):
     @property
     def is_valid(self):
         return self.used_at is None and self.expires_at > timezone.now()
+
+
+class RateCount(models.Model):
+    """One fixed window's count for one rate limit and one key (2026-11-09).
+
+    In the database, so every gunicorn worker counts the same requests: the
+    cache-backed limit in `ratelimit.too_many` is each process's own memory.
+    The key is stored hashed, never as the address it came from. Not a
+    practice's data: it is counted before any practice is known.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    prefix = models.CharField(max_length=40)
+    key_digest = models.CharField(max_length=32)
+    window_start = models.DateTimeField()
+    count = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "rate_count"
+        constraints = [
+            models.UniqueConstraint(fields=["prefix", "key_digest", "window_start"],
+                                    name="rate_count_one_per_window"),
+        ]
+        indexes = [models.Index(fields=["prefix", "window_start"])]
