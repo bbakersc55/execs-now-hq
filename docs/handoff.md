@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-05 UTC**, after Release 36. **The next session starts at
-"2026-11-05, late: where things stand" just below**, which sums up Releases
+2026-11-09 UTC**, after Release 37. **The next session starts at
+"2026-11-09: Release 37, the marketing site" just below**; then
+"2026-11-05, late: where things stand", which sums up Releases
 32 to 36 and everything open; then "2026-11-05, later: Release 36, personal
 bank feeds", then "2026-11-05: Release 35, Google reviews", then
 "2026-11-04, night: Release 34, the HubSpot and Besty editors",
@@ -22,6 +23,47 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-09: Release 37, the marketing site
+
+- **Release 37 is live**: `main` at `9397d7d`, **three migrations**
+  (`accounts 0006_rate_count`, `crm 0056`, `notes 0004`; additive, the last
+  two choices only), applied by the runbook; **no new scheduled job**.
+  Runbook, "Observed at Release 37".
+- **In it**, besides the Release 36 notes above:
+  - the parallel gate (`6ef2c60`) and the brand files (`40b96b3`);
+  - the product's own interface on the logo palette (`#0D2C54`, `#E87722`);
+    practice-branded surfaces unchanged. Orange buttons carry navy text
+    (4.7:1) with a lighter hover (5.5:1);
+  - **a client user's sign-in lands on Our work** (`/work`). Before, every
+    sign-in ended on `/`, which showed a client the staff Contacts screen
+    and four refused requests; reproduced with a real magic link;
+  - three small fixes: Home names a digest's cadence, and two dropped spaces
+    (Settings → Email, Digests); the Branding tab preview's mark is 16×16;
+  - **the marketing site** (`site/`, Astro, Railway service `enhq-site`;
+    `site/README.md`), with Bryan's review applied: new pricing (Micro
+    practice $199, Team $299, `site/src/data/pricing.ts`), Microsoft 365 and
+    Google Workspace both shown as available now, a "Capture the meeting"
+    stop, **no changelog anywhere**, one site address
+    (`site/src/site-url.mjs`, `https://www.execsnowhq.com`);
+  - **`POST /api/public/leads`**: the demo form, forwarded by the site's
+    server, makes a prospect in the Executives Now practice with a note, a
+    Notice and a "Website reply" draft for approval.
+- **Open:**
+  - **`SITE_LEAD_TOKEN` is set on neither `execs-now-hq` nor `enhq-site`**;
+    until it is (same value on both, by the owner), the endpoint answers 503
+    and a demo request from the website is lost. The copy-paste block was
+    given 2026-11-09.
+  - **The site's watch path** was `site/**`, and Railway skipped the
+    release's site deployment. It is now `/site/**`. **Prove it with a
+    trivial site commit after the next release**, not before; until then a
+    site change reaches production only by hand.
+    The proof commit is the one-line correction in `site/README.md` (it
+    still says `site/**`), held back so the next release carries no site
+    change.
+  - `www.execsnowhq.com` answers (CNAME to `hu8tx0t5.up.railway.app`,
+    `/healthz` 200 on 2026-11-09).
+  - Azure/Entra app registration, still on Bryan's side.
 
 ## 2026-11-05, late: where things stand
 

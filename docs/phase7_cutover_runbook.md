@@ -781,6 +781,26 @@ served bundle carries the "Personal: bank feeds" card. **Push to web serving:
 (its start-up migration blocked by a reseed running at the same time) and was
 redeployed by hand at 18:00:26, SUCCESS.
 
+**Observed at Release 37 (2026-11-09 UTC, three migrations,
+`accounts 0006_rate_count`, `crm 0056_outbox_website_reply_producer` and
+`notes 0004_note_source_website`: the marketing site, the website's lead
+endpoint, the logo palette and the client landing fix, `9397d7d`):** R1: the
+owner ran the backup by hand: `execsnowhq_prod_20261109_201708.sql.gz`,
+13.0 MB, media copied (the run's 30-day prune took the 2026-10-10 08:03 dump).
+R2: `main` fast-forwarded `2099487..9397d7d`, pushed 21:25:50. R3: worker
+`WAITING` 21:27:57, listing exactly the three; **the header was logged a
+moment before its list**, so a read at that instant shows no migrations: read
+the log again before judging it. R4: applied by me 21:28:14–21, all `OK`
+(0006 creates `rate_count`; 0056 and 0004 are choices only, no SQL). R5:
+`migrations current` 21:28:33, running 21:28:38. R5b: no new scheduled job.
+R6: web `e1bbf71a` SUCCESS by itself; `/healthz` 200 at 21:28:59, and
+`POST /api/public/leads` answers 503 (new route; `SITE_LEAD_TOKEN` not yet
+set). **Push to web serving: about 3 min.** `enhq-site`'s deployment of the
+push was **SKIPPED, "No changes to watched files"**, though `site/` changed:
+its watch path was `site/**`. Set to `/site/**` the same evening; the
+trivial site commit after the next release proves it. The owner deployed
+`9397d7d` to the site by hand meanwhile (`0740e43d`, watch paths ignored).
+
 ---
 
 ## Part A — the owner's steps, in order
