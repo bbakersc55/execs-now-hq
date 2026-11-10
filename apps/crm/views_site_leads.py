@@ -172,7 +172,10 @@ def leads(request):
     if data is None:
         return _answer(request, UNREADABLE, 400)
     if str(data.get("website") or "").strip():
-        return _answer(request, OK, 201)              # the honeypot: as a success would
+        # Answered as a success would, so a bot learns nothing; logged, so a
+        # person whose browser filled the hidden field in is not lost unseen.
+        log.warning("Website lead dropped: the hidden field was filled in.")
+        return _answer(request, OK, 201)
 
     serializer = LeadSerializer(data=data)
     if not serializer.is_valid():

@@ -32,6 +32,19 @@ PIPELINES = [
         ("active_referrer", "Active Referrer", "qualified", 4),
         ("dormant", "Dormant", "parked", 5),
     ]),
+    # Requests from the marketing site's form (owner, 2026-11-09). Converted
+    # puts the contact in the sales pipeline's entry stage; a `won` stage here
+    # is not a sale, so it makes no client (`pipeline.apply_client_invariant`).
+    # A practice from before then adds it with one click
+    # (`pipeline.add_website_pipeline`, Settings -> Stage rules).
+    ("Website leads", "website", 2, [
+        ("new", "New", "entry", 0),
+        ("contacted", "Contacted", "working", 1),
+        ("demo_access_given", "Demo access given", "working", 2),
+        ("call_booked", "Call booked", "qualified", 3),
+        ("converted", "Converted", "won", 4),
+        ("not_a_fit", "Not a fit", "lost", 5),
+    ]),
 ]
 
 CONTACT_TYPES = [

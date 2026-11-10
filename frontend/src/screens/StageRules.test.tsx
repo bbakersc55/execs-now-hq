@@ -167,3 +167,28 @@ describe("stage rules, part 2: one card per stage", () => {
     await waitFor(() => expect(sent(fetchMock, "PATCH", "/api/stage-automations/r1/")).toEqual({ is_active: false }));
   });
 });
+
+describe("the Website leads pipeline, one click (2026-11-09)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const WEBSITE = {
+    id: "p-web", name: "Website leads", kind: "website", kind_label: "Website leads", position: 2,
+    contact_count: 0, stages: [{ ...stage("w-new", "New", "entry", 0), pipeline: "p-web" }],
+  };
+
+  it("offers it to a practice without it, and adds it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show({ "POST /api/pipelines/website-leads/": WEBSITE });
+    const add = await screen.findByRole("button", { name: "Add the Website leads pipeline" });
+    await user.click(add);
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.method === "POST"
+      && c.url === "/api/pipelines/website-leads/")).toBe(true));
+    expect(await screen.findByText(/Requests from the website's form now land in New/)).toBeInTheDocument();
+  });
+
+  it("offers nothing to a practice that has it", async () => {
+    show({ "/api/pipelines/": [...PIPELINES, WEBSITE] });
+    expect(await screen.findByRole("button", { name: "Website leads" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add the Website leads pipeline" })).toBeNull();
+  });
+});

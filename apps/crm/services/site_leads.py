@@ -8,9 +8,12 @@ one practice and one transaction:
 2. their company, by the address's domain, or by the practice name they typed
    when the address is a public mail provider's (none when that is blank);
 3. the tag "Website lead";
-4. the sales pipeline's entry stage, for someone not in it yet. **Someone
-   already in the sales pipeline stays where they are**, wherever that is: a
-   form on the website is not a reason to move a deal backwards;
+4. **New, in the "Website leads" pipeline** (owner, 2026-11-09), for someone
+   not in it yet; someone already there stays at their stage. A sales
+   position is untouched: a form on the website is not a reason to move a
+   deal backwards. A practice without that pipeline (one from before it, not
+   yet added in Settings -> Stage rules) gets the sales pipeline's entry
+   stage instead, for someone not in it yet;
 5. a note on the contact with what the form said;
 6. a notice to the practice owner;
 7. the reply, from the "Website reply" template, **waiting in the Outbox for
@@ -118,10 +121,13 @@ def _receive(practice, lead: Lead):
     owner = practice_owner(practice)
     contact, existing = _contact_for(practice, lead, owner)
     referral.add_type(contact, "prospect")
-    _place(contact, pipeline_service)
+    placed = _place(contact, pipeline_service)
     note = _note(practice, contact, lead)
     _tell(practice, contact, lead, note, existing=existing)
     _queue_reply(practice, contact, lead, owner)
+    # Ids only: enough to find the lead from the log, nothing the visitor typed.
+    log.info("Website lead received: contact %s (%s) in practice %s, %s.", contact.pk,
+             "existing contact" if existing else "new contact", practice.pk, placed)
     return contact
 
 
@@ -207,18 +213,23 @@ def _company_for(practice, lead: Lead):
 
 
 def _place(contact, pipeline_service):
-    """The sales pipeline's entry stage, unless they are in it already."""
-    sales = pipeline_service.sales_pipeline(contact.tenant)
-    if sales is None:
+    """Website leads' New, or without that pipeline the sales pipeline's
+    entry stage; nobody is moved who is in that pipeline already. Returns
+    where they are, in words, for the log."""
+    website = pipeline_service.website_pipeline(contact.tenant)
+    target = website or pipeline_service.sales_pipeline(contact.tenant)
+    if target is None:
         log.error("Website lead: the practice %s has no sales pipeline; contact %s was "
                   "not placed.", contact.tenant_id, contact.pk)
-        return None
-    if pipeline_service.position_for(contact, sales) is not None:
-        return None
-    stage = pipeline_service.entry_stage(sales)
+        return "not placed (no pipeline)"
+    held = pipeline_service.position_for(contact, target)
+    if held is not None:
+        return f"already at {held.stage.label} in {target.name}"
+    stage = pipeline_service.entry_stage(target)
     if stage is None:
-        return None
-    return pipeline_service.change_stage(contact, stage, reason="website form")
+        return f"not placed ({target.name} has no stages)"
+    pipeline_service.change_stage(contact, stage, reason="website form")
+    return f"placed at {stage.label} in {target.name}"
 
 
 # ------------------------------------------------------------- what they said

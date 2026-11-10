@@ -304,7 +304,9 @@ export interface ContactType {
 export interface Pipeline {
   id: string;
   name: string;
-  kind: "sales" | "referral" | "custom";
+  kind: "sales" | "referral" | "website" | "custom";
+  /** The kind by name ("Website leads"), for reading. */
+  kind_label?: string;
   position: number;
   stages: Stage[];
   contact_count: number;

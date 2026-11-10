@@ -137,9 +137,9 @@ def test_a_new_lead_does_all_seven_things_and_sends_nothing(practice, ff, stages
     assert CompanyDomain.all_objects.get(company=contact.company).domain == "rivera-ops.com"
     # 3. The tag.
     assert contact.tags == ["Website lead"]
-    # 4. The sales pipeline's entry stage.
+    # 4. New, in the Website leads pipeline (2026-11-09), and nowhere else.
     position = ContactPipelinePosition.all_objects.get(contact=contact)
-    assert position.stage_id == stages["initial_contact_made"].pk
+    assert (position.pipeline.kind, position.stage.code) == ("website", "new")
     # 5. What the form said, on the contact.
     note = Note.all_objects.get(contact=contact)
     assert note.source == Note.Source.WEBSITE and note.title == "Website request"
@@ -221,7 +221,8 @@ def test_a_public_mail_address_and_no_practice_name_is_no_company(practice, clie
 
 def test_an_existing_contact_further_along_is_not_moved_back(practice, stages, sales, client):
     """Decision (2026-11-09): anyone already in the sales pipeline stays at
-    their stage, wherever it is. A form on the website does not move a deal
+    their sales stage, wherever it is (and the request lands in Website
+    leads' New beside it). A form on the website does not move a deal
     backwards; the notice says they are already a contact."""
     with tenant_context(practice.pk):
         dana = ContactFactory(tenant=practice, first_name="Dana", last_name="R.",
@@ -232,8 +233,11 @@ def test_an_existing_contact_further_along_is_not_moved_back(practice, stages, s
     assert post(client, lead()).status_code == 201
 
     dana.refresh_from_db()
-    assert ContactPipelinePosition.all_objects.get(contact=dana).stage_id \
-        == stages["proposal_given"].pk
+    # Their sales stage is kept; the request itself lands in Website leads' New.
+    held = {p.pipeline.kind: p.stage_id
+            for p in ContactPipelinePosition.all_objects.filter(contact=dana)}
+    assert held["sales"] == stages["proposal_given"].pk
+    assert set(held) == {"sales", "website"}
     # Their record is kept; only what was missing is added.
     assert (dana.first_name, dana.last_name) == ("Dana", "R.")
     assert dana.tags == ["VIP", "Website lead"]

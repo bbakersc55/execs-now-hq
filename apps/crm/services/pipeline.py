@@ -39,6 +39,12 @@ def referral_pipeline(tenant):
     ).order_by("position").first()
 
 
+def website_pipeline(tenant):
+    return Pipeline.all_objects.filter(
+        tenant=tenant, kind=Pipeline.Kind.WEBSITE
+    ).order_by("position").first()
+
+
 def entry_stage(pipeline):
     """Where a contact enters. The `entry` stage, or failing that the first."""
     return (
@@ -80,6 +86,37 @@ def validate_pipeline(pipeline):
             f"stage marked won; it has {won}. Nothing can become a client "
             "without one."
         )
+
+
+@transaction.atomic
+def add_website_pipeline(tenant, *, actor=None):
+    """The "Website leads" pipeline, for a practice from before it was seeded
+    (owner, 2026-11-09): one click in Settings -> Stage rules. Returns
+    (pipeline, created); a second click finds the first one's.
+
+    Placed after the practice's last pipeline. Refused in plain words when the
+    practice already has a pipeline of its own by that name."""
+    from apps.crm.seed import PIPELINES
+
+    existing = website_pipeline(tenant)
+    if existing is not None:
+        return existing, False
+    name, kind, _, stages = next(p for p in PIPELINES if p[1] == Pipeline.Kind.WEBSITE)
+    if Pipeline.all_objects.filter(tenant=tenant, name__iexact=name).exists():
+        raise PipelineConfigError(
+            f"This practice already has a pipeline named “{name}”. Rename it in "
+            "Stage rules first, then add the Website leads pipeline.")
+    last = Pipeline.all_objects.filter(tenant=tenant).order_by("-position").first()
+    pipeline_row = Pipeline.all_objects.create(
+        tenant=tenant, name=name, kind=kind, position=(last.position + 1) if last else 0)
+    for code, label, semantic, position in stages:
+        PipelineStage.all_objects.create(tenant=tenant, pipeline=pipeline_row, code=code,
+                                         label=label, semantic=semantic, position=position)
+    AuditEvent.all_objects.create(
+        tenant=tenant, actor=actor, verb="pipeline.added", target_type="pipeline",
+        target_id=pipeline_row.pk, payload={"name": name, "kind": kind},
+    )
+    return pipeline_row, True
 
 
 # -------------------------------------------------------------- stage moves
@@ -136,6 +173,7 @@ def change_stage(contact, to_stage, *, actor=None, reason="", run_automations=Tr
     )
 
     apply_client_invariant(contact, to_stage, actor=actor)
+    convert_website_lead(contact, to_stage, actor=actor, run_automations=run_automations)
     # A referred prospect won or lost: the outcome, and a thank-you draft to
     # whoever referred them (none from an import, which is history).
     from apps.crm.services import referrals
@@ -211,6 +249,26 @@ def apply_client_invariant(contact, to_stage, *, actor=None):
             target_type="company", target_id=company.pk,
             payload={"is_client_company": True, "because": f"stage={to_stage.code} (won)"},
         )
+
+
+CONVERTED_REASON = "Converted in Website leads"
+
+
+def convert_website_lead(contact, to_stage, *, actor=None, run_automations=True):
+    """Reaching the `won` stage ("Converted") of the Website leads pipeline
+    puts the contact in the sales pipeline's entry stage (owner, 2026-11-09),
+    with that stage's own rules. Someone already in the sales pipeline stays
+    where they are: converting a website lead never moves a deal backwards."""
+    if to_stage.semantic != StageSemantic.WON or to_stage.pipeline.kind != Pipeline.Kind.WEBSITE:
+        return None
+    sales = sales_pipeline(contact.tenant)
+    if sales is None or position_for(contact, sales) is not None:
+        return None
+    stage = entry_stage(sales)
+    if stage is None:
+        return None
+    return change_stage(contact, stage, actor=actor, reason=CONVERTED_REASON,
+                        run_automations=run_automations)
 
 
 def run_stage_automations(contact, from_stage, to_stage, *, actor=None):

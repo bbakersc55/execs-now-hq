@@ -553,10 +553,11 @@ class PipelineStageSerializer(serializers.ModelSerializer):
 class PipelineSerializer(serializers.ModelSerializer):
     stages = PipelineStageSerializer(many=True, read_only=True)
     contact_count = serializers.SerializerMethodField()
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
 
     class Meta:
         model = Pipeline
-        fields = ["id", "name", "kind", "position", "stages", "contact_count"]
+        fields = ["id", "name", "kind", "kind_label", "position", "stages", "contact_count"]
 
     def get_contact_count(self, obj):
         return obj.positions.count()

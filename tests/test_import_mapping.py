@@ -200,7 +200,7 @@ def test_scan_values_counts_every_distinct_value(seeded_tenant, ff):
     assert {t["code"] for t in report["contact_types"]} >= {"client", "prospect", "vendor"}
     # Pipelines come back whole, so the wizard can ask "which pipeline?" first.
     names = {p["name"] for p in report["pipelines"]}
-    assert names == {"Sales", "Referral partners"}
+    assert names == {"Sales", "Referral partners", "Website leads"}
     sales_stages = next(p for p in report["pipelines"] if p["name"] == "Sales")["stages"]
     assert [s["code"] for s in sales_stages][:2] == ["initial_contact_made", "prospecting"]
     assert [s["semantic"] for s in sales_stages if s["code"] == "closed_won"] == ["won"]

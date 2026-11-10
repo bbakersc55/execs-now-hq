@@ -65,10 +65,16 @@ LOGGING = {
     "handlers": {
         "server_errors": {"class": "logging.StreamHandler", "level": "ERROR",
                           "formatter": "traceback_only"},
+        "plain": {"class": "logging.StreamHandler", "level": "INFO"},
     },
     "loggers": {
         # A request that ended in a server error, in every environment.
         "django.request": {"handlers": ["server_errors"], "level": "ERROR",
                            "propagate": False},
+        # The website's leads (2026-11-09): one line per lead received or
+        # dropped, by id only, so the deploy log says what became of a form.
+        # Propagating: the root logger has no handler, so nothing is doubled.
+        "apps.crm.services.site_leads": {"handlers": ["plain"], "level": "INFO"},
+        "apps.crm.views_site_leads": {"handlers": ["plain"], "level": "INFO"},
     },
 }

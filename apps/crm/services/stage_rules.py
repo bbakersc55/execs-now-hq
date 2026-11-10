@@ -502,6 +502,22 @@ EXAMPLES = {
         {"key": "nurturing_quiet", "trigger": "idle", "stage": "nurturing", "idle_days": 90,
          "action_type": "move_stage", "move_to": "dormant"},
     ],
+    # Website leads (owner, 2026-11-09). Converted's move into Sales is the
+    # pipeline's own, not a rule (`pipeline.convert_website_lead`).
+    "website": [
+        {"key": "website_reply_task", "trigger": "enters", "stage": "new",
+         "action_type": "create_task",
+         "task_title_template": "Reply to {FirstName} {LastName}'s website request",
+         "task_due_offset_days": 1},
+        {"key": "contacted_quiet", "trigger": "idle", "stage": "contacted", "idle_days": 5,
+         "action_type": "notify",
+         "notice_text": "{FirstName} {LastName} has been in {Stage} {DaysInStage} days "
+                        "with no reply"},
+        {"key": "demo_check_in", "trigger": "enters", "stage": "demo_access_given",
+         "action_type": "create_task",
+         "task_title_template": "Check in with {FirstName} on the demo",
+         "task_due_offset_days": 7},
+    ],
 }
 
 

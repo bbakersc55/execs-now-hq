@@ -155,6 +155,8 @@ class Pipeline(TenantScopedModel):
     class Kind(models.TextChoices):
         SALES = "sales", "Sales"
         REFERRAL = "referral", "Referral partners"
+        #: Requests from the marketing site's form (owner, 2026-11-09).
+        WEBSITE = "website", "Website leads"
         CUSTOM = "custom", "Custom"
 
     name = models.CharField(max_length=120)

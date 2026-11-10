@@ -733,6 +733,18 @@ class PipelineViewSet(TenantStaffViewSet):
             )
         instance.delete()
 
+    @action(detail=False, methods=["post"], url_path="website-leads")
+    def website_leads(self, request):
+        """Settings -> Stage rules' one click (owner, 2026-11-09): the Website
+        leads pipeline, for a practice from before it was seeded. Practice
+        owner only (a POST). 201 when added, 200 when it was there already."""
+        try:
+            row, created = pipeline.add_website_pipeline(request.tenant, actor=request.user)
+        except pipeline.PipelineConfigError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        data = crm_serializers.PipelineSerializer(row, context={"request": request}).data
+        return Response(data, status=201 if created else 200)
+
     @action(detail=True, methods=["get"])
     def board(self, request, pk=None):
         """FR-1.9 — one board per pipeline: a column per stage with its contacts.

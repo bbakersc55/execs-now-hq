@@ -60,7 +60,10 @@ async function isFile(path) {
 }
 
 async function resolveFile(urlPath) {
-  const clean = normalize(decodeURIComponent(urlPath)).replace(/^(\.\.[/\\])+/, "");
+  // A malformed escape ("/%c0") names no file: a 404, not a 500 and a stack.
+  let decoded;
+  try { decoded = decodeURIComponent(urlPath); } catch { return null; }
+  const clean = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
   const base = join(ROOT, clean);
   if (!base.startsWith(ROOT)) return null;
   for (const candidate of [base, join(base, "index.html"), base + ".html"]) {

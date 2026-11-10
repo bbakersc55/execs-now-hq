@@ -2,7 +2,8 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-09 UTC**, after Release 37. **The next session starts at
-"2026-11-09: Release 37, the marketing site" just below**; then
+"2026-11-09, evening: the Website leads pipeline" just below**; then
+"2026-11-09: Release 37, the marketing site"; then
 "2026-11-05, late: where things stand", which sums up Releases
 32 to 36 and everything open; then "2026-11-05, later: Release 36, personal
 bank feeds", then "2026-11-05: Release 35, Google reviews", then
@@ -23,6 +24,25 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-09, evening: the Website leads pipeline (on `dev`)
+
+- **Bryan's own demo request, ~23:56 UTC**: the site forwarded it, the app
+  answered 201. Which contact it became could not be read from here
+  (production reads are the owner's); the "Website lead" notice on Home
+  links to it. Until this change a lead went to Sales' "Initial Contact
+  Made", whose column shows its first 100 cards by last name.
+- **Website leads**, a third pipeline: New, Contacted, Demo access given,
+  Call booked, Converted (`won`), Not a fit (`lost`). New practices get it
+  from the seed; an existing one adds it with one click in Settings → Stage
+  rules (`POST /api/pipelines/website-leads/`, practice owner only). A
+  website lead lands in New (a sales position is kept beside it); without
+  the pipeline, Sales as before. Converted puts the contact in Sales' entry
+  stage, with its rules, and makes no client. Three starter rules. One
+  migration, `crm 0057_pipeline_kind_website`, choices only (no SQL).
+- Each lead received or dropped by the hidden field is now one log line in
+  web's deploy log, by id only. The site's server answers a malformed
+  address with 404, not 500.
 
 ## 2026-11-09: Release 37, the marketing site
 

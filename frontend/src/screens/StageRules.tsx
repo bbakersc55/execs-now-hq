@@ -83,6 +83,18 @@ export function StageRules() {
     onSuccess: () => { setNote({ kind: "ok", text: "Rule added. Change or delete it on its stage's card." }); refresh(); },
     onError: fail,
   });
+  // The Website leads pipeline (owner, 2026-11-09): seeded for a new
+  // practice; one from before adds it here, with one click.
+  const hasWebsite = (pipelines.data ?? []).some((p) => p.kind === "website");
+  const addWebsite = useMutation({
+    mutationFn: () => api.post<Pipeline>("/api/pipelines/website-leads/", {}),
+    onSuccess: (p) => {
+      setPipelineId(p.id);
+      setNote({ kind: "ok", text: "Website leads added. Requests from the website's form now land in New." });
+      refresh();
+    },
+    onError: fail,
+  });
   const order = useMutation({
     mutationFn: (ids: string[]) => api.post("/api/pipeline-stages/order/", { pipeline: current, ids }),
     onSuccess: refresh, onError: fail,
@@ -122,6 +134,16 @@ export function StageRules() {
       </div>
 
       {note && <div role={note.kind === "ok" ? "status" : "alert"}><Banner kind={note.kind}>{note.text}</Banner></div>}
+
+      {pipelines.isSuccess && !hasWebsite && (
+        <Card title="Website leads">
+          <p className="small muted" style={{ marginTop: 0 }}>A pipeline for requests from the website's form:
+            New, Contacted, Demo access given, Call booked, Converted and Not a fit. New requests land in New,
+            and Converted puts the contact in the first stage of Sales.</p>
+          <button className="primary" disabled={addWebsite.isPending} onClick={() => addWebsite.mutate()}>
+            Add the Website leads pipeline</button>
+        </Card>
+      )}
 
       {offered.length > 0 && (
         <Card title="Starter rules">

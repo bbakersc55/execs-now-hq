@@ -387,7 +387,7 @@ export function Pipeline() {
             {list.map((p) => (
               <tr key={p.id}>
                 <td>{p.name}</td>
-                <td><Pill kind={p.kind === "sales" ? "ai" : ""}>{p.kind}</Pill></td>
+                <td><Pill kind={p.kind === "sales" ? "ai" : ""}>{p.kind_label ?? p.kind}</Pill></td>
                 <td className="muted small">
                   {p.stages.slice().sort((a, b) => a.position - b.position)
                     .map((s) => s.label).join(" → ")}
