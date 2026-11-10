@@ -83,16 +83,16 @@ app uses: the querysets, viewset methods and serializers its screens call.
 - `practice_summary` (Home's tiles)
 - `list_companies`
 - `company_overview`: people, goals and projects, open tasks, invoices
-  summary, documents and their states, scorecard summary, latest mail
-  subjects
-- `search_contacts`, `get_contact`
+  summary, documents and their states, scorecard summary
+- `search_contacts`, `get_contact` (its history without the email lines)
 - `list_pipelines`
 - `list_tasks`: status, company, assignee "me", due before, overdue
 - `list_goals`
 - `list_notes`: **PIN-locked notes are left out entirely**
 - `scorecard_readings`: company and window
 - `pending_meeting_proposals`
-- `sending_queue`
+- `sending_queue`: replies in a mail thread and inbound forwards are counted
+  (`replies_to_mail_not_shown`), not shown
 - `digest_drafts`
 - `invoices_summary`: practice owner and associates only
 - `documents`
@@ -178,9 +178,17 @@ model in use now.
 - **Demo:** allowed. A demo visitor connects their own copy (the address is on
   Profile, since the demo hides Settings → AI), and mail stays redirected. The
   demo needs its own `mcp` service and `MCP_PUBLIC_URL`.
-- **Google user data** (mail subjects in `company_overview`) can now reach an
-  AI app the user connects. Weigh it against the Limited Use wording before
-  Google verification.
+- **Mail stays out of AI apps (owner, 2026-11-10), under Google's Limited Use
+  terms.** Nothing read from Gmail or Microsoft 365 leaves through a tool: no
+  subject, body or sender line from a mail thread. `company_overview` has no
+  mail; `get_contact`'s history drops its email lines (a sent message's
+  subject is often "Re:" of a received one); the Sending queue leaves out
+  replies in a thread and inbound forwards and only counts them. Contact
+  email addresses stay: the practice keeps them, not the mailbox.
+  `tests/test_ai_apps_mcp.py::test_mail_never_reaches_an_ai_app` plants a
+  Gmail thread, a reply draft quoting it and a forward, and checks that no
+  read tool returns any of it. Meeting proposals come from Drive files, not
+  mail, and are unchanged.
 - **The ChatGPT steps** follow its custom-connector flow as described; they
   have not been run against ChatGPT here.
 
@@ -188,11 +196,12 @@ model in use now.
 
 - `tests/test_ai_apps_oauth.py` (26): registration, the PKCE flow, refusals,
   rotation, revocation, isolation.
-- `tests/test_ai_apps_mcp.py` (11): the SDK's own client against the ASGI app.
+- `tests/test_ai_apps_mcp.py` (12): the SDK's own client against the ASGI app.
   - a 401 with the resource metadata, and tools and prompts listed;
   - role scoping on invoices, companies and notes;
   - each write in its queue with its marker;
   - revocation ending access;
+  - no mail from Gmail or Microsoft 365 in any read tool;
   - Activity lines.
 - `tests/test_ai_actions.py` (10): tiers, settings, the call on its tier, and
   every read tool for each staff role.

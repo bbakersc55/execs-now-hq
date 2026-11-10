@@ -46,9 +46,10 @@ they don't, and what changed since 9/30.
 - **Changes every practice's models at release:** AI actions move off the
   single `claude-opus-5` onto the tiers. Fast is Haiku 5.5, Standard Sonnet
   5.5, Deep Opus 5.5.
+- **Mail stays out of AI apps** (Google's Limited Use terms): no tool returns
+  anything read from Gmail or Microsoft 365. See `docs/p7_mcp.md`.
 - **Open:**
   - the demo's own `mcp` service and `MCP_PUBLIC_URL`;
-  - Google Limited Use wording for mail subjects reaching an AI app;
   - the ChatGPT steps, not yet tried against ChatGPT.
 
 ## 2026-11-10: Release 38, the Website leads pipeline

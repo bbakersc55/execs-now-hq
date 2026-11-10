@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from types import SimpleNamespace
 
+from django.db.models import Q
 from django.http import Http404
 from django.utils import timezone
 
@@ -159,7 +160,8 @@ def list_companies(p, query: str = "", clients_only: bool = False, limit: int = 
 
 def company_overview(p, company_id: str) -> dict:
     """A company's whole picture: people, goals, open tasks, invoices summary,
-    documents and their states, scorecard summary, latest mail subjects."""
+    documents and their states, scorecard summary. No mail: nothing read from
+    Gmail or Microsoft 365 reaches an AI app (Google's Limited Use terms)."""
     company = _company(p, company_id)
     people = [_contact_line(c) for c in _contacts(p).filter(company=company)
               .prefetch_related("emails").order_by("last_name", "first_name")[:100]]
@@ -181,23 +183,7 @@ def company_overview(p, company_id: str) -> dict:
                                       "latest": k.get("latest")} for k in board.get("kpis", [])]}
     except ToolRefused as exc:
         out["scorecard"] = {"not_shown": str(exc)}
-    out["latest_mail"] = _mail_subjects(p, company)
     return out
-
-
-def _mail_subjects(p, company) -> list:
-    from apps.crm import views_mail
-
-    view = views_mail.MailView()
-    view.request = p.request(company=str(company.pk))
-    view.format_kwarg = None
-    try:
-        rows = view.list(view.request).data
-    except Exception:  # a mail view that needs more of a request than we have
-        return []
-    threads = rows.get("threads", rows) if isinstance(rows, dict) else rows
-    return [{"subject": t.get("subject"), "at": t.get("last_at") or t.get("at")}
-            for t in list(threads)[:10] if isinstance(t, dict)]
 
 
 def search_contacts(p, query: str, limit: int = 25) -> dict:
@@ -224,7 +210,10 @@ def get_contact(p, contact_id: str) -> dict:
     request = p.request()
     data = _plain(ContactSerializer(contact, context={"request": request}).data)
     money = crm_perms.sees_money(request, contact.company_id)
-    data["timeline"] = _plain(timeline.for_contact(contact, money=money)[:30])
+    # Mail stays out (Google's Limited Use terms): a reply's subject is read
+    # from Gmail or Microsoft 365, and a sent one's is often "Re:" of it.
+    data["timeline"] = _plain([e for e in timeline.for_contact(contact, money=money)
+                               if e.get("kind") != "email"][:30])
     return data
 
 
@@ -367,16 +356,23 @@ def pending_meeting_proposals(p) -> dict:
 
 
 def sending_queue(p) -> dict:
-    """What waits in the Sending queue for approval: messages and digests."""
+    """What waits in the Sending queue for approval: messages and digests.
+    Mail stays out (Google's Limited Use terms): a reply in a mail thread and
+    an inbound forward carry what was read from Gmail or Microsoft 365, so
+    they are counted, not shown."""
+    from apps.crm.models import OutboxMessage
     from apps.crm.views_queue import SendingQueueView
 
     if p.role not in ("FF", "CF", "VA"):
         raise ToolRefused("The Sending queue is the practice's own.")
     view = SendingQueueView()
     request = p.request()
-    messages = list(view._messages(request).order_by("-created_at")[:100])
+    queued = view._messages(request)
+    from_mail = Q(thread__isnull=False) | Q(producer=OutboxMessage.Producer.INBOUND_FORWARD)
+    messages = list(queued.exclude(from_mail).order_by("-created_at")[:100])
     p.touch("outbox", *[m.pk for m in messages][:20])
     return {"messages": _plain([view._message_row(m) for m in messages]),
+            "replies_to_mail_not_shown": queued.filter(from_mail).count(),
             "digests_waiting": view._digests(request).count()}
 
 

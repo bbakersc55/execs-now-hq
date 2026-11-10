@@ -148,7 +148,8 @@ def build() -> MCPServer:
     @server.tool(annotations=READ)
     async def company_overview(company_id: str) -> dict:
         """One company's full picture: people, goals and projects, open tasks, invoices
-        summary, documents and their states, scorecard summary, latest mail subjects."""
+        summary, documents and their states, scorecard summary. No mail from Gmail or
+        Microsoft 365."""
         return await run("company_overview", T.company_overview, company_id=company_id)
 
     @server.tool(annotations=READ)
@@ -203,7 +204,8 @@ def build() -> MCPServer:
 
     @server.tool(annotations=READ)
     async def sending_queue() -> dict:
-        """Email waiting in the Sending queue for approval, and how many digests wait."""
+        """Email waiting in the Sending queue for approval, and how many digests wait.
+        Replies in a mail thread are counted, not shown."""
         return await run("sending_queue", T.sending_queue)
 
     @server.tool(annotations=READ)

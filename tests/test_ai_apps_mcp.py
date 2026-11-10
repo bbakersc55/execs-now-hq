@@ -186,6 +186,50 @@ def test_pin_locked_notes_never_leave(world, ff):
     assert str(world["locked"].pk) not in bodies
 
 
+def test_mail_never_reaches_an_ai_app(world, ff):
+    """Google's Limited Use terms: nothing read from Gmail or Microsoft 365
+    leaves through an AI app: not a subject, not a body, not a reply draft
+    that quotes one."""
+    from .factories import EmailMessageFactory, EmailThreadFactory, OutboxMessageFactory
+
+    t, wes, mine = ff.tenant, world["wes"], world["mine"]
+    with tenant_context(t.pk):
+        thread = EmailThreadFactory(tenant=t, contact=wes, client_company=mine,
+                                    subject="Gmailsecret pricing", gmail_thread_id="g1",
+                                    last_message_at=timezone.now())
+        EmailMessageFactory(tenant=t, thread=thread, contact=wes, direction="inbound",
+                            provider="gmail", from_address="wes@alder.example",
+                            subject="Re: Gmailsecret pricing", body_text="Gmailsecret body",
+                            received_at=timezone.now())
+        OutboxMessageFactory(tenant=t, to_contact=wes, to_address="wes@alder.example",
+                             producer="manual", thread=thread,
+                             subject="Re: Gmailsecret pricing",
+                             body_text="> Gmailsecret body")
+        OutboxMessageFactory(tenant=t, to_contact=wes, to_address="wes@alder.example",
+                             producer="inbound_forward", subject="Fwd: Gmailsecret",
+                             body_text="Gmailsecret forwarded")
+        app_made = OutboxMessageFactory(tenant=t, to_contact=wes,
+                                        to_address="wes@alder.example", producer="manual",
+                                        subject="Scrap tags this week")
+    token = connect(ff)["access_token"]
+    seen = []
+    for tool, args in (("company_overview", {"company_id": str(mine.pk)}),
+                       ("get_contact", {"contact_id": str(wes.pk)}),
+                       ("search_contacts", {"query": "Calder"}),
+                       ("sending_queue", {}), ("practice_summary", {}),
+                       ("list_notes", {"contact_id": str(wes.pk)})):
+        error, data = call(token, tool, **args)
+        assert not error, (tool, data)
+        seen.append(json.dumps(data))
+    everything = " ".join(seen)
+    assert "Gmailsecret" not in everything
+    error, queue = call(token, "sending_queue")
+    assert [m["id"] for m in queue["messages"]] == [str(app_made.pk)]
+    assert queue["replies_to_mail_not_shown"] == 2
+    error, overview = call(token, "company_overview", company_id=str(mine.pk))
+    assert "latest_mail" not in overview
+
+
 # --------------------------------------------------------------- the writes
 
 def test_each_write_lands_in_its_queue_marked_as_an_ai_apps(world, ff, dev_outbox):
