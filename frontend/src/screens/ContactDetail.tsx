@@ -1,4 +1,5 @@
 import { CallNotes } from "../components/CallNotes";
+import { DoInYourAi } from "../components/AiApps";
 import { MailTab, RecordTabs } from "../components/Mailboxes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -310,11 +311,14 @@ export function ContactDetail({ me }: { me: Me }) {
                     ? <>next touch {when(c.referral_next_touch_at)}</>
                     : "not enrolled in touches, so none are drafted"}
                 </p>
-                <button disabled={draftTouch.isPending || !c.referral_enrolled}
-                  title={c.referral_enrolled ? undefined : "Enroll them in referral touches first"}
-                  onClick={() => draftTouch.mutate()}>
-                  {draftTouch.isPending ? "Drafting…" : "Draft touch now"}
-                </button>
+                <DoInYourAi action="referral_touch"
+                  record={`${c.first_name} ${c.last_name} (contact id ${c.id})`}>
+                  <button disabled={draftTouch.isPending || !c.referral_enrolled}
+                    title={c.referral_enrolled ? undefined : "Enroll them in referral touches first"}
+                    onClick={() => draftTouch.mutate()}>
+                    {draftTouch.isPending ? "Drafting…" : "Draft touch now"}
+                  </button>
+                </DoInYourAi>
                 <p className="muted small" style={{ marginTop: ".5rem", marginBottom: 0 }}>
                   Drafts this partner's touch into the Outbox for approval, using the same
                   composer the scheduled job uses. It does not send, and it does not move

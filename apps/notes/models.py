@@ -69,6 +69,8 @@ class Note(TenantScopedModel):
         IMPORT = "import", "Created by a CSV import"
         RECORDING = "recording", "Transcribed from a recording"
         WEBSITE = "website", "From the website's form"
+        #: P7: added by a person's AI app over MCP.
+        AI_APP = "ai_app", "Added by an AI app"
 
     class TranscriptionState(models.TextChoices):
         NONE = "none", "No recording"

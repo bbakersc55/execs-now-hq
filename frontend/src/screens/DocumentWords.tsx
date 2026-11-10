@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DoInYourAi } from "../components/AiApps";
 import React, { useEffect, useState } from "react";
 
 import { Field } from "../components/ui";
@@ -218,10 +219,11 @@ export function DocumentWords({ path, setNote, onChanged }: {
         A line over its length shows a count; shorten it to save.
       </p>
       <div className="row tight">
-        <AiGate><button className="small" disabled={draft.isPending}
-          onClick={() => draft.mutate()}>
-          {draft.isPending ? "Drafting…" : "Draft the words with Claude"}
-        </button></AiGate>
+        <DoInYourAi action="strategy_document">
+          <AiGate><button className="small" disabled={draft.isPending}
+            onClick={() => draft.mutate()}>
+            {draft.isPending ? "Drafting…" : "Draft the words with Claude"}
+          </button></AiGate></DoInYourAi>
         {hasDraft && (
           <button className="small" onClick={() => set(withDraft(form, proposed))}>
             Use Claude's draft

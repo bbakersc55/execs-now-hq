@@ -1929,3 +1929,59 @@ class KpiReviewsFeedFactory(TenantScopedFactory):
     kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
     measure = "new_reviews"
 
+
+
+# ---------------------------------------------------------- P7: AI apps, AI actions
+
+class AiAppClientFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = "aiconnect.AiAppClient"
+
+    client_id = factory.Sequence(lambda n: f"client-{n}")
+    client_name = "Claude"
+    redirect_uris = ["https://claude.ai/api/mcp/auth_callback"]
+
+
+class AiAppConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "aiconnect.AiAppConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client = factory.SubFactory(AiAppClientFactory)
+    membership = factory.SubFactory(MembershipFactory, tenant=factory.SelfAttribute("..tenant"))
+    user = factory.SelfAttribute("membership.user")
+    role = factory.SelfAttribute("membership.role")
+    app_name = "Claude"
+
+
+class AiAppCodeFactory(TenantScopedFactory):
+    class Meta:
+        model = "aiconnect.AiAppCode"
+
+    tenant = factory.SubFactory(TenantFactory)
+    connection = factory.SubFactory(AiAppConnectionFactory, tenant=factory.SelfAttribute("..tenant"))
+    code_hash = factory.Sequence(lambda n: f"{n:064d}")
+    redirect_uri = "https://claude.ai/api/mcp/auth_callback"
+    code_challenge = "x" * 43
+    expires_at = factory.LazyFunction(lambda: timezone.now() + datetime.timedelta(minutes=10))
+
+
+class AiAppTokenFactory(TenantScopedFactory):
+    class Meta:
+        model = "aiconnect.AiAppToken"
+
+    tenant = factory.SubFactory(TenantFactory)
+    connection = factory.SubFactory(AiAppConnectionFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "access"
+    token_hash = factory.Sequence(lambda n: f"t{n:063d}")
+    expires_at = factory.LazyFunction(lambda: timezone.now() + datetime.timedelta(hours=1))
+
+
+class AiActionSettingFactory(TenantScopedFactory):
+    class Meta:
+        model = "tenancy.AiActionSetting"
+
+    tenant = factory.SubFactory(TenantFactory)
+    action = factory.Sequence(lambda n: f"action_{n}")
+    runs_in = "app"
+    tier = "standard"

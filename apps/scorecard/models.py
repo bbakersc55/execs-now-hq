@@ -323,6 +323,8 @@ class KpiReading(TenantScopedModel):
         HUBSPOT = "hubspot", "HubSpot"
         BESTY = "besty", "Besty"
         REVIEWS = "reviews", "Google reviews"
+        #: P7: entered by a person's AI app over MCP.
+        AI = "ai", "Entered by AI"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()

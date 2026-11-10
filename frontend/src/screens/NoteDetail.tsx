@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DoInYourAi } from "../components/AiApps";
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -348,8 +349,10 @@ function SummaryCard({ note, act }: {
                     : "Summary discarded. The transcript is kept."}
                 </p>
                 {note.can_review_summary && (
-                  <AiGate><button onClick={() => act({ path: "summary/redraft/" })}>
-                    Draft another summary</button></AiGate>
+                  <DoInYourAi action="note_summary"
+                    record={`the note "${note.title || "untitled"}" (note id ${note.id})`}>
+                    <AiGate><button onClick={() => act({ path: "summary/redraft/" })}>
+                      Draft another summary</button></AiGate></DoInYourAi>
                 )}
               </>
             )}

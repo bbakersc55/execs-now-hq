@@ -38,6 +38,7 @@ def represent_map_row(row, *, private=False) -> dict:
         "header": row.header,
         "statement": row.statement,
         "bottleneck": row.bottleneck,
+        "from_ai_app": row.from_ai_app,
         "root_cause": row.root_cause,
         "the_fix": row.the_fix,
         "owner_text": row.owner_text,

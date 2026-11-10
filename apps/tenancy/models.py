@@ -576,3 +576,25 @@ class GettingStartedDismissal(TenantScopedModel):
             models.UniqueConstraint(fields=["tenant", "user"],
                                     name="getting_started_dismissal_one_per_person"),
         ]
+
+
+class AiActionSetting(TenantScopedModel):
+    """A practice's choice for one AI action (P7, 2026-11-10): where it runs
+    and on which model tier. No row means the action's defaults
+    (`apps.tenancy.ai_actions.ACTIONS`). Scheduled and rule-fired runs always
+    run in the app on the practice's key, whatever `runs_in` says."""
+
+    class RunsIn(models.TextChoices):
+        APP = "app", "In the app with my key"
+        AI_APP = "ai_app", "In my AI app"
+
+    action = models.CharField(max_length=40)
+    runs_in = models.CharField(max_length=8, choices=RunsIn.choices, default=RunsIn.APP)
+    tier = models.CharField(max_length=12, default="")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "ai_action_setting"
+        constraints = [models.UniqueConstraint(fields=["tenant", "action"],
+                                               name="ai_action_setting_one_per_action")]

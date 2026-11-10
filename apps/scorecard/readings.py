@@ -217,10 +217,12 @@ def progress(reader, scorecard, *, starts_for_week):
 
 
 @transaction.atomic
-def save(reader, scorecard, rows, today: date) -> dict:
+def save(reader, scorecard, rows, today: date, source=None) -> dict:
     """Save readings. Each row is {kpi, period_start, membership?, value};
     a blank value leaves a reading as it is. All or nothing: the errors say
-    which field, and nothing is saved while any is wrong."""
+    which field, and nothing is saved while any is wrong. `source` is By hand
+    unless said (P7: an AI app's readings are "Entered by AI")."""
+    source = source or KpiReading.Source.HAND
     week_start = scorecard.week_start
     kpis = {str(k.pk): k for k in Kpi.objects.filter(scorecard=scorecard,
                                                      archived_at__isnull=True)
@@ -275,7 +277,7 @@ def save(reader, scorecard, rows, today: date) -> dict:
         if reading is None:
             reading = KpiReading.objects.create(
                 tenant_id=kpi.tenant_id, kpi=kpi, period_start=start, membership_id=member,
-                value=value, entered_by=user, entered_at=now)
+                value=value, entered_by=user, entered_at=now, source=source)
             KpiReadingChange.objects.create(tenant_id=kpi.tenant_id, reading=reading,
                                             value=value, changed_by=user)
             saved += 1
@@ -287,7 +289,7 @@ def save(reader, scorecard, rows, today: date) -> dict:
             reading.times_changed += 1
             # Typed over a feed's number: the hand wins from now on (spec, "Feeds"),
             # and a number typed is never "so far".
-            reading.source, reading.provisional = KpiReading.Source.HAND, False
+            reading.source, reading.provisional = source, False
             reading.save(update_fields=["value", "entered_by", "entered_at",
                                         "times_changed", "source", "provisional",
                                         "updated_at"])

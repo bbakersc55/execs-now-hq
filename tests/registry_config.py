@@ -403,3 +403,13 @@ register(GoogleReviewsConnection, factories.GoogleReviewsConnectionFactory, api_
 register(GoogleReview, factories.GoogleReviewFactory, api_exposed=False)
 register(KpiReviewsFeed, factories.KpiReviewsFeedFactory, api_exposed=False)
 
+
+# P7: AI apps over MCP, and the per-practice AI action settings.
+from apps.aiconnect.models import AiAppCode, AiAppConnection, AiAppToken  # noqa: E402
+from apps.tenancy.models import AiActionSetting  # noqa: E402
+
+register(AiAppConnection, factories.AiAppConnectionFactory,
+         endpoints=("/api/ai/connections/", "/api/ai/apps/"))
+register(AiAppCode, factories.AiAppCodeFactory, api_exposed=False)
+register(AiAppToken, factories.AiAppTokenFactory, api_exposed=False)
+register(AiActionSetting, factories.AiActionSettingFactory, endpoints=("/api/ai/actions/",))

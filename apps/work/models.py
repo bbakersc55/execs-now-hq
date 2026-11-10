@@ -663,6 +663,8 @@ class TaskUpdate(TenantScopedModel):
         MEETING_APPROVAL = "meeting_approval", "Meeting review approval"
         STRATEGY_CONVERSION = "strategy_conversion", "Strategy map conversion"
         SYSTEM = "system", "System"
+        #: P7: made by a person's AI app over MCP.
+        AI_APP = "ai_app", "An AI app"
 
     task = models.ForeignKey(Task, null=True, blank=True, on_delete=models.CASCADE,
                              related_name="updates")
@@ -816,6 +818,8 @@ class Digest(TenantScopedModel):
     # Derived at generation from company.digest_ai_prose (FR-3.24). It decides
     # whether approval is required when hold_all_digests is off (FR-3.27).
     is_ai_generated = models.BooleanField(default=False)
+    #: P7: drafted by a person's AI app over MCP, waiting for approval.
+    from_ai_app = models.BooleanField(default=False, db_default=False)
     is_stale = models.BooleanField(default=False)          # FR-3.30a
     stale_reason = models.TextField(blank=True, default="")
     body_text = models.TextField(blank=True, default="")

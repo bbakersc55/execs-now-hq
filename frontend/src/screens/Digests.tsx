@@ -181,7 +181,8 @@ export function Digests({ me }: { me: Me }) {
                   ? <>sends as soon as approved</>
                   : <>sends {when(d.send_window_at)}</>}
                 {" "}· {d.item_count} update{d.item_count === 1 ? "" : "s"}{" "}
-                {d.is_ai_generated ? <Pill kind="ai">AI narrative</Pill> : <Pill>plain list</Pill>}
+                {d.from_ai_app ? <Pill kind="ai">From an AI app</Pill>
+                  : d.is_ai_generated ? <Pill kind="ai">AI narrative</Pill> : <Pill>plain list</Pill>}
               </p>
 
               {d.state === "pending" && Date.parse(d.send_window_at) > now && (

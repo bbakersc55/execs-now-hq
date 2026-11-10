@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { ConnectedAiApps } from "../components/AiApps";
 import { BrowserNotifications } from "../components/Notifications";
 import { CalendarCard } from "./CalendarCard";
 import { PageHead } from "../components/shell";
@@ -90,6 +91,7 @@ export function Profile({ staff = false }: { staff?: boolean }) {
       {p.practice && <BrowserNotifications editable={p.editable} />}
       {/* One's own calendar (2026-10-27): the practice's team only. */}
       {staff && p.practice && <CalendarCard />}
+      {staff && p.practice && <ConnectedAiApps />}
     </div>
   );
 }

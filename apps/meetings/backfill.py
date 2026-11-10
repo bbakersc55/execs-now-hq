@@ -69,7 +69,6 @@ def per_note_estimate(tenant) -> tuple[Decimal, bool]:
     from django.conf import settings
 
     from apps.meetings.parsing import PARSE_PURPOSE
-    from apps.tenancy import claude
     from apps.tenancy.models import AiCall
 
     average = AiCall.objects.filter(
@@ -77,7 +76,9 @@ def per_note_estimate(tenant) -> tuple[Decimal, bool]:
     ).aggregate(Avg("cost_usd"))["cost_usd__avg"]
     if average:
         return Decimal(average).quantize(Decimal("0.0001")), True
-    modelled = claude.cost_of(settings.ANTHROPIC_MODEL, *ESTIMATE_TOKENS)
+    from apps.tenancy import ai_actions
+
+    modelled = ai_actions.model_for(tenant.pk, PARSE_PURPOSE).cost(*ESTIMATE_TOKENS)
     return modelled.quantize(Decimal("0.0001")), False
 
 

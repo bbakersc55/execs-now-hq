@@ -79,6 +79,9 @@ NEEDS: tuple[Need, ...] = (
          "bank feeds: connecting a bank and reading its transactions through Plaid"),
     Need("jwt", "PyJWT",
          "bank feeds: verifying that a webhook came from Plaid"),
+    Need("mcp.server.mcpserver", "mcp",
+         "the MCP server AI apps connect to (the `mcp` service)"),
+    Need("uvicorn", "uvicorn", "serves the MCP server (the `mcp` service)"),
 )
 
 

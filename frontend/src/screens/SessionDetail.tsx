@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AiRecord, DoInYourAi } from "../components/AiApps";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -147,8 +148,11 @@ export function SessionDetail({ me }: { me: Me }) {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // "Do this in your AI" names the session in its prompt (P7).
+  const aiRecord = `the strategy session with ${data.contact?.name ?? "the prospect"}${
+    data.company ? ` of ${data.company.name}` : ""} (session id ${data.id})`;
   return (
-    <>
+    <AiRecord.Provider value={aiRecord}>
       <PageHead title={`${data.contact?.name ?? ""}${data.company ? ` · ${data.company.name}` : ""}`}
         crumbs={[{ to: "/strategy", label: "Strategy sessions" }]}
         action={<Link className="btn" to={startUrl(data.template?.id ?? null)}>
@@ -353,7 +357,7 @@ export function SessionDetail({ me }: { me: Me }) {
           rows={tray} notes={(data.path_notes ?? []).filter((n) => n.state === "proposed")}
           onChanged={refresh} />
       )}
-    </>
+    </AiRecord.Provider>
   );
 }
 
@@ -514,7 +518,9 @@ function Mirror({ data, mayRun, onDraft, onAccept }: {
           <button className="primary" onClick={() => onAccept(goal, unlocks)}>
             Save the mirror
           </button>
-          <AiGate><button onClick={onDraft}>Draft it with Claude</button></AiGate>
+          <DoInYourAi action="strategy_mirror">
+            <AiGate><button onClick={onDraft}>Draft it with Claude</button></AiGate>
+          </DoInYourAi>
         </div>
       )}
     </>
@@ -524,9 +530,10 @@ function Mirror({ data, mayRun, onDraft, onAccept }: {
 /** Where a row came from, beside it: written by a person, or drafted from the
  *  call notes with the passage it rests on. Never on the document. */
 function RowSource({ row }: { row: MapRow }) {
-  if (!row.added_by && !row.from_call_notes) return null;
+  if (!row.added_by && !row.from_call_notes && !row.from_ai_app) return null;
   return (
     <p className="tiny" style={{ margin: "2px 0" }}>
+      {row.from_ai_app && <Pill kind="ai">From an AI app</Pill>}
       {row.added_by && <Pill>added by {row.added_by}</Pill>}
       {row.from_call_notes && (
         <>
@@ -644,14 +651,16 @@ function MapSection({ tray, map, mayRun, focused = false, onDraft, onConsolidate
     <>
       {mayRun && (
         <div className="row">
-          <AiGate><button onClick={onDraft} disabled={busy}>Draft rows with Claude</button>
-          </AiGate>
+          <DoInYourAi action="strategy_rows">
+            <AiGate><button onClick={onDraft} disabled={busy}>Draft rows with Claude</button>
+            </AiGate></DoInYourAi>
           {/* Dry run 2: 45 candidates, many on one theme. Consolidate proposes
               3–5 main targets that each say what they merge; nothing on the
               map changes until you accept one and prune the originals. */}
-          <AiGate><button onClick={onConsolidate}
-            disabled={busy || tray.length + map.length < 2}>
-            Consolidate with Claude</button></AiGate>
+          <DoInYourAi action="strategy_rows_consolidate">
+            <AiGate><button onClick={onConsolidate}
+              disabled={busy || tray.length + map.length < 2}>
+              Consolidate with Claude</button></AiGate></DoInYourAi>
           <span className="small muted">
             Drafts land in the tray below, five at most a run. Nothing reaches the map
             until you accept it.
@@ -1300,7 +1309,9 @@ function PathsSection({ sessionId, notes, mayRun, onDraft, onChanged }: {
     <>
       {mayRun && (
         <div className="row">
-          <AiGate><button onClick={onDraft}>Draft pros and cons with Claude</button></AiGate>
+          <DoInYourAi action="strategy_path_notes">
+            <AiGate><button onClick={onDraft}>Draft pros and cons with Claude</button></AiGate>
+          </DoInYourAi>
           <span className="small muted">
             Drafted from this session only. Nothing reaches the PDF until you accept it.
           </span>
@@ -1535,10 +1546,11 @@ function PrepCard({ id, path, data, onChanged, setNote }: {
               onChange={(e) => setNotes(e.target.value)} />
           </Field>
           <div className="row tight">
-            <AiGate><button className="primary" disabled={run.isPending}
-              onClick={() => run.mutate()}>
-              {run.isPending ? "Reading their site…" : "Prepare"}
-            </button></AiGate>
+            <DoInYourAi action="session_prep">
+              <AiGate><button className="primary" disabled={run.isPending}
+                onClick={() => run.mutate()}>
+                {run.isPending ? "Reading their site…" : "Prepare"}
+              </button></AiGate></DoInYourAi>
             {prep && <button className="ghost" onClick={() => setOpen(false)}>Cancel</button>}
           </div>
           <p className="small muted" style={{ marginTop: "var(--s2)" }}>
@@ -2025,9 +2037,10 @@ function DiagnosticTray({ sessionPath, data, mayRun, onChanged }: {
   return (
     <div style={{ marginBottom: ".75rem" }}>
       <div className="row">
-        <AiGate><button disabled={propose.isPending} onClick={() => propose.mutate()}>
-          {propose.isPending ? "Proposing…" : "Propose questions from the pre-call form"}
-        </button></AiGate>
+        <DoInYourAi action="strategy_diagnostic_questions">
+          <AiGate><button disabled={propose.isPending} onClick={() => propose.mutate()}>
+            {propose.isPending ? "Proposing…" : "Propose questions from the pre-call form"}
+          </button></AiGate></DoInYourAi>
         <span className="small muted">
           {accepted > 0
             ? `${accepted} of 5 accepted — they are the section.`

@@ -27,6 +27,8 @@ interface QueueItem {
   sends: string;
   warning: string;
   is_ai_generated: boolean;
+  /** P7: drafted by someone's AI app over MCP. */
+  from_ai_app?: boolean;
   body_text: string;
   body_html: string;
 }
@@ -155,6 +157,7 @@ export function SendingQueue({ me }: { me: Me }) {
                     <span className="inline">
                       <Pill kind={CATEGORY_KIND[r.category]}>{r.category}</Pill>
                       {r.is_ai_generated && <Pill kind="ai">AI-drafted</Pill>}
+                      {r.from_ai_app && <Pill kind="ai">From an AI app</Pill>}
                       {r.warning && <Pill kind="bad">check</Pill>}
                     </span>
                   </button>

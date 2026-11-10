@@ -120,7 +120,7 @@ class AnthropicKeyView(viewsets.ViewSet):
     permission_classes = [IsTenantStaff, IsFF]
 
     def list(self, request):
-        from apps.tenancy import claude
+        from apps.tenancy import ai_actions, claude
         from apps.tenancy.models import SecretKind, TenantSecret
 
         secret = TenantSecret.objects.filter(
@@ -132,6 +132,9 @@ class AnthropicKeyView(viewsets.ViewSet):
             "verified_at": secret.verified_at if secret else None,
             "rotated_at": secret.rotated_at if secret else None,
             "model": settings.ANTHROPIC_MODEL,
+            # P7: what each tier runs on now (the platform's table).
+            "tiers": [{"code": t, "model": ai_actions.tier_row(t).model}
+                      for t in ai_actions.TIERS],
         })
 
     def create(self, request):

@@ -217,8 +217,23 @@ def save_key(*, tenant, key: str, actor) -> None:
     )
 
 
+def prices_for(model: str):
+    """(input, output) USD per million tokens: the platform's tier table
+    first (P7: the platform owner keeps it current), then this file's."""
+    from apps.aiconnect.models import ModelTier
+    from apps.tenancy.ai_actions import FALLBACK_MODELS
+
+    row = ModelTier.objects.filter(model=model).first()
+    if row is not None:
+        return row.input_usd_per_mtok, row.output_usd_per_mtok
+    for name, per_in, per_out, _ in FALLBACK_MODELS.values():
+        if name == model:
+            return per_in, per_out
+    return PRICES_PER_MTOK.get(model)
+
+
 def cost_of(model: str, input_tokens: int, output_tokens: int) -> Decimal:
-    prices = PRICES_PER_MTOK.get(model)
+    prices = prices_for(model)
     if prices is None:
         return Decimal("0")
     per_in, per_out = prices
@@ -301,9 +316,14 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
                 "This failed twice on the same input, so it is not tried again "
                 "automatically until someone runs it.", reason)
 
+    # P7: the model is the practice's tier for this action (Settings → AI),
+    # from the platform's tier table.
+    from apps.tenancy import ai_actions
+
+    resolved = ai_actions.model_for(tenant.pk, purpose)
     call = AiCall(
         tenant=tenant, purpose=purpose, target_type=target_type, target_id=target_id,
-        model=settings.ANTHROPIC_MODEL, trigger=trigger,
+        model=resolved.model, trigger=trigger,
         unattended=job is not None, input_hash=input_hash,
     )
 
@@ -331,13 +351,16 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
             {"type": "text", "text": user_text},
         ]
     try:
+        # A model with no server-side refusal fallback (Haiku) is asked
+        # without one; the tier table says which.
+        fallback = ({"betas": [FALLBACK_BETA], "fallbacks": "default"}
+                    if resolved.server_fallback else {})
         response = _client(key).beta.messages.create(
-            model=settings.ANTHROPIC_MODEL,
+            model=resolved.model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": content}],
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
+            **fallback,
             **({"tools": tools} if tools else {}),
             **({"output_config": {"effort": effort}} if effort else {}),
         )
@@ -345,7 +368,7 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
         fail("Anthropic rejected the stored key. The practice owner can replace it "
              "under AI usage.", exc)
     except anthropic.PermissionDeniedError as exc:
-        fail(f"The stored key cannot use {settings.ANTHROPIC_MODEL}.", exc)
+        fail(f"The stored key cannot use {resolved.model}.", exc)
     except anthropic.RateLimitError as exc:
         fail("Anthropic is rate-limiting this key. Try again in a few minutes.", exc)
     except anthropic.BadRequestError as exc:
@@ -358,11 +381,11 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
     usage = response.usage
     call.web_searches = getattr(
         getattr(usage, "server_tool_use", None), "web_search_requests", 0) or 0
-    call.model = response.model or settings.ANTHROPIC_MODEL
+    call.model = response.model or resolved.model
     call.input_tokens = usage.input_tokens or 0
     call.output_tokens = usage.output_tokens or 0
     call.cost_usd = cost_of(call.model, call.input_tokens, call.output_tokens)
-    if call.model not in PRICES_PER_MTOK:
+    if prices_for(call.model) is None:
         call.error = f"No price on file for {call.model}; cost recorded as $0."
 
     if response.stop_reason == "refusal":

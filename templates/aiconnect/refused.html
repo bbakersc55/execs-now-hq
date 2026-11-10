@@ -1,0 +1,7 @@
+{% extends "aiconnect/_base.html" %}
+{% block title %}Can't connect{% endblock %}
+{% block body %}
+  <h1>This AI app can't be connected</h1>
+  <p class="sub">{{ why }}</p>
+  <div class="actions"><a class="button" href="/">Go to {{ product }}</a></div>
+{% endblock %}

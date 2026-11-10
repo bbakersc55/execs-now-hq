@@ -68,6 +68,8 @@ class SendingQueueView(viewsets.ViewSet):
             "expires_at": m.send_by.isoformat() if m.send_by else None,
             "sends": "when approved",
             "warning": m.warning, "is_ai_generated": m.is_ai_generated,
+            # P7: drafted by someone's AI app over MCP.
+            "from_ai_app": m.source_type == "ai_app",
             "body_text": m.body_text, "body_html": m.body_html,
         }
 
@@ -84,7 +86,7 @@ class SendingQueueView(viewsets.ViewSet):
             "expires_at": d.send_window_at.isoformat() if d.send_window_at else None,
             "sends": "at its send window, if approved before it",
             "warning": d.stale_reason if d.is_stale else "",
-            "is_ai_generated": d.is_ai_generated,
+            "is_ai_generated": d.is_ai_generated, "from_ai_app": d.from_ai_app,
             "body_text": d.body_text, "body_html": "",
         }
 

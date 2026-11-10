@@ -38,7 +38,7 @@ describe("Settings", () => {
       "Email", "Branding", "Team", "Email templates", "Documents", "Stage rules",
       "Referral settings",
       "Digests",
-      "Tags", "Notes", "Invoices", "Billing", "Finance", "AI usage",
+      "Tags", "Notes", "Invoices", "Billing", "Finance", "AI",
     ]);
   });
 
@@ -90,7 +90,7 @@ describe("Settings", () => {
     await showApp(aMe({ role: "FF" }), "/tasks");
 
     const sidebar = document.querySelector(".sidebar") as HTMLElement;
-    for (const label of ["Settings", "Branding", "Team", "Staff", "AI usage", "Stage rules"]) {
+    for (const label of ["Settings", "Branding", "Team", "Staff", "AI", "Stage rules"]) {
       expect(within(sidebar).queryByText(label), label).not.toBeInTheDocument();
     }
 

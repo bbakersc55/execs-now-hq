@@ -60,3 +60,4 @@ class Feedback(TenantScopedModel):
     class Meta(TenantScopedModel.Meta):
         db_table = "feedback"
         ordering = ["-created_at"]
+

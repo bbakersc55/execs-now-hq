@@ -1,0 +1,45 @@
+{% extends "aiconnect/_base.html" %}
+{% block title %}Connect {{ app }}{% endblock %}
+{% block body %}
+{% if not signed_in %}
+  <h1>Connect {{ app }}</h1>
+  <p class="sub">Sign in to your practice first. You'll come back here to see exactly what
+    {{ app }} would be allowed to do, and to allow or cancel it.</p>
+  <div class="actions"><a class="button primary" href="/">Sign in</a></div>
+  <p class="note">Client sign-ins can't connect an AI app.</p>
+{% else %}
+  <h1>Connect {{ app }} to {{ practice }}?</h1>
+  <p class="sub">Signed in as {{ email }}.</p>
+  <dl>
+    <dt>Practice</dt><dd>{{ practice }}</dd>
+    <dt>Acting as</dt><dd>{{ role }}</dd>
+    <dt>AI app</dt><dd>{{ app }}</dd>
+  </dl>
+  <h2>{{ app }} will be able to</h2>
+  <ul>
+    <li>Read what you can see in {{ practice }} as {{ role }}: companies, contacts, pipelines,
+      tasks, goals, notes (never PIN-locked ones), scorecards, meetings waiting for review,
+      the Sending queue, digests, invoices, documents and strategy sessions.</li>
+    <li>Draft for a person to approve: a task, a note, an email into the Sending queue,
+      Strategy Map rows into a session's tray, a KPI reading marked "entered by AI", and a
+      digest draft. Each is marked as made by an AI app.</li>
+  </ul>
+  <h2>It will never</h2>
+  <ul>
+    <li>Send mail, move or charge money, sign, delete anything, change a pipeline stage, or
+      change settings or connections.</li>
+  </ul>
+  <p class="provider">{{ app }}'s provider will receive the data of {{ practice }} that you
+    choose to work with there, under your practice's own agreement with that provider.</p>
+  <form method="post" action="/oauth/authorize">
+    {% csrf_token %}
+    {% for key, value in params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <div class="actions">
+      <button class="primary" type="submit" name="decision" value="allow">Allow</button>
+      <button type="submit" name="decision" value="deny">Cancel</button>
+    </div>
+  </form>
+  <p class="note">Every tool {{ app }} uses is written to Activity. Disconnect it at any time
+    from Profile, under Connected AI apps.</p>
+{% endif %}
+{% endblock %}

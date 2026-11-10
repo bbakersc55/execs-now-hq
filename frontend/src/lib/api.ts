@@ -181,7 +181,7 @@ export interface ActAsCandidate {
 /** GET /api/activity/ — the practice's feed across every account. */
 export const ACTIVITY_CATEGORIES = [
   "work", "comment", "note", "email", "pipeline",
-  "import", "portal", "team", "act_as", "digest", "settings", "scorecard",
+  "import", "portal", "team", "act_as", "digest", "settings", "scorecard", "ai_app",
 ] as const;
 
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number];
@@ -804,6 +804,8 @@ export interface DigestRow {
   /** `late`: reached its send time unapproved. Not sent; still sendable by hand. */
   state: "pending" | "approved" | "late" | "sent" | "expired" | "skipped";
   is_ai_generated: boolean; is_stale: boolean; stale_reason: string;
+  /** P7: drafted by someone's AI app over MCP. */
+  from_ai_app?: boolean;
   period_start: string; period_end: string; send_window_at: string;
   generated_at: string; approved_by: Person; approved_at: string | null;
   item_count: number; body_text: string; body_html?: string;
@@ -1138,6 +1140,8 @@ export interface MapRow {
   /** The focused format's card (owner, 2026-09-29): all the PDF shows. */
   header?: string; statement?: string;
   bottleneck: string; root_cause: string; the_fix: string;
+  /** P7: proposed by someone's AI app over MCP. */
+  from_ai_app?: boolean;
   owner_text: string; horizon: number | null; measurable: string; mechanics_note: string;
   state: "proposed" | "accepted" | "discarded";
   converted_to: "" | "goal" | "project";

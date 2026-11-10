@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "apps.notify",
     "apps.calendars",
     "apps.esign",
+    "apps.aiconnect",
 ]
 
 MIDDLEWARE = [
@@ -312,6 +313,17 @@ for _entry in DEV_REAL_SEND_ALLOWLIST:
             "Wildcards and bare domains are rejected: one entry would put every "
             "colleague and client at that domain back in range (assumption H6)."
         )
+
+# --- AI apps over MCP (P7, docs/p7_mcp.md) ---
+# The MCP server's own address (the `mcp` service); its resource is `/mcp` on it.
+# The authorization server is this app, at PUBLIC_BASE_URL.
+MCP_PUBLIC_URL = env("MCP_PUBLIC_URL", default=(
+    "http://localhost:8110" if IS_LOCAL else "https://mcp.getexecutivesnow.com")).rstrip("/")
+MCP_RESOURCE_URL = f"{MCP_PUBLIC_URL}/mcp"
+OAUTH_ISSUER_URL = PUBLIC_BASE_URL.rstrip("/")
+#: An access token lives an hour; a refresh token thirty days, used once.
+AI_APP_ACCESS_TTL_SECONDS = 3600
+AI_APP_REFRESH_TTL_DAYS = 30
 
 # --- AI ---
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")

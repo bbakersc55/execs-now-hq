@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AiRecord, DoInYourAi } from "../components/AiApps";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -234,7 +235,10 @@ export function Scorecard({ me }: { me: Me }) {
           }} />
       )}
 
-      {b.may_set_up && view === "tiles" && <AskClaude companyId={companyId} />}
+      {b.may_set_up && view === "tiles" && (
+        <AiRecord.Provider value={`${b.company.name} (company id ${b.company.id}), ${b.window?.label ?? "this week"}`}>
+          <AskClaude companyId={companyId} />
+        </AiRecord.Provider>)}
 
       {view === "grid" ? <Grid tiles={tiles} b={b} /> : (() => {
         const drawn = (list: Tile[]) => list.map((t) => <ScorecardTile key={t.id} t={t}
@@ -581,12 +585,16 @@ function AskClaude({ companyId }: { companyId: string }) {
       {s?.refused ? <p className="small muted">{s.refused}</p> : (
         <div className="row tight sc-ai-buttons">
           <AiGate>
-            <button className="small" disabled={!s || ask.isPending} onClick={() => ask.mutate("explain")}>
-              {ask.isPending && ask.variables === "explain" ? "Asking Claude…"
-                : `Explain this ${w.scorecard} (${price(s?.explain_estimate_usd)})`}</button>
-            <button className="small" disabled={!s || ask.isPending} onClick={() => ask.mutate("note")}>
-              {ask.isPending && ask.variables === "note" ? "Asking Claude…"
-                : `Draft the weekly note (${price(s?.note_estimate_usd)})`}</button>
+            <DoInYourAi action="scorecard_explain">
+              <button className="small" disabled={!s || ask.isPending} onClick={() => ask.mutate("explain")}>
+                {ask.isPending && ask.variables === "explain" ? "Asking Claude…"
+                  : `Explain this ${w.scorecard} (${price(s?.explain_estimate_usd)})`}</button>
+            </DoInYourAi>
+            <DoInYourAi action="scorecard_weekly_note">
+              <button className="small" disabled={!s || ask.isPending} onClick={() => ask.mutate("note")}>
+                {ask.isPending && ask.variables === "note" ? "Asking Claude…"
+                  : `Draft the weekly note (${price(s?.note_estimate_usd)})`}</button>
+            </DoInYourAi>
           </AiGate>
           {s && <span className="small muted">{s.used_today} of {s.cap} used today.</span>}
         </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ExternalLink } from "lucide-react";
 
+import { AiActionsCard, AiAppsCard } from "../components/AiApps";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { AiBudget, AiGuard, aiPausedMessage, api } from "../lib/api";
 
@@ -30,15 +31,19 @@ export function AiUsage() {
 
   return (
     <>
-      <PageHead title="AI usage"
-        sub="Every Claude call this practice has made, and what it cost. Visible to you only —
-        spend is financial."
+      <PageHead title="AI"
+        sub="Your AI apps, where each AI action runs and on which model, and every Claude call
+        this practice has made with what it cost. Visible to you only — spend is financial."
         action={
           <a className="button" href="https://console.anthropic.com/" target="_blank"
             rel="noopener noreferrer">
             Manage your Anthropic account <ExternalLink size={14} />
           </a>
         } />
+
+      <AiAppsCard />
+
+      <AiActionsCard />
 
       <DailyLimit />
 

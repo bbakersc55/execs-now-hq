@@ -489,6 +489,8 @@ class StrategyMapRow(TenantScopedModel):
     #: before acceptance can teach the next draft this practice's style.
     header = models.CharField(max_length=120, blank=True, default="", db_default="")
     statement = models.TextField(blank=True, default="", db_default="")
+    #: P7: proposed by a person's AI app over MCP, not by the app's own Claude.
+    from_ai_app = models.BooleanField(default=False, db_default=False)
     proposed_header = models.CharField(max_length=120, blank=True, default="",
                                        db_default="")
     proposed_statement = models.TextField(blank=True, default="", db_default="")

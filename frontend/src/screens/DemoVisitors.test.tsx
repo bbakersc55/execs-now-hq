@@ -151,7 +151,7 @@ describe("a visitor's own copy", () => {
   it("has Your demo in Settings, and no AI usage of its own", () => {
     const labels = settingsFor(visitor()).map((s) => s.label);
     expect(labels[0]).toBe("Your demo");
-    expect(labels).not.toContain("AI usage");
+    expect(labels).not.toContain("AI");
     expect(settingsFor(aMe()).map((s) => s.label)).not.toContain("Your demo");
   });
 

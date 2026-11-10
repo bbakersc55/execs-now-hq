@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.urls import include, path, re_path
 
+from apps.aiconnect import urls as aiconnect_urls
+
 from apps.accounts import google_external, microsoft_signin
 from apps.accounts import views as account_views
 from apps.billing import views_pay as billing_pay
@@ -36,6 +38,8 @@ urlpatterns = [
     path("accounts/google/external/callback", google_external.google_external_callback,
          name="google-external-callback"),
     path("accounts/", include("allauth.urls")),
+    # AI apps' OAuth 2.1 authorization server (P7, apps/aiconnect/oauth.py).
+    *aiconnect_urls.oauth_patterns,
     # The marketing site's "Request demo access" form, forwarded by the site's
     # own server with the shared secret (apps/crm/views_site_leads.py).
     re_path(r"^api/public/leads/?$", crm_site_leads.leads, name="public-leads"),
@@ -58,6 +62,7 @@ urlpatterns = [
     path("api/", include("apps.billing.urls")),
     path("api/", include("apps.finance.urls")),
     path("api/", include("apps.personal.urls")),
+    path("api/", include("apps.aiconnect.urls")),
     path("api/", include("apps.scorecard.urls")),
     path("api/", include("apps.esign.urls")),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed

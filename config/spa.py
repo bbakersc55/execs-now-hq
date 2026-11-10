@@ -38,6 +38,13 @@ def app_shell(request, *args, **kwargs):
     # left in frontend/dist is a snapshot of whenever it was last built, and
     # serving it here showed the owner a two-screens-old page (2026-09-29). So
     # in development every app route goes to the same path on the dev server.
+    # P7: someone who left an AI app's authorize page to sign in goes back to
+    # it (apps/aiconnect/oauth.py), whichever sign-in brought them here.
+    from apps.aiconnect.oauth import resume_url
+
+    resume = resume_url(request) if hasattr(request, "session") else None
+    if resume:
+        return HttpResponseRedirect(resume)
     root = settings.APP_ROOT_URL
     if settings.IS_LOCAL and root.startswith("http"):
         return HttpResponseRedirect(root.rstrip("/") + request.get_full_path())

@@ -52,13 +52,18 @@ SOURCE_CAP = 500
 LIMIT = 200
 
 CATEGORIES = ("work", "comment", "note", "email", "pipeline", "import",
-              "portal", "team", "act_as", "digest", "settings", "scorecard")
+              "portal", "team", "act_as", "digest", "settings", "scorecard", "ai_app")
 
 # Verb → (category, phrasing). A verb absent here is absent from the feed, so
 # adding an audited action is a deliberate act rather than an automatic leak.
 # `{task}`, `{goals}`, `{a_project}` and the like are the practice's words
 # (`_forms`), filled in when the feed is read.
 AUDIT = {
+    # P7: AI apps over MCP. A tool's line names the tool and touches record
+    # ids only (`payload["ids"]`), never what was read or written.
+    "ai_app.connected": ("ai_app", "connected {app}"),
+    "ai_app.revoked": ("ai_app", "disconnected {app}"),
+    "ai_app.tool": ("ai_app", "used {tool} through {app}"),
     "stage.changed": ("pipeline", "moved {target} to a new stage"),
     "contact.merged": ("pipeline", "merged {target}"),
     "contact.deleted": ("pipeline", "deleted {target}"),
@@ -480,7 +485,14 @@ def _audit_entries(scope, since, until, actor):
             t = teams.get(a.target_id)
             company = t.client_company if t else None
         by, behalf = _person(a.actor, a.acting_user)
-        if category == "team":
+        if category == "ai_app":
+            text = phrasing.format(app=str(a.payload.get("app") or "an AI app"),
+                                   tool=str(a.payload.get("tool") or "a tool"))
+            if a.verb == "ai_app.tool" and target:
+                text += f" on {target}"
+            if a.verb == "ai_app.tool" and a.payload.get("ok") is False:
+                text += " (refused)"
+        elif category == "team":
             text = _team_text(a, target, phrasing, scope.words)
         elif category == "scorecard":
             text = phrasing.format(target=target or "a company",

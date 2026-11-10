@@ -592,6 +592,7 @@ def represent_digest(digest, *, full=False) -> dict:
         "cadence": digest.cadence,
         "state": digest.state,
         "is_ai_generated": digest.is_ai_generated,
+        "from_ai_app": digest.from_ai_app,
         "is_stale": digest.is_stale,
         "stale_reason": digest.stale_reason,
         "period_start": digest.period_start.isoformat(),

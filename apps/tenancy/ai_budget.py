@@ -41,16 +41,19 @@ def _spent_since(since: datetime) -> Decimal:
 
 
 def call_estimate(purpose: str, tokens: tuple[int, int]) -> Decimal:
-    """What one call of this kind costs: this practice's own average once it
-    has one, the model's price for `tokens` until then."""
-    from apps.tenancy import claude
+    """What one call of this kind costs: this practice's own average on the
+    model it runs on now (P7: a tier change starts a new average), the
+    model's price for `tokens` until then."""
+    from apps.tenancy import ai_actions
+    from apps.tenancy.context import get_current_tenant_id
     from apps.tenancy.models import AiCall
 
-    average = AiCall.objects.filter(purpose=purpose, succeeded=True,
+    resolved = ai_actions.model_for(get_current_tenant_id(), purpose)
+    average = AiCall.objects.filter(purpose=purpose, succeeded=True, model=resolved.model,
                                     cost_usd__gt=0).aggregate(a=Avg("cost_usd"))["a"]
     if average:
         return Decimal(average)
-    return claude.cost_of(settings.ANTHROPIC_MODEL, *tokens)
+    return resolved.cost(*tokens)
 
 
 def next_import(tenant) -> dict | None:

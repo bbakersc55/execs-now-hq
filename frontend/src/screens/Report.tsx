@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DoInYourAi } from "../components/AiApps";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "lucide-react";
@@ -668,9 +669,11 @@ function GoalCard({ block, me, onChanged, setNote, open, onToggle, position, onM
                       onClick={() => record.mutate()}>Record it</button>
             </>
           )}
-          <AiGate><button className="ghost" disabled={draft.isPending}
-                  onClick={() => draft.mutate()}>Draft the narrative with Claude</button>
-          </AiGate>
+          <DoInYourAi action="goal_narrative"
+            record={`the goal "${block.title}" (goal id ${block.id})`}>
+            <AiGate><button className="ghost" disabled={draft.isPending}
+                    onClick={() => draft.mutate()}>Draft the narrative with Claude</button>
+            </AiGate></DoInYourAi>
         </div>
       )}
 

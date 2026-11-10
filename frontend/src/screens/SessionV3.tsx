@@ -1,4 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
+import { DoInYourAi } from "../components/AiApps";
 import { useState } from "react";
 
 import { Banner, Pill } from "../components/ui";
@@ -72,6 +73,7 @@ export function DiagnosticTrayV3({ sessionPath, data, mayRun, onChanged }: {
   return (
     <div style={{ marginBottom: ".75rem" }}>
       <div className="row">
+        <DoInYourAi action="strategy_diagnostic_questions">
         <AiGate>
         <button disabled={busy || full} onClick={() => propose.mutate(false)}>
           {propose.isPending ? "Proposing…"
@@ -83,6 +85,7 @@ export function DiagnosticTrayV3({ sessionPath, data, mayRun, onChanged }: {
           Propose from the ratings
         </button>
         </AiGate>
+        </DoInYourAi>
         <span className="small muted">
           {inSession.length > 0
             ? `${inSession.length} in the session (this template starts with ${size}; `

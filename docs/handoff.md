@@ -2,7 +2,8 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-10 UTC**, after Release 38. **The next session starts at
-"2026-11-10: Release 38, the Website leads pipeline" just below**; then
+"2026-11-10: AI apps over MCP" just below**; then
+"2026-11-10: Release 38, the Website leads pipeline"; then
 "2026-11-09: Release 37, the marketing site"; then
 "2026-11-05, late: where things stand", which sums up Releases
 32 to 36 and everything open; then "2026-11-05, later: Release 36, personal
@@ -24,6 +25,31 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-10: AI apps over MCP (on `dev`, not released)
+
+- **Built** (spec as built: `docs/p7_mcp.md`):
+  - the MCP server AI apps connect to, with OAuth 2.1 sign-in served by the app;
+  - "Connected AI apps" on Profile;
+  - Settings → AI ("AI usage" renamed) with "AI apps" and "Actions" (where
+    each AI action runs, on which tier);
+  - the platform tier table in the Practices area;
+  - "Do this in your AI" on the in-app AI buttons;
+  - the site's privacy and terms paragraphs on connected AI apps.
+- **Migrations, additive, applied on the laptop:** `aiconnect 0001` (with
+  the three tiers), `tenancy 0024`, `work 0012`,
+  `strategy 0021`, `notes 0005`, `scorecard 0013` (the last two choices only).
+- **Before the release:** create the Railway service `mcp` (`railway/mcp.json`)
+  and its domain `mcp.getexecutivesnow.com` (a CNAME at the DNS host to the
+  target Railway shows). Its variables are web's. The release that carries
+  this adds R6a to the sequence (the `mcp` service waits like the worker).
+- **Changes every practice's models at release:** AI actions move off the
+  single `claude-opus-5` onto the tiers. Fast is Haiku 5.5, Standard Sonnet
+  5.5, Deep Opus 5.5.
+- **Open:**
+  - the demo's own `mcp` service and `MCP_PUBLIC_URL`;
+  - Google Limited Use wording for mail subjects reaching an AI app;
+  - the ChatGPT steps, not yet tried against ChatGPT.
 
 ## 2026-11-10: Release 38, the Website leads pipeline
 

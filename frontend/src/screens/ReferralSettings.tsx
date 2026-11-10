@@ -1,4 +1,5 @@
 import { PageHead, useRowLink } from "../components/shell";
+import { DoInYourAi } from "../components/AiApps";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -274,12 +275,15 @@ export function ReferralSettings() {
                       : <Pill kind="warn">none set</Pill>}
                   </td>
                   <td className="right">
-                    <button disabled={draftTouch.isPending || !p.referral_enrolled}
-                      title={p.referral_enrolled ? undefined : "Enroll them first"}
-                      aria-label={`Draft touch for ${p.first_name} ${p.last_name}`}
-                      onClick={() => draftTouch.mutate(p.id)}>
-                      Draft touch now
-                    </button>
+                    <DoInYourAi action="referral_touch"
+                      record={`${p.first_name} ${p.last_name} (contact id ${p.id})`}>
+                      <button disabled={draftTouch.isPending || !p.referral_enrolled}
+                        title={p.referral_enrolled ? undefined : "Enroll them first"}
+                        aria-label={`Draft touch for ${p.first_name} ${p.last_name}`}
+                        onClick={() => draftTouch.mutate(p.id)}>
+                        Draft touch now
+                      </button>
+                    </DoInYourAi>
                   </td>
                 </tr>
               ))}

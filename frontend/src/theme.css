@@ -2141,3 +2141,28 @@ label.choice.inline { display: inline-flex; margin-left: 8px; }
 /* Clear space (docs/brand/README.md): half the square on every side, so 40px
    beneath a 236px lockup, whose square is 80px. */
 .signin-lockup { display: block; width: 236px; max-width: 70%; height: auto; margin: 0 auto 40px; }
+
+/* P7: AI apps over MCP (components/AiApps.tsx). */
+.connector-url { background: var(--panel, #f0f3f7); border: 1px solid var(--line, #dfe3e8);
+  border-radius: 6px; padding: 0.35rem 0.6rem; font-size: 0.9rem; word-break: break-all; }
+.ai-app-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.5rem 1.5rem; margin: 0.9rem 0 0.4rem; }
+.ai-app-steps h4 { margin: 0 0 0.25rem; }
+.ai-app-steps ol { margin: 0; padding-left: 1.2rem; }
+.ai-app-steps li { margin: 0.15rem 0; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+table.ai-actions select { max-width: 13rem; }
+.do-in-your-ai { display: inline-flex; flex-direction: column; gap: 0.4rem; max-width: 100%; }
+.do-in-your-ai-panel { border: 1px solid var(--line, #dfe3e8); border-radius: 8px;
+  padding: 0.6rem; background: var(--panel, #f8f9fb); width: min(34rem, 100%); }
+.do-in-your-ai-panel textarea { width: 100%; font-size: 0.9rem; margin-bottom: 0.4rem; }
+@media (max-width: 640px) {
+  /* The actions table as stacked cards: name, where it runs, its tier. */
+  table.ai-actions thead { display: none; }
+  table.ai-actions, table.ai-actions tbody { display: block; }
+  table.ai-actions tr { display: grid; grid-template-columns: 1fr; gap: 0.35rem;
+    padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+  table.ai-actions td { display: block; padding: 0; border: 0; }
+  table.ai-actions td:first-child { grid-column: 1 / -1; }
+  table.ai-actions select { width: 100%; max-width: 100%; }
+}

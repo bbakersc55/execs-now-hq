@@ -4,6 +4,7 @@
       "bottleneck": "Pricing is from memory",
       "converted_to": "",
       "from_ai": true,
+      "from_ai_app": false,
       "header": "A Price Book",
       "horizon": 90,
       "id": "<id-11>",
