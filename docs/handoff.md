@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-10 UTC**, after Release 38. **The next session starts at
-"2026-11-10: AI apps over MCP" just below**; then
+2026-11-10 UTC**, after Release 39. **The next session starts at
+"2026-11-10: Release 39, AI apps over MCP" just below**; then
 "2026-11-10: Release 38, the Website leads pipeline"; then
 "2026-11-09: Release 37, the marketing site"; then
 "2026-11-05, late: where things stand", which sums up Releases
@@ -26,7 +26,25 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-10: AI apps over MCP (on `dev`, not released)
+## 2026-11-10: Release 39, AI apps over MCP
+
+- **Release 39 is live**: `main` at `757ff1d`, six additive migrations
+  applied by the runbook sequence (backup `execsnowhq_prod_20261110_154850`,
+  push 15:50:31, applied 15:52:57–15:53:07), everything serving in about 3.5
+  minutes. Recorded in the runbook ("Observed at Release 39").
+- **The `mcp` services exist** in production (`mcp.getexecutivesnow.com`) and
+  the demo (`mcp-demo.getexecutivesnow.com`), DNS in place at GoDaddy; both
+  answer `/healthz` and the unsigned 401 with their resource metadata. Their
+  variables are references to web's; a new web variable must be added to
+  `mcp` too. Ids in the runbook and `railway/README.md`.
+- **The site says so:** stop 8 of "How a practice runs on it", "Works with
+  your AI"; a line in "Every plan includes"; an FAQ entry. Notes and tasks
+  an AI app adds are described as marked, not as waiting for approval: they
+  have no approval queue.
+- **Not yet exercised:** a real Claude connection to production, and the
+  ChatGPT steps.
+
+### What Release 39 carried
 
 - **Built** (spec as built: `docs/p7_mcp.md`):
   - the MCP server AI apps connect to, with OAuth 2.1 sign-in served by the app;
@@ -39,18 +57,14 @@ they don't, and what changed since 9/30.
 - **Migrations, additive, applied on the laptop:** `aiconnect 0001` (with
   the three tiers), `tenancy 0024`, `work 0012`,
   `strategy 0021`, `notes 0005`, `scorecard 0013` (the last two choices only).
-- **Before the release:** create the Railway service `mcp` (`railway/mcp.json`)
-  and its domain `mcp.getexecutivesnow.com` (a CNAME at the DNS host to the
-  target Railway shows). Its variables are web's. The release that carries
-  this adds R6a to the sequence (the `mcp` service waits like the worker).
-- **Changes every practice's models at release:** AI actions move off the
+- **The `mcp` service** (`railway/mcp.json`) waits like the worker; the
+  sequence's R6a checks it.
+- **Changed every practice's models at release:** AI actions moved off the
   single `claude-opus-5` onto the tiers. Fast is Haiku 5.5, Standard Sonnet
   5.5, Deep Opus 5.5.
 - **Mail stays out of AI apps** (Google's Limited Use terms): no tool returns
   anything read from Gmail or Microsoft 365. See `docs/p7_mcp.md`.
-- **Open:**
-  - the demo's own `mcp` service and `MCP_PUBLIC_URL`;
-  - the ChatGPT steps, not yet tried against ChatGPT.
+- **Open:** the ChatGPT steps, not yet tried against ChatGPT.
 
 ## 2026-11-10: Release 38, the Website leads pipeline
 

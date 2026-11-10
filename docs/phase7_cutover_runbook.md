@@ -817,6 +817,35 @@ went live by itself (reason `deploy`, watch paths not ignored), the first
 since the path became `/site/**`. A release that changes `site/` redeploys
 the site; one that does not leaves it alone.
 
+**Observed at Release 39 (2026-11-10 UTC, six migrations,
+`tenancy 0024_aiactionsetting`, `aiconnect 0001_initial` (with the three
+model tiers), `notes 0005_note_source_ai_app`, `scorecard
+0013_reading_source_ai`, `strategy 0021_strategymaprow_from_ai_app` and
+`work 0012_digest_from_ai_app`, all additive: AI apps over MCP, with mail
+kept out, `757ff1d`):** R1: the owner ran the backup by hand:
+`execsnowhq_prod_20261110_154850.sql.gz`, 13.5 MB, media copied. R2: `main`
+fast-forwarded `6ffc959..757ff1d`, pushed 15:50:31. R3: worker `WAITING`
+15:52:26, listing exactly the six. R4: applied by me 15:52:57–15:53:07, all
+`OK`. R5: running 15:53:47. R5b: no new scheduled job. **R6a, first time:**
+`mcp` deployment `13e4992f` SUCCESS by itself once R4 landed;
+`https://mcp.getexecutivesnow.com/healthz` `ok`, an unsigned `POST /mcp` 401
+naming its resource metadata, which names `https://app.getexecutivesnow.com`
+as the authorization server. R6: web `196a3215` SUCCESS by itself; `/healthz`
+200 and `/.well-known/oauth-authorization-server` 200 (new route). `enhq-site`
+redeployed by itself (the release changed `site/`: the privacy and terms
+paragraphs on AI apps). **Push to everything serving: about 3.5 min.**
+
+**The `mcp` services** (created 2026-11-10 through Railway's API, before
+Release 39): production `632a48cd-7ce2-46b2-90bd-2705edbfab60` (branch
+`main`, `mcp.getexecutivesnow.com`, CNAME `xjr610za.up.railway.app`) and the
+demo's `55c1e002-d27e-441d-a326-2bf48c808c52` (branch `dev`,
+`mcp-demo.getexecutivesnow.com`, CNAME `7pdd9jja.up.railway.app`), each with
+its `_railway-verify` TXT record at GoDaddy. Their variables are Railway
+references to each web variable (`${{execs-now-hq.NAME}}`), plus
+`MCP_PUBLIC_URL` and `PORT=8080`: **a variable added to web later must be
+added to `mcp` the same way.** Production's first deploy, of `main` before
+Release 39, FAILED as expected (no `scripts/start_mcp.sh` yet).
+
 ---
 
 ## Part A — the owner's steps, in order

@@ -1,6 +1,6 @@
 # Railway service configuration (Phase 7)
 
-One image (`Dockerfile`), three services. **Railway no longer accepts
+One image (`Dockerfile`), four services. **Railway no longer accepts
 config-as-code files** (2026-09-29: "deprecated, use `.railway/railway.ts`"),
 so these JSON files are the written record of each service's settings, and the
 settings themselves are applied to each service through Railway's API
@@ -13,7 +13,7 @@ because a quoted `sh -c '…'` start command was not run as written.
 | `web` (named **`execs-now-hq`** in the production project) | `railway/web.json` | `migrate_if_empty`: builds the schema on a brand-new empty database; on the demo (`APP_ENVIRONMENT=demo`) applies unapplied migrations; otherwise **refuses to start while any migration is unapplied**, after waiting up to six minutes (`--wait 360`, checked every 10 s) for it to be applied by hand. Health check timeout 480 s, longer than that wait. Then the system checks, then gunicorn on 8080. Health check `/healthz`. |
 | `qcluster` | `railway/qcluster.json` | the Django-Q2 worker, with the same unapplied-migration refusal. **No public domain.** Starts at 0 replicas and is scaled to 1 only at runbook C9. |
 | `backup` | `railway/backup.json` | `scripts/backup_db_railway.sh`, nightly at 08:00 UTC (02:00 Mountain). |
-| `mcp` | `railway/mcp.json` | `scripts/start_mcp.sh`: the MCP server AI apps connect to (P7, `docs/p7_mcp.md`), uvicorn on `config.mcp_asgi:app`, at `mcp.getexecutivesnow.com`. **Waits** with a migration unapplied, like qcluster, and never migrates. Health check `/healthz`. Same variables as web, plus `MCP_PUBLIC_URL`. |
+| `mcp` | `railway/mcp.json` | `scripts/start_mcp.sh`: the MCP server AI apps connect to (P7, `docs/p7_mcp.md`), uvicorn on `config.mcp_asgi:app`, at `mcp.getexecutivesnow.com`. **Waits** with a migration unapplied, like qcluster, and never migrates. Health check `/healthz`. Its variables are Railway references to each of web's (`${{execs-now-hq.NAME}}`), plus `MCP_PUBLIC_URL` and `PORT=8080`; a variable added to web must be added here too. Production service `632a48cd-…` (branch `main`); the demo has its own, `55c1e002-…` (branch `dev`), at `mcp-demo.getexecutivesnow.com`. Live since Release 39. |
 
 Staging runs **`web` only**, from the `dev` branch. It never gets a qcluster
 service (runbook B3).

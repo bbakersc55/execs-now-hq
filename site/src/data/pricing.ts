@@ -77,5 +77,6 @@ export const EVERY_PLAN = [
   "Sending queue, email templates and campaigns",
   "Notes and calendar",
   "Google Workspace or Microsoft 365",
+  "Works with your AI: connect Claude or ChatGPT; drafts wait for your approval, mail is never shared",
   "Nightly backups",
 ];
