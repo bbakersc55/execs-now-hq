@@ -797,9 +797,24 @@ R6: web `e1bbf71a` SUCCESS by itself; `/healthz` 200 at 21:28:59, and
 `POST /api/public/leads` answers 503 (new route; `SITE_LEAD_TOKEN` not yet
 set). **Push to web serving: about 3 min.** `enhq-site`'s deployment of the
 push was **SKIPPED, "No changes to watched files"**, though `site/` changed:
-its watch path was `site/**`. Set to `/site/**` the same evening; the
-trivial site commit after the next release proves it. The owner deployed
+its watch path was `site/**`. Set to `/site/**` the same evening
+(`serviceInstanceUpdate`), and proved at Release 38. The owner deployed
 `9397d7d` to the site by hand meanwhile (`0740e43d`, watch paths ignored).
+
+**Observed at Release 38 (2026-11-10 UTC, one migration,
+`crm 0057_pipeline_kind_website`, choices only, no SQL: the Website leads
+pipeline, the approved privacy and terms pages, `6ffc959`):** R1: the owner
+ran the backup by hand: `execsnowhq_prod_20261110_015251.sql.gz`, 13.3 MB,
+media copied. R2: `main` fast-forwarded `9397d7d..6ffc959`, pushed 01:54:09.
+R3: worker `WAITING` 01:55:21, listing exactly `crm.0057`. R4: applied by me
+01:55:28–34, `OK`. R5: `migrations current` 01:55:57, running 01:56:03. R5b:
+no new scheduled job. R6: web `dd54e7f5` SUCCESS by itself; `/healthz` 200 at
+01:56:24, and `POST /api/pipelines/website-leads/` 403 signed out (new
+route). **Push to web serving: about 2 min 15 s.** **`enhq-site` now deploys
+from `main` on its watch path**: deployment `6f40e8d1` of the push built and
+went live by itself (reason `deploy`, watch paths not ignored), the first
+since the path became `/site/**`. A release that changes `site/` redeploys
+the site; one that does not leaves it alone.
 
 ---
 

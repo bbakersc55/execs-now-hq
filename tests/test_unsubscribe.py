@@ -48,6 +48,15 @@ def _token(html):
 
 # ------------------------------------------------------------ the categories
 
+@pytest.fixture(autouse=True)
+def one_signing_second(monkeypatch):
+    """An unsubscribe token carries the second it was signed in. Tests here
+    compare a header's token with the body's, signed a moment apart; pinned,
+    they cannot straddle a second (seen twice in the gate, 2026-11-10)."""
+    from django.core import signing
+
+    monkeypatch.setattr(signing.TimestampSigner, "timestamp", lambda self: "1xQbPg")
+
 @pytest.mark.django_db
 def test_every_message_is_made_with_its_category(seeded_tenant, ff, in_tenant_a):
     contact = _contact(seeded_tenant)

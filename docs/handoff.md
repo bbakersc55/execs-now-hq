@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-09 UTC**, after Release 37. **The next session starts at
-"2026-11-09, evening: the Website leads pipeline" just below**; then
+2026-11-10 UTC**, after Release 38. **The next session starts at
+"2026-11-10: Release 38, the Website leads pipeline" just below**; then
 "2026-11-09: Release 37, the marketing site"; then
 "2026-11-05, late: where things stand", which sums up Releases
 32 to 36 and everything open; then "2026-11-05, later: Release 36, personal
@@ -25,7 +25,21 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-09, evening: the Website leads pipeline (on `dev`)
+## 2026-11-10: Release 38, the Website leads pipeline
+
+- **Release 38 is live**: `main` at `6ffc959`, **one migration**
+  (`crm 0057_pipeline_kind_website`, choices only, no SQL), applied by the
+  runbook; **no new scheduled job**. Runbook, "Observed at Release 38".
+- **The site service deploys from `main` on its watch path** (`/site/**`):
+  the release's push built `enhq-site` by itself. No more `railway up` for a
+  released site change; a site change on `dev` reaches production at the
+  next release (or by `railway up` from the repo root, as before, when it
+  cannot wait).
+- **The approved privacy and terms pages are on `main`** too (`65354a8`).
+- **Open for Bryan:** in production, click "Add the Website leads pipeline"
+  in Settings → Stage rules; until then website leads land in Sales.
+  Confirm where his own 2026-11-09 request went (the read-only block given
+  that evening).
 
 - **Bryan's own demo request, ~23:56 UTC**: the site forwarded it, the app
   answered 201. Which contact it became could not be read from here
@@ -69,23 +83,16 @@ they don't, and what changed since 9/30.
   - **`POST /api/public/leads`**: the demo form, forwarded by the site's
     server, makes a prospect in the Executives Now practice with a note, a
     Notice and a "Website reply" draft for approval.
-- **Open:**
-  - **`SITE_LEAD_TOKEN` is set on neither `execs-now-hq` nor `enhq-site`**;
-    until it is (same value on both, by the owner), the endpoint answers 503
-    and a demo request from the website is lost. The copy-paste block was
-    given 2026-11-09.
-  - **The site's watch path** was `site/**`, and Railway skipped the
-    release's site deployment. It is now `/site/**`. **Prove it with a
-    trivial site commit after the next release**, not before; until then a
-    site change reaches production only by hand.
-    The next release now carries site changes (the legal pages approved
-    2026-11-09, and `site/README.md` corrected to `/site/**`), so its push
-    is the first test: `enhq-site` should build, not SKIP. The trivial site
-    commit after it is still the proof asked for.
+- **Since closed:**
+  - `SITE_LEAD_TOKEN` was set by the owner the same evening: the site's
+    forward of Bryan's request at 23:56 UTC was answered 201.
+  - **The site's watch path** was `site/**`, and Railway skipped this
+    release's site deployment. Set to `/site/**`; proved at Release 38.
 - **Privacy and terms are approved** (Bryan, 2026-11-09): `LEGAL_DRAFT` is
   false, no draft notice, both indexed and in the sitemap, "Effective
-  November 9, 2026". Live by `railway up` on 2026-11-09; on `main` at the
-  next release.
+  November 9, 2026". Live by `railway up` on 2026-11-09; on `main` at
+  Release 38.
+- **Open:**
   - `www.execsnowhq.com` answers (CNAME to `hu8tx0t5.up.railway.app`,
     `/healthz` 200 on 2026-11-09).
   - Azure/Entra app registration, still on Bryan's side.
