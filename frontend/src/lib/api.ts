@@ -1911,11 +1911,19 @@ export interface PortalInvoice {
   /** P4 part 2: Pay shows; a payment is being checked; the practice's
    *  account is NMI's sandbox (shown as "Test mode"). */
   can_pay: boolean; payment_in_progress: boolean; test_mode: boolean;
+  /** 2026-11-10: where Pay would show, card payments are paused. */
+  pay_paused?: boolean;
 }
+
+/** Which card form a page mounts (2026-11-10), from the server's
+ *  NMI_API_HOST: NMI's Payment Component on NMI's own host, or Collect.js
+ *  from the processor's white-label host. Both give the same one-time token. */
+export type CardForm = { kind: "component" } | { kind: "collect"; script_url: string };
 
 /** GET /api/portal-invoices/:id/pay/ — the card form's key, at runtime. */
 export interface PayConfig {
   public_key: string; test_mode: boolean; amount_cents: number; number: string;
+  card_form?: CardForm;
 }
 
 /** POST /api/portal-invoices/:id/pay/ or /api/pay/:token — how the payment ended. */
@@ -1928,6 +1936,8 @@ export interface PayResult {
  *  (P4 part 4). A client team member gets 403. */
 export interface AutopayState {
   ready: boolean; test_mode: boolean; public_key: string;
+  /** 2026-11-10: no card saved while card payments are paused. */
+  paused?: boolean; card_form?: CardForm;
   card: { brand: string; last4: string; expires: string; added_by: string;
           added_at: string } | null;
   autopay: { since: string; by: string } | null;
@@ -1943,6 +1953,8 @@ export interface SubscriptionState {
   card: { brand: string; last4: string; expires: string } | null;
   next_charge_on: string | null; public_key: string; test_mode: boolean;
   suspended: boolean; open_cents: number;
+  /** 2026-11-10: no card saved and no Pay now while card payments are paused. */
+  paused?: boolean; card_form?: CardForm;
   invoices: { id: string; number: string; period_start: string; total_cents: number;
               status: "open" | "paid" | "void" | "refunded"; status_label: string;
               paid_at: string | null; checking: boolean; last_charge_text: string }[];
@@ -1963,6 +1975,20 @@ export interface PayLinkPage {
   paid: boolean; test_mode: boolean;
   /** Empty when there is no card form: paid, or the reason in `notice`. */
   public_key: string; notice: string;
+  card_form?: CardForm;
+}
+
+/** The words a pay button, a pay link and a card form show while card
+ *  payments are paused; the server's `gateway.PAUSED_MESSAGE`. */
+export const PAYMENTS_PAUSED = "Card payments are paused. Please try again later.";
+
+/** GET/POST /api/platform/card-payments/ — the Practices area's switch. */
+export interface CardPaymentsSwitch {
+  /** Why payments are paused: "off" (real calls off in production), "held"
+   *  (this switch), or "" (taking payments). */
+  paused: "" | "off" | "held"; held: boolean; changed_at: string | null; changed_by: string;
+  live_calls: boolean; environment: "sandbox" | "live"; api_host: string;
+  card_form: "component" | "collect";
 }
 
 // ------------------------------------------------------------- the books (P5)

@@ -93,10 +93,14 @@ def state(company) -> dict:
     card, consent = card_on_file(company), standing_consent(company)
     ready = payment_accounts.is_ready(company.tenant)
     account = payment_accounts.practice_account(company.tenant) if ready else None
+    paused = gw.paused()
     return {
         "ready": ready,
+        # 2026-11-10: no card saved while card payments are paused.
+        "paused": paused,
         "test_mode": card_payments.is_test_mode(company.tenant),
-        "public_key": account.public_key if account else "",
+        "public_key": account.public_key if account and not paused else "",
+        "card_form": gw.card_form(account.environment if account else "sandbox"),
         "card": card and {
             "brand": card.brand, "last4": card.last4,
             "expires": f"{card.exp_month:02d}/{card.exp_year % 100:02d}",
@@ -126,12 +130,16 @@ def save_card(company, *, user, payment_token) -> ClientPaymentMethod:
         raise AutopayRefused("The card details did not come through. Please try again.", 400)
     if not payment_accounts.is_ready(company.tenant):
         raise AutopayRefused(f"{services.practice_name(company.tenant)} cannot take cards yet.")
+    if gw.paused():
+        raise AutopayRefused(gw.PAUSED_MESSAGE, 503)
     account = payment_accounts.practice_account(company.tenant)
     first, _, last = (user.full_name or user.email).strip().partition(" ")
     try:
         record = gw.gateway().vault_add(account, payment_token=payment_token,
                                         billing=gw.Billing(first_name=first or "Card",
                                                            last_name=last or "Holder"))
+    except gw.CardPaymentsPaused:
+        raise AutopayRefused(gw.PAUSED_MESSAGE, 503) from None
     except gw.GatewayRefused as exc:
         raise AutopayRefused(f"The card could not be saved: {exc}") from None
     except gw.GatewayError:

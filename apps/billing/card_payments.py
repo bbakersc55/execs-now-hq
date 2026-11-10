@@ -73,7 +73,8 @@ def can_pay(invoice, *, via=PaymentAttempt.Via.PORTAL) -> bool:
     no portal and has no card on file, so only its link pays it."""
     return (invoice.status in ClientInvoice.OPEN and invoice.balance_cents > 0
             and (via == PaymentAttempt.Via.LINK or invoice.kind != ClientInvoice.Kind.CONTACT)
-            and payment_accounts.is_ready(invoice.tenant) and in_flight(invoice) is None)
+            and payment_accounts.is_ready(invoice.tenant) and in_flight(invoice) is None
+            and not gw.paused())
 
 
 def is_test_mode(tenant) -> bool:
@@ -87,10 +88,13 @@ def pay_config(invoice, *, via=PaymentAttempt.Via.PORTAL) -> dict:
         raise PaymentRefused(_why_not(invoice))
     account = payment_accounts.practice_account(invoice.tenant)
     return {"public_key": account.public_key, "test_mode": is_test_mode(invoice.tenant),
-            "amount_cents": invoice.balance_cents, "number": invoice.number}
+            "amount_cents": invoice.balance_cents, "number": invoice.number,
+            "card_form": gw.card_form(account.environment)}
 
 
 def _why_not(invoice) -> str:
+    if gw.paused() and invoice.status in ClientInvoice.OPEN and invoice.balance_cents > 0:
+        return gw.PAUSED_MESSAGE
     if in_flight(invoice) is not None:
         return UNKNOWN_MESSAGE if in_flight(invoice).status == A.UNKNOWN else (
             "A payment on this invoice is already under way.")
@@ -152,6 +156,11 @@ def _charge(attempt, **source) -> tuple[PaymentAttempt, str]:
         account = payment_accounts.practice_account(attempt.invoice.tenant)
         txn = gw.gateway().sale(account, amount_cents=attempt.amount_cents,
                                 reference=str(attempt.pk), **source)
+    except gw.CardPaymentsPaused:
+        # Paused between the check and the sale: nothing left for NMI, so the
+        # attempt never happened. Not a decline, and not a try used up.
+        PaymentAttempt.all_objects.filter(pk=attempt.pk).delete()
+        raise PaymentRefused(gw.PAUSED_MESSAGE, 503) from None
     except gw.GatewayUnreachable:
         _finish(attempt, A.UNKNOWN, response_text="No answer from NMI.")
         return attempt, UNKNOWN_MESSAGE

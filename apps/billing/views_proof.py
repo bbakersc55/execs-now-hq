@@ -65,6 +65,49 @@ mount();
 </script></body></html>"""
 
 
+#: 2026-11-10: the same proof with Collect.js from an allowed host
+#: (`?form=collect&host=…`), for the white-label host the Payment Component
+#: does not serve. Collect.js reads its key from its own script tag.
+PAGE_COLLECT = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Collect.js token proof</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="%(script)s" data-tokenization-key="%(key)s" data-variant="inline"></script>
+</head>
+<body style="font-family: sans-serif; max-width: 40rem; margin: 2rem auto">
+<h1>Collect.js token proof (sandbox, %(host)s)</h1>
+<p id="step">Card 1 of 2: the sale.</p>
+<div id="ccnumber" style="border:1px solid #ccc;height:2.6rem"></div>
+<div id="ccexp" style="border:1px solid #ccc;height:2.6rem"></div>
+<div id="cvv" style="border:1px solid #ccc;height:2.6rem"></div>
+<button id="pay" type="button">Pay</button>
+<pre id="result"></pre>
+%(config)s
+<script>
+const config = JSON.parse(document.getElementById("nmi-config").textContent);
+const tokens = [];
+CollectJS.configure({
+  variant: "inline",
+  fields: {ccnumber: {selector: "#ccnumber"}, ccexp: {selector: "#ccexp"},
+           cvv: {selector: "#cvv"}},
+  timeoutDuration: 20000,
+  timeoutCallback: () => { document.getElementById("result").textContent = "timeout"; },
+  callback: async (response) => {
+    tokens.push(response.token);
+    if (tokens.length < 2) {
+      document.getElementById("step").textContent = "Card 2 of 2: the vault.";
+      return;
+    }
+    document.getElementById("step").textContent = "Running the proof.";
+    const answer = await fetch(config.run_url, {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sale_token: tokens[0], vault_token: tokens[1]})});
+    document.getElementById("result").textContent = await answer.text();
+  },
+});
+document.getElementById("pay").onclick = () => CollectJS.startPaymentRequest();
+</script></body></html>"""
+
+
 def _allowed() -> bool:
     return (settings.APP_ENVIRONMENT == "local" and settings.NMI_ENVIRONMENT == "sandbox"
             and gw.live_calls_allowed())
@@ -76,6 +119,15 @@ def proof_page(request):
         raise Http404
     config = json_script({"public_key": gw.platform_account().public_key,
                           "run_url": "/dev/nmi-proof/run"}, "nmi-config")
+    if request.GET.get("form") == "collect":
+        host = request.GET.get("host", "")
+        if host not in gw.API_HOSTS:
+            raise Http404
+        from django.utils.html import escape
+
+        return HttpResponse(PAGE_COLLECT % {
+            "script": f"https://{host}/token/Collect.js", "host": host, "config": config,
+            "key": escape(gw.platform_account().public_key)})
     return HttpResponse(PAGE % {"component": COMPONENT, "config": config})
 
 

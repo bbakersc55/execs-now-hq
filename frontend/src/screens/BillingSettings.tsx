@@ -16,7 +16,11 @@ export interface PaymentAccountState {
   check_detail: string;
   ready: boolean;
   live_allowed: boolean;
-  gateway: "nmi" | "stub";
+  gateway: "nmi" | "stub" | "off";
+  /** 2026-11-10: "off" (real calls off in production), "held" (the platform
+   *  owner's switch), or "". */
+  paused?: "" | "off" | "held";
+  api_host?: string;
   pricing_program: "" | "interchange_plus" | "dual_pricing";
   pricing_program_label: string;
 }
@@ -70,6 +74,14 @@ export function BillingSettings() {
       {s.gateway === "stub" && (
         <Banner kind="warn">Card payments are switched off on this server. The connection
           test answers from a stand-in, and nothing reaches NMI.</Banner>
+      )}
+      {s.paused === "off" && (
+        <Banner kind="warn">Card payments are paused: real calls to the card processor are
+          off on this server. Pay buttons and pay links say so, and nothing is charged.</Banner>
+      )}
+      {s.paused === "held" && (
+        <Banner kind="warn">Card payments are paused by Execs NOW HQ. Pay buttons and pay
+          links say so, and nothing is charged until they resume.</Banner>
       )}
       {note && <Banner kind="ok">{note}</Banner>}
       {problem && <Banner kind="bad">{problem}</Banner>}

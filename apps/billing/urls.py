@@ -11,5 +11,7 @@ router.register("payment-account", views.PaymentAccountView, basename="payment-a
 router.register("portal-autopay", views.PortalAutopayView, basename="portal-autopay")
 router.register("subscription", views.SubscriptionView, basename="subscription")
 router.register("nmi-events", views.NmiEventViewSet, basename="nmi-event")
+router.register("platform/card-payments", views.CardPaymentsSwitchView,
+                basename="platform-card-payments")
 
 urlpatterns = router.urls

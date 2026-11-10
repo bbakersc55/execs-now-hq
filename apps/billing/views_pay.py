@@ -50,6 +50,7 @@ def _page(invoice) -> dict:
         "paid": invoice.status == ClientInvoice.Status.PAID,
         "test_mode": card_payments.is_test_mode(invoice.tenant),
         "public_key": config.get("public_key", ""),
+        "card_form": config.get("card_form") or {"kind": "component"},
         # Why there is no card form, when there is none and it is not paid.
         "notice": ("" if payable or invoice.status == ClientInvoice.Status.PAID
                    else card_payments._why_not(invoice)),

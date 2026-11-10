@@ -5,6 +5,15 @@
     .venv/bin/python scripts/nmi_token_proof.py --link     # the pay link (part 3)
     .venv/bin/python scripts/nmi_token_proof.py --autopay  # card on file, auto-pay (part 4)
     .venv/bin/python scripts/nmi_token_proof.py --subscription  # practice subscription (part 5)
+    .venv/bin/python scripts/nmi_token_proof.py --collect secure.nmi.com         # Collect.js
+    .venv/bin/python scripts/nmi_token_proof.py --collect secure.vaultixpay.com  # its host
+
+**--collect HOST** (2026-11-10) is the gateway proof with Collect.js loaded
+from HOST (one of `gateway.API_HOSTS`) instead of NMI's Payment Component:
+the same two tokens, the same sale, refunds and vault on the sandbox's v5.
+A sandbox key is refused by the white-label host's token API (404: the
+sandbox's merchants are not on it), so that run stops at the first token
+and says so; it completes only with that host's own keys.
 
 **--portal** pays a real invoice through the real portal page, as a client
 would: it builds the frontend, makes a fresh database `execsnowhq_nmi_proof`
@@ -141,6 +150,48 @@ def attempt(browser) -> dict:
         page.close()
 
 
+def collect_attempt(browser, host) -> dict:
+    """The proof page with Collect.js from `host`: the test card typed into
+    the host's frames twice; the page runs the sandbox path on the tokens."""
+    page = browser.new_page()
+    token_api = []
+    page.on("response", lambda r: token_api.append(r.status)
+            if r.url.split("?")[0].endswith("/token/api/create") else None)
+    try:
+        page.goto(f"{BASE}/dev/nmi-proof?form=collect&host={host}",
+                  wait_until="domcontentloaded", timeout=90000)
+        try:
+            fill_card(page)
+        except RuntimeError:
+            return {"ok": False, "host": host, "stopped": "the card fields never appeared",
+                    "token_api_statuses": sorted(set(token_api))}
+        page.get_by_text("Card 2 of 2").wait_for(timeout=60000)
+        page.wait_for_timeout(2000)
+        fill_card(page)
+        page.locator("#result").filter(has_text="steps").wait_for(timeout=120000)
+        text = page.locator("#result").inner_text()
+        try:
+            result = json.loads(text)
+        except ValueError:
+            result = {"ok": False, "answer": text[:1500]}
+        result["host"] = host
+        result["token_api_statuses"] = sorted(set(token_api))
+        return result
+    finally:
+        page.close()
+
+
+def run_collect(host) -> dict:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(channel="chrome", headless=True)
+        try:
+            return collect_attempt(browser, host)
+        finally:
+            browser.close()
+
+
 def run() -> dict:
     """NMI's frames sometimes load slowly; a page that never shows them is
     tried again from the start with fresh tokens, up to three times."""
@@ -253,10 +304,7 @@ def autopay_proof() -> dict:
                            capture_output=True, text=True)
     if built.returncode != 0:
         sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
-    subprocess.run(["dropdb", "--if-exists", PROOF_DB], check=True)
-    subprocess.run(["createdb", PROOF_DB], check=True)
-    print("Migrating the proof database…", file=sys.stderr)
-    manage("migrate", "--noinput", env_extra=PROOF_ENV)
+    fresh_proof_db()
     setup = json.loads(manage("nmi_proof_setup", env_extra=PROOF_ENV).strip().splitlines()[-1])
     server = start_server(PROOF_ENV)
     try:
@@ -445,6 +493,14 @@ print(json.dumps({"attempt": {"status": a.status, "nmi_transaction_id": a.nmi_tr
 """
 
 
+def fresh_proof_db() -> None:
+    """The proof's own database, made afresh: never `execsnowhq_local`."""
+    subprocess.run(["dropdb", "--if-exists", PROOF_DB], check=True)
+    subprocess.run(["createdb", PROOF_DB], check=True)
+    print("Migrating the proof database…", file=sys.stderr)
+    manage("migrate", "--noinput", env_extra=PROOF_ENV)
+
+
 def portal(by_link=False) -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -453,10 +509,7 @@ def portal(by_link=False) -> dict:
                            capture_output=True, text=True)
     if built.returncode != 0:
         sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
-    subprocess.run(["dropdb", "--if-exists", PROOF_DB], check=True)
-    subprocess.run(["createdb", PROOF_DB], check=True)
-    print("Migrating the proof database…", file=sys.stderr)
-    manage("migrate", "--noinput", env_extra=PROOF_ENV)
+    fresh_proof_db()
     setup = json.loads(manage("nmi_proof_setup", *(["--contact"] if by_link else []),
                               env_extra=PROOF_ENV).strip().splitlines()[-1])
     after = {}
@@ -498,14 +551,25 @@ def portal(by_link=False) -> dict:
 
 
 def main():
-    if "--subscription" in sys.argv:
+    if "--collect" in sys.argv:
+        host = sys.argv[sys.argv.index("--collect") + 1]
+        # The gateway reads the pause switch from the database (2026-11-10).
+        fresh_proof_db()
+        server = start_server(PROOF_ENV)
+        try:
+            result = run_collect(host)
+        finally:
+            server.terminate()
+            server.wait(timeout=10)
+    elif "--subscription" in sys.argv:
         result = subscription_proof()
     elif "--autopay" in sys.argv:
         result = autopay_proof()
     elif "--portal" in sys.argv or "--link" in sys.argv:
         result = portal(by_link="--link" in sys.argv)
     else:
-        server = start_server()
+        fresh_proof_db()
+        server = start_server(PROOF_ENV)
         try:
             result = run()
         finally:

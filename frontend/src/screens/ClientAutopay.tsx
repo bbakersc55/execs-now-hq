@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { NmiCardForm } from "../components/NmiCardForm";
 import { Banner, Card, Pill } from "../components/ui";
-import { AutopayState, api } from "../lib/api";
+import { AutopayState, PAYMENTS_PAUSED, api } from "../lib/api";
 import { longDate } from "../lib/money";
 
 const ROOT = "/api/portal-autopay/";
@@ -48,17 +48,20 @@ export function ClientAutopay() {
         <p style={{ marginTop: 0 }}>No card on file.{" "}
           {data.test_mode && <Pill kind="warn">Test mode</Pill>}</p>
       )}
+      {data.paused && <Banner kind="warn">{PAYMENTS_PAUSED}</Banner>}
       <div className="row tight">
-        <button className="small" onClick={() => setAdding(!adding)}>
-          {adding ? "Cancel" : data.card ? "Replace the card" : "Save a card"}</button>
+        {!data.paused && (
+          <button className="small" onClick={() => setAdding(!adding)}>
+            {adding ? "Cancel" : data.card ? "Replace the card" : "Save a card"}</button>
+        )}
         {data.card && (
           <button className="small ghost" onClick={() => act.mutate({ path: "remove-card/" })}>
             Remove the card</button>
         )}
       </div>
-      {adding && (
+      {adding && !data.paused && (
         <NmiCardForm publicKey={data.public_key} amountCents={0} payPath={ROOT + "card/"}
-          buttonText="Save this card" onDone={() => undefined}
+          buttonText="Save this card" onDone={() => undefined} form={data.card_form}
           onToken={async (token) => {
             try {
               settle(await api.post<AutopayState>(ROOT + "card/", { payment_token: token }));

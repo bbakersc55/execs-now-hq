@@ -81,6 +81,10 @@ def state(tenant) -> dict:
         "live_allowed": live_allowed(),
         # Whether anything reaches NMI from this server at all.
         "gateway": gw.mode(),
+        # 2026-11-10: why card payments are paused, if they are: "off" (real
+        # calls off in production) or "held" (the platform owner's switch).
+        "paused": gw.paused_reason(),
+        "api_host": gw.api_host(row.environment if row else "sandbox"),
         "pricing_program": tenant.pricing_program,
         "pricing_program_label": tenant.get_pricing_program_display() if tenant.pricing_program
         else "",
@@ -124,6 +128,9 @@ def connect(tenant, *, environment: str, private_key: str = "", public_key: str 
                          public_key=candidate_public, label=str(tenant.pk))
     try:
         result = gw.gateway().check_connection(account)
+    except gw.CardPaymentsPaused:
+        raise PaymentAccountError("Real calls to NMI are off on this server, so the keys "
+                                  "cannot be tested. Nothing was changed.") from None
     except gw.GatewayError as exc:
         raise PaymentAccountError(f"{exc} Nothing was changed.") from None
     if not result.ok:
@@ -161,6 +168,9 @@ def retest(tenant, *, actor) -> dict:
     account = practice_account(tenant)
     try:
         result = gw.gateway().check_connection(account)
+    except gw.CardPaymentsPaused:
+        result = gw.ConnectionResult(False, "Real calls to NMI are off on this server, so "
+                                            "the keys could not be tested.")
     except gw.GatewayError as exc:
         result = gw.ConnectionResult(False, str(exc))
     row.checked_at, row.check_ok = timezone.now(), result.ok

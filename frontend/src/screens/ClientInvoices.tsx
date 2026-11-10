@@ -5,7 +5,7 @@ import { Modal, PageHead } from "../components/shell";
 import { NmiCardForm } from "../components/NmiCardForm";
 import { ClientAutopay } from "./ClientAutopay";
 import { Banner, Card, Empty, Pill } from "../components/ui";
-import { PayConfig, PayResult, PortalInvoice, api } from "../lib/api";
+import { PAYMENTS_PAUSED, PayConfig, PayResult, PortalInvoice, api } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
 
 /**
@@ -66,6 +66,9 @@ export function ClientInvoices() {
                     </td>
                     <td className="money card-actions">
                       <div className="row tight" style={{ justifyContent: "flex-end" }}>
+                        {row.pay_paused && (
+                          <span className="small muted" role="note">{PAYMENTS_PAUSED}</span>
+                        )}
                         {row.can_pay && (
                           <button className="primary small" aria-label={`Pay invoice ${row.number}`}
                             onClick={() => { setOutcome(null); setPaying(row); }}>
@@ -116,7 +119,8 @@ function PayPanel({ invoice, onDone, onCancel }: {
               account, so no real money moves.</p>
           )}
           <NmiCardForm publicKey={config.data.public_key} amountCents={config.data.amount_cents}
-            payPath={`/api/portal-invoices/${invoice.id}/pay/`} onDone={onDone} />
+            payPath={`/api/portal-invoices/${invoice.id}/pay/`} onDone={onDone}
+            form={config.data.card_form} />
         </>
       )}
     </Modal>

@@ -86,7 +86,8 @@ def test_both_client_roles_see_pay_and_test_mode(role, billing, fcc, seeded_tena
     config = api.as_(who).get(f"/api/portal-invoices/{billing.pk}/pay/").json()
     # The practice's own public key, at runtime; never the platform's.
     assert config == {"public_key": PUBLIC, "test_mode": True,
-                      "amount_cents": billing.balance_cents, "number": billing.number}
+                      "amount_cents": billing.balance_cents, "number": billing.number,
+                      "card_form": {"kind": "component"}}
     assert PRIVATE not in json.dumps(config)
 
 

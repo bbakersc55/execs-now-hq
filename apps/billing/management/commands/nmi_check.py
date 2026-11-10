@@ -22,7 +22,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write(f"NMI environment: {settings.NMI_ENVIRONMENT} "
-                          f"({gw.BASE_URLS[settings.NMI_ENVIRONMENT]})")
+                          f"(https://{gw.api_host(settings.NMI_ENVIRONMENT)}/api/v5)")
         self.stdout.write("NMI_PRIVATE_API_KEY: "
                           + ("set" if settings.NMI_PRIVATE_API_KEY else "NOT SET"))
         self.stdout.write("NMI_PUBLIC_TOKENIZATION_KEY: "

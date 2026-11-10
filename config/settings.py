@@ -346,6 +346,15 @@ if NMI_ENVIRONMENT not in ("sandbox", "live"):
     raise RuntimeError(f"NMI_ENVIRONMENT must be sandbox or live, not {NMI_ENVIRONMENT!r}.")
 NMI_PUBLIC_TOKENIZATION_KEY = env("NMI_PUBLIC_TOKENIZATION_KEY", default="").strip()
 NMI_PRIVATE_API_KEY = env("NMI_PRIVATE_API_KEY", default="").strip()
+# The host a live account's calls go to: NMI's own, or the processor's
+# white-label host for the same gateway (2026-11-10). One of these two and
+# nothing else; the list is `apps.billing.gateway.API_HOSTS` too. Sandbox
+# accounts always use sandbox.nmi.com. It also picks the card form: NMI's
+# Payment Component on secure.nmi.com, Collect.js from the host otherwise.
+NMI_API_HOST = env("NMI_API_HOST", default="secure.nmi.com").strip().lower()
+if NMI_API_HOST not in ("secure.nmi.com", "secure.vaultixpay.com"):
+    raise RuntimeError(f"NMI_API_HOST must be secure.nmi.com or secure.vaultixpay.com, "
+                       f"not {NMI_API_HOST!r}.")
 # Nothing reaches NMI unless this is true. Off, every charge, refund and
 # connection test goes to the stub gateway. The test suite never turns it on.
 NMI_LIVE_CALLS = env.bool("NMI_LIVE_CALLS", default=False)

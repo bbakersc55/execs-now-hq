@@ -317,3 +317,13 @@ def fake_claude(monkeypatch, settings):
     settings.ANTHROPIC_API_KEY = "sk-ant-test-fallback"
     monkeypatch.setattr(claude, "_client", lambda key: fake)
     return fake
+
+
+@pytest.fixture
+def real_calls(monkeypatch):
+    """Production as if `NMI_LIVE_CALLS` were on: the stub stands in for NMI
+    (the test runner never reaches the network), where production would
+    otherwise refuse every call (`gateway.stand_in_refused`)."""
+    from apps.billing import gateway as gw
+
+    monkeypatch.setattr(gw, "stand_in_refused", lambda: False)

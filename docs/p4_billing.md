@@ -127,6 +127,64 @@ looked at again before they are built.
 
 ---
 
+### 1.4 The gateway's host, the card form, and pausing (2026-11-10)
+
+The processor (Vaultix) says production goes through its white-label host
+for the same NMI gateway, `secure.vaultixpay.com`, not `secure.nmi.com`.
+
+**The host.** `NMI_API_HOST` picks a live account's host, and it can only be
+one of two values written in code (`gateway.API_HOSTS`): `secure.nmi.com`
+(the default) or `secure.vaultixpay.com`. Settings refuse anything else at
+start, and the gateway refuses it again before sending. Every live call
+uses it: v5 REST (sales, the connection test, the Customer Vault, refunds),
+and the Query API (the lookup of a lost answer and the daily read-back).
+`nmi_check` prints it. **A sandbox account always uses `sandbox.nmi.com`.**
+That was proved with the sandbox keys: `secure.nmi.com` answers "Sandbox
+accounts must use a sandbox domain", and `secure.vaultixpay.com` answers
+"User not found".
+
+**The card form.** NMI's Payment Component (`@nmipayments/nmi-pay` 1.1.1,
+the latest) cannot be pointed at another host. Its card frames, its token
+calls and its message-origin checks all name `secure.nmi.com`, and it has no
+option to change that. So the form follows the host for a live account:
+- On `secure.nmi.com`, the Payment Component, as before.
+- On any other host, **Collect.js loaded from that host**
+  (`https://<host>/token/Collect.js`, the practice's tokenization key on its
+  script tag, inline fields). Its one-time token goes to the same pay path
+  and the same v5 sale (`payment_details.payment_token`).
+
+A sandbox account keeps the Payment Component whatever the host.
+
+**Proved against the sandbox** (`scripts/nmi_token_proof.py --collect HOST`):
+- Collect.js from `secure.nmi.com` with the sandbox key gave two tokens.
+  They ran the full path on the sandbox's v5: a sale, a partial and a full
+  refund, the sale read back, a card stored in the vault, a sale on it, its
+  refund, and the record deleted.
+- Collect.js from `secure.vaultixpay.com` loads, and its token API answers.
+  A made-up key gets 401, as on NMI's host, but the sandbox key gets 404
+  because the sandbox's merchants are not on that host.
+- So the white-label path is proved up to the token. The token and the sale
+  there are proved only with Vaultix's own keys, at the first live check.
+
+**Paused.** In production the stub never answers. With `NMI_LIVE_CALLS` off,
+every gateway call is refused (`CardPaymentsPaused`), and card payments are
+paused:
+- pay buttons and pay links say "Card payments are paused";
+- no card is saved;
+- auto-pay and practice subscriptions wait, with no try counted, nothing
+  past due and no notice;
+- lookups and the read-back settle nothing;
+- the connection test says real calls are off.
+
+The platform owner's **"Pause card payments"** switch (the Practices area,
+`card_payment_hold`) does the same while real calls stay on. Then a sale, a
+refund or a stored card is refused before it leaves, and reads go on: the
+connection test, lookups, the read-back, and deleting a card. A pause that
+lands between the check and the sale removes the attempt it had written,
+because nothing left for the processor. Tests:
+`tests/test_card_payments_paused.py`, including that no path marks anything
+paid without a real gateway answer when the environment is live.
+
 ## 2. Practice subscriptions (a practice pays the platform)
 
 ### 2.1 Plans and add-ons (D9)

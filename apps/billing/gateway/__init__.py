@@ -1,7 +1,7 @@
 """The card gateway (P4, `docs/p4_billing.md` §1). The only door to NMI.
 
 Everything else calls `gateway()` with an `Account` and never holds a key, a
-URL or a request body. Three rules hold here, for every caller:
+URL or a request body. Four rules hold here, for every caller:
 
 - **Card data never touches the app.** NMI's Payment Component turns a card
   into a one-time `payment_token` in the browser; a stored card is a vault id.
@@ -9,6 +9,9 @@ URL or a request body. Three rules hold here, for every caller:
   carries one, at any depth, before it leaves.
 - **Nothing reaches NMI unless `NMI_LIVE_CALLS` is on**, and never under the
   test runner, whatever the setting. Otherwise `gateway()` is the stub.
+- **Production never takes the stub's answer**, and the platform owner can
+  pause card payments (`paused()`, 2026-11-10): then nothing that charges or
+  stores a card leaves, and nothing is marked paid.
 - **No key is ever logged or returned.** An `Account` does not print its keys,
   and errors carry NMI's own message, scrubbed of the account's keys.
 
@@ -20,20 +23,50 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-#: NMI's v5 REST API, by environment. Proved against the sandbox 2026-10-21.
-BASE_URLS = {
-    "sandbox": "https://sandbox.nmi.com/api/v5",
-    "live": "https://secure.nmi.com/api/v5",
-}
+#: The hosts a live account's calls may go to (2026-11-10): NMI's own, and the
+#: processor's white-label host for the same gateway. A value from this list
+#: and nothing else, chosen by `NMI_API_HOST` (settings refuses any other at
+#: start, and `api_host` refuses again here). Each serves v5 REST
+#: (`/api/v5`), the Query API (`/api/query.php`) and Collect.js
+#: (`/token/Collect.js`).
+API_HOSTS = ("secure.nmi.com", "secure.vaultixpay.com")
+#: NMI's sandbox gateway, for every sandbox account whatever `NMI_API_HOST`
+#: says. Proved 2026-11-10 with the sandbox keys: secure.nmi.com answers
+#: "Sandbox accounts must use a sandbox domain", secure.vaultixpay.com "User
+#: not found", and Vaultix's token API 404 for the sandbox tokenization key.
+SANDBOX_HOST = "sandbox.nmi.com"
+#: The host NMI's Payment Component is built for: its card fields, its
+#: tokens and its message checks name it and nothing else (@nmipayments/
+#: nmi-pay 1.1.1, the latest). Any other host takes Collect.js from itself.
+COMPONENT_HOST = "secure.nmi.com"
+ENVIRONMENTS = ("sandbox", "live")
 
-#: NMI's Query API, read-only. Used for one thing v5 cannot do: find a
-#: transaction by our reference when the sale's answer was lost (v5 has no
-#: search). It takes the same private key and never charges. Proved
-#: 2026-10-21; a sandbox account must use the sandbox host.
-QUERY_URLS = {
-    "sandbox": "https://sandbox.nmi.com/api/query.php",
-    "live": "https://secure.nmi.com/api/query.php",
-}
+
+def api_host(environment: str) -> str:
+    """The host an account's v5 calls and Query API reads go to."""
+    from django.conf import settings
+
+    if environment == "sandbox":
+        return SANDBOX_HOST
+    host = settings.NMI_API_HOST
+    if host not in API_HOSTS:
+        raise GatewayError(f"NMI_API_HOST {host!r} is not one of {', '.join(API_HOSTS)}.")
+    return host
+
+
+def card_form(environment: str = "live") -> dict:
+    """Which card form a page mounts for an account. Live: from
+    `NMI_API_HOST`, NMI's Payment Component on NMI's own host, Collect.js
+    from the host itself otherwise. Sandbox: the Payment Component always,
+    since NMI's host tokenizes sandbox keys and Vaultix's knows none. Either
+    form hands the same one-time `payment_token` to the same v5 sale."""
+    if environment == "sandbox":
+        return {"kind": "component"}
+    host = api_host("live")
+    if host == COMPONENT_HOST:
+        return {"kind": "component"}
+    return {"kind": "collect", "script_url": f"https://{host}/token/Collect.js"}
+
 
 #: Field names that hold card or bank data, in NMI's v5 and classic APIs. A
 #: body carrying any of them is refused before it is sent.
@@ -75,6 +108,19 @@ class LiveCallsRefused(GatewayError):
     """A real call was attempted without `NMI_LIVE_CALLS`, or under test."""
 
 
+#: What a pay button, a pay link and a card form say while payments are paused.
+PAUSED_MESSAGE = "Card payments are paused. Please try again later."
+
+
+class CardPaymentsPaused(GatewayError):
+    """Card payments are paused (`paused()`): nothing was sent to NMI and
+    nothing was charged. Not a decline: a caller undoes what it wrote and
+    shows `PAUSED_MESSAGE`."""
+
+    def __init__(self, message: str = PAUSED_MESSAGE):
+        super().__init__(message)
+
+
 @dataclass(frozen=True)
 class Account:
     """One NMI merchant account: the platform's, or one practice's own."""
@@ -86,16 +132,16 @@ class Account:
     label: str = ""
 
     def __post_init__(self):
-        if self.environment not in BASE_URLS:
+        if self.environment not in ENVIRONMENTS:
             raise GatewayError(f"Unknown NMI environment {self.environment!r}.")
 
     @property
     def base_url(self) -> str:
-        return BASE_URLS[self.environment]
+        return f"https://{api_host(self.environment)}/api/v5"
 
     @property
     def query_url(self) -> str:
-        return QUERY_URLS[self.environment]
+        return f"https://{api_host(self.environment)}/api/query.php"
 
     def scrub(self, text: str) -> str:
         for key in (self.private_key, self.public_key):
@@ -181,20 +227,84 @@ def live_calls_allowed() -> bool:
     return bool(settings.NMI_LIVE_CALLS) and not under_test()
 
 
+def stand_in_refused() -> bool:
+    """Production never takes an answer from the stub (2026-11-10): with real
+    calls off there, every call is refused instead."""
+    from django.conf import settings
+
+    return settings.APP_ENVIRONMENT == "production" and not live_calls_allowed()
+
+
+def held() -> bool:
+    """The platform owner's "Pause card payments" switch."""
+    from apps.billing.models import CardPaymentHold
+
+    return CardPaymentHold.objects.filter(paused=True).exists()
+
+
+def paused() -> bool:
+    """No charge, and no card saved, may start: the stub would answer in
+    production, or the platform owner has paused card payments."""
+    return stand_in_refused() or held()
+
+
+def paused_reason() -> str:
+    """"off" (production with real calls off), "held" (the switch), or ""."""
+    if stand_in_refused():
+        return "off"
+    return "held" if held() else ""
+
+
 def gateway():
-    """NMI itself when real calls are allowed, else the stub."""
+    """NMI itself when real calls are allowed, else the stub; never the stub
+    in production. While the switch is on, anything that charges or stores a
+    card is refused and the read-only calls still answer."""
     if live_calls_allowed():
         from apps.billing.gateway.nmi import NmiGateway
 
-        return NmiGateway()
-    from apps.billing.gateway.stub import StubGateway
+        inner = NmiGateway()
+    elif stand_in_refused():
+        return RefusingGateway()
+    else:
+        from apps.billing.gateway.stub import StubGateway
 
-    return StubGateway.shared()
+        inner = StubGateway.shared()
+    return HeldGateway(inner) if held() else inner
+
+
+class RefusingGateway:
+    """Production with real calls off: every call refused, nothing answered."""
+
+    def __getattr__(self, name):
+        def refuse(*args, **kwargs):
+            raise CardPaymentsPaused()
+        return refuse
+
+
+class HeldGateway:
+    """The switch is on: a sale, a refund or a card stored is refused before
+    it leaves; reads (the connection test, lookups, the read-back) and a
+    card's deletion pass through to the gateway underneath."""
+
+    MOVES = frozenset({"sale", "refund", "vault_add"})
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        if name in self.MOVES:
+            def refuse(*args, **kwargs):
+                raise CardPaymentsPaused()
+            return refuse
+        return getattr(self._inner, name)
 
 
 def mode() -> str:
-    """"nmi" or "stub", for a screen to say which one answers."""
-    return "nmi" if live_calls_allowed() else "stub"
+    """"nmi", "stub" or "off" (production with real calls off), for a screen
+    to say which one answers."""
+    if live_calls_allowed():
+        return "nmi"
+    return "off" if stand_in_refused() else "stub"
 
 
 def platform_account() -> Account:

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModelTiersCard } from "../components/AiApps";
+import { CardPaymentsSwitchCard } from "../components/CardPaymentsSwitch";
 import { useState } from "react";
 
 import { PageHead } from "../components/shell";
@@ -337,6 +338,7 @@ export function Practices({ me }: { me?: Me }) {
       {me?.environment === "demo" && <DemoVisitors />}
 
       <ModelTiersCard />
+      <CardPaymentsSwitchCard />
 
       <Card title="Add a practice">
         <p className="muted small" style={{ marginTop: 0 }}>

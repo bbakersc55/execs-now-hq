@@ -136,7 +136,8 @@ def test_the_page_shows_the_invoice_and_nothing_else(linked, anyone, seeded_tena
     assert page == {
         "practice": seeded_tenant.name, "number": invoice.number,
         "amount_due_cents": 680000, "due_date": invoice.due_date.isoformat(),
-        "paid": False, "test_mode": True, "public_key": PUBLIC, "notice": ""}
+        "paid": False, "test_mode": True, "public_key": PUBLIC, "notice": "",
+        "card_form": {"kind": "component"}}
     assert PRIVATE not in response.content.decode()
     pdf_response = anyone.get(f"/api/pay/{token}/pdf")
     assert pdf_response.status_code == 200

@@ -262,6 +262,23 @@ class ClientPayment(TenantScopedModel):
         ]
 
 
+class CardPaymentHold(UUIDModel):
+    """The platform owner's "Pause card payments" switch (2026-11-10), one row
+    or none. On, no charge and no card saved may start in any practice or on
+    the platform's account, while NMI's real calls stay on: pay buttons and
+    pay links say "Card payments are paused", and reads (the connection test,
+    lookups, the read-back) go on. Platform-wide, not a practice's. Read only
+    by `gateway.held()`."""
+
+    paused = models.BooleanField(default=False)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    changed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "card_payment_hold"
+
+
 class PaymentAccount(TenantScopedModel):
     """The practice's own NMI merchant account (P4 §1.2, §3.3): which of NMI's
     environments its keys are for, and the last connection test. The two keys

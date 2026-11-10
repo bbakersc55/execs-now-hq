@@ -61,6 +61,7 @@ def _post(client, url, data=None):
 
 # ---------------------------------------------------------------- the guard
 
+@pytest.mark.django_db
 def test_tests_always_get_the_stub_even_with_live_calls_on(settings):
     settings.NMI_LIVE_CALLS = True
     assert isinstance(gw.gateway(), StubGateway)
@@ -299,7 +300,7 @@ def test_what_is_refused_before_nmi_is_asked(data, needle, seeded_tenant, api, s
 
 
 @pytest.mark.django_db
-def test_live_is_accepted_only_in_production(settings, seeded_tenant, api):
+def test_live_is_accepted_only_in_production(settings, seeded_tenant, api, real_calls):
     settings.APP_ENVIRONMENT = "production"
     response = _post(api.as_(_owner(seeded_tenant)), "/api/payment-account/",
                      {"environment": "live", "private_key": PRIVATE, "public_key": PUBLIC})
@@ -307,7 +308,7 @@ def test_live_is_accepted_only_in_production(settings, seeded_tenant, api):
 
 
 @pytest.mark.django_db
-def test_switching_environment_takes_both_keys(settings, seeded_tenant, api):
+def test_switching_environment_takes_both_keys(settings, seeded_tenant, api, real_calls):
     settings.APP_ENVIRONMENT = "production"
     client = api.as_(_owner(seeded_tenant))
     _post(client, "/api/payment-account/",

@@ -32,7 +32,7 @@ from datetime import date, timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -137,6 +137,7 @@ def state(tenant) -> dict:
     """Settings → Billing, "Your subscription": the practice owner's."""
     row = subscription_for(tenant)
     account_ready = bool(settings.NMI_PUBLIC_TOKENIZATION_KEY and settings.NMI_PRIVATE_API_KEY)
+    paused = gw.paused()
     invoices = PracticeInvoice.all_objects.filter(tenant=tenant).order_by("-period_start")[:24]
     today = timezone.localdate()
     return {
@@ -150,7 +151,11 @@ def state(tenant) -> dict:
                            else max(row.first_charge_on or today,
                                     first_of_next_month(today)).isoformat()),
         # The platform's public key, for NMI's card fields; never its private key.
-        "public_key": settings.NMI_PUBLIC_TOKENIZATION_KEY if account_ready else "",
+        "public_key": (settings.NMI_PUBLIC_TOKENIZATION_KEY if account_ready and not paused
+                       else ""),
+        "card_form": gw.card_form(settings.NMI_ENVIRONMENT),
+        # 2026-11-10: no card saved and no Pay now while card payments are paused.
+        "paused": paused,
         "test_mode": settings.NMI_ENVIRONMENT != "live",
         "suspended": tenant.status == tenant.Status.SUSPENDED,
         "open_cents": sum(i.balance_cents for i in invoices if i.status == I.OPEN),
@@ -187,12 +192,16 @@ def save_card(tenant, *, user, payment_token) -> PracticeSubscription:
     if not isinstance(payment_token, str) or not payment_token.strip():
         raise SubscriptionRefused("The card details did not come through. Please try again.",
                                   400)
+    if gw.paused():
+        raise SubscriptionRefused(gw.PAUSED_MESSAGE, 503)
     account = gw.platform_account()
     first, _, last = (user.full_name or user.email).strip().partition(" ")
     try:
         record = gw.gateway().vault_add(account, payment_token=payment_token,
                                         billing=gw.Billing(first_name=first or "Card",
                                                            last_name=last or "Holder"))
+    except gw.CardPaymentsPaused:
+        raise SubscriptionRefused(gw.PAUSED_MESSAGE, 503) from None
     except gw.GatewayRefused as exc:
         raise SubscriptionRefused(f"The card could not be saved: {exc}") from None
     except gw.GatewayError:
@@ -323,6 +332,10 @@ def charge(invoice, *, by=None) -> tuple[PracticeInvoice, str]:
         if row.card_environment and row.card_environment != settings.NMI_ENVIRONMENT:
             raise SubscriptionRefused("The card on file was saved in the other NMI "
                                       "environment. Enter it again.")
+        if gw.paused():
+            # Not a failure: no try counted, nothing past due, no notice. The
+            # daily run charges it once payments resume.
+            raise SubscriptionRefused(gw.PAUSED_MESSAGE, 503)
         invoice.charge_state, invoice.charge_started_at = "pending", timezone.now()
         invoice.charge_tries += 1
         invoice.save(update_fields=["charge_state", "charge_started_at", "charge_tries",
@@ -330,6 +343,11 @@ def charge(invoice, *, by=None) -> tuple[PracticeInvoice, str]:
     try:
         txn = gw.gateway().sale(gw.platform_account(), amount_cents=invoice.balance_cents,
                                 reference=invoice.reference, vault_id=row.nmi_vault_id)
+    except gw.CardPaymentsPaused:
+        # Paused between the check and the sale: nothing left, so undone.
+        PracticeInvoice.all_objects.filter(pk=invoice.pk).update(
+            charge_state="", charge_started_at=None, charge_tries=F("charge_tries") - 1)
+        raise SubscriptionRefused(gw.PAUSED_MESSAGE, 503) from None
     except gw.GatewayUnreachable:
         PracticeInvoice.all_objects.filter(pk=invoice.pk).update(charge_state="unknown")
         return invoice, ("We did not hear back from the card processor. We are checking "

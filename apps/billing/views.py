@@ -655,8 +655,11 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
     def list(self, request):
         from apps.billing import card_payments, payment_accounts
 
+        from apps.billing import gateway as gw
+
         rows = list(self.invoices().order_by("-issue_date", "-created_at"))
         ready = payment_accounts.is_ready(request.tenant)
+        paused = gw.paused()
         test_mode = card_payments.is_test_mode(request.tenant)
         flying = set(PaymentAttempt.objects.filter(
             invoice__in=rows, status__in=PaymentAttempt.IN_FLIGHT).values_list(
@@ -672,8 +675,11 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
             "pay_url": "",
             # P4 part 2: Pay shows when this is true. Never a contact invoice
             # (not listed here at all), and never with a payment under way.
-            "can_pay": (ready and invoice.status in ClientInvoice.OPEN
+            "can_pay": (ready and not paused and invoice.status in ClientInvoice.OPEN
                         and invoice.balance_cents > 0 and invoice.pk not in flying),
+            # 2026-11-10: where Pay would show, "Card payments are paused".
+            "pay_paused": (ready and paused and invoice.status in ClientInvoice.OPEN
+                           and invoice.balance_cents > 0 and invoice.pk not in flying),
             "payment_in_progress": invoice.pk in flying,
             "test_mode": test_mode,
         } for invoice in rows])
@@ -848,3 +854,52 @@ class SubscriptionView(viewsets.ViewSet):
         if invoice is None or invoice.pdf_id is None:
             raise Http404
         return pdf_response(invoice)
+
+
+class CardPaymentsSwitchView(viewsets.ViewSet):
+    """The Practices area's "Card payments" card (2026-11-10): the platform
+    owner's "Pause card payments" switch, and what answers card payments on
+    this server (real calls, the host, the card form). GET; POST {paused}."""
+
+    def get_permissions(self):
+        from apps.platform.permissions import IsPlatformOwnerInPracticesArea
+
+        return [IsPlatformOwnerInPracticesArea()]
+
+    @staticmethod
+    def _state() -> dict:
+        from django.conf import settings
+
+        from apps.billing import gateway as gw
+        from apps.billing.models import CardPaymentHold
+
+        row = CardPaymentHold.objects.select_related("changed_by").first()
+        return {
+            "paused": gw.paused_reason(),
+            "held": bool(row and row.paused),
+            "changed_at": row.changed_at if row else None,
+            "changed_by": ((row.changed_by.full_name or row.changed_by.email)
+                           if row and row.changed_by else ""),
+            "live_calls": gw.mode() == "nmi",
+            "environment": settings.NMI_ENVIRONMENT,
+            "api_host": gw.api_host("live"),
+            "card_form": gw.card_form(settings.NMI_ENVIRONMENT)["kind"],
+        }
+
+    def list(self, request):
+        return Response(self._state())
+
+    def create(self, request):
+        import logging
+
+        from apps.billing.models import CardPaymentHold
+
+        paused = request.data.get("paused")
+        if not isinstance(paused, bool):
+            return Response({"detail": "paused is true or false."}, status=400)
+        row = CardPaymentHold.objects.first() or CardPaymentHold()
+        row.paused, row.changed_by, row.changed_at = paused, request.user, timezone.now()
+        row.save()
+        logging.getLogger(__name__).warning("card payments %s by the platform owner",
+                                            "paused" if paused else "resumed")
+        return Response(self._state())

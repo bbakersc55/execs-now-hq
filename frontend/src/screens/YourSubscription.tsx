@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { NmiCardForm } from "../components/NmiCardForm";
 import { Banner, Card, Empty, Pill } from "../components/ui";
-import { SubscriptionState, api } from "../lib/api";
+import { PAYMENTS_PAUSED, SubscriptionState, api } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
 
 const ROOT = "/api/subscription/";
@@ -64,18 +64,21 @@ export function YourSubscription() {
           expires {s.card.expires}.</> : "No card on file."}
         {s.next_charge_on && <> Next charge: {longDate(s.next_charge_on)}.</>}
       </p>
+      {s.paused && <Banner kind="warn">{PAYMENTS_PAUSED}</Banner>}
       <div className="row tight">
-        <button className="small" onClick={() => setAdding(!adding)}>
-          {adding ? "Cancel" : s.card ? "Replace the card" : "Add a card"}</button>
-        {s.open_cents > 0 && s.card && (
+        {!s.paused && (
+          <button className="small" onClick={() => setAdding(!adding)}>
+            {adding ? "Cancel" : s.card ? "Replace the card" : "Add a card"}</button>
+        )}
+        {s.open_cents > 0 && s.card && !s.paused && (
           <button className="primary small" disabled={payNow.isPending}
             onClick={() => payNow.mutate()}>
             {payNow.isPending ? "Paying…" : `Pay now ${dollars(s.open_cents)}`}</button>
         )}
       </div>
-      {adding && s.public_key && (
+      {adding && s.public_key && !s.paused && (
         <NmiCardForm publicKey={s.public_key} amountCents={0} payPath={ROOT + "card/"}
-          buttonText="Save this card" onDone={() => undefined}
+          buttonText="Save this card" onDone={() => undefined} form={s.card_form}
           onToken={async (token) => {
             try {
               settle(await api.post<SubscriptionState>(ROOT + "card/",

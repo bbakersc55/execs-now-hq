@@ -2166,3 +2166,11 @@ table.ai-actions select { max-width: 13rem; }
   table.ai-actions td:first-child { grid-column: 1 / -1; }
   table.ai-actions select { width: 100%; max-width: 100%; }
 }
+
+/* Collect.js card fields (2026-11-10): each box holds the gateway's own
+   frame; the box gives it the look of an input. */
+.collect-fields { display: grid; gap: 0.4rem; max-width: 28rem; }
+.collect-field { min-height: 2.6rem; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); background: var(--surface, #fff); padding: 0 0.5rem; }
+.collect-field iframe { width: 100%; height: 2.5rem; border: 0; }
+.collect-fields .primary { justify-self: start; margin-top: 0.4rem; }
