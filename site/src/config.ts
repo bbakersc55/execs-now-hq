@@ -12,10 +12,9 @@ export const HEADSHOT: "a" | "b" = "a";
 export const GA4_ID = (import.meta.env.PUBLIC_GA4_ID ?? "").trim();
 export const DEFAULT_DESCRIPTION =
   "Execs NOW HQ runs a fractional practice in one place, in your brand: CRM, strategy calls, client portal, scorecards, proposals, invoices and books, with nothing sent or decided without you.";
-// The privacy policy and terms are drafts until Bryan has reviewed them:
-// while true, both pages say so at the top and ask search engines not to
-// index them. Set to false, with the effective date, once approved.
-export const LEGAL_DRAFT = true;
-export const LEGAL_EFFECTIVE = "Draft of November 9, 2026";
+// The privacy policy and terms: approved by Bryan 2026-11-09. While
+// LEGAL_DRAFT is true, both are kept out of the sitemap and marked noindex.
+export const LEGAL_DRAFT = false;
+export const LEGAL_EFFECTIVE = "Effective November 9, 2026";
 export const LIMITED_USE =
   "Execs NOW HQ's use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy, including the Limited Use requirements.";

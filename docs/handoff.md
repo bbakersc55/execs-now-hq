@@ -58,9 +58,14 @@ they don't, and what changed since 9/30.
     release's site deployment. It is now `/site/**`. **Prove it with a
     trivial site commit after the next release**, not before; until then a
     site change reaches production only by hand.
-    The proof commit is the one-line correction in `site/README.md` (it
-    still says `site/**`), held back so the next release carries no site
-    change.
+    The next release now carries site changes (the legal pages approved
+    2026-11-09, and `site/README.md` corrected to `/site/**`), so its push
+    is the first test: `enhq-site` should build, not SKIP. The trivial site
+    commit after it is still the proof asked for.
+- **Privacy and terms are approved** (Bryan, 2026-11-09): `LEGAL_DRAFT` is
+  false, no draft notice, both indexed and in the sitemap, "Effective
+  November 9, 2026". Live by `railway up` on 2026-11-09; on `main` at the
+  next release.
   - `www.execsnowhq.com` answers (CNAME to `hu8tx0t5.up.railway.app`,
     `/healthz` 200 on 2026-11-09).
   - Azure/Entra app registration, still on Bryan's side.

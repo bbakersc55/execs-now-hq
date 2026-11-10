@@ -2,7 +2,8 @@
 
 Astro with Tailwind, static output, served by `server.mjs` (Node, no
 dependencies) on the Railway service **enhq-site** in the production project:
-deploys from `main`, root directory `site/`, watch paths `site/**`.
+deploys from `main`, root directory `site/`, watch paths `/site/**` (rooted; with `site/**` Railway skipped Release
+37's push, "No changes to watched files"; changed 2026-11-09).
 Canonical address `https://www.execsnowhq.com`.
 
 ```
@@ -37,6 +38,7 @@ PORT=4390 npm start      # dist/ as Railway serves it, with /api/lead
   the screenshot becomes its poster.
 - **The headshot**: `public/about/bryan-a` and `bryan-b`, two square crops
   (`scripts/make_images.py`). `HEADSHOT` in `src/config.ts` picks one.
-- **Privacy and terms** are drafts for review: `LEGAL_DRAFT` in
-  `src/config.ts` shows a draft notice, keeps them out of the sitemap and
-  marks them noindex. Set it to `false`, with `LEGAL_EFFECTIVE`, once approved.
+- **Privacy and terms** were approved on 2026-11-09 and are indexed and in the
+  sitemap. `LEGAL_DRAFT` in `src/config.ts`, if set back to `true`, keeps
+  them out of the sitemap and marks them noindex; `LEGAL_EFFECTIVE` is the
+  date line under each title.
