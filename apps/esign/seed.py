@@ -51,12 +51,37 @@ ORIGINALS = {
 }
 
 
+def original(key: str):
+    """(name, title, body) of a built-in, the app's or a Command Center's."""
+    if key in ORIGINALS:
+        return ORIGINALS[key]
+    from apps.centers.catalog import shipped_documents
+
+    found = shipped_documents().get(key)
+    return found[1:] if found else None
+
+
+def center_of(key: str) -> str:
+    """The Command Center a built-in came from, or ""."""
+    from apps.centers.catalog import NAMES, shipped_documents
+
+    found = shipped_documents().get(key)
+    return NAMES[found[0]] if found else ""
+
+
 def seed_tenant(tenant) -> list:
-    """Idempotent: adds a missing built-in, never rewrites one."""
+    """Idempotent: adds a missing built-in, never rewrites one. A Command
+    Center's templates are added the first time a practice with it on opens
+    Settings → Documents (P8: copied on first use)."""
+    from apps.centers import services as centers
+    from apps.centers.catalog import shipped_documents
     from apps.esign.models import DocumentTemplate
 
     made = []
-    for key, (name, title, body) in ORIGINALS.items():
+    on = set(centers.enabled(tenant.pk))
+    builtins = {**ORIGINALS, **{key: value[1:] for key, value in shipped_documents().items()
+                                if value[0] in on}}
+    for key, (name, title, body) in builtins.items():
         if DocumentTemplate.all_objects.filter(tenant_id=tenant.pk, original=key).exists():
             continue
         made.append(DocumentTemplate.all_objects.create(

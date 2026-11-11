@@ -48,13 +48,19 @@ class Action:
     #: The prompt "Do this in your AI" shows, with {record} named.
     prompt: str = ""
     fixed_why: str = ""
+    #: P8: the Command Center that brings it ("operations"): listed only for a
+    #: practice with it on.
+    center: str = ""
+    #: P8: False for an action with no in-app run yet: it runs in the AI app.
+    in_app: bool = True
 
     @property
     def fixed(self) -> bool:
-        return self.started == "unattended" or not self.movable
+        return self.started == "unattended" or not self.movable or not self.in_app
 
 
 SCHEDULED = "Runs on a schedule or a rule, so always in the app with your key."
+AI_APP_ONLY = "Runs in your AI app in this version: it has no in-app button yet."
 NOT_EXPOSED = "AI apps can't read what this works on, so it runs in the app."
 
 ACTIONS: tuple[Action, ...] = (
@@ -126,6 +132,30 @@ ACTIONS: tuple[Action, ...] = (
            ("personal_explain_forecast",), STANDARD, "user", False, fixed_why=NOT_EXPOSED),
     Action("personal_explain_budget", "Explain this budget", "Personal",
            ("personal_explain_budget",), STANDARD, "user", False, fixed_why=NOT_EXPOSED),
+    # P8: the Operations Command Center's. Each lands where it waits for a
+    # person: the SOP as a note marked as the AI app's, the rows in the
+    # session's tray, the weekly note as a digest awaiting approval.
+    Action("ops_sop_from_note", "Draft an SOP from a note", "Notes", ("ops_sop_from_note",),
+           STANDARD, "user", True,
+           "Using Execs NOW HQ, read the note {record} (list_notes) and draft a standard "
+           "operating procedure from it with five parts: purpose, roles, steps, measures and "
+           "review date. Show me the draft; if I say so, save it with add_note on the same "
+           "company, titled \"SOP draft: \" and the procedure's name.",
+           fixed_why=AI_APP_ONLY, center="operations", in_app=False),
+    Action("ops_map_rows_from_meeting", "Map rows from a meeting proposal", "Meetings",
+           ("ops_map_rows_from_meeting",), DEEP, "user", True,
+           "Using Execs NOW HQ, read the meeting proposal {record} "
+           "(pending_meeting_proposals), find the company's strategy session "
+           "(list_strategy_sessions) and propose Strategy Map rows into its tray with "
+           "propose_map_rows: bottleneck, root cause, fix, owner, 30/60/90, measurable.",
+           fixed_why=AI_APP_ONLY, center="operations", in_app=False),
+    Action("ops_weekly_note", "Weekly note from the scorecard", "Scorecard",
+           ("ops_weekly_note",), STANDARD, "user", True,
+           "Using Execs NOW HQ, read this week's scorecard_readings for {record} and draft "
+           "the weekly note: what went well, what needs attention, the numbers, what "
+           "happens next. Show me the draft; if I say so, save it with create_digest_draft "
+           "to the company's main contact, where it waits for approval.",
+           fixed_why=AI_APP_ONLY, center="operations", in_app=False),
 )
 
 BY_KEY = {a.key: a for a in ACTIONS}
@@ -172,6 +202,8 @@ def tier_for(tenant_id, action: Action, row=_LOOK) -> str:
 
 
 def runs_in(tenant_id, action: Action, row=_LOOK) -> str:
+    if not action.in_app:
+        return "ai_app"
     if action.fixed:
         return "app"
     if row is _LOOK:
@@ -190,9 +222,14 @@ def model_for(tenant_id, purpose: str) -> Resolved:
 
 def table(tenant_id) -> list[dict]:
     """Settings → AI, "Actions": every action with its current choices."""
+    from apps.centers import services as centers
+
     saved = settings_for(tenant_id)
+    on = set(centers.enabled(tenant_id))
     out = []
     for a in ACTIONS:
+        if a.center and a.center not in on:
+            continue
         row = saved.get(a.key)
         out.append({
             "key": a.key, "label": a.label, "where": a.where, "started": a.started,

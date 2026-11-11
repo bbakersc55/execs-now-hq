@@ -413,3 +413,16 @@ register(AiAppConnection, factories.AiAppConnectionFactory,
 register(AiAppCode, factories.AiAppCodeFactory, api_exposed=False)
 register(AiAppToken, factories.AiAppTokenFactory, api_exposed=False)
 register(AiActionSetting, factories.AiActionSettingFactory, endpoints=("/api/ai/actions/",))
+
+# P8: Command Centers, their playbooks, the practice library, the KPI library.
+from apps.centers.models import (  # noqa: E402
+    LibraryRecord, Playbook, PlaybookRun, PracticeCenter,
+)
+from apps.scorecard.models import KpiLibraryEntry  # noqa: E402
+
+register(PracticeCenter, factories.PracticeCenterFactory, endpoints=("/api/command-centers/",))
+register(Playbook, factories.PlaybookFactory, endpoints=("/api/playbooks/",))
+register(PlaybookRun, factories.PlaybookRunFactory, api_exposed=False)
+register(LibraryRecord, factories.LibraryRecordFactory, api_exposed=False)
+register(KpiLibraryEntry, factories.KpiLibraryEntryFactory,
+         endpoints=("/api/scorecard/library/",))

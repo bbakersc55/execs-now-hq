@@ -106,9 +106,9 @@ def fields_used(template) -> list[str]:
 
 
 def is_changed(template) -> bool:
-    from apps.esign.seed import ORIGINALS
+    from apps.esign.seed import original as builtin
 
-    original = ORIGINALS.get(template.original)
+    original = builtin(template.original) if template.original else None
     if original is None:
         return False
     _name, title, body = original
@@ -116,9 +116,9 @@ def is_changed(template) -> bool:
 
 
 def restore(template, *, actor=None):
-    from apps.esign.seed import ORIGINALS
+    from apps.esign.seed import original as builtin
 
-    original = ORIGINALS.get(template.original)
+    original = builtin(template.original) if template.original else None
     if original is None:
         raise DocumentRefused("Only a built-in template has an original to restore.")
     _name, template.title, template.body = original

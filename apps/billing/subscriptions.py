@@ -124,6 +124,14 @@ def lines_for(row, period_start) -> list[tuple[str, int, object]]:
                  .select_related("addon")):
         lines.append((f"{item.addon.name}, {period_start:%B %Y}", item.addon.price_cents,
                       item.addon))
+    # P8: Command Centers are $50 each and $150 at most together. A practice
+    # with more than three on is billed each line and one credit back to $150.
+    from apps.centers.catalog import ADDON_PREFIX, CAP_CENTS
+
+    centers = sum(amount for _, amount, addon in lines
+                  if addon is not None and addon.code.startswith(ADDON_PREFIX))
+    if centers > CAP_CENTS:
+        lines.append(("Command Centers capped at $150 a month", CAP_CENTS - centers, None))
     return lines
 
 

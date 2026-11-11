@@ -123,6 +123,7 @@ export function EmailTemplates() {
                     <span className="template-tags">
                       {row.is_original && <Pill kind={row.changed ? "warn" : ""}>
                         {row.changed ? "Built-in, changed" : "Built-in"}</Pill>}
+                      {row.module_name && <> <Pill>{row.module_name}</Pill></>}
                       {row.used_for.length === 0 && !row.is_original
                         && <Pill>Not in use</Pill>}
                     </span>

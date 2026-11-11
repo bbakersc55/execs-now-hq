@@ -665,6 +665,8 @@ class TaskUpdate(TenantScopedModel):
         SYSTEM = "system", "System"
         #: P7: made by a person's AI app over MCP.
         AI_APP = "ai_app", "An AI app"
+        #: P8: made by starting a playbook on a company.
+        PLAYBOOK = "playbook", "A playbook"
 
     task = models.ForeignKey(Task, null=True, blank=True, on_delete=models.CASCADE,
                              related_name="updates")

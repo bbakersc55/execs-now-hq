@@ -9,6 +9,7 @@ import { useRowLink } from "../components/shell";
 import { Banner, Card, Empty, PageLinks, Pill, when, positionsLabel } from "../components/ui";
 import { AddCompany } from "./AddCompany";
 import { CardOnFile, Company, Contact, Me, api } from "../lib/api";
+import { StartPlaybookCard } from "../components/Playbooks";
 import { longDate } from "../lib/money";
 import { ClientTeamsCard } from "../components/ClientTeams";
 import { CompanyCommitments } from "../components/ContactCommitments";
@@ -197,6 +198,9 @@ export function CompanyDetail({ me }: { me: Me }) {
 
       {/* E-signature (2026-10-29): proposals, letters and PDFs to sign. */}
       <DocumentsCard me={me} companyId={c.id} people={theirs} />
+
+      {/* P8: a playbook started here makes a dated goal, projects and tasks. */}
+      <StartPlaybookCard me={me} company={c} people={theirs} />
 
       {/* M5 part 1: the practice sets the client's scorecard up here. */}
       <ScorecardSetup me={me} company={c} />

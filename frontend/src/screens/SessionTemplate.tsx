@@ -435,7 +435,7 @@ function Manage({ template, onDone, hasSeeded = true }: {
   );
 }
 
-type Start = "operations_example" | "blank" | "copy";
+type Start = "operations_example" | "operations_command_center" | "blank" | "copy";
 
 /** A new builder template, and where it starts from (P3 §9): the Operations
  *  example, the eight blank parts, or a copy of one the practice already
@@ -447,6 +447,9 @@ function NewTemplate({ first = false, own = [] }: { first?: boolean; own?: Templ
   // Filled in on the first-template card, so neither start waits on typing.
   const [name, setName] = useState(first ? "Strategy session" : "");
   const [copyOf, setCopyOf] = useState("");
+  // P8: the Operations Command Center's template, offered when it is on.
+  const me = useQuery<Me>({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") }).data;
+  const centerOn = (me?.command_centers ?? []).includes("operations");
   const source = own.find((t) => t.id === copyOf) ?? own[0];
   const create = useMutation({
     mutationFn: (start: Start) => start === "copy"
@@ -480,6 +483,17 @@ function NewTemplate({ first = false, own = [] }: { first?: boolean; own?: Templ
           for an operations practice; every question and label is yours to reword.
         </p>
       </div>
+      {centerOn && (
+        <div style={{ marginBottom: ".75rem" }}>
+          <button disabled={off} onClick={() => create.mutate("operations_command_center")}>
+            Start from the Operations Command Center
+          </button>
+          <p className="small muted" style={{ margin: ".25rem 0 0" }}>
+            The same complete template in plain words: quarterly priorities, the weekly
+            leadership meeting, the org chart and the six areas.
+          </p>
+        </div>
+      )}
       <div style={{ marginBottom: ".75rem" }}>
         <button disabled={off} onClick={() => create.mutate("blank")}>Start blank</button>
         <p className="small muted" style={{ margin: ".25rem 0 0" }}>

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import uuid
 
 import factory
 from django.utils import timezone
@@ -1985,3 +1986,53 @@ class AiActionSettingFactory(TenantScopedFactory):
     action = factory.Sequence(lambda n: f"action_{n}")
     runs_in = "app"
     tier = "standard"
+
+
+# P8: Command Centers.
+class PracticeCenterFactory(TenantScopedFactory):
+    class Meta:
+        model = "centers.PracticeCenter"
+
+    tenant = factory.SubFactory(TenantFactory)
+    center = factory.Sequence(lambda n: f"center_{n}")
+    enabled_at = factory.LazyFunction(timezone.now)
+
+
+class PlaybookFactory(TenantScopedFactory):
+    class Meta:
+        model = "centers.Playbook"
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Playbook {n}")
+    outline = "Goal: A goal\n## A project | week 1\n- A task | week 1 | practice\n"
+
+
+class PlaybookRunFactory(TenantScopedFactory):
+    class Meta:
+        model = "centers.PlaybookRun"
+
+    tenant = factory.SubFactory(TenantFactory)
+    playbook = factory.SubFactory(PlaybookFactory, tenant=factory.SelfAttribute("..tenant"))
+    company = factory.SubFactory(CompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    start_date = factory.LazyFunction(lambda: timezone.localdate())
+
+
+class LibraryRecordFactory(TenantScopedFactory):
+    class Meta:
+        model = "centers.LibraryRecord"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kind = "note"
+    source_type = "note"
+    source_id = factory.LazyFunction(uuid.uuid4)
+    recorded_at = factory.LazyFunction(timezone.now)
+
+
+class KpiLibraryEntryFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiLibraryEntry"
+
+    tenant = factory.SubFactory(TenantFactory)
+    page = "operations"
+    name = factory.Sequence(lambda n: f"Library KPI {n}")
+    kind = "number"

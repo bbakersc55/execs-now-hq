@@ -45,15 +45,22 @@ class DocumentTemplateSerializer(serializers.ModelSerializer):
     changed = serializers.SerializerMethodField()
     used_for = serializers.SerializerMethodField()
     fields_used = serializers.SerializerMethodField()
+    #: P8: the Command Center a built-in came with ("Operations Command Center").
+    module_name = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentTemplate
         fields = ["id", "name", "title", "body", "original", "is_original", "changed",
-                  "used_for", "fields_used", "updated_at"]
+                  "used_for", "fields_used", "module_name", "updated_at"]
         read_only_fields = ["original", "updated_at"]
 
     def get_is_original(self, obj):
         return bool(obj.original)
+
+    def get_module_name(self, obj):
+        from apps.esign.seed import center_of
+
+        return center_of(obj.original) if obj.original else ""
 
     def get_changed(self, obj):
         return services.is_changed(obj)
@@ -125,6 +132,21 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
         except services.DocumentRefused as refused:
             return Response({"detail": str(refused)}, status=400)
         return Response(self.get_serializer(template).data)
+
+    @action(detail=True, methods=["get"])
+    def docx(self, request, pk=None):
+        """P8: the template as a Word document, its merge fields as written."""
+        from django.http import HttpResponse
+
+        from apps.esign.docx_template import filename, render_docx
+
+        template = self.get_object()
+        response = HttpResponse(
+            render_docx(template),
+            content_type="application/vnd.openxmlformats-officedocument."
+                         "wordprocessingml.document")
+        response["Content-Disposition"] = f'attachment; filename="{filename(template)}"'
+        return response
 
     @action(detail=False, methods=["get"])
     def fields(self, request):

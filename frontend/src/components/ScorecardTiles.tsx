@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ReactNode, useState } from "react";
+import { ReactElement, ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../lib/api";
@@ -351,6 +351,8 @@ export interface TileManage {
   /** Part 6: its Besty measure. */
   onBesty?: () => void;
   onReviews?: () => void;
+  /** P8: feed codes a Command Center recommends, shown first in its order. */
+  recommended?: string[];
 }
 
 /** M5 ties: the task a KPI's tile offers, and the one already made. */
@@ -444,25 +446,7 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
             <>
               <button type="button" className="small" aria-label={`Edit ${t.name}`}
                 onClick={manage.onEdit}>Edit</button>
-              {manage.onFeed && !t.computed && (
-                <button type="button" className="ghost small" aria-label={`Sheet feed for ${t.name}`}
-                  onClick={manage.onFeed}>{t.feed?.kind === "sheet" ? "Sheet feed" : "Feed from a sheet"}</button>)}
-              {manage.onApp && !t.computed && !t.per_person && (
-                <button type="button" className="ghost small" aria-label={`From this app for ${t.name}`}
-                  onClick={manage.onApp}>{t.feed?.kind === "app" ? "From this app" : "Read from this app"}</button>)}
-              {manage.onTrack && !t.computed && !t.per_person && (
-                <button type="button" className="ghost small" aria-label={`Track measure for ${t.name}`}
-                  onClick={manage.onTrack}>{t.feed?.kind === "track" ? "Track measure" : "Feed from Track"}</button>)}
-              {manage.onHubSpot && !t.computed && !t.per_person && (
-                <button type="button" className="ghost small" aria-label={`HubSpot measure for ${t.name}`}
-                  onClick={manage.onHubSpot}>{t.feed?.kind === "hubspot" ? "HubSpot measure" : "Feed from HubSpot"}</button>)}
-              {manage.onBesty && !t.computed && !t.per_person && (
-                <button type="button" className="ghost small" aria-label={`Besty measure for ${t.name}`}
-                  onClick={manage.onBesty}>{t.feed?.kind === "besty" ? "Besty measure" : "Feed from Besty"}</button>)}
-              {manage.onReviews && !t.computed && !t.per_person && (
-                <button type="button" className="ghost small" aria-label={`Google reviews measure for ${t.name}`}
-                  onClick={manage.onReviews}>{t.feed?.kind === "reviews" ? "Google reviews measure"
-                    : "Feed from Google reviews"}</button>)}
+              {feedButtons(t, manage)}
               <button type="button" className="ghost small" aria-label={`Archive ${t.name}`}
                 onClick={() => setArchiving(true)}>Archive</button>
             </>
@@ -527,5 +511,43 @@ export function ScorecardTile({ t, large = false, actions, manage, task }: {
         </span>
       </div>
     </section>
+  );
+}
+
+
+/** The tile's feed buttons (P8): a Command Center's recommended feeds first,
+ *  in its order, when the practice has it on; then the rest as before. */
+function feedButtons(t: Tile, manage: TileManage) {
+  const plain = !t.computed && !t.per_person;
+  const all: { code: string; show: boolean; el: ReactElement }[] = [
+    { code: "sheet", show: !!manage.onFeed && !t.computed, el: (
+      <button key="sheet" type="button" className="ghost small" aria-label={`Sheet feed for ${t.name}`}
+        onClick={manage.onFeed}>{t.feed?.kind === "sheet" ? "Sheet feed" : "Feed from a sheet"}</button>) },
+    { code: "app", show: !!manage.onApp && plain, el: (
+      <button key="app" type="button" className="ghost small" aria-label={`From this app for ${t.name}`}
+        onClick={manage.onApp}>{t.feed?.kind === "app" ? "From this app" : "Read from this app"}</button>) },
+    { code: "track", show: !!manage.onTrack && plain, el: (
+      <button key="track" type="button" className="ghost small" aria-label={`Track measure for ${t.name}`}
+        onClick={manage.onTrack}>{t.feed?.kind === "track" ? "Track measure" : "Feed from Track"}</button>) },
+    { code: "hubspot", show: !!manage.onHubSpot && plain, el: (
+      <button key="hubspot" type="button" className="ghost small" aria-label={`HubSpot measure for ${t.name}`}
+        onClick={manage.onHubSpot}>{t.feed?.kind === "hubspot" ? "HubSpot measure" : "Feed from HubSpot"}</button>) },
+    { code: "besty", show: !!manage.onBesty && plain, el: (
+      <button key="besty" type="button" className="ghost small" aria-label={`Besty measure for ${t.name}`}
+        onClick={manage.onBesty}>{t.feed?.kind === "besty" ? "Besty measure" : "Feed from Besty"}</button>) },
+    { code: "reviews", show: !!manage.onReviews && plain, el: (
+      <button key="reviews" type="button" className="ghost small" aria-label={`Google reviews measure for ${t.name}`}
+        onClick={manage.onReviews}>{t.feed?.kind === "reviews" ? "Google reviews measure"
+          : "Feed from Google reviews"}</button>) },
+  ];
+  const order = manage.recommended ?? [];
+  const rank = (code: string) => (order.includes(code) ? order.indexOf(code) : order.length + 1);
+  const shown = all.filter((f) => f.show).sort((a, b) => rank(a.code) - rank(b.code));
+  const first = shown.filter((f) => order.includes(f.code));
+  return (
+    <>
+      {first.length > 0 && <span className="sc-muted small">Recommended:</span>}
+      {shown.map((f) => f.el)}
+    </>
   );
 }

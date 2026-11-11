@@ -163,7 +163,17 @@ def seed_tenant(tenant, *, apps=None, dry_run=False) -> list[str]:
 
     done = []
     originals = {}
-    for key, (name, subject, body) in ORIGINALS.items():
+    builtins = dict(ORIGINALS)
+    if apps is None:
+        # P8: a Command Center's email templates, the first time a practice
+        # with it on opens its templates (never from a migration).
+        from apps.centers import services as centers
+        from apps.centers.catalog import shipped_emails
+
+        on = set(centers.enabled(tenant.pk))
+        builtins.update({key: value[1:] for key, value in shipped_emails().items()
+                         if value[0] in on})
+    for key, (name, subject, body) in builtins.items():
         row = templates.filter(tenant_id=tenant.pk, original=key).first()
         if row is None:
             done.append(f"add template “{name}”")
@@ -186,6 +196,23 @@ def seed_tenant(tenant, *, apps=None, dry_run=False) -> list[str]:
         if not dry_run:
             uses.create(tenant_id=tenant.pk, use=use, template=template)
     return done
+
+
+def original(key: str):
+    """(name, subject, body) of a built-in, the app's or a Command Center's."""
+    if key in ORIGINALS:
+        return ORIGINALS[key]
+    from apps.centers.catalog import shipped_emails
+
+    found = shipped_emails().get(key)
+    return found[1:] if found else None
+
+
+def center_of(key: str) -> str:
+    from apps.centers.catalog import NAMES, shipped_emails
+
+    found = shipped_emails().get(key)
+    return NAMES[found[0]] if found else ""
 
 
 def touch_modes(*, apps=None, dry_run=False) -> int:

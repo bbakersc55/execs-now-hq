@@ -168,6 +168,9 @@ MISSING_NAME = {
     # "the owner", not "the Visionary" (owner, 2026-10-08): a practice that has
     # never run EOS reads this too.
     "Visionary": "the owner",
+    # P8: the plain-words name for the same person, in the Command Centers'
+    # templates.
+    "Owner": "the owner",
     "Integrator": "the Integrator",
     # The same person, in the industry-neutral templates (dry run 2).
     "Second-in-command": "your second-in-command",
@@ -179,6 +182,7 @@ MISSING_NAME = {
 }
 MISSING_NOTE = {
     "Visionary": "no owner identified yet",
+    "Owner": "no owner identified yet",
     "Integrator": "no Integrator identified yet",
     "Second-in-command": "no second-in-command identified yet",
     "Location A": "no locations on file",
@@ -200,6 +204,7 @@ def merge_context(session: StrategySession) -> dict:
     owner = session.owner
     return {
         "Visionary": _contact_name(session.visionary_contact),
+        "Owner": _contact_name(session.visionary_contact),
         "Integrator": _contact_name(session.integrator_contact),
         # The industry-neutral templates' name for the same person.
         "Second-in-command": _contact_name(session.integrator_contact),

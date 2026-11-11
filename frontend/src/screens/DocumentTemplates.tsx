@@ -88,6 +88,7 @@ export function DocumentTemplates() {
                     <span className="template-tags">
                       {row.is_original && <Pill kind={row.changed ? "warn" : ""}>
                         {row.changed ? "Built-in, changed" : "Built-in"}</Pill>}
+                      {row.module_name && <> <Pill>{row.module_name}</Pill></>}
                     </span>
                   </button>
                 </li>
@@ -119,6 +120,8 @@ export function DocumentTemplates() {
                   onClick={() => save.mutate()}>
                   <Save size={16} /> {save.isPending ? "Saving…" : dirty ? "Save" : "Saved"}
                 </button>
+                <a className="btn" href={`/api/document-templates/${t.id}/docx/`}
+                  aria-label={`Download ${t.name} as Word`}>Word</a>
                 {t.is_original && (
                   <button disabled={(!t.changed && !dirty) || restore.isPending}
                     onClick={() => restore.mutate()}>

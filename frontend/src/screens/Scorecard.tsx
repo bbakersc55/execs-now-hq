@@ -246,6 +246,7 @@ export function Scorecard({ me }: { me: Me }) {
           manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
             onFeed: () => setFeedKpi(t.id),
+            recommended: me.recommended_feeds,
             // The practice's own scorecard reads this app, a client's reads Track,
             // HubSpot or Besty.
             ...(b.practice ? { onApp: () => setAppKpi(t.id) }

@@ -716,16 +716,24 @@ class EmailTemplateSerializer(serializers.ModelSerializer):
     is_original = serializers.SerializerMethodField()
     changed = serializers.SerializerMethodField()
     used_for = serializers.SerializerMethodField()
+    #: P8: the Command Center a built-in came with.
+    module_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EmailTemplate
         fields = ["id", "name", "kind", "subject", "body", "first_name_fallback",
-                  "original", "is_original", "changed", "used_for", "updated_at"]
+                  "original", "is_original", "changed", "used_for", "module_name",
+                  "updated_at"]
         read_only_fields = ["kind", "original", "updated_at"]
         extra_kwargs = {"first_name_fallback": {"allow_blank": True}}
 
     def get_is_original(self, obj):
         return bool(obj.original)
+
+    def get_module_name(self, obj):
+        from apps.crm.template_seed import center_of
+
+        return center_of(obj.original) if obj.original else ""
 
     def get_changed(self, obj):
         from apps.crm.services import templates

@@ -289,6 +289,13 @@ def me(request):
         # Staff only: a client user is told nothing about what the practice has.
         "modules": (practice_modules.enabled(membership.tenant)
                     if membership and membership.role in ("FF", "CF", "VA") else []),
+        # P8: the Command Centers this practice has on: the navigation's
+        # "Operations" and the offers each brings. Staff only, as modules.
+        "command_centers": (_centers_on(membership.tenant_id)
+                            if membership and membership.role in ("FF", "CF", "VA") else []),
+        # P8: feeds those Command Centers recommend, first in the feed picker.
+        "recommended_feeds": (_recommended_feeds(membership.tenant_id)
+                              if membership and membership.role in ("FF", "CF", "VA") else []),
         "client_company": (
             str(membership.client_company_id)
             if membership and membership.client_company_id else None
@@ -688,3 +695,21 @@ def magic_link_landing(request, token: str):
     if "text/html" in request.headers.get("Accept", ""):
         return HttpResponseRedirect(redirect_to)
     return JsonResponse({"ok": True, "redirect_to": redirect_to})
+
+
+def _centers_on(tenant_id) -> list[str]:
+    from apps.centers import services as centers
+
+    return centers.enabled(tenant_id)
+
+
+def _recommended_feeds(tenant_id) -> list[str]:
+    from apps.centers import catalog
+    from apps.scorecard.models import Kpi
+
+    out = []
+    for code in _centers_on(tenant_id):
+        for feed in getattr(catalog.content(code), "FEEDS", []):
+            if feed in Kpi.Feed.values and feed not in out:
+                out.append(feed)
+    return out

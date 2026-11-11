@@ -42,15 +42,30 @@ export const PLANS: Plan[] = [
     ],
   },
   {
-    name: "Discipline modules",
+    name: "Command Centers",
     price: "$50",
     per: "a month each",
     summary: "Capped at $150 a month for all of them.",
     features: [
-      "Starter templates, analytical tools and SOPs for your discipline",
-      "Each priced when it ships",
+      "Session templates, a KPI list, playbooks, document templates and AI actions for one discipline",
+      "Operations available now; People and Technology next",
+      "Copied into your practice on first use, and yours to edit",
     ],
   },
+];
+
+export type CenterStatus = "Available" | "Next" | "Coming";
+
+/** The eight Command Centers, by full name, as the app's catalog lists them. */
+export const COMMAND_CENTERS: { name: string; status: CenterStatus }[] = [
+  { name: "Operations Command Center", status: "Available" },
+  { name: "People Command Center", status: "Next" },
+  { name: "Technology Command Center", status: "Next" },
+  { name: "Finance Command Center", status: "Coming" },
+  { name: "Sales Command Center", status: "Coming" },
+  { name: "Marketing Command Center", status: "Coming" },
+  { name: "Projects Command Center", status: "Coming" },
+  { name: "Training Command Center", status: "Coming" },
 ];
 
 /** The "Also" block beneath the cards. */

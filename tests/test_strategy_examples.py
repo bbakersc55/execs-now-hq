@@ -132,7 +132,7 @@ def test_the_builder_accepts_the_visionary_merge_field_in_a_v3_template(ff, api,
     # A field that does not exist is still refused, so this is not a gap.
     assert post(api, ff, f"{ROOT}{blank['id']}/questions/",
                 {"section": "diagnostic",
-                 "prompt": "Where do decisions stall because they need {Owner}?"}
+                 "prompt": "Where do decisions stall because they need {Boss}?"}
                 ).status_code == 400
 
 

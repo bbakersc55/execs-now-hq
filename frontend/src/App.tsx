@@ -4,7 +4,7 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-  Receipt, Landmark, Users, Gauge, X, FileSignature } from "lucide-react";
+  Receipt, Landmark, Users, Gauge, X, FileSignature, Compass } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 import { Landing } from "./components/Landing";
@@ -68,6 +68,7 @@ import { DocumentTemplates } from "./screens/DocumentTemplates";
 import { PortalDocuments } from "./screens/PortalDocuments";
 import { Suspended } from "./screens/Suspended";
 import { AiUsage } from "./screens/AiUsage";
+import { CommandCenterPage, CommandCentersSettings } from "./screens/CommandCenters";
 import { Branding } from "./screens/Branding";
 import { Practices } from "./screens/Practices";
 import {
@@ -186,6 +187,9 @@ const NAV: NavItem[] = [
   { to: "/invoices", label: "Invoices", roles: ["FF", "CF"], icon: Receipt },
   // P5. The practice owner's only (matrix 13.1, 13.6–13.10).
   { to: "/finance", label: "Finance", roles: ["FF"], icon: Landmark },
+  // P8: a Command Center the practice has on, by its discipline alone.
+  { to: "/centers/operations", label: "Operations", roles: ["FF", "CF", "VA"], icon: Compass,
+    when: (me) => (me.command_centers ?? []).includes("operations") },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
   { to: "/tasks", label: (w) => w.Tasks, roles: CLIENT , icon: CheckSquare },
@@ -466,6 +470,9 @@ export function App() {
               element={<Settings me={me}><DocumentTemplates /></Settings>} />}
             <Route path="/staff" element={<Settings me={me}><Staff me={me} /></Settings>} />
             <Route path="/ai-usage" element={<Settings me={me}><AiUsage /></Settings>} />
+            {me.role === "FF" && <Route path="/settings/command-centers"
+              element={<Settings me={me}><CommandCentersSettings me={me} /></Settings>} />}
+            <Route path="/centers/:code" element={<CommandCenterPage me={me} />} />
             {me.role === "FF" && <Route path="/settings/digests"
               element={<Settings me={me}><DigestSettings /></Settings>} />}
             {/* The practice owner's only, as the card was on Notes. */}

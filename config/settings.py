@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     "apps.calendars",
     "apps.esign",
     "apps.aiconnect",
+    "apps.centers",
 ]
 
 MIDDLEWARE = [

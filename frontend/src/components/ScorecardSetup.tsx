@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { KpiLibraryPicker } from "./KpiLibrary";
 import { RefPicker } from "./ScorecardRefs";
 import { Modal } from "./shell";
 import { Banner, Card } from "./ui";
@@ -59,6 +60,8 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
   // A starter KPI fills the new-KPI form in; nothing is made until Save.
   const [starter, setStarter] = useState<StarterKpi | null>(null);
   const [newPage, setNewPage] = useState("");
+  // P8: "From the library" fills the new-KPI form in, like a starter.
+  const [picking, setPicking] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
   useEffect(() => {
     if (state.data && hash === "#scorecard-setup") box.current?.scrollIntoView?.({ block: "start" });
@@ -101,6 +104,11 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
           <StartCard compact companyId={company.id}
             onPick={(k) => { setStarter(k); setEditing("new"); }} />
         )}
+        {live.length === 0 && (
+          <button className="small" onClick={() => setPicking(true)}>From the library</button>
+        )}
+        {picking && <KpiLibraryPicker onClose={() => setPicking(false)}
+          onPick={(k) => { setPicking(false); setStarter(k); setEditing("new"); }} />}
         {s.exists && (
           <div className="row tight sc-setup-row">
             <label htmlFor="sc-week" className="small">The week runs</label>
@@ -178,6 +186,7 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
             <button className="primary small" onClick={() => {
               setStarter(null); setEditing(editing === "new" ? null : "new"); }}>
               Add {w.aKpi}</button>
+            <button className="small" onClick={() => setPicking(true)}>From the library</button>
             <input aria-label="New page name" placeholder="New page, e.g. Sales" value={newPage}
               onChange={(e) => setNewPage(e.target.value)} />
             <button className="small" disabled={!newPage.trim()} onClick={() => {

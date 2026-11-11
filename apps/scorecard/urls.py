@@ -1,7 +1,7 @@
 from django.urls import path
 
 from apps.scorecard import (views, views_app, views_besty, views_bonus, views_feeds, views_hubspot,
-                            views_reviews, views_track)
+                            views_library, views_reviews, views_track)
 
 urlpatterns = [
     path("scorecard/", views.BoardView.as_view(), name="scorecard"),
@@ -29,6 +29,10 @@ urlpatterns = [
     path("scorecard/kpis/<str:pk>/restore/", views.KpiRestoreView.as_view(),
          name="scorecard-kpi-restore"),
     path("scorecard/starters/", views.StartersView.as_view(), name="scorecard-starters"),
+    # P8: the KPI library.
+    path("scorecard/library/", views_library.LibraryView.as_view(), name="scorecard-library"),
+    path("scorecard/library/<uuid:pk>/", views_library.LibraryEntryView.as_view(),
+         name="scorecard-library-entry"),
     path("scorecard/feeds/", views_feeds.FeedsView.as_view(), name="scorecard-feeds"),
     path("scorecard/feeds/consent/", views_feeds.FeedConsentView.as_view(),
          name="scorecard-feed-consent"),

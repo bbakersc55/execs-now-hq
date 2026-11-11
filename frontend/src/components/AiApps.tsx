@@ -195,7 +195,8 @@ export function AiActionsCard() {
                   <td>{a.label}<div className="small muted">{a.where}</div></td>
                   <td>
                     {a.fixed ? (
-                      <span title={a.fixed_why}>In the app <span className="small muted">· fixed</span></span>
+                      <span title={a.fixed_why}>{a.runs_in === "ai_app" ? "In my AI app" : "In the app"}{" "}
+                        <span className="small muted">· fixed</span></span>
                     ) : (
                       <select aria-label={`Runs in for ${a.label}`} value={a.runs_in}
                         disabled={!may || change.isPending}

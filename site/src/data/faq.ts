@@ -14,6 +14,10 @@ export const FAQ: { q: string; a: string }[] = [
     a: "Yes. Connect Claude or ChatGPT to your practice from your own AI account, signed in as yourself. Ask about your clients, tasks and scorecards, or have it draft a digest or an email, which waits in your queue for your approval; notes and tasks it adds are marked as its own. It sees only what you can see, it can't send, delete, sign or move money, every use is in your activity log, and you can disconnect it at any time. Your mail is never shared with it. What you work on there goes to that AI's provider under your own agreement with them.",
   },
   {
+    q: "What is a Command Center?",
+    a: "A set of tools for one discipline, $50 a month each and $150 at most for all of them: session templates, a KPI list, playbooks, document templates and AI actions. The Operations Command Center is available now; People and Technology are next, then Finance, Sales, Marketing, Projects and Training. Turning one on only offers its pieces. Nothing about a client's scorecard, templates or goals changes, and anything you use is copied into your practice for you to edit.",
+  },
+  {
     q: "Do you support Outlook?",
     a: "Yes. Connect Google Workspace or Microsoft 365, both available now: sign-in, sending and replies from your own address, your calendar, and meeting notes from Drive or OneDrive.",
   },

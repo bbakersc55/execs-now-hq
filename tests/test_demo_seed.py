@@ -165,10 +165,24 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
                                       service_categories__isnull=False).distinct().count() >= 3
 
         # ---------------------------------------------------------- the work
-        per_company = dict(Goal.objects.values_list("client_company__name")
+        # P8: the Operations Command Center's playbook makes one more goal at
+        # Acme Fasteners, a plan rather than a measured goal: checked on its own.
+        from apps.centers.models import PlaybookRun
+
+        run = PlaybookRun.objects.get()
+        assert run.goal.client_company.name == "Acme Fasteners" and run.made["tasks"] == 22
+        from apps.centers import services as centers
+        from apps.scorecard.models import Kpi
+
+        assert centers.enabled(run.tenant_id) == ["operations"]
+        assert {"On-time completion rate", "Rework or callback rate",
+                "First-time fix rate"} <= set(Kpi.objects.filter(
+                    scorecard__company=run.goal.client_company).values_list("name", flat=True))
+        measured = Goal.objects.exclude(pk=run.goal_id)
+        per_company = dict(measured.values_list("client_company__name")
                            .annotate(n=Count("id")))
         assert len(per_company) == 11 and all(1 <= n <= 3 for n in per_company.values())
-        for goal in Goal.objects.all():
+        for goal in measured:
             assert goal.measurable_kind == "numeric" and goal.direction
             assert goal.baseline_value is not None and goal.target_value is not None
             readings = GoalMeasurement.objects.filter(goal=goal)

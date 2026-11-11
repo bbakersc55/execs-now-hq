@@ -29,6 +29,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
 from apps.aiconnect import tools as T
+from apps.tenancy import ai_actions
 
 log = logging.getLogger(__name__)
 
@@ -307,5 +308,22 @@ def build() -> MCPServer:
         return ("Using Execs NOW HQ, list_tasks with overdue=true and list_tasks due before "
                 "the end of this week, then practice_summary. Group what's late and what's "
                 "due by company, say who owns each, and suggest what to chase first.")
+
+    # P8: the Operations Command Center's three actions, as prompts.
+    @server.prompt(title="Draft an SOP from a note")
+    def sop_from_note(note: str) -> str:
+        """An SOP drafted from a note: purpose, roles, steps, measures, review date."""
+        return ai_actions.BY_KEY["ops_sop_from_note"].prompt.replace("{record}", f'"{note}"')
+
+    @server.prompt(title="Map rows from a meeting proposal")
+    def map_rows_from_meeting(proposal: str) -> str:
+        """Strategy Map rows proposed into a session's tray from a meeting."""
+        return ai_actions.BY_KEY["ops_map_rows_from_meeting"].prompt.replace(
+            "{record}", f'"{proposal}"')
+
+    @server.prompt(title="Weekly note from the scorecard")
+    def weekly_note_from_scorecard(company: str) -> str:
+        """This week's note from a company's scorecard, saved as a digest draft."""
+        return ai_actions.BY_KEY["ops_weekly_note"].prompt.replace("{record}", f'"{company}"')
 
     return server

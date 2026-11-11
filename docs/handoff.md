@@ -2,7 +2,8 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-10 UTC**, after Release 39. **The next session starts at
-"2026-11-10: Release 39, AI apps over MCP" just below**; then
+"2026-11-10: Command Centers (on dev, not released)" just below**; then
+"2026-11-10: Release 39, AI apps over MCP"; then
 "2026-11-10: Release 38, the Website leads pipeline"; then
 "2026-11-09: Release 37, the marketing site"; then
 "2026-11-05, late: where things stand", which sums up Releases
@@ -25,6 +26,24 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-10: Command Centers (on `dev`, not released)
+
+- **Built** (spec as built: `docs/p8_command_centers.md`):
+  - the catalog of eight, with Settings → Command Centers' switch ($50 each,
+    capped at $150, the platform owner's practice free, the demo refusing);
+  - the Operations Command Center: a plain-words session template, the KPI
+    library (every practice's base, plus Operations' list), six playbooks
+    started from a company's page, an SOP, weekly note and quarterly review
+    (Word), recommended feeds first, three AI actions as MCP prompts;
+  - the practice library, recording while a Command Center is on;
+  - the site's "Command Centers".
+- **Payments:** card payments in production stay paused until the NMI
+  variables are set (`0942b46`, unreleased too).
+- **Migrations, additive:** `centers 0001` and `0002` (the catalog and its
+  add-on rows), `scorecard 0014`, `work 0013` (a choice only).
+- **On release:** nothing to set in Railway. The demo seed turns Operations on;
+  reseed the demo after its deploy shows SUCCESS.
 
 ## 2026-11-10: Release 39, AI apps over MCP
 

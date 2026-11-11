@@ -272,7 +272,7 @@ def for_use(tenant, use):
 def is_changed(template) -> bool:
     from apps.crm import template_seed
 
-    original = template_seed.ORIGINALS.get(template.original)
+    original = template_seed.original(template.original) if template.original else None
     if original is None:
         return False
     _name, subject, body = original
@@ -285,7 +285,7 @@ def restore(template, *, actor=None):
     from apps.crm import template_seed
     from apps.tenancy.models import AuditEvent
 
-    original = template_seed.ORIGINALS.get(template.original)
+    original = template_seed.original(template.original) if template.original else None
     if original is None:
         raise TemplateRefused("Only a built-in template has an original to restore.")
     _name, template.subject, template.body = original

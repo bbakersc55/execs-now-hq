@@ -35,6 +35,8 @@ export const SETTINGS: { to: string; label: string; roles: Role[] }[] = [
   { to: "/settings/billing", label: "Billing", roles: ["FF"] },
   { to: "/settings/finance", label: "Finance", roles: ["FF"] },
   { to: "/ai-usage", label: "AI", roles: ["FF"] },
+  // P8: the eight modules, each switched here.
+  { to: "/settings/command-centers", label: "Command Centers", roles: ["FF"] },
 ];
 
 /** A demo visitor's own copy has one more (2026-10-17). */

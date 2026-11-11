@@ -2,9 +2,15 @@
 import Base from "../layouts/Base.astro";
 import PricingCards from "../components/PricingCards.astro";
 import Faq from "../components/Faq.astro";
-import { EVERY_PLAN, PAYMENTS } from "../data/pricing";
+import { COMMAND_CENTERS, EVERY_PLAN, PAYMENTS } from "../data/pricing";
+
+const centerStyle = {
+  Available: "bg-[#e8f5ec] text-[#14632f]",
+  Next: "bg-[#fdf1e7] text-[#8a4510]",
+  Coming: "bg-paper text-gray-dark border border-line",
+} as const;
 ---
-<Base title="Pricing" description="Execs NOW HQ pricing: Micro practice $199 a month with the owner plus 2 users, Team $299 a month with the owner plus 20, discipline modules $50 each, capped at $150. Unlimited client companies.">
+<Base title="Pricing" description="Execs NOW HQ pricing: Micro practice $199 a month with the owner plus 2 users, Team $299 a month with the owner plus 20, Command Centers $50 each, capped at $150. Unlimited client companies.">
   <section class="wrap pt-14 pb-10 sm:pt-20">
     <h1 class="text-4xl font-extrabold sm:text-5xl">Pricing</h1>
     <p class="mt-4 max-w-2xl text-lg leading-relaxed text-[#33394a]">
@@ -18,6 +24,23 @@ import { EVERY_PLAN, PAYMENTS } from "../data/pricing";
     <ul class="mt-6 grid gap-x-10 gap-y-3 text-[16px] sm:grid-cols-2">
       {EVERY_PLAN.map((x) => (
         <li class="flex gap-2.5"><span aria-hidden="true" class="mt-2 block size-1.5 shrink-0 rounded-full bg-orange"></span>{x}</li>
+      ))}
+    </ul>
+  </section>
+  <section class="wrap py-12" id="command-centers">
+    <h2 class="text-2xl font-extrabold sm:text-3xl">Command Centers</h2>
+    <p class="mt-4 max-w-3xl text-[17px] leading-relaxed text-[#33394a]">
+      One for each discipline, $50 a month each and $150 at most for all of them. Each brings
+      session templates, a KPI list, playbooks, document templates and AI actions for its
+      discipline. Turning one on only offers them: your clients' scorecards, templates and goals
+      stay as they are, and anything you use is copied into your practice for you to edit.
+    </p>
+    <ul class="mt-6 grid gap-2.5 sm:grid-cols-2">
+      {COMMAND_CENTERS.map((c) => (
+        <li class="flex items-center justify-between gap-3 rounded-lg border border-line bg-white px-4 py-2.5 text-[16px]">
+          <span>{c.name}</span>
+          <span class:list={["rounded-full px-2.5 py-0.5 text-xs font-semibold", centerStyle[c.status]]}>{c.status === "Available" ? "Available now" : c.status}</span>
+        </li>
       ))}
     </ul>
   </section>

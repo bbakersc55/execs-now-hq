@@ -119,6 +119,10 @@ export interface Me {
   dev_tools?: boolean;
   /** P6 M1: the modules this practice has ("bookkeeping"). Staff only. */
   modules?: string[];
+  /** P8: the Command Centers this practice has on ("operations"). Staff only. */
+  command_centers?: string[];
+  /** P8: KPI feeds those Command Centers recommend, shown first. */
+  recommended_feeds?: string[];
   /** Which of the three environments (owner, 2026-09-29). */
   environment?: "local" | "demo" | "production";
   /** FR-3.42 — set while the real person acts as another user. Everything
@@ -1801,6 +1805,8 @@ export interface EmailTemplate {
   first_name_fallback: string;
   /** A built-in template's key, "" for one the practice wrote. */
   original: string;
+  /** P8: the Command Center it came with, or "". */
+  module_name?: string;
   is_original: boolean;
   /** A built-in one that no longer reads as the original. */
   changed: boolean;
@@ -2820,6 +2826,8 @@ export interface DocumentTemplate {
   /** Plain text with merge fields; a line starting "# " is a heading. */
   body: string;
   original: string; is_original: boolean; changed: boolean; used_for: string[];
+  /** P8: the Command Center it came with, or "". */
+  module_name?: string;
   /** Which of Scope, Fee, Term and StartDate it asks for. */
   fields_used: string[];
   updated_at: string;
@@ -2900,4 +2908,53 @@ export interface BankOverview {
   personal_on: boolean; personal: BankConnection[]; personal_disconnected: BankConnection[];
   /** Both sides together, for the plan's "5 included". */
   count: number; included: number; each_after_cents: number; price_line: string;
+}
+
+
+// ------------------------------------------------------- Command Centers (P8)
+
+export interface CenterRow {
+  code: string; name: string; short_name: string; discipline: string; price_cents: number;
+  description: string; status: "available" | "coming"; next: boolean; on: boolean;
+}
+
+/** GET /api/command-centers/ — Settings → Command Centers. */
+export interface CentersState {
+  centers: CenterRow[]; cap_cents: number; owners_practice: boolean; price_line: string;
+  can_switch: boolean; why_not: string; library_count: number;
+}
+
+export interface PlaybookRow {
+  id: string | null; key: string; name: string; description: string; center: string;
+  center_name: string; is_draft: boolean; shipped: boolean; outline?: string;
+  weeks: number; projects: number; tasks: number;
+}
+
+/** GET /api/command-centers/:code/ — the module card. */
+export interface CenterCard {
+  code: string; name: string; short_name: string; description: string;
+  status: "available" | "coming"; on: boolean; price_cents: number;
+  shelves: null | {
+    session_templates: { start_from: string; label: string }[];
+    kpis: { key: string; name: string; page: string; guidance: string }[];
+    playbooks: PlaybookRow[];
+    documents: { original: string; name: string }[];
+    emails: { original: string; name: string }[];
+    tools: string[];
+    feeds: { code: string; name: string }[];
+    ai_actions: { key: string; label: string; tier: string }[];
+  };
+}
+
+export interface LibraryEntry {
+  id: string | null; key: string; page: string; source: "base" | "center" | "practice";
+  center: string; center_name: string; name: string; kind: string; direction: string;
+  cadence: string; rollup: string; duration_unit: string | null; rating_scale: number | null;
+  behind_band_pct: number | null; guidance: string; feeds: string[];
+  target_value: string | null; range_low: number | null; range_high: number | null;
+}
+
+/** GET /api/scorecard/library/ — "From the library". */
+export interface LibraryState {
+  pages: { code: string; label: string }[]; entries: LibraryEntry[]; can_edit: boolean;
 }

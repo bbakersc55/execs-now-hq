@@ -907,3 +907,39 @@ class KpiReviewsFeed(TenantScopedModel):
                                    name="kpi_reviews_feed_star_1_to_5"),
         ]
 
+
+class KpiLibraryEntry(TenantScopedModel):
+    """A practice's own entry in the KPI library (P8), offered "From the
+    library" wherever a KPI is made, beside the base library every practice
+    has (`apps.scorecard.library`) and the list of each Command Center it
+    has on. `source_key` set: the practice's edited copy of a shipped entry,
+    which then stands in for it."""
+
+    class Page(models.TextChoices):
+        CUSTOMERS = "customers", "Customers"
+        OPERATIONS = "operations", "Operations"
+        TEAM = "team", "Team"
+        MONEY = "money", "Money"
+
+    page = models.CharField(max_length=12, choices=Page.choices)
+    name = models.CharField(max_length=120)
+    kind = models.CharField(max_length=10, choices=Kpi.Kind.choices)
+    direction = models.CharField(max_length=8, choices=Kpi.Direction.choices,
+                                 default=Kpi.Direction.HIGHER)
+    cadence = models.CharField(max_length=10, choices=Kpi.Cadence.choices,
+                               default=Kpi.Cadence.WEEKLY)
+    rollup = models.CharField(max_length=8, choices=Kpi.Rollup.choices, default=Kpi.Rollup.SUM)
+    duration_unit = models.CharField(max_length=8, blank=True, default="")
+    rating_scale = models.PositiveSmallIntegerField(null=True, blank=True)
+    behind_band_pct = models.PositiveSmallIntegerField(default=10)
+    #: How to read its status bands: "On track at 95% or more; behind within 5%".
+    guidance = models.CharField(max_length=200, blank=True, default="")
+    #: Suggested feeds: `Kpi.Feed` codes.
+    feeds = models.JSONField(default=list, blank=True)
+    source_key = models.CharField(max_length=60, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_library_entry"

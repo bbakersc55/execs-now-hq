@@ -154,7 +154,9 @@ def test_the_tools_and_the_three_prompts_are_listed(world, ff):
     for never in ("send_", "delete", "approve", "charge", "sign_", "move_", "update_",
                   "set_", "revoke", "pay"):
         assert not any(name.startswith(never) for name in tools), never
-    assert sorted(prompts) == ["prep_contact", "weekly_note", "whats_late"]
+    # The three of P7, and the Operations Command Center's three (P8).
+    assert sorted(prompts) == ["map_rows_from_meeting", "prep_contact", "sop_from_note",
+                               "weekly_note", "weekly_note_from_scorecard", "whats_late"]
 
 
 # ------------------------------------------------------- role scoping, x3

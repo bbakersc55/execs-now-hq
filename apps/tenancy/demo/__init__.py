@@ -193,6 +193,11 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         foundation.stage_rules(world)
         foundation.introductions(world)
         foundation.practice_scorecard(world)
+        # P8: the Operations Command Center, on, with a playbook and library
+        # KPIs in use at Acme Fasteners.
+        from .centers import operations as command_center
+
+        command_center(world)
         calendar.meetings(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from django.db import transaction
 
+from apps.centers.content import operations as operations_center
 from apps.strategy import builder
 from apps.strategy.models import StrategyQuestion
 from apps.strategy.services import SessionError
@@ -143,8 +144,17 @@ OPERATIONS_V2_PROMPTS = {
 }
 OPERATIONS_V2 = reworded(OPERATIONS_V1, OPERATIONS_V2_PROMPTS)
 
+#: P8: "Start from the Operations Command Center": the same template in
+#: plain words, no EOS term (`apps/centers/content/operations.py`). Offered
+#: only to a practice with that Command Center on (`center_of`).
+OPERATIONS_CENTER = "operations_command_center"
+
+
 #: name → {version: content}. A new version is added; none is edited.
-EXAMPLES = {OPERATIONS: {1: OPERATIONS_V1, 2: OPERATIONS_V2}}
+EXAMPLES = {OPERATIONS: {1: OPERATIONS_V1, 2: OPERATIONS_V2},
+            OPERATIONS_CENTER: {1: operations_center.session_template()}}
+#: An example that belongs to a Command Center, and which.
+CENTER_OF = {OPERATIONS_CENTER: "operations"}
 
 
 def latest(name) -> int:
@@ -166,6 +176,13 @@ def create(tenant, *, name, start_from, version=None):
     place rather than archived, so the copy starts with no spent keys. The
     version is the latest unless one is named, which only a test does."""
     example = content(start_from, version)
+    center = CENTER_OF.get(start_from)
+    if center is not None:
+        from apps.centers import catalog, services as centers
+
+        if not centers.has(tenant.pk, center):
+            raise SessionError(f"Turn on the {catalog.NAMES[center]} to start from its "
+                               "template.", status=403)
     template = builder.create_blank(tenant, name=name)
     for kind, items in example["questions"].items():
         section = builder._sections(template).get(kind=kind)
