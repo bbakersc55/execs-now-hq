@@ -846,6 +846,26 @@ references to each web variable (`${{execs-now-hq.NAME}}`), plus
 added to `mcp` the same way.** Production's first deploy, of `main` before
 Release 39, FAILED as expected (no `scripts/start_mcp.sh` yet).
 
+**Observed at Release 40 (2026-11-12 UTC, five migrations,
+`billing 0012_card_payment_hold`, `work 0013_taskupdate_source_playbook`
+(choices only, no SQL), `centers 0001_initial`, `centers 0002_seed_catalog`
+and `scorecard 0014_kpi_library_entry`, all additive: Command Centers, the
+configurable NMI host and the "Pause card payments" switch, the demo's
+fixes, `057400d`):** R1: the owner ran the backup by hand:
+`execsnowhq_prod_20261112_214918.sql.gz`, 15.3 MB, landed 21:49:34. R2:
+`main` fast-forwarded `757ff1d..057400d`, pushed 21:51:18. R3: worker
+`c7fb3c48` `WAITING` 21:53:14, listing exactly the five (the header was
+logged before its list again; read twice). Web `55548e92` waiting from
+21:53:01. R4: applied by me 21:53:38–47, all `OK`. R5: `migrations current`
+21:53:50, running 21:53:55. R5b: no new scheduled job. R6a: `mcp`
+`75611c28` SUCCESS by itself, `/healthz` `ok`. R6: web `55548e92` SUCCESS
+by itself, gunicorn listening 21:53:53; `/healthz` 200 and
+`/api/command-centers/` 403 signed out (404 before) at 21:54:35.
+`enhq-site` `94cb0385` SUCCESS (the release changed `site/`). **Push to web
+serving: about 2 min 35 s.** Card payments are unchanged: `NMI_LIVE_CALLS`
+is true and `NMI_API_HOST` unset, so charges go to `secure.nmi.com` as
+before, and the new hold table is empty.
+
 ---
 
 ## Part A — the owner's steps, in order

@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-10 UTC**, after Release 39. **The next session starts at
-"2026-11-10: Command Centers (on dev, not released)" just below**; then
+2026-11-12 UTC**, after Release 40. **The next session starts at
+"2026-11-12: Release 40, Command Centers" just below**; then
 "2026-11-10: Release 39, AI apps over MCP"; then
 "2026-11-10: Release 38, the Website leads pipeline"; then
 "2026-11-09: Release 37, the marketing site"; then
@@ -27,7 +27,26 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-10: Command Centers (on `dev`, not released)
+## 2026-11-12: Release 40, Command Centers
+
+- **Release 40 is live**: `main` at `057400d`, five additive migrations
+  applied by the runbook sequence (backup `execsnowhq_prod_20261112_214918`,
+  push 21:51:18, applied 21:53:38–47), web serving about 2 min 35 s after
+  the push; worker, `mcp` and `enhq-site` up too. Recorded in the runbook
+  ("Observed at Release 40").
+- **Also in it:** the demo's fixes. A demo copy's thread never names one of
+  Summit's mailboxes, and the reseed lets go of old ones (`83a5797`). The
+  demo's Command Center is findable: Operations second in the menu, the
+  template's Command Center start first, what was started listed on the
+  company page, and the three library KPIs with targets and thirteen weeks of
+  readings (`057400d`). The demo was reseeded after it and checked by read-only
+  queries. The seven checks were walked in headless Chrome on a scratch
+  database, not on the live demo.
+- **Not yet exercised in production:** the catalog's rows (seeded by
+  `centers 0002`, applied `OK`; a read of them was not run), and turning a
+  Command Center on for a paying practice.
+
+### What Release 40 carried
 
 - **Built** (spec as built: `docs/p8_command_centers.md`):
   - the catalog of eight, with Settings → Command Centers' switch ($50 each,
@@ -38,12 +57,16 @@ they don't, and what changed since 9/30.
     (Word), recommended feeds first, three AI actions as MCP prompts;
   - the practice library, recording while a Command Center is on;
   - the site's "Command Centers".
-- **Payments:** card payments in production stay paused until the NMI
-  variables are set (`0942b46`, unreleased too).
-- **Migrations, additive:** `centers 0001` and `0002` (the catalog and its
-  add-on rows), `scorecard 0014`, `work 0013` (a choice only).
-- **On release:** nothing to set in Railway. The demo seed turns Operations on;
-  reseed the demo after its deploy shows SUCCESS.
+- **Payments** (`0942b46`): the gateway's host is configurable
+  (`NMI_API_HOST`, default `secure.nmi.com`), Collect.js serves the
+  white-label host, and the platform owner has a "Pause card payments" switch
+  (`billing 0012`). Production refuses every card call only when real calls
+  are off (`NMI_LIVE_CALLS` false) or the switch is on. Neither holds, so
+  card payments carried on unchanged through the release.
+- **Migrations, additive:** `billing 0012` (the hold), `centers 0001` and
+  `0002` (the catalog and its add-on rows), `scorecard 0014`, `work 0013`
+  (a choice only).
+- **On release:** nothing to set in Railway. The demo seed turns Operations on.
 
 ## 2026-11-10: Release 39, AI apps over MCP
 
