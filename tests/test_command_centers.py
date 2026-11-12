@@ -375,6 +375,68 @@ def test_start_a_playbook_makes_a_dated_goal_projects_and_tasks(on, ff, api):
     assert PlaybookRun.all_objects.get(goal=goal).made == {"projects": 4, "tasks": 22}
 
 
+def _started(api, ff, tenant):
+    """A ready reset started at a new client company; returns the company and
+    the start's answer."""
+    company = ClientCompanyFactory(tenant=tenant)
+    copy = post(api, ff, "/api/playbooks/copy/", {"key": "ops_90_day_reset"}).json()
+    patch(api, ff, f"/api/playbooks/{copy['id']}/", {"ready": True})
+    made = post(api, ff, "/api/playbooks/start/", {
+        "playbook": copy["id"], "company": str(company.pk), "start_date": "2026-11-16"})
+    assert made.status_code == 201, made.content
+    return company, made.json()
+
+
+@pytest.mark.django_db
+def test_a_company_page_lists_what_was_started_there_with_its_goal(on, ff, api):
+    """2026-11-12: a started playbook's goal was on Work and in the portal but
+    nowhere on the company's own page."""
+    from apps.work.models import Goal
+
+    company, made = _started(api, ff, on)
+    runs = api.as_(ff).get(f"/api/playbooks/?company={company.pk}").json()["runs"]
+    assert [(r["playbook"], r["goal"], r["goal_title"], r["start_date"], r["tasks"])
+            for r in runs] == [("The 90-day operations reset", made["goal"],
+                                "The 90-day operations reset", "2026-11-16", 22)]
+    # Another company lists nothing; without ?company= there is no list.
+    other = ClientCompanyFactory(tenant=on)
+    assert api.as_(ff).get(f"/api/playbooks/?company={other.pk}").json()["runs"] == []
+    assert "runs" not in api.as_(ff).get("/api/playbooks/").json()
+    # Its goal deleted, the run stays listed, without one.
+    Goal.all_objects.filter(pk=made["goal"]).update(deleted_at=timezone.now())
+    run = api.as_(ff).get(f"/api/playbooks/?company={company.pk}").json()["runs"][0]
+    assert (run["goal"], run["goal_title"]) == (None, "")
+
+
+@pytest.mark.django_db
+def test_another_practice_never_sees_what_was_started_at_a_company(on, ff, api, tenant_b):
+    company, made = _started(api, ff, on)
+    other_owner = _member(tenant_b, "FF")
+    assert turn_on(api, other_owner).status_code == 200
+    seen = api.as_(other_owner).get(f"/api/playbooks/?company={company.pk}")
+    assert seen.status_code == 404
+    theirs = ClientCompanyFactory(tenant=tenant_b)
+    listed = api.as_(other_owner).get(f"/api/playbooks/?company={theirs.pk}").json()
+    assert listed["runs"] == [] and made["goal"] not in json.dumps(listed)
+
+
+@pytest.mark.django_db
+def test_who_reads_what_was_started_at_a_company(on, ff, cf, va, fcc, api):
+    """Staff who can see the company; an associate only an assigned one; a
+    client user never, their own company included."""
+    from .factories import ClientAssignmentFactory
+
+    company, made = _started(api, ff, on)
+    path = f"/api/playbooks/?company={company.pk}"
+    assert api.as_(va).get(path).json()["runs"][0]["goal"] == made["goal"]
+    assert api.as_(cf).get(path).status_code == 404
+    ClientAssignmentFactory(tenant=on, user=cf.user, company=company)
+    assert api.as_(cf).get(path).json()["runs"][0]["goal"] == made["goal"]
+    assert api.as_(fcc).get(f"/api/playbooks/?company={fcc.client_company_id}").status_code == 404
+    assert api.as_(fcc).get(path).status_code == 404
+    assert api.as_(ff).get("/api/playbooks/?company=not-a-company").status_code == 404
+
+
 @pytest.mark.django_db
 def test_playbooks_are_only_offered_with_the_module_on(seeded_tenant, ff, va, api):
     assert api.as_(ff).get("/api/playbooks/").json()["playbooks"] == []

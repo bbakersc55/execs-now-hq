@@ -32,6 +32,9 @@ actions. This build adds the frame and the **Operations Command Center**.
 - **Names.** The app's navigation shows only the discipline, "Operations",
   which links to the module card at `/centers/operations`. The full name is
   on the card, in Settings and on the site.
+  - **Where (2026-11-12):** second in the list, under its own "Command
+    Centers" heading after Today. Eighteenth, after Finance, it was below the
+    fold at 1366 and the owner looked for it and did not find it.
 - **Turning one on only offers.** It changes no client's scorecard,
   templates or goals (tested). Each piece is copied into the practice on
   first use and edited there. Edits never reach the catalog or another
@@ -40,9 +43,11 @@ actions. This build adds the frame and the **Operations Command Center**.
 ## The shelves
 
 1. **Session template.** "Start from the Operations Command Center" sits
-   beside the existing choices for a new strategy template, and on the module
+   with the existing choices for a new strategy template, and on the module
    card. It is shown only while the module is on, and the API refuses it
-   otherwise.
+   otherwise. Since 2026-11-12 it is the first start and the primary one, and
+   the New template card is above Manage templates: second, in the third card
+   down, it was below the fold at 1366.
    - It is the Operations example (version 2) in plain words: quarterly
      priorities, the weekly leadership meeting, second-in-command, owner, org
      chart, and the six areas (vision, people, data, issues, process,
@@ -74,6 +79,11 @@ actions. This build adds the frame and the **Operations Command Center**.
      - a task is due on day 5 of its week;
      - a project runs from its first week to day 5 of its last;
      - the goal ends with the last project.
+   - **What was started** is listed on the company's page, on the Playbooks
+     card (2026-11-12): each run with its goal as a link, the start date and
+     what it made; a run whose goal was deleted is listed without one.
+     `GET /api/playbooks/?company=<id>` adds `runs`, for staff who can see
+     that company (an associate only an assigned one); otherwise 404.
    - **Owners.** The person starting it owns every item. A task for the
      owner or the second-in-command carries that contact as its client
      owner. Each task's update source is `playbook`.
@@ -187,6 +197,16 @@ out.
   - `/api/me`.
 - `tests/test_demo_seed.py` checks the demo practice has Operations on, a
   22-task reset started at Acme Fasteners, and three library KPIs there.
+  Since 2026-11-12 also: each of the three has its target (95%, 3% or less,
+  90%, from its guidance; the library entries carry none) and thirteen closed
+  weeks of readings, so the tiles show Behind, On track and On track; the
+  reset is Acme's first goal; and Acme's page lists it.
+- **The demo walk (2026-11-12):** seven checks in headless Chrome at 1366, on
+  a scratch database seeded by the real `seed_demo`, signed in as the seeded
+  owner with every API answer real. Four had failed for the owner: the
+  sidebar entry and the template start were there but below the fold, the
+  reset was on no company page and fourth at Acme, and the library KPIs had
+  no readings.
 - `frontend/src/screens/Settings.test.tsx` covers the new Settings entry.
 - Screenshots at 1366 and 390: Settings → Command Centers, the module card,
   the KPI library picker, and Start a playbook.

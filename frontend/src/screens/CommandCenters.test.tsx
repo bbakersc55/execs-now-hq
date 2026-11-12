@@ -3,8 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { KpiLibraryPicker } from "../components/KpiLibrary";
+import { StartPlaybookCard } from "../components/Playbooks";
 import { CentersState, LibraryState } from "../lib/api";
-import { aMe } from "../test/fixtures";
+import { aCompany, aMe } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { CommandCentersSettings } from "./CommandCenters";
 
@@ -70,5 +71,40 @@ describe("From the library (P8)", () => {
       name: "Days to close a work order", kind: "duration", duration_unit: "days",
       direction: "lower", behind_band_pct: 25, note: "On track at 3 days or fewer." }));
     expect(fetchMock.calls.every((c) => c.method === "GET")).toBe(true);
+  });
+});
+
+describe("a company's Playbooks card (P8)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+  const acme = aCompany({ id: "acme", name: "Acme Fasteners", is_client_company: true });
+
+  it("lists what was started there, each opening its goal", async () => {
+    // 2026-11-12: the goal was on Work and in the portal, but not on the
+    // company's own page.
+    vi.stubGlobal("fetch", mockApi({ "GET /api/playbooks/?company=acme": {
+      playbooks: [], can_edit: true, next_monday: "2026-11-16",
+      runs: [{ id: "r1", playbook: "The 90-day operations reset", start_date: "2026-10-19",
+               goal: "g1", goal_title: "The 90-day operations reset", projects: 4, tasks: 22 },
+             { id: "r2", playbook: "Install the management cadence", start_date: "2026-09-07",
+               goal: null, goal_title: "", projects: 3, tasks: 12 }] } }));
+    renderRoute(<StartPlaybookCard me={aMe({ role: "FF", command_centers: ["operations"] })}
+      company={acme} people={[]} />);
+    const link = await screen.findByRole("link", { name: "The 90-day operations reset" });
+    expect(link).toHaveAttribute("href", "/work/goals/g1");
+    expect(screen.getByText(/started October 19, 2026 · 4 projects, 22 tasks/)).toBeInTheDocument();
+    expect(screen.getByText("Install the management cadence")).toBeInTheDocument();
+    expect(screen.getByText(/its goal was deleted/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start a playbook" })).toBeInTheDocument();
+  });
+
+  it("is not shown, and asks nothing, without a Command Center or to an assistant", async () => {
+    const fetchMock = mockApi({});
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<StartPlaybookCard me={aMe({ role: "FF", command_centers: [] })}
+      company={acme} people={[]} />);
+    renderRoute(<StartPlaybookCard me={aMe({ role: "VA", command_centers: ["operations"] })}
+      company={acme} people={[]} />);
+    expect(screen.queryByText("Playbooks")).not.toBeInTheDocument();
+    expect(fetchMock.calls).toEqual([]);
   });
 });

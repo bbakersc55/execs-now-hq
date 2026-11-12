@@ -1,12 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Company, Contact, Me, PlaybookRow, api } from "../lib/api";
+import { longDate } from "../lib/money";
 import { Modal } from "./shell";
 import { Banner, Card, Field, Pill } from "./ui";
 
-interface PlaybooksState { playbooks: PlaybookRow[]; can_edit: boolean; next_monday: string }
+/** What has been started at one company (2026-11-12), newest first. */
+export interface PlaybookRun {
+  id: string; playbook: string; start_date: string; goal: string | null; goal_title: string;
+  projects: number; tasks: number;
+}
+
+interface PlaybooksState {
+  playbooks: PlaybookRow[]; can_edit: boolean; next_monday: string;
+  /** Only with `?company=`. */
+  runs?: PlaybookRun[];
+}
 
 const name = (p: Contact) => `${p.first_name} ${p.last_name}`.trim();
 
@@ -26,11 +37,33 @@ export function StartPlaybookCard({ me, company, people }: {
   me: Me; company: Company; people: Contact[];
 }) {
   const [open, setOpen] = useState(false);
-  if (!(me.role === "FF" || me.role === "CF") || !company.is_client_company) return null;
-  if (!(me.command_centers ?? []).length) return null;
+  const shown = (me.role === "FF" || me.role === "CF") && company.is_client_company
+    && (me.command_centers ?? []).length > 0;
+  // What has been started here, each with its goal (2026-11-12): the goal was
+  // on Work and in the portal, but nowhere on the company's own page.
+  const runs = useQuery<PlaybooksState>({
+    queryKey: ["playbooks", "runs", company.id],
+    queryFn: () => api.get<PlaybooksState>(`/api/playbooks/?company=${company.id}`),
+    enabled: shown,
+  });
+  if (!shown) return null;
+  const started = runs.data?.runs ?? [];
   return (
     <Card title="Playbooks">
-      <p className="small muted" style={{ marginTop: 0 }}>
+      {started.length > 0 && (
+        <ul className="shelf" aria-label="Started here">
+          {started.map((r) => (
+            <li key={r.id}>
+              {r.goal ? <Link to={`/work/goals/${r.goal}`}><strong>{r.goal_title}</strong></Link>
+                : <strong>{r.playbook}</strong>}{" "}
+              <span className="small muted">
+                started {longDate(r.start_date)} · {r.projects} projects, {r.tasks} tasks
+                {!r.goal && " · its goal was deleted"}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="small muted" style={{ marginTop: started.length ? undefined : 0 }}>
         A goal with its projects and tasks, dated from the day you start.
       </p>
       <button className="small" onClick={() => setOpen(true)}>Start a playbook</button>

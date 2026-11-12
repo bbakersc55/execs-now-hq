@@ -422,7 +422,9 @@ from apps.scorecard.models import KpiLibraryEntry  # noqa: E402
 
 register(PracticeCenter, factories.PracticeCenterFactory, endpoints=("/api/command-centers/",))
 register(Playbook, factories.PlaybookFactory, endpoints=("/api/playbooks/",))
-register(PlaybookRun, factories.PlaybookRunFactory, api_exposed=False)
+# Listed on a company's page since 2026-11-12 (tests/test_command_centers.py,
+# "what was started at a company").
+register(PlaybookRun, factories.PlaybookRunFactory, endpoints=("/api/playbooks/?company=",))
 register(LibraryRecord, factories.LibraryRecordFactory, api_exposed=False)
 register(KpiLibraryEntry, factories.KpiLibraryEntryFactory,
          endpoints=("/api/scorecard/library/",))

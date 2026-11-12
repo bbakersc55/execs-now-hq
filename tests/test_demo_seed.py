@@ -848,6 +848,29 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
     assert done["feed"]["kind"] == "sheet"
     assert round(tiles["Homeowners reached"]["summary"]["value"], 1) == 94.4
 
+    # P8 on the demo (2026-11-12): Acme's three library KPIs each show a
+    # status from thirteen weeks of readings, the company's page lists the
+    # reset started there, and the reset is Acme's first goal.
+    from apps.scorecard.models import KpiReading
+    from apps.work import goal_order
+
+    acme = Company.all_objects.get(name="Acme Fasteners")
+    owner_api = api.as_(people["practice owner"])
+    board = owner_api.get(f"/api/scorecard/?company={acme.pk}").json()
+    shown = {t["name"]: t["summary"]["status"] for t in board["kpis"]}
+    assert {name: shown[name] for name in ("On-time completion rate", "Rework or callback rate",
+                                           "First-time fix rate")} == {
+        "On-time completion rate": "behind", "Rework or callback rate": "on_track",
+        "First-time fix rate": "on_track"}
+    with tenant_context(tenant.pk):
+        for name in ("On-time completion rate", "Rework or callback rate",
+                     "First-time fix rate"):
+            assert KpiReading.objects.filter(kpi__name=name,
+                                             kpi__scorecard__company=acme).count() == 13
+        assert goal_order.current_goals(acme)[0].title == "The 90-day operations reset"
+    runs = owner_api.get(f"/api/playbooks/?company={acme.pk}").json()["runs"]
+    assert [(r["goal_title"], r["tasks"]) for r in runs] == [("The 90-day operations reset", 22)]
+
     # -------------------------------------------------- the second run resets
     with tenant_context(tenant.pk):
         from apps.tenancy.models import SecretKind, TenantSecret

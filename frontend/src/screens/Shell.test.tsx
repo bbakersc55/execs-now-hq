@@ -33,6 +33,16 @@ function stubApp(extra: Record<string, unknown> = {}) {
   return fetchMock;
 }
 
+/** The navigation alone, for a practice owner with these Command Centers on.
+ *  Not `stubApp`, whose own `/api/me` would replace one passed to it. */
+function stubNav(centers: string[]) {
+  vi.stubGlobal("fetch", mockApi({
+    "GET /api/me": aMe({ role: "FF", command_centers: centers }),
+    "GET /api/branding": BRAND,
+    "GET /api/": [],
+  }));
+}
+
 describe("the shell", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
@@ -52,6 +62,28 @@ describe("the shell", () => {
     for (const link of links) {
       expect(link.querySelector("svg"), `${link.textContent} has no icon`).toBeTruthy();
     }
+  });
+
+  it("puts a Command Center the practice has on second, under its own heading", async () => {
+    // 2026-11-12: eighteenth, after Finance, it was below the fold at 1366.
+    const { App } = await import("../App");
+    stubNav(["operations"]);
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+    expect(await screen.findByText("Command Centers")).toBeInTheDocument();
+    const labels = [...screen.getByRole("navigation").querySelectorAll("a")]
+      .map((a) => a.textContent?.trim());
+    expect(labels.slice(0, 3)).toEqual(["Dashboard", "Operations", "Contacts"]);
+    expect(screen.getByRole("link", { name: "Operations" })).toHaveAttribute(
+      "href", "/centers/operations");
+  });
+
+  it("shows no Command Centers heading when none is on", async () => {
+    const { App } = await import("../App");
+    stubNav([]);
+    renderRoute(<App />, { path: "*", route: "/tasks" });
+    expect(await screen.findByText("Accounts")).toBeInTheDocument();
+    expect(screen.queryByText("Command Centers")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Operations" })).not.toBeInTheDocument();
   });
 
   it("collapses to icons and remembers it", async () => {

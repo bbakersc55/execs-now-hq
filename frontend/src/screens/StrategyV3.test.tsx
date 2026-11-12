@@ -690,6 +690,29 @@ describe("the templates screen", () => {
         .toEqual([{ name: "Strategy session", start_from: "operations_example" }]));
     });
 
+  it("offers the Operations Command Center's template first when it is on", async () => {
+    // 2026-11-12: second, under the example, in the third card down, it was
+    // below the fold and the owner did not find it.
+    const fetchMock = mockApi({
+      "GET /api/me": aMe({ role: "FF", command_centers: ["operations"] }),
+      "GET /api/strategy-templates/": [],
+      "POST /api/strategy-template-builder/": () => ({ status: 201, body: aBuilder() }) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<SessionTemplate me={aMe({ role: "FF" })} />);
+    const center = await screen.findByRole("button",
+      { name: "Start from the Operations Command Center" });
+    const starts = screen.getAllByRole("button").map((b) => b.textContent?.trim())
+      .filter((t) => t?.startsWith("Start"));
+    expect(starts.slice(0, 2)).toEqual(["Start from the Operations Command Center",
+                                        "Start from the Operations example"]);
+    expect(center).toHaveClass("primary");
+    expect(screen.getByRole("button", { name: "Start from the Operations example" }))
+      .not.toHaveClass("primary");
+    await userEvent.click(center);
+    await waitFor(() => expect(sent(fetchMock, "/api/strategy-template-builder/"))
+      .toEqual([{ name: "Strategy session", start_from: "operations_command_center" }]));
+  });
+
   it("starts blank without naming an example", async () => {
     const fetchMock = showTemplates([], "/", {
       "POST /api/strategy-template-builder/": () => ({ status: 201, body: aBuilder() }) });

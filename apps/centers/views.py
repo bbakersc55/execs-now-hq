@@ -133,9 +133,31 @@ def _may_run(request):
 class PlaybooksView(APIView):
     def get(self, request):
         _staff(request)
-        return Response({"playbooks": playbooks.offered(request.tenant),
-                         "can_edit": _may_run(request),
-                         "next_monday": playbooks.next_monday().isoformat()})
+        out = {"playbooks": playbooks.offered(request.tenant),
+               "can_edit": _may_run(request),
+               "next_monday": playbooks.next_monday().isoformat()}
+        if request.query_params.get("company"):
+            # A company's page: what has been started there (2026-11-12), for a
+            # company this person can see; any other is not found.
+            from apps.crm.models import Company
+
+            company = crm_perms.company_queryset_for(request, Company.objects.all()).filter(
+                pk=request.query_params["company"]).first() \
+                if _is_uuid(request.query_params["company"]) else None
+            if company is None:
+                raise Http404
+            out["runs"] = playbooks.runs_at(company)
+        return Response(out)
+
+
+def _is_uuid(value) -> bool:
+    import uuid
+
+    try:
+        uuid.UUID(str(value))
+    except ValueError:
+        return False
+    return True
 
 
 class PlaybookCopyView(APIView):

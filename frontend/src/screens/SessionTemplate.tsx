@@ -204,8 +204,8 @@ export function SessionTemplate({ me }: { me: Me }) {
             )}
           </Card>
 
-          <Manage template={template} onDone={refresh} hasSeeded={hasSeeded} />
-
+          {/* Above Manage (2026-11-12): third card down, its starts were
+              below the fold at 1366 and the owner did not find them. */}
           <Card title="New template">
             <p className="small muted">
               A template of your own, edited in the builder. Making one does not
@@ -213,6 +213,8 @@ export function SessionTemplate({ me }: { me: Me }) {
             </p>
             <NewTemplate own={all.filter((t) => t.format === "v3" && !t.archived_at)} />
           </Card>
+
+          <Manage template={template} onDone={refresh} hasSeeded={hasSeeded} />
 
           {!inBuilder && template.sections.map((section) => (
             <Card key={section.code} title={section.title}
@@ -473,19 +475,12 @@ function NewTemplate({ first = false, own = [] }: { first?: boolean; own?: Templ
       </Field>
       {!first && <p className="small" style={{ marginBottom: ".25rem" }}>
         <strong>Start from</strong></p>}
-      <div style={{ marginBottom: ".75rem" }}>
-        <button className="primary" disabled={off}
-          onClick={() => create.mutate("operations_example")}>
-          Start from the Operations example
-        </button>
-        <p className="small muted" style={{ margin: ".25rem 0 0" }}>
-          A complete template you can run today and change as you go. It is written
-          for an operations practice; every question and label is yours to reword.
-        </p>
-      </div>
+      {/* With the Operations Command Center on, its template is the first
+          start offered and the primary one (2026-11-12). */}
       {centerOn && (
         <div style={{ marginBottom: ".75rem" }}>
-          <button disabled={off} onClick={() => create.mutate("operations_command_center")}>
+          <button className="primary" disabled={off}
+            onClick={() => create.mutate("operations_command_center")}>
             Start from the Operations Command Center
           </button>
           <p className="small muted" style={{ margin: ".25rem 0 0" }}>
@@ -494,6 +489,16 @@ function NewTemplate({ first = false, own = [] }: { first?: boolean; own?: Templ
           </p>
         </div>
       )}
+      <div style={{ marginBottom: ".75rem" }}>
+        <button className={centerOn ? "" : "primary"} disabled={off}
+          onClick={() => create.mutate("operations_example")}>
+          Start from the Operations example
+        </button>
+        <p className="small muted" style={{ margin: ".25rem 0 0" }}>
+          A complete template you can run today and change as you go. It is written
+          for an operations practice; every question and label is yours to reword.
+        </p>
+      </div>
       <div style={{ marginBottom: ".75rem" }}>
         <button disabled={off} onClick={() => create.mutate("blank")}>Start blank</button>
         <p className="small muted" style={{ margin: ".25rem 0 0" }}>

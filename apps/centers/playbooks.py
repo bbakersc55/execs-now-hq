@@ -266,6 +266,24 @@ def start(playbook: Playbook, *, company, start_date: date, lead, owner_contact=
     return run
 
 
+def runs_at(company) -> list[dict]:
+    """What has been started at one company, newest first, for its page
+    (2026-11-12): until then a started playbook's goal was on Work and in the
+    portal but nowhere on the company's own page. A run whose goal has since
+    been deleted is listed without one."""
+    rows = (PlaybookRun.objects.filter(company=company)
+            .select_related("playbook", "goal").order_by("-start_date", "-created_at"))
+    out = []
+    for run in rows:
+        goal = run.goal if run.goal is not None and run.goal.deleted_at is None else None
+        out.append({"id": str(run.pk), "playbook": run.playbook.name,
+                    "start_date": run.start_date.isoformat(),
+                    "goal": str(goal.pk) if goal else None,
+                    "goal_title": goal.title if goal else "",
+                    "projects": run.made.get("projects", 0), "tasks": run.made.get("tasks", 0)})
+    return out
+
+
 def next_monday(today=None) -> date:
     today = today or timezone.localdate()
     return today + timedelta(days=(7 - today.weekday()) % 7 or 7)

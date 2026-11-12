@@ -156,6 +156,12 @@ const NAV: NavItem[] = [
   // Matrix 4.18 — Module 1 has no client-facing surface, so every CRM entry is
   // scoped to tenant staff. Without this, an FCC saw the whole sidebar.
   { to: "/dashboard", label: "Dashboard", roles: TENANT, group: "Today", icon: LayoutGrid },
+  // P8: a Command Center the practice has on, by its discipline alone. Second
+  // in the list (2026-11-12): eighteenth, after Finance, it was below the fold
+  // at 1366 and the owner did not find it.
+  { to: "/centers/operations", label: "Operations", roles: ["FF", "CF", "VA"],
+    group: "Command Centers", icon: Compass,
+    when: (me) => (me.command_centers ?? []).includes("operations") },
   { to: "/contacts", label: "Contacts", roles: TENANT , group: "Accounts" , icon: ContactIcon },
   { to: "/pipeline", label: "Pipeline", roles: TENANT , icon: Workflow },
   { to: "/companies", label: "Companies", roles: TENANT , icon: Building2 },
@@ -187,9 +193,6 @@ const NAV: NavItem[] = [
   { to: "/invoices", label: "Invoices", roles: ["FF", "CF"], icon: Receipt },
   // P5. The practice owner's only (matrix 13.1, 13.6–13.10).
   { to: "/finance", label: "Finance", roles: ["FF"], icon: Landmark },
-  // P8: a Command Center the practice has on, by its discipline alone.
-  { to: "/centers/operations", label: "Operations", roles: ["FF", "CF", "VA"], icon: Compass,
-    when: (me) => (me.command_centers ?? []).includes("operations") },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
   { to: "/tasks", label: (w) => w.Tasks, roles: CLIENT , icon: CheckSquare },
