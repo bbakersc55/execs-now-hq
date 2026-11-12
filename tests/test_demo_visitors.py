@@ -397,6 +397,78 @@ def test_the_invitation_goes_to_the_visitor_with_the_link_unstored(copy, demo_co
     assert "/auth/magic/" not in stored.body_text and "private copy" in stored.body_text
 
 
+def _real_gmail(monkeypatch):
+    """The real Gmail transport, with Google's two answers made here, so a
+    send's result names the connection it went through, as on the demo."""
+    from apps.crm.services import transport
+
+    class Accepted:
+        ok, status_code, text = True, 200, ""
+
+        def json(self):
+            return {"id": "m1", "threadId": "t1"}
+
+    monkeypatch.setattr(transport, "access_token_for", lambda connection: "token")
+    monkeypatch.setattr(transport.requests, "post", lambda url, **kwargs: Accepted())
+
+
+def _as_summit(tenant):
+    from apps.tenancy.demo import cast
+    from apps.tenancy.models import Tenant
+
+    Tenant.objects.filter(pk=tenant.pk).update(slug=cast.SLUG)
+
+
+@pytest.mark.django_db
+def test_a_copys_invitation_names_none_of_summits_mailboxes_and_summit_reseeds(
+        copy, demo_connection, seeded_tenant, monkeypatch):
+    """2026-11-12, the demo's reseed refused: a visitor's invitation went
+    through Summit's connection, its thread in the copy recorded Summit's
+    mailbox (made in Summit by that send), and emptying Summit could not
+    delete a mailbox another practice's thread still named."""
+    from apps.crm.models import EmailThread, Mailbox
+    from apps.tenancy import demo
+    from apps.tenancy.demo import visitors
+    from apps.tenancy.models import Tenant
+
+    _as_summit(seeded_tenant)
+    _real_gmail(monkeypatch)
+    summits_before = Mailbox.all_objects.filter(tenant=seeded_tenant).count()
+    assert visitors.send_invitation(copy.visitor) == ""
+    thread = EmailThread.all_objects.get(tenant=copy.tenant)
+    assert thread.gmail_thread_id == "t1"           # it went, through Summit's connection
+    assert thread.mailbox_id is None
+    assert Mailbox.all_objects.filter(tenant=seeded_tenant).count() == summits_before
+
+    demo.reset_summit()
+    assert not Tenant.objects.filter(pk=seeded_tenant.pk).exists()
+    assert EmailThread.all_objects.filter(pk=thread.pk, tenant=copy.tenant).exists()
+
+
+@pytest.mark.django_db
+def test_summit_reseeds_past_a_copys_thread_that_still_names_its_mailbox(
+        copy, demo_connection, seeded_tenant, platform_owner):
+    """The threads already on the demo, sent before the fix: the reseed lets
+    them go of Summit's mailbox, and the copy keeps them."""
+    from apps.crm.models import EmailThread, Mailbox
+    from apps.tenancy import demo
+    from apps.tenancy.models import Tenant
+
+    _as_summit(seeded_tenant)
+    summits = Mailbox.all_objects.create(
+        tenant=seeded_tenant, kind=Mailbox.Kind.OWN, user=platform_owner.user,
+        email_address=demo_connection.email_address, gmail=demo_connection)
+    thread = EmailThread.all_objects.create(
+        tenant=copy.tenant, thread_token=EmailThread.new_token(),
+        subject="Your own demo of Execs NOW HQ", mailbox=summits)
+
+    demo.reset_summit()
+    assert not Tenant.objects.filter(pk=seeded_tenant.pk).exists()
+    assert not Mailbox.all_objects.filter(pk=summits.pk).exists()
+    thread.refresh_from_db()
+    assert (thread.tenant_id, thread.mailbox_id) == (copy.tenant.pk, None)
+
+
 # ======================================== connections, agreement, the list
 
 @pytest.mark.django_db

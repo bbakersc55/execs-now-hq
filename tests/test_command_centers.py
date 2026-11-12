@@ -121,6 +121,26 @@ def test_the_demo_refuses_the_switch(settings, seeded_tenant, ff, api):
 
 
 @pytest.mark.django_db
+def test_the_demos_banner_says_what_is_on_here(settings, seeded_tenant, ff, api):
+    """2026-11-12: it said the Operations Command Center was on when it was
+    off."""
+    from django.utils import timezone
+
+    from apps.centers.models import PracticeCenter
+
+    settings.IS_DEMO = True
+    said = api.as_(ff).get(ROOT).json()["why_not"]
+    assert "Here no Command Center is on." in said and "Operations" not in said
+    PracticeCenter.all_objects.create(tenant=seeded_tenant, center="operations",
+                                      enabled_at=timezone.now())
+    said = api.as_(ff).get(ROOT).json()["why_not"]
+    assert said == ("Command Centers are switched by Execs NOW HQ in the demo. Here the "
+                    "Operations Command Center is on, so you can see what it brings.")
+    PracticeCenter.all_objects.filter(tenant=seeded_tenant).update(disabled_at=timezone.now())
+    assert "Here no Command Center is on." in api.as_(ff).get(ROOT).json()["why_not"]
+
+
+@pytest.mark.django_db
 def test_turning_one_on_changes_nothing_of_a_client(on, ff, api):
     from apps.esign.models import DocumentTemplate
     from apps.scorecard.models import Kpi

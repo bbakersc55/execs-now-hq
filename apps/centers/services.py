@@ -25,8 +25,7 @@ class CenterRefused(ValueError):
         self.status = status
 
 
-DEMO_REFUSAL = ("Command Centers are switched by Execs NOW HQ in the demo. Here the Operations "
-                "Command Center is on, so you can see what it brings.")
+DEMO_REFUSAL = "Command Centers are switched by Execs NOW HQ in the demo."
 
 
 def ensure_catalog() -> None:
@@ -78,10 +77,24 @@ def price_line(tenant) -> str:
             "month.")
 
 
-def can_switch() -> tuple[bool, str]:
+def can_switch(tenant) -> tuple[bool, str]:
     if settings.IS_DEMO:
-        return False, DEMO_REFUSAL
+        return False, f"{DEMO_REFUSAL} {_on_here(tenant)}"
     return True, ""
+
+
+def _on_here(tenant) -> str:
+    """What the demo's refusal says is on, from this practice's switches
+    (2026-11-12): it used to say the Operations Command Center was on, on or
+    off."""
+    names = dict((code, name) for code, name, *_ in catalog.CENTERS)
+    on = [f"the {names[code]}" for code in enabled(tenant.pk)]
+    if not on:
+        return "Here no Command Center is on."
+    listed = on[0] if len(on) == 1 else f"{', '.join(on[:-1])} and {on[-1]}"
+    if len(on) == 1:
+        return f"Here {listed} is on, so you can see what it brings."
+    return f"Here {listed} are on, so you can see what they bring."
 
 
 @transaction.atomic
@@ -90,7 +103,7 @@ def switch(tenant, code: str, on: bool, *, actor) -> PracticeCenter:
     from apps.billing.subscriptions import subscription_for
     from apps.tenancy.models import AuditEvent
 
-    allowed, why = can_switch()
+    allowed, why = can_switch(tenant)
     if not allowed:
         raise CenterRefused(why, 403)
     ensure_catalog()
@@ -135,7 +148,7 @@ def state(tenant) -> dict:
     """Settings → Command Centers."""
     ensure_catalog()
     on = set(enabled(tenant.pk))
-    allowed, why = can_switch()
+    allowed, why = can_switch(tenant)
     owners = owners_practice(tenant)
     return {
         "centers": [{

@@ -103,6 +103,14 @@ def reset_summit() -> list:
     tenant = summit()
     if tenant is None:
         return []
+    # A copy's thread that names one of Summit's mailboxes is let go of it
+    # first, or emptying Summit is refused (`email_thread` → `mailbox`). A
+    # visitor's invitation sent before 2026-11-12 recorded the demo's
+    # connection's mailbox, which is Summit's (`outbox._mailbox_went_through`).
+    from apps.crm.models import EmailThread
+
+    EmailThread.all_objects.filter(mailbox__tenant=tenant).exclude(tenant=tenant) \
+        .update(mailbox=None)
     files = visitors.empty_practice(tenant, keep_user_email="", keep_ai_calls=False)
     Tenant.objects.filter(pk=tenant.pk).delete()
     return files

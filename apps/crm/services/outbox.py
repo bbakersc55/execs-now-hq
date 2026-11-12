@@ -354,6 +354,29 @@ def _unsubscribe_headers(message) -> dict:
     return unsubscribe.headers_for(message)
 
 
+def _mailbox_went_through(message, result, mailbox):
+    """The mailbox a send went through, when it is the message's own
+    practice's; otherwise None, and the thread names no mailbox.
+
+    A demo visitor's copy sends through the demo's one connection, which is
+    Summit's (`transport.sending_connection_for`). Its threads recorded
+    Summit's mailbox, made in Summit by that very send, until Summit's reseed
+    could not delete a mailbox another practice's thread still named
+    (2026-11-12). Another practice's connection is not looked up at all, so
+    nothing is made in that practice either."""
+    from apps.crm.services import mailboxes
+
+    went = result.get("mailbox")
+    if went is None:
+        connection = result.get("connection")
+        if connection is not None and connection.tenant_id == message.tenant_id:
+            went = mailboxes.of_connection(connection)
+    went = went or mailbox
+    if went is not None and went.tenant_id != message.tenant_id:
+        return None
+    return went
+
+
 def _demo_recipient(tenant) -> str:
     """Where a demo message really goes: the redirect, when the demo has one
     and its own send-only connection to send it through; otherwise "", and
@@ -545,8 +568,7 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
         updates = ["last_message_at", "updated_at"]
         thread.last_message_at = message.sent_at
         # The mailbox it actually went through: the conversation's from now on.
-        went = result.get("mailbox") or mailboxes.of_connection(result.get("connection")) \
-            or mailbox
+        went = _mailbox_went_through(message, result, mailbox)
         if went is not None and thread.mailbox_id is None:
             thread.mailbox = went
             updates.insert(0, "mailbox")
